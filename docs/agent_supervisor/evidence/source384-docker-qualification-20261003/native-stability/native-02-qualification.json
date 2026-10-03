@@ -1,0 +1,139 @@
+{
+  "completion_authority": false,
+  "configuration_root": "sha256:2e410a10d1a7696e59036c795e7e3324f35718a13673f35d854009b4bbbfe3a6",
+  "handler_manifest": {
+    "adopt": false,
+    "authorize": false,
+    "materialize": false,
+    "observe": true,
+    "preview": false,
+    "resolve": false,
+    "start": true,
+    "steer": false,
+    "stop": true,
+    "validate": false
+  },
+  "healthy_stable_process_tree": true,
+  "lease_id": "lease:b9717c89990a47e4bc4c8dad31578613",
+  "observed_process_identity_ids": [
+    "sha256:01052aac91b30d1979ef99451b9472aef0184b2fa34159d70fce193e11523eb3",
+    "sha256:26251847b2b8403c3d350eff34e04fddbb884f509e46efeecb167ee4d23c11bc"
+  ],
+  "passed": true,
+  "process_tree_absent_after_stop": true,
+  "production_activation": false,
+  "profile_id": "9ea37bcca33bcb54ca9c0377c2c386b4",
+  "provider_dispatch_allowed": false,
+  "repository_id": "baguqeeralewuczm653gx3bavd2b4dwicozyz3sqjra7hjmtazsoxqpvjohua",
+  "repository_root": "/home/barberb/lift_coding/artifacts/empty-supervisor-stability-20261003/native-02-temp/test_real_empty_native_qualifi0/qualification/repository",
+  "schema": "isolated-supervisor-lifecycle-qualification@1",
+  "stability_observation": {
+    "daemon_identity_id": "sha256:26251847b2b8403c3d350eff34e04fddbb884f509e46efeecb167ee4d23c11bc",
+    "initial_heartbeat_ms": 1791009944255,
+    "observed_process_identity_ids": [
+      "sha256:01052aac91b30d1979ef99451b9472aef0184b2fa34159d70fce193e11523eb3",
+      "sha256:26251847b2b8403c3d350eff34e04fddbb884f509e46efeecb167ee4d23c11bc"
+    ],
+    "passed": true,
+    "poll_interval_seconds": 0.1,
+    "reason": "stable_tree_and_fresh_native_heartbeat",
+    "root_identity_id": "sha256:01052aac91b30d1979ef99451b9472aef0184b2fa34159d70fce193e11523eb3",
+    "samples": [
+      {
+        "added_identity_ids": [],
+        "elapsed_seconds": 0.016883541000424884,
+        "healthy": true,
+        "heartbeat_ms": 1791009944255,
+        "identity_ids": [
+          "sha256:01052aac91b30d1979ef99451b9472aef0184b2fa34159d70fce193e11523eb3",
+          "sha256:26251847b2b8403c3d350eff34e04fddbb884f509e46efeecb167ee4d23c11bc"
+        ],
+        "removed_identity_ids": []
+      },
+      {
+        "added_identity_ids": [],
+        "elapsed_seconds": 0.13244088500141515,
+        "healthy": true,
+        "heartbeat_ms": 1791009944255,
+        "identity_ids": [
+          "sha256:01052aac91b30d1979ef99451b9472aef0184b2fa34159d70fce193e11523eb3",
+          "sha256:26251847b2b8403c3d350eff34e04fddbb884f509e46efeecb167ee4d23c11bc"
+        ],
+        "removed_identity_ids": []
+      },
+      {
+        "added_identity_ids": [],
+        "elapsed_seconds": 0.24683619699862902,
+        "healthy": true,
+        "heartbeat_ms": 1791009944509,
+        "identity_ids": [
+          "sha256:01052aac91b30d1979ef99451b9472aef0184b2fa34159d70fce193e11523eb3",
+          "sha256:26251847b2b8403c3d350eff34e04fddbb884f509e46efeecb167ee4d23c11bc"
+        ],
+        "removed_identity_ids": []
+      },
+      {
+        "added_identity_ids": [],
+        "elapsed_seconds": 0.36910731199895963,
+        "healthy": true,
+        "heartbeat_ms": 1791009944509,
+        "identity_ids": [
+          "sha256:01052aac91b30d1979ef99451b9472aef0184b2fa34159d70fce193e11523eb3",
+          "sha256:26251847b2b8403c3d350eff34e04fddbb884f509e46efeecb167ee4d23c11bc"
+        ],
+        "removed_identity_ids": []
+      },
+      {
+        "added_identity_ids": [],
+        "elapsed_seconds": 0.4935209040013433,
+        "healthy": true,
+        "heartbeat_ms": 1791009944763,
+        "identity_ids": [
+          "sha256:01052aac91b30d1979ef99451b9472aef0184b2fa34159d70fce193e11523eb3",
+          "sha256:26251847b2b8403c3d350eff34e04fddbb884f509e46efeecb167ee4d23c11bc"
+        ],
+        "removed_identity_ids": []
+      },
+      {
+        "added_identity_ids": [],
+        "elapsed_seconds": 0.6115566820008098,
+        "healthy": true,
+        "heartbeat_ms": 1791009944763,
+        "identity_ids": [
+          "sha256:01052aac91b30d1979ef99451b9472aef0184b2fa34159d70fce193e11523eb3",
+          "sha256:26251847b2b8403c3d350eff34e04fddbb884f509e46efeecb167ee4d23c11bc"
+        ],
+        "removed_identity_ids": []
+      },
+      {
+        "added_identity_ids": [],
+        "elapsed_seconds": 0.7336760830003186,
+        "healthy": true,
+        "heartbeat_ms": 1791009945017,
+        "identity_ids": [
+          "sha256:01052aac91b30d1979ef99451b9472aef0184b2fa34159d70fce193e11523eb3",
+          "sha256:26251847b2b8403c3d350eff34e04fddbb884f509e46efeecb167ee4d23c11bc"
+        ],
+        "removed_identity_ids": []
+      },
+      {
+        "added_identity_ids": [],
+        "elapsed_seconds": 0.8547643019992393,
+        "healthy": true,
+        "heartbeat_ms": 1791009945017,
+        "identity_ids": [
+          "sha256:01052aac91b30d1979ef99451b9472aef0184b2fa34159d70fce193e11523eb3",
+          "sha256:26251847b2b8403c3d350eff34e04fddbb884f509e46efeecb167ee4d23c11bc"
+        ],
+        "removed_identity_ids": []
+      }
+    ],
+    "schema": "isolated-supervisor-stability-observation@1",
+    "stable_seconds": 0.8378807609988144,
+    "stable_window_seconds": 0.75
+  },
+  "start_receipt_cid": "baguqeeraeggfmalwiyxti3eh2qyjcq46g6tsg2ckewbdrcwfuw5un52v4piq",
+  "state_root": "/home/barberb/lift_coding/artifacts/empty-supervisor-stability-20261003/native-02-temp/test_real_empty_native_qualifi0/qualification/state",
+  "stop_receipt_cid": "baguqeerapeykgcv3jpfze4wkpvz5gt4zcmwiuh5frdbsyweifvb4ztffpe2a",
+  "task_admission_authority": false
+}

@@ -1,0 +1,127 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/test
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 28 items
+
+test/integration/test_isolated_supervisor_stability.py::test_waits_for_delayed_heartbeat_without_extending_deadline [32mPASSED[0m[32m [  3%][0m
+test/integration/test_isolated_supervisor_stability.py::test_transient_descendant_resets_window_but_keeps_owner_anchors [32mPASSED[0m[32m [  7%][0m
+test/integration/test_isolated_supervisor_stability.py::test_unhealthy_sample_requires_an_entire_new_healthy_window [32mPASSED[0m[32m [ 10%][0m
+test/integration/test_isolated_supervisor_stability.py::test_nonqualifying_observations_stop_at_original_bound[heartbeat_stuck] [32mPASSED[0m[32m [ 14%][0m
+test/integration/test_isolated_supervisor_stability.py::test_nonqualifying_observations_stop_at_original_bound[unhealthy] [32mPASSED[0m[32m [ 17%][0m
+test/integration/test_isolated_supervisor_stability.py::test_nonqualifying_observations_stop_at_original_bound[churning] [32mPASSED[0m[32m [ 21%][0m
+test/integration/test_isolated_supervisor_stability.py::test_identity_drift_is_never_reanchored_even_if_later_healthy[root_reuse] [32mPASSED[0m[32m [ 25%][0m
+test/integration/test_isolated_supervisor_stability.py::test_identity_drift_is_never_reanchored_even_if_later_healthy[owner_reuse] [32mPASSED[0m[32m [ 28%][0m
+test/integration/test_isolated_supervisor_stability.py::test_identity_drift_is_never_reanchored_even_if_later_healthy[owner_restart] [32mPASSED[0m[32m [ 32%][0m
+test/integration/test_isolated_supervisor_stability.py::test_identity_drift_is_never_reanchored_even_if_later_healthy[owner_absent] [32mPASSED[0m[32m [ 35%][0m
+test/integration/test_isolated_supervisor_stability.py::test_identity_drift_is_never_reanchored_even_if_later_healthy[extra_root] [32mPASSED[0m[32m [ 39%][0m
+test/integration/test_isolated_supervisor_stability.py::test_native_heartbeat_drift_is_not_retried_as_transience[regressed] [32mPASSED[0m[32m [ 42%][0m
+test/integration/test_isolated_supervisor_stability.py::test_native_heartbeat_drift_is_not_retried_as_transience[foreign_owner] [32mPASSED[0m[32m [ 46%][0m
+test/integration/test_isolated_supervisor_stability.py::test_slow_observation_cannot_finish_after_deadline [32mPASSED[0m[32m [ 50%][0m
+test/integration/test_isolated_supervisor_stability.py::test_start_anchor_must_match_original_root_receipt [32mPASSED[0m[32m [ 53%][0m
+test/integration/test_isolated_supervisor_stability.py::test_owner_restart_between_native_start_and_wrapper_observation_is_refused [32mPASSED[0m[32m [ 57%][0m
+test/integration/test_isolated_supervisor_stability.py::test_identity_decoding_cannot_cross_deadline_and_still_pass [32mPASSED[0m[32m [ 60%][0m
+test/integration/test_isolated_supervisor_stability.py::test_qualification_cleanup_releases_owners_after_receipt_failure[record] [32mPASSED[0m[32m [ 64%][0m
+test/integration/test_isolated_supervisor_stability.py::test_qualification_cleanup_releases_owners_after_receipt_failure[registry] [32mPASSED[0m[32m [ 67%][0m
+test/integration/test_isolated_supervisor_stability.py::test_real_empty_native_qualification_keeps_start_stop_and_heartbeat_contract 
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-03 06:43:25 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/empty-supervisor-stability-20261003/focused-01-temp/test_real_empty_native_qualifi0/qualification/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[31mFAILED[0m[31m                                                                   [ 71%][0m
+test/integration/test_isolated_benchmark_runtime.py::test_real_signed_native_start_observe_stop 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-03 06:43:46 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/empty-supervisor-stability-20261003/focused-01-temp/test_real_signed_native_start_0/qualification/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[31mFAILED[0m[31m                                                                   [ 75%][0m
+test/integration/test_isolated_benchmark_runtime.py::test_foreign_run_request_cannot_borrow_local_permit 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-03 06:44:06 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/empty-supervisor-stability-20261003/focused-01-temp/test_foreign_run_request_canno0/qualification/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[31m                                                                   [ 78%][0m
+test/integration/test_isolated_benchmark_runtime.py::test_stale_native_token_is_refused_before_launch 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-03 06:44:06 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/empty-supervisor-stability-20261003/focused-01-temp/test_stale_native_token_is_ref0/qualification/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[31m                                                                   [ 82%][0m
+test/integration/test_isolated_benchmark_runtime.py::test_changed_empty_queue_does_not_gain_task_authority 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-03 06:44:07 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/empty-supervisor-stability-20261003/focused-01-temp/test_changed_empty_queue_does_0/qualification/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[31m                                                                   [ 85%][0m
+test/integration/test_isolated_benchmark_runtime.py::test_revoked_local_profile_is_refused_before_launch 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-03 06:44:07 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/empty-supervisor-stability-20261003/focused-01-temp/test_revoked_local_profile_is_0/qualification/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[31m                                                                   [ 89%][0m
+test/integration/test_isolated_benchmark_runtime.py::test_health_rejects_stale_or_foreign_native_status 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-03 06:44:07 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/empty-supervisor-stability-20261003/focused-01-temp/test_health_rejects_stale_or_f0/qualification/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[31m                                                                   [ 92%][0m
+test/integration/test_isolated_benchmark_runtime.py::test_launch_uses_parser_supported_exact_nonimplementing_flags 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-03 06:44:15 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/empty-supervisor-stability-20261003/focused-01-temp/test_launch_uses_parser_suppor0/qualification/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[31m                                                                   [ 96%][0m
+test/integration/test_isolated_benchmark_runtime.py::test_existing_directory_is_never_adopted [32mPASSED[0m[31m [100%][0m
+
+=================================== FAILURES ===================================
+[31m[1m_ test_real_empty_native_qualification_keeps_start_stop_and_heartbeat_contract _[0m
+
+tmp_path = PosixPath('/home/barberb/lift_coding/artifacts/empty-supervisor-stability-20261003/focused-01-temp/test_real_empty_native_qualifi0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xf01e5d8e43b0>
+
+    [0m[94mdef[39;49;00m [92mtest_real_empty_native_qualification_keeps_start_stop_and_heartbeat_contract[39;49;00m(tmp_path, monkeypatch):[90m[39;49;00m
+        monkeypatch.setattr(profile_authority, [33m"[39;49;00m[33m_LIFECYCLE_REGISTRY_ROOT_OVERRIDE[39;49;00m[33m"[39;49;00m, tmp_path / [33m"[39;49;00m[33maccount-root[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        result = subject.qualify_empty_supervisor(tmp_path / [33m"[39;49;00m[33mqualification[39;49;00m[33m"[39;49;00m, timeout_ms=[94m20_000[39;49;00m)[90m[39;49;00m
+>       [94massert[39;49;00m result[[33m"[39;49;00m[33mpassed[39;49;00m[33m"[39;49;00m], result[90m[39;49;00m
+[1m[31mE       AssertionError: {'schema': 'isolated-supervisor-lifecycle-qualification@1', 'repository_root': '/home/barberb/lift_coding/artifacts/empty-supervisor-stability-20261003/focused-01-temp/test_real_empty_native_qualifi0/qualification/repository', 'state_root': '/home/barberb/lift_coding/artifacts/empty-supervisor-stability-20261003/focused-01-temp/test_real_empty_native_qualifi0/qualification/state', 'repository_id': 'baguqeeracpn4gcb2lhex7xsnucgnq4vehjlg7fv4p2l2z5fn4zozadiggsea', ...}[0m
+[1m[31mE       assert False[0m
+
+[1m[31mtest/integration/test_isolated_supervisor_stability.py[0m:181: AssertionError
+----------------------------- Captured stderr call -----------------------------
+2026-10-03 06:43:25,676 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/empty-supervisor-stability-20261003/focused-01-temp/test_real_empty_native_qualifi0/qualification/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log call -------------------------------
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/empty-supervisor-stability-20261003/focused-01-temp/test_real_empty_native_qualifi0/qualification/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[31m[1m__________________ test_real_signed_native_start_observe_stop __________________[0m
+
+runtime = <ipfs_accelerate_py.agent_supervisor.entrypoints.isolated_benchmark_runtime.IsolatedBenchmarkRuntime object at 0xf01e5e012a20>
+
+    [0m[94mdef[39;49;00m [92mtest_real_signed_native_start_observe_stop[39;49;00m(runtime):[90m[39;49;00m
+        factory = runtime.runtime_factory()[90m[39;49;00m
+        [94massert[39;49;00m {k [94mfor[39;49;00m k, v [95min[39;49;00m factory.handler_manifest().items() [94mif[39;49;00m v} == {[33m"[39;49;00m[33mstart[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mobserve[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mstop[39;49;00m[33m"[39;49;00m}[90m[39;49;00m
+        [94massert[39;49;00m [95mnot[39;49;00m factory.production[90m[39;49;00m
+        [94mwith[39;49;00m pytest.raises(MissingRuntimeHandlerError):[90m[39;49;00m
+            factory.invoke([33m"[39;49;00m[33mmaterialize[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+>       started = factory.invoke([33m"[39;49;00m[33mstart[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+                  ^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+
+[1m[31mtest/integration/test_isolated_benchmark_runtime.py[0m:35: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+[1m[31mipfs_accelerate_py/agent_supervisor/entrypoints/runtime_factory.py[0m:126: in invoke
+    [0m[94mreturn[39;49;00m RuntimeEffectReceipt.coerce(handler(*args, **kwargs), handler=name)[90m[39;49;00m
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    [0m[94mdef[39;49;00m [92mstart[39;49;00m():[90m[39;49;00m
+        result = [96mself[39;49;00m.start()[90m[39;49;00m
+        [94mif[39;49;00m [95mnot[39;49;00m result.succeeded:[90m[39;49;00m
+>           [94mraise[39;49;00m RuntimeEffectError([33mf[39;49;00m[33m"[39;49;00m[33mnative local START failed: [39;49;00m[33m{[39;49;00mresult.error[33m}[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+[1m[31mE           ipfs_accelerate_py.agent_supervisor.entrypoints.runtime_factory.RuntimeEffectError: native local START failed: OperationError(code=<ErrorCode.CONFLICT: 'conflict'>, message='startup did not prove sustained health before its deadline', retryable=False, field='', details=mappingproxy({'exception_type': 'PartialMutationError'}))[0m
+
+[1m[31mipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py[0m:408: RuntimeEffectError
+---------------------------- Captured stderr setup -----------------------------
+2026-10-03 06:43:46,163 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/empty-supervisor-stability-20261003/focused-01-temp/test_real_signed_native_start_0/qualification/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log setup ------------------------------
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/empty-supervisor-stability-20261003/focused-01-temp/test_real_signed_native_start_0/qualification/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+- generated xml file: /home/barberb/lift_coding/artifacts/empty-supervisor-stability-20261003/focused-01.xml -
+============================= slowest 10 durations =============================
+21.81s call     integration/test_isolated_supervisor_stability.py::test_real_empty_native_qualification_keeps_start_stop_and_heartbeat_contract
+20.08s call     integration/test_isolated_benchmark_runtime.py::test_real_signed_native_start_observe_stop
+7.24s call     integration/test_isolated_benchmark_runtime.py::test_health_rejects_stale_or_foreign_native_status
+0.31s setup    integration/test_isolated_benchmark_runtime.py::test_launch_uses_parser_supported_exact_nonimplementing_flags
+0.29s setup    integration/test_isolated_benchmark_runtime.py::test_revoked_local_profile_is_refused_before_launch
+0.27s setup    integration/test_isolated_benchmark_runtime.py::test_foreign_run_request_cannot_borrow_local_permit
+0.27s setup    integration/test_isolated_benchmark_runtime.py::test_real_signed_native_start_observe_stop
+0.25s setup    integration/test_isolated_benchmark_runtime.py::test_changed_empty_queue_does_not_gain_task_authority
+0.24s setup    integration/test_isolated_benchmark_runtime.py::test_health_rejects_stale_or_foreign_native_status
+0.24s setup    integration/test_isolated_benchmark_runtime.py::test_stale_native_token_is_refused_before_launch
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m test/integration/test_isolated_supervisor_stability.py::[1mtest_real_empty_native_qualification_keeps_start_stop_and_heartbeat_contract[0m - AssertionError: {'schema': 'isolated-supervisor-lifecycle-qualification@1',...
+[31mFAILED[0m test/integration/test_isolated_benchmark_runtime.py::[1mtest_real_signed_native_start_observe_stop[0m - ipfs_accelerate_py.agent_supervisor.entrypoints.runtime_factory.RuntimeEffe...
+[31m=================== [31m[1m2 failed[0m, [32m26 passed[0m[31m in 72.28s (0:01:12)[0m[31m ====================[0m

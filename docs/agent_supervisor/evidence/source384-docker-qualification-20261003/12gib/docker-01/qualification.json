@@ -1,0 +1,11 @@
+{
+  "benchmark_result": false,
+  "error": "container deployment empty-native-start failed; see retained log",
+  "error_type": "RuntimeError",
+  "official_verifier_executed": false,
+  "provider_calls": 0,
+  "qualified": false,
+  "resource_profile": "source384-5cpu-12gib@1",
+  "schema": "terminal-original-container-profile-qualification@1",
+  "source384_requested": true
+}

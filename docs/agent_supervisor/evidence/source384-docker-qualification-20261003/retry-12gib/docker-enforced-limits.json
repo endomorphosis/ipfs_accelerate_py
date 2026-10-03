@@ -1,0 +1,14 @@
+{
+  "container": "ipfs-native-deploy-1791010216-main-1",
+  "NanoCpus": 5000000000,
+  "Memory": 12884901888,
+  "MemorySwap": 25769803776,
+  "CpuPeriod": 0,
+  "CpuQuota": 0,
+  "CpusetCpus": "",
+  "early_kernel_observation": {
+    "cpu.max": "500000 100000",
+    "memory.max": "12884901888",
+    "memory.current": "843669504"
+  }
+}

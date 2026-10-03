@@ -1,0 +1,314 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/test
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+
+[1m----------------------------- live log collection ------------------------------[0m
+2026-10-03 05:22:18 [[32m    INFO[0m] Registered service: ipfs (service_manager.py:93)
+2026-10-03 05:22:18 [[32m    INFO[0m] Registered test suite: core_infrastructure (test_framework.py:82)
+2026-10-03 05:22:18 [[32m    INFO[0m] Registered test suite: performance (test_framework.py:82)
+2026-10-03 05:22:18 [[32m    INFO[0m] Registered test suite: integration (test_framework.py:82)
+2026-10-03 05:22:18 [[32m    INFO[0m] Successfully imported ipfs_kit_py modules from /home/barberb/HACC/complaint-generator/ipfs_datasets_py/ipfs_kit_py/ipfs_kit_py/__init__.py (ipfs_kit_integration.py:327)
+2026-10-03 05:22:18 [[32m    INFO[0m] IPFS Kit integration enabled successfully (ipfs_kit_integration.py:344)
+2026-10-03 05:22:18 [[32m    INFO[0m] Storage initialized with distributed backend (storage_wrapper.py:92)
+collected 22 items
+
+test/integration/test_admitted_context_refresh.py::test_opted_in_runtime_refreshes_only_after_native_stop[False] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-03 05:22:57 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-03 05:22:57 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:22:57 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:22:58 [[32m    INFO[0m] capability admitted status=compatible fingerprint=sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b (quack_state_server.py:4353)
+2026-10-03 05:22:58 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:22:58 [[32m    INFO[0m] control-plane schema migration complete before ready (quack_state_server.py:4353)
+2026-10-03 05:22:58 [[32m    INFO[0m] state-owner ready server_id=server:39d9298f-0415-4c18-a198-c420be2a686d listen_uri=quack:127.0.0.1:37217 (quack_state_server.py:4353)
+2026-10-03 05:22:58 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe0/execution.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:22:58 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:00 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe0/launch/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:29 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/dc46d69019e238045f56/agent-merge-trains/master-54fd4939e52ae69d982f/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:29 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/dc46d69019e238045f56/agent-merge-trains/master-54fd4939e52ae69d982f/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:29 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:29 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:29 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:29 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:29 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:29 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:29 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:29 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [  4%][0m
+test/integration/test_admitted_context_refresh.py::test_opted_in_runtime_refreshes_only_after_native_stop[True] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-03 05:23:33 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-03 05:23:33 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:33 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:33 [[32m    INFO[0m] capability admitted status=compatible fingerprint=sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b (quack_state_server.py:4353)
+2026-10-03 05:23:33 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:34 [[32m    INFO[0m] control-plane schema migration complete before ready (quack_state_server.py:4353)
+2026-10-03 05:23:34 [[32m    INFO[0m] state-owner ready server_id=server:70d7bf28-5459-4e9a-ae64-6d857a56a917 listen_uri=quack:127.0.0.1:44913 (quack_state_server.py:4353)
+2026-10-03 05:23:34 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe1/execution.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:34 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe1/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:36 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe1/launch/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:41 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/0136494c6779ef6dcdd4/agent-merge-trains/master-3a82533ab47a17b1fa83/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:41 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/0136494c6779ef6dcdd4/agent-merge-trains/master-3a82533ab47a17b1fa83/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:41 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe1/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:41 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe1/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:41 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe1/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:41 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe1/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:41 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe1/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:41 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe1/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:42 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe1/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:42 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_opted_in_runtime_refreshe1/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [  9%][0m
+test/integration/test_admitted_context_refresh.py::test_source384_publication_reports_historical_selection_without_downgrade_or_dispatch 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-03 05:23:46 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_source384_publication_rep0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-03 05:23:46 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_source384_publication_rep0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:46 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_source384_publication_rep0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:46 [[32m    INFO[0m] capability admitted status=compatible fingerprint=sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b (quack_state_server.py:4353)
+2026-10-03 05:23:46 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_source384_publication_rep0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:46 [[32m    INFO[0m] control-plane schema migration complete before ready (quack_state_server.py:4353)
+2026-10-03 05:23:47 [[32m    INFO[0m] state-owner ready server_id=server:47ff8a15-4d13-48f6-b60e-e6f8ab0bcfbb listen_uri=quack:127.0.0.1:36553 (quack_state_server.py:4353)
+2026-10-03 05:23:47 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_source384_publication_rep0/execution.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:47 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_source384_publication_rep0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:48 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_source384_publication_rep0/launch/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[31mFAILED[0m[31m                                                                   [ 13%][0m
+test/integration/test_admitted_published_shutdown.py::test_actual_published_run_stops_before_owner_validation_without_accepting_source 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-03 05:23:55 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_published_run_stop0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:55 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_published_run_stop0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:55 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_published_run_stop0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:55 [[32m    INFO[0m] capability admitted status=compatible fingerprint=sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b (quack_state_server.py:4353)
+2026-10-03 05:23:56 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_published_run_stop0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:56 [[32m    INFO[0m] control-plane schema migration complete before ready (quack_state_server.py:4353)
+2026-10-03 05:23:56 [[32m    INFO[0m] state-owner ready server_id=server:03c8e986-e278-46c8-934e-8c1490599b7d listen_uri=quack:127.0.0.1:34247 (quack_state_server.py:4353)
+2026-10-03 05:23:56 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_published_run_stop0/execution.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:56 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_published_run_stop0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:23:56 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_published_run_stop0/launch/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:02 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/1c8daebdfcb74dded530/agent-merge-trains/master-2bdf39395f059cc0a70d/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:02 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/1c8daebdfcb74dded530/agent-merge-trains/master-2bdf39395f059cc0a70d/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:02 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_published_run_stop0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:02 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_published_run_stop0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:02 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_published_run_stop0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:02 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_published_run_stop0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:02 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_published_run_stop0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:02 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_published_run_stop0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:02 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_published_run_stop0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:02 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_published_run_stop0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[31m                                                                   [ 18%][0m
+test/integration/test_admitted_published_shutdown.py::test_published_shutdown_retains_launch_identity_signature_policy_and_fence 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-03 05:24:03 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_published_shutdown_retain0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:04 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_published_shutdown_retain0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:04 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_published_shutdown_retain0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:04 [[32m    INFO[0m] capability admitted status=compatible fingerprint=sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b (quack_state_server.py:4353)
+2026-10-03 05:24:04 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_published_shutdown_retain0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:04 [[32m    INFO[0m] control-plane schema migration complete before ready (quack_state_server.py:4353)
+2026-10-03 05:24:04 [[32m    INFO[0m] state-owner ready server_id=server:8cb81ce7-c3b9-4919-82f3-6e45c1b47e1d listen_uri=quack:127.0.0.1:46053 (quack_state_server.py:4353)
+2026-10-03 05:24:04 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_published_shutdown_retain0/execution.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:04 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_published_shutdown_retain0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:05 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_published_shutdown_retain0/launch/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:10 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/5b261fdc9d9cfb9f57c1/agent-merge-trains/master-1b24187f645b95882637/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:10 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/5b261fdc9d9cfb9f57c1/agent-merge-trains/master-1b24187f645b95882637/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:10 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_published_shutdown_retain0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:10 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_published_shutdown_retain0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:10 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_published_shutdown_retain0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:10 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_published_shutdown_retain0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:10 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_published_shutdown_retain0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:10 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_published_shutdown_retain0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:10 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_published_shutdown_retain0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:10 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_published_shutdown_retain0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[31m                                                                   [ 22%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_unselected_bundle_preserves_v1_bytes_and_skips_source384 [32mPASSED[0m[31m [ 27%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_revalidates_only_exact_selected_task_receipt_on_every_read [32mPASSED[0m[31m [ 31%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_malformed_reference_rejects_before_validation[missing] [32mPASSED[0m[31m [ 36%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_malformed_reference_rejects_before_validation[null] [32mPASSED[0m[31m [ 40%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_malformed_reference_rejects_before_validation[unknown-schema] [32mPASSED[0m[31m [ 45%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_malformed_reference_rejects_before_validation[oversize] [32mPASSED[0m[31m [ 50%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_malformed_reference_rejects_before_validation[nan] [32mPASSED[0m[31m [ 54%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_malformed_reference_rejects_before_validation[extra-task-field] [32mPASSED[0m[31m [ 59%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_malformed_reference_rejects_before_validation[downgrade] [32mPASSED[0m[31m [ 63%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_writer_cannot_silently_drop_missing_selection [32mPASSED[0m[31m [ 68%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_digest_drift_rejects_before_native_validator [32mPASSED[0m[31m [ 72%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_validator_drift_refusal_propagates_without_metadata [32mPASSED[0m[31m [ 77%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_worker_context_read_rechecks_v2_receipt_before_prompt [32mPASSED[0m[31m [ 81%][0m
+test/api/semantic_state/test_published_task_context.py::test_actual_completed_publication_refreshes_roots_and_keeps_authority[False] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-03 05:24:11 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-03 05:24:12 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:12 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:12 [[32m    INFO[0m] capability admitted status=compatible fingerprint=sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b (quack_state_server.py:4353)
+2026-10-03 05:24:12 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:12 [[32m    INFO[0m] control-plane schema migration complete before ready (quack_state_server.py:4353)
+2026-10-03 05:24:12 [[32m    INFO[0m] state-owner ready server_id=server:f7f1f642-5b17-458a-968a-0016058ff902 listen_uri=quack:127.0.0.1:40359 (quack_state_server.py:4353)
+2026-10-03 05:24:12 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat0/execution.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:12 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:14 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat0/agent-orchestration/7cfae3e91e0780e99b65/agent-merge-trains/master-c81c026319e88f6ac4ca/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:14 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat0/agent-orchestration/7cfae3e91e0780e99b65/agent-merge-trains/master-c81c026319e88f6ac4ca/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:14 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:14 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:14 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:14 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:14 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:14 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:14 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:14 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[31m                                                                   [ 86%][0m
+test/api/semantic_state/test_published_task_context.py::test_actual_completed_publication_refreshes_roots_and_keeps_authority[True] 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-03 05:24:16 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-03 05:24:17 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:17 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:17 [[32m    INFO[0m] capability admitted status=compatible fingerprint=sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b (quack_state_server.py:4353)
+2026-10-03 05:24:17 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat1/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:17 [[32m    INFO[0m] control-plane schema migration complete before ready (quack_state_server.py:4353)
+2026-10-03 05:24:17 [[32m    INFO[0m] state-owner ready server_id=server:a720a5bd-aa15-410c-9795-9a9c4bf8da25 listen_uri=quack:127.0.0.1:43047 (quack_state_server.py:4353)
+2026-10-03 05:24:17 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat1/execution.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:17 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat1/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:19 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat1/agent-orchestration/3d686d05f2283317b523/agent-merge-trains/master-22ef0ebb88159625153a/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:19 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat1/agent-orchestration/3d686d05f2283317b523/agent-merge-trains/master-22ef0ebb88159625153a/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:19 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat1/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:19 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat1/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:19 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat1/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:19 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat1/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:19 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat1/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:19 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat1/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:19 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat1/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:24:19 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_actual_completed_publicat1/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[31m                                                                   [ 90%][0m
+test/api/semantic_state/test_published_task_context.py::test_foreign_owner_is_never_a_publication_refresh_authority [32mPASSED[0m[31m [ 95%][0m
+test/api/semantic_state/test_published_task_context.py::test_native_pinned_embedding_policy_allows_only_root_rebinding [32mPASSED[0m[31m [100%][0m
+
+=================================== FAILURES ===================================
+[31m[1m_ test_source384_publication_reports_historical_selection_without_downgrade_or_dispatch _[0m
+
+scenario = {'repository': PosixPath('/tmp/pytest-of-barberb/pytest-192/test_source384_publication_rep0/isolated'), 'manifest': {'...': <ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.IntentRepository object at 0xef20bd279ca0>, ...}
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-192/test_source384_publication_rep0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xef20ddfe8050>
+
+    [0m[94mdef[39;49;00m [92mtest_source384_publication_reports_historical_selection_without_downgrade_or_dispatch[39;49;00m(scenario, tmp_path, monkeypatch):[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_accelerate_py[39;49;00m[04m[96m.[39;49;00m[04m[96magent_supervisor[39;49;00m[04m[96m.[39;49;00m[04m[96mruntime[39;49;00m[04m[96m.[39;49;00m[04m[96mtask_context_bundle[39;49;00m [94mimport[39;49;00m ([90m[39;49;00m
+            write_task_context_bundle, load_task_context_nomination,[90m[39;49;00m
+        )[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_accelerate_py[39;49;00m[04m[96m.[39;49;00m[04m[96magent_supervisor[39;49;00m[04m[96m.[39;49;00m[04m[96mruntime[39;49;00m[04m[96m.[39;49;00m[04m[96mpublished_task_context[39;49;00m [94mimport[39;49;00m refresh_published_task_context[90m[39;49;00m
+    [90m[39;49;00m
+        root = scenario[[33m"[39;49;00m[33mrepository[39;49;00m[33m"[39;49;00m][90m[39;49;00m
+        baseline_sha = hashlib.sha256((root / [33m"[39;49;00m[33manswer.py[39;49;00m[33m"[39;49;00m).read_bytes()).hexdigest()[90m[39;49;00m
+        [90m# Actual native owner/publication/completion/lifecycle, with an explicitly[39;49;00m[90m[39;49;00m
+        [90m# authored source-bound validator instead of any model inference claim.[39;49;00m[90m[39;49;00m
+        module = types.ModuleType([33m"[39;49;00m[33mipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        checks = [][90m[39;49;00m
+        [94mdef[39;49;00m [92mvalidate[39;49;00m(*, repository, expected_receipt):[90m[39;49;00m
+            checks.append(expected_receipt)[90m[39;49;00m
+            [94mif[39;49;00m hashlib.sha256((repository / [33m"[39;49;00m[33manswer.py[39;49;00m[33m"[39;49;00m).read_bytes()).hexdigest() != baseline_sha:[90m[39;49;00m
+                [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33mselected Source384 source changed[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        module.validate_source384_context = validate[90m[39;49;00m
+        monkeypatch.setitem(sys.modules, module.[91m__name__[39;49;00m, module)[90m[39;49;00m
+        receipt = {[33m"[39;49;00m[33mschema[39;49;00m[33m"[39;49;00m: [33m"[39;49;00m[33mterminal-source384-repository-context@1[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33msource_sha256[39;49;00m[33m"[39;49;00m: baseline_sha,[90m[39;49;00m
+                   [33m"[39;49;00m[33mcompletion_authority[39;49;00m[33m"[39;49;00m: [94mFalse[39;49;00m}[90m[39;49;00m
+        admission = local.admit_local_benchmark_plan(graph=scenario[[33m"[39;49;00m[33mgraph[39;49;00m[33m"[39;49;00m], manifest=scenario[[33m"[39;49;00m[33mmanifest[39;49;00m[33m"[39;49;00m])[90m[39;49;00m
+        [94mwith[39;49;00m typed_claim(scenario, tmp_path) [94mas[39;49;00m (owner, _daemon, attempt):[90m[39;49;00m
+            previous = initial_bundle(scenario, owner)[90m[39;49;00m
+            task_context = json.loads((root / previous[[33m"[39;49;00m[33martifact[39;49;00m[33m"[39;49;00m]).read_bytes())[[33m"[39;49;00m[33mtasks[39;49;00m[33m"[39;49;00m][[94m0[39;49;00m][90m[39;49;00m
+            bundle = write_task_context_bundle(repository=root, prepared=[{[90m[39;49;00m
+                [33m"[39;49;00m[33mschema[39;49;00m[33m"[39;49;00m: [33m"[39;49;00m[33msupervisor-task-context-preparation@1[39;49;00m[33m"[39;49;00m, **task_context,[90m[39;49;00m
+                [33m"[39;49;00m[33msource384_context[39;49;00m[33m"[39;49;00m: receipt}], output=root / [33m"[39;49;00m[33m.runtime/source384-launch.json[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+            original_bytes = (root / bundle[[33m"[39;49;00m[33martifact[39;49;00m[33m"[39;49;00m]).read_bytes()[90m[39;49;00m
+            runtime = AdmittedBenchmarkRuntime.create(tmp_path / [33m"[39;49;00m[33mlaunch[39;49;00m[33m"[39;49;00m, admission=admission,[90m[39;49;00m
+                server=owner.server, source=owner.source, implement=[94mFalse[39;49;00m, timeout_ms=[94m30_000[39;49;00m,[90m[39;49;00m
+                context_bundle=bundle, refresh_context_on_completion=[94mTrue[39;49;00m)[90m[39;49;00m
+            [94mtry[39;49;00m:[90m[39;49;00m
+                [94massert[39;49;00m runtime.start().succeeded[90m[39;49;00m
+>               [94massert[39;49;00m runtime.observe()[[33m"[39;49;00m[33mpublished_context[39;49;00m[33m"[39;49;00m][[94m0[39;49;00m][[33m"[39;49;00m[33mstatus[39;49;00m[33m"[39;49;00m] == [33m"[39;49;00m[33mpending_completion[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+                       ^^^^^^^^^^^^^^^^^[90m[39;49;00m
+
+[1m[31mtest/integration/test_admitted_context_refresh.py[0m:145: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+[1m[31mipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py[0m:750: in observe
+    [0mresult = [96msuper[39;49;00m().observe()[90m[39;49;00m
+             ^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py[0m:364: in observe
+    [0mcontext_observation = [96mself[39;49;00m._verify_observation()[90m[39;49;00m
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py[0m:581: in _verify_observation
+    [0mobservations = [96mself[39;49;00m._verify(completed_observation=[94mTrue[39;49;00m)[90m[39;49;00m
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py[0m:566: in _verify
+    [0mobservations = [96mself[39;49;00m._verify_context(verified, completed_observation=completed_observation)[90m[39;49;00m
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py[0m:544: in _verify_context
+    [0mobservations.append(observe_source384_successor_unavailable(server=[96mself[39;49;00m.server,[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/published_task_context.py[0m:266: in observe_source384_successor_unavailable
+    [0mroot, binding, _task = _owner_state(server=server, admission=admission, task_cid=task_cid)[90m[39;49;00m
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+server = QuackStateServer(config=QuackStateServerConfig(database_path=PosixPath('/tmp/pytest-of-barberb/pytest-192/test_source3...i4ye4q', changed=False, schema='ipfs_accelerate_py/agent-supervisor/control-plane-migration-run@1'), _bound_port=36553)
+admission = {'manifest': {'binding': {'identity': 'did:key:z6MkhadhvaUs3cLRoY5vaLKGES6U8wAW8ZNhyaDJgLfCXpZm', 'profile_id': '9c63c...qrqYlQqOo4uSU9rSvkevF3nP8wSHRnhkY3rbmRgm3aA6B5ogZ4+uc26neFzqDCw==', 'profile_id': '9c63c9da07adfe843fafca856b186009'}}}
+task_cid = 'baguqeeractens744kzyraoryjv6nig2k5ma5bsf6vfq3utsacje3z5tft6qa'
+
+    [0m[94mdef[39;49;00m [92m_owner_state[39;49;00m(*, server, admission, task_cid):[90m[39;49;00m
+    [90m    [39;49;00m[33m"""Read actual owner authority; return only immutable observation bindings."""[39;49;00m[90m[39;49;00m
+        [94mif[39;49;00m [96mtype[39;49;00m(server) [95mis[39;49;00m [95mnot[39;49;00m QuackStateServer:[90m[39;49;00m
+            [94mraise[39;49;00m [96mTypeError[39;49;00m([33m"[39;49;00m[33mactual native owner required[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mwith[39;49;00m server._lock:[90m[39;49;00m
+            identity = server.identity[90m[39;49;00m
+            [94mif[39;49;00m identity [95mis[39;49;00m [94mNone[39;49;00m [95mor[39;49;00m server.ready().get([33m"[39;49;00m[33mready[39;49;00m[33m"[39;49;00m) [95mis[39;49;00m [95mnot[39;49;00m [94mTrue[39;49;00m:[90m[39;49;00m
+                [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33mnative owner is not ready[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+            verified = verify_owner_local_benchmark_observation(server=server, admission=admission)[90m[39;49;00m
+            graph = verified[[33m"[39;49;00m[33mgraph[39;49;00m[33m"[39;49;00m][90m[39;49;00m
+            [94mif[39;49;00m [96mlen[39;49;00m(graph.tasks) != [94m1[39;49;00m [95mor[39;49;00m graph.tasks[[94m0[39;49;00m].task_cid != task_cid:[90m[39;49;00m
+                [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33mpublication refresh requires the exact single admitted task[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+            root = Path(verified[[33m"[39;49;00m[33mmanifest[39;49;00m[33m"[39;49;00m][[33m"[39;49;00m[33mrepository[39;49;00m[33m"[39;49;00m]).resolve(strict=[94mTrue[39;49;00m)[90m[39;49;00m
+            head = _git(root, [33m"[39;49;00m[33mrev-parse[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mHEAD[39;49;00m[33m"[39;49;00m).decode().strip()[90m[39;49;00m
+            [94mif[39;49;00m head == verified[[33m"[39;49;00m[33mprofile[39;49;00m[33m"[39;49;00m].baseline_commit:[90m[39;49;00m
+>               [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33mpublication refresh requires an accepted source transition[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+[1m[31mE               ValueError: publication refresh requires an accepted source transition[0m
+
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/published_task_context.py[0m:224: ValueError
+---------------------------- Captured stderr setup -----------------------------
+2026-10-03 05:23:46,134 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_source384_publication_rep0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log setup ------------------------------
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_source384_publication_rep0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+----------------------------- Captured stderr call -----------------------------
+2026-10-03 05:23:46,614 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_source384_publication_rep0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-03 05:23:46,773 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_source384_publication_rep0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-03 05:23:46,864 - ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server - INFO - capability admitted status=compatible fingerprint=sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b
+2026-10-03 05:23:46,866 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_source384_publication_rep0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-03 05:23:46,964 - ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server - INFO - control-plane schema migration complete before ready
+2026-10-03 05:23:47,071 - ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server - INFO - state-owner ready server_id=server:47ff8a15-4d13-48f6-b60e-e6f8ab0bcfbb listen_uri=quack:127.0.0.1:36553
+2026-10-03 05:23:47,163 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_source384_publication_rep0/execution.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-03 05:23:47,262 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_source384_publication_rep0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-03 05:23:48,940 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_source384_publication_rep0/launch/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log call -------------------------------
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_source384_publication_rep0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_source384_publication_rep0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server:quack_state_server.py:4353 capability admitted status=compatible fingerprint=sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_source384_publication_rep0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server:quack_state_server.py:4353 control-plane schema migration complete before ready
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server:quack_state_server.py:4353 state-owner ready server_id=server:47ff8a15-4d13-48f6-b60e-e6f8ab0bcfbb listen_uri=quack:127.0.0.1:36553
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_source384_publication_rep0/execution.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_source384_publication_rep0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-192/test_source384_publication_rep0/launch/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+- generated xml file: /home/barberb/lift_coding/artifacts/terminal-symbolic-context-fence-20261003/publication.xml -
+============================= slowest 10 durations =============================
+35.47s call     integration/test_admitted_context_refresh.py::test_opted_in_runtime_refreshes_only_after_native_stop[False]
+12.38s call     integration/test_admitted_context_refresh.py::test_opted_in_runtime_refreshes_only_after_native_stop[True]
+8.59s call     integration/test_admitted_context_refresh.py::test_source384_publication_reports_historical_selection_without_downgrade_or_dispatch
+7.39s setup    integration/test_admitted_published_shutdown.py::test_actual_published_run_stops_before_owner_validation_without_accepting_source
+7.24s setup    integration/test_admitted_published_shutdown.py::test_published_shutdown_retains_launch_identity_signature_policy_and_fence
+4.97s call     api/semantic_state/test_published_task_context.py::test_actual_completed_publication_refreshes_roots_and_keeps_authority[True]
+4.64s call     api/semantic_state/test_published_task_context.py::test_actual_completed_publication_refreshes_roots_and_keeps_authority[False]
+0.59s call     integration/test_admitted_published_shutdown.py::test_published_shutdown_retains_launch_identity_signature_policy_and_fence
+0.53s call     integration/test_admitted_published_shutdown.py::test_actual_published_run_stops_before_owner_validation_without_accepting_source
+0.52s setup    integration/test_admitted_context_refresh.py::test_opted_in_runtime_refreshes_only_after_native_stop[True]
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m test/integration/test_admitted_context_refresh.py::[1mtest_source384_publication_reports_historical_selection_without_downgrade_or_dispatch[0m - ValueError: publication refresh requires an accepted source transition
+[31m=================== [31m[1m1 failed[0m, [32m21 passed[0m[31m in 125.77s (0:02:05)[0m[31m ===================[0m

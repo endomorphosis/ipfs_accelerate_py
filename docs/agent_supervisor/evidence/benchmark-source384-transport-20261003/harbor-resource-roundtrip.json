@@ -1,0 +1,65 @@
+{
+  "schema": "harbor-source384-declared-resource-roundtrip@1",
+  "resource_profile": "source384-5cpu-8gib@1",
+  "arms": {
+    "codex": {
+      "fields": {
+        "override_cpus": 5,
+        "override_memory_mb": 8192,
+        "cpu_enforcement_policy": "limit",
+        "memory_enforcement_policy": "limit"
+      },
+      "field_types": {
+        "override_cpus": "int",
+        "override_memory_mb": "int",
+        "cpu_enforcement_policy": "str",
+        "memory_enforcement_policy": "str"
+      }
+    },
+    "no-index": {
+      "fields": {
+        "override_cpus": 5,
+        "override_memory_mb": 8192,
+        "cpu_enforcement_policy": "limit",
+        "memory_enforcement_policy": "limit"
+      },
+      "field_types": {
+        "override_cpus": "int",
+        "override_memory_mb": "int",
+        "cpu_enforcement_policy": "str",
+        "memory_enforcement_policy": "str"
+      }
+    },
+    "full": {
+      "fields": {
+        "override_cpus": 5,
+        "override_memory_mb": 8192,
+        "cpu_enforcement_policy": "limit",
+        "memory_enforcement_policy": "limit"
+      },
+      "field_types": {
+        "override_cpus": "int",
+        "override_memory_mb": "int",
+        "cpu_enforcement_policy": "str",
+        "memory_enforcement_policy": "str"
+      }
+    }
+  },
+  "comparisons": {
+    "no-index": {
+      "matches": true,
+      "status": "matched",
+      "differences": [],
+      "basis": "predeclared_configuration_only; runtime_enforcement_not_established"
+    },
+    "full": {
+      "matches": true,
+      "status": "matched",
+      "differences": [],
+      "basis": "predeclared_configuration_only; runtime_enforcement_not_established"
+    }
+  },
+  "actual_installed_harbor_jobconfig": true,
+  "runtime_enforcement_observed": false,
+  "provider_calls": 0
+}

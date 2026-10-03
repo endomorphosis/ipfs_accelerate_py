@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="5" time="43.676" timestamp="2026-10-03T05:23:07.801701+00:00" hostname="spark-b271"><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_source384_context" name="test_real_pinned_inference_reaches_planner_and_dispatch_without_replay" time="17.027" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_source384_context" name="test_source384_missing_selection_cannot_silently_use_legacy_profile" time="2.119" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_source384_context" name="test_checkpoint_change_during_router_is_rejected_before_admission" time="10.902"><failure message="Failed: DID NOT RAISE ValueError">original = (PosixPath('/home/barberb/lift_coding/artifacts/terminal-source384-context-20261003/real-02-temp/test_checkpoint_chang...barberb/lift_coding/artifacts/terminal-source384-context-20261003/real-02-temp/test_checkpoint_change_during_0/state'))
+selected_config = PosixPath('/home/barberb/lift_coding/artifacts/terminal-source384-context-20261003/real-02-temp/test_checkpoint_change_during_0/source384-config.json')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xf9726c2f2c00&gt;
+
+    def test_checkpoint_change_during_router_is_rejected_before_admission(original, selected_config, monkeypatch):
+        root, instruction, state = original
+        prepared = prep.prepare(repository=root, instruction=instruction, state=state)
+        prep.initial_context(state=state, source384_config=selected_config)
+        checkpoint = Path(json.loads(selected_config.read_text())["checkpoint_path"])
+        calls = []
+        def router(prompt, **kwargs):
+            calls.append(prompt)
+            checkpoint.write_bytes(checkpoint.read_bytes() + b" ")
+            return {"text": _proposal_json(prepared), "observation": {}, "execution_receipt": None}
+        _version(monkeypatch)
+&gt;       with pytest.raises(ValueError, match="checkpoint bytes differ"):
+E       Failed: DID NOT RAISE ValueError
+
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py:117: Failed</failure></testcase><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_source384_context" name="test_source384_rejects_legacy_training_before_writes" time="0.408" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_source384_context" name="test_native_inventory_rejects_undeclared_captured_source" time="0.001" /></testsuite></testsuites>

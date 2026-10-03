@@ -1,0 +1,35 @@
+{
+  "completion_authority": false,
+  "configuration_root": "sha256:74092f9b2499c73b237e528eba74fee96813b4a97dfc4bd4ecdb708e0978051a",
+  "handler_manifest": {
+    "adopt": false,
+    "authorize": false,
+    "materialize": false,
+    "observe": true,
+    "preview": false,
+    "resolve": false,
+    "start": true,
+    "steer": false,
+    "stop": true,
+    "validate": false
+  },
+  "healthy_stable_process_tree": false,
+  "lease_id": "lease:9797ecdd5a9e4ebaa19434412fe9dbed",
+  "observed_process_identity_ids": [
+    "sha256:106c8ddf70a10c90e78394c0cf23beebf8a3ec92f0fee6011ef30ea1974b27d5",
+    "sha256:18987cd505e9b9a9b01802d9b1b39495e3960745c68c3701510d1da59a207361",
+    "sha256:25d9ec58e9db444d85449e71579aa6cb5612b9daca3f523bd6f4e1b8e630e21f"
+  ],
+  "passed": false,
+  "process_tree_absent_after_stop": true,
+  "production_activation": false,
+  "profile_id": "073aa1c4503dc4da5b363fa5c55ad0a9",
+  "provider_dispatch_allowed": false,
+  "repository_id": "baguqeerakuasmvccldjqcs3fjyufa2pnjgjioivt43pzopznjbknz7uuomsa",
+  "repository_root": "/opt/ipfs-supervisor/state/empty-start/repository",
+  "schema": "isolated-supervisor-lifecycle-qualification@1",
+  "start_receipt_cid": "baguqeeraeoqy4wdwrnxjbzm5edtkydwaqloamfi7mus7dslz6cddquri7y3a",
+  "state_root": "/opt/ipfs-supervisor/state/empty-start/state",
+  "stop_receipt_cid": "baguqeeraljtfrzarf4sqlskfdzgvaqlvactsdqu35w2pwaniu44xl7eqfuuq",
+  "task_admission_authority": false
+}

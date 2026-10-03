@@ -1,0 +1,61 @@
+{
+  "files": [
+    {
+      "bytes": 51328,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "sha256": "db54d8b1082f678c418dea4f4c4e64face444cf6a592b257f22fcbbd38e09669"
+    },
+    {
+      "bytes": 20871,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py",
+      "sha256": "334220a0c07ff7cb413f9f94e75ede2901f0b82bec48f96698b3ffbddbdd1414"
+    },
+    {
+      "bytes": 8309,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py",
+      "sha256": "cc11d75f0d266ab084fda7c63a15b6ce994a7bbb466fff175c4c19212f5b4dc3"
+    },
+    {
+      "bytes": 6808,
+      "path": "test/api/semantic_state/test_source384_task_context_bundle.py",
+      "sha256": "a52c81b86132d8df3217fc8df396f35c8d313ab3c7813d82baa24327e71fdbfb"
+    },
+    {
+      "bytes": 11930,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_context_rebind.py",
+      "sha256": "b6a47a338081d4c45c3865da16288d9d908d33b04beb8fd54aaad796ec3b3984"
+    },
+    {
+      "bytes": 8747,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py",
+      "sha256": "98351ec969244fcf68f82b5043b10e7c17dd23dfcdf1f8adcfcb4f5c2b04e1e2"
+    },
+    {
+      "bytes": 53922,
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py",
+      "sha256": "4c335f79a8b96deda32544b461281bdbcf6914c12ec49df1d86249188786452c"
+    },
+    {
+      "bytes": 28184,
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py",
+      "sha256": "20844dee5e92f197c517265c912c192aaaac08affe66934c22353415a45ca922"
+    },
+    {
+      "bytes": 34722,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/published_task_context.py",
+      "sha256": "cd809effb7d13eedc46c21e8875246f4f11164e39e8e4de6e12a7ab24ed2618b"
+    },
+    {
+      "bytes": 12701,
+      "path": "test/integration/test_admitted_context_refresh.py",
+      "sha256": "18968101e0844c9f5879ad39930520afa413c8a47babc71db7d38d8775d7fbc1"
+    },
+    {
+      "bytes": 3035,
+      "path": "docs/agent_supervisor/SOURCE384_TASK_CONTEXT_FENCES.md",
+      "sha256": "74ec4111aaeaf58b8a7682fdb37134b240e552f8db440e10843f5a3c66e08ff8"
+    }
+  ],
+  "repository": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "schema": "terminal-context-fences-source-scope@1"
+}

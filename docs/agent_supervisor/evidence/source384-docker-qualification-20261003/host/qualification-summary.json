@@ -1,0 +1,101 @@
+{
+  "benchmark_result": false,
+  "complete_source384_docker_qualified": false,
+  "controls": [
+    {
+      "generation": "8GiB original qualifier",
+      "passed": 84,
+      "path": "host/light-final.xml"
+    },
+    {
+      "generation": "12GiB executed retry with tracebacks",
+      "passed": 156,
+      "path": "host/final-retry-controls.xml"
+    },
+    {
+      "generation": "current bounded-file report collection, Docker not rerun",
+      "passed": 158,
+      "path": "host/report-collection-controls.xml"
+    }
+  ],
+  "lifecycle": {
+    "first_failures_before_new_polling": true,
+    "first_run_failed": 2,
+    "first_run_passed": 26,
+    "retry_passed": 2,
+    "source_sha256": "3c31ecff80baf3cb96324041a721d23ffc597da9aaa4841833f16c5799097fcc",
+    "timeout_ms": 20000,
+    "unchanged_source_retry": true,
+    "unique_tests_passed_across_runs": 28
+  },
+  "limitations": [
+    "Full original cold index exceeded unchanged cooperative90s deadline before inference.",
+    "No new official trial, task reward, token score, in-container neural inference or source-qualified proof.",
+    "Current file-report collection fix has158 control tests; final Docker run used prior collector.",
+    "Lifecycle tests retain intermittent native START failures before polling; no general pressure qualification.",
+    "Source384 model candidate grammar remains narrow; no synthetic model fixture inserted into task.",
+    "Optional Lean omitted; no projection or theorem verification."
+  ],
+  "native_inference_qualified_in_docker": false,
+  "official_verifier_executed": false,
+  "proof_authority": false,
+  "provider_calls": 0,
+  "real_consumer": {
+    "consumer_sha256": "5e7da432a206b07900822044326dde963b5bf8cb9c1f39d313e1a6ceed56e66f",
+    "passed": 13,
+    "tests": 13,
+    "xml": "real-consumer/qualified-complete-population.xml"
+  },
+  "runs": [
+    {
+      "admission_reason_inferred_from_prior_sample": true,
+      "context_qualified": false,
+      "deployment_passed": true,
+      "error": "LeaseTimeoutError: timed out waiting for a resource lease",
+      "minimum_live_memory_mb": 7783,
+      "observed_live_memory_mb": 6506,
+      "path": "docker-01",
+      "probe_seconds": 49.56201238799986,
+      "profile": "source384-5cpu-8gib@1",
+      "resource_observation_passed": true
+    },
+    {
+      "context_qualified": false,
+      "deployment_passed": false,
+      "error": "native START receipt followed by failed stability observation",
+      "path": "12gib/docker-01",
+      "profile": "source384-5cpu-12gib@1",
+      "resource_observation_passed": false,
+      "total_seconds": 116.93404982499851
+    },
+    {
+      "actual_cpu_slots": 5,
+      "actual_memory_mb": 12288,
+      "context_qualified": false,
+      "deployment_passed": true,
+      "error": "LeaseTimeoutError: codebase preparation deadline exceeded",
+      "failure_cpu_stall_percent": 26.89,
+      "failure_live_memory_mb": 10070,
+      "host_collection_error": "JSONDecodeError",
+      "initial_context_seconds": 137.48924825699942,
+      "minimum_live_memory_mb": 8602,
+      "observation": "native JSON recovered from exact final line of retained merged stdout; original host collector failure unchanged",
+      "observed_live_memory_mb": 10382,
+      "original_source_files": 218,
+      "path": "retry-12gib/docker-01",
+      "probe_seconds": 149.00468344600085,
+      "profile": "source384-5cpu-12gib@1",
+      "resource_observation_passed": true
+    }
+  ],
+  "runtime_model_downloads": 0,
+  "schema": "source384-docker-contract-and-refusal-qualification@1",
+  "setup_dependency_downloads": true,
+  "static_inventory": {
+    "functions": 944,
+    "no_inference": true,
+    "python_files": 30,
+    "tracked_files": 218
+  },
+  "training_steps": 0
+}

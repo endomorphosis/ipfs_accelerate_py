@@ -1,0 +1,18 @@
+{
+  "benchmark_score": false,
+  "error": {
+    "message": "codebase observation deadline exceeded",
+    "type": "LeaseTimeoutError"
+  },
+  "fresh_docker_input_qualified": false,
+  "official_reward": null,
+  "original_image_receipt": "/home/barberb/lift_coding/artifacts/terminal_bench_supervisor/full-integration-20260929/terminal-full-preflight-host-01/state/original-image.json",
+  "original_image_receipt_sha256": "18a3a1427c5761807578807814d9a5d7de8c7fbc0dda4ee485fc245b0ddf0c3d",
+  "schema": "retained-bottle-source384-canary@1",
+  "seconds": 106.10700786300004,
+  "source_path": "/home/barberb/lift_coding/artifacts/terminal_bench_supervisor/full-integration-20260929/terminal-full-preflight-host-01/app/bottle.py",
+  "source_sha256": "761756ce31753e526c48d28ccbca13a5d2493b16fe37aff3e1e4d2efaf3a2bba",
+  "status": "failed",
+  "text_provider_calls": 0,
+  "training_steps": 0
+}

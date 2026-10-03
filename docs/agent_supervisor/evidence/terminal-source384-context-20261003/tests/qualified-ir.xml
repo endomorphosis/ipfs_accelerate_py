@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="9" time="34.922" timestamp="2026-10-03T05:51:23.869421+00:00" hostname="spark-b271"><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_source384_context" name="test_real_pinned_inference_reaches_planner_and_dispatch_without_replay" time="10.554"><failure message="assert (False is True)">original = (PosixPath('/home/barberb/lift_coding/artifacts/terminal-source384-context-20261003/qualified-ir-temp/test_real_pinned...rb/lift_coding/artifacts/terminal-source384-context-20261003/qualified-ir-temp/test_real_pinned_inference_rea0/state'))
+selected_config = PosixPath('/home/barberb/lift_coding/artifacts/terminal-source384-context-20261003/qualified-ir-temp/test_real_pinned_inference_rea0/source384-config.json')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xe27f42d60e00&gt;
+
+    def test_real_pinned_inference_reaches_planner_and_dispatch_without_replay(original, selected_config, monkeypatch):
+        from ipfs_datasets_py.logic.software_contracts import codebase_source_units_384 as native
+        from ipfs_accelerate_py.agent_supervisor.runtime.task_context_bundle import load_task_context_nomination
+        root, instruction, state = original
+        prepared = prep.prepare(repository=root, instruction=instruction, state=state)
+        result = prep.initial_context(state=state, source384_config=selected_config)
+        receipt = result["source384_context"]
+        inference = json.loads((Path(receipt["output"]) / "inference.json").read_bytes())
+        assert inference["native_worker_executed"] is True
+        assert inference["inference_executed"] is True
+        assert inference["report"]["output"]["model_loads"] == 1
+        assert receipt["summary"]["coverage"] == inference["report"]["coverage"]
+        samples = receipt["summary"]["candidate_samples"]
+        assert len(samples) == 1 and samples[0]["candidate_ir"] == inference["report"]["output"]["rows"][0]["candidate"]["candidate_ir"]
+        assert "projected_embedding" not in json.dumps(samples)
+        assert samples[0]["source_validation_status"] == "unsupported"
+        assert samples[0]["source_semantics_verified"] is False
+        assert receipt["summary"]["repository_retention"] == "not_evaluated"
+        assert receipt["training_steps"] == 0
+        assert set(receipt["source_hashes"]) == set(prepared["manifest"]["payload"]["sources"])
+        assert receipt["checkpoint_sha256"] == json.loads(selected_config.read_text())["checkpoint_sha256"]
+        for row in inference["report"]["output"]["rows"]:
+            assert row["candidate"]["proof_authority"] is False
+            assert row["candidate"].get("source_contract", {}).get("status") != "qualified"
+        monkeypatch.setattr(native, "_worker", lambda *a, **k: pytest.fail("neural inference repeated during observation"))
+        loaded = initial.load_initial_context(state=state, prepared=prepared, require_empty_owner=True)
+        assert receipt["summary"] in loaded["summaries"]
+        calls = []
+        def router(prompt, **kwargs):
+            calls.append(prompt)
+            assert receipt["checkpoint_sha256"] in prompt
+            assert receipt["inference_sha256"] in prompt
+            assert "terminal-source384-planning-summary@1" in prompt
+            assert samples[0]["candidate_sha256"] in prompt
+            return {"text": _proposal_json(prepared), "observation": {}, "execution_receipt": None}
+        _version(monkeypatch)
+        planned = prep.plan(state=state, provider_callable=router)
+&gt;       assert planned["qualified"] is True and len(calls) == 1
+E       assert (False is True)
+
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py:76: AssertionError</failure></testcase><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_source384_context" name="test_source384_missing_selection_cannot_silently_use_legacy_profile" time="2.165" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_source384_context" name="test_checkpoint_change_during_router_is_rejected_before_admission" time="9.157"><failure message="AssertionError: assert 'checkpoint bytes differ' in 'constraint_summaries exceeds nesting bound'">original = (PosixPath('/home/barberb/lift_coding/artifacts/terminal-source384-context-20261003/qualified-ir-temp/test_checkpoint_...rb/lift_coding/artifacts/terminal-source384-context-20261003/qualified-ir-temp/test_checkpoint_change_during_0/state'))
+selected_config = PosixPath('/home/barberb/lift_coding/artifacts/terminal-source384-context-20261003/qualified-ir-temp/test_checkpoint_change_during_0/source384-config.json')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xe27f289fd670&gt;
+
+    def test_checkpoint_change_during_router_is_rejected_before_admission(original, selected_config, monkeypatch):
+        root, instruction, state = original
+        prepared = prep.prepare(repository=root, instruction=instruction, state=state)
+        prep.initial_context(state=state, source384_config=selected_config)
+        checkpoint = Path(json.loads(selected_config.read_text())["checkpoint_path"])
+        calls = []
+        def router(prompt, **kwargs):
+            calls.append(prompt)
+            checkpoint.write_bytes(checkpoint.read_bytes() + b" ")
+            return {"text": _proposal_json(prepared), "observation": {}, "execution_receipt": None}
+        _version(monkeypatch)
+        planned = prep.plan(state=state, provider_callable=router)
+        assert planned["qualified"] is False
+&gt;       assert "checkpoint bytes differ" in planned["failure"]["message"]
+E       AssertionError: assert 'checkpoint bytes differ' in 'constraint_summaries exceeds nesting bound'
+
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py:125: AssertionError</failure></testcase><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_source384_context" name="test_source384_rejects_legacy_training_before_writes" time="0.398" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_source384_context" name="test_native_inventory_rejects_undeclared_captured_source" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_source384_context" name="test_native_inference_cannot_shrink_declared_population[paths0-1024-128]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_source384_context" name="test_native_inference_cannot_shrink_declared_population[paths1-512-128]" time="0.000" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_source384_context" name="test_native_inference_cannot_shrink_declared_population[paths2-1024-64]" time="0.000" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_source384_context" name="test_observation_deadline_includes_read_and_asset_validation_time" time="0.000" /></testsuite></testsuites>

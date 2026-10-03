@@ -1,0 +1,56 @@
+{
+  "schema": "empty-supervisor-stability-qualification@1",
+  "source": [
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py",
+      "sha256": "3c31ecff80baf3cb96324041a721d23ffc597da9aaa4841833f16c5799097fcc",
+      "bytes": 33516,
+      "snapshot": "final-isolated_benchmark_runtime.py",
+      "changed_in_this_slice": true
+    },
+    {
+      "path": "test/integration/test_isolated_supervisor_stability.py",
+      "sha256": "d840cba45ae92435a092248622e1a68eaf0436e1a459134e422ad5f9a7a37042",
+      "bytes": 10333,
+      "snapshot": "final-test_isolated_supervisor_stability.py",
+      "changed_in_this_slice": true
+    },
+    {
+      "path": "test/integration/test_isolated_benchmark_runtime.py",
+      "sha256": "e55fff9a868d574ef5c2fa4834f8437d2d86186b2cfb6acd8926eecd7e721f22",
+      "bytes": 6627,
+      "snapshot": "final-test_isolated_benchmark_runtime.py",
+      "changed_in_this_slice": false
+    }
+  ],
+  "results": [
+    {
+      "run": "focused-01",
+      "tests": 28,
+      "passed": 26,
+      "failed": 2,
+      "producer_generation": "same final source and tests"
+    },
+    {
+      "run": "native-02",
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "producer_generation": "same final source and tests"
+    }
+  ],
+  "unique_tests_passed_across_retained_runs": 28,
+  "first_run_failed_native_start_before_polling": true,
+  "retry_timeout_ms_unchanged": 20000,
+  "retry_source_unchanged": true,
+  "initial_failure_root_cause": "unresolved startup/sustained-health timeout before polling; ambient or cold-import delay not proved",
+  "actual_native_qualification_passed": true,
+  "actual_poll_samples": 8,
+  "actual_stable_seconds": 0.8378807609988144,
+  "actual_root_identity_id": "sha256:01052aac91b30d1979ef99451b9472aef0184b2fa34159d70fce193e11523eb3",
+  "actual_daemon_identity_id": "sha256:26251847b2b8403c3d350eff34e04fddbb884f509e46efeecb167ee4d23c11bc",
+  "actual_stop_absence_verified": true,
+  "docker_qualification_claimed": false,
+  "authority_granted": false,
+  "previous_docker_extra_member_identity": "not recoverable from old qualification log alone; helper churn remains an explanation, not a retrospectively verified fact"
+}

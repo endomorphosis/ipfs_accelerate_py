@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="2" time="21.004" timestamp="2026-10-03T05:08:38.326878+00:00" hostname="spark-b271"><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_intent_requirement_planning" name="test_symbolic_context_drift_during_selection_prevents_admission[world]" time="4.277"><failure message="Failed: changed indexed context must be rejected before admission">original = (PosixPath('/tmp/pytest-of-barberb/pytest-179/test_symbolic_context_drift_du0/app'), PosixPath('/tmp/pytest-of-barberb...ntext_drift_du0/instruction.md'), PosixPath('/tmp/pytest-of-barberb/pytest-179/test_symbolic_context_drift_du0/state'))
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xf3febf811f40&gt;
+drift = 'world'
+
+    @pytest.mark.parametrize("drift", ["world", "descriptor"])
+    def test_symbolic_context_drift_during_selection_prevents_admission(original, monkeypatch, drift):
+        from benchmarks.agent_supervisor.container_coding import terminal_initial_context as initial
+        from ipfs_accelerate_py.agent_supervisor.planning import intent_symbolic_planning
+    
+        prepared, _ = _prepare(original, symbolic=True)
+        root, _, state = original
+        prep.initial_context(state=state)
+        loaded = initial.load_initial_context(state=state, prepared=prepared, require_empty_owner=True)
+        selected_path = root / (loaded["descriptor"]["world"]["artifact"] if drift == "world"
+                                else loaded["receipt"]["descriptor"]["artifact"])
+        real_build = intent_symbolic_planning.build_intent_symbolic_plan
+        calls = []
+    
+        def change_after_selection(*args, **kwargs):
+            selected = real_build(*args, **kwargs)
+            selected_path.write_bytes(selected_path.read_bytes() + b" ")
+            return selected
+    
+        def admission_forbidden(**kwargs):
+            calls.append(kwargs)
+            pytest.fail("changed indexed context must be rejected before admission")
+    
+        monkeypatch.setattr(intent_symbolic_planning, "build_intent_symbolic_plan", change_after_selection)
+        monkeypatch.setattr(local, "admit_local_benchmark_plan", admission_forbidden)
+&gt;       result = prep.plan(state)
+                 ^^^^^^^^^^^^^^^^
+
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py:248: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py:475: in plan
+    return _plan_symbolic(state=state, prepared=prepared, initial=initial, timeout_seconds=timeout_seconds)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py:418: in _plan_symbolic
+    admission = local.admit_local_benchmark_plan(graph=planned["graph"], manifest=prepared["manifest"],
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+kwargs = {'graph': PromptGoalGraph(request_cid='baguqeerajv4xrdd6ezotmzbk4rp45dru7euqvpdkuk357vaff6vqua34v2ja', scan_cid='baguq...23cb9b84b6107289d61e7131c6719059558a', 'task_keys': ['TB-CODE-TASK'], 'validation_keys': ['public-structural-smoke']}]}
+
+    def admission_forbidden(**kwargs):
+        calls.append(kwargs)
+&gt;       pytest.fail("changed indexed context must be rejected before admission")
+E       Failed: changed indexed context must be rejected before admission
+
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py:244: Failed</failure></testcase><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_intent_requirement_planning" name="test_symbolic_context_drift_during_selection_prevents_admission[descriptor]" time="2.566"><failure message="Failed: changed indexed context must be rejected before admission">original = (PosixPath('/tmp/pytest-of-barberb/pytest-179/test_symbolic_context_drift_du1/app'), PosixPath('/tmp/pytest-of-barberb...ntext_drift_du1/instruction.md'), PosixPath('/tmp/pytest-of-barberb/pytest-179/test_symbolic_context_drift_du1/state'))
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xf3fe8c20acc0&gt;
+drift = 'descriptor'
+
+    @pytest.mark.parametrize("drift", ["world", "descriptor"])
+    def test_symbolic_context_drift_during_selection_prevents_admission(original, monkeypatch, drift):
+        from benchmarks.agent_supervisor.container_coding import terminal_initial_context as initial
+        from ipfs_accelerate_py.agent_supervisor.planning import intent_symbolic_planning
+    
+        prepared, _ = _prepare(original, symbolic=True)
+        root, _, state = original
+        prep.initial_context(state=state)
+        loaded = initial.load_initial_context(state=state, prepared=prepared, require_empty_owner=True)
+        selected_path = root / (loaded["descriptor"]["world"]["artifact"] if drift == "world"
+                                else loaded["receipt"]["descriptor"]["artifact"])
+        real_build = intent_symbolic_planning.build_intent_symbolic_plan
+        calls = []
+    
+        def change_after_selection(*args, **kwargs):
+            selected = real_build(*args, **kwargs)
+            selected_path.write_bytes(selected_path.read_bytes() + b" ")
+            return selected
+    
+        def admission_forbidden(**kwargs):
+            calls.append(kwargs)
+            pytest.fail("changed indexed context must be rejected before admission")
+    
+        monkeypatch.setattr(intent_symbolic_planning, "build_intent_symbolic_plan", change_after_selection)
+        monkeypatch.setattr(local, "admit_local_benchmark_plan", admission_forbidden)
+&gt;       result = prep.plan(state)
+                 ^^^^^^^^^^^^^^^^
+
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py:248: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py:475: in plan
+    return _plan_symbolic(state=state, prepared=prepared, initial=initial, timeout_seconds=timeout_seconds)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py:418: in _plan_symbolic
+    admission = local.admit_local_benchmark_plan(graph=planned["graph"], manifest=prepared["manifest"],
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+kwargs = {'graph': PromptGoalGraph(request_cid='baguqeeraei5iktekvem3xzpq6kgdpcdjzg54n3zub7bos5d5ki5j7gydma6a', scan_cid='baguq...23cb9b84b6107289d61e7131c6719059558a', 'task_keys': ['TB-CODE-TASK'], 'validation_keys': ['public-structural-smoke']}]}
+
+    def admission_forbidden(**kwargs):
+        calls.append(kwargs)
+&gt;       pytest.fail("changed indexed context must be rejected before admission")
+E       Failed: changed indexed context must be rejected before admission
+
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py:244: Failed</failure></testcase></testsuite></testsuites>

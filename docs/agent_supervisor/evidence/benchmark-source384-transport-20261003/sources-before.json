@@ -1,0 +1,52 @@
+[
+  {
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/source384_config.py",
+    "sha256": "4a42288ef9b889f9b3c9592631c20f86aadd4ba40d40884fdcaed9a8ac0fdc3b",
+    "bytes": 5114
+  },
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/benchmark_resource_profile.py",
+    "sha256": "e147d50ca8ce68fcb9bf5b188e172c9cc928fcf22d760f8f2589bd5d91b2de92",
+    "bytes": 1347
+  },
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+    "sha256": "9ae2b61d2b5ab3c6e42795ed283a310cc5711a2162eb4d0cce9848136ca32184",
+    "bytes": 60596
+  },
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+    "sha256": "0ac7a65cc99502a0ba6a0cf853fbdead4f15e70acbe13a98baa9b064fb8f0f07",
+    "bytes": 16039
+  },
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+    "sha256": "3459fe029b786eb8d48babab703dec2e5ff0f2ccf8d3d5c6f869b5bde41a21f2",
+    "bytes": 22574
+  },
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/native_codex_baseline.py",
+    "sha256": "1da67e41cd10aeef4b4534241916127ab044d00f001c431faea3bffe29f0755a",
+    "bytes": 22253
+  },
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+    "sha256": "d794095d7e2eb67ebad3987cdde69c09ef6d8f1c16c517c63377bda2dbb79080",
+    "bytes": 8836
+  },
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/test_terminal_source384_transport.py",
+    "sha256": "f919519c7db6d0b5dd3741232b4ee249bfebed685d3a79fe81f758ba52a8fbe9",
+    "bytes": 15468
+  },
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py",
+    "sha256": "e290bc43daf67e5af873ee0a1b54ad33023f8003e20e6c18c00875fc0ef64287",
+    "bytes": 11937
+  },
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/SOURCE384_HARBOR_ASSETS.md",
+    "sha256": "60638959353efe138a2bdd1432e353a800b44a287ee25e7f4ed5769c5b5a9f51",
+    "bytes": 3513
+  }
+]

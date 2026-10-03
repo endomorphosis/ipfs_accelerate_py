@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="4" time="19.089" timestamp="2026-10-03T05:17:28.418269+00:00" hostname="spark-b271"><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_source384_context" name="test_real_pinned_inference_reaches_planner_and_dispatch_without_replay" time="1.603"><failure message="ipfs_datasets_py.logic.software_contracts.semantic_index.models.SemanticIndexModelError: namespace must be nonempty trimmed NFC text">original = (PosixPath('/home/barberb/lift_coding/artifacts/terminal-source384-context-20261003/real-01-temp/test_real_pinned_infe...barberb/lift_coding/artifacts/terminal-source384-context-20261003/real-01-temp/test_real_pinned_inference_rea0/state'))
+selected_config = PosixPath('/home/barberb/lift_coding/artifacts/terminal-source384-context-20261003/real-01-temp/test_real_pinned_inference_rea0/source384-config.json')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xf994bef89550&gt;
+
+    def test_real_pinned_inference_reaches_planner_and_dispatch_without_replay(original, selected_config, monkeypatch):
+        from ipfs_datasets_py.logic.software_contracts import codebase_source_units_384 as native
+        from ipfs_accelerate_py.agent_supervisor.runtime.task_context_bundle import load_task_context_nomination
+        root, instruction, state = original
+        prepared = prep.prepare(repository=root, instruction=instruction, state=state)
+&gt;       result = prep.initial_context(state=state, source384_config=selected_config)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py:45: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py:381: in initial_context
+    return prepare_initial_context(state=state, prepared=_load_prepared(state),
+benchmarks/agent_supervisor/container_coding/terminal_initial_context.py:239: in prepare_initial_context
+    source384 = prepare_source384_context(repository=root,
+ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py:177: in prepare_source384_context
+    head = index.prepare_current(root, repository_id=repository_id, operation_id="initial",
+../ir-release-datasets-20261002/ipfs_datasets_py/logic/software_contracts/codebase_ir.py:299: in prepare_current
+    self._prepare(
+../ir-release-datasets-20261002/ipfs_datasets_py/logic/software_contracts/codebase_ir.py:366: in _prepare
+    state = RepositoryScanner(repository_id=snapshot.repository_id).scan_snapshot(
+../ir-release-datasets-20261002/ipfs_datasets_py/logic/software_contracts/semantic_index/scanner.py:671: in scan_snapshot
+    analysis = python.analyze(raw, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+../ir-release-datasets-20261002/ipfs_datasets_py/logic/software_contracts/semantic_index/python_analysis.py:1163: in analyze
+    stable = stable_symbol_id(
+../ir-release-datasets-20261002/ipfs_datasets_py/logic/software_contracts/semantic_index/identity.py:60: in stable_symbol_id
+    return cid_for_structured(stable_symbol_identity_payload(repository_id=repository_id, language=language, module_path=module_path, qualified_name=qualified_name, kind=kind, namespace=namespace))
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+../ir-release-datasets-20261002/ipfs_datasets_py/logic/software_contracts/semantic_index/identity.py:55: in stable_symbol_identity_payload
+    return {"schema": STABLE_SYMBOL_ID_SCHEMA, "repository_id": _text(repository_id, "repository_id"), "language": language, "module_path": normalized_module_path(module_path), "qualified_name": _text(qualified_name, "qualified_name"), "kind": normalized_symbol_kind(kind), "namespace": _text(namespace, "namespace")}
+                                                                                                                                                                                                                                                                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = '', name = 'namespace'
+
+    def _text(value: Any, name: str) -&gt; str:
+        if type(value) is not str or not value or value != value.strip() or unicodedata.normalize("NFC", value) != value:
+&gt;           raise SemanticIndexModelError(f"{name} must be nonempty trimmed NFC text")
+E           ipfs_datasets_py.logic.software_contracts.semantic_index.models.SemanticIndexModelError: namespace must be nonempty trimmed NFC text
+
+../ir-release-datasets-20261002/ipfs_datasets_py/logic/software_contracts/semantic_index/identity.py:31: SemanticIndexModelError</failure></testcase><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_source384_context" name="test_source384_missing_selection_cannot_silently_use_legacy_profile" time="2.264" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_source384_context" name="test_source384_rejects_legacy_training_before_writes" time="0.370" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_terminal_source384_context" name="test_native_inventory_rejects_undeclared_captured_source" time="0.001" /></testsuite></testsuites>

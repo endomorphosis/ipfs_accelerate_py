@@ -3,6 +3,11 @@
 Status: the isolated native supervisor now runs the original task through
 Harbor in `full` and `no-index` arms, alongside a retained native Codex baseline.
 This is a one-task qualification pilot; no performance advantage is established.
+The later opt-in [Source384 repository context](SOURCE384_HARBOR_CONTEXT.md)
+adds pinned checkpoint/function-span inference and current source/model fences
+to the Harbor route. It has a separate common 5-CPU/12-GiB resource profile and
+does not revise the historical scores below. Its fresh matched Harbor campaign
+and automatic successor preparation remain unqualified.
 The full arm builds and hydrates the permitted-input indexes. An exact input
 audit verified semantic, retrieval, and world context in the trial 04 coding
 invocation; trial 06 lost its capsule audit during teardown and retains that

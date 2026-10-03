@@ -1,6 +1,6 @@
 {
   "schema": "repository-proof-index-backlog-status/v1",
-  "updated_at_utc": "2026-10-03T04:44:07.142776+00:00",
+  "updated_at_utc": "2026-10-03T07:33:48.483342+00:00",
   "scope": "Frozen 32-task acceptance ledger. Declared-profile criterion qualification and production closure with all prerequisites are tracked separately.",
   "source": {
     "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
@@ -425,6 +425,54 @@
       "repository": "ipfs_datasets_py",
       "path": "docs/software_contracts/evidence/repository-pressure-recovery-20261003/manifest.json",
       "sha256": "93e8aeb76c4a1cadb8d09b704318be75f00490d70299c368f9bc9a38310dff1e",
+      "retention": "repository_evidence"
+    },
+    "source384-context-fences": {
+      "repository": "ipfs_accelerate_py",
+      "path": "docs/agent_supervisor/evidence/terminal-source384-context-fences-20261003/manifest.json",
+      "sha256": "79c23fe33cab39ee49a5e6d132ab8a33c599e8d1dbf8d4d4fadd0f48dce65779",
+      "retention": "repository_evidence"
+    },
+    "benchmark-source384-transport": {
+      "repository": "ipfs_accelerate_py",
+      "path": "docs/agent_supervisor/evidence/benchmark-source384-transport-20261003/manifest.json",
+      "sha256": "fbd8dbf1f62976dc303d89b5b142a097f5f91279994d89e5c1dccb84a117b944",
+      "retention": "repository_evidence"
+    },
+    "source-unit384-development": {
+      "repository": "ipfs_datasets_py",
+      "path": "docs/software_contracts/evidence/source-unit384-20261003/manifest.json",
+      "sha256": "a645d65b5dc951c4a0e1c8e8d253eba93cfb5d87e64dd7fb91d9150b2191dfd8",
+      "retention": "repository_evidence"
+    },
+    "source-observation-performance": {
+      "repository": "ipfs_datasets_py",
+      "path": "docs/software_contracts/evidence/source-observation-performance-20261003/manifest.json",
+      "sha256": "c5f5b09ed37a37ab3b52991bbe03e5a5847a029d0b3e515250c95155d65854a0",
+      "retention": "repository_evidence"
+    },
+    "source384-supervisor-consumer": {
+      "repository": "ipfs_accelerate_py",
+      "path": "docs/agent_supervisor/evidence/terminal-source384-context-20261003/manifest.json",
+      "sha256": "9fea660aed06366d5b58d365569b4543b04488c1460b54f4f5be86da75565e83",
+      "retention": "repository_evidence"
+    },
+    "source384-original-docker-qualification": {
+      "repository": "ipfs_accelerate_py",
+      "path": "docs/agent_supervisor/evidence/source384-docker-qualification-20261003/manifest.json",
+      "sha256": "bdc84d34d97b110ae76692fdf108c789565cd29f879ccea4c57b37fe793fdef0",
+      "retention": "repository_evidence"
+    },
+    "source-cold-index-performance": {
+      "repository": "ipfs_datasets_py",
+      "path": "docs/software_contracts/evidence/source-cold-index-performance-20261003/manifest.json",
+      "sha256": "6f9612e5b7ab58f5934fe23d8496139fec756637570108bed18791db8c65972f",
+      "retention": "repository_evidence"
+    },
+    "source384-docker-publication": {
+      "repository": "ipfs_accelerate_py",
+      "path": "docs/agent_supervisor/evidence/source384-docker-publication-20261003/manifest.json",
+      "sha256": "12e074d7166a944ca9e819e5c8ea022344f2e364b1b8cb7ada1ecb8fd7e9e920",
       "retention": "repository_evidence"
     }
   },
@@ -913,13 +961,30 @@
       "production_acceptance": "open",
       "local_status": "pending_verification",
       "locally_qualified_portions": [
-        "The actual container initialization wrapper now forwards frozen formula-decoder and reviewed header-protocol selections to the native initial context. 39 authored boundary and neighboring controls pass, with the three original TypeErrors retained. Frozen inference, DuckLake hydration and replay execute; this repairs a component boundary without establishing the complete joined acceptance matrix."
+        "The actual container initialization wrapper now forwards frozen formula-decoder and reviewed header-protocol selections to the native initial context. 39 authored boundary and neighboring controls pass, with the three original TypeErrors retained. Frozen inference, DuckLake hydration and replay execute; this repairs a component boundary without establishing the complete joined acceptance matrix.",
+        "The Source384 planning/context fence slice passed 58 distinct final controls. Actual native indexes and the symbolic builder reject changed or coherently replaced selected context before admission; canonical v2 task bundles preserve selection across warm native-owner recapture and revalidate before START/bootstrap/worker use. Actual source publication, completion and STOP remain observable through an explicitly historical receipt. Source384 receipt/validator doubles isolate these transport/lifecycle controls, so this package does not qualify numerical inference or an actual Harbor trial.",
+        "The explicit Source384 portable-asset route passed 126 controls covering closed offline pinned-parent selection, native Harbor adapter forwarding, installed JobConfig roundtrip and common resource configuration. Tiny asset/loader doubles make this transport qualification distinct from checkpoint inference, Docker resource enforcement, native START or reward.",
+        "Datasets source-unit development retained 79 distinct passing controls (48 explicit-CPU component/native controls and 31 scanner controls). A real local parent checkpoint and native CPU worker emitted four unverified candidates from five selected function units; every candidate remained fail-open and one unit was explicitly deferred at the GTE token limit. No source contract, model promotion, repository retention improvement or whole-codebase semantics is established; the numerical fixture preceded the separately tested scanner namespace fix.",
+        "A separate retained-source performance slice passed 64 CID/cache controls and an actual read-only native source/head observation after increasing only the fixed pure-CID cache capacity to 8,192 entries. Instrumented observation decreased from 27.849s to 13.620s without removing native fences or changing the 90s deadline. The pre-work scheduler configuration refusal is retained separately; no numerical inference or complete Harbor trial was performed by this slice.",
+        "The actual Source384 supervisor consumer passed 12 final real-checkpoint controls: pinned CPU inference, exact typed IR delivered as bounded canonical JSON to an authored planner response, signed source-population accounting, deadline enforcement, and canonical dispatch-loader refusal on source/model/configuration/producer drift without neural replay. A retained public Bottle canary completed source/index/inference preparation in 156.91s: 358 functions were inventoried, 128 units selected, 127 candidates decoded but all remained unsupported by the source guard; one unit exceeded the GTE token bound, 166 were deferred by the selection budget and 64 had unsupported normalization. Two exact IR samples were summarized with 125 omissions. This canary used the explicitly retained earlier timer generation; the final 12 tests cover the later preflight deadline correction. No property was proved, source contract qualified, actual task worker dispatched or fresh Docker/Harbor trial qualified by this package.",
+        "Three actual Docker generations preserve the complete 218-file public checkout and failed prefixes. The final 5-CPU/12-GiB generation passes native START/stable-heartbeat/STOP and actual resource admission, but cold index publication reaches its cooperative 90-second deadline before inference (137.49s context phase). Native startup polling now binds immutable START identities and requires fresh heartbeat evidence. Twenty-eight distinct lifecycle controls pass across retained runs; two initial native failures passed on an unchanged-source retry. Thirteen real-checkpoint consumer controls qualify the final 256-file boundary; 158 deployment/report controls qualify bounded report-file collection. No complete Docker initial-context or official task result is established.",
+        "The full public 218-file cold index now publishes in 55.020s under the unchanged 90s deadline; an independent fresh-process source/head observation passes in 13.646s. Fixed pure CID caches hold 32,768 identities, and nine fact families use parameterized SQL batches bounded at 128 rows/256 KiB target with valid oversized singletons. 146 controls pass, including native multi-chunk persistence, corruption, before-commit/source fences and complete rollback; independent expression comparison preserves all nine SQL row layouts. Coverage is 218 captured/30 AST-ok/188 unindexed non-Python, 1,225 symbols/12,554 edges and zero formalized/checked properties. Earlier cProfile failures and diagnostic overrides are retained separately. SQL persistence measured 3.035s versus 10.156s for the cache-only diagnostic, while total 55.020s did not beat that diagnostic 51.402s; no total speedup, numerical inference or complete container result is inferred.",
+        "The fourth original-container generation uses the tested bounded CID/SQL owners, preserves all 218 original files, and observes the declared five CPUs/12,288 MiB. Native deployment and source publication return, but the first observe_current in inference preparation refuses the remaining combined 90-second deadline before starting the numerical worker (100.858s initial-context phase, 112.169s probe). Actual fixed-file report collection preserves exit 1 and the structured native refusal, and the container is removed. Thirteen real-checkpoint component controls pass again in 45.96s against these producers. This failed full-container generation establishes no neural inference, official task score, token advantage or proof authority."
       ],
       "remaining_work": [
-        "The complete criterion above has not been qualified in the released integration."
+        "The complete criterion above has not been qualified in the released integration.",
+        "Complete actual Harbor Source384 acceptance with current frozen consumer/source/model producers and the declared deadlines; the full trial remains pending. Automatic Source384 successor inference after accepted publication is unavailable: preserve the exact historical v2 selection as successor_unavailable and require a newly prepared current selection before another dispatch."
       ],
       "evidence": [
-        "benchmark-formula-initialization"
+        "benchmark-formula-initialization",
+        "source384-context-fences",
+        "benchmark-source384-transport",
+        "source-unit384-development",
+        "source-observation-performance",
+        "source384-supervisor-consumer",
+        "source384-original-docker-qualification",
+        "source-cold-index-performance",
+        "source384-docker-publication"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },
@@ -933,15 +998,26 @@
       "local_status": "partial_local_qualification",
       "locally_qualified_portions": [
         "Native and supervisor preparations now freeze validated Harbor configuration, complete task hashes, common resource/time/retry/concurrency controls and model identity before execution. Collection rechecks declarations; legacy preparations remain unknown. Fresh recovery qualification passes92 controls and actual pinnedHarbor preflight/dry-run with0model calls. Replaying three retained receipts preserves their original results and unknown declaration match.",
-        "Formula/protocol selection now reaches indexed benchmark initialization and has 39 passing controls. Audit distinguishes the existing Harbor composition from the separately qualified finite Source384 pipeline: the latter selects 3 CPU/process slots and a 6 GiB parent, while the original Harbor task declares 1 CPU and 2 GiB. No matched learned-repository result is inferred from either fixture."
+        "Formula/protocol selection now reaches indexed benchmark initialization and has 39 passing controls. Audit distinguishes the existing Harbor composition from the separately qualified finite Source384 pipeline: the latter selects 3 CPU/process slots and a 6 GiB parent, while the original Harbor task declares 1 CPU and 2 GiB. No matched learned-repository result is inferred from either fixture.",
+        "The optional pinned-parent Source384 asset route now has 126 local transport/configuration controls and discloses a common 5 CPU, 8192 MiB resource profile across comparator and supervisor arms. This validates argument/configuration transport only; no actual Docker enforcement, matched Harbor trial, token score or benchmark advantage is inferred.",
+        "The 58-control context-fence slice preserves the exact selected model-context receipt through symbolic/provider planning, v2 task nomination and warm recapture. Completed publication reports the old selection as historical with source384_current=false, needs_successor=true and successor_unavailable; it cannot silently substitute a v1 successor or authorize another dispatch. Numerical inference remains separately qualified, and these controls do not supply a cold or warm benchmark result.",
+        "The real consumer now has 12 passing checkpoint/deadline/drift controls and a separately labeled retained-source Bottle preparation canary (156.91s, two IR summary samples, zero qualified source contracts). That canary predates the timer-only preflight correction and is not a fresh matched Harbor or Docker trial. It performs no training or provider calls and establishes no official reward, token savings or benchmark advantage; final-timer whole-trial, Docker and matched-arm qualification remain separate.",
+        "The declared common comparison profile is now source384-5cpu-12gib@1. The actual final Docker retry observes five CPUs and 12,288 MiB and admits the native resource parent; its complete cold source index misses the unchanged deadline before neural inference. All three attempts, resource observations and exact producer generations are retained. The reporting fix retains diagnostics separately from bounded JSON so merged stderr cannot mask native failure. No provider calls, training, official reward or new token comparison occurred.",
+        "The fourth original-container generation uses the tested bounded CID/SQL owners, preserves all 218 original files, and observes the declared five CPUs/12,288 MiB. Native deployment and source publication return, but the first observe_current in inference preparation refuses the remaining combined 90-second deadline before starting the numerical worker (100.858s initial-context phase, 112.169s probe). Actual fixed-file report collection preserves exit 1 and the structured native refusal, and the container is removed. Thirteen real-checkpoint component controls pass again in 45.96s against these producers. This failed full-container generation establishes no neural inference, official task score, token advantage or proof authority."
       ],
       "remaining_work": [
         "Execute the complete matched multi-arm campaign and frozen correctness/cost gates, including runtime enforcement, decoder/mask ablations, shared/repository children, cold/warm eligibility, independent review costs and official outcomes. Configuration-control qualification does not establish benchmark advantage.",
-        "Join Source384 preparation selection and portable assets, native registry, exact model/index observer and proof/planning consumers through the actual Harbor container route. Qualify the original task resource envelope or disclose a common larger-resource experiment across every arm before a learned-repository comparison."
+        "Join Source384 preparation selection and portable assets, native registry, exact model/index observer and proof/planning consumers through the actual Harbor container route. Qualify the original task resource envelope or disclose a common larger-resource experiment across every arm before a learned-repository comparison.",
+        "Run the actual matched Harbor campaign after qualifying the complete Source384 consumer within the unchanged declared deadlines. Retain the current real-canary deadline failures and charge successor preparation when implemented; successor_unavailable is not a successful learned-repository arm or efficiency advantage."
       ],
       "evidence": [
         "benchmark-declared-controls",
-        "benchmark-formula-initialization"
+        "benchmark-formula-initialization",
+        "source384-context-fences",
+        "benchmark-source384-transport",
+        "source384-supervisor-consumer",
+        "source384-original-docker-qualification",
+        "source384-docker-publication"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },
@@ -1183,7 +1259,10 @@
         "Actual 320-file/20-shard qualification with native database reopen at 128 passes under the final producer pins. Removing per-unit full-manifest-root recomputation plus a bounded exact-byte-checked parsed cache reduced the measured fixture from 670.197 s to 26.821 s (observed 24.99x); single local trials with uncontrolled concurrent host load do not establish a timing distribution, general scaling or Terminal-Bench performance claim.",
         "Forty additional component controls qualify bounded complete dirty source/AST projections, immutable source-bound cursors, existing global dependency edges, cold/incremental page equality, explicit large-source deferral, optional Git batch reads preserving dirty CAS bytes, bounded watcher hints, and actual GTE/shared384 checkpoint inference with resident model reuse. Native model and parent-capacity controls use the actual default datasets scheduler; source/Git/watcher controls explicitly inject host telemetry. One local comparison loaded GTE once instead of four times and retained identical decoded rows; no timing distribution or benchmark advantage is claimed.",
         "The opt-in dirty paged stager now seals a complete bounded working-tree inventory before parsing, extracts resumable pages, resolves the complete global graph, and publishes through the existing CodebaseCatalog transaction.49 controls cover cancellation/source-fence rollback and dirty-source behavior. An actual-default320-entry run with160 dirty files passed in168.164s across20 pages and native reopen at128; independent isolated replay passed in15.140s with an empty AST cache and parser tripwires. Earlier interrupted/expired/deadline attempts and exact producer bodies remain retained; these differently configured attempts are not a matched speedup comparison.",
-        "The canonical registry now supplies bounded exact artifact reads to Source384 generations, prior generations/features/projections, attached model-generation corpora and resident replay. 148 final controls pass: 127 storage/lifecycle, 9 resident inference and 12 source-generation controls with real CPU inference/training and pinned Lake checks in their declared fixtures. Prior test generations and 12 initial missing-Lake skips remain separate. Limits apply before opening/reading and returned bytes share the verified descriptor; this is an input-byte bound, not total peak RSS or CUDA qualification."
+        "The canonical registry now supplies bounded exact artifact reads to Source384 generations, prior generations/features/projections, attached model-generation corpora and resident replay. 148 final controls pass: 127 storage/lifecycle, 9 resident inference and 12 source-generation controls with real CPU inference/training and pinned Lake checks in their declared fixtures. Prior test generations and 12 initial missing-Lake skips remain separate. Limits apply before opening/reading and returned bytes share the verified descriptor; this is an input-byte bound, not total peak RSS or CUDA qualification.",
+        "The retained Bottle source observation exposed a 4,652-edge working set thrashing the fixed 4,096-entry pure CID caches. Raising each bounded encoding/validation cache to 8,192 entries preserved fresh body hashing, live registration guards and all native source/AST/CAS/head checks; 64 identity/cache controls passed, including a repeated 5,000-entry working set and capacity-relative eviction. The same retained read-only source/head observation measured 27.849s before and 13.620s after under cProfile and the unchanged 90s deadline. These single instrumented component measurements do not establish general scaling, full-trial performance, neural inference or peak RSS. An initial shared-capacity mismatch refusal and a separate diagnostic override remain retained; no scheduler state or admission threshold was changed.",
+        "An original-checkout Docker qualification independently accounts for all 218 files, 30 Python files and 944 functions without trimming the source population. The final native cold index reaches apply_batch pre-commit and refuses its cooperative 90s deadline; no new head/inference qualification is claimed. The static input-bound audit and exact failed native trace are retained for profiling, separately from the earlier Bottle-only cache timing.",
+        "The full public 218-file cold index now publishes in 55.020s under the unchanged 90s deadline; an independent fresh-process source/head observation passes in 13.646s. Fixed pure CID caches hold 32,768 identities, and nine fact families use parameterized SQL batches bounded at 128 rows/256 KiB target with valid oversized singletons. 146 controls pass, including native multi-chunk persistence, corruption, before-commit/source fences and complete rollback; independent expression comparison preserves all nine SQL row layouts. Coverage is 218 captured/30 AST-ok/188 unindexed non-Python, 1,225 symbols/12,554 edges and zero formalized/checked properties. Earlier cProfile failures and diagnostic overrides are retained separately. SQL persistence measured 3.035s versus 10.156s for the cache-only diagnostic, while total 55.020s did not beat that diagnostic 51.402s; no total speedup, numerical inference or complete container result is inferred."
       ],
       "remaining_work": [
         "Compatible CUDA inference and the complete memory/backpressure qualification remain unverified under the frozen criterion, together with the open RPI-022 resource dependency. The existing CPU feature trainer remains selected.",
@@ -1197,7 +1276,10 @@
         "paged-staging-evidence-manifest",
         "repository-shards-resident-inference",
         "dirty-paged-staging-native",
-        "bounded-checkpoint-replay"
+        "bounded-checkpoint-replay",
+        "source-observation-performance",
+        "source384-original-docker-qualification",
+        "source-cold-index-performance"
       ],
       "criterion_acceptance": "not_yet_qualified",
       "out_of_profile_extensions": [

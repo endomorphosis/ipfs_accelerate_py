@@ -1,0 +1,18 @@
+{
+  "schema": "source384-next-docker-generation-plan@1",
+  "status": "root_go_received_running",
+  "resource_profile": "source384-5cpu-12gib@1",
+  "original_tracked_files": 218,
+  "task_dir": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/fix-code-vulnerability",
+  "bottle_sha256": "761756ce31753e526c48d28ccbca13a5d2493b16fe37aff3e1e4d2efaf3a2bba",
+  "bundle_output": "/home/barberb/lift_coding/artifacts/source384-docker-publication-20261003/bundle",
+  "qualification_output": "/home/barberb/lift_coding/artifacts/source384-docker-publication-20261003/docker-01",
+  "evidence_package": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/docs/agent_supervisor/evidence/source384-docker-publication-20261003",
+  "provider_calls_allowed": 0,
+  "training_steps": 0,
+  "model_download_calls": 0,
+  "prior_evidence_manifest_sha256": "bdc84d34d97b110ae76692fdf108c789565cd29f879ccea4c57b37fe793fdef0",
+  "runtime_archive_built": true,
+  "docker_started": true,
+  "archive_sha256": "80685f4df3811cbd163d140b4f05968f7e6d7ee87591a7279b70f6b3f74c2eb9"
+}

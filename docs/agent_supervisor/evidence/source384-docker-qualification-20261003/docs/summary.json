@@ -1,0 +1,22 @@
+[
+  {
+    "name": "supervisor-vocabulary",
+    "returncode": 0,
+    "seconds": 0.03450517400051467
+  },
+  {
+    "name": "maintained-links",
+    "returncode": 0,
+    "seconds": 0.10846645899800933
+  },
+  {
+    "name": "packaging-pins",
+    "returncode": 0,
+    "seconds": 0.0302097390012932
+  },
+  {
+    "name": "navigation-markers",
+    "returncode": 0,
+    "seconds": 0.003996340998128289
+  }
+]

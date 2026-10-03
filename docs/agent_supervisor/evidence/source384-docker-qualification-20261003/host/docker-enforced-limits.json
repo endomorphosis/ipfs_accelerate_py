@@ -1,0 +1,8 @@
+{
+  "NanoCpus": 5000000000,
+  "Memory": 8589934592,
+  "MemorySwap": 17179869184,
+  "CpuPeriod": 0,
+  "CpuQuota": 0,
+  "CpusetCpus": ""
+}

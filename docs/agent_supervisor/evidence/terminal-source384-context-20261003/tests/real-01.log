@@ -1,0 +1,100 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+
+[1m----------------------------- live log collection ------------------------------[0m
+2026-10-03 05:17:29 [[32m    INFO[0m] Registered service: ipfs (service_manager.py:93)
+2026-10-03 05:17:29 [[32m    INFO[0m] Registered test suite: core_infrastructure (test_framework.py:82)
+2026-10-03 05:17:29 [[32m    INFO[0m] Registered test suite: performance (test_framework.py:82)
+2026-10-03 05:17:29 [[32m    INFO[0m] Registered test suite: integration (test_framework.py:82)
+2026-10-03 05:17:29 [[32m    INFO[0m] Successfully imported ipfs_kit_py modules from /home/barberb/HACC/complaint-generator/ipfs_datasets_py/ipfs_kit_py/ipfs_kit_py/__init__.py (ipfs_kit_integration.py:327)
+2026-10-03 05:17:29 [[32m    INFO[0m] IPFS Kit integration enabled successfully (ipfs_kit_integration.py:344)
+2026-10-03 05:17:29 [[32m    INFO[0m] Storage initialized with distributed backend (storage_wrapper.py:92)
+collected 4 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_real_pinned_inference_reaches_planner_and_dispatch_without_replay [31mFAILED[0m[31m [ 25%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_source384_missing_selection_cannot_silently_use_legacy_profile 
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-03 05:17:46 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/terminal-source384-context-20261003/real-01-temp/test_source384_missing_selecti0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:17:47 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/terminal-source384-context-20261003/real-01-temp/test_source384_missing_selecti0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 05:17:47 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/terminal-source384-context-20261003/real-01-temp/test_source384_missing_selecti0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[31m                                                                   [ 50%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_source384_rejects_legacy_training_before_writes [32mPASSED[0m[31m [ 75%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_native_inventory_rejects_undeclared_captured_source [32mPASSED[0m[31m [100%][0m
+
+=================================== FAILURES ===================================
+[31m[1m____ test_real_pinned_inference_reaches_planner_and_dispatch_without_replay ____[0m
+
+original = (PosixPath('/home/barberb/lift_coding/artifacts/terminal-source384-context-20261003/real-01-temp/test_real_pinned_infe...barberb/lift_coding/artifacts/terminal-source384-context-20261003/real-01-temp/test_real_pinned_inference_rea0/state'))
+selected_config = PosixPath('/home/barberb/lift_coding/artifacts/terminal-source384-context-20261003/real-01-temp/test_real_pinned_inference_rea0/source384-config.json')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xf994bef89550>
+
+    [0m[94mdef[39;49;00m [92mtest_real_pinned_inference_reaches_planner_and_dispatch_without_replay[39;49;00m(original, selected_config, monkeypatch):[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_datasets_py[39;49;00m[04m[96m.[39;49;00m[04m[96mlogic[39;49;00m[04m[96m.[39;49;00m[04m[96msoftware_contracts[39;49;00m [94mimport[39;49;00m codebase_source_units_384 [94mas[39;49;00m native[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_accelerate_py[39;49;00m[04m[96m.[39;49;00m[04m[96magent_supervisor[39;49;00m[04m[96m.[39;49;00m[04m[96mruntime[39;49;00m[04m[96m.[39;49;00m[04m[96mtask_context_bundle[39;49;00m [94mimport[39;49;00m load_task_context_nomination[90m[39;49;00m
+        root, instruction, state = original[90m[39;49;00m
+        prepared = prep.prepare(repository=root, instruction=instruction, state=state)[90m[39;49;00m
+>       result = prep.initial_context(state=state, source384_config=selected_config)[90m[39;49;00m
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+
+[1m[31mbenchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py[0m:45: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+[1m[31mbenchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py[0m:381: in initial_context
+    [0m[94mreturn[39;49;00m prepare_initial_context(state=state, prepared=_load_prepared(state),[90m[39;49;00m
+[1m[31mbenchmarks/agent_supervisor/container_coding/terminal_initial_context.py[0m:239: in prepare_initial_context
+    [0msource384 = prepare_source384_context(repository=root,[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py[0m:177: in prepare_source384_context
+    [0mhead = index.prepare_current(root, repository_id=repository_id, operation_id=[33m"[39;49;00m[33minitial[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+[1m[31m../ir-release-datasets-20261002/ipfs_datasets_py/logic/software_contracts/codebase_ir.py[0m:299: in prepare_current
+    [0m[96mself[39;49;00m._prepare([90m[39;49;00m
+[1m[31m../ir-release-datasets-20261002/ipfs_datasets_py/logic/software_contracts/codebase_ir.py[0m:366: in _prepare
+    [0mstate = RepositoryScanner(repository_id=snapshot.repository_id).scan_snapshot([90m[39;49;00m
+[1m[31m../ir-release-datasets-20261002/ipfs_datasets_py/logic/software_contracts/semantic_index/scanner.py[0m:671: in scan_snapshot
+    [0manalysis = python.analyze(raw, path)[90m[39;49;00m
+               ^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31m../ir-release-datasets-20261002/ipfs_datasets_py/logic/software_contracts/semantic_index/python_analysis.py[0m:1163: in analyze
+    [0mstable = stable_symbol_id([90m[39;49;00m
+[1m[31m../ir-release-datasets-20261002/ipfs_datasets_py/logic/software_contracts/semantic_index/identity.py[0m:60: in stable_symbol_id
+    [0m[94mreturn[39;49;00m cid_for_structured(stable_symbol_identity_payload(repository_id=repository_id, language=language, module_path=module_path, qualified_name=qualified_name, kind=kind, namespace=namespace))[90m[39;49;00m
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31m../ir-release-datasets-20261002/ipfs_datasets_py/logic/software_contracts/semantic_index/identity.py[0m:55: in stable_symbol_identity_payload
+    [0m[94mreturn[39;49;00m {[33m"[39;49;00m[33mschema[39;49;00m[33m"[39;49;00m: STABLE_SYMBOL_ID_SCHEMA, [33m"[39;49;00m[33mrepository_id[39;49;00m[33m"[39;49;00m: _text(repository_id, [33m"[39;49;00m[33mrepository_id[39;49;00m[33m"[39;49;00m), [33m"[39;49;00m[33mlanguage[39;49;00m[33m"[39;49;00m: language, [33m"[39;49;00m[33mmodule_path[39;49;00m[33m"[39;49;00m: normalized_module_path(module_path), [33m"[39;49;00m[33mqualified_name[39;49;00m[33m"[39;49;00m: _text(qualified_name, [33m"[39;49;00m[33mqualified_name[39;49;00m[33m"[39;49;00m), [33m"[39;49;00m[33mkind[39;49;00m[33m"[39;49;00m: normalized_symbol_kind(kind), [33m"[39;49;00m[33mnamespace[39;49;00m[33m"[39;49;00m: _text(namespace, [33m"[39;49;00m[33mnamespace[39;49;00m[33m"[39;49;00m)}[90m[39;49;00m
+                                                                                                                                                                                                                                                                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = '', name = 'namespace'
+
+    [0m[94mdef[39;49;00m [92m_text[39;49;00m(value: Any, name: [96mstr[39;49;00m) -> [96mstr[39;49;00m:[90m[39;49;00m
+        [94mif[39;49;00m [96mtype[39;49;00m(value) [95mis[39;49;00m [95mnot[39;49;00m [96mstr[39;49;00m [95mor[39;49;00m [95mnot[39;49;00m value [95mor[39;49;00m value != value.strip() [95mor[39;49;00m unicodedata.normalize([33m"[39;49;00m[33mNFC[39;49;00m[33m"[39;49;00m, value) != value:[90m[39;49;00m
+>           [94mraise[39;49;00m SemanticIndexModelError([33mf[39;49;00m[33m"[39;49;00m[33m{[39;49;00mname[33m}[39;49;00m[33m must be nonempty trimmed NFC text[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+[1m[31mE           ipfs_datasets_py.logic.software_contracts.semantic_index.models.SemanticIndexModelError: namespace must be nonempty trimmed NFC text[0m
+
+[1m[31m../ir-release-datasets-20261002/ipfs_datasets_py/logic/software_contracts/semantic_index/identity.py[0m:31: SemanticIndexModelError
+----------------------------- Captured stdout call -----------------------------
+logic tree pin compiler=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+logic tree pin compiler=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/legal_ir/canonical_compiler.py decompiler=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/legal_ir/canonical_decompiler.py parser=/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/deontic/utils/deontic_parser.py
+- generated xml file: /home/barberb/lift_coding/artifacts/terminal-source384-context-20261003/real-01.xml -
+============================= slowest 10 durations =============================
+2.26s call     benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_source384_missing_selection_cannot_silently_use_legacy_profile
+1.56s call     benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_real_pinned_inference_reaches_planner_and_dispatch_without_replay
+0.36s call     benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_source384_rejects_legacy_training_before_writes
+0.05s setup    benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_real_pinned_inference_reaches_planner_and_dispatch_without_replay
+0.01s setup    benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_source384_rejects_legacy_training_before_writes
+0.01s setup    benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_source384_missing_selection_cannot_silently_use_legacy_profile
+
+(4 durations < 0.005s hidden.  Use -vv to show these durations.)
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::[1mtest_real_pinned_inference_reaches_planner_and_dispatch_without_replay[0m - ipfs_datasets_py.logic.software_contracts.semantic_index.models.SemanticInd...
+[31m========================= [31m[1m1 failed[0m, [32m3 passed[0m[31m in 19.12s[0m[31m =========================[0m

@@ -1,0 +1,19 @@
+{
+  "datasets_head": "ccfd3dabdf25e93774b1a10e29b15882bf8fad0f",
+  "datasets_overlay_pins": [
+    {
+      "path": "datasets/ipfs_datasets_py/logic/software_contracts/content.py",
+      "sha256": "1e8c9bb9019bb593d6812ac6d1d1fa46e882be291d5f41bbb4894fb171056b43",
+      "bytes": 28950
+    },
+    {
+      "path": "datasets/ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py",
+      "sha256": "736c77ebdc66607ef234ab1aa2f4d84c4768811f11d568962a11692dfdcfad2f",
+      "bytes": 95861
+    }
+  ],
+  "accelerate_head": "91146ff1f7150cf0465765cbf973df2efb7b2b27",
+  "original_consumer_sha256": "5e7da432a206b07900822044326dde963b5bf8cb9c1f39d313e1a6ceed56e66f",
+  "native_lifecycle_sha256": "3c31ecff80baf3cb96324041a721d23ffc597da9aaa4841833f16c5799097fcc",
+  "docker_go_received": false
+}

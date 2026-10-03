@@ -1,0 +1,69 @@
+{
+  "benchmark_score": false,
+  "completion_authority": false,
+  "execution_authority": false,
+  "failures_retained": [
+    "initial dot-prefixed input analyzer namespace failure",
+    "test incorrectly expected an exception instead of the planning failure result",
+    "vector-heavy samples omitted every candidate; explicit IR samples then exceeded planner nesting bound",
+    "canary driver initially assumed a different original-image receipt shape",
+    "initial large source preparation exhausted90s during repeated index observation"
+  ],
+  "final_tests": {
+    "actual_checkpoint_inference": true,
+    "actual_worker_dispatch": false,
+    "canonical_dispatch_loader_exercised": true,
+    "failed": 0,
+    "passed": 12,
+    "provider_response": "authored",
+    "skipped": 0
+  },
+  "fixes": [
+    "native dot-prefixed module names",
+    "bounded8192-entry CID memos",
+    "complete typed IR encoded as bounded canonical JSON text",
+    "preparation deadline includes path/source/producer preflight"
+  ],
+  "limitations": [
+    "CPU-only bounded advisory inference",
+    "no Bottle source-contract grammar qualification",
+    "no fresh matched Harbor trial",
+    "no automatic Source384 successor generation",
+    "retained-source timing before final timer-only fix; final12 tests exercise that fix"
+  ],
+  "model_promotion_performed": false,
+  "official_reward": null,
+  "proof_authority": false,
+  "retained_source_canary": {
+    "coverage": {
+      "candidate_statuses": {
+        "fail_open_source_contract_unsupported": 127
+      },
+      "file_dispositions": {
+        "inventoried": 1,
+        "no_function_units": 1
+      },
+      "files": 2,
+      "functions": 358,
+      "selected_units": 128,
+      "unit_dispositions": {
+        "decoded_unverified_candidate": 127,
+        "deferred_gte_token_limit": 1,
+        "deferred_selection_budget": 166,
+        "unsupported_normalization": 64
+      }
+    },
+    "final_deadline_correction_included": false,
+    "fresh_docker_input_qualified": false,
+    "proved_properties": 0,
+    "provider_calls": 0,
+    "seconds": 156.90854188799858,
+    "source_qualified_candidates": 0,
+    "source_sha256": "761756ce31753e526c48d28ccbca13a5d2493b16fe37aff3e1e4d2efaf3a2bba",
+    "summary_omitted_candidates": 125,
+    "summary_samples": 2,
+    "training_steps": 0
+  },
+  "schema": "terminal-source384-consumer-qualification@1",
+  "token_savings_established": false
+}

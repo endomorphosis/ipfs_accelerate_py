@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="22" time="125.700" timestamp="2026-10-03T05:22:16.521010+00:00" hostname="spark-b271"><testcase classname="integration.test_admitted_context_refresh" name="test_opted_in_runtime_refreshes_only_after_native_stop[False]" time="35.976" /><testcase classname="integration.test_admitted_context_refresh" name="test_opted_in_runtime_refreshes_only_after_native_stop[True]" time="12.895" /><testcase classname="integration.test_admitted_context_refresh" name="test_source384_publication_reports_historical_selection_without_downgrade_or_dispatch" time="9.069"><failure message="ValueError: publication refresh requires an accepted source transition">scenario = {'repository': PosixPath('/tmp/pytest-of-barberb/pytest-192/test_source384_publication_rep0/isolated'), 'manifest': {'...': &lt;ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.IntentRepository object at 0xef20bd279ca0&gt;, ...}
+tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-192/test_source384_publication_rep0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xef20ddfe8050&gt;
+
+    def test_source384_publication_reports_historical_selection_without_downgrade_or_dispatch(scenario, tmp_path, monkeypatch):
+        from ipfs_accelerate_py.agent_supervisor.runtime.task_context_bundle import (
+            write_task_context_bundle, load_task_context_nomination,
+        )
+        from ipfs_accelerate_py.agent_supervisor.runtime.published_task_context import refresh_published_task_context
+    
+        root = scenario["repository"]
+        baseline_sha = hashlib.sha256((root / "answer.py").read_bytes()).hexdigest()
+        # Actual native owner/publication/completion/lifecycle, with an explicitly
+        # authored source-bound validator instead of any model inference claim.
+        module = types.ModuleType("ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context")
+        checks = []
+        def validate(*, repository, expected_receipt):
+            checks.append(expected_receipt)
+            if hashlib.sha256((repository / "answer.py").read_bytes()).hexdigest() != baseline_sha:
+                raise ValueError("selected Source384 source changed")
+        module.validate_source384_context = validate
+        monkeypatch.setitem(sys.modules, module.__name__, module)
+        receipt = {"schema": "terminal-source384-repository-context@1", "source_sha256": baseline_sha,
+                   "completion_authority": False}
+        admission = local.admit_local_benchmark_plan(graph=scenario["graph"], manifest=scenario["manifest"])
+        with typed_claim(scenario, tmp_path) as (owner, _daemon, attempt):
+            previous = initial_bundle(scenario, owner)
+            task_context = json.loads((root / previous["artifact"]).read_bytes())["tasks"][0]
+            bundle = write_task_context_bundle(repository=root, prepared=[{
+                "schema": "supervisor-task-context-preparation@1", **task_context,
+                "source384_context": receipt}], output=root / ".runtime/source384-launch.json")
+            original_bytes = (root / bundle["artifact"]).read_bytes()
+            runtime = AdmittedBenchmarkRuntime.create(tmp_path / "launch", admission=admission,
+                server=owner.server, source=owner.source, implement=False, timeout_ms=30_000,
+                context_bundle=bundle, refresh_context_on_completion=True)
+            try:
+                assert runtime.start().succeeded
+&gt;               assert runtime.observe()["published_context"][0]["status"] == "pending_completion"
+                       ^^^^^^^^^^^^^^^^^
+
+test/integration/test_admitted_context_refresh.py:145: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py:750: in observe
+    result = super().observe()
+             ^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py:364: in observe
+    context_observation = self._verify_observation()
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py:581: in _verify_observation
+    observations = self._verify(completed_observation=True)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py:566: in _verify
+    observations = self._verify_context(verified, completed_observation=completed_observation)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py:544: in _verify_context
+    observations.append(observe_source384_successor_unavailable(server=self.server,
+ipfs_accelerate_py/agent_supervisor/runtime/published_task_context.py:266: in observe_source384_successor_unavailable
+    root, binding, _task = _owner_state(server=server, admission=admission, task_cid=task_cid)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+server = QuackStateServer(config=QuackStateServerConfig(database_path=PosixPath('/tmp/pytest-of-barberb/pytest-192/test_source3...i4ye4q', changed=False, schema='ipfs_accelerate_py/agent-supervisor/control-plane-migration-run@1'), _bound_port=36553)
+admission = {'manifest': {'binding': {'identity': 'did:key:z6MkhadhvaUs3cLRoY5vaLKGES6U8wAW8ZNhyaDJgLfCXpZm', 'profile_id': '9c63c...qrqYlQqOo4uSU9rSvkevF3nP8wSHRnhkY3rbmRgm3aA6B5ogZ4+uc26neFzqDCw==', 'profile_id': '9c63c9da07adfe843fafca856b186009'}}}
+task_cid = 'baguqeeractens744kzyraoryjv6nig2k5ma5bsf6vfq3utsacje3z5tft6qa'
+
+    def _owner_state(*, server, admission, task_cid):
+        """Read actual owner authority; return only immutable observation bindings."""
+        if type(server) is not QuackStateServer:
+            raise TypeError("actual native owner required")
+        with server._lock:
+            identity = server.identity
+            if identity is None or server.ready().get("ready") is not True:
+                raise ValueError("native owner is not ready")
+            verified = verify_owner_local_benchmark_observation(server=server, admission=admission)
+            graph = verified["graph"]
+            if len(graph.tasks) != 1 or graph.tasks[0].task_cid != task_cid:
+                raise ValueError("publication refresh requires the exact single admitted task")
+            root = Path(verified["manifest"]["repository"]).resolve(strict=True)
+            head = _git(root, "rev-parse", "HEAD").decode().strip()
+            if head == verified["profile"].baseline_commit:
+&gt;               raise ValueError("publication refresh requires an accepted source transition")
+E               ValueError: publication refresh requires an accepted source transition
+
+ipfs_accelerate_py/agent_supervisor/runtime/published_task_context.py:224: ValueError</failure></testcase><testcase classname="integration.test_admitted_published_shutdown" name="test_actual_published_run_stops_before_owner_validation_without_accepting_source" time="8.292" /><testcase classname="integration.test_admitted_published_shutdown" name="test_published_shutdown_retains_launch_identity_signature_policy_and_fence" time="8.106" /><testcase classname="api.semantic_state.test_source384_task_context_bundle" name="test_unselected_bundle_preserves_v1_bytes_and_skips_source384" time="0.001" /><testcase classname="api.semantic_state.test_source384_task_context_bundle" name="test_v2_revalidates_only_exact_selected_task_receipt_on_every_read" time="0.001" /><testcase classname="api.semantic_state.test_source384_task_context_bundle" name="test_v2_malformed_reference_rejects_before_validation[missing]" time="0.001" /><testcase classname="api.semantic_state.test_source384_task_context_bundle" name="test_v2_malformed_reference_rejects_before_validation[null]" time="0.001" /><testcase classname="api.semantic_state.test_source384_task_context_bundle" name="test_v2_malformed_reference_rejects_before_validation[unknown-schema]" time="0.001" /><testcase classname="api.semantic_state.test_source384_task_context_bundle" name="test_v2_malformed_reference_rejects_before_validation[oversize]" time="0.001" /><testcase classname="api.semantic_state.test_source384_task_context_bundle" name="test_v2_malformed_reference_rejects_before_validation[nan]" time="0.001" /><testcase classname="api.semantic_state.test_source384_task_context_bundle" name="test_v2_malformed_reference_rejects_before_validation[extra-task-field]" time="0.001" /><testcase classname="api.semantic_state.test_source384_task_context_bundle" name="test_v2_malformed_reference_rejects_before_validation[downgrade]" time="0.001" /><testcase classname="api.semantic_state.test_source384_task_context_bundle" name="test_v2_writer_cannot_silently_drop_missing_selection" time="0.001" /><testcase classname="api.semantic_state.test_source384_task_context_bundle" name="test_v2_digest_drift_rejects_before_native_validator" time="0.001" /><testcase classname="api.semantic_state.test_source384_task_context_bundle" name="test_validator_drift_refusal_propagates_without_metadata" time="0.001" /><testcase classname="api.semantic_state.test_source384_task_context_bundle" name="test_worker_context_read_rechecks_v2_receipt_before_prompt" time="0.001" /><testcase classname="api.semantic_state.test_published_task_context" name="test_actual_completed_publication_refreshes_roots_and_keeps_authority[False]" time="5.098" /><testcase classname="api.semantic_state.test_published_task_context" name="test_actual_completed_publication_refreshes_roots_and_keeps_authority[True]" time="5.415" /><testcase classname="api.semantic_state.test_published_task_context" name="test_foreign_owner_is_never_a_publication_refresh_authority" time="0.001" /><testcase classname="api.semantic_state.test_published_task_context" name="test_native_pinned_embedding_policy_allows_only_root_rebinding" time="0.006" /></testsuite></testsuites>

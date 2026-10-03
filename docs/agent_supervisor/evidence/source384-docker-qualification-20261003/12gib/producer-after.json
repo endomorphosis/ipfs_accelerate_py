@@ -1,0 +1,47 @@
+[
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+    "expected": "79d750afbadf760d19efdcd649240c4b4497ba9d695e193861088ef628e04627",
+    "observed": "79d750afbadf760d19efdcd649240c4b4497ba9d695e193861088ef628e04627"
+  },
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py",
+    "expected": "2419b982f86d5203d60e5d4a383afe7d8fac5a5f783ba6fcd44d750d22f99554",
+    "observed": "2419b982f86d5203d60e5d4a383afe7d8fac5a5f783ba6fcd44d750d22f99554"
+  },
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py",
+    "expected": "841cfc8ebd400d12d7fe853eac9269fa245e94d162f3a3c960cc106cf4418fc9",
+    "observed": "841cfc8ebd400d12d7fe853eac9269fa245e94d162f3a3c960cc106cf4418fc9"
+  },
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/test_terminal_source384_transport.py",
+    "expected": "f919519c7db6d0b5dd3741232b4ee249bfebed685d3a79fe81f758ba52a8fbe9",
+    "observed": "f919519c7db6d0b5dd3741232b4ee249bfebed685d3a79fe81f758ba52a8fbe9"
+  },
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/benchmark_resource_profile.py",
+    "expected": "882a38b48559f2c829237ec514e5d8059b58cf06be20a6c97bc07b702f3f4f5e",
+    "observed": "882a38b48559f2c829237ec514e5d8059b58cf06be20a6c97bc07b702f3f4f5e"
+  },
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+    "expected": "0ac7a65cc99502a0ba6a0cf853fbdead4f15e70acbe13a98baa9b064fb8f0f07",
+    "observed": "0ac7a65cc99502a0ba6a0cf853fbdead4f15e70acbe13a98baa9b064fb8f0f07"
+  },
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+    "expected": "22c45e3ddcafa1e37a55a1cf7ee8db2ace30e0b7d91637d900d16e34cd62cde2",
+    "observed": "22c45e3ddcafa1e37a55a1cf7ee8db2ace30e0b7d91637d900d16e34cd62cde2"
+  },
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/native_codex_baseline.py",
+    "expected": "1da67e41cd10aeef4b4534241916127ab044d00f001c431faea3bffe29f0755a",
+    "observed": "1da67e41cd10aeef4b4534241916127ab044d00f001c431faea3bffe29f0755a"
+  },
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+    "expected": "d794095d7e2eb67ebad3987cdde69c09ef6d8f1c16c517c63377bda2dbb79080",
+    "observed": "d794095d7e2eb67ebad3987cdde69c09ef6d8f1c16c517c63377bda2dbb79080"
+  }
+]

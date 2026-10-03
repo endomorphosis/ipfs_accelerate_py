@@ -1,0 +1,16 @@
+{
+  "files": [
+    {
+      "bytes": 17591,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
+      "sha256": "176455c12f37a53e504f898e48a1b414bb2dd63b5172b917903bcae0dad2c46c"
+    },
+    {
+      "bytes": 9582,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py",
+      "sha256": "f521f30dcfb4c652c505577f1f6c56a884543e69f1e1f5b11e72077e9a5b4544"
+    }
+  ],
+  "purpose": "Pre-fix consumer/test snapshot preserving completed canary04 producer correspondence",
+  "schema": "source384-preflight-deadline-before@1"
+}

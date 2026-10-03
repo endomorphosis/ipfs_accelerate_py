@@ -1,0 +1,35 @@
+{
+  "blockers": [],
+  "findings_resolved": [
+    {
+      "finding": "Managed daemon could restart after native START success but before wrapper health observation, and be adopted as initial anchor.",
+      "resolution": "Qualifier verifies native control receipt digest and passes transition.new_tree; root and managed daemon exact birth identities must be members."
+    },
+    {
+      "finding": "Identity/CID reconstruction could cross the deadline after the last sampled clock, admitting late success.",
+      "resolution": "Final monotonic fence immediately precedes success; decoding-delay regression control covers this path."
+    }
+  ],
+  "limits": [
+    "Polling decision is deadline checked; an individual observation is cooperative and may return after the deadline, in which case it cannot qualify.",
+    "Disposable runtime construction occurs before the START/polling deadline; STOP retains its separately bounded cleanup budget.",
+    "This empty nonimplementing lifecycle grants no task, proof, completion or production authority.",
+    "Focused native test results were still running at review time and are not claimed by this review."
+  ],
+  "method": "Read-only source, control-owner, runtime-receipt and test review; no tests or native processes run by reviewer.",
+  "reviewed_contracts": [
+    "Native START health receipt and control receipt each verify their CID before use.",
+    "Root identity matches native process_cid; managed daemon is a direct child and anchored by complete ProcessIdentity, not PID alone.",
+    "Missing/replaced root or daemon, extra root, foreign heartbeat owner, and heartbeat regression fail without reanchoring.",
+    "Auxiliary membership or unhealthy samples reset the 0.75-second healthy stability window.",
+    "Success requires a later native heartbeat than initial and stable-window baseline; native health owner checks wall-clock freshness.",
+    "START plus polling share the original qualification deadline. Slow observations or validation cannot report success after it.",
+    "STOP is attempted after qualification failures and success; successful result additionally requires old tree fenced and current tree absent.",
+    "Qualification receipt persistence or registry-close failure still reaches coordinator release after confirmed absent tree via nested finally."
+  ],
+  "schema": "isolated-supervisor-stability-independent-review@1",
+  "source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py": "3c31ecff80baf3cb96324041a721d23ffc597da9aaa4841833f16c5799097fcc",
+    "test/integration/test_isolated_supervisor_stability.py": "d840cba45ae92435a092248622e1a68eaf0436e1a459134e422ad5f9a7a37042"
+  }
+}

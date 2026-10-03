@@ -1,0 +1,23 @@
+{
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "test/integration/test_isolated_supervisor_stability.py::test_real_empty_native_qualification_keeps_start_stop_and_heartbeat_contract",
+    "test/integration/test_isolated_benchmark_runtime.py::test_real_signed_native_start_observe_stop",
+    "--basetemp=/home/barberb/lift_coding/artifacts/empty-supervisor-stability-20261003/native-02-temp",
+    "--junitxml=/home/barberb/lift_coding/artifacts/empty-supervisor-stability-20261003/native-02.xml"
+  ],
+  "env": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "NUMEXPR_MAX_THREADS": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/empty-supervisor-stability-20261003/seal-native-02.duckdb"
+  }
+}

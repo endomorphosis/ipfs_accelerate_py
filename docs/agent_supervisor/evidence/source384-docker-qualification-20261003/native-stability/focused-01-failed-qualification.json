@@ -1,0 +1,35 @@
+{
+  "completion_authority": false,
+  "configuration_root": "sha256:e15e327a78c5ee78604351964fa72dc8001468925ef25b8643130d56453749f6",
+  "error": {
+    "message": "native local START failed: OperationError(code=<ErrorCode.CONFLICT: 'conflict'>, message='startup did not prove sustained health before its deadline', retryable=False, field='', details=mappingproxy({'exception_type': 'PartialMutationError'}))",
+    "type": "RuntimeEffectError"
+  },
+  "handler_manifest": {
+    "adopt": false,
+    "authorize": false,
+    "materialize": false,
+    "observe": true,
+    "preview": false,
+    "resolve": false,
+    "start": true,
+    "steer": false,
+    "stop": true,
+    "validate": false
+  },
+  "lease_id": "lease:89669621f27e42c182391a7661abe9f1",
+  "passed": false,
+  "process_tree_absent_after_stop": true,
+  "production_activation": false,
+  "profile_id": "7edd436f6fcbaa6fcf1118af46b9fb45",
+  "provider_dispatch_allowed": false,
+  "repository_id": "baguqeeracpn4gcb2lhex7xsnucgnq4vehjlg7fv4p2l2z5fn4zozadiggsea",
+  "repository_root": "/home/barberb/lift_coding/artifacts/empty-supervisor-stability-20261003/focused-01-temp/test_real_empty_native_qualifi0/qualification/repository",
+  "schema": "isolated-supervisor-lifecycle-qualification@1",
+  "state_root": "/home/barberb/lift_coding/artifacts/empty-supervisor-stability-20261003/focused-01-temp/test_real_empty_native_qualifi0/qualification/state",
+  "stop_error": {
+    "message": "native local STOP failed: OperationError(code=<ErrorCode.CONFLICT: 'conflict'>, message='another lifecycle transition is still active', retryable=False, field='', details=mappingproxy({'exception_type': 'TransactionConflictError'}))",
+    "type": "RuntimeEffectError"
+  },
+  "task_admission_authority": false
+}

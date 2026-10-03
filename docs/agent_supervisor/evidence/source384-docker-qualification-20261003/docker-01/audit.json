@@ -1,0 +1,12 @@
+{
+  "schema": "source384-docker-failed-admission-audit@1",
+  "producer_matches_archive": true,
+  "producer_matches_live": true,
+  "native_inference_qualified": false,
+  "source_population_trimmed": false,
+  "proof_memory_headroom_mb": 1639,
+  "requested_parent_memory_mb": 6144,
+  "minimum_live_available_memory_mb": 7783,
+  "observed_available_memory_mb": 6506,
+  "admission_reason_is_inference_from_initial_sample": true
+}

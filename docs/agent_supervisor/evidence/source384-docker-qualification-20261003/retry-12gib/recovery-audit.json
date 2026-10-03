@@ -1,0 +1,9 @@
+{
+  "schema": "posthoc-native-diagnostic-recovery@1",
+  "source": "docker-01/source384-probe.stdout",
+  "source_sha256": "db211ef16739791221961d5d72ce9c84ea046420b7406004e84875e9b5932418",
+  "selection": "exact final JSON line",
+  "changes_original_collection_failure": false,
+  "native_inference_qualified": false,
+  "native_exit_code_recorded": false
+}

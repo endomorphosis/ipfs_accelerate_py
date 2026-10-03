@@ -1,0 +1,7 @@
+{
+  "source": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py",
+  "snapshot": "/home/barberb/lift_coding/artifacts/empty-supervisor-stability-20261003/isolated_benchmark_runtime.before.py",
+  "sha256": "20844dee5e92f197c517265c912c192aaaac08affe66934c22353415a45ca922",
+  "bytes": 28184,
+  "generation": "before bounded stability polling; failed 12GiB Docker qualifier"
+}

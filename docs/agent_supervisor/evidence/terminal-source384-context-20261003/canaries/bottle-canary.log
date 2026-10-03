@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/home/barberb/lift_coding/artifacts/terminal-source384-context-20261003/bottle_canary.py", line 22, in <module>
+    assert json.loads(original_receipt.read_bytes())['sources']['bottle.py'] == expected
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError
