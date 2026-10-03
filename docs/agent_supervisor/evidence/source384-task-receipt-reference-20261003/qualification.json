@@ -1,0 +1,44 @@
+{
+  "schema": "source384-receipt-reference-qualification@1",
+  "status": "component_qualified",
+  "runs": [
+    {
+      "prefix": "focused-01",
+      "tests": 44,
+      "all_passed": true
+    },
+    {
+      "prefix": "final-02",
+      "tests": 45,
+      "all_passed": true
+    },
+    {
+      "prefix": "neighbors-03",
+      "tests": 55,
+      "all_passed": true
+    }
+  ],
+  "distinct_passing_controls": 56,
+  "test_identity_normalization": "remove optional pytest-root prefix test. from classname; names retained exactly",
+  "runtime_changes": [
+    "ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py"
+  ],
+  "actual_inference_test_assertion_updated_not_rerun": "benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py",
+  "model_calls": 0,
+  "provider_calls": 0,
+  "docker_runs": 0,
+  "retained_transport": "retained-native-transport.json",
+  "legacy_read_schemas": [
+    "supervisor-task-context-nominations@1",
+    "supervisor-task-context-nominations@2"
+  ],
+  "new_write_schema": "supervisor-task-context-nominations@3",
+  "bundle_max_bytes": 131072,
+  "full_receipt_max_bytes": 131072,
+  "reference_max_bytes": 4096,
+  "live_validation_unchanged": true,
+  "historical_read_grants_currentness": false,
+  "benchmark_reward_claim": false,
+  "limits": "Transport/publication/worker controls only; not remaining full-trial deadline, successor preparation, neural inference or task correctness.",
+  "source_pins_sha256": "f3518927a2c3874bbd523678f0f70e14098cfee1750a1d9be89cbd6fb3fc817f"
+}

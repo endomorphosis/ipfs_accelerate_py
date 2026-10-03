@@ -1,0 +1,30 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/test/api/semantic_state/test_source384_task_context_bundle.py",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/test/api/semantic_state/test_source384_receipt_reference.py",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/test/api/semantic_state/test_worker_context_snapshot.py",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/source384-task-receipt-reference-20261003/neighbors-03.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "source_pins": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py": "cb456430970ebab2e9544266b37dd1c686427b9803d28bec625840f2eeea3ac2",
+    "test/api/semantic_state/test_source384_task_context_bundle.py": "44729aca196ac16ecc3214b1ad80a627fc6fde897a128853d6b57f2834917470",
+    "test/api/semantic_state/test_source384_receipt_reference.py": "0e0c5dfa84c2b4b2f758fdadbd9ada22fb1852d8cb1ce10d42e506934f7d7acc",
+    "test/api/semantic_state/test_worker_context_snapshot.py": "836dc3b7d753b62f7424ebcc5f5dc53f8b764cff3aa5e55eb5401e35e91502e3",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py": "adeb2512d74ac3031653868e69bcd1afa0065adbcb8da9355d9fb1692f60658c"
+  },
+  "environment": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/source384-task-receipt-reference-20261003/neighbors-03-seal.duckdb"
+  }
+}

@@ -1,0 +1,68 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/test
+configfile: pytest.ini
+collected 44 items
+
+test/api/semantic_state/test_source384_task_context_bundle.py::test_unselected_bundle_preserves_v1_bytes_and_skips_source384 [32mPASSED[0m[32m [  2%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_revalidates_only_exact_selected_task_receipt_on_every_read [32mPASSED[0m[32m [  4%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_malformed_reference_rejects_before_validation[missing] [32mPASSED[0m[32m [  6%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_malformed_reference_rejects_before_validation[null] [32mPASSED[0m[32m [  9%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_malformed_reference_rejects_before_validation[unknown-schema] [32mPASSED[0m[32m [ 11%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_malformed_reference_rejects_before_validation[oversize] [32mPASSED[0m[32m [ 13%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_malformed_reference_rejects_before_validation[nan] [32mPASSED[0m[32m [ 15%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_malformed_reference_rejects_before_validation[extra-task-field] [32mPASSED[0m[32m [ 18%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_malformed_reference_rejects_before_validation[downgrade] [32mPASSED[0m[32m [ 20%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_writer_cannot_silently_drop_missing_selection [32mPASSED[0m[32m [ 22%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_digest_drift_rejects_before_native_validator [32mPASSED[0m[32m [ 25%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_validator_drift_refusal_propagates_without_metadata [32mPASSED[0m[32m [ 27%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_worker_context_read_rechecks_v2_receipt_before_prompt [32mPASSED[0m[32m [ 29%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_sixteen_full_receipts_become_small_exact_references 
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-03 18:22:44 [[32m    INFO[0m] Registered service: ipfs (service_manager.py:93)
+2026-10-03 18:22:44 [[32m    INFO[0m] Registered test suite: core_infrastructure (test_framework.py:82)
+2026-10-03 18:22:44 [[32m    INFO[0m] Registered test suite: performance (test_framework.py:82)
+2026-10-03 18:22:44 [[32m    INFO[0m] Registered test suite: integration (test_framework.py:82)
+2026-10-03 18:22:44 [[32m    INFO[0m] Successfully imported ipfs_kit_py modules from /home/barberb/HACC/complaint-generator/ipfs_datasets_py/ipfs_kit_py/ipfs_kit_py/__init__.py (ipfs_kit_integration.py:327)
+2026-10-03 18:22:44 [[32m    INFO[0m] IPFS Kit integration enabled successfully (ipfs_kit_integration.py:344)
+2026-10-03 18:22:44 [[32m    INFO[0m] Storage initialized with distributed backend (storage_wrapper.py:92)
+[32mPASSED[0m[32m                                                                   [ 31%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_historical_read_binds_bytes_without_granting_currentness [32mPASSED[0m[32m [ 34%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_unselected_references_are_not_read [32mPASSED[0m[32m [ 36%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_reference_shape_refuses_before_native_validation[extra] [32mPASSED[0m[32m [ 38%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_reference_shape_refuses_before_native_validation[missing] [32mPASSED[0m[32m [ 40%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_reference_shape_refuses_before_native_validation[schema] [32mPASSED[0m[32m [ 43%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_reference_shape_refuses_before_native_validation[size-bool] [32mPASSED[0m[32m [ 45%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_reference_shape_refuses_before_native_validation[size-zero] [32mPASSED[0m[32m [ 47%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_reference_shape_refuses_before_native_validation[size-large] [32mPASSED[0m[32m [ 50%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_reference_shape_refuses_before_native_validation[hash] [32mPASSED[0m[32m [ 52%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_reference_shape_refuses_before_native_validation[relative] [32mPASSED[0m[32m [ 54%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_reference_shape_refuses_before_native_validation[parent] [32mPASSED[0m[32m [ 56%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_reference_shape_refuses_before_native_validation[worker] [32mPASSED[0m[32m [ 59%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_reference_shape_refuses_before_native_validation[ancestor] [32mPASSED[0m[32m [ 61%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_reference_shape_refuses_before_native_validation[oversize] [32mPASSED[0m[32m [ 63%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_reference_shape_refuses_before_native_validation[downgrade] [32mPASSED[0m[32m [ 65%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_full_receipt_envelope_drift_rejects_even_if_reference_is_resigned[hash] [32mPASSED[0m[32m [ 68%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_full_receipt_envelope_drift_rejects_even_if_reference_is_resigned[size] [32mPASSED[0m[32m [ 70%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_full_receipt_envelope_drift_rejects_even_if_reference_is_resigned[schema] [32mPASSED[0m[32m [ 72%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_full_receipt_envelope_drift_rejects_even_if_reference_is_resigned[output] [32mPASSED[0m[32m [ 75%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_full_receipt_envelope_drift_rejects_even_if_reference_is_resigned[repository] [32mPASSED[0m[32m [ 77%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_full_receipt_envelope_drift_rejects_even_if_reference_is_resigned[duplicate] [32mPASSED[0m[32m [ 79%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_full_receipt_envelope_drift_rejects_even_if_reference_is_resigned[noncanonical] [32mPASSED[0m[32m [ 81%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_selected_artifact_requires_bounded_canonical_regular_bytes[symlink] [32mPASSED[0m[32m [ 84%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_selected_artifact_requires_bounded_canonical_regular_bytes[parent-link] [32mPASSED[0m[32m [ 86%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_selected_artifact_requires_bounded_canonical_regular_bytes[hardlink] [32mPASSED[0m[32m [ 88%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_selected_artifact_requires_bounded_canonical_regular_bytes[fifo] [32mPASSED[0m[32m [ 90%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_selected_artifact_requires_bounded_canonical_regular_bytes[oversize] [32mPASSED[0m[32m [ 93%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_selected_artifact_requires_bounded_canonical_regular_bytes[missing] [32mPASSED[0m[32m [ 95%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_writer_refuses_nonretained_selection_and_missing_task_selection [32mPASSED[0m[32m [ 97%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_receipt_limit_matches_canonical_consumer [32mPASSED[0m[32m [100%][0m
+
+- generated xml file: /home/barberb/lift_coding/artifacts/source384-task-receipt-reference-20261003/focused-01.xml -
+============================= slowest 10 durations =============================
+0.84s call     api/semantic_state/test_source384_task_context_bundle.py::test_worker_context_read_rechecks_v2_receipt_before_prompt
+0.45s call     api/semantic_state/test_source384_receipt_reference.py::test_sixteen_full_receipts_become_small_exact_references
+0.01s call     api/semantic_state/test_source384_receipt_reference.py::test_unselected_references_are_not_read
+
+(7 durations < 0.005s hidden.  Use -vv to show these durations.)
+[32m============================= [32m[1m44 passed[0m[32m in 25.70s[0m[32m ==============================[0m

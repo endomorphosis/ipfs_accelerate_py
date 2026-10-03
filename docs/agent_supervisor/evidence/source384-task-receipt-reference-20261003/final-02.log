@@ -1,0 +1,92 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/test
+configfile: pytest.ini
+
+[1m----------------------------- live log collection ------------------------------[0m
+2026-10-03 18:23:10 [[32m    INFO[0m] Registered service: ipfs (service_manager.py:93)
+2026-10-03 18:23:10 [[32m    INFO[0m] Registered test suite: core_infrastructure (test_framework.py:82)
+2026-10-03 18:23:10 [[32m    INFO[0m] Registered test suite: performance (test_framework.py:82)
+2026-10-03 18:23:10 [[32m    INFO[0m] Registered test suite: integration (test_framework.py:82)
+2026-10-03 18:23:10 [[32m    INFO[0m] Successfully imported ipfs_kit_py modules from /home/barberb/HACC/complaint-generator/ipfs_datasets_py/ipfs_kit_py/ipfs_kit_py/__init__.py (ipfs_kit_integration.py:327)
+2026-10-03 18:23:10 [[32m    INFO[0m] IPFS Kit integration enabled successfully (ipfs_kit_integration.py:344)
+2026-10-03 18:23:10 [[32m    INFO[0m] Storage initialized with distributed backend (storage_wrapper.py:92)
+collected 45 items
+
+test/api/semantic_state/test_source384_task_context_bundle.py::test_unselected_bundle_preserves_v1_bytes_and_skips_source384 [32mPASSED[0m[32m [  2%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_revalidates_only_exact_selected_task_receipt_on_every_read [32mPASSED[0m[32m [  4%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_malformed_reference_rejects_before_validation[missing] [32mPASSED[0m[32m [  6%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_malformed_reference_rejects_before_validation[null] [32mPASSED[0m[32m [  8%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_malformed_reference_rejects_before_validation[unknown-schema] [32mPASSED[0m[32m [ 11%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_malformed_reference_rejects_before_validation[oversize] [32mPASSED[0m[32m [ 13%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_malformed_reference_rejects_before_validation[nan] [32mPASSED[0m[32m [ 15%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_malformed_reference_rejects_before_validation[extra-task-field] [32mPASSED[0m[32m [ 17%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_malformed_reference_rejects_before_validation[downgrade] [32mPASSED[0m[32m [ 20%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_writer_cannot_silently_drop_missing_selection [32mPASSED[0m[32m [ 22%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_v2_digest_drift_rejects_before_native_validator [32mPASSED[0m[32m [ 24%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_validator_drift_refusal_propagates_without_metadata [32mPASSED[0m[32m [ 26%][0m
+test/api/semantic_state/test_source384_task_context_bundle.py::test_worker_context_read_rechecks_v2_receipt_before_prompt [32mPASSED[0m[32m [ 28%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_sixteen_full_receipts_become_small_exact_references [32mPASSED[0m[32m [ 31%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_historical_read_binds_bytes_without_granting_currentness [32mPASSED[0m[32m [ 33%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_unselected_references_are_not_read [32mPASSED[0m[32m [ 35%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_reference_shape_refuses_before_native_validation[extra] [32mPASSED[0m[32m [ 37%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_reference_shape_refuses_before_native_validation[missing] [32mPASSED[0m[32m [ 40%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_reference_shape_refuses_before_native_validation[schema] [32mPASSED[0m[32m [ 42%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_reference_shape_refuses_before_native_validation[size-bool] [32mPASSED[0m[32m [ 44%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_reference_shape_refuses_before_native_validation[size-zero] [32mPASSED[0m[32m [ 46%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_reference_shape_refuses_before_native_validation[size-large] [32mPASSED[0m[32m [ 48%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_reference_shape_refuses_before_native_validation[hash] [32mPASSED[0m[32m [ 51%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_reference_shape_refuses_before_native_validation[relative] [32mPASSED[0m[32m [ 53%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_reference_shape_refuses_before_native_validation[parent] [32mPASSED[0m[32m [ 55%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_reference_shape_refuses_before_native_validation[worker] [32mPASSED[0m[32m [ 57%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_reference_shape_refuses_before_native_validation[ancestor] [32mPASSED[0m[32m [ 60%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_reference_shape_refuses_before_native_validation[oversize] [32mPASSED[0m[32m [ 62%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_reference_shape_refuses_before_native_validation[downgrade] [32mPASSED[0m[32m [ 64%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_full_receipt_envelope_drift_rejects_even_if_reference_is_resigned[hash] [32mPASSED[0m[32m [ 66%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_full_receipt_envelope_drift_rejects_even_if_reference_is_resigned[size] [32mPASSED[0m[32m [ 68%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_full_receipt_envelope_drift_rejects_even_if_reference_is_resigned[schema] [32mPASSED[0m[32m [ 71%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_full_receipt_envelope_drift_rejects_even_if_reference_is_resigned[output] [32mPASSED[0m[32m [ 73%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_full_receipt_envelope_drift_rejects_even_if_reference_is_resigned[repository] [32mPASSED[0m[32m [ 75%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_full_receipt_envelope_drift_rejects_even_if_reference_is_resigned[duplicate] [32mPASSED[0m[32m [ 77%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_full_receipt_envelope_drift_rejects_even_if_reference_is_resigned[noncanonical] [32mPASSED[0m[32m [ 80%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_selected_artifact_requires_bounded_canonical_regular_bytes[symlink] [32mPASSED[0m[32m [ 82%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_selected_artifact_requires_bounded_canonical_regular_bytes[parent-link] [32mPASSED[0m[32m [ 84%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_selected_artifact_requires_bounded_canonical_regular_bytes[hardlink] [32mPASSED[0m[32m [ 86%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_selected_artifact_requires_bounded_canonical_regular_bytes[fifo] [32mPASSED[0m[32m [ 88%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_selected_artifact_requires_bounded_canonical_regular_bytes[oversize] [32mPASSED[0m[32m [ 91%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_selected_artifact_requires_bounded_canonical_regular_bytes[missing] [32mPASSED[0m[32m [ 93%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_writer_refuses_nonretained_selection_and_missing_task_selection [32mPASSED[0m[32m [ 95%][0m
+test/api/semantic_state/test_source384_receipt_reference.py::test_receipt_limit_matches_canonical_consumer [32mPASSED[0m[32m [ 97%][0m
+test/integration/test_admitted_context_refresh.py::test_source384_publication_reports_historical_selection_without_downgrade_or_dispatch 
+[1m-------------------------------- live log setup --------------------------------[0m
+2026-10-03 18:23:40 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-447/test_source384_publication_rep0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-03 18:23:41 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-447/test_source384_publication_rep0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 18:23:41 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-447/test_source384_publication_rep0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 18:23:41 [[32m    INFO[0m] capability admitted status=compatible fingerprint=sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b (quack_state_server.py:4353)
+2026-10-03 18:23:41 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-447/test_source384_publication_rep0/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 18:23:41 [[32m    INFO[0m] control-plane schema migration complete before ready (quack_state_server.py:4353)
+2026-10-03 18:23:41 [[32m    INFO[0m] state-owner ready server_id=server:1f8599fb-772a-43bc-9e1e-f1c61f11aa29 listen_uri=quack:127.0.0.1:44253 (quack_state_server.py:4353)
+2026-10-03 18:23:41 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-447/test_source384_publication_rep0/execution.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 18:23:42 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-447/test_source384_publication_rep0/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 18:23:44 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-447/test_source384_publication_rep0/launch/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 18:24:29 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/970e3e721a09a5167fed/agent-merge-trains/master-166cf87e487c79ae6191/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 18:24:29 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/970e3e721a09a5167fed/agent-merge-trains/master-166cf87e487c79ae6191/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 18:24:29 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-447/test_source384_publication_rep0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 18:24:29 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-447/test_source384_publication_rep0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 18:24:29 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-447/test_source384_publication_rep0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 18:24:29 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-447/test_source384_publication_rep0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 18:24:29 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-447/test_source384_publication_rep0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 18:24:29 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-447/test_source384_publication_rep0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 18:24:29 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-447/test_source384_publication_rep0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 18:24:29 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-447/test_source384_publication_rep0/merge-queue/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[32m                                                                   [100%][0m
+
+- generated xml file: /home/barberb/lift_coding/artifacts/source384-task-receipt-reference-20261003/final-02.xml -
+============================= slowest 10 durations =============================
+50.82s call     integration/test_admitted_context_refresh.py::test_source384_publication_reports_historical_selection_without_downgrade_or_dispatch
+0.52s setup    integration/test_admitted_context_refresh.py::test_source384_publication_reports_historical_selection_without_downgrade_or_dispatch
+0.03s call     api/semantic_state/test_source384_receipt_reference.py::test_sixteen_full_receipts_become_small_exact_references
+
+(7 durations < 0.005s hidden.  Use -vv to show these durations.)
+[32m======================== [32m[1m45 passed[0m[32m in 82.86s (0:01:22)[0m[32m =========================[0m

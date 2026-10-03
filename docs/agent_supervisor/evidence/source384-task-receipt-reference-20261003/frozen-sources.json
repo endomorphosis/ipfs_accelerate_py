@@ -1,0 +1,40 @@
+{
+  "schema": "source384-receipt-reference-freeze@1",
+  "files": [
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py",
+      "sha256": "cb456430970ebab2e9544266b37dd1c686427b9803d28bec625840f2eeea3ac2",
+      "bytes": 11727
+    },
+    {
+      "path": "test/api/semantic_state/test_source384_task_context_bundle.py",
+      "sha256": "44729aca196ac16ecc3214b1ad80a627fc6fde897a128853d6b57f2834917470",
+      "bytes": 7254
+    },
+    {
+      "path": "test/api/semantic_state/test_source384_receipt_reference.py",
+      "sha256": "0e0c5dfa84c2b4b2f758fdadbd9ada22fb1852d8cb1ce10d42e506934f7d7acc",
+      "bytes": 9367
+    },
+    {
+      "path": "test/api/semantic_state/test_worker_context_snapshot.py",
+      "sha256": "836dc3b7d753b62f7424ebcc5f5dc53f8b764cff3aa5e55eb5401e35e91502e3",
+      "bytes": 6740
+    },
+    {
+      "path": "test/integration/test_admitted_context_refresh.py",
+      "sha256": "d56c144cdfae543e51abb1b66d392f20e520541304c21f02f8a95ee9d48fce56",
+      "bytes": 12989
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py",
+      "sha256": "adeb2512d74ac3031653868e69bcd1afa0065adbcb8da9355d9fb1692f60658c",
+      "bytes": 9307
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py",
+      "sha256": "9a448a4c40800dba69d72d44c9b67576e244e48bf2e3d277804ee105d69f7803",
+      "bytes": 11925
+    }
+  ]
+}

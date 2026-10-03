@@ -1,0 +1,21 @@
+{
+  "reviewed": [
+    "Closed @3 reference binds external output path, complete canonical receipt byte length and SHA256.",
+    "128KiB canonical receipt and overall bundle limits retained;4096B per-reference bound.",
+    "Selected receipt uses existing nofollow/singleton/stable bounded reader; unselected references are not read.",
+    "Live loader returns original complete receipt and invokes unchanged canonical source/model validator.",
+    "Historical selection explicitly grants no freshness or authority.",
+    "@1 and @2 reader behavior retained; source-bearing writer now emits @3."
+  ],
+  "runtime_blockers": [],
+  "schema": "source384-receipt-reference-readonly-review@1",
+  "scope": "Static review only; no execution, live scheduler reads, archive reads, or proof claim.",
+  "source_pins": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/security_autoencoder_advisor.py": "a3b3943bacb0becc7789c86414adab9f92e6977021919fb3e84b5e3c2baba491",
+    "ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py": "e4faad01942759494384563af6b83b9502fd11be401227aa36e65a86a0cb01a0",
+    "ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py": "cb456430970ebab2e9544266b37dd1c686427b9803d28bec625840f2eeea3ac2",
+    "test/api/semantic_state/test_source384_receipt_reference.py": "0e0c5dfa84c2b4b2f758fdadbd9ada22fb1852d8cb1ce10d42e506934f7d7acc"
+  },
+  "test_followup": "Warm-rebind tests currently assert @2 writer layout; author notified to update authored fixture/output expectations while preserving @2 read coverage.",
+  "tests_run_by_reviewer": false
+}

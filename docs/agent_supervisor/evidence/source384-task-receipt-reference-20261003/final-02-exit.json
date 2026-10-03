@@ -1,0 +1,11 @@
+{
+  "exit_code": 0,
+  "seconds": 84.64950636700087,
+  "source_pins_after": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py": "cb456430970ebab2e9544266b37dd1c686427b9803d28bec625840f2eeea3ac2",
+    "test/api/semantic_state/test_source384_task_context_bundle.py": "44729aca196ac16ecc3214b1ad80a627fc6fde897a128853d6b57f2834917470",
+    "test/api/semantic_state/test_source384_receipt_reference.py": "0e0c5dfa84c2b4b2f758fdadbd9ada22fb1852d8cb1ce10d42e506934f7d7acc",
+    "test/integration/test_admitted_context_refresh.py": "d56c144cdfae543e51abb1b66d392f20e520541304c21f02f8a95ee9d48fce56"
+  },
+  "source_pins_unchanged": true
+}

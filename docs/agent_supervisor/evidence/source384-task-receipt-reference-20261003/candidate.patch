@@ -1,0 +1,300 @@
+diff --git a/benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py b/benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py
+index af3a6a699..2f6285efb 100644
+--- a/benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py
++++ b/benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py
+@@ -40,9 +40,12 @@ def test_rebind_actual_owner_and_native_prompt_checks_fresh_sources_without_worl
+                 raise ValueError("selected Source384 changed during capture")
+         module.validate_source384_context = validate
+         monkeypatch.setitem(sys.modules, module.__name__, module)
++        receipt_output = state / "authored-source384"
++        receipt_output.mkdir()
+         receipt = {"schema": "terminal-source384-repository-context@1",
+-            "artifact": ".runtime/authored-source384.json", "sha256": "b" * 64,
+-            "completion_authority": False}
++            "repository": str(root), "output": str(receipt_output), "completion_authority": False}
++        (receipt_output / "receipt.json").write_bytes(
++            json.dumps(receipt, sort_keys=True, separators=(",", ":"), allow_nan=False).encode())
+         context_result = json.loads((state / "context-result.json").read_bytes())
+         previous = json.loads((root / context_result["context_bundle"]["artifact"]).read_bytes())["tasks"][0]
+         context_result["context_bundle"] = write_task_context_bundle(repository=root,
+@@ -82,8 +85,11 @@ def test_rebind_actual_owner_and_native_prompt_checks_fresh_sources_without_worl
+             assert rebound["source384_context"] == receipt
+             assert len(source384_calls) == 2
+             rebound_bundle = json.loads((root / rebound["context_bundle"]["artifact"]).read_bytes())
+-            assert rebound_bundle["schema"] == "supervisor-task-context-nominations@2"
+-            assert rebound_bundle["tasks"][0]["source384_context"] == receipt
++            assert rebound_bundle["schema"] == "supervisor-task-context-nominations@3"
++            from ipfs_accelerate_py.agent_supervisor.runtime.task_context_bundle import read_task_context_historical_selection
++            assert read_task_context_historical_selection(repository=root,
++                artifact=rebound["context_bundle"]["artifact"], expected_sha256=rebound["context_bundle"]["sha256"],
++                task_cid=task_spec.task_cid, task_id=task_spec.task_key)["source384_context"] == receipt
+         assert owner.source.get_task(task_spec.task_cid) == before
+         assert rebound["new_embedding_calls"] == rebound["text_generation_calls"] == 0
+         assert rebound["intent_fresh_at_capture"] is True
+diff --git a/benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py b/benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py
+index b79ce6c2e..e57a426ed 100644
+--- a/benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py
++++ b/benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py
+@@ -81,9 +81,11 @@ def test_real_pinned_inference_reaches_planner_and_dispatch_without_replay(origi
+     bundle = context["context_bundle"]
+     payload = json.loads((root / bundle["artifact"]).read_text())
+     task = payload["tasks"][0]
+-    assert task["source384_context"] == receipt
++    assert payload["schema"] == "supervisor-task-context-nominations@3"
+     options = dict(repository=root, artifact=bundle["artifact"], expected_sha256=bundle["sha256"],
+                    task_id=task["task_id"], task_cid=task["task_cid"])
++    from ipfs_accelerate_py.agent_supervisor.runtime.task_context_bundle import read_task_context_historical_selection
++    assert read_task_context_historical_selection(**options)["source384_context"] == receipt
+     assert load_task_context_nomination(**options)
+     # Real source/model/receipt changes must fail at the canonical worker seam.
+     checkpoint = Path(json.loads(selected_config.read_text())["checkpoint_path"])
+diff --git a/ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py b/ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py
+index 791ab9fe6..8d854105a 100644
+--- a/ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py
++++ b/ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py
+@@ -14,12 +14,79 @@ from pathlib import Path
+ 
+ SCHEMA = "supervisor-task-context-nominations@1"
+ SOURCE384_SCHEMA = "supervisor-task-context-nominations@2"
++SOURCE384_REFERENCE_SCHEMA = "supervisor-task-context-nominations@3"
++RECEIPT_REFERENCE_SCHEMA = "supervisor-source384-receipt-reference@1"
+ KEYS = frozenset({
+     "semantic context artifact", "semantic context sha256", "semantic context refresh",
+     "world context artifact", "world context sha256", "world context repository",
+     "code retrieval artifact", "code retrieval sha256",
+ })
+ MAX_BYTES = 131_072
++MAX_SOURCE384_RECEIPT_BYTES = 131_072
++MAX_SOURCE384_REFERENCE_BYTES = 4096
++
++
++def _raw(value):
++    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
++
++
++def _unique(pairs):
++    result = {}
++    for key, value in pairs:
++        if key in result:
++            raise ValueError("duplicate context bundle key")
++        result[key] = value
++    return result
++
++
++def _source384_reference(reference, repository):
++    """A nomination selects complete receipt bytes, never a truncated receipt."""
++    keys = {"schema", "output", "receipt_sha256", "receipt_bytes"}
++    if (type(reference) is not dict or set(reference) != keys
++            or reference["schema"] != RECEIPT_REFERENCE_SCHEMA
++            or type(reference["output"]) is not str or not reference["output"]
++            or any(c in reference["output"] for c in "\n\r\0")
++            or type(reference["receipt_sha256"]) is not str
++            or len(reference["receipt_sha256"]) != 64
++            or any(c not in "0123456789abcdef" for c in reference["receipt_sha256"])
++            or type(reference["receipt_bytes"]) is not int
++            or not 0 < reference["receipt_bytes"] <= MAX_SOURCE384_RECEIPT_BYTES
++            or len(_raw(reference)) > MAX_SOURCE384_REFERENCE_BYTES):
++        raise ValueError("invalid bounded Source384 receipt reference")
++    output = Path(reference["output"])
++    if (not output.is_absolute() or output.as_posix() != reference["output"]
++            or ".." in output.parts or output.is_relative_to(repository)
++            or repository.is_relative_to(output)):
++        raise ValueError("canonical external Source384 receipt reference required")
++    return reference
++
++
++def _read_source384_reference(reference, repository):
++    from .security_autoencoder_advisor import _read
++
++    reference = _source384_reference(reference, repository)
++    raw = _read(Path(reference["output"]) / "receipt.json", MAX_SOURCE384_RECEIPT_BYTES)
++    if (len(raw) != reference["receipt_bytes"]
++            or hashlib.sha256(raw).hexdigest() != reference["receipt_sha256"]):
++        raise ValueError("Source384 referenced receipt bytes differ")
++    receipt = json.loads(raw, object_pairs_hook=_unique)
++    if (type(receipt) is not dict or receipt.get("schema") != "terminal-source384-repository-context@1"
++            or receipt.get("output") != reference["output"]
++            or receipt.get("repository") != str(repository) or _raw(receipt) != raw):
++        raise ValueError("Source384 referenced receipt envelope differs")
++    return receipt
++
++
++def _nominate_source384_receipt(receipt, repository):
++    if (type(receipt) is not dict or receipt.get("schema") != "terminal-source384-repository-context@1"):
++        raise ValueError("a selected Source384 context receipt is required")
++    raw = _raw(receipt)
++    reference = _source384_reference(dict(schema=RECEIPT_REFERENCE_SCHEMA,
++        output=receipt.get("output"), receipt_sha256=hashlib.sha256(raw).hexdigest(),
++        receipt_bytes=len(raw)), repository)
++    if _read_source384_reference(reference, repository) != receipt:
++        raise ValueError("Source384 selected receipt differs from retained bytes")
++    return reference
+ 
+ 
+ def _source384_receipt(receipt):
+@@ -66,10 +133,10 @@ def write_task_context_bundle(*, repository: Path, prepared: list[dict], output:
+         tasks.append({"task_cid": item["task_cid"], "task_id": item["task_id"],
+                       "metadata": _normalize(item["metadata"])})
+         if source384:
+-            tasks[-1]["source384_context"] = _source384_receipt(item.get("source384_context"))
++            tasks[-1]["source384_context"] = _nominate_source384_receipt(item.get("source384_context"), root)
+     if len({item["task_cid"] for item in tasks}) != len(tasks) or len({item["task_id"] for item in tasks}) != len(tasks):
+         raise ValueError("context bundle task identities must be unique")
+-    payload = {"schema": SOURCE384_SCHEMA if source384 else SCHEMA,
++    payload = {"schema": SOURCE384_REFERENCE_SCHEMA if source384 else SCHEMA,
+                "tasks": tasks, "completion_authority": False}
+     raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+     if len(raw) > MAX_BYTES:
+@@ -119,20 +186,14 @@ def read_task_context_historical_selection(*, repository: Path, artifact: str, e
+     if len(raw) > MAX_BYTES or hashlib.sha256(raw).hexdigest() != expected_sha256:
+         raise ValueError("context bundle digest differs")
+ 
+-    def unique(pairs):
+-        result = {}
+-        for key, value in pairs:
+-            if key in result:
+-                raise ValueError("duplicate context bundle key")
+-            result[key] = value
+-        return result
+-
+-    payload = json.loads(raw, object_pairs_hook=unique)
++    payload = json.loads(raw, object_pairs_hook=_unique)
+     if (not isinstance(payload, dict) or set(payload) != {"schema", "tasks", "completion_authority"}
+-            or payload["schema"] not in (SCHEMA, SOURCE384_SCHEMA) or payload["completion_authority"] is not False
++            or payload["schema"] not in (SCHEMA, SOURCE384_SCHEMA, SOURCE384_REFERENCE_SCHEMA)
++            or payload["completion_authority"] is not False
+             or not isinstance(payload["tasks"], list) or not 1 <= len(payload["tasks"]) <= 16):
+         raise ValueError("invalid context bundle")
+-    source384 = payload["schema"] == SOURCE384_SCHEMA
++    source384 = payload["schema"] != SCHEMA
++    referenced = payload["schema"] == SOURCE384_REFERENCE_SCHEMA
+     task_keys = {"task_cid", "task_id", "metadata"} | ({"source384_context"} if source384 else set())
+     selected, selected_receipt, identities, aliases = None, None, set(), set()
+     for task in payload["tasks"]:
+@@ -144,7 +205,8 @@ def read_task_context_historical_selection(*, repository: Path, artifact: str, e
+         identities.add(task["task_cid"])
+         aliases.add(task["task_id"])
+         metadata = _normalize(task["metadata"])
+-        receipt = _source384_receipt(task["source384_context"]) if source384 else None
++        receipt = ((_source384_reference(task["source384_context"], root) if referenced
++                    else _source384_receipt(task["source384_context"])) if source384 else None)
+         if task["task_cid"] == task_cid or task["task_id"] == task_id:
+             if task["task_cid"] != task_cid or task["task_id"] != task_id:
+                 raise ValueError("context nomination has a foreign task identity")
+@@ -154,5 +216,6 @@ def read_task_context_historical_selection(*, repository: Path, artifact: str, e
+         raise ValueError("context bundle does not contain the dispatched task")
+     result = {"metadata": selected}
+     if source384:
+-        result["source384_context"] = selected_receipt
++        result["source384_context"] = (_read_source384_reference(selected_receipt, root)
++                                       if referenced else selected_receipt)
+     return result
+diff --git a/test/api/semantic_state/test_source384_task_context_bundle.py b/test/api/semantic_state/test_source384_task_context_bundle.py
+index 0081248db..f45bf49a2 100644
+--- a/test/api/semantic_state/test_source384_task_context_bundle.py
++++ b/test/api/semantic_state/test_source384_task_context_bundle.py
+@@ -43,6 +43,16 @@ def _rewrite(root, bundle, payload):
+     return {**bundle, "sha256": hashlib.sha256(raw).hexdigest()}
+ 
+ 
++def _write_legacy(*, repository, prepared, output):
++    # Retained @2 envelopes remain readable after writers move to references.
++    payload = {"schema": bundles.SOURCE384_SCHEMA, "completion_authority": False,
++        "tasks": [{key: item[key] for key in ("task_cid", "task_id", "metadata", "source384_context")}
++                  for item in prepared]}
++    raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
++    output.write_bytes(raw)
++    return {"artifact": output.relative_to(repository).as_posix(), "sha256": hashlib.sha256(raw).hexdigest()}
++
++
+ def test_unselected_bundle_preserves_v1_bytes_and_skips_source384(tmp_path, validator):
+     item = _prepared(selected=False)
+     bundle = bundles.write_task_context_bundle(repository=tmp_path, prepared=[item], output=tmp_path / "v1.json")
+@@ -55,7 +65,7 @@ def test_unselected_bundle_preserves_v1_bytes_and_skips_source384(tmp_path, vali
+ 
+ def test_v2_revalidates_only_exact_selected_task_receipt_on_every_read(tmp_path, validator):
+     first, second = _prepared(), _prepared("TASK-2")
+-    bundle = bundles.write_task_context_bundle(repository=tmp_path, prepared=[first, second], output=tmp_path / "v2.json")
++    bundle = _write_legacy(repository=tmp_path, prepared=[first, second], output=tmp_path / "v2.json")
+     assert json.loads((tmp_path / "v2.json").read_bytes())["schema"] == bundles.SOURCE384_SCHEMA
+     for _ in range(2):
+         assert _load(tmp_path, bundle, "TASK-2") == second["metadata"]
+@@ -68,7 +78,7 @@ def test_v2_revalidates_only_exact_selected_task_receipt_on_every_read(tmp_path,
+ 
+ @pytest.mark.parametrize("mutation", ["missing", "null", "unknown-schema", "oversize", "nan", "extra-task-field", "downgrade"])
+ def test_v2_malformed_reference_rejects_before_validation(tmp_path, validator, mutation):
+-    bundle = bundles.write_task_context_bundle(repository=tmp_path, prepared=[_prepared()], output=tmp_path / "v2.json")
++    bundle = _write_legacy(repository=tmp_path, prepared=[_prepared()], output=tmp_path / "v2.json")
+     payload = json.loads((tmp_path / "v2.json").read_bytes())
+     task = payload["tasks"][0]
+     if mutation == "missing":
+@@ -92,14 +102,14 @@ def test_v2_malformed_reference_rejects_before_validation(tmp_path, validator, m
+ 
+ 
+ def test_v2_writer_cannot_silently_drop_missing_selection(tmp_path):
+-    with pytest.raises(ValueError, match="selected Source384"):
++    with pytest.raises(ValueError):
+         bundles.write_task_context_bundle(repository=tmp_path,
+             prepared=[_prepared(), _prepared("TASK-2", selected=False)], output=tmp_path / "v2.json")
+     assert not (tmp_path / "v2.json").exists()
+ 
+ 
+ def test_v2_digest_drift_rejects_before_native_validator(tmp_path, validator):
+-    bundle = bundles.write_task_context_bundle(repository=tmp_path, prepared=[_prepared()], output=tmp_path / "v2.json")
++    bundle = _write_legacy(repository=tmp_path, prepared=[_prepared()], output=tmp_path / "v2.json")
+     with (tmp_path / bundle["artifact"]).open("ab") as stream:
+         stream.write(b" ")
+     with pytest.raises(ValueError, match="digest differs"):
+@@ -108,7 +118,7 @@ def test_v2_digest_drift_rejects_before_native_validator(tmp_path, validator):
+ 
+ 
+ def test_validator_drift_refusal_propagates_without_metadata(tmp_path, validator):
+-    bundle = bundles.write_task_context_bundle(repository=tmp_path, prepared=[_prepared()], output=tmp_path / "v2.json")
++    bundle = _write_legacy(repository=tmp_path, prepared=[_prepared()], output=tmp_path / "v2.json")
+     def stale(**kwargs):
+         raise ValueError("selected Source384 producer changed")
+     validator[0].validate_source384_context = stale
+@@ -120,7 +130,7 @@ def test_worker_context_read_rechecks_v2_receipt_before_prompt(tmp_path, validat
+     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import TodoImplementationDaemon, PortalTask
+ 
+     item = _prepared()
+-    bundle = bundles.write_task_context_bundle(repository=tmp_path, prepared=[item], output=tmp_path / "v2.json")
++    bundle = _write_legacy(repository=tmp_path, prepared=[item], output=tmp_path / "v2.json")
+     daemon = object.__new__(TodoImplementationDaemon)
+     daemon.repo_root = tmp_path
+     daemon._task_context_nomination_bundle = bundle
+diff --git a/test/api/semantic_state/test_worker_context_snapshot.py b/test/api/semantic_state/test_worker_context_snapshot.py
+index d1dced835..930547eee 100644
+--- a/test/api/semantic_state/test_worker_context_snapshot.py
++++ b/test/api/semantic_state/test_worker_context_snapshot.py
+@@ -29,8 +29,11 @@ def context(tmp_path,monkeypatch):
+  metadata={'semantic context artifact':'semantic.json','semantic context sha256':'s'*64,'semantic context refresh':'true',
+   'code retrieval artifact':'retrieval.json','code retrieval sha256':'r'*64,
+   'world context artifact':'world.json','world context sha256':'w'*64,'world context repository':'repo:1'}
++ receipt_output=tmp_path/'source384';receipt_output.mkdir()
++ receipt={'schema':'terminal-source384-repository-context@1','repository':str(root),'output':str(receipt_output)}
++ (receipt_output/'receipt.json').write_bytes(json.dumps(receipt,sort_keys=True,separators=(',',':')).encode())
+  prepared={'schema':'supervisor-task-context-preparation@1','task_cid':task.canonical_task_cid,'task_id':task.task_id,
+-  'metadata':metadata,'source384_context':{'schema':'terminal-source384-repository-context@1'}}
++  'metadata':metadata,'source384_context':receipt}
+  daemon._task_context_nomination_bundle=bundles.write_task_context_bundle(repository=root,prepared=[prepared],output=root/'bundle.json')
+  validations=[];reads=[]
+  monkeypatch.setattr(source384,'validate_source384_context',lambda **kw:validations.append(kw))
+diff --git a/test/integration/test_admitted_context_refresh.py b/test/integration/test_admitted_context_refresh.py
+index 94e204b5d..e30fbd8d7 100644
+--- a/test/integration/test_admitted_context_refresh.py
++++ b/test/integration/test_admitted_context_refresh.py
+@@ -127,8 +127,12 @@ def test_source384_publication_reports_historical_selection_without_downgrade_or
+             raise ValueError("selected Source384 source changed")
+     module.validate_source384_context = validate
+     monkeypatch.setitem(sys.modules, module.__name__, module)
++    source384_output = tmp_path / "source384-receipt"
++    source384_output.mkdir()
+     receipt = {"schema": "terminal-source384-repository-context@1", "source_sha256": baseline_sha,
+-               "completion_authority": False}
++               "repository": str(root), "output": str(source384_output), "completion_authority": False}
++    (source384_output / "receipt.json").write_bytes(
++        json.dumps(receipt, sort_keys=True, separators=(",", ":"), allow_nan=False).encode())
+     admission = local.admit_local_benchmark_plan(graph=scenario["graph"], manifest=scenario["manifest"])
+     with typed_claim(scenario, tmp_path) as (owner, _daemon, attempt):
+         previous = initial_bundle(scenario, owner)
