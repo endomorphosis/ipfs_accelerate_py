@@ -1,0 +1,17 @@
+{
+  "schema": "cid-host-version-inspection@1",
+  "python": "3.12.3",
+  "module_version": "0.3.1",
+  "distribution_versions": {
+    "multiformats": "0.3.1.post4",
+    "multiformats-config": "0.3.1",
+    "typing-validation": "1.2.12",
+    "bases": "0.3.0",
+    "duckdb": "1.5.5"
+  },
+  "native_layout_recognized": true,
+  "cold_registration_available": true,
+  "native_registration_matches_public_lookup": true,
+  "source_sha256": "1e8c9bb9019bb593d6812ac6d1d1fa46e882be291d5f41bbb4894fb171056b43",
+  "scope": "Host process only; no Docker runtime inspection or performance measurement. Both Docker install log and host distribution report multiformats 0.3.1.post4; host module version is 0.3.1."
+}

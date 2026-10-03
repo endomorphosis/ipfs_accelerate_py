@@ -1,0 +1,111 @@
+{
+  "archive_sha256": "43ba7c9bc830b9c6c684589db15ddad25a37339014a5287d41a962c10d98f9c3",
+  "benchmark_result": false,
+  "bottle_sha256": "761756ce31753e526c48d28ccbca13a5d2493b16fe37aff3e1e4d2efaf3a2bba",
+  "bounded_worker_invoked": true,
+  "child_import_output_observed": true,
+  "completed_neural_inference_qualified": false,
+  "container_absent": true,
+  "current_producer_consumer_tests": {
+    "failed": 0,
+    "passed": 13,
+    "pytest_seconds": 43.83,
+    "scope": "Separate real-checkpoint component tests; not successful Docker inference.",
+    "skipped": 0
+  },
+  "deadlines_weakened": false,
+  "deployment_qualified": true,
+  "empty_native_start_passed": true,
+  "error_summary": "bounded source-unit worker failed: timeout",
+  "error_type": "ValueError",
+  "failure_call_site": "infer_shared_parent_units _worker after first observe_current and context assembly returned",
+  "failure_phase": "initial_context",
+  "failure_resources": {
+    "available_memory_mb": 9997,
+    "cpu_slots": 5,
+    "cpu_stall_percent": 27.4,
+    "io_stall_percent": 3.02,
+    "memory_stall_percent": 0.0,
+    "total_memory_mb": 12288
+  },
+  "first_observation_returned": true,
+  "limits": [
+    "No successful model-load or inference receipt; bounded worker invocation and child import output are evidenced.",
+    "Native context budget remains90 seconds; initial context elapsed98.298s including surrounding work and bounded cleanup.",
+    "Resource samples and aggregate phase timing do not isolate publication/observation/worker costs or prove a cause.",
+    "Slow pinned dependency installation is separate from native context timing.",
+    "Optional live Docker registry inspection was skipped to avoid measurement overlap.",
+    "No official benchmark score, token comparison, or source-qualified proof."
+  ],
+  "model_download_calls": 0,
+  "native_context_budget_seconds": 90,
+  "native_inference_artifact_exported": false,
+  "official_verifier_executed": false,
+  "original_source_files": 218,
+  "original_source_hashes_preserved": true,
+  "previous_closed_manifest_sha256": "12e074d7166a944ca9e819e5c8ea022344f2e364b1b8cb7ada1ecb8fd7e9e920",
+  "probe_return_code": 1,
+  "producer_pins": [
+    {
+      "path": "source/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
+      "sha256": "5e7da432a206b07900822044326dde963b5bf8cb9c1f39d313e1a6ceed56e66f"
+    },
+    {
+      "path": "source/ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py",
+      "sha256": "3c31ecff80baf3cb96324041a721d23ffc597da9aaa4841833f16c5799097fcc"
+    },
+    {
+      "path": "source/benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py",
+      "sha256": "9ea34e3c4c63644f86d013d52e7969357b1ad4b063de109dd72ecc7e11644b18"
+    },
+    {
+      "path": "source/benchmarks/agent_supervisor/container_coding/benchmark_resource_profile.py",
+      "sha256": "882a38b48559f2c829237ec514e5d8059b58cf06be20a6c97bc07b702f3f4f5e"
+    },
+    {
+      "bytes": 28950,
+      "path": "datasets/ipfs_datasets_py/logic/software_contracts/content.py",
+      "sha256": "1e8c9bb9019bb593d6812ac6d1d1fa46e882be291d5f41bbb4894fb171056b43"
+    },
+    {
+      "bytes": 95861,
+      "path": "datasets/ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py",
+      "sha256": "736c77ebdc66607ef234ab1aa2f4d84c4768811f11d568962a11692dfdcfad2f"
+    },
+    {
+      "bytes": 41061,
+      "path": "datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+      "sha256": "2cc174e71f17a23daabd1c8855d96c621811addfe5152f386810ec23918b1463"
+    },
+    {
+      "bytes": 30864,
+      "path": "datasets/ipfs_datasets_py/duckdb_control/codebase_catalog.py",
+      "sha256": "91986bf58356b2917483884661237c49448c0f91f3dc40d4cd3d79fa4811afdf"
+    }
+  ],
+  "provider_calls": 0,
+  "publication_returned": true,
+  "qualified": false,
+  "report_collection_qualified": true,
+  "resource_profile": "source384-5cpu-12gib@1",
+  "resources_before": {
+    "available_memory_mb": 10483,
+    "cgroup_path": "/sys/fs/cgroup",
+    "cpu_max": "500000 100000",
+    "detected_cpu_slots": 5,
+    "detected_total_memory_mb": 12288,
+    "memory_max": "12884901888",
+    "schema": "terminal-source384-cgroup-observation@1"
+  },
+  "schema": "source384-docker-reconstruction-qualification@1",
+  "source_qualified_proof_claimed": false,
+  "successful_model_load_qualified": false,
+  "timings_seconds": {
+    "deployment": 1109.5104682919991,
+    "initial_context": 98.29840954000247,
+    "prepare": 10.51539345600031,
+    "probe": 109.85535045299912,
+    "total": 1242.324951691
+  },
+  "training_steps": 0
+}

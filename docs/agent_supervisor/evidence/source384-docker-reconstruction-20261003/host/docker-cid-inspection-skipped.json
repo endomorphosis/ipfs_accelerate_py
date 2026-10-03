@@ -1,0 +1,6 @@
+{
+  "skipped": true,
+  "reason": "Deployment/context transition completed between status observations; avoided overlapping the optional separate process with measured context.",
+  "runtime_changed": false,
+  "docker_live_registry_recognition_qualified": false
+}

@@ -1,0 +1,71 @@
+{
+  "observed_unix": 1791016273.05473,
+  "processes": [
+    {
+      "pid": 1882342,
+      "command": "sh",
+      "elapsed": "09:24",
+      "cpu_time": "00:00:00"
+    },
+    {
+      "pid": 1882374,
+      "command": "sleep",
+      "elapsed": "09:23",
+      "cpu_time": "00:00:00"
+    },
+    {
+      "pid": 1969898,
+      "command": "python",
+      "elapsed": "04:57",
+      "cpu_time": "00:00:02",
+      "io": "rchar: 96673236\nwchar: 94669203\nsyscr: 63452\nsyscw: 872\nread_bytes: 4096\nwrite_bytes: 95657984\ncancelled_write_bytes: 32768\n"
+    }
+  ],
+  "pip_unpack_files": [
+    {
+      "name": "sympy-1.14.0-py3-none-any.whl.metadata",
+      "bytes": 12816
+    },
+    {
+      "name": "typing_extensions-4.16.0-py3-none-any.whl.metadata",
+      "bytes": 3310
+    },
+    {
+      "name": "networkx-3.6.1-py3-none-any.whl.metadata",
+      "bytes": 6783
+    },
+    {
+      "name": "jinja2-3.1.6-py3-none-any.whl.metadata",
+      "bytes": 2871
+    },
+    {
+      "name": "torch-2.13.0+cpu-cp312-cp312-manylinux_2_28_aarch64.whl",
+      "bytes": 86769664
+    },
+    {
+      "name": "mpmath-1.3.0-py3-none-any.whl.metadata",
+      "bytes": 8630
+    },
+    {
+      "name": "setuptools-78.1.0-py3-none-any.whl.metadata",
+      "bytes": 6599
+    },
+    {
+      "name": "fsspec-2026.7.0-py3-none-any.whl.metadata",
+      "bytes": 10561
+    },
+    {
+      "name": "markupsafe-3.0.3-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl.metadata",
+      "bytes": 2690
+    },
+    {
+      "name": "torch-2.13.0+cpu-cp312-cp312-manylinux_2_28_aarch64.whl.metadata",
+      "bytes": 37906
+    },
+    {
+      "name": "filelock-3.32.3-py3-none-any.whl.metadata",
+      "bytes": 2028
+    }
+  ],
+  "inspection_scope": "Process timing/I/O counters and pip temporary file sizes only; no environment, credentials, or runtime intervention."
+}

@@ -1,0 +1,14 @@
+{
+  "container": "ipfs-native-deploy-1791015700-main-1",
+  "HostConfig": {
+    "NanoCpus": 5000000000,
+    "Memory": 12884901888,
+    "MemorySwap": 25769803776
+  },
+  "cgroup": {
+    "cpu.max": "500000 100000",
+    "memory.max": "12884901888",
+    "memory.current": "667590656"
+  },
+  "phase": "early deployment; not a native admission decision"
+}

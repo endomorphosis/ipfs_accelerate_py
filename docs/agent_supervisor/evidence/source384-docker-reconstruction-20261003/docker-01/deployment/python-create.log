@@ -1,0 +1,3 @@
+Using CPython 3.12.12
+Creating virtual environment with seed packages at: /opt/ipfs-supervisor/venv
+ + pip==26.2.1

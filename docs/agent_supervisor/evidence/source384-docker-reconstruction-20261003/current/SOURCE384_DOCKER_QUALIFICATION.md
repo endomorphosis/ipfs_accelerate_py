@@ -133,7 +133,7 @@ source-qualified proof claim.
 
 A fifth fresh run added the bounded immutable manifest reconstruction cache and
 closed catalog serialization checks, keeping the original 218 inputs, 5 CPUs,
-12288 MiB and 90-second Source384 preparation budget. Archive SHA256 was
+12288 MiB and 90-second context budget. Archive SHA256 was
 `43ba7c9bc830b9c6c684589db15ddad25a37339014a5287d41a962c10d98f9c3`.
 Deployment passed in 1109.51 seconds, including a slow dependency download;
 read-only samples showed the pinned PyTorch wheel growing by 17.56 MB over

@@ -1,0 +1,10 @@
+{
+  "root_go_received": true,
+  "current_producer_component_tests_passed": true,
+  "consumer_test_prefix": "qualified-manifest-final",
+  "resource_profile": "source384-5cpu-12gib@1",
+  "native_context_seconds": 90,
+  "provider_calls_allowed": 0,
+  "archive_sha256": "43ba7c9bc830b9c6c684589db15ddad25a37339014a5287d41a962c10d98f9c3",
+  "archive_source_pins_verified": true
+}
