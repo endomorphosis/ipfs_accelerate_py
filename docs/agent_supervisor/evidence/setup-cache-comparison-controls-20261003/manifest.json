@@ -1,0 +1,95 @@
+{
+  "schema": "setup-cache-comparison-controls-evidence@1",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 2541,
+      "sha256": "b1955547319de1b995d30d79016e167fc0483a9563d4f4854c7e5d7324a72ff6"
+    },
+    {
+      "path": "before/benchmark_controls.py",
+      "bytes": 8836,
+      "sha256": "d794095d7e2eb67ebad3987cdde69c09ef6d8f1c16c517c63377bda2dbb79080"
+    },
+    {
+      "path": "build_evidence.py",
+      "bytes": 4476,
+      "sha256": "a23ec4174f48ee8db10aac0e69a068ae6f198cf2c73a6c8000f45de6fb117ebe"
+    },
+    {
+      "path": "controls-01-command.json",
+      "bytes": 1890,
+      "sha256": "5f2a52350bf2bd964b7aa1f858acf3bf24ffcb544844ba7b8d2f83205e2eb416"
+    },
+    {
+      "path": "controls-01-exit.json",
+      "bytes": 737,
+      "sha256": "140c4530b56c04ef3af926685ce610d3a878de3d398f9e1ed406068bab07e6a9"
+    },
+    {
+      "path": "controls-01.log",
+      "bytes": 90,
+      "sha256": "91cd570cb57f28d1c79ff2f7575321ea9a7c51ecb3eac84fba8c1962f5af846e"
+    },
+    {
+      "path": "controls-02-command.json",
+      "bytes": 2011,
+      "sha256": "9c52a92e26b51f8d75544bdc8ba9a96a0802516d9e88323ccd4f3b1b8a259e85"
+    },
+    {
+      "path": "controls-02-exit.json",
+      "bytes": 734,
+      "sha256": "b40662032d6434f7500ade84b6f00ddf3b0d554447e52d21bcf49ee67710e229"
+    },
+    {
+      "path": "controls-02.log",
+      "bytes": 11842,
+      "sha256": "da3371d6351e28a9e18ff5256502f96953ee5f45dd85000ce12d80693a8a2212"
+    },
+    {
+      "path": "controls-02.xml",
+      "bytes": 11761,
+      "sha256": "e1f9695eaf9d6026461d79b2a1d91f13ec9af130b1564f8a6b260c7e7cbd92ac"
+    },
+    {
+      "path": "correction.json",
+      "bytes": 1527,
+      "sha256": "27ac685b5ba0f81dbcbb85a12e355029163ef0f1cdb23783a39fb604b388a213"
+    },
+    {
+      "path": "final-sources/benchmark_controls.py",
+      "bytes": 9483,
+      "sha256": "2c804bd7b41aa67651e4b5feea8ea3fe3cc02a81cc0d5be3755b9fd521819f21"
+    },
+    {
+      "path": "final-sources/test_setup_cache_comparison_controls.py",
+      "bytes": 5773,
+      "sha256": "b1ebbac8b2722374d2796ec78312b7d0e8ed471afc7511d5d4055793af0d517b"
+    },
+    {
+      "path": "legacy-golden-before.json",
+      "bytes": 39297,
+      "sha256": "faf71dc2f114b8edaa4e27e2608f6159f372b5a6fa4456845bf4d67c9ca175e7"
+    },
+    {
+      "path": "prepare-exit.json",
+      "bytes": 53,
+      "sha256": "9f0246461a3eade367ceb07d0b86a4efd5513154443c04abb93305d39a0da05f"
+    },
+    {
+      "path": "prepare.stderr",
+      "bytes": 1324,
+      "sha256": "7a234b5a612d33777e6271ee1d8e3f69e21a13c3aec8b1a729fd6383f68ff8b4"
+    },
+    {
+      "path": "run_controls-01.py",
+      "bytes": 1484,
+      "sha256": "8e1af5ce2707f9f592e1bbf820a16c4d6fabbb4abca0726ef72c2b275fc41eca"
+    },
+    {
+      "path": "run_controls.py",
+      "bytes": 1608,
+      "sha256": "9ec1d05a9287c0180a294573386f2fbb96597618b08879936bb4493273f1ca06"
+    }
+  ]
+}

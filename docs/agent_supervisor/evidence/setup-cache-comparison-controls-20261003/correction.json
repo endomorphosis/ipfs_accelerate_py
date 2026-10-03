@@ -1,0 +1,25 @@
+{
+  "schema": "setup-cache-comparison-controls-correction@1",
+  "owner_path": "benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+  "owner_sha256": "2c804bd7b41aa67651e4b5feea8ea3fe3cc02a81cc0d5be3755b9fd521819f21",
+  "test_path": "benchmarks/agent_supervisor/container_coding/test_setup_cache_comparison_controls.py",
+  "test_sha256": "b1ebbac8b2722374d2796ec78312b7d0e8ed471afc7511d5d4055793af0d517b",
+  "actual_tests": 59,
+  "skips": 0,
+  "pytest_seconds": 20.85,
+  "first_prepare_failure": "unsupported supervisor kwargs require a new comparison profile",
+  "first_failure_stage": "host preparation before task/agent execution",
+  "provider_calls": 0,
+  "model_calls": 0,
+  "benchmark_task_executed": false,
+  "preserved_contracts": [
+    "closed supported selection shape",
+    "full arm and supported resource profile",
+    "native resource profile validation",
+    "complete configuration digest binds selected manifest/policy",
+    "unchanged schema and absent-selection legacy digests",
+    "common comparison only; no runtime/setup work equivalence"
+  ],
+  "archive_reuse_scope": "Host-only declaration owner; not among33 frozen runtime pins. Container driver/qualifier/preparation/deployment do not import host benchmark controller/baseline/comparison. Host Harbor adapter imports baseline/controller constants/helpers normally.",
+  "failed_test_launcher": "controls-01: Harbor virtualenv lacked pytest; no tests collected. controls-02 used existing installed pytest paths without installation."
+}

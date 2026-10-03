@@ -1,0 +1,554 @@
+{
+  "None:native:False": {
+    "schema": "terminal-benchmark-declared-controls@1",
+    "configuration_sha256": "bb3201b943a13927d10831d3d2bfa0c6a73c39b35a2bc4765e0b571f0cd2c8db",
+    "identity": {
+      "task": "fix-code-vulnerability",
+      "model": "gpt-5.6-sol",
+      "reasoning_effort": "high",
+      "cli_version": "0.158.0"
+    },
+    "task_input_sha256": {
+      "environment/Dockerfile": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "instruction.md": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "task.toml": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "tests/test.sh": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    },
+    "job_controls_sha256": {
+      "n_attempts": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "n_concurrent_trials": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "retry": "244f8551a4751fb718e7a69bd570062cb1d578f1ae0d5e14cb62184992b416a1",
+      "timeout_multiplier": "d0ff5974b6aa52cf562bea5921840c032a860a91a3512f7fe8f768f6bbe005f6",
+      "agent_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "agent_setup_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "environment_build_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "verifier_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "environment": "97c992dc12e4ae16bb5ab1ef45af9406a6a5c42a596efc1e16c3ee2ce0ec8c13",
+      "verifier": "210a272d6475c4a5ab5b0a598c9491d4a58304031df2ab6a87d1895cc50ed732",
+      "extra_instruction_paths": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "extra_instructions": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "install_only": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "source_jobs": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "datasets": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+    },
+    "agent_controls_sha256": {
+      "override_timeout_sec": "a970559125d5ccd0dbbbb7685636bbcae5ce7cac4e8d1c6954d2467616a9db8c",
+      "max_timeout_sec": "a970559125d5ccd0dbbbb7685636bbcae5ce7cac4e8d1c6954d2467616a9db8c",
+      "override_setup_timeout_sec": "e187ca9fa2aca75697ea6cf9c0e54878d5f5ac2e42bb992a9d2dd4612aeb51cc",
+      "n_concurrent": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "concurrency_group": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "mcp_servers": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "skills": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "extra_allowed_hosts": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "load_trajectory": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "resume_trajectory": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+    },
+    "sha256": "66af6d6afb639666d6bc61014ce289fe25f55816a7ce4747db90f34ee63e43a1"
+  },
+  "None:native:True": {
+    "schema": "terminal-benchmark-declared-controls@1",
+    "configuration_sha256": "0db4b3f64ea04ff2934d7ff2757974ee38a79fd1e07029dd8dd8e656131f1403",
+    "identity": {
+      "task": "fix-code-vulnerability",
+      "model": "gpt-5.6-sol",
+      "reasoning_effort": "high",
+      "cli_version": "0.158.0"
+    },
+    "task_input_sha256": {
+      "environment/Dockerfile": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "instruction.md": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "task.toml": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "tests/test.sh": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    },
+    "job_controls_sha256": {
+      "n_attempts": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "n_concurrent_trials": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "retry": "a2e3b248d96a8de853baeac07d93d04ea8e77c51621e3cc6f471b1367c5171fa",
+      "timeout_multiplier": "d0ff5974b6aa52cf562bea5921840c032a860a91a3512f7fe8f768f6bbe005f6",
+      "agent_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "agent_setup_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "environment_build_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "verifier_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "environment": "3993304550936a3d038ff4b2c32e72792486a0df71c1dedf7a71aab67d246002",
+      "verifier": "3a4894f9a23401048605d9f0daf82c03823697d96457b033899b707ced571767",
+      "extra_instruction_paths": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "extra_instructions": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "install_only": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+      "source_jobs": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "datasets": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "agent_controls_sha256": {
+      "override_timeout_sec": "a970559125d5ccd0dbbbb7685636bbcae5ce7cac4e8d1c6954d2467616a9db8c",
+      "max_timeout_sec": "a970559125d5ccd0dbbbb7685636bbcae5ce7cac4e8d1c6954d2467616a9db8c",
+      "override_setup_timeout_sec": "e187ca9fa2aca75697ea6cf9c0e54878d5f5ac2e42bb992a9d2dd4612aeb51cc",
+      "n_concurrent": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "concurrency_group": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "mcp_servers": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "skills": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "extra_allowed_hosts": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "load_trajectory": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "resume_trajectory": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa"
+    },
+    "sha256": "2c50df7e53e242286d5117fd280c0d0bad3a990951875d95f48e33035bf32265"
+  },
+  "None:full:False": {
+    "schema": "terminal-benchmark-declared-controls@1",
+    "configuration_sha256": "3caba506446e839ac7b9ad36abd8321f4dc8ee8c24224278310b619c852a679f",
+    "identity": {
+      "task": "fix-code-vulnerability",
+      "model": "gpt-5.6-sol",
+      "reasoning_effort": "high",
+      "cli_version": "0.158.0"
+    },
+    "task_input_sha256": {
+      "environment/Dockerfile": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "instruction.md": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "task.toml": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "tests/test.sh": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    },
+    "job_controls_sha256": {
+      "n_attempts": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "n_concurrent_trials": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "retry": "244f8551a4751fb718e7a69bd570062cb1d578f1ae0d5e14cb62184992b416a1",
+      "timeout_multiplier": "d0ff5974b6aa52cf562bea5921840c032a860a91a3512f7fe8f768f6bbe005f6",
+      "agent_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "agent_setup_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "environment_build_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "verifier_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "environment": "97c992dc12e4ae16bb5ab1ef45af9406a6a5c42a596efc1e16c3ee2ce0ec8c13",
+      "verifier": "210a272d6475c4a5ab5b0a598c9491d4a58304031df2ab6a87d1895cc50ed732",
+      "extra_instruction_paths": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "extra_instructions": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "install_only": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "source_jobs": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "datasets": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+    },
+    "agent_controls_sha256": {
+      "override_timeout_sec": "a970559125d5ccd0dbbbb7685636bbcae5ce7cac4e8d1c6954d2467616a9db8c",
+      "max_timeout_sec": "a970559125d5ccd0dbbbb7685636bbcae5ce7cac4e8d1c6954d2467616a9db8c",
+      "override_setup_timeout_sec": "e187ca9fa2aca75697ea6cf9c0e54878d5f5ac2e42bb992a9d2dd4612aeb51cc",
+      "n_concurrent": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "concurrency_group": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "mcp_servers": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "skills": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "extra_allowed_hosts": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "load_trajectory": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "resume_trajectory": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+    },
+    "sha256": "5e1a5d434d0287a8ea6d2fe2a5a7fff6a2de4c6d97c51583f3562f68d718cc8c"
+  },
+  "None:full:True": {
+    "schema": "terminal-benchmark-declared-controls@1",
+    "configuration_sha256": "bc4df6ade6036ce594455ff5b9e3ae6f41a52f164a1acd3366010d4a195b95b3",
+    "identity": {
+      "task": "fix-code-vulnerability",
+      "model": "gpt-5.6-sol",
+      "reasoning_effort": "high",
+      "cli_version": "0.158.0"
+    },
+    "task_input_sha256": {
+      "environment/Dockerfile": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "instruction.md": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "task.toml": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "tests/test.sh": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    },
+    "job_controls_sha256": {
+      "n_attempts": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "n_concurrent_trials": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "retry": "a2e3b248d96a8de853baeac07d93d04ea8e77c51621e3cc6f471b1367c5171fa",
+      "timeout_multiplier": "d0ff5974b6aa52cf562bea5921840c032a860a91a3512f7fe8f768f6bbe005f6",
+      "agent_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "agent_setup_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "environment_build_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "verifier_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "environment": "3993304550936a3d038ff4b2c32e72792486a0df71c1dedf7a71aab67d246002",
+      "verifier": "3a4894f9a23401048605d9f0daf82c03823697d96457b033899b707ced571767",
+      "extra_instruction_paths": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "extra_instructions": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "install_only": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+      "source_jobs": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "datasets": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "agent_controls_sha256": {
+      "override_timeout_sec": "a970559125d5ccd0dbbbb7685636bbcae5ce7cac4e8d1c6954d2467616a9db8c",
+      "max_timeout_sec": "a970559125d5ccd0dbbbb7685636bbcae5ce7cac4e8d1c6954d2467616a9db8c",
+      "override_setup_timeout_sec": "e187ca9fa2aca75697ea6cf9c0e54878d5f5ac2e42bb992a9d2dd4612aeb51cc",
+      "n_concurrent": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "concurrency_group": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "mcp_servers": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "skills": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "extra_allowed_hosts": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "load_trajectory": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "resume_trajectory": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa"
+    },
+    "sha256": "395bb96889b26e04031a01ade1c9f3096bfc615416019b005cb1f1d3baa64061"
+  },
+  "None:no-index:False": {
+    "schema": "terminal-benchmark-declared-controls@1",
+    "configuration_sha256": "875da3a0d44ae10cb1e25d5a1b0e2adf26ba25a8b9dfd36f406bc1eac64fa973",
+    "identity": {
+      "task": "fix-code-vulnerability",
+      "model": "gpt-5.6-sol",
+      "reasoning_effort": "high",
+      "cli_version": "0.158.0"
+    },
+    "task_input_sha256": {
+      "environment/Dockerfile": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "instruction.md": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "task.toml": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "tests/test.sh": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    },
+    "job_controls_sha256": {
+      "n_attempts": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "n_concurrent_trials": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "retry": "244f8551a4751fb718e7a69bd570062cb1d578f1ae0d5e14cb62184992b416a1",
+      "timeout_multiplier": "d0ff5974b6aa52cf562bea5921840c032a860a91a3512f7fe8f768f6bbe005f6",
+      "agent_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "agent_setup_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "environment_build_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "verifier_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "environment": "97c992dc12e4ae16bb5ab1ef45af9406a6a5c42a596efc1e16c3ee2ce0ec8c13",
+      "verifier": "210a272d6475c4a5ab5b0a598c9491d4a58304031df2ab6a87d1895cc50ed732",
+      "extra_instruction_paths": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "extra_instructions": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "install_only": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "source_jobs": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "datasets": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+    },
+    "agent_controls_sha256": {
+      "override_timeout_sec": "a970559125d5ccd0dbbbb7685636bbcae5ce7cac4e8d1c6954d2467616a9db8c",
+      "max_timeout_sec": "a970559125d5ccd0dbbbb7685636bbcae5ce7cac4e8d1c6954d2467616a9db8c",
+      "override_setup_timeout_sec": "e187ca9fa2aca75697ea6cf9c0e54878d5f5ac2e42bb992a9d2dd4612aeb51cc",
+      "n_concurrent": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "concurrency_group": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "mcp_servers": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "skills": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "extra_allowed_hosts": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "load_trajectory": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "resume_trajectory": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+    },
+    "sha256": "3796aefc6a391cb5dd02812a2e5eac1997ac12ff8b40b931a786a74d5aee5bc5"
+  },
+  "None:no-index:True": {
+    "schema": "terminal-benchmark-declared-controls@1",
+    "configuration_sha256": "051d63eff5ce9de62ae942193b16fc86d2847097bca7103ccfa83d65b4b4f05d",
+    "identity": {
+      "task": "fix-code-vulnerability",
+      "model": "gpt-5.6-sol",
+      "reasoning_effort": "high",
+      "cli_version": "0.158.0"
+    },
+    "task_input_sha256": {
+      "environment/Dockerfile": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "instruction.md": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "task.toml": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "tests/test.sh": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    },
+    "job_controls_sha256": {
+      "n_attempts": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "n_concurrent_trials": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "retry": "a2e3b248d96a8de853baeac07d93d04ea8e77c51621e3cc6f471b1367c5171fa",
+      "timeout_multiplier": "d0ff5974b6aa52cf562bea5921840c032a860a91a3512f7fe8f768f6bbe005f6",
+      "agent_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "agent_setup_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "environment_build_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "verifier_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "environment": "3993304550936a3d038ff4b2c32e72792486a0df71c1dedf7a71aab67d246002",
+      "verifier": "3a4894f9a23401048605d9f0daf82c03823697d96457b033899b707ced571767",
+      "extra_instruction_paths": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "extra_instructions": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "install_only": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+      "source_jobs": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "datasets": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "agent_controls_sha256": {
+      "override_timeout_sec": "a970559125d5ccd0dbbbb7685636bbcae5ce7cac4e8d1c6954d2467616a9db8c",
+      "max_timeout_sec": "a970559125d5ccd0dbbbb7685636bbcae5ce7cac4e8d1c6954d2467616a9db8c",
+      "override_setup_timeout_sec": "e187ca9fa2aca75697ea6cf9c0e54878d5f5ac2e42bb992a9d2dd4612aeb51cc",
+      "n_concurrent": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "concurrency_group": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "mcp_servers": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "skills": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "extra_allowed_hosts": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "load_trajectory": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "resume_trajectory": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa"
+    },
+    "sha256": "63f1d04bd2ae565d54c027fdfd8b043b7c1825216cad6f562d2f6b7c644d8f9e"
+  },
+  "source384-5cpu-12gib@1:native:False": {
+    "schema": "terminal-benchmark-declared-controls@1",
+    "configuration_sha256": "0c336b52c3fab840fefbbc9472518c915f1f840261f6913fedcf02e2e8e251ed",
+    "identity": {
+      "task": "fix-code-vulnerability",
+      "model": "gpt-5.6-sol",
+      "reasoning_effort": "high",
+      "cli_version": "0.158.0"
+    },
+    "task_input_sha256": {
+      "environment/Dockerfile": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "instruction.md": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "task.toml": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "tests/test.sh": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    },
+    "job_controls_sha256": {
+      "n_attempts": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "n_concurrent_trials": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "retry": "244f8551a4751fb718e7a69bd570062cb1d578f1ae0d5e14cb62184992b416a1",
+      "timeout_multiplier": "d0ff5974b6aa52cf562bea5921840c032a860a91a3512f7fe8f768f6bbe005f6",
+      "agent_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "agent_setup_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "environment_build_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "verifier_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "environment": "ecb35a63e445a6e3d9c4850906aac65559bdee3cf09e7e8c9a06cb0d71a720a0",
+      "verifier": "210a272d6475c4a5ab5b0a598c9491d4a58304031df2ab6a87d1895cc50ed732",
+      "extra_instruction_paths": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "extra_instructions": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "install_only": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "source_jobs": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "datasets": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+    },
+    "agent_controls_sha256": {
+      "override_timeout_sec": "a970559125d5ccd0dbbbb7685636bbcae5ce7cac4e8d1c6954d2467616a9db8c",
+      "max_timeout_sec": "a970559125d5ccd0dbbbb7685636bbcae5ce7cac4e8d1c6954d2467616a9db8c",
+      "override_setup_timeout_sec": "e187ca9fa2aca75697ea6cf9c0e54878d5f5ac2e42bb992a9d2dd4612aeb51cc",
+      "n_concurrent": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "concurrency_group": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "mcp_servers": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "skills": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "extra_allowed_hosts": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "load_trajectory": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "resume_trajectory": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+    },
+    "sha256": "e72a33f06b429631d3a2cbe9bccf548d418fece7c6eea45dfa12de1db157aa1e"
+  },
+  "source384-5cpu-12gib@1:native:True": {
+    "schema": "terminal-benchmark-declared-controls@1",
+    "configuration_sha256": "1537190f5162a697d899270defdc6fa21c43f250cfb260cdf2590a8803a1240c",
+    "identity": {
+      "task": "fix-code-vulnerability",
+      "model": "gpt-5.6-sol",
+      "reasoning_effort": "high",
+      "cli_version": "0.158.0"
+    },
+    "task_input_sha256": {
+      "environment/Dockerfile": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "instruction.md": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "task.toml": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "tests/test.sh": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    },
+    "job_controls_sha256": {
+      "n_attempts": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "n_concurrent_trials": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "retry": "a2e3b248d96a8de853baeac07d93d04ea8e77c51621e3cc6f471b1367c5171fa",
+      "timeout_multiplier": "d0ff5974b6aa52cf562bea5921840c032a860a91a3512f7fe8f768f6bbe005f6",
+      "agent_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "agent_setup_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "environment_build_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "verifier_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "environment": "948caa40a3e4558738ced1d8c838749c87ec539ed848e343f01d7fa05058483b",
+      "verifier": "3a4894f9a23401048605d9f0daf82c03823697d96457b033899b707ced571767",
+      "extra_instruction_paths": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "extra_instructions": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "install_only": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+      "source_jobs": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "datasets": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "agent_controls_sha256": {
+      "override_timeout_sec": "a970559125d5ccd0dbbbb7685636bbcae5ce7cac4e8d1c6954d2467616a9db8c",
+      "max_timeout_sec": "a970559125d5ccd0dbbbb7685636bbcae5ce7cac4e8d1c6954d2467616a9db8c",
+      "override_setup_timeout_sec": "e187ca9fa2aca75697ea6cf9c0e54878d5f5ac2e42bb992a9d2dd4612aeb51cc",
+      "n_concurrent": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "concurrency_group": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "mcp_servers": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "skills": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "extra_allowed_hosts": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "load_trajectory": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "resume_trajectory": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa"
+    },
+    "sha256": "13c3b054a633eb6b6a28bf064020c8041c1bdb18594e7de56b376cf12b1fd3d4"
+  },
+  "source384-5cpu-12gib@1:full:False": {
+    "schema": "terminal-benchmark-declared-controls@1",
+    "configuration_sha256": "5738eb3ad7df0fb090189b6fdabf22ea52a693bfc2f38b34211c7c859dbfa3bf",
+    "identity": {
+      "task": "fix-code-vulnerability",
+      "model": "gpt-5.6-sol",
+      "reasoning_effort": "high",
+      "cli_version": "0.158.0"
+    },
+    "task_input_sha256": {
+      "environment/Dockerfile": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "instruction.md": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "task.toml": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "tests/test.sh": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    },
+    "job_controls_sha256": {
+      "n_attempts": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "n_concurrent_trials": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "retry": "244f8551a4751fb718e7a69bd570062cb1d578f1ae0d5e14cb62184992b416a1",
+      "timeout_multiplier": "d0ff5974b6aa52cf562bea5921840c032a860a91a3512f7fe8f768f6bbe005f6",
+      "agent_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "agent_setup_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "environment_build_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "verifier_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "environment": "ecb35a63e445a6e3d9c4850906aac65559bdee3cf09e7e8c9a06cb0d71a720a0",
+      "verifier": "210a272d6475c4a5ab5b0a598c9491d4a58304031df2ab6a87d1895cc50ed732",
+      "extra_instruction_paths": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "extra_instructions": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "install_only": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "source_jobs": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "datasets": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+    },
+    "agent_controls_sha256": {
+      "override_timeout_sec": "a970559125d5ccd0dbbbb7685636bbcae5ce7cac4e8d1c6954d2467616a9db8c",
+      "max_timeout_sec": "a970559125d5ccd0dbbbb7685636bbcae5ce7cac4e8d1c6954d2467616a9db8c",
+      "override_setup_timeout_sec": "e187ca9fa2aca75697ea6cf9c0e54878d5f5ac2e42bb992a9d2dd4612aeb51cc",
+      "n_concurrent": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "concurrency_group": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "mcp_servers": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "skills": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "extra_allowed_hosts": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "load_trajectory": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "resume_trajectory": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+    },
+    "sha256": "9c27af01c108ae793ce725bdc71f726ba24d5f58cd50969cd50a57da392e7e39"
+  },
+  "source384-5cpu-12gib@1:full:True": {
+    "schema": "terminal-benchmark-declared-controls@1",
+    "configuration_sha256": "50ebd9198efbdc97544756df2007e13cac9b48a11f2c6230d68fa02be2aeb7a8",
+    "identity": {
+      "task": "fix-code-vulnerability",
+      "model": "gpt-5.6-sol",
+      "reasoning_effort": "high",
+      "cli_version": "0.158.0"
+    },
+    "task_input_sha256": {
+      "environment/Dockerfile": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "instruction.md": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "task.toml": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "tests/test.sh": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    },
+    "job_controls_sha256": {
+      "n_attempts": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "n_concurrent_trials": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "retry": "a2e3b248d96a8de853baeac07d93d04ea8e77c51621e3cc6f471b1367c5171fa",
+      "timeout_multiplier": "d0ff5974b6aa52cf562bea5921840c032a860a91a3512f7fe8f768f6bbe005f6",
+      "agent_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "agent_setup_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "environment_build_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "verifier_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "environment": "948caa40a3e4558738ced1d8c838749c87ec539ed848e343f01d7fa05058483b",
+      "verifier": "3a4894f9a23401048605d9f0daf82c03823697d96457b033899b707ced571767",
+      "extra_instruction_paths": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "extra_instructions": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "install_only": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+      "source_jobs": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "datasets": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "agent_controls_sha256": {
+      "override_timeout_sec": "a970559125d5ccd0dbbbb7685636bbcae5ce7cac4e8d1c6954d2467616a9db8c",
+      "max_timeout_sec": "a970559125d5ccd0dbbbb7685636bbcae5ce7cac4e8d1c6954d2467616a9db8c",
+      "override_setup_timeout_sec": "e187ca9fa2aca75697ea6cf9c0e54878d5f5ac2e42bb992a9d2dd4612aeb51cc",
+      "n_concurrent": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "concurrency_group": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "mcp_servers": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "skills": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "extra_allowed_hosts": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "load_trajectory": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "resume_trajectory": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa"
+    },
+    "sha256": "241b92fa3423e97fb536ae886253e5d58404cf0c8ef83a06c03b51e7b7e13cc5"
+  },
+  "source384-5cpu-12gib@1:no-index:False": {
+    "schema": "terminal-benchmark-declared-controls@1",
+    "configuration_sha256": "a55925cc4d30e566fa61cb45f2f4134bc332d01c2f1324eacf3bf50aac071eed",
+    "identity": {
+      "task": "fix-code-vulnerability",
+      "model": "gpt-5.6-sol",
+      "reasoning_effort": "high",
+      "cli_version": "0.158.0"
+    },
+    "task_input_sha256": {
+      "environment/Dockerfile": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "instruction.md": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "task.toml": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "tests/test.sh": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    },
+    "job_controls_sha256": {
+      "n_attempts": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "n_concurrent_trials": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "retry": "244f8551a4751fb718e7a69bd570062cb1d578f1ae0d5e14cb62184992b416a1",
+      "timeout_multiplier": "d0ff5974b6aa52cf562bea5921840c032a860a91a3512f7fe8f768f6bbe005f6",
+      "agent_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "agent_setup_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "environment_build_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "verifier_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "environment": "ecb35a63e445a6e3d9c4850906aac65559bdee3cf09e7e8c9a06cb0d71a720a0",
+      "verifier": "210a272d6475c4a5ab5b0a598c9491d4a58304031df2ab6a87d1895cc50ed732",
+      "extra_instruction_paths": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "extra_instructions": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "install_only": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "source_jobs": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "datasets": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+    },
+    "agent_controls_sha256": {
+      "override_timeout_sec": "a970559125d5ccd0dbbbb7685636bbcae5ce7cac4e8d1c6954d2467616a9db8c",
+      "max_timeout_sec": "a970559125d5ccd0dbbbb7685636bbcae5ce7cac4e8d1c6954d2467616a9db8c",
+      "override_setup_timeout_sec": "e187ca9fa2aca75697ea6cf9c0e54878d5f5ac2e42bb992a9d2dd4612aeb51cc",
+      "n_concurrent": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "concurrency_group": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "mcp_servers": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "skills": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "extra_allowed_hosts": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "load_trajectory": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "resume_trajectory": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+    },
+    "sha256": "700ccd9dcdea021fecd4cada6af606fb48a74d35dcd218963b36999ef198cdc8"
+  },
+  "source384-5cpu-12gib@1:no-index:True": {
+    "schema": "terminal-benchmark-declared-controls@1",
+    "configuration_sha256": "59b566ae4baa722f26c9892bbb346ade35390b2ca0d6668f8db208217cef288e",
+    "identity": {
+      "task": "fix-code-vulnerability",
+      "model": "gpt-5.6-sol",
+      "reasoning_effort": "high",
+      "cli_version": "0.158.0"
+    },
+    "task_input_sha256": {
+      "environment/Dockerfile": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "instruction.md": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "task.toml": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "tests/test.sh": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    },
+    "job_controls_sha256": {
+      "n_attempts": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "n_concurrent_trials": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "retry": "a2e3b248d96a8de853baeac07d93d04ea8e77c51621e3cc6f471b1367c5171fa",
+      "timeout_multiplier": "d0ff5974b6aa52cf562bea5921840c032a860a91a3512f7fe8f768f6bbe005f6",
+      "agent_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "agent_setup_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "environment_build_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "verifier_timeout_multiplier": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "environment": "948caa40a3e4558738ced1d8c838749c87ec539ed848e343f01d7fa05058483b",
+      "verifier": "3a4894f9a23401048605d9f0daf82c03823697d96457b033899b707ced571767",
+      "extra_instruction_paths": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "extra_instructions": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "install_only": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+      "source_jobs": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "datasets": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "agent_controls_sha256": {
+      "override_timeout_sec": "a970559125d5ccd0dbbbb7685636bbcae5ce7cac4e8d1c6954d2467616a9db8c",
+      "max_timeout_sec": "a970559125d5ccd0dbbbb7685636bbcae5ce7cac4e8d1c6954d2467616a9db8c",
+      "override_setup_timeout_sec": "e187ca9fa2aca75697ea6cf9c0e54878d5f5ac2e42bb992a9d2dd4612aeb51cc",
+      "n_concurrent": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "concurrency_group": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "mcp_servers": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "skills": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "extra_allowed_hosts": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "load_trajectory": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "resume_trajectory": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa"
+    },
+    "sha256": "336a35591f499f399ecb0e2fcdb1a951b6764487434d0cd0ca354034579327c5"
+  }
+}

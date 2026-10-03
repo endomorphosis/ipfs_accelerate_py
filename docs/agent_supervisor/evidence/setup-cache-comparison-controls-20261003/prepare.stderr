@@ -1,0 +1,14 @@
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py", line 289, in <module>
+    main()
+  File "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py", line 278, in main
+    result = prepare(dataset=args.dataset, output=args.output, archive=args.archive, arm=args.arm,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py", line 180, in prepare
+    "comparison_controls": benchmark_controls.build_controls(
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/benchmark_controls.py", line 63, in build_controls
+    raise ValueError("unsupported supervisor kwargs require a new comparison profile")
+ValueError: unsupported supervisor kwargs require a new comparison profile

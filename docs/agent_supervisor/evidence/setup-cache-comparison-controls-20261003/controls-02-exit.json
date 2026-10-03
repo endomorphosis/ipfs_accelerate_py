@@ -1,0 +1,9 @@
+{
+  "exit_code": 0,
+  "seconds": 21.1701896119921,
+  "source_pins_after": {
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/benchmark_controls.py": "2c804bd7b41aa67651e4b5feea8ea3fe3cc02a81cc0d5be3755b9fd521819f21",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py": "87ff2074b4313801448c95ed70119d11cdf2c5af8f68a13320a75fe4978ff0d7",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_setup_cache_comparison_controls.py": "b1ebbac8b2722374d2796ec78312b7d0e8ed471afc7511d5d4055793af0d517b"
+  }
+}

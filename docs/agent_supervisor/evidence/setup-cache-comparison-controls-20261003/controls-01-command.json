@@ -1,0 +1,27 @@
+{
+  "argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_setup_cache_comparison_controls.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/setup-cache-comparison-controls-20261003/controls-01.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "environment": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/setup-cache-comparison-controls-20261003/controls-01-seal.duckdb",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1"
+  },
+  "source_pins": {
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/benchmark_controls.py": "2c804bd7b41aa67651e4b5feea8ea3fe3cc02a81cc0d5be3755b9fd521819f21",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py": "87ff2074b4313801448c95ed70119d11cdf2c5af8f68a13320a75fe4978ff0d7",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_setup_cache_comparison_controls.py": "b1ebbac8b2722374d2796ec78312b7d0e8ed471afc7511d5d4055793af0d517b"
+  },
+  "scope": "host-only declaration validation; no task execution, provider/model calls or Docker"
+}
