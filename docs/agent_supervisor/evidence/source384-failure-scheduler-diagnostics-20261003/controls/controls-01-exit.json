@@ -1,0 +1,12 @@
+{
+  "exit_code": 0,
+  "seconds": 0.6059763730008854,
+  "source_pins_after": {
+    "/home/barberb/lift_coding/artifacts/source384-failure-scheduler-diagnostics-20261003/proposed/benchmarks/agent_supervisor/container_coding/terminal_resource_diagnostics.py": "fd2b66f537fc2f8e44cd873b579c1a1c824cf34d076720ebf6874717c5e40a4c",
+    "/home/barberb/lift_coding/artifacts/source384-failure-scheduler-diagnostics-20261003/proposed/benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py": "d7d9ba338ba3cd226e318f445e9c561cf3e015be59642b8ee8414e5f87e1f25b",
+    "/home/barberb/lift_coding/artifacts/source384-failure-scheduler-diagnostics-20261003/proposed/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "688acea0a9017a901fd26cae42ae63f0d198418b9d0e27c1b22c6697e1caef19",
+    "/home/barberb/lift_coding/artifacts/source384-failure-scheduler-diagnostics-20261003/proposed/benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py": "38c9b5c7997488e35bc03f8f039278a68085b5cab9a97ee31e04a404ce4b7e01",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py": "556b0c27e09374c68341f38c4051d1e48a3545310a9c2d23eb986c9d2cdc2724",
+    "/home/barberb/lift_coding/artifacts/source384-failure-scheduler-diagnostics-20261003/run_controls.py": "c48e56c622d7ce0b148983f979f8c411821388cc7e4c52fa70f71856fa3161aa"
+  }
+}

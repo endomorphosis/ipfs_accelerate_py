@@ -137,11 +137,6 @@ def _failure_diagnostics(error: Exception, *, phase: str) -> dict:
         result["failure_resources"] = asdict(collect_proof_host_resources())
     except Exception as diagnostic_error:
         result["failure_resource_error"] = type(diagnostic_error).__name__[:128]
-    try:
-        from benchmarks.agent_supervisor.container_coding.terminal_resource_diagnostics import collect_failure_scheduler
-        result["failure_scheduler"] = collect_failure_scheduler()
-    except Exception:
-        result["failure_scheduler_error"] = "collection_unavailable"
     return result
 
 

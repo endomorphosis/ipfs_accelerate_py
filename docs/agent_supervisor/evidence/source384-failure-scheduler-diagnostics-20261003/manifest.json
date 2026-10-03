@@ -1,0 +1,145 @@
+{
+  "schema": "terminal-failure-scheduler-actual-evidence@1",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 2671,
+      "sha256": "545c52e54adcc8083ac8f1d55dfb42a4380aa15a8630c1cde95b2a370140f8d1"
+    },
+    {
+      "path": "before/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "bytes": 38012,
+      "sha256": "f19a4b733847389a4c99e752e442257a021cb34be467ac56bfe62aa631d89ddf"
+    },
+    {
+      "path": "before/benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py",
+      "bytes": 12062,
+      "sha256": "9ea34e3c4c63644f86d013d52e7969357b1ad4b063de109dd72ecc7e11644b18"
+    },
+    {
+      "path": "build_actual_evidence.py",
+      "bytes": 6307,
+      "sha256": "66399cc3e0c043d1c12694c828fd24d12e08a16de8aa16f55c5d3ef5c3322691"
+    },
+    {
+      "path": "controls/actual-02-command.json",
+      "bytes": 3555,
+      "sha256": "defc7283e0211f7dba1b47954d11241e72c65b918e88d5b41208c7c0d44f517c"
+    },
+    {
+      "path": "controls/actual-02-exit.json",
+      "bytes": 1383,
+      "sha256": "b1d52e7dcf6a28b3f8a001d313bf592fd52e48ced4af1ba4df0bfbbeac5e4cc6"
+    },
+    {
+      "path": "controls/actual-02.log",
+      "bytes": 10752,
+      "sha256": "26bcb4cf515285e63be175a425ad037e78db827d0caee0c88bc8225cfcffe27a"
+    },
+    {
+      "path": "controls/actual-02.xml",
+      "bytes": 11682,
+      "sha256": "d428b5799e158102c908587b14301e47f17cfe36246c27a8f46c5750de432e04"
+    },
+    {
+      "path": "controls/actual-03-command.json",
+      "bytes": 3707,
+      "sha256": "681ac6a67a389e722d297c0f67858bb590dbd760a623908a68e53417a4ee53ed"
+    },
+    {
+      "path": "controls/actual-03-exit.json",
+      "bytes": 1383,
+      "sha256": "cb18c6ae07df0a03ffa52df8b1fa13b89a20355c4b097ccbc1566fa1dbb8e26b"
+    },
+    {
+      "path": "controls/actual-03.log",
+      "bytes": 10728,
+      "sha256": "81c0c237234ec499eb76759a1486c9254199de330dddb854a20fde7324cabdd7"
+    },
+    {
+      "path": "controls/actual-03.xml",
+      "bytes": 7802,
+      "sha256": "325c912566e1d425b6316ecf9ed4b0d2bb67ee352df67b1feedb1680f4c88fbc"
+    },
+    {
+      "path": "controls/controls-01-command.json",
+      "bytes": 2692,
+      "sha256": "bebea82ff652ebb1f4e54f3aca2302a944006b8b074401f7ab949177ade01510"
+    },
+    {
+      "path": "controls/controls-01-exit.json",
+      "bytes": 1480,
+      "sha256": "4c0635b5f091ab6bfce0c37a8102d1803210e92508a11066502ebcd43a06d15f"
+    },
+    {
+      "path": "controls/controls-01.log",
+      "bytes": 113,
+      "sha256": "175f5ebac67dff2c87ce226432ae7c5444fc82640993c710c6432bfdd299c189"
+    },
+    {
+      "path": "controls/controls-01.xml",
+      "bytes": 10064,
+      "sha256": "a9c58f261a8aec75c9ade2b1ea9309a54448601619f6db33ba75248815c7952d"
+    },
+    {
+      "path": "final-pins.json",
+      "bytes": 1373,
+      "sha256": "cc6497f7acab7a269383977983ead95cf0460ddbce122f71fb56469a4c4015b7"
+    },
+    {
+      "path": "final-sources/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "bytes": 38299,
+      "sha256": "688acea0a9017a901fd26cae42ae63f0d198418b9d0e27c1b22c6697e1caef19"
+    },
+    {
+      "path": "final-sources/benchmarks/agent_supervisor/container_coding/terminal_resource_diagnostics.py",
+      "bytes": 4943,
+      "sha256": "469734c89c427b9bb277ea5cb58ef4a45ac1cd7ae15122b03c5d6d58d5710895"
+    },
+    {
+      "path": "final-sources/benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py",
+      "bytes": 12319,
+      "sha256": "d7d9ba338ba3cd226e318f445e9c561cf3e015be59642b8ee8414e5f87e1f25b"
+    },
+    {
+      "path": "final-sources/benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py",
+      "bytes": 9096,
+      "sha256": "38c9b5c7997488e35bc03f8f039278a68085b5cab9a97ee31e04a404ce4b7e01"
+    },
+    {
+      "path": "native-shape-review.json",
+      "bytes": 1813,
+      "sha256": "1b1bb7597ad5262dab761c0e7cbc50ce5eeb83685d130b3e7511693fd8ad933d"
+    },
+    {
+      "path": "previous-helper/terminal_resource_diagnostics.py",
+      "bytes": 4946,
+      "sha256": "fd2b66f537fc2f8e44cd873b579c1a1c824cf34d076720ebf6874717c5e40a4c"
+    },
+    {
+      "path": "production.patch",
+      "bytes": 16833,
+      "sha256": "b2c0d0dcdb73aaa5fb7c3f6d9b4b2cb177d1987308a39cd4d523fbc0d5bdc086"
+    },
+    {
+      "path": "qualification.json",
+      "bytes": 2350,
+      "sha256": "9839e5aa8b0eb7c49d925accd1461ce0277be64ff9bd53e853bad09d89cf3fa8"
+    },
+    {
+      "path": "run_actual_controls-02.py",
+      "bytes": 2335,
+      "sha256": "3064931272a466bce43fe2b1c1ddf8753eb81c30a9ac31bdd4e59accec4f2f3c"
+    },
+    {
+      "path": "run_actual_controls.py",
+      "bytes": 2372,
+      "sha256": "2a598083b662594e52bed557c1cb7578a5e00c6c529e435ea3133e7c14fcd5cf"
+    },
+    {
+      "path": "run_controls.py",
+      "bytes": 2039,
+      "sha256": "c48e56c622d7ce0b148983f979f8c411821388cc7e4c52fa70f71856fa3161aa"
+    }
+  ]
+}

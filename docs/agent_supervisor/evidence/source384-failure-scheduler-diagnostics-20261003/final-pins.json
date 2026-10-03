@@ -1,0 +1,33 @@
+{
+  "files": [
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "before_sha256": "f19a4b733847389a4c99e752e442257a021cb34be467ac56bfe62aa631d89ddf",
+      "after_sha256": "688acea0a9017a901fd26cae42ae63f0d198418b9d0e27c1b22c6697e1caef19"
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_resource_diagnostics.py",
+      "before_sha256": null,
+      "after_sha256": "469734c89c427b9bb277ea5cb58ef4a45ac1cd7ae15122b03c5d6d58d5710895"
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py",
+      "before_sha256": "9ea34e3c4c63644f86d013d52e7969357b1ad4b063de109dd72ecc7e11644b18",
+      "after_sha256": "d7d9ba338ba3cd226e318f445e9c561cf3e015be59642b8ee8414e5f87e1f25b"
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py",
+      "before_sha256": null,
+      "after_sha256": "38c9b5c7997488e35bc03f8f039278a68085b5cab9a97ee31e04a404ce4b7e01"
+    }
+  ],
+  "patch_sha256": "b2c0d0dcdb73aaa5fb7c3f6d9b4b2cb177d1987308a39cd4d523fbc0d5bdc086",
+  "live_A_mutated": true,
+  "tests": {
+    "passed": 39,
+    "skipped": 0,
+    "deselected": 1,
+    "pytest_seconds": 0.84,
+    "scope": "actual on-disk A; controlled snapshots/resources; no host sampling or native inference"
+  }
+}

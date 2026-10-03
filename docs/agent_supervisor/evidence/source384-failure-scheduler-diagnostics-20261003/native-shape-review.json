@@ -1,0 +1,54 @@
+{
+  "schema": "native-scheduler-snapshot-shape-review@1",
+  "reviewer": "restart_cid implementation owner",
+  "review_method": "read-only source and AST shape inspection; no native sampler or scheduler construction",
+  "git_head": "8879dce383b680de7d1643295af400b0f617eff0",
+  "native_owner_path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+  "native_owner_sha256": "9f4cf68dcaf21dbae8fd3b4d2bec8ee37480c6fe9c0bf35ed50f30d6cc2b7174",
+  "snapshot_line": 1696,
+  "snapshot_end_line": 1837,
+  "capacity_fields": [
+    "cpu_slots",
+    "memory_mb",
+    "usable_memory_mb",
+    "reserved_memory_mb",
+    "gpu_memory_mb",
+    "usable_gpu_memory_mb",
+    "reserved_gpu_memory_mb",
+    "unified_memory_mb",
+    "child_process_slots"
+  ],
+  "allocated_fields": [
+    "cpu_slots",
+    "memory_mb"
+  ],
+  "count_fields": [
+    "active_lease_count",
+    "active_root_lease_count",
+    "active_child_lease_count",
+    "waiting_request_count"
+  ],
+  "backoff_fields": [
+    "until",
+    "reason"
+  ],
+  "recovery_fields": [
+    "phase",
+    "healthy_samples",
+    "next_sample_at",
+    "next_grant_at",
+    "grants_remaining"
+  ],
+  "native_recovery_phases": [
+    "settling",
+    "paced"
+  ],
+  "private_registry_shape": "exact dict of process-local native facades plus threading.Lock",
+  "compatibility": "reviewed current native snapshot shape matches helper whitelist; missing or changed shape fails open diagnostically",
+  "important_limits": [
+    "snapshot performs normal stale-owner recovery under native ledger lock; it is not an immutable ledger read",
+    "no new timeout or configuration/admission policy is introduced",
+    "after-unwind observation is not exact admission history",
+    "native fields state_path, lanes, labels and any lease capabilities are never copied"
+  ]
+}

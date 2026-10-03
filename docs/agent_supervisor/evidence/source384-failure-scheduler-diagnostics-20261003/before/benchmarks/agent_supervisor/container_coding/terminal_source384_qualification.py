@@ -85,10 +85,6 @@ except BaseException as exc:
   from ipfs_datasets_py.optimizers.logic_theorem_optimizer.proof_resource_safety import collect_proof_host_resources
   result['failure_resources']=asdict(collect_proof_host_resources())
  except Exception as diagnostic_error: result['failure_resource_error']=type(diagnostic_error).__name__
- try:
-  from benchmarks.agent_supervisor.container_coding.terminal_resource_diagnostics import collect_failure_scheduler
-  result['failure_scheduler']=collect_failure_scheduler()
- except Exception: result['failure_scheduler_error']='collection_unavailable'
 finally:
  signal.setitimer(signal.ITIMER_REAL,0)
  result['seconds']=time.monotonic()-started

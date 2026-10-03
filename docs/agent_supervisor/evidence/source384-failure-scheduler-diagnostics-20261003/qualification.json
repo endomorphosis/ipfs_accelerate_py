@@ -1,0 +1,63 @@
+{
+  "schema": "terminal-failure-scheduler-actual-qualification@1",
+  "status": "applied_and_tested_not_committed_by_agent",
+  "final_source_pins": [
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "before_sha256": "f19a4b733847389a4c99e752e442257a021cb34be467ac56bfe62aa631d89ddf",
+      "after_sha256": "688acea0a9017a901fd26cae42ae63f0d198418b9d0e27c1b22c6697e1caef19"
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_resource_diagnostics.py",
+      "before_sha256": null,
+      "after_sha256": "469734c89c427b9bb277ea5cb58ef4a45ac1cd7ae15122b03c5d6d58d5710895"
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py",
+      "before_sha256": "9ea34e3c4c63644f86d013d52e7969357b1ad4b063de109dd72ecc7e11644b18",
+      "after_sha256": "d7d9ba338ba3cd226e318f445e9c561cf3e015be59642b8ee8414e5f87e1f25b"
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py",
+      "before_sha256": null,
+      "after_sha256": "38c9b5c7997488e35bc03f8f039278a68085b5cab9a97ee31e04a404ce4b7e01"
+    }
+  ],
+  "actual03": {
+    "passed": 39,
+    "skipped": 0,
+    "failed": 0,
+    "errors": 0,
+    "deselected": 1,
+    "pytest_seconds": 0.84,
+    "process_seconds": 1.0644948129920522,
+    "import_override": false,
+    "fresh_supported_ast_seal_database": true
+  },
+  "prior_actual02": {
+    "passed": 24,
+    "skipped": 15,
+    "skip_reason": "pytest AST seal matches",
+    "deselected": 1,
+    "retained_without_promoting_cached_skips_to_execution": true
+  },
+  "prior_off_tree01": {
+    "passed": 39,
+    "pytest_seconds": 0.48,
+    "helper_docstring_before_direct_ledger_clarification": true
+  },
+  "distinct_control_count": 39,
+  "scope": {
+    "controlled_scheduler": true,
+    "controlled_resource_samples": true,
+    "actual_native_sampler_case_explicitly_deselected": true,
+    "native_model_inference": false,
+    "docker": false,
+    "source_payload_exported": false,
+    "exact_admission_decision": false,
+    "causal_proof": false,
+    "resource_budgets_or_policy_changed": false
+  },
+  "compatibility_review": "native-shape-review.json",
+  "previous_off_tree_package_manifest_sha256": "c15e7882e74a33d4b90bf480507b6a6e9a8be44909aec45cc5b34ac073e7dc4a"
+}

@@ -1,0 +1,42 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "/home/barberb/lift_coding/artifacts/source384-failure-scheduler-diagnostics-20261003/run_actual_controls.py"
+  ],
+  "pytest_args": [
+    "-q",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py",
+    "-k",
+    "not test_actual_canonical_resource_probe_reports_only_finite_resource_values",
+    "--junitxml=/home/barberb/lift_coding/artifacts/source384-failure-scheduler-diagnostics-20261003/actual-03.xml"
+  ],
+  "source_pins": {
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/terminal_resource_diagnostics.py": "469734c89c427b9bb277ea5cb58ef4a45ac1cd7ae15122b03c5d6d58d5710895",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py": "d7d9ba338ba3cd226e318f445e9c561cf3e015be59642b8ee8414e5f87e1f25b",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "688acea0a9017a901fd26cae42ae63f0d198418b9d0e27c1b22c6697e1caef19",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py": "38c9b5c7997488e35bc03f8f039278a68085b5cab9a97ee31e04a404ce4b7e01",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py": "556b0c27e09374c68341f38c4051d1e48a3545310a9c2d23eb986c9d2cdc2724",
+    "/home/barberb/lift_coding/artifacts/source384-failure-scheduler-diagnostics-20261003/run_actual_controls.py": "2a598083b662594e52bed557c1cb7578a5e00c6c529e435ea3133e7c14fcd5cf"
+  },
+  "actual_loaded_modules": {
+    "benchmarks.agent_supervisor.container_coding.terminal_resource_diagnostics": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/terminal_resource_diagnostics.py",
+    "benchmarks.agent_supervisor.container_coding.terminal_source384_qualification": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py",
+    "benchmarks.agent_supervisor.container_coding.terminal_container_supervisor": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py"
+  },
+  "import_override": false,
+  "git_heads": {
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002": "eda6b3eb5abab019ed9f4dafd0c47d9d210c4bdf",
+    "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002": "8879dce383b680de7d1643295af400b0f617eff0"
+  },
+  "environment": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/source384-failure-scheduler-diagnostics-20261003/actual-03-seal.duckdb"
+  },
+  "scope": "controlled snapshots/resources and actual embedded-probe/driver failure paths; no native model/Docker/actual host sampling"
+}
