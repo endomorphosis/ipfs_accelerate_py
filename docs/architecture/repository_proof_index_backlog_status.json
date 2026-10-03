@@ -1,6 +1,6 @@
 {
   "schema": "repository-proof-index-backlog-status/v1",
-  "updated_at_utc": "2026-10-03T15:31:47.580490+00:00",
+  "updated_at_utc": "2026-10-03T19:32:12.368673+00:00",
   "scope": "Frozen 32-task acceptance ledger. Declared-profile criterion qualification and production closure with all prerequisites are tracked separately.",
   "source": {
     "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
@@ -575,6 +575,11 @@
       "path": "docs/agent_supervisor/evidence/source384-full-trial-receipt-failure-20261003/manifest.json",
       "sha256": "0ab9adf816deec61fe3a7362a4332e3ee6b30deb4dbeea1ee2cb9fd82defc97c",
       "retention": "repository_evidence"
+    },
+    "header-intent-runtime-nomination": {
+      "path": "docs/agent_supervisor/evidence/header-intent-runtime-nomination-20261003/manifest.json",
+      "sha256": "7bb235ff923b27b51b273289a4f8c514f67b77a1f7c1657d7abd84983bc77dde",
+      "retention": "repository_evidence"
     }
   },
   "criteria": [
@@ -916,7 +921,7 @@
       "local_status": "criterion_qualified",
       "locally_qualified_portions": [
         "Added owner-signed repository-finite-handoff@1 produced only after fresh current-source matching and complete candidate re-observation, with an independently pre-admitted signed native task. Native worker checks public DID signature, exact source preimage, instruction input, complete domain and clause bindings; malformed signatures, changed scope/material and stale dispatch are refused.",
-        "New independently signed repository-evidence fence binds complete behavioral snapshot and full original native task population, reopens durable native owners before launch and inside the worker, reconstructs retained exact semantic facts and repeats live source observation before/after materialization.10controls pass;6are explicitly artifact-integrity fault tests. Actual full native START→worker→public validation→publication→successor/cold agreement→STOP passed203.410s with0LLM calls. No fitting/learned inference occurs in this explicit model-off profile."
+        "New independently signed repository-evidence fence binds complete behavioral snapshot and full original native task population, reopens durable native owners before launch and inside the worker, reconstructs retained exact semantic facts and repeats live source observation before/after materialization.10controls pass;6are explicitly artifact-integrity fault tests. Actual full native START\u2192worker\u2192public validation\u2192publication\u2192successor/cold agreement\u2192STOP passed203.410s with0LLM calls. No fitting/learned inference occurs in this explicit model-off profile."
       ],
       "remaining_work": [],
       "evidence": [
@@ -1089,7 +1094,8 @@
         "A single instrumented source-only comparison preserves exact source, SQL/CAS, canonical output and producer identities across baseline, byte replay and combined compaction/replay. Baseline versus combined cold observation is 14.550 versus 14.416 seconds; warm observation 5.339 versus 4.587 seconds. Accounted private retention falls from 89,210,779 to 29,251,864 bytes and the sampled 40.516-MiB warm-load anonymous allocation increase is absent, but second-return anonymous RSS is higher at 285.156 versus 258.812 MiB. This does not establish admission-memory relief, general throughput improvement or numerical inference; source-report lifetimes are absent from this measurement. The closed three-arm package is in datasets commit 0d6ed4b7d3dfd1935c60a3db414dafb0ad15ffef at docs/software_contracts/evidence/source384-manifest-combined-comparison-20261003/manifest.json (a85f841e16040803863c5845d23e6302baecfe9563b67abfdc80c0d7ecc52a48). The subsequent ordinary Docker run is retained separately as a failed qualification. Full joined acceptance and a new task/token comparison remain unqualified; no exit is closed by this component work.",
         "The fresh ordinary production-cache Docker archive contains 26,918 fully verified files. Setup, native START and all three finite cache-advice stages pass under unchanged five-CPU/12-GiB resources and deadlines. Cold replay then times out at its second observe_current child admission. Probe170.816s, initial context159.394s, controller690.414s; cleanup and unchanged runtime/public inputs are verified. Preflight9350MiB and post-unwind8667MiB do not establish the decision-time refusal cause. No native inference export, provider/verifier calls, reward or token score is available. Closed evidence: docs/agent_supervisor/evidence/source384-production-cache-qualification-20261003/manifest.json (cc1ce11035b8fd0003c8a6991ecbe796bbdf17fefdc620120a5c5b0f0e93774b). Full-task execution remains gated on qualification; closure counts are unchanged.",
         "The subsequent ordinary original-container qualification passes with archive 4240d87a63757c976f3013b4293df321d84b3670fd36996f58454bcc39cc2d64 and unchanged five-CPU/12-GiB resources and native deadlines. Source384 76.884s/90s, initial context 137.809s, native probe 159.484s, controller 423.840s and warm observation 10.264s. All 220 signed sources and 33 producer pins remain unchanged; cleanup passes. One actual model load inventories 31 Python files/944 functions and selects 128 units:127 unsupported unverified candidates plus one token deferral. No provider calls, training, proof or benchmark score. The verified-GTE advice policy and caller lifetime changes qualify this retained run only, not reclaimed memory or generalized throughput. Current component evidence is D40+7, A18, A11 of 13 with two retained foreign-lease admission refusals, and 39 failure-diagnostics controls. Full task acceptance and automatic successor inference remain open. Closed evidence: docs/agent_supervisor/evidence/source384-lifetime-advice-qualification-20261003/manifest.json (148fb5034b2fc166d0d6e9632c3aec3b67db3c7c1dcf866259ed731157274797).",
-        "A fresh full fix-code-vulnerability Harbor trial passed Source384 preparation (78.254s within 90s), initial context (139.991s) and provider planning (68.953s, two goals/one task), then failed before coding dispatch when the 78,563-byte selected receipt exceeded the archived 32,768-byte inline task-context envelope. Driver exit 1 and official reward 0 are retained separately from Harbor/controller exit 0. Actual cgroups observed five CPUs and 12,288MiB. The run container was removed and cleanup returned 0, but the native remaining-processes receipt is null. All 127 decoded Source384 candidates remained unsupported; the complete supervision/publication/successor matrix is not qualified. This failed generation does not execute the later receipt-reference fix."
+        "A fresh full fix-code-vulnerability Harbor trial passed Source384 preparation (78.254s within 90s), initial context (139.991s) and provider planning (68.953s, two goals/one task), then failed before coding dispatch when the 78,563-byte selected receipt exceeded the archived 32,768-byte inline task-context envelope. Driver exit 1 and official reward 0 are retained separately from Harbor/controller exit 0. Actual cgroups observed five CPUs and 12,288MiB. The run container was removed and cleanup returned 0, but the native remaining-processes receipt is null. All 127 decoded Source384 candidates remained unsupported; the complete supervision/publication/successor matrix is not qualified. This failed generation does not execute the later receipt-reference fix.",
+        "Runtime-captured header applicability now connects signed reviewed intent, native Source384 checkpoint inference, DuckDB/CAS capture, bounded Z3 checks, symbolic planning/admission and worker-context validation. 354 distinct actual-checkout tests pass, including one real-checkpoint normal initialization with two goals, one task and zero planner provider calls. Reviewed intent is signed before runtime capture; post-solver source fences and inherited deadlines remain mandatory. No code is repaired in this integration case, learned formulas remain unverified, and the new header profile is not yet qualified in Docker or a completed benchmark."
       ],
       "remaining_work": [
         "The complete criterion above has not been qualified in the released integration.",
@@ -1122,7 +1128,8 @@
         "worker-context-bundle-snapshot",
         "source384-setup-cache-production",
         "source384-lifetime-advice-qualification",
-        "source384-full-trial-receipt-failure"
+        "source384-full-trial-receipt-failure",
+        "header-intent-runtime-nomination"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },
@@ -1143,7 +1150,8 @@
         "The declared common comparison profile is now source384-5cpu-12gib@1. The actual final Docker retry observes five CPUs and 12,288 MiB and admits the native resource parent; its complete cold source index misses the unchanged deadline before neural inference. All three attempts, resource observations and exact producer generations are retained. The reporting fix retains diagnostics separately from bounded JSON so merged stderr cannot mask native failure. No provider calls, training, official reward or new token comparison occurred.",
         "The fourth original-container generation uses the tested bounded CID/SQL owners, preserves all 218 original files, and observes the declared five CPUs/12,288 MiB. Native deployment and source publication return, but the first observe_current in inference preparation refuses the remaining combined 90-second deadline before starting the numerical worker (100.858s initial-context phase, 112.169s probe). Actual fixed-file report collection preserves exit 1 and the structured native refusal, and the container is removed. Thirteen real-checkpoint component controls pass again in 45.96s against these producers. This failed full-container generation establishes no neural inference, official task score, token advantage or proof authority.",
         "The fifth original-container generation uses the exact guarded manifest reconstruction owners and passes deployment, native START/STOP, cold publication and the first source observation. All 218 original files remain unchanged, and actual cgroups enforce five CPUs/12,288 MiB. The bounded source-unit child worker is invoked but times out; its import diagnostics do not establish successful model loading or completed inference. Preparation is 10.515s, initial context 98.298s and probe 109.855s. Slow dependency download accounts for part of the separate 1,109.510s deployment. Exit 1, structured failure, source pins, resource samples and container cleanup are retained. Thirteen exact-producer real-checkpoint component tests pass in 43.83s. The current failure receipt does not isolate publication, observation and worker time, so no remaining bottleneck or speedup is inferred. Full Docker inference, a new task score and token advantage remain unqualified.",
-        "The retained failed full-arm trial records one llm_router-to-Codex-CLI planning invocation: 21,497 input tokens (11,264 cached subset) + 1,090 output tokens (151 reasoning subset) = 22,587 total. Billing totals are unverified, dollar cost is null and the requested output cap was not enforced. These planning-only tokens accompany reward 0 before any coding dispatch; they do not constitute a completed-work token score or matched-arm efficiency advantage. Cold indexing/planning remained charged to agent time. Driver 244.323s, Harbor setup 536.169s/execution 248.231s and controller 816.954s are nested scopes, not additive intervals."
+        "The retained failed full-arm trial records one llm_router-to-Codex-CLI planning invocation: 21,497 input tokens (11,264 cached subset) + 1,090 output tokens (151 reasoning subset) = 22,587 total. Billing totals are unverified, dollar cost is null and the requested output cap was not enforced. These planning-only tokens accompany reward 0 before any coding dispatch; they do not constitute a completed-work token score or matched-arm efficiency advantage. Cold indexing/planning remained charged to agent time. Driver 244.323s, Harbor setup 536.169s/execution 248.231s and controller 816.954s are nested scopes, not additive intervals.",
+        "The selected header profile now roundtrips through archived Source384 configuration and Harbor setup/run; standalone qualification forwards the reviewed intent and checks the returned consumer/contract identities. The actual-checkout transport tests preserve explicit selections and reject mismatches, with Docker APIs mocked. No new complete task or matched-arm score is inferred from the separate native checkpoint/symbolic-planning tests."
       ],
       "remaining_work": [
         "Execute the complete matched multi-arm campaign and frozen correctness/cost gates, including runtime enforcement, decoder/mask ablations, shared/repository children, cold/warm eligibility, independent review costs and official outcomes. Configuration-control qualification does not establish benchmark advantage.",
@@ -1160,7 +1168,8 @@
         "source384-original-docker-qualification",
         "source384-docker-publication",
         "source384-docker-reconstruction",
-        "source384-full-trial-receipt-failure"
+        "source384-full-trial-receipt-failure",
+        "header-intent-runtime-nomination"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },
@@ -1350,7 +1359,7 @@
       "local_status": "criterion_qualified_prerequisites_open",
       "locally_qualified_portions": [
         "Additive codebase_ir/source_conditioned_384_v1 envelope reuses the unchanged shared SecurityIR structured runtime and sufficient-statistics ridge head fit. Exact original weights, fixed cohort roles, numerical parent relationships and source-target manifest joins are retained;8D and384D protocols stay separate.",
-        "Thirty final native controls qualify separate registered parent-centered384D head-refit lineage, two real nonzero updates with ordered CAS generations1→2→3, fixed development canaries3/3 in both rounds, full ancestral split/floor bindings, actual cancellation/restart and literal/guard feature collision refusal. Changed-source round2 embeds3 and reuses6 immutable feature rows. Changed-model projections rebuild exactly; replay cannot relabel old model artifacts. Full-head refit is not optimizer resume; fixed canaries are deployment-selection data, not unseen tests."
+        "Thirty final native controls qualify separate registered parent-centered384D head-refit lineage, two real nonzero updates with ordered CAS generations1\u21922\u21923, fixed development canaries3/3 in both rounds, full ancestral split/floor bindings, actual cancellation/restart and literal/guard feature collision refusal. Changed-source round2 embeds3 and reuses6 immutable feature rows. Changed-model projections rebuild exactly; replay cannot relabel old model artifacts. Full-head refit is not optimizer resume; fixed canaries are deployment-selection data, not unseen tests."
       ],
       "remaining_work": [
         "Own declared-profile qualification passes. Production closure awaits full resource prerequisites: RPI-010."

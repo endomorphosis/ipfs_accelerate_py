@@ -1,0 +1,39 @@
+{
+  "schema": "header-intent-runtime-qualification@1",
+  "distinct_passed": 354,
+  "runs": {
+    "actual-native-10": {
+      "passed": 83,
+      "skipped": 0
+    },
+    "actual-transport-11": {
+      "passed": 114,
+      "skipped": 0
+    },
+    "actual-datasets-12": {
+      "passed": 60,
+      "skipped": 1
+    },
+    "actual-regression-13": {
+      "passed": 96,
+      "skipped": 0
+    },
+    "actual-public-14": {
+      "passed": 1,
+      "skipped": 0
+    }
+  },
+  "datasets_dependency_commit": "ba95d74d2d9f18f0d5b9501423f550b13de6f627",
+  "accelerate_base_commit": "f87d6cfcdcefc2d618818951d109cc8fd759f1fb",
+  "source_overlay": false,
+  "checkpoint_inference_executed": true,
+  "real_z3_executed": true,
+  "native_normal_flow_goals": 2,
+  "native_normal_flow_tasks": 1,
+  "native_normal_flow_provider_calls": 0,
+  "benchmark_executed": false,
+  "source_semantics_proved": false,
+  "learned_formulas_qualified": false,
+  "task_completed": false,
+  "new_weights_uploaded": false
+}

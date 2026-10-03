@@ -1,0 +1,57 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "test/api/test_agent_supervisor_local_planning_admission.py",
+    "test/api/test_intent_plan_coverage.py",
+    "test/api/semantic_state/test_source384_task_context_bundle.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_nomination_staging.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/header-intent-runtime-nomination-20261003/actual-regression-13.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "environment_overrides": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "NUMEXPR_MAX_THREADS": "1",
+    "CUDA_VISIBLE_DEVICES": "",
+    "TOKENIZERS_PARALLELISM": "false",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/header-intent-runtime-nomination-20261003/actual-regression-13-seal.duckdb",
+    "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "/home/barberb/lift_coding/artifacts/header-intent-runtime-nomination-20261003/actual-regression-13-keys.db"
+  },
+  "source_pins": {
+    "A": {
+      "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "f406e501fc445d5588463da07ff514f2d1e3cd9fdd36b26ce083f286fc04fb19",
+      "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "d6e0f4d8a6c9b0007d16540e7dcbfd4b81c3bbdc26d930bdb408abfc73c4a9fc",
+      "benchmarks/agent_supervisor/container_coding/terminal_deployment.py": "42c44b2fd65ea31e6d3e435959b80b07762247cbbb5caeeac55e5f039cee929e",
+      "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": "d3b04f154287de1cbb64c706068887523682ca08148aeeaa8d03dd87a1a71d52",
+      "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py": "040d4d54e0d3ed0956b2d92b389aa7b8df85e653aa23b648bc4b6daf6a2cfe35",
+      "benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py": "91dbe3b4103277aaa0aeacfd0e20862d098c4184c4c235c2f0442a4b00187715",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_header_transport.py": "1d07e8576c2c02c1461b2b406d29d6aa0883891abd00cb0524b80212b07803a4",
+      "ipfs_accelerate_py/agent_supervisor/planning/intent_requirement_adapter.py": "b2f839de50bf0cc294a5417e0e8cd9fa43a6977d16300fa0039a0b20b20f3555",
+      "ipfs_accelerate_py/agent_supervisor/planning/intent_symbolic_planning.py": "607311669b62f0c579dda7c3997a035eab73fe33ac8ff3a7663a6726140b1ce4",
+      "ipfs_accelerate_py/agent_supervisor/prompt/intent_plan_coverage.py": "6a9e1ca5943242e280d0c3e262a97e57db284fae80c4212713ac6e691ec68fa6",
+      "ipfs_accelerate_py/agent_supervisor/runtime/header_intent_applicability.py": "f71c4d3bc6b91528bc473dffd82a2866ad755a47bf80619690397950cbf1d8d5",
+      "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py": "03190e391c9950aebe836431d72d3b31a314c35694f142ac89d1c3eab568767c",
+      "ipfs_accelerate_py/agent_supervisor/runtime/source384_config.py": "01f2377728f89eccc24958512ce6ab7f212b9ca9f5230945c59febb73da68270",
+      "ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py": "c55cf9b2f10471251700762d698326d2d1403225f9f335935731f86e80848754",
+      "ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py": "f88ea305c0d6992de34c9314779c047ba86e89a79053577ff2e18aa682de3f1a",
+      "test/api/test_header_intent_applicability.py": "a616f9b082f49f977a7cbe923adf8466d929d1afcfa5efbec1975e784827f30d"
+    },
+    "D": {
+      "ipfs_datasets_py/logic/security_ir/code_header_derivation.py": "143ba1f57ade2a6bc588f868ffe4b1e0f05a91701dd1a7a076cb37b6928d6429"
+    }
+  },
+  "source_overlay": false,
+  "executed": true
+}

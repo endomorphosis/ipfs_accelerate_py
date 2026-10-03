@@ -580,3 +580,29 @@ and worker cleanup returned 0, while the native remaining-processes receipt is
 null. Post-task observation covered unchanged `bottle.py` and missing
 `report.jsonl`, not every original input. RPI-019 and RPI-020 remain open; the
 backlog stays **18/32 closed**.
+
+
+## Runtime-captured applicability and symbolic planning
+
+The [actual-checkout integration evidence](../../../docs/agent_supervisor/evidence/header-intent-runtime-nomination-20261003/README.md)
+records 354 distinct passing tests. A reviewed static IntentIR operation selector
+is signed before initialization. Real SecurityIR Source384 checkpoint inference
+and native source capture produce a separate runtime nomination; bounded Z3 checks
+then establish a narrow operation precondition for the symbolic planner. The
+authored normal-flow case admits two goals and one task with zero planner provider
+calls, preserves the original signed manifest and revalidates admitted context
+without another model load. It does not repair code or mark the security goal done.
+
+The explicit `terminal-source384-config@2` profile includes the reviewed selector
+CID, the leased checker profile and the hash of the runtime-installed Z3 binary.
+The hash must be established for the selected container environment; copying a
+host hash is not a valid substitute. Deployment checks it before native startup.
+The `qualify` command accepts `--intent-requirement-contract` alongside
+`--source384-context`, and passes the exact reviewed mapping into preparation.
+Harbor setup/run and the qualifier reject missing or mismatched selections.
+
+The native tests use isolated declared scheduler resources. Docker APIs are mocked
+only in transport tests. This combined runtime still needs fresh ordinary Docker
+qualification and full-task timing under the unchanged profile/deadlines. The
+latest actual full trial remains reward 0 with 22,587 planning-only tokens; no
+matched-arm improvement or backlog production closure is claimed.
