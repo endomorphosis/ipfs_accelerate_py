@@ -59,11 +59,19 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
         from .native_codex_baseline import MODEL, REASONING, CLI_VERSION
         if (model, reasoning_effort, cli_version) != (MODEL, REASONING, CLI_VERSION):
             raise ValueError("supervisor declaration differs from fixed source profile")
-        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile"}:
+        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection"}:
             raise ValueError("unsupported supervisor kwargs require a new comparison profile")
         if "resource_profile" in kwargs:
             from .benchmark_resource_profile import validate_resource_profile
             validate_resource_profile(config, kwargs["resource_profile"])
+        if "setup_cache_selection" in kwargs:
+            from .terminal_setup_cache_advice import _selection_shape
+            from .benchmark_resource_profile import SOURCE384_PROFILE
+            _selection_shape(kwargs["setup_cache_selection"])
+            if kwargs.get("arm") != "full" or kwargs.get("resource_profile") != SOURCE384_PROFILE:
+                raise ValueError("setup cache selection requires the full arm and supported resource profile")
+            # The complete configuration digest below binds this adapter-specific
+            # selection. Common-control equality does not prove equal setup work.
         if agent.get("env"):
             raise ValueError("unsupported supervisor environment requires a new comparison profile")
     else:
