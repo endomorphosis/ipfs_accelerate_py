@@ -1,0 +1,58 @@
+{
+  "actual_tests_passed": 56,
+  "after": {
+    "common-driver": {
+      "peak_rss_kib": 244824,
+      "rss": "246880 kB",
+      "seconds": 1.5273961789935129
+    },
+    "common-prepare": {
+      "peak_rss_kib": 245284,
+      "rss": "246928 kB",
+      "seconds": 1.4935679429909214
+    },
+    "driver": {
+      "peak_rss_kib": 44712,
+      "rss": "44916 kB",
+      "seconds": 0.19027737001306377
+    },
+    "prepare": {
+      "peak_rss_kib": 44924,
+      "rss": "45140 kB",
+      "seconds": 0.18708838400198147
+    }
+  },
+  "before": {
+    "common-driver": {
+      "peak_rss_kib": 296176,
+      "rss": "297432 kB",
+      "seconds": 11.170689428006881
+    },
+    "common-prepare": {
+      "peak_rss_kib": 244800,
+      "rss": "246460 kB",
+      "seconds": 1.5378884600067977
+    },
+    "driver": {
+      "peak_rss_kib": 206636,
+      "rss": "189280 kB",
+      "seconds": 9.4617642230005
+    },
+    "prepare": {
+      "peak_rss_kib": 44424,
+      "rss": "44788 kB",
+      "seconds": 0.20417810999788344
+    }
+  },
+  "causal_diagnosis_of_previous_lease_refusal": false,
+  "initial_cached_run": {
+    "passed": 5,
+    "reason": "pytest AST seal matches",
+    "skipped": 51
+  },
+  "native_container_claim": false,
+  "samples_per_configuration": 1,
+  "unchanged_currentness_checks": true,
+  "unchanged_deadlines": true,
+  "unchanged_resource_policy": true
+}

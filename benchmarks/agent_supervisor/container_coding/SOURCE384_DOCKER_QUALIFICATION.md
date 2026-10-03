@@ -602,7 +602,64 @@ The `qualify` command accepts `--intent-requirement-contract` alongside
 Harbor setup/run and the qualifier reject missing or mismatched selections.
 
 The native tests use isolated declared scheduler resources. Docker APIs are mocked
-only in transport tests. This combined runtime still needs fresh ordinary Docker
-qualification and full-task timing under the unchanged profile/deadlines. The
-latest actual full trial remains reward 0 with 22,587 planning-only tokens; no
-matched-arm improvement or backlog production closure is claimed.
+only in transport tests. Subsequent ordinary Docker qualification and the fresh
+full task trial are recorded below; component results do not imply a task score.
+
+## Captured-header Docker qualification and full trial
+
+The [captured-header archive qualified](../../../docs/agent_supervisor/evidence/captured-header-docker-qualification-20261003/README.md)
+through native START/STOP, checkpoint inference, source capture and warm replay.
+Source384 took 81.664s, initial context 143.024s and the native probe 165.779s.
+The selected checkpoint, GTE assets, five-CPU/12-GiB envelope and deadlines were
+unchanged. The reviewed intent mapping is administrative coverage; its review
+token cost is unavailable and excluded from runtime, so these timings cannot
+support a complete efficiency comparison.
+
+The [fresh full Harbor trial](../../../docs/agent_supervisor/evidence/captured-header-full-trial-20261003/README.md)
+received official reward **0**. A source-currentness observation immediately
+after worker return/output validation refused a resource lease. Preparation
+took 10.851s, initial context 98.124s and the driver 109.629s. Planning, Doctor
+and coding were not reached. Zero provider invocations describe a failed prefix,
+not completed-work token performance. Post-unwind headroom/backoff observations
+do not establish the admission-time cause. The container was removed.
+
+## Execution import lifetime and remaining timing gap
+
+The [driver import fix](../../../docs/agent_supervisor/evidence/supervisor-import-lifetime-20261003/README.md)
+defers Doctor/native execution dependencies until their phases, under the same
+work deadline. All 56 focused controls execute and pass in a fresh store.
+Fresh-process host RSS falls from 189280 to 44916 KiB at import and from 297432
+to 246880 KiB after shared imports and a tiny vector index. These single-process
+samples establish less retained memory, not a container failure diagnosis.
+
+The [new ordinary Docker attempt](../../../docs/agent_supervisor/evidence/source384-import-lifetime-docker-20261003/README.md)
+passes deployment but times out in the numerical worker. Its probe takes
+109.868s. The qualifier does not import the full driver, so this attempt does
+not evaluate the deferred imports' effect in a full task. The full task retry
+is withheld after the failed prerequisite.
+
+A [host worker diagnostic](../../../docs/agent_supervisor/evidence/source384-host-worker-diagnostic-20261003/README.md)
+completes 128 rows with one model load under the existing shared scheduler.
+The separate [container stage diagnostic](../../../docs/agent_supervisor/evidence/source384-container-stage-diagnostic-20261003/README.md)
+records where the unchanged preparation deadline is spent. Instrumented runs
+are not production qualifications or official benchmark outcomes. All earlier
+failures are retained. RPI-019 and RPI-020 remain open; the backlog is still
+**18/32 closed**, with no new completed token score or matched-arm advantage.
+
+The [ordinary retry](../../../docs/agent_supervisor/evidence/source384-warm-replay-refusal-20261003/README.md)
+returned initial context in 156.106s but refused warm replay. A separate
+[reclamation diagnostic](../../../docs/agent_supervisor/evidence/source384-reclamation-diagnostic-20261003/README.md)
+released only 8756 KiB through malloc_trim with unchanged live context; it began
+with much more headroom and did not reproduce the refusal. Allocator trimming
+was not added to production.
+
+The [qualifier bulk-copy fix](../../../docs/agent_supervisor/evidence/source384-probe-bulk-lifetime-20261003/README.md)
+releases raw inference JSON and parsed rows after cold checks, retaining only
+export-binding metadata before independent replay. All 37 actual controls pass.
+The [fresh final archive](../../../docs/agent_supervisor/evidence/source384-bulk-lifetime-io-refusal-20261003/README.md)
+stops earlier in initial-context replay, with proof_io_stall retained after
+unwind (43.9 percent sampled I/O stall, 11491 MiB available). Its probe is
+170.903s; the full task is not launched. The bulk-copy boundary is not reached
+in that failed run. Read-only external cgroup and public-asset residency samples
+are disclosed separately; they do not identify the complete charged cache
+population, prove the admission-time cause or support a timing advantage.

@@ -1,0 +1,60 @@
+{
+  "files": [
+    {
+      "bytes": 1262,
+      "path": "README.md",
+      "sha256": "c19ac8ece5dafa288c916c082268e22cd72f986cdac08a3a255bc1fd7df2d443"
+    },
+    {
+      "bytes": 1192,
+      "path": "diagnostic-context-command.json",
+      "sha256": "a9845b432c00d36206130cdc386c04a882c140bf5f717e2a48e37cf74c0c2e45"
+    },
+    {
+      "bytes": 55,
+      "path": "diagnostic-context-exit.json",
+      "sha256": "60117274d80a732b985d867736632533a57ac7380290a933dbd85c8c3d7951e4"
+    },
+    {
+      "bytes": 399,
+      "path": "host-context-refusal.json",
+      "sha256": "5b1ac1bfbf1f5009aec14b7d578cbbfda85258c049ab731dc8d36387c44fd4c7"
+    },
+    {
+      "bytes": 3608,
+      "path": "profile_full_context.py",
+      "sha256": "7474c5625aadb92422d9f28d22c8e3601891b25af06501ca57dc199c8bfdbe01"
+    },
+    {
+      "bytes": 1342,
+      "path": "profile_worker.py",
+      "sha256": "e0a7167ed5c8e4e66a2a3b9094830a13822c160ec0fb8cc67e2bf67f58e1a603"
+    },
+    {
+      "bytes": 376,
+      "path": "retained-failures.json",
+      "sha256": "1957ba60e0edc5619d993587759619231ea2d68549c8b32d399d99ef41ffe94c"
+    },
+    {
+      "bytes": 3709,
+      "path": "run_worker_profile.py",
+      "sha256": "732b250cd0ea88afd5095988c2a3a5e1d32a41f31b158d456a75bfee8085ff20"
+    },
+    {
+      "bytes": 2058,
+      "path": "worker-profile-command.json",
+      "sha256": "0484de3602b6a41db0dbf7f2cb36695d503186388927d9c648e09396d3d9dcff"
+    },
+    {
+      "bytes": 250,
+      "path": "worker-profile-exit.json",
+      "sha256": "24f5bfebbada45daffe566edc53470c9fb3cda4f1562792b8e0843a1d42810e6"
+    },
+    {
+      "bytes": 16318,
+      "path": "worker-profile.stdout",
+      "sha256": "9c49450c5bc6e5bbb91da2798c2893f2e011c3a933433a561031f7f13d67cb01"
+    }
+  ],
+  "schema": "source384-host-worker-diagnostic-evidence@1"
+}

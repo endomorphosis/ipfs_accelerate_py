@@ -1,0 +1,50 @@
+{
+  "added": [
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/contextual_generated_boundary_training.py",
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/ordered_clause_recurrent_decoder_experiment.py",
+    "datasets/ipfs_datasets_py/logic/security_ir/bounded_header_checker.py",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/header_intent_applicability.py"
+  ],
+  "archive_sha256": "926a6672207089b3545934e3328d280891e0c06c4f3aef151fb89d2920731a2e",
+  "benchmark_executed": false,
+  "changed": [
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/action_contrastive_decoder_training.py",
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/long_span_source_value_training.py",
+    "datasets/ipfs_datasets_py/logic/security_ir/code_header_derivation.py",
+    "models/source384/config.json",
+    "source/benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+    "source/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+    "source/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py",
+    "source/ipfs_accelerate_py/agent_supervisor/planning/intent_requirement_adapter.py",
+    "source/ipfs_accelerate_py/agent_supervisor/planning/intent_symbolic_planning.py",
+    "source/ipfs_accelerate_py/agent_supervisor/prompt/intent_plan_coverage.py",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/source384_config.py",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py"
+  ],
+  "checkpoint_and_embedding_assets_unchanged": true,
+  "compressed_bytes": 1338039574,
+  "logical_bytes": 3914659840,
+  "manifest_sha256": "6430da30206af24a2ef5e35384a2dc355a71ee67da6562c7b988dce5ccc3c4ba",
+  "provider_calls": 0,
+  "removed": [],
+  "reviewed_header_profile_added": true,
+  "setup_cache_selection": {
+    "manifest_sha256": "6430da30206af24a2ef5e35384a2dc355a71ee67da6562c7b988dce5ccc3c4ba",
+    "policy": "source384-native-aarch64-dontneed@1",
+    "schema": "terminal-setup-cache-selection@1"
+  },
+  "source_revisions": {
+    "datasets": "3315224dfd184e24ea71bad2cb137509450deb88",
+    "source": "a1f8d4d7f2d94677b9cdc359380b7aa79c5f73d2"
+  },
+  "source_revisions_unchanged": true,
+  "tar_hash_mode_ownership_checked": true,
+  "torch_wheel_unchanged": true,
+  "verified_members": 26926
+}

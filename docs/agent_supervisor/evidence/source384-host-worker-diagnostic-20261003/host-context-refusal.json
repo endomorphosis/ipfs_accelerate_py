@@ -1,0 +1,12 @@
+{
+  "benchmark_result": false,
+  "deadline_seconds": 90,
+  "error": "scheduler capacity differs from active shared state at /tmp/ipfs-datasets-resource-scheduler-1000.json",
+  "error_type": "ResourceConfigurationError",
+  "provider_calls": 0,
+  "schema": "full-public-source384-native-context@1",
+  "seconds": 0.07716441700176802,
+  "stage_events": [],
+  "status": "failed",
+  "training_steps": 0
+}

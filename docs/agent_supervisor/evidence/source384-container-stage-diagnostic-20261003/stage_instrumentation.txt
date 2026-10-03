@@ -1,0 +1,20 @@
+  # Diagnostic wrappers only; all native calls, leases and deadlines execute.
+  from ipfs_datasets_py.logic.software_contracts import codebase_ir as diagnostic_index
+  from ipfs_datasets_py.logic.software_contracts import codebase_source_units_384 as diagnostic_units
+  from ipfs_datasets_py.logic.software_contracts import codebase_source_384 as diagnostic_parent
+  result['diagnostic_only']=True
+  result['diagnostic_stage_events']=[]
+  def diagnostic_timed(target,name):
+   original=getattr(target,name)
+   def invoke(*args,**kwargs):
+    began=time.monotonic();status='returned'
+    try:return original(*args,**kwargs)
+    except BaseException:
+     status='raised';raise
+    finally:
+     event=dict(stage=target.__name__+'.'+name,start_seconds=began-started,seconds=time.monotonic()-began,status=status)
+     if name=='_worker':event['requested_worker_timeout_seconds']=kwargs['timeout']
+     if len(result['diagnostic_stage_events'])<128:result['diagnostic_stage_events'].append(event)
+     else:result['diagnostic_stage_overflow']=True
+   setattr(target,name,invoke)
+  for target,name in [(diagnostic_index.RepositoryCodebaseIndex,'prepare_current'),(diagnostic_index.RepositoryCodebaseIndex,'observe_current'),(diagnostic_units,'_context'),(diagnostic_units,'_worker'),(diagnostic_units,'load_source_unit_inference'),(diagnostic_parent,'register_shared_parent')]:diagnostic_timed(target,name)

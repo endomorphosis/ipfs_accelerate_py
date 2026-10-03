@@ -1,0 +1,11 @@
+{
+  "benchmark_result": false,
+  "cleanup_verified": true,
+  "diagnostic_only": true,
+  "official_verifier_executed": false,
+  "provider_calls": 0,
+  "public_task_inputs_unchanged": true,
+  "returncode": 0,
+  "seconds": 412.3018718250096,
+  "source_pins_unchanged": true
+}

@@ -1,0 +1,25 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-c",
+    "import importlib,json,sys,time,pathlib,resource,gc\nstarted=time.monotonic()\nimportlib.import_module(sys.argv[1])\nroot=pathlib.Path(sys.argv[2]);root.mkdir()\n(root/'authored.py').write_text('def authored_function(value):\\n    return value + 1\\n')\nfrom benchmarks.agent_supervisor.container_coding.vector_index_preflight import qualify\nqualify(root, root/'vectors', ['authored.py'], 'authored function')\nfrom ipfs_accelerate_py.agent_supervisor.runtime import source384_repository_context\nsource384_repository_context._pins()\nfrom ipfs_datasets_py.logic.software_contracts import codebase_source_units_384\ncodebase_source_units_384.pins()\n\ngc.collect()\nstatus={line.split(':',1)[0]:line.split(':',1)[1].strip() for line in pathlib.Path('/proc/self/status').read_text().splitlines() if ':' in line}\nrollup={line.split(':',1)[0]:line.split(':',1)[1].strip() for line in pathlib.Path('/proc/self/smaps_rollup').read_text().splitlines() if ':' in line}\nprint(json.dumps(dict(seconds=time.monotonic()-started,rss=status.get('VmRSS'),peak_rss_kib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,rollup=rollup,modules=sorted(sys.modules),imports=sys.argv[1:])))\n",
+    "benchmarks.agent_supervisor.container_coding.terminal_container_supervisor",
+    "/home/barberb/lift_coding/artifacts/source384-header-import-lifetime-20261003/common-driver"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "environment_overrides": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "NUMEXPR_MAX_THREADS": "1",
+    "CUDA_VISIBLE_DEVICES": "",
+    "TOKENIZERS_PARALLELISM": "false",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "PYTHONDONTWRITEBYTECODE": "1"
+  },
+  "scope": "authored tiny vector index and actual shared producer imports only; not native cgroup admission"
+}

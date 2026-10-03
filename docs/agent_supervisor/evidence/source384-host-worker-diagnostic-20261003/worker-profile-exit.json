@@ -1,0 +1,11 @@
+{
+  "returncode": 0,
+  "seconds": 18.663624278007774,
+  "elapsed_ms": 18581,
+  "timed_out": false,
+  "cancelled": false,
+  "resource_exhausted": false,
+  "workspace_cleaned": true,
+  "termination_reason": "completed",
+  "source_proof_claim": false
+}

@@ -1,0 +1,10 @@
+{
+  "initial_worker_diagnostic_runner": {
+    "status": "TypeError before numerical worker; corrected missing external cancellation argument",
+    "stderr_sha256": "d7f2a2fbd58394646e43ce1d46caacb315ec850c1e68954b96bc9172a2bb9a05"
+  },
+  "worker_stderr": {
+    "raw_body_exported": false,
+    "sha256": "74f95fa5c2fac5fa175e4501d8d63f9d28d39be196ae2342331256aaec1391a4"
+  }
+}

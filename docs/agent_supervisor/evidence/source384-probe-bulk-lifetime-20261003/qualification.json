@@ -1,0 +1,13 @@
+{
+  "actual_passed": 37,
+  "native_docker_execution": false,
+  "output_relocations": {
+    "actual-command.json": "bulk-actual-command.json",
+    "actual-exit.json": "bulk-actual-exit.json",
+    "actual.log": "bulk-actual.log",
+    "actual.xml": "bulk-actual.xml"
+  },
+  "relocation_reason": "37-test outputs retained under bulk- prefix before copying the prior 56-test driver evidence for archive admission; original command paths are historical",
+  "skipped": 0,
+  "source_pins_unchanged": true
+}

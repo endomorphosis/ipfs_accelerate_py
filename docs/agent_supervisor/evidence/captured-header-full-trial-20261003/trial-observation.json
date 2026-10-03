@@ -1,0 +1,187 @@
+{
+  "arm": "full",
+  "benchmark_advantage_claimed": false,
+  "harbor_returncode": 0,
+  "intent_requirement_contract_cid": "baguqeeraf3jyjd5ovvjqawi3racqdnpt2q43m4q464hky6l7pnfrvr5bypna",
+  "intent_requirement_contract_sha256": "2ed3848faead5300591b880501b5f3d439b6721cf70eac797f7b4b1ac7a1c3da",
+  "invocation_seconds": 348.4333929590066,
+  "original_task_inputs_unchanged": true,
+  "parallel_workers": 1,
+  "planning_strategy": "intent_symbolic",
+  "resource_profile": "source384-5cpu-12gib@1",
+  "schema": "terminal-full-supervisor-receipt@1",
+  "task": "fix-code-vulnerability",
+  "trial_count": 1,
+  "trials": [
+    {
+      "durations_seconds": {
+        "agent_execution": 113.697617,
+        "agent_setup": 207.012652,
+        "environment_setup": 8.011484,
+        "verifier": 2.254334
+      },
+      "exception_type": null,
+      "native_result_sha256": "625a0dd7be02961634de21069313fee66e7c7459b8ff8ca30f74771d33860b6a",
+      "reward": {
+        "reward": 0.0
+      },
+      "supervisor": {
+        "arm": "full",
+        "benchmark_advantage_claimed": false,
+        "context_input_audit": {
+          "all_observed_coding_inputs_verified": null,
+          "any_model_input_verified": null,
+          "any_native_input_verified": null,
+          "capsules": [],
+          "completion_authority": false,
+          "execution_authority": false,
+          "input_scope": "router task prompt; provider harness/system context is outside this digest",
+          "invocations": [],
+          "matches": [],
+          "provider_calls": 0,
+          "raw_prompts_exported": false,
+          "read_errors": [],
+          "reason": "no_coding_receipt",
+          "schema": "terminal-final-context-audit@1",
+          "status": "unknown",
+          "task_correctness_established": false,
+          "world_scope": "sealed historical capture; claims may supersede its intent revision"
+        },
+        "error": {
+          "message": "timed out waiting for a resource lease",
+          "type": "LeaseTimeoutError"
+        },
+        "error_phase": "initial_context",
+        "error_traceback": {
+          "frames": [
+            {
+              "file": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+              "function": "run",
+              "line": 448
+            },
+            {
+              "file": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+              "function": "initial_context",
+              "line": 381
+            },
+            {
+              "file": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+              "function": "prepare_initial_context",
+              "line": 244
+            },
+            {
+              "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
+              "function": "prepare_source384_context",
+              "line": 237
+            },
+            {
+              "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py",
+              "function": "infer_shared_parent_units",
+              "line": 251
+            },
+            {
+              "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py",
+              "function": "observe",
+              "line": 240
+            },
+            {
+              "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+              "function": "observe_current",
+              "line": 879
+            },
+            {
+              "file": "/opt/ipfs-supervisor/python-runtime/python/cpython-3.12.12-linux-aarch64-gnu/lib/python3.12/contextlib.py",
+              "function": "__enter__",
+              "line": 137
+            },
+            {
+              "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/codebase_resources.py",
+              "function": "acquire_codebase_resources",
+              "line": 75
+            },
+            {
+              "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+              "function": "acquire_child",
+              "line": 741
+            },
+            {
+              "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+              "function": "acquire",
+              "line": 1613
+            }
+          ],
+          "frames_omitted": 0,
+          "frames_walked": 11,
+          "walk_truncated": false
+        },
+        "failure_resources": {
+          "available_memory_mb": 8661,
+          "cpu_slots": 5,
+          "cpu_stall_percent": 27.2,
+          "io_stall_percent": 1.06,
+          "memory_stall_percent": 0.0,
+          "total_memory_mb": 12288
+        },
+        "failure_scheduler": {
+          "active_child_lease_count": 0,
+          "active_lease_count": 0,
+          "active_root_lease_count": 0,
+          "allocated": {
+            "cpu_slots": 0,
+            "memory_mb": 0
+          },
+          "capacity": {
+            "child_process_slots": 4,
+            "cpu_slots": 4,
+            "gpu_memory_mb": null,
+            "memory_mb": 9830,
+            "reserved_gpu_memory_mb": 0,
+            "reserved_memory_mb": 0,
+            "unified_memory_mb": null,
+            "usable_gpu_memory_mb": null,
+            "usable_memory_mb": 9830
+          },
+          "causal_proof": false,
+          "exact_admission_decision": false,
+          "native_snapshot_may_recover_stale_owners": true,
+          "observation_boundary": "after_unwind",
+          "proof_backoff": {
+            "reason": "proof_memory_headroom",
+            "until": 1791065057.5796628
+          },
+          "proof_recovery": {},
+          "schema": "terminal-scheduler-failure-observation@1",
+          "status": "observed",
+          "waiting_request_count": 0
+        },
+        "intent_preplanning": {
+          "advice_sha256": "0a8d844ef9e5831c427d6738f19a091c5d1ee2c97e6480246d65d414ab5072dc",
+          "artifact": "intent-advice.json",
+          "artifact_sha256": "0fcc1b8776209f71e0808acc986b0eec7f084c70ff0d9b98262963c7f6a79fb3",
+          "before_goal_decomposition": true,
+          "completion_authority": false,
+          "execution_authority": false,
+          "instruction_sha256": "89b1abdf0af19399f720233b5cdf6b2e8e0ff7b6e3fe3e2a3af0d4d298a8641a",
+          "seconds": 0.261461311,
+          "status": "fail_open_no_checkpoint"
+        },
+        "max_total_agent_seconds": 285,
+        "official_reward": null,
+        "phases": {
+          "initial_context_seconds": 98.12399172500591,
+          "prepare_seconds": 10.850839720005752
+        },
+        "production_activation": false,
+        "provider_invocations": [],
+        "remaining_processes": null,
+        "reserved_cleanup_seconds": 40,
+        "schema": "terminal-admitted-supervisor-run@1",
+        "seconds": 109.62862562898954,
+        "task_completed": false,
+        "work_cutoff_seconds": 245,
+        "worker_cleanup_returncode": 0
+      },
+      "trial": "fix-code-vulnerability__joGwr6F"
+    }
+  ]
+}

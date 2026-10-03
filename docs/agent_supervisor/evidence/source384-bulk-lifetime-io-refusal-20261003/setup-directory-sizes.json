@@ -1,0 +1,19 @@
+{
+  "argv": [
+    "docker",
+    "exec",
+    "ipfs-native-deploy-1791069521-main-1",
+    "du",
+    "-sk",
+    "/root/.cache/pip",
+    "/root/.cache/uv",
+    "/opt/ipfs-supervisor/venv",
+    "/opt/ipfs-supervisor/python-runtime",
+    "/tmp"
+  ],
+  "observed_at_utc": "2026-10-03T23:23:10.323051+00:00",
+  "returncode": 0,
+  "stdout": "35908\t/root/.cache/pip\n7136\t/root/.cache/uv\n1367876\t/opt/ipfs-supervisor/venv\n92116\t/opt/ipfs-supervisor/python-runtime\n2636\t/tmp\n",
+  "stderr": "",
+  "metadata_only": true
+}

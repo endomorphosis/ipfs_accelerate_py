@@ -1,0 +1,22 @@
+  # Diagnostic intervention on this process's unreachable/unused allocations.
+  # Context bytes stay live and equal; no cache is cleared and no limit changes.
+  import gc,ctypes,os
+  from dataclasses import asdict
+  from ipfs_datasets_py.optimizers.logic_theorem_optimizer.proof_resource_safety import collect_proof_host_resources
+  def diagnostic_memory():
+   fields={line.split(':',1)[0]:line.split(':',1)[1].strip() for line in pathlib.Path('/proc/self/smaps_rollup').read_text().splitlines() if ':' in line}
+   return dict(smaps={k:fields.get(k) for k in ('Rss','Anonymous','Private_Clean','Private_Dirty')},resources=asdict(collect_proof_host_resources()))
+  context_wire=lambda:json.dumps(context,sort_keys=True,separators=(',',':'),allow_nan=False).encode()
+  digest_before=hashlib.sha256(context_wire()).hexdigest()
+  release=dict(scope='this_process_only',limits_changed=False,source_checks_skipped=False,context_sha256_before=digest_before,before=diagnostic_memory())
+  begin_release=time.monotonic()
+  release['collected_objects']=gc.collect()
+  release['after_gc']=diagnostic_memory()
+  release['libc']=os.confstr('CS_GNU_LIBC_VERSION')
+  trim=ctypes.CDLL(None).malloc_trim;trim.argtypes=[ctypes.c_size_t];trim.restype=ctypes.c_int
+  release['malloc_trim_returncode']=trim(0)
+  release['after_trim']=diagnostic_memory()
+  release['seconds']=time.monotonic()-begin_release
+  release['context_sha256_after']=hashlib.sha256(context_wire()).hexdigest()
+  if release['context_sha256_after']!=digest_before:raise ValueError('diagnostic reclamation changed retained context')
+  result['diagnostic_reclamation']=release

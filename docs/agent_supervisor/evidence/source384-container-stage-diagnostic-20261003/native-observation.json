@@ -1,0 +1,184 @@
+{
+  "benchmark_result": false,
+  "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+  "config_sha256": "ea88e10e882fab20c158fc3d1e7ebdd66fb8afc4826a6080f9ca7b51ad554b84",
+  "coverage": {
+    "candidate_statuses": {
+      "fail_open_source_contract_unsupported": 127
+    },
+    "file_dispositions": {
+      "inventoried": 27,
+      "no_function_units": 4
+    },
+    "files": 31,
+    "functions": 944,
+    "selected_units": 128,
+    "unit_dispositions": {
+      "decoded_unverified_candidate": 127,
+      "deferred_gte_token_limit": 1,
+      "deferred_selection_budget": 737,
+      "unsupported_normalization": 79
+    }
+  },
+  "diagnostic_only": true,
+  "diagnostic_stage_events": [
+    {
+      "seconds": 43.569793255999684,
+      "stage": "RepositoryCodebaseIndex.prepare_current",
+      "start_seconds": 20.597629541007336,
+      "status": "returned"
+    },
+    {
+      "seconds": 0.14963160299521405,
+      "stage": "ipfs_datasets_py.logic.software_contracts.codebase_source_384.register_shared_parent",
+      "start_seconds": 64.29554845001257,
+      "status": "returned"
+    },
+    {
+      "seconds": 3.851567667996278,
+      "stage": "RepositoryCodebaseIndex.observe_current",
+      "start_seconds": 64.45429589500418,
+      "status": "returned"
+    },
+    {
+      "seconds": 0.7024231609975686,
+      "stage": "ipfs_datasets_py.logic.software_contracts.codebase_source_units_384._context",
+      "start_seconds": 68.30586908401165,
+      "status": "returned"
+    },
+    {
+      "requested_worker_timeout_seconds": 40.95615762802481,
+      "seconds": 14.525272041006247,
+      "stage": "ipfs_datasets_py.logic.software_contracts.codebase_source_units_384._worker",
+      "start_seconds": 69.00956643700192,
+      "status": "returned"
+    },
+    {
+      "seconds": 4.2305304639885435,
+      "stage": "RepositoryCodebaseIndex.observe_current",
+      "start_seconds": 83.57493248701212,
+      "status": "returned"
+    },
+    {
+      "seconds": 0.5478891490056412,
+      "stage": "ipfs_datasets_py.logic.software_contracts.codebase_source_units_384._context",
+      "start_seconds": 87.80546810300439,
+      "status": "returned"
+    },
+    {
+      "seconds": 4.129871103010373,
+      "stage": "RepositoryCodebaseIndex.observe_current",
+      "start_seconds": 88.40238991800288,
+      "status": "returned"
+    },
+    {
+      "seconds": 0.8115200059983181,
+      "stage": "ipfs_datasets_py.logic.software_contracts.codebase_source_units_384._context",
+      "start_seconds": 92.53637524900842,
+      "status": "returned"
+    },
+    {
+      "seconds": 0.8985935379896546,
+      "stage": "ipfs_datasets_py.logic.software_contracts.codebase_source_units_384.load_source_unit_inference",
+      "start_seconds": 92.53637283301214,
+      "status": "returned"
+    },
+    {
+      "seconds": 4.207658892002655,
+      "stage": "RepositoryCodebaseIndex.observe_current",
+      "start_seconds": 93.43519466200087,
+      "status": "returned"
+    },
+    {
+      "seconds": 4.564992950006854,
+      "stage": "RepositoryCodebaseIndex.observe_current",
+      "start_seconds": 141.80608155600203,
+      "status": "returned"
+    },
+    {
+      "seconds": 0.7701362410007278,
+      "stage": "ipfs_datasets_py.logic.software_contracts.codebase_source_units_384._context",
+      "start_seconds": 146.3710900740116,
+      "status": "returned"
+    },
+    {
+      "seconds": 0.8637152150040492,
+      "stage": "ipfs_datasets_py.logic.software_contracts.codebase_source_units_384.load_source_unit_inference",
+      "start_seconds": 146.37108562600042,
+      "status": "returned"
+    },
+    {
+      "seconds": 4.291500769002596,
+      "stage": "RepositoryCodebaseIndex.observe_current",
+      "start_seconds": 147.30431406700518,
+      "status": "returned"
+    },
+    {
+      "seconds": 4.407283186999848,
+      "stage": "RepositoryCodebaseIndex.observe_current",
+      "start_seconds": 152.62379313001293,
+      "status": "returned"
+    },
+    {
+      "seconds": 0.73371405400394,
+      "stage": "ipfs_datasets_py.logic.software_contracts.codebase_source_units_384._context",
+      "start_seconds": 157.03108598200197,
+      "status": "returned"
+    },
+    {
+      "seconds": 0.8246130440093111,
+      "stage": "ipfs_datasets_py.logic.software_contracts.codebase_source_units_384.load_source_unit_inference",
+      "start_seconds": 157.03108410999994,
+      "status": "returned"
+    },
+    {
+      "seconds": 4.44958455300366,
+      "stage": "RepositoryCodebaseIndex.observe_current",
+      "start_seconds": 157.92501202800486,
+      "status": "returned"
+    }
+  ],
+  "download_calls": 0,
+  "inference_sha256": "f7aa091592e7e9002477c635f32a08438b75f23e009e89fbd6123f18871d6ea2",
+  "initial_context_seconds": 139.51641601898882,
+  "native_worker_receipt": {
+    "child_lease_id": "c8050c63eee94b8f9802280bba6d4fe5",
+    "device": "cpu",
+    "elapsed_ms": 14464,
+    "input_sha256": "bd03937ad937ec0bb7c7772092acc03994e5c1d1649c15313629719653be1ef1",
+    "memory_enforcement": "sampled_process_tree_RSS_may_overshoot",
+    "memory_mb": 4096,
+    "output_sha256": "d5e6285ae3e1c3c0bdee93f0c3822d6e1f76a3dea3a3df2011dc659f2f0eaedc",
+    "parent_lease_id": "6e42a4c7a490448d8830c449fcddd999",
+    "provider_calls": 0,
+    "returncode": 0,
+    "workspace_cleaned": true
+  },
+  "official_verifier_executed": false,
+  "prepare_seconds": 11.213689291005721,
+  "producer": {
+    "byte_reader": "a3b3943bacb0becc7789c86414adab9f92e6977021919fb3e84b5e3c2baba491",
+    "config": "01f2377728f89eccc24958512ce6ab7f212b9ca9f5230945c59febb73da68270",
+    "consumer": "c55cf9b2f10471251700762d698326d2d1403225f9f335935731f86e80848754",
+    "source_owners": {
+      "ipfs_datasets_py.duckdb_control.codebase_catalog": "91986bf58356b2917483884661237c49448c0f91f3dc40d4cd3d79fa4811afdf",
+      "ipfs_datasets_py.logic.software_contracts.codebase_ir": "4aa2e5287885aaecf2c2319a100b8e4b8bdad21b082990a4beadda84d7c61018",
+      "ipfs_datasets_py.logic.software_contracts.content": "1e8c9bb9019bb593d6812ac6d1d1fa46e882be291d5f41bbb4894fb171056b43",
+      "ipfs_datasets_py.logic.software_contracts.duckdb_ast_store": "736c77ebdc66607ef234ab1aa2f4d84c4768811f11d568962a11692dfdcfad2f",
+      "ipfs_datasets_py.logic.software_contracts.duckdb_ingest": "cec3c3686d10dc5d9a0d5ccf853cd873284f3e4098e41ecdd6dc517a2b73c50e",
+      "ipfs_datasets_py.logic.software_contracts.python_frontend": "baf1c1ec5e6a5f83a0eb640b988850264d35311cdcedc87d22cff610d05308df",
+      "ipfs_datasets_py.logic.software_contracts.semantic_index.python_analysis": "5b95b014af601305eeb6d0d424d3baf3861e641a62ccfc892a5f3bcc5c9754b0",
+      "ipfs_datasets_py.logic.software_contracts.semantic_index.scanner": "002957f910a0bc1ff29de1ed72aca9c2464218ac5f65478be34a7c8f04e166a1",
+      "ipfs_datasets_py.logic.software_contracts.semantic_index.snapshot": "5135e623a0a3f970252da63dce049be167e8bb73db5355f6c3116316b70aafa6"
+    }
+  },
+  "production_qualification_claim": false,
+  "provider_calls": 0,
+  "qualified": true,
+  "schema": "terminal-source384-original-container-qualification@1",
+  "seconds": 162.9330859150068,
+  "source384_seconds": 78.36775178898824,
+  "source_qualified_proof_claimed": false,
+  "training_steps": 0,
+  "warm_observation_seconds": 10.755413574996055
+}

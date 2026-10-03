@@ -1,0 +1,130 @@
+{
+  "files": [
+    {
+      "bytes": 1746,
+      "path": "README.md",
+      "sha256": "2eccaafb9e1020e5256a07a060f4fafe2881d3601a6052e50bbc4ab9e0ffee46"
+    },
+    {
+      "bytes": 283,
+      "path": "admission-estimate.json",
+      "sha256": "5560e5c7fbccaa857c2899f91428b0454ead24718fc93cb0492a22ad6d25a889"
+    },
+    {
+      "bytes": 2871,
+      "path": "build-audit.json",
+      "sha256": "ba504bb688d6592a38e75ea128f26ac23cf038baf02720e798e9aa924e801eb5"
+    },
+    {
+      "bytes": 11519,
+      "path": "build-command.json",
+      "sha256": "a43072e1d9874f58ff96111d0c23ed5b1071154708fcc0d853da56ecd35837f9"
+    },
+    {
+      "bytes": 55,
+      "path": "build-exit.json",
+      "sha256": "d9c46bb1524bbb3838cd3babb61923c0dcebdc8bd6c7b42424e23d12a552c326"
+    },
+    {
+      "bytes": 1783,
+      "path": "deployment-observation.json",
+      "sha256": "6c8497c5f1daa1cef9e30fecc3e74fbcd84146ee683e75d061c4d7ffc8b1c40b"
+    },
+    {
+      "bytes": 24369,
+      "path": "input-population.json",
+      "sha256": "8a35cd18d5e70dd7f45a8546750d029931d72788fca6ce13527c195cd7c95fdf"
+    },
+    {
+      "bytes": 1105,
+      "path": "input-review.json",
+      "sha256": "d9ad19aa816667ed4e7fee73fd408144669a4c81e01a13f791fcdf759c7abded"
+    },
+    {
+      "bytes": 3901,
+      "path": "native-observation.json",
+      "sha256": "512600d0e67638f21d1b4cf8e54b0a4713a2774a745bb0e16bee70d9f0d0c146"
+    },
+    {
+      "bytes": 7217,
+      "path": "qualification-after-pins.json",
+      "sha256": "9778940e7da56fd57deb003117bf8c32e360e87e25ab1fc0cfb719168c77fc3a"
+    },
+    {
+      "bytes": 7217,
+      "path": "qualification-before-pins.json",
+      "sha256": "9778940e7da56fd57deb003117bf8c32e360e87e25ab1fc0cfb719168c77fc3a"
+    },
+    {
+      "bytes": 3212,
+      "path": "qualification-command.json",
+      "sha256": "5762e00b4e6b1ebd5a080cbe36a1fc39db162c9881ce79751a82e6e9d80b3c94"
+    },
+    {
+      "bytes": 36,
+      "path": "qualification-containers-after.json",
+      "sha256": "11c8e4d6b9ed9a59fde466cfd0aa636f30594fd28fe2d25fb0490db81ffc2463"
+    },
+    {
+      "bytes": 36,
+      "path": "qualification-containers-before.json",
+      "sha256": "11c8e4d6b9ed9a59fde466cfd0aa636f30594fd28fe2d25fb0490db81ffc2463"
+    },
+    {
+      "bytes": 1015,
+      "path": "qualification-controller-command.json",
+      "sha256": "3ac0a27bbbb7d1f5a689de8b1495fcd2f7d9c029d70370530fa60f1e3a55a8b0"
+    },
+    {
+      "bytes": 55,
+      "path": "qualification-controller-exit.json",
+      "sha256": "33306df83c486fe9377b6bfd69931ea1e09b02d81f168ae342a9e34e261183b0"
+    },
+    {
+      "bytes": 275,
+      "path": "qualification-exit.json",
+      "sha256": "ce150f39836b8acee2818b1548a81e2e48f4a738dbc7e56195949bda69ded131"
+    },
+    {
+      "bytes": 270,
+      "path": "qualification-public-task-pins.json",
+      "sha256": "c2bd9ed3e63cbb7d5202f7c3fe124aaeb45010d8d176d77223e405a6e16806a3"
+    },
+    {
+      "bytes": 250,
+      "path": "resources-after.json",
+      "sha256": "2047648bb182eeb4f40abea80b146339a2781cdd24028109a9557f3845ffec01"
+    },
+    {
+      "bytes": 250,
+      "path": "resources.json",
+      "sha256": "f2f944922bafa3215553b782a7a5afadd9850598f9b31d56d2f6b469fc9e6f1d"
+    },
+    {
+      "bytes": 1258,
+      "path": "retained-records.json",
+      "sha256": "a4e8d485a4bd0f68a85726b3bd6de77914de10328d55a94b46b51143aadf5858"
+    },
+    {
+      "bytes": 800,
+      "path": "run-admission.json",
+      "sha256": "ade9cf9c644f955ca8a4e627c00852c1a8bbcafb0e7787bae5cc5b88b1db188e"
+    },
+    {
+      "bytes": 1177,
+      "path": "solver-discovery-command.json",
+      "sha256": "9e9cb9500aacb300d5b5246c17d73e5e2ee297c31c250e42e041801517a681a6"
+    },
+    {
+      "bytes": 126,
+      "path": "solver-discovery-exit.json",
+      "sha256": "4ccdf2b5cedaf52ca76d5313991b1e18ef2098e6fbd84dd4142eff6443547709"
+    },
+    {
+      "bytes": 342,
+      "path": "solver-profile.json",
+      "sha256": "e28ce7fccf6da83ca0ed02fefd9c2704fa8895186c33bc315c2d46b6ced89a42"
+    }
+  ],
+  "schema": "captured-header-docker-qualification-evidence@1"
+}

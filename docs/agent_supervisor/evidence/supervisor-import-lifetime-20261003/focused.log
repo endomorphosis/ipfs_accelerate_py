@@ -1,0 +1,76 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 56 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_import_lifetime.py::test_execution_dependencies_are_loaded_only_after_admission[full-initial_context] [32mPASSED[0m[32m [  1%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_import_lifetime.py::test_execution_dependencies_are_loaded_only_after_admission[full-planning] [32mPASSED[0m[32m [  3%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_import_lifetime.py::test_execution_dependencies_are_loaded_only_after_admission[full-doctor] [32mPASSED[0m[32m [  5%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_import_lifetime.py::test_execution_dependencies_are_loaded_only_after_admission[no-index-implementation_setup] [32mPASSED[0m[32m [  7%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_import_lifetime.py::test_execution_dependencies_are_loaded_only_after_admission[full-native_execution] [32mPASSED[0m[32m [  8%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_metadata_excludes_frame_locals_source_and_exception_chain [33mSKIPPED[0m[32m [ 10%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_traceback_walk_and_retained_frames_are_bounded[80-False] [33mSKIPPED[0m[32m [ 12%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_traceback_walk_and_retained_frames_are_bounded[300-True] [33mSKIPPED[0m[32m [ 14%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_generated_filename_and_function_names_are_bounded [33mSKIPPED[0m[32m [ 16%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_resource_failure_retains_traceback_without_diagnostic_message [33mSKIPPED[0m[32m [ 17%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_traceback_failure_does_not_suppress_resource_sample [33mSKIPPED[0m[32m [ 19%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_actual_canonical_resource_probe_reports_only_finite_resource_values [33mSKIPPED[0m[32m [ 21%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_driver_failure_retains_primary_result_phase_and_cleanup[None-prepare] [33mSKIPPED[0m[32m [ 23%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_driver_failure_retains_primary_result_phase_and_cleanup[None-initial_context] [33mSKIPPED[0m[32m [ 25%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_driver_failure_retains_primary_result_phase_and_cleanup[None-planning] [33mSKIPPED[0m[32m [ 26%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_driver_failure_retains_primary_result_phase_and_cleanup[resources-prepare] [33mSKIPPED[0m[32m [ 28%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_driver_failure_retains_primary_result_phase_and_cleanup[resources-initial_context] [33mSKIPPED[0m[32m [ 30%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_driver_failure_retains_primary_result_phase_and_cleanup[resources-planning] [33mSKIPPED[0m[32m [ 32%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_driver_failure_retains_primary_result_phase_and_cleanup[helper-prepare] [33mSKIPPED[0m[32m [ 33%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_driver_failure_retains_primary_result_phase_and_cleanup[helper-initial_context] [33mSKIPPED[0m[32m [ 35%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_driver_failure_retains_primary_result_phase_and_cleanup[helper-planning] [33mSKIPPED[0m[32m [ 37%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py::test_exact_whitelist_excludes_labels_keys_paths_and_source [33mSKIPPED[0m[32m [ 39%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py::test_empty_recovery_backoff_does_not_invent_a_refusal [33mSKIPPED[0m[32m [ 41%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py::test_unknown_reasons_and_phases_are_not_exported [33mSKIPPED[0m[32m [ 42%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py::test_malformed_primitive_fields_fail_open_without_export[True] [33mSKIPPED[0m[32m [ 44%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py::test_malformed_primitive_fields_fail_open_without_export[-1] [33mSKIPPED[0m[32m [ 46%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py::test_malformed_primitive_fields_fail_open_without_export[1267650600228229401496703205376] [33mSKIPPED[0m[32m [ 48%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py::test_malformed_primitive_fields_fail_open_without_export[nan] [33mSKIPPED[0m[32m [ 50%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py::test_malformed_primitive_fields_fail_open_without_export[inf] [33mSKIPPED[0m[32m [ 51%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py::test_malformed_primitive_fields_fail_open_without_export[PRIVATE] [33mSKIPPED[0m[32m [ 53%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py::test_malformed_primitive_fields_fail_open_without_export[bad6] [33mSKIPPED[0m[32m [ 55%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py::test_malformed_primitive_fields_fail_open_without_export[bad7] [33mSKIPPED[0m[32m [ 57%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py::test_unavailable_existing_owner_never_creates_or_reconfigures[unloaded] [33mSKIPPED[0m[32m [ 58%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py::test_unavailable_existing_owner_never_creates_or_reconfigures[layout] [33mSKIPPED[0m[32m [ 60%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py::test_unavailable_existing_owner_never_creates_or_reconfigures[missing] [33mSKIPPED[0m[32m [ 62%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py::test_unavailable_existing_owner_never_creates_or_reconfigures[ambiguous] [33mSKIPPED[0m[32m [ 64%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py::test_unavailable_existing_owner_never_creates_or_reconfigures[busy] [33mSKIPPED[0m[32m [ 66%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py::test_unavailable_existing_owner_never_creates_or_reconfigures[custom_owner] [33mSKIPPED[0m[32m [ 67%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py::test_unavailable_existing_owner_never_creates_or_reconfigures[missing_fields] [33mSKIPPED[0m[32m [ 69%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py::test_unavailable_existing_owner_never_creates_or_reconfigures[snapshot_error] [33mSKIPPED[0m[32m [ 71%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py::test_unavailable_existing_owner_never_creates_or_reconfigures[snapshot_timeout] [33mSKIPPED[0m[32m [ 73%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py::test_driver_failure_keeps_primary_traceback_when_snapshot_or_sample_unavailable [33mSKIPPED[0m[32m [ 75%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py::test_actual_context_probe_failure_preserves_result_and_disarms_timer[False] [33mSKIPPED[0m[32m [ 76%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py::test_actual_context_probe_failure_preserves_result_and_disarms_timer[True] [33mSKIPPED[0m[32m [ 78%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py::test_helper_has_no_factory_or_heavy_success_path_import [33mSKIPPED[0m[32m [ 80%][0m
+benchmarks/agent_supervisor/container_coding/test_cleanup_deadline.py::test_work_alarm_is_replaced_and_cleanup_stays_bounded [33mSKIPPED[0m[32m [ 82%][0m
+benchmarks/agent_supervisor/container_coding/test_cleanup_deadline.py::test_cleanup_gets_its_window_after_work_deadline_has_already_fired [33mSKIPPED[0m[32m [ 83%][0m
+benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py::test_refresh_deadline_escapes_optional_exception_handlers_and_restores_outer_alarm [33mSKIPPED[0m[32m [ 85%][0m
+benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py::test_unsettled_or_unrequested_work_never_rebuilds[change0] [33mSKIPPED[0m[32m [ 87%][0m
+benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py::test_unsettled_or_unrequested_work_never_rebuilds[change1] [33mSKIPPED[0m[32m [ 89%][0m
+benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py::test_unsettled_or_unrequested_work_never_rebuilds[change2] [33mSKIPPED[0m[32m [ 91%][0m
+benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py::test_unsettled_or_unrequested_work_never_rebuilds[change3] [33mSKIPPED[0m[32m [ 92%][0m
+benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py::test_finalization_reserve_and_current_retrieval_are_required [33mSKIPPED[0m[32m [ 94%][0m
+benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py::test_real_refresh_alarm_interrupts_component_without_consuming_cleanup_reserve [33mSKIPPED[0m[32m [ 96%][0m
+benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py::test_failed_learned_refresh_keeps_actual_inference_cost_and_unknown_totals[False] [33mSKIPPED[0m[32m [ 98%][0m
+benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py::test_failed_learned_refresh_keeps_actual_inference_cost_and_unknown_totals[True] [33mSKIPPED[0m[32m [100%][0m
+
+- generated xml file: /home/barberb/lift_coding/artifacts/source384-header-import-lifetime-20261003/focused.xml -
+============================= slowest 10 durations =============================
+0.25s call     benchmarks/agent_supervisor/container_coding/test_terminal_import_lifetime.py::test_execution_dependencies_are_loaded_only_after_admission[full-initial_context]
+0.23s call     benchmarks/agent_supervisor/container_coding/test_terminal_import_lifetime.py::test_execution_dependencies_are_loaded_only_after_admission[full-planning]
+0.23s call     benchmarks/agent_supervisor/container_coding/test_terminal_import_lifetime.py::test_execution_dependencies_are_loaded_only_after_admission[full-doctor]
+0.23s call     benchmarks/agent_supervisor/container_coding/test_terminal_import_lifetime.py::test_execution_dependencies_are_loaded_only_after_admission[no-index-implementation_setup]
+0.22s call     benchmarks/agent_supervisor/container_coding/test_terminal_import_lifetime.py::test_execution_dependencies_are_loaded_only_after_admission[full-native_execution]
+
+(5 durations < 0.005s hidden.  Use -vv to show these durations.)
+[32m======================== [32m[1m5 passed[0m, [33m51 skipped[0m[32m in 1.67s[0m[32m =========================[0m

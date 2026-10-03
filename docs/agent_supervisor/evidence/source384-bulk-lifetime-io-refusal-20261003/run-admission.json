@@ -1,0 +1,21 @@
+{
+  "schema": "bounded-docker-run-admission@1",
+  "root_go_received": true,
+  "current_producer_component_review_complete": true,
+  "fresh_archive_audited": true,
+  "build_audit_sha256": "294401f63431d53b3de143eb8ac0e0a7adf71fc19fda105c863f84c46523dd5e",
+  "component_review": {
+    "passed_scopes": [
+      "37 current qualifier controls, including bulk object lifetime, cold guard refusals and warm drift rejection",
+      "56 current-driver actual import-lifetime, failure, resource and cleanup controls; earlier 354 integration controls retained on unchanged producer sources",
+      "83 actual native intent/planner cases including real Source384 checkpoint normal initialization",
+      "114 actual transport/orchestration controls",
+      "96 actual admission/context regressions",
+      "61 distinct shared derivation/leased checker controls including exact permitted public source"
+    ],
+    "resource_blocked_scopes": [],
+    "unresolved_code_or_test_packaging_failures": []
+  },
+  "new_profile_previously_docker_qualified": false,
+  "full_task_score_claimed": false
+}

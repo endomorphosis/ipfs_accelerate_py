@@ -1,0 +1,33 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "benchmarks/agent_supervisor/container_coding/test_source384_probe_lifetime.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/source384-probe-bulk-lifetime-20261003/actual.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "environment_overrides": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "NUMEXPR_MAX_THREADS": "1",
+    "CUDA_VISIBLE_DEVICES": "",
+    "TOKENIZERS_PARALLELISM": "false",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/source384-probe-bulk-lifetime-20261003/actual-seal.duckdb",
+    "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "/home/barberb/lift_coding/artifacts/source384-probe-bulk-lifetime-20261003/actual-keys.db"
+  },
+  "source_pins": {
+    "benchmarks/agent_supervisor/container_coding/test_source384_probe_lifetime.py": "c57f9d8024fab08234a75ded75a7df94ac5a60dab922a88a772a584356939d19",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py": "ce0e2bbec41412fee5dc00a2c7dcddce648bc6f8e5e54b0ea268131be5b66327",
+    "benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py": "54110fcb980dde574105ffaa6e3ea2f7a6d0b3664c8ef57f6e8a3e142347d1a0"
+  }
+}

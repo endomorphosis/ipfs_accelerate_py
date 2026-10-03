@@ -1,0 +1,3 @@
+2026-10-03 22:12:14,631 - ipfs_accelerate_py.ipfs_kit_integration - INFO - Successfully imported ipfs_kit_py modules from /home/barberb/HACC/complaint-generator/ipfs_datasets_py/ipfs_kit_py/ipfs_kit_py/__init__.py
+2026-10-03 22:12:14,631 - ipfs_accelerate_py.ipfs_kit_integration - INFO - IPFS Kit integration enabled successfully
+2026-10-03 22:12:14,631 - ipfs_accelerate_py.common.storage_wrapper - INFO - Storage initialized with distributed backend

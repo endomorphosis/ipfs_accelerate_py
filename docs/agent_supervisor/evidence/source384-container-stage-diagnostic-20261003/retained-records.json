@@ -1,0 +1,22 @@
+{
+  "source384-header-container-stages-20261003-02/qualification-01/native-inference.json": {
+    "bytes": 4505885,
+    "raw_body_exported": false,
+    "sha256": "f7aa091592e7e9002477c635f32a08438b75f23e009e89fbd6123f18871d6ea2"
+  },
+  "source384-header-container-stages-20261003-02/qualification-01/qualification.json": {
+    "bytes": 184310,
+    "raw_body_exported": false,
+    "sha256": "75a46d05b03966979b1baedd928a9bd66b6803ab63a6b05574fb8f72c85b5e3a"
+  },
+  "source384-header-container-stages-20261003/archive-link-correction.json": {
+    "bytes": 496,
+    "raw_body_exported": false,
+    "sha256": "76067f67de897b229be0bc7a25f38a2a0074ca580b0e4649bb7f401985d53b88"
+  },
+  "source384-header-container-stages-20261003/qualification-controller.stderr": {
+    "bytes": 1992,
+    "raw_body_exported": false,
+    "sha256": "c4cd0b0ff119ce358f81528ea4295971ed703035e3ae0d2f8abad6fcdac801e1"
+  }
+}

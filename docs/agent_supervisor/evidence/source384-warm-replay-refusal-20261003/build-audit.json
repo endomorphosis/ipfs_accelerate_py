@@ -1,0 +1,28 @@
+{
+  "added": [],
+  "archive_sha256": "468c8e8499ef65fe358be5e814ffcec468a7642150692d47b6720eb8aee845b6",
+  "benchmark_executed": false,
+  "changed": [
+    "source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py"
+  ],
+  "checkpoint_and_embedding_assets_unchanged": true,
+  "compressed_bytes": 1338039338,
+  "logical_bytes": 3914660189,
+  "manifest_sha256": "3e6184b11899c05e6af6a702360a8295f4bc201a2188f3e2e8ac3d878d240887",
+  "provider_calls": 0,
+  "removed": [],
+  "reviewed_header_profile_unchanged": true,
+  "setup_cache_selection": {
+    "manifest_sha256": "3e6184b11899c05e6af6a702360a8295f4bc201a2188f3e2e8ac3d878d240887",
+    "policy": "source384-native-aarch64-dontneed@1",
+    "schema": "terminal-setup-cache-selection@1"
+  },
+  "source_revisions": {
+    "datasets": "3315224dfd184e24ea71bad2cb137509450deb88",
+    "source": "55a5c408134cdf4cf14a06dae7337ad74515f213"
+  },
+  "source_revisions_unchanged": true,
+  "tar_hash_mode_ownership_checked": true,
+  "torch_wheel_unchanged": true,
+  "verified_members": 26926
+}

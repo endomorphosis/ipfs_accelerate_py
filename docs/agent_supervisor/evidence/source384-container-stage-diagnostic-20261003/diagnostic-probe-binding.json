@@ -1,0 +1,7 @@
+{
+  "diagnostic_only": true,
+  "instrumented_probe_sha256": "5d522211becd8801dd10dca5b75d127e25de4677c4ae3e197e71b99d97029109",
+  "limits_unchanged": true,
+  "original_probe_sha256": "be59f9a8cfc1d2a8757cb53347f0e586f8fbb36848899a9c2ca80827d83a8213",
+  "production_qualification_claim": false
+}

@@ -1,0 +1,22 @@
+{
+  "qualification-01/qualification.json": {
+    "bytes": 133762,
+    "raw_body_exported": false,
+    "sha256": "c184ceb60abab66a33ec9bb80b75a52b9821906a3a9ea667529602e37dfcb58f"
+  },
+  "qualification-01/source384-probe.stderr": {
+    "bytes": 0,
+    "raw_body_exported": false,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "qualification-01/source384-probe.stdout": {
+    "bytes": 15475,
+    "raw_body_exported": false,
+    "sha256": "a8baf0ab568af1a4a3ee8c36fa1a6569b5951102def38c14c56ef7fbda5af56d"
+  },
+  "qualification-01/source384-result.json": {
+    "bytes": 4800,
+    "raw_body_exported": false,
+    "sha256": "3524ef910e1890a2f58e5ba15bbc86b96ed2ccf54d5fc00ff93d11e7fba767de"
+  }
+}

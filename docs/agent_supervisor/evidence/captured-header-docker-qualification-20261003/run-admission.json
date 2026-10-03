@@ -1,0 +1,19 @@
+{
+  "schema": "bounded-docker-run-admission@1",
+  "root_go_received": true,
+  "current_producer_component_review_complete": true,
+  "fresh_archive_audited": true,
+  "build_audit_sha256": "ba504bb688d6592a38e75ea128f26ac23cf038baf02720e798e9aa924e801eb5",
+  "component_review": {
+    "passed_scopes": [
+      "83 actual native intent/planner cases including real Source384 checkpoint normal initialization",
+      "114 actual transport/orchestration controls",
+      "96 actual admission/context regressions",
+      "61 distinct shared derivation/leased checker controls including exact permitted public source"
+    ],
+    "resource_blocked_scopes": [],
+    "unresolved_code_or_test_packaging_failures": []
+  },
+  "new_profile_previously_docker_qualified": false,
+  "full_task_score_claimed": false
+}

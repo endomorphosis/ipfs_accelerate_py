@@ -1,0 +1,265 @@
+{
+  "files": [
+    {
+      "bytes": 1219,
+      "path": "README.md",
+      "sha256": "1a94a95f1dd1907d30296e47abff923a0a6617984a873b964e4078f3a20d7c9e"
+    },
+    {
+      "bytes": 2447,
+      "path": "actual-command.json",
+      "sha256": "6b4e740a61e030df097688e221237297dd6adf029b58d8d81b851e05694a77ce"
+    },
+    {
+      "bytes": 87,
+      "path": "actual-exit.json",
+      "sha256": "fc43b0c1169bb13e4ad1208f95527c8f50f486f1a578c5358b80a7d024cd43b1"
+    },
+    {
+      "bytes": 13976,
+      "path": "actual.log",
+      "sha256": "429a58e76564fec74a095a7c6dc1c98a73553944d0d3cae987bfb42616fd4e64"
+    },
+    {
+      "bytes": 11033,
+      "path": "actual.xml",
+      "sha256": "546035fe14ba2dcec82ad3ce023e18cf424caee38e27af0a3be65480059fdc49"
+    },
+    {
+      "bytes": 2139,
+      "path": "after/common-driver-command.json",
+      "sha256": "c232267851d0a1dfd24f1d80249ca55937d64b173c36e6fd896fa0e23d678d70"
+    },
+    {
+      "bytes": 55,
+      "path": "after/common-driver-exit.json",
+      "sha256": "17e8366b88e21a24dbc0263c1d6c77d8d3d4e622a735f239b23eebaab7221926"
+    },
+    {
+      "bytes": 68388,
+      "path": "after/common-driver.json",
+      "sha256": "809c8358647f255c1fce829dc9b7e200e210798e19525f87dbf986fbb46a9a59"
+    },
+    {
+      "bytes": 453,
+      "path": "after/common-driver.stderr",
+      "sha256": "21f0c6f480f35958ca2c6be48971e6da23dc84f5fee0644dfbb7a43ed755fff3"
+    },
+    {
+      "bytes": 2139,
+      "path": "after/common-prepare-command.json",
+      "sha256": "50532aa739bf0086d86f47696c507c65f25cadda756f4ffdbd2c2071b087bfde"
+    },
+    {
+      "bytes": 55,
+      "path": "after/common-prepare-exit.json",
+      "sha256": "f896cd1b50e448c77b4d8550a84825a8b86d91fcfe2461959dfbe1ab7b30c294"
+    },
+    {
+      "bytes": 68307,
+      "path": "after/common-prepare.json",
+      "sha256": "0952914fab496bd08171c19fc6c4ab15084868d2e9324f297e2deee47fffd940"
+    },
+    {
+      "bytes": 453,
+      "path": "after/common-prepare.stderr",
+      "sha256": "d31cd03151775fa3719a8a9eedc4d2c521ed2853c71ae47aae0bb64a8f206e0e"
+    },
+    {
+      "bytes": 1534,
+      "path": "after/driver-command.json",
+      "sha256": "943b318a1d7716ea9a9f064fea1e7130c415f3101d0a2e41640fd1cf35a01aed"
+    },
+    {
+      "bytes": 55,
+      "path": "after/driver-exit.json",
+      "sha256": "f7063e3d0a18697be8702678d4872f18509106495d7e48dccd7a1029aa5ebe5a"
+    },
+    {
+      "bytes": 9463,
+      "path": "after/driver.json",
+      "sha256": "714f29508bfab3ec9e959963e9957e4b499b405bf0baf33fbedcb93f0eaf452a"
+    },
+    {
+      "bytes": 0,
+      "path": "after/driver.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 1533,
+      "path": "after/prepare-command.json",
+      "sha256": "480b633fc5d841009f09e4c73b50b11a81200da00df18cf31864640f578b3509"
+    },
+    {
+      "bytes": 55,
+      "path": "after/prepare-exit.json",
+      "sha256": "32c111f8cab904d4858a2f9a00a47e90f2ca08a6978fe7d2ae5fff9bfa35a016"
+    },
+    {
+      "bytes": 9367,
+      "path": "after/prepare.json",
+      "sha256": "4e87983d210ffb53bef62cbce903f2834651be449ffd5b4392757425a963f65f"
+    },
+    {
+      "bytes": 0,
+      "path": "after/prepare.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 2208,
+      "path": "after/run.py",
+      "sha256": "33a369d8d9e68eaeae268a15d8cfda762de175e239d4d14a65a0f3fe764770ec"
+    },
+    {
+      "bytes": 1977,
+      "path": "after/run_common.py",
+      "sha256": "2bf27c89033cf50d7ccce70689e66c133bbfa6064e9e84c66c3570eafc379353"
+    },
+    {
+      "bytes": 2132,
+      "path": "before/common-driver-command.json",
+      "sha256": "f9fc74ae7a5622d525a0352cfd6482408fe182add9578974a05e67cbed8784a2"
+    },
+    {
+      "bytes": 55,
+      "path": "before/common-driver-exit.json",
+      "sha256": "c0b20423ca3950122d10e479ceff5efeb2a417be503f6f3156903515d044437a"
+    },
+    {
+      "bytes": 81042,
+      "path": "before/common-driver.json",
+      "sha256": "1e4827034d987c06d3e752a1d52463f1096b25c05363137d89c6f387683712c3"
+    },
+    {
+      "bytes": 453,
+      "path": "before/common-driver.stderr",
+      "sha256": "ad369251832f234b53db854f83e9ea87ba3cdb385d042f4688c1776c295ecdab"
+    },
+    {
+      "bytes": 2132,
+      "path": "before/common-prepare-command.json",
+      "sha256": "7dd5a14cb46cec7db6a0189a32a5c8b1dace804565d93a57f88265880ce65052"
+    },
+    {
+      "bytes": 55,
+      "path": "before/common-prepare-exit.json",
+      "sha256": "628c27d0d0d459840618776ade3533dc3548ba440b8c8b440cf8a7790a11b199"
+    },
+    {
+      "bytes": 68299,
+      "path": "before/common-prepare.json",
+      "sha256": "475267418801896338886f1a50d707c1428b218d8f23d810d27f5385ef2528f2"
+    },
+    {
+      "bytes": 453,
+      "path": "before/common-prepare.stderr",
+      "sha256": "bcb262a680a44da0d25702223ed7305e09e5283224faa1da49f7ab022a743f52"
+    },
+    {
+      "bytes": 1534,
+      "path": "before/driver-command.json",
+      "sha256": "b9c8cd44e3465c058cd42ff44d8a635e25a9abbeaf778df5c2e117c18d8f5e55"
+    },
+    {
+      "bytes": 54,
+      "path": "before/driver-exit.json",
+      "sha256": "a9bcb7fd5c46718518f151a5fd4b27c6e716a23981c486d0488de60bc22b811e"
+    },
+    {
+      "bytes": 36066,
+      "path": "before/driver.json",
+      "sha256": "8efe52762c7aba3d2dc87bc54a776534cbc2bcc47a47c90e305ef1d7bd917a48"
+    },
+    {
+      "bytes": 0,
+      "path": "before/driver.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 1533,
+      "path": "before/prepare-command.json",
+      "sha256": "480b633fc5d841009f09e4c73b50b11a81200da00df18cf31864640f578b3509"
+    },
+    {
+      "bytes": 55,
+      "path": "before/prepare-exit.json",
+      "sha256": "92ee2761736954b5e708af042388ba740dec4e0253101bf11dac957b0f9e9239"
+    },
+    {
+      "bytes": 9367,
+      "path": "before/prepare.json",
+      "sha256": "3fb24e3a6746a2ed7613493ca5a2c6755cb0d250615ddb778bcdbc1adbf93e54"
+    },
+    {
+      "bytes": 0,
+      "path": "before/prepare.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 2208,
+      "path": "before/run.py",
+      "sha256": "33a369d8d9e68eaeae268a15d8cfda762de175e239d4d14a65a0f3fe764770ec"
+    },
+    {
+      "bytes": 1977,
+      "path": "before/run_common.py",
+      "sha256": "2bf27c89033cf50d7ccce70689e66c133bbfa6064e9e84c66c3570eafc379353"
+    },
+    {
+      "bytes": 12419,
+      "path": "focused.log",
+      "sha256": "10c111594c7db1bd615f82384c879bcb36d78f50cfd074ea981ea30fdb4091fb"
+    },
+    {
+      "bytes": 24169,
+      "path": "focused.xml",
+      "sha256": "44ffc38e01c3ad8e595a9cfba35013e097642ab6e1d3e1ee0e5a223db570dd68"
+    },
+    {
+      "bytes": 200,
+      "path": "prebuild-docs.log",
+      "sha256": "3ee5d7242b0b646a480b60c7ce9d3e9c1052f7d794069acb52919a4e03b93db7"
+    },
+    {
+      "bytes": 1352,
+      "path": "qualification.json",
+      "sha256": "454bf248c2a03831cedb5bf60f0de7c5563964a8eab073437f09cce6aca722df"
+    },
+    {
+      "bytes": 1572,
+      "path": "run_tests.py",
+      "sha256": "b003c961116f1dd07b0c7cdaea02c8dfcd63f1207ebdabb55387c154082ebb56"
+    },
+    {
+      "bytes": 38648,
+      "path": "sources/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "e0bc6ef3b14b5ab7ac84a595221b765f14d0297f994acca5e9e495f0830e8779"
+    },
+    {
+      "bytes": 2325,
+      "path": "sources/benchmarks/agent_supervisor/container_coding/test_cleanup_deadline.py",
+      "sha256": "290cfc975c23a1c47a65df7e374386dcb35de983f816e780b77d533fa23b8ad6"
+    },
+    {
+      "bytes": 5226,
+      "path": "sources/benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py",
+      "sha256": "27103c9b591e4c22a556739c5f1fa67aa95acc24e24c7c1442d8820c1bbd9195"
+    },
+    {
+      "bytes": 8179,
+      "path": "sources/benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py",
+      "sha256": "556b0c27e09374c68341f38c4051d1e48a3545310a9c2d23eb986c9d2cdc2724"
+    },
+    {
+      "bytes": 5142,
+      "path": "sources/benchmarks/agent_supervisor/container_coding/test_terminal_import_lifetime.py",
+      "sha256": "d4cdb2baa3d7efc7d807b4efc48bdb9d4abaacce57d25b4cbb42f25f0b02da35"
+    },
+    {
+      "bytes": 9096,
+      "path": "sources/benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py",
+      "sha256": "38c9b5c7997488e35bc03f8f039278a68085b5cab9a97ee31e04a404ce4b7e01"
+    }
+  ],
+  "schema": "supervisor-import-lifetime-evidence@1"
+}

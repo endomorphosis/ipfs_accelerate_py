@@ -1,0 +1,67 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002
+configfile: pytest.ini
+plugins: platformdirs-4.12.1, anyio-4.15.1, mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+
+[1m----------------------------- live log collection ------------------------------[0m
+2026-10-03 23:13:34 [[32m    INFO[0m] Registered service: ipfs (service_manager.py:93)
+2026-10-03 23:13:34 [[32m    INFO[0m] Registered test suite: core_infrastructure (test_framework.py:82)
+2026-10-03 23:13:34 [[32m    INFO[0m] Registered test suite: performance (test_framework.py:82)
+2026-10-03 23:13:34 [[32m    INFO[0m] Registered test suite: integration (test_framework.py:82)
+2026-10-03 23:13:34 [[32m    INFO[0m] Successfully imported ipfs_kit_py modules from /home/barberb/HACC/complaint-generator/ipfs_datasets_py/ipfs_kit_py/ipfs_kit_py/__init__.py (ipfs_kit_integration.py:327)
+2026-10-03 23:13:34 [[32m    INFO[0m] IPFS Kit integration enabled successfully (ipfs_kit_integration.py:344)
+2026-10-03 23:13:34 [[32m    INFO[0m] Storage initialized with distributed backend (storage_wrapper.py:92)
+collected 37 items
+
+benchmarks/agent_supervisor/container_coding/test_source384_probe_lifetime.py::test_probe_releases_bulk_inference_before_independent_warm_replay[None] [32mPASSED[0m[32m [  2%][0m
+benchmarks/agent_supervisor/container_coding/test_source384_probe_lifetime.py::test_probe_releases_bulk_inference_before_independent_warm_replay[digest] [32mPASSED[0m[32m [  5%][0m
+benchmarks/agent_supervisor/container_coding/test_source384_probe_lifetime.py::test_probe_releases_bulk_inference_before_independent_warm_replay[model_loads] [32mPASSED[0m[32m [  8%][0m
+benchmarks/agent_supervisor/container_coding/test_source384_probe_lifetime.py::test_probe_releases_bulk_inference_before_independent_warm_replay[authority] [32mPASSED[0m[32m [ 10%][0m
+benchmarks/agent_supervisor/container_coding/test_source384_probe_lifetime.py::test_probe_releases_bulk_inference_before_independent_warm_replay[warm_replay] [32mPASSED[0m[32m [ 13%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_cgroup_limits_require_exact_finite_profile[cpu_max-max 100000] [32mPASSED[0m[32m [ 16%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_cgroup_limits_require_exact_finite_profile[cpu_max-100000 100000] [32mPASSED[0m[32m [ 18%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_cgroup_limits_require_exact_finite_profile[cpu_max-500000 0] [32mPASSED[0m[32m [ 21%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_cgroup_limits_require_exact_finite_profile[memory_max-max] [32mPASSED[0m[32m [ 24%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_cgroup_limits_require_exact_finite_profile[memory_max-2147483648] [32mPASSED[0m[32m [ 27%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_cgroup_limits_require_exact_finite_profile[detected_cpu_slots-4] [32mPASSED[0m[32m [ 29%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_cgroup_limits_require_exact_finite_profile[detected_cpu_slots-True] [32mPASSED[0m[32m [ 32%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_cgroup_limits_require_exact_finite_profile[detected_total_memory_mb-6144] [32mPASSED[0m[32m [ 35%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_cgroup_limits_require_exact_finite_profile[available_memory_mb-12289] [32mPASSED[0m[32m [ 37%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_cgroup_limits_require_exact_finite_profile[available_memory_mb-True] [32mPASSED[0m[32m [ 40%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_cgroup_limits_require_exact_finite_profile[extra-0] [32mPASSED[0m[32m [ 43%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_exact_cgroup_limits_and_default_options [32mPASSED[0m[32m [ 45%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_default_qualification_keeps_original_harbor_task_resources [32mPASSED[0m[32m [ 48%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_selected_qualification_enforces_limits_and_complete_source_receipt [32mPASSED[0m[32m [ 51%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_failed_qualification_is_retained_and_container_closed[source_omitted] [32mPASSED[0m[32m [ 54%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_failed_qualification_is_retained_and_container_closed[source_changed] [32mPASSED[0m[32m [ 56%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_failed_qualification_is_retained_and_container_closed[native_refusal] [32mPASSED[0m[32m [ 59%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_receipt_persistence_failure_still_closes_container [32mPASSED[0m[32m [ 62%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_invalid_selection_is_refused_before_docker[no_profile] [32mPASSED[0m[32m [ 64%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_invalid_selection_is_refused_before_docker[no_assets] [32mPASSED[0m[32m [ 67%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_invalid_selection_is_refused_before_docker[bad_switch] [32mPASSED[0m[32m [ 70%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_embedded_probes_compile_and_do_not_invoke_provider_or_verifier [32mPASSED[0m[32m [ 72%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_probe_receipt_matches_relocated_assets_and_actual_archive_producers[None] [32mPASSED[0m[32m [ 75%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_probe_receipt_matches_relocated_assets_and_actual_archive_producers[checkpoint] [32mPASSED[0m[32m [ 78%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_probe_receipt_matches_relocated_assets_and_actual_archive_producers[config] [32mPASSED[0m[32m [ 81%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_probe_receipt_matches_relocated_assets_and_actual_archive_producers[producer] [32mPASSED[0m[32m [ 83%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_probe_receipt_matches_relocated_assets_and_actual_archive_producers[provider] [32mPASSED[0m[32m [ 86%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_probe_receipt_matches_relocated_assets_and_actual_archive_producers[verifier] [32mPASSED[0m[32m [ 89%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_probe_receipt_matches_relocated_assets_and_actual_archive_producers[refused] [32mPASSED[0m[32m [ 91%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_probe_receipt_matches_relocated_assets_and_actual_archive_producers[export_changed] [32mPASSED[0m[32m [ 94%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_probe_receipt_matches_relocated_assets_and_actual_archive_producers[report_oversize] [32mPASSED[0m[32m [ 97%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_probe_receipt_matches_relocated_assets_and_actual_archive_producers[report_malformed] [32mPASSED[0m[32m [100%][0m
+
+- generated xml file: /home/barberb/lift_coding/artifacts/source384-probe-bulk-lifetime-20261003/actual.xml -
+============================= slowest 10 durations =============================
+0.07s call     benchmarks/agent_supervisor/container_coding/test_source384_probe_lifetime.py::test_probe_releases_bulk_inference_before_independent_warm_replay[None]
+0.05s call     benchmarks/agent_supervisor/container_coding/test_source384_probe_lifetime.py::test_probe_releases_bulk_inference_before_independent_warm_replay[warm_replay]
+0.04s setup    benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_default_qualification_keeps_original_harbor_task_resources
+0.01s call     benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_probe_receipt_matches_relocated_assets_and_actual_archive_producers[None]
+0.01s call     benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py::test_default_qualification_keeps_original_harbor_task_resources
+0.01s setup    benchmarks/agent_supervisor/container_coding/test_source384_probe_lifetime.py::test_probe_releases_bulk_inference_before_independent_warm_replay[None]
+
+(4 durations < 0.005s hidden.  Use -vv to show these durations.)
+[32m============================= [32m[1m37 passed[0m[32m in 14.56s[0m[32m ==============================[0m

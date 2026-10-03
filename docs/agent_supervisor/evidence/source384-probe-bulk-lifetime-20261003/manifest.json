@@ -1,0 +1,60 @@
+{
+  "files": [
+    {
+      "bytes": 1037,
+      "path": "README.md",
+      "sha256": "8efbf5d4fc1c61ae468fa34fd2d85ee6fe226b12430456b581391995e43dc591"
+    },
+    {
+      "bytes": 1825,
+      "path": "bulk-actual-command.json",
+      "sha256": "ec5919c5d6e18b615a4893c7c6f39f9a1ede776d37064aee31b7b754dec4cbfc"
+    },
+    {
+      "bytes": 88,
+      "path": "bulk-actual-exit.json",
+      "sha256": "7c1dbe646cf7eac73d7c81ee5870c4c4aa9480a38cbaf7c5fa30ee3d1d3ab2ef"
+    },
+    {
+      "bytes": 10160,
+      "path": "bulk-actual.log",
+      "sha256": "aae5c5ea716ccc9d8539f6be2e648a866a1588c92be714de6ab066b39789c996"
+    },
+    {
+      "bytes": 7611,
+      "path": "bulk-actual.xml",
+      "sha256": "3b34651059d0d0dfff6967cdaa515323646aa6a3261399048bf1be7ec6f283a0"
+    },
+    {
+      "bytes": 200,
+      "path": "prebuild-docs.log",
+      "sha256": "3ee5d7242b0b646a480b60c7ce9d3e9c1052f7d794069acb52919a4e03b93db7"
+    },
+    {
+      "bytes": 499,
+      "path": "qualification.json",
+      "sha256": "2cc55df74d267a3df23c3ccb9648c9bc15f127a7285ecbe02da1f9cfd15d8fee"
+    },
+    {
+      "bytes": 1567,
+      "path": "run_tests.py",
+      "sha256": "1b3a56f23a0d2e6838e9ebc3ebdc7fae2aa3014f4eea4f6d65cf7575c02d1a1b"
+    },
+    {
+      "bytes": 15026,
+      "path": "sources/benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py",
+      "sha256": "54110fcb980dde574105ffaa6e3ea2f7a6d0b3664c8ef57f6e8a3e142347d1a0"
+    },
+    {
+      "bytes": 5091,
+      "path": "sources/benchmarks/agent_supervisor/container_coding/test_source384_probe_lifetime.py",
+      "sha256": "c57f9d8024fab08234a75ded75a7df94ac5a60dab922a88a772a584356939d19"
+    },
+    {
+      "bytes": 10340,
+      "path": "sources/benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py",
+      "sha256": "ce0e2bbec41412fee5dc00a2c7dcddce648bc6f8e5e54b0ea268131be5b66327"
+    }
+  ],
+  "schema": "source384-probe-bulk-lifetime-evidence@1"
+}

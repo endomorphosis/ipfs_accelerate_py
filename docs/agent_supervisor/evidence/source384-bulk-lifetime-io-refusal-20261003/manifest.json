@@ -1,0 +1,135 @@
+{
+  "files": [
+    {
+      "bytes": 1660,
+      "path": "README.md",
+      "sha256": "7ce803e688cf03679188554893a792df1af71562e3c14351fa3d6340f679a9fa"
+    },
+    {
+      "bytes": 282,
+      "path": "admission-estimate.json",
+      "sha256": "0b9c2d2f5ae9458ba0a56d135cbb8300983fc22fccac66609f823967c94dbce3"
+    },
+    {
+      "bytes": 1059,
+      "path": "build-audit.json",
+      "sha256": "294401f63431d53b3de143eb8ac0e0a7adf71fc19fda105c863f84c46523dd5e"
+    },
+    {
+      "bytes": 9715,
+      "path": "build-command.json",
+      "sha256": "0cbf31e4a89bd825f965cc0017a2094b5cbee923891853543fe88123be230964"
+    },
+    {
+      "bytes": 54,
+      "path": "build-exit.json",
+      "sha256": "9a910cfee4d5c44e071bbf9c833612b86e715043ff61e759d117b233bfcb68c5"
+    },
+    {
+      "bytes": 1772,
+      "path": "context-memory-sample.json",
+      "sha256": "9b1bdf8d9e1271e46ffd5835071ec72198bdb58f53b71bb84fd0743e45a2630e"
+    },
+    {
+      "bytes": 1783,
+      "path": "deployment-observation.json",
+      "sha256": "631b6520eadb91c156c11605ef0e5ec934e41f6c1735ba2d3d5d1446a35f0a8a"
+    },
+    {
+      "bytes": 1105,
+      "path": "input-review.json",
+      "sha256": "d9ad19aa816667ed4e7fee73fd408144669a4c81e01a13f791fcdf759c7abded"
+    },
+    {
+      "bytes": 4573,
+      "path": "native-observation.json",
+      "sha256": "87e23fa92497912f9d2d838446886796479a57589ef40aa92b42357e54a7503c"
+    },
+    {
+      "bytes": 2329,
+      "path": "public-asset-cache-sample.json",
+      "sha256": "c21754912e6d44560181bcc28b093528fd278d935e393822f7a03e70a6bd5fcc"
+    },
+    {
+      "bytes": 7315,
+      "path": "public-asset-mincore-sample.json",
+      "sha256": "38ef6488a575d38f5b5ab0a1587ff218056c81ea24140de49d58a20660489fd4"
+    },
+    {
+      "bytes": 7217,
+      "path": "qualification-after-pins.json",
+      "sha256": "922f08adc350248b1b2f7772395bd3de6e4bb2707c57dbdaeba37ac402b90dd6"
+    },
+    {
+      "bytes": 7217,
+      "path": "qualification-before-pins.json",
+      "sha256": "922f08adc350248b1b2f7772395bd3de6e4bb2707c57dbdaeba37ac402b90dd6"
+    },
+    {
+      "bytes": 3498,
+      "path": "qualification-command.json",
+      "sha256": "b7b1fc05028d131584973188e4cebc9914693e917825b67ada53931fdda40077"
+    },
+    {
+      "bytes": 36,
+      "path": "qualification-containers-after.json",
+      "sha256": "11c8e4d6b9ed9a59fde466cfd0aa636f30594fd28fe2d25fb0490db81ffc2463"
+    },
+    {
+      "bytes": 36,
+      "path": "qualification-containers-before.json",
+      "sha256": "11c8e4d6b9ed9a59fde466cfd0aa636f30594fd28fe2d25fb0490db81ffc2463"
+    },
+    {
+      "bytes": 1021,
+      "path": "qualification-controller-command.json",
+      "sha256": "e71fc343640ea5126d170f7036bfa10ec8f74bcdc1d61784906be85c1fbcead5"
+    },
+    {
+      "bytes": 55,
+      "path": "qualification-controller-exit.json",
+      "sha256": "2f3e8f5fff9f3093bcb3ce4716f90632dd27d3d5d3ca523aacf4c289a8f6cd70"
+    },
+    {
+      "bytes": 274,
+      "path": "qualification-exit.json",
+      "sha256": "81211b227abf747cb6e55b610328c0c5604df316ddb267fd83bb4cc5343312ba"
+    },
+    {
+      "bytes": 270,
+      "path": "qualification-public-task-pins.json",
+      "sha256": "c2bd9ed3e63cbb7d5202f7c3fe124aaeb45010d8d176d77223e405a6e16806a3"
+    },
+    {
+      "bytes": 249,
+      "path": "resources.json",
+      "sha256": "0a90dfcebd6f39dd1090512a9233f18c03f768be8b9c3502270b30f029baaa7c"
+    },
+    {
+      "bytes": 734,
+      "path": "retained-records.json",
+      "sha256": "a59f8a66296b1d00b7853b21c7b421825cb28708ee43256bb7eb1317e61c089b"
+    },
+    {
+      "bytes": 1080,
+      "path": "run-admission.json",
+      "sha256": "a95022d056e158548c94cdde39935e3320b1c0634e81847f695deadc61a2a9fa"
+    },
+    {
+      "bytes": 518,
+      "path": "setup-directory-sizes.json",
+      "sha256": "e85c5adf6e504946cc01faa0c555a48f88f6923b04d77ff84568068b1230aec7"
+    },
+    {
+      "bytes": 1796,
+      "path": "setup-memory-sample.json",
+      "sha256": "8ab33f009c33dbec767323bac5a375bb54714a30621ef439d9c952f41fad1792"
+    },
+    {
+      "bytes": 342,
+      "path": "solver-profile.json",
+      "sha256": "e28ce7fccf6da83ca0ed02fefd9c2704fa8895186c33bc315c2d46b6ced89a42"
+    }
+  ],
+  "schema": "source384-bulk-lifetime-io-refusal-evidence@1"
+}

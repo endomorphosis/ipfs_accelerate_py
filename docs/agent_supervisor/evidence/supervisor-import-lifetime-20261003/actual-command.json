@@ -1,0 +1,39 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_import_lifetime.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py",
+    "benchmarks/agent_supervisor/container_coding/test_cleanup_deadline.py",
+    "benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/source384-header-import-lifetime-20261003/actual.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "environment_overrides": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "NUMEXPR_MAX_THREADS": "1",
+    "CUDA_VISIBLE_DEVICES": "",
+    "TOKENIZERS_PARALLELISM": "false",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/source384-header-import-lifetime-20261003/actual-seal.duckdb",
+    "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "/home/barberb/lift_coding/artifacts/source384-header-import-lifetime-20261003/actual-keys.db"
+  },
+  "source_pins": {
+    "benchmarks/agent_supervisor/container_coding/test_terminal_import_lifetime.py": "d4cdb2baa3d7efc7d807b4efc48bdb9d4abaacce57d25b4cbb42f25f0b02da35",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py": "556b0c27e09374c68341f38c4051d1e48a3545310a9c2d23eb986c9d2cdc2724",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py": "38c9b5c7997488e35bc03f8f039278a68085b5cab9a97ee31e04a404ce4b7e01",
+    "benchmarks/agent_supervisor/container_coding/test_cleanup_deadline.py": "290cfc975c23a1c47a65df7e374386dcb35de983f816e780b77d533fa23b8ad6",
+    "benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py": "27103c9b591e4c22a556739c5f1fa67aa95acc24e24c7c1442d8820c1bbd9195",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "e0bc6ef3b14b5ab7ac84a595221b765f14d0297f994acca5e9e495f0830e8779"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "argv": [
+    "docker",
+    "run",
+    "--rm",
+    "--name",
+    "header-z3-discovery-20261003-01",
+    "--cidfile",
+    "/home/barberb/lift_coding/artifacts/source384-header-docker-20261003/discovery.cid",
+    "--cpus",
+    "1",
+    "--memory",
+    "512m",
+    "--entrypoint",
+    "/bin/sh",
+    "sha256:53a3bdc369a77ea235604900afb3919613a7a67bb09189293d5688c75dd2091a",
+    "-c",
+    "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends z3=4.13.3-1 && python3 -I -c 'import pathlib,hashlib,json,subprocess; p=pathlib.Path('\"'\"'/usr/bin/z3'\"'\"'); print(json.dumps(dict(schema='\"'\"'container-header-solver-discovery@1'\"'\"',path=str(p),sha256=hashlib.sha256(p.read_bytes()).hexdigest(),bytes=p.stat().st_size,version=subprocess.check_output([str(p),'\"'\"'-version'\"'\"'],text=True).strip(),package=subprocess.check_output(['\"'\"'dpkg-query'\"'\"','\"'\"'-W'\"'\"','\"'\"'-f=${Version}'\"'\"','\"'\"'z3'\"'\"'],text=True),public_bottle_sha256=hashlib.sha256(pathlib.Path('\"'\"'/app/bottle.py'\"'\"').read_bytes()).hexdigest())))'"
+  ],
+  "credential_transfer": false,
+  "provider_calls": 0,
+  "benchmark_executed": false
+}
