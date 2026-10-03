@@ -22,7 +22,6 @@ from .repository_resource_bridge import (
     MIB, RepositoryResourceBridge, RepositoryResourceBudget,
     RepositoryPhaseDemand, RepositoryResourceError,
 )
-from .repository_process_limits import RepositoryProcessLimits
 from ipfs_datasets_py.optimizers.logic_theorem_optimizer.autoencoder_daemon_resources import (
     DaemonResourceReservation, DaemonResourceError,
 )
@@ -160,7 +159,6 @@ class PipelinePhase:
         self._completed = False
         self._owner_thread = threading.get_ident()
         self.last_process_result = None
-        self.last_process_enforcement = None
 
     def _live(self):
         _require(not self._closed and not self._completed, "phase is closed or finalized")
@@ -209,18 +207,14 @@ class PipelinePhase:
                  "recovery must share native authority and exact named disk scope")
         return owner._recover(reservation_id, artifacts_durable=artifacts_durable)
 
-    def run(self, argv, *, timeout_seconds=30.0, max_output_bytes=65536, hard_limits=None):
+    def run(self, argv, *, timeout_seconds=30.0, max_output_bytes=65536):
         """Run an actual bounded process; admitted payload is its only stdin.
 
         Output remains bounded by the explicit reserved capture allowance. The
         existing runner owns termination/reaping; daemon sampling additionally
         observes the attempt directory, process group and durable disk claims.
-        An explicit RepositoryProcessLimits additionally requests Linux kernel
-        CPU/address-space ceilings through that same runner. Aggregate limits
-        remain sampled; no container or separate resource owner is introduced.
         """
         self._live()
-        self.last_process_enforcement = None
         _require(not self.pipeline.recovery_only, "recovery-only lifecycle cannot run workload processes")
         _positive(max_output_bytes, "max_output_bytes", MIB)
         _require(2 * max_output_bytes <= self.pipeline.output_allowance,
@@ -231,11 +225,6 @@ class PipelinePhase:
                  "bounded explicit argv required")
         _require(type(timeout_seconds) in (int, float) and 0 < timeout_seconds
                  <= self.pipeline.parent.remaining(), "bounded remaining process deadline required")
-        _require(hard_limits is None or type(hard_limits) is RepositoryProcessLimits,
-                 "exact optional RepositoryProcessLimits required")
-        enforcement = None if hard_limits is None else hard_limits.for_phase(
-            memory_mb=self.demand.memory_mb, threads_per_process=self.demand.threads_per_process,
-            timeout_seconds=timeout_seconds, disk_bytes=self.demand.disk_bytes)
         _require(self._run_lock.acquire(blocking=False), "phase already runs a process")
         signal = _UsageCancellation(self)
 
@@ -252,8 +241,6 @@ class PipelinePhase:
 
         try:
             limits = ToolRunLimits(timeout_seconds=timeout_seconds,
-                cpu_seconds=None if hard_limits is None else hard_limits.cpu_seconds,
-                memory_bytes=None if hard_limits is None else hard_limits.address_space_bytes,
                 resident_memory_bytes=self.demand.memory_mb * MIB,
                 max_input_bytes=max(1, len(self.payload)),
                 max_output_bytes=max_output_bytes,
@@ -263,13 +250,6 @@ class PipelinePhase:
             result = runner.run(argv, stdin=self.payload, limits=limits,
                 cancellation=signal, environment=self.thread_environment())
             self.last_process_result = result
-            if enforcement is not None:
-                self.last_process_enforcement = {**enforcement,
-                    "native_process_started": result.pid is not None,
-                    "returncode": result.returncode,
-                    "timed_out": result.timed_out, "cancelled": result.cancelled,
-                    "process_tree_terminated": result.process_tree_terminated,
-                    "workspace_cleaned": result.workspace_cleaned}
             if signal.error is not None:
                 raise signal.error
             self.check_usage()

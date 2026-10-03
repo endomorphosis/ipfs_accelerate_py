@@ -1,0 +1,210 @@
+{
+  "schema": "repository-process-limit-recovered-evidence@1",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 750,
+      "sha256": "32d7f6234d4eccc24fa3942c1ecb0618034a737d6f14d446284f13120dd8c663"
+    },
+    {
+      "path": "controlled-01.log",
+      "bytes": 8606,
+      "sha256": "f2f57a3b98333ba786c0831a195d55aedc2aeb94c34e0aa235420f98a4092bcb"
+    },
+    {
+      "path": "controlled-01.xml",
+      "bytes": 7780,
+      "sha256": "191db642a26aa65ceed848d0412e9804abeb558d6d6ac5451008c2eccaaa2a31"
+    },
+    {
+      "path": "final-producers-after.json",
+      "bytes": 2270,
+      "sha256": "e0b4c7e3f9ff4697d24e0f571a95d92aa18d3819f6ede8c6c63ac0e1dff0b6b9"
+    },
+    {
+      "path": "final-producers-before.json",
+      "bytes": 2270,
+      "sha256": "e0b4c7e3f9ff4697d24e0f571a95d92aa18d3819f6ede8c6c63ac0e1dff0b6b9"
+    },
+    {
+      "path": "native-01.log",
+      "bytes": 8638,
+      "sha256": "20a7bb836a8a8684e7146371464ad33ad02aa691b947ae57c7d24f52804b2781"
+    },
+    {
+      "path": "native-01.xml",
+      "bytes": 7780,
+      "sha256": "7fab76719aca460fe2dee4075dabe7a24fb2128f62d58d0c388e574eca01a3aa"
+    },
+    {
+      "path": "native-process-results/test_missing_native_helper_ref0/process-hard.json",
+      "bytes": 1905,
+      "sha256": "632410dcfb49ae893404fa20dcaafbfaedeb8c005f06de7538e1bb533675e5b5"
+    },
+    {
+      "path": "native-process-results/test_native_address_space_refu0/process-hard.json",
+      "bytes": 2264,
+      "sha256": "5d6dae1ca2b49b4f35eb1251a6c96663ac1db96a3c0392115bb4ea69aa946b97"
+    },
+    {
+      "path": "native-process-results/test_native_cpu_limit_stops_ac0/process-hard.json",
+      "bytes": 2110,
+      "sha256": "91bf114459a561ba224b0cbc8b60a243701b6c2a208c048f9caefc542f2f8afb"
+    },
+    {
+      "path": "native-process-results/test_native_file_size_refuses_0/process-hard.json",
+      "bytes": 2495,
+      "sha256": "73862488bba55ddcdb2ee9215f8cd03414b77b48f8969732a932331b23735305"
+    },
+    {
+      "path": "native-process-results/test_native_pipeline_inherits_0/process-default.json",
+      "bytes": 935,
+      "sha256": "fa0d9f7bc86f34359d2b4c77f0df594e3e08e7da2f06bc84e4620c35c6c0b6c9"
+    },
+    {
+      "path": "native-process-results/test_native_pipeline_inherits_0/process-hard.json",
+      "bytes": 2087,
+      "sha256": "02e80dae6279c57b9aa56fbec41bae670e594c8e8be7994a6e1141a00e7654d0"
+    },
+    {
+      "path": "native-process-results/test_native_wall_timeout_retai0/process-hard.json",
+      "bytes": 2226,
+      "sha256": "2c718f48e44035a0949f364bc72e8f0f5fb31bb6f4a0b85dbf58c5c8ffea2756"
+    },
+    {
+      "path": "native-restart-02-run.json",
+      "bytes": 962,
+      "sha256": "d2c67b815b4c92db77a26b72bf89cfb76bb1ab115ed7ed31cf9be15f8a67f5bc"
+    },
+    {
+      "path": "native-restart-02.log",
+      "bytes": 8678,
+      "sha256": "cca442e2e53b8f2c1f5e1c98554c891c46f46a34901a0fde834467bb19fda0ef"
+    },
+    {
+      "path": "native-restart-02.xml",
+      "bytes": 7780,
+      "sha256": "7c290828b58e329d19c59ef359e75e02d3c8207ad9b1d803c18e7b71c4d7b41c"
+    },
+    {
+      "path": "native-run.json",
+      "bytes": 1388,
+      "sha256": "aaa766d6cd71160e45a60dfc795723fa6c73973c2b77286f9202a4e5e51d4146"
+    },
+    {
+      "path": "original-repository_pipeline_resources.py",
+      "bytes": 29053,
+      "sha256": "894d82722446d67c48df76d4fb7821135c24eff663a530dcbd14743f25a0cdbf"
+    },
+    {
+      "path": "producer-sources/accelerate/ipfs_accelerate_py/agent_supervisor/runtime/repository_pipeline_resources.py",
+      "bytes": 30506,
+      "sha256": "192824a43fb8905e888df3aa85d836911e411f1dcb346628afb0aff2d28ef448"
+    },
+    {
+      "path": "producer-sources/accelerate/ipfs_accelerate_py/agent_supervisor/runtime/repository_process_limits.py",
+      "bytes": 3487,
+      "sha256": "d86b77625291ee02ce934fa67a783ffb9c1ca973426c63b259270597049620cb"
+    },
+    {
+      "path": "producer-sources/accelerate/ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py",
+      "bytes": 16608,
+      "sha256": "37bd578cf49735a7310c23b1d1cd204d623c0e9c3f2d808dd978390475403f8b"
+    },
+    {
+      "path": "producer-sources/accelerate/ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py",
+      "bytes": 258517,
+      "sha256": "67d4e84d542ebbc167da4488df53ab72a1b258c6722b1f1ff9c77fdb85af841c"
+    },
+    {
+      "path": "producer-sources/accelerate/test/api/test_repository_pipeline_resources.py",
+      "bytes": 26110,
+      "sha256": "6cbf839695fcd5c3683eeee2010f09ee55906614601c42a6aaaeb0d25b522196"
+    },
+    {
+      "path": "producer-sources/accelerate/test/api/test_repository_process_limits.py",
+      "bytes": 9769,
+      "sha256": "af74890d4b4b419de67592fcd09e79f019dd4e4b42a908ff23678443edda0fb3"
+    },
+    {
+      "path": "producer-sources/datasets/ipfs_datasets_py/logic/backends/codebase_process.py",
+      "bytes": 54671,
+      "sha256": "5c569b34afd75e1942f11fcb9ecf20d57799d2762927d9379813ce94aca437e1"
+    },
+    {
+      "path": "producer-sources/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py",
+      "bytes": 39480,
+      "sha256": "188dd2feb92253b4239f50d1b1133ffefcbe1513219f75a684f23904ea0d625b"
+    },
+    {
+      "path": "producer-sources/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py",
+      "bytes": 4534,
+      "sha256": "23569b40b44d9130c30c62be564d58908a509fb1f40c6377e89f2fc1e3c799c5"
+    },
+    {
+      "path": "producer-sources/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+      "bytes": 82754,
+      "sha256": "a418e84f70ed8509ba0518feea69e7a8c27865139f83b6c81349eefdfd5893a4"
+    },
+    {
+      "path": "qualification.json",
+      "bytes": 2829,
+      "sha256": "e1fa5ca28151b45bdae63c167a047d9eeb3a96e40f29fab66112cde6afda2348"
+    },
+    {
+      "path": "recovery.json",
+      "bytes": 6020,
+      "sha256": "54e1218d010034f3345836423210d70b539078eeffa2485f6a6fe12d74970146"
+    },
+    {
+      "path": "restart-native-process-results/test_missing_native_helper_ref0/process-hard.json",
+      "bytes": 1905,
+      "sha256": "27e9c2dee1a546cf15deab7d56acb70c7ab862e7209693543bce49e967bc6ac5"
+    },
+    {
+      "path": "restart-native-process-results/test_native_address_space_refu0/process-hard.json",
+      "bytes": 2264,
+      "sha256": "1cf807da63d1924ecca084fa523afa20bee4997eb6e8c3ba828a5c639263fed1"
+    },
+    {
+      "path": "restart-native-process-results/test_native_cpu_limit_stops_ac0/process-hard.json",
+      "bytes": 2110,
+      "sha256": "2fe638ba561abe2bd3607ff9e3a285151c4df1d287dd516126581395fbf717ee"
+    },
+    {
+      "path": "restart-native-process-results/test_native_file_size_refuses_0/process-hard.json",
+      "bytes": 2495,
+      "sha256": "db1f44de29886f052171a51cc3c169bcf6b0a06437148a01d373f7d1c1c8bec3"
+    },
+    {
+      "path": "restart-native-process-results/test_native_pipeline_inherits_0/process-default.json",
+      "bytes": 935,
+      "sha256": "33917c129ca4a333d0a727d9a24f2143fd30bd67914b59123262261a232942ca"
+    },
+    {
+      "path": "restart-native-process-results/test_native_pipeline_inherits_0/process-hard.json",
+      "bytes": 2087,
+      "sha256": "3a06da391f67c2e2578149677bf5c72a85e2f9692da6589b9e5d0ec206414d2f"
+    },
+    {
+      "path": "restart-native-process-results/test_native_wall_timeout_retai0/process-hard.json",
+      "bytes": 2226,
+      "sha256": "ab02a51797b68212c14f7a361e639bc76f270ada50e05ab8df2be94662fbdced"
+    },
+    {
+      "path": "restart-producers-after.json",
+      "bytes": 3322,
+      "sha256": "7a53c85f60cf143fd79024a7fcf8e34e4fc237400bff17eb0521683af8fb4833"
+    },
+    {
+      "path": "restart-producers-before.json",
+      "bytes": 3322,
+      "sha256": "7a53c85f60cf143fd79024a7fcf8e34e4fc237400bff17eb0521683af8fb4833"
+    },
+    {
+      "path": "restart-recovery/run-native.py",
+      "bytes": 2780,
+      "sha256": "0d447a766d9cc0a63d5db0ee2441c0f5268b2d22a0c2ae5629339f8b925a38e7"
+    }
+  ]
+}

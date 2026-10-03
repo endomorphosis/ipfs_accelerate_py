@@ -1,0 +1,88 @@
+{
+  "schema": "repository-process-limit-recovery@1",
+  "historical_run_returncode": 0,
+  "historical_run_tests": 52,
+  "runtime_and_test_bytes_recovered_exactly": true,
+  "current_native_rerun": true,
+  "producer_sources": [
+    {
+      "historical_path": "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_process_limits.py",
+      "recovered_path": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/ipfs_accelerate_py/agent_supervisor/runtime/repository_process_limits.py",
+      "source_copy": "producer-sources/accelerate/ipfs_accelerate_py/agent_supervisor/runtime/repository_process_limits.py",
+      "sha256": "d86b77625291ee02ce934fa67a783ffb9c1ca973426c63b259270597049620cb",
+      "matches_historical": true
+    },
+    {
+      "historical_path": "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_pipeline_resources.py",
+      "recovered_path": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/ipfs_accelerate_py/agent_supervisor/runtime/repository_pipeline_resources.py",
+      "source_copy": "producer-sources/accelerate/ipfs_accelerate_py/agent_supervisor/runtime/repository_pipeline_resources.py",
+      "sha256": "192824a43fb8905e888df3aa85d836911e411f1dcb346628afb0aff2d28ef448",
+      "matches_historical": true
+    },
+    {
+      "historical_path": "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py",
+      "recovered_path": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py",
+      "source_copy": "producer-sources/accelerate/ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py",
+      "sha256": "37bd578cf49735a7310c23b1d1cd204d623c0e9c3f2d808dd978390475403f8b",
+      "matches_historical": true
+    },
+    {
+      "historical_path": "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py",
+      "recovered_path": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py",
+      "source_copy": "producer-sources/accelerate/ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py",
+      "sha256": "67d4e84d542ebbc167da4488df53ab72a1b258c6722b1f1ff9c77fdb85af841c",
+      "matches_historical": true
+    },
+    {
+      "historical_path": "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/backends/codebase_process.py",
+      "recovered_path": "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/backends/codebase_process.py",
+      "source_copy": "producer-sources/datasets/ipfs_datasets_py/logic/backends/codebase_process.py",
+      "sha256": "5c569b34afd75e1942f11fcb9ecf20d57799d2762927d9379813ce94aca437e1",
+      "matches_historical": true
+    },
+    {
+      "historical_path": "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+      "recovered_path": "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+      "source_copy": "producer-sources/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+      "sha256": "a418e84f70ed8509ba0518feea69e7a8c27865139f83b6c81349eefdfd5893a4",
+      "matches_historical": true
+    },
+    {
+      "historical_path": "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py",
+      "recovered_path": "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py",
+      "source_copy": "producer-sources/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py",
+      "sha256": "23569b40b44d9130c30c62be564d58908a509fb1f40c6377e89f2fc1e3c799c5",
+      "matches_historical": true
+    },
+    {
+      "historical_path": "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py",
+      "recovered_path": "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py",
+      "source_copy": "producer-sources/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py",
+      "sha256": "188dd2feb92253b4239f50d1b1133ffefcbe1513219f75a684f23904ea0d625b",
+      "matches_historical": true
+    },
+    {
+      "historical_path": "/tmp/ir-release-accelerate-20261001/test/api/test_repository_process_limits.py",
+      "recovered_path": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/test/api/test_repository_process_limits.py",
+      "source_copy": "producer-sources/accelerate/test/api/test_repository_process_limits.py",
+      "sha256": "af74890d4b4b419de67592fcd09e79f019dd4e4b42a908ff23678443edda0fb3",
+      "matches_historical": true
+    },
+    {
+      "historical_path": "/tmp/ir-release-accelerate-20261001/test/api/test_repository_pipeline_resources.py",
+      "recovered_path": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/test/api/test_repository_pipeline_resources.py",
+      "source_copy": "producer-sources/accelerate/test/api/test_repository_pipeline_resources.py",
+      "sha256": "6cbf839695fcd5c3683eeee2010f09ee55906614601c42a6aaaeb0d25b522196",
+      "matches_historical": true
+    }
+  ],
+  "original_patch_session": "rollout-2026-10-02T04-35-46-01a0fae5-9bba-7231-98a2-33c71c307594.jsonl",
+  "original_patch_records_zero_based": [
+    6679,
+    6693,
+    6725,
+    6739
+  ],
+  "capability_inventory": "Pre-restart observation recorded in the recovered documentation; the original capability JSON was lost and is not reconstructed.",
+  "current_native_receipt": "native-restart-02-run.json"
+}

@@ -1,0 +1,52 @@
+[
+  {
+    "path": "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_process_limits.py",
+    "bytes": 3487,
+    "sha256": "d86b77625291ee02ce934fa67a783ffb9c1ca973426c63b259270597049620cb"
+  },
+  {
+    "path": "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_pipeline_resources.py",
+    "bytes": 30506,
+    "sha256": "192824a43fb8905e888df3aa85d836911e411f1dcb346628afb0aff2d28ef448"
+  },
+  {
+    "path": "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py",
+    "bytes": 16608,
+    "sha256": "37bd578cf49735a7310c23b1d1cd204d623c0e9c3f2d808dd978390475403f8b"
+  },
+  {
+    "path": "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py",
+    "bytes": 258517,
+    "sha256": "67d4e84d542ebbc167da4488df53ab72a1b258c6722b1f1ff9c77fdb85af841c"
+  },
+  {
+    "path": "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/backends/codebase_process.py",
+    "bytes": 54671,
+    "sha256": "5c569b34afd75e1942f11fcb9ecf20d57799d2762927d9379813ce94aca437e1"
+  },
+  {
+    "path": "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+    "bytes": 82754,
+    "sha256": "a418e84f70ed8509ba0518feea69e7a8c27865139f83b6c81349eefdfd5893a4"
+  },
+  {
+    "path": "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py",
+    "bytes": 4534,
+    "sha256": "23569b40b44d9130c30c62be564d58908a509fb1f40c6377e89f2fc1e3c799c5"
+  },
+  {
+    "path": "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py",
+    "bytes": 39480,
+    "sha256": "188dd2feb92253b4239f50d1b1133ffefcbe1513219f75a684f23904ea0d625b"
+  },
+  {
+    "path": "/tmp/ir-release-accelerate-20261001/test/api/test_repository_process_limits.py",
+    "bytes": 9769,
+    "sha256": "af74890d4b4b419de67592fcd09e79f019dd4e4b42a908ff23678443edda0fb3"
+  },
+  {
+    "path": "/tmp/ir-release-accelerate-20261001/test/api/test_repository_pipeline_resources.py",
+    "bytes": 26110,
+    "sha256": "6cbf839695fcd5c3683eeee2010f09ee55906614601c42a6aaaeb0d25b522196"
+  }
+]

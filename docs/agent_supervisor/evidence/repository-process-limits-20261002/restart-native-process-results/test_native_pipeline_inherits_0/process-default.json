@@ -1,0 +1,30 @@
+{
+  "result": {
+    "interface_version": "bounded-tool-runner/v1",
+    "runtime": "native",
+    "command": [
+      "/usr/bin/python3.12",
+      "-I",
+      "-c",
+      "import json,resource\nprint(json.dumps({name:list(resource.getrlimit(getattr(resource,'RLIMIT_'+name))) for name in ('CPU','AS','FSIZE','CORE')}),flush=True)\n"
+    ],
+    "returncode": 0,
+    "stdout": "{\"CPU\": [-1, -1], \"AS\": [-1, -1], \"FSIZE\": [1048576, 1048576], \"CORE\": [0, 0]}\n",
+    "stderr": "",
+    "elapsed_seconds": 0.06603303700012475,
+    "output_files": {},
+    "pid": 951486,
+    "timed_out": false,
+    "cancelled": false,
+    "unavailable": false,
+    "output_truncated": false,
+    "workspace_limit_exceeded": false,
+    "process_tree_terminated": false,
+    "resource_exhausted": false,
+    "workspace_cleaned": true,
+    "termination_reason": "completed",
+    "error": ""
+  },
+  "enforcement": null,
+  "host_sampler": "actual_default"
+}

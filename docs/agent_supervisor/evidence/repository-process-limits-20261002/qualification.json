@@ -1,0 +1,53 @@
+{
+  "schema": "repository-process-limit-qualification@1",
+  "qualified": true,
+  "qualified_scope": "Opt-in Linux per-process limits; exact historical ten producer/test bodies recovered and requalified after restart",
+  "final_distinct_tests": 52,
+  "new_suite_tests": 20,
+  "new_pure_and_platform_controls": 14,
+  "new_actual_default_workload_cases": 5,
+  "new_actual_owner_missing_helper_control": 1,
+  "legacy_suite_tests": 32,
+  "legacy_scope": "unchanged mixed pure, explicitly injected-host and actual-host fixtures",
+  "pytest_seconds": 15.7,
+  "final_xml_seconds": 15.686,
+  "producer_drift": false,
+  "producer_manifest": "final-producers-after.json",
+  "recovery_manifest": "recovery.json",
+  "public_process_results": [
+    "native-process-results/test_missing_native_helper_ref0/process-hard.json",
+    "native-process-results/test_native_address_space_refu0/process-hard.json",
+    "native-process-results/test_native_cpu_limit_stops_ac0/process-hard.json",
+    "native-process-results/test_native_file_size_refuses_0/process-hard.json",
+    "native-process-results/test_native_pipeline_inherits_0/process-default.json",
+    "native-process-results/test_native_pipeline_inherits_0/process-hard.json",
+    "native-process-results/test_native_wall_timeout_retai0/process-hard.json"
+  ],
+  "complete_RPI022_criterion": false,
+  "proof_authority": false,
+  "execution_authority": false,
+  "limitations": [
+    "Two completed runs cover the same 52 distinct tests; they are not 104 independent controls.",
+    "Kernel CPU/address-space limits are per process and file-size ceilings per file; aggregate RSS/PID/disk budgets remain sampled.",
+    "No GPU budget, cgroup qualification, filesystem quota, privileged-code isolation, complete pressure matrix, or host-wide retained payload qualification.",
+    "No private owner databases, seals, lease capabilities or keys included."
+  ],
+  "restart_run": {
+    "tests": 52,
+    "xml_seconds": 18.015,
+    "returncode": 0,
+    "producer_drift": false,
+    "all_sources_match_historical": true,
+    "producer_manifest": "restart-producers-after.json",
+    "run_receipt": "native-restart-02-run.json",
+    "public_process_results": [
+      "restart-native-process-results/test_missing_native_helper_ref0/process-hard.json",
+      "restart-native-process-results/test_native_address_space_refu0/process-hard.json",
+      "restart-native-process-results/test_native_cpu_limit_stops_ac0/process-hard.json",
+      "restart-native-process-results/test_native_file_size_refuses_0/process-hard.json",
+      "restart-native-process-results/test_native_pipeline_inherits_0/process-default.json",
+      "restart-native-process-results/test_native_pipeline_inherits_0/process-hard.json",
+      "restart-native-process-results/test_native_wall_timeout_retai0/process-hard.json"
+    ]
+  }
+}

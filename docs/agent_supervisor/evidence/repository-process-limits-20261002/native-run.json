@@ -1,0 +1,30 @@
+{
+  "schema": "repository-process-limits-native-run@1",
+  "started_at": "2026-10-02T17:23:52.326754+00:00",
+  "elapsed_seconds": 17.61847900482826,
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "--color=no",
+    "test/api/test_repository_process_limits.py",
+    "test/api/test_repository_pipeline_resources.py",
+    "--basetemp=/home/barberb/lift_coding/artifacts/repository-process-limits-20261002/native-01",
+    "--junitxml=/home/barberb/lift_coding/artifacts/repository-process-limits-20261002/native-01.xml"
+  ],
+  "returncode": 0,
+  "producer_drift": false,
+  "new_suite_resource_mode": "actual_default; missing-helper/platform controls explicitly injected only at named seam",
+  "legacy_suite_resource_mode": "original mixed pure, injected-owner and actual-host fixtures unchanged",
+  "controlled_host_selected": null,
+  "resource_probe": {
+    "disk_percent": 94.3,
+    "available_memory_bytes": 105842753536,
+    "proc_pressure": {
+      "cpu": "some avg10=30.00 avg60=29.30 avg300=30.71 total=470063085132\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n",
+      "memory": "some avg10=0.00 avg60=0.01 avg300=0.00 total=8526255068\nfull avg10=0.00 avg60=0.01 avg300=0.00 total=7650883125\n",
+      "io": "some avg10=0.15 avg60=0.53 avg300=0.57 total=21645026516\nfull avg10=0.00 avg60=0.49 avg300=0.55 total=19508038034\n"
+    }
+  }
+}

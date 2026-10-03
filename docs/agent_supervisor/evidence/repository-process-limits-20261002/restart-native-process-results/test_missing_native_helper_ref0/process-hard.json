@@ -1,0 +1,60 @@
+{
+  "result": {
+    "interface_version": "bounded-tool-runner/v1",
+    "runtime": "native",
+    "command": [
+      "/usr/bin/python3.12",
+      "-I",
+      "-c",
+      "raise SystemExit(\"must not launch\")"
+    ],
+    "returncode": null,
+    "stdout": "",
+    "stderr": "",
+    "elapsed_seconds": 0.0003026170002158324,
+    "output_files": {},
+    "pid": null,
+    "timed_out": false,
+    "cancelled": false,
+    "unavailable": false,
+    "output_truncated": false,
+    "workspace_limit_exceeded": false,
+    "process_tree_terminated": false,
+    "resource_exhausted": false,
+    "workspace_cleaned": true,
+    "termination_reason": "error",
+    "error": "required native prlimit unavailable"
+  },
+  "enforcement": {
+    "schema": "repository-linux-process-limits@1",
+    "backend": "existing_datasets_linux_prlimit",
+    "kernel_per_process": {
+      "cpu_seconds": 2,
+      "address_space_bytes": 67108864,
+      "file_size_bytes": 1048576,
+      "core_bytes": 0,
+      "soft_equals_hard": true
+    },
+    "sampled_process_tree_rss_bytes": 134217728,
+    "aggregate_kernel_enforcement": false,
+    "kernel_process_count_enforcement": false,
+    "filesystem_quota": false,
+    "device_enforcement": false,
+    "host_resource_authority": false,
+    "execution_authority": false,
+    "completion_authority": false,
+    "limitations": [
+      "limits apply to each process, not the sum of descendant allocations or CPU time",
+      "file-size limit applies to each file, not the sum of files or a filesystem quota",
+      "aggregate RSS, process count and named-root disk usage remain sampled",
+      "thread environment is cooperative; this is not a sandbox for privileged code"
+    ],
+    "native_process_started": false,
+    "returncode": null,
+    "timed_out": false,
+    "cancelled": false,
+    "process_tree_terminated": false,
+    "workspace_cleaned": true
+  },
+  "host_sampler": "actual_default"
+}

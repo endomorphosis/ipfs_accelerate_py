@@ -1,0 +1,60 @@
+{
+  "result": {
+    "interface_version": "bounded-tool-runner/v1",
+    "runtime": "native",
+    "command": [
+      "/usr/bin/python3.12",
+      "-I",
+      "-c",
+      "import json,resource\nprint(json.dumps({name:list(resource.getrlimit(getattr(resource,'RLIMIT_'+name))) for name in ('CPU','AS','FSIZE','CORE')}),flush=True)\n"
+    ],
+    "returncode": 0,
+    "stdout": "{\"CPU\": [2, 2], \"AS\": [67108864, 67108864], \"FSIZE\": [1048576, 1048576], \"CORE\": [0, 0]}\n",
+    "stderr": "",
+    "elapsed_seconds": 0.06772233599986066,
+    "output_files": {},
+    "pid": 951461,
+    "timed_out": false,
+    "cancelled": false,
+    "unavailable": false,
+    "output_truncated": false,
+    "workspace_limit_exceeded": false,
+    "process_tree_terminated": false,
+    "resource_exhausted": false,
+    "workspace_cleaned": true,
+    "termination_reason": "completed",
+    "error": ""
+  },
+  "enforcement": {
+    "schema": "repository-linux-process-limits@1",
+    "backend": "existing_datasets_linux_prlimit",
+    "kernel_per_process": {
+      "cpu_seconds": 2,
+      "address_space_bytes": 67108864,
+      "file_size_bytes": 1048576,
+      "core_bytes": 0,
+      "soft_equals_hard": true
+    },
+    "sampled_process_tree_rss_bytes": 134217728,
+    "aggregate_kernel_enforcement": false,
+    "kernel_process_count_enforcement": false,
+    "filesystem_quota": false,
+    "device_enforcement": false,
+    "host_resource_authority": false,
+    "execution_authority": false,
+    "completion_authority": false,
+    "limitations": [
+      "limits apply to each process, not the sum of descendant allocations or CPU time",
+      "file-size limit applies to each file, not the sum of files or a filesystem quota",
+      "aggregate RSS, process count and named-root disk usage remain sampled",
+      "thread environment is cooperative; this is not a sandbox for privileged code"
+    ],
+    "native_process_started": true,
+    "returncode": 0,
+    "timed_out": false,
+    "cancelled": false,
+    "process_tree_terminated": false,
+    "workspace_cleaned": true
+  },
+  "host_sampler": "actual_default"
+}

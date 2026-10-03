@@ -1,0 +1,25 @@
+{
+  "schema": "repository-process-limits-restart-run@1",
+  "started_at": "2026-10-02T23:57:19.857784+00:00",
+  "elapsed_seconds": 19.758634992000225,
+  "argv": [
+    "/usr/bin/python3.12",
+    "-m",
+    "pytest",
+    "-q",
+    "--color=no",
+    "test/api/test_repository_process_limits.py",
+    "test/api/test_repository_pipeline_resources.py",
+    "--basetemp=/home/barberb/lift_coding/artifacts/repository-process-limits-20261002/native-restart-02",
+    "--junitxml=/home/barberb/lift_coding/artifacts/repository-process-limits-20261002/native-restart-02.xml"
+  ],
+  "returncode": 0,
+  "producer_drift": false,
+  "all_sources_match_historical": true,
+  "resource_probe": {
+    "disk_percent": 93.6,
+    "available_memory_bytes": 50184691712
+  },
+  "new_suite_resource_mode": "actual_default; missing-helper/platform controls explicitly injected at named seams",
+  "legacy_suite_resource_mode": "unchanged mixed pure, injected-owner and actual-host fixtures"
+}
