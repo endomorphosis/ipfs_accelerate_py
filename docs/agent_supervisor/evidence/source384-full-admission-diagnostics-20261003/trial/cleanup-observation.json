@@ -1,0 +1,17 @@
+{
+  "command": [
+    "docker",
+    "ps",
+    "-a",
+    "--filter",
+    "id=30943288823d",
+    "--format",
+    "{{json .}}"
+  ],
+  "container_absent": true,
+  "observed_at": "2026-10-03T11:56:26.353379+00:00",
+  "returncode": 0,
+  "scope": "Read-only post-trial observation of this container ID; not a global process inventory.",
+  "stderr": "",
+  "stdout": ""
+}

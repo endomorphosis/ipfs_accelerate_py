@@ -563,7 +563,6 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
         )
     except Exception as error:
         report["error"] = {"type": type(error).__name__, "message": str(error)[:2048]}
-        report["error_phase"] = phase
         try:
             report.update(_failure_diagnostics(error, phase=phase))
         except Exception as diagnostic_error:

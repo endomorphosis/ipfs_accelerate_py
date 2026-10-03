@@ -1,0 +1,103 @@
+{
+  "admission_changes": false,
+  "archive_sha256": "a83b157f478dbcb869f134e71bfd02b17bdb7f82f3de8d281cc6202f66464d0b",
+  "available_at_failure_mib": 5484,
+  "available_before_mib": 5632,
+  "cgroup_anon_bytes": 12099584,
+  "cgroup_file_bytes": 6487437312,
+  "cgroup_inactive_file_bytes": 6452187136,
+  "cgroup_kernel_bytes": 478117888,
+  "cgroup_memory_current_bytes": 6979194880,
+  "container_cleanup_confirmed": true,
+  "derived_headroom_mib": 2458,
+  "evidence": [
+    {
+      "bytes": 7411,
+      "path": "run_diagnostic.py",
+      "sha256": "bfefe54e88a3160140f051681e265f267012cc958ffbc090cd34c35dc2b7b2f2"
+    },
+    {
+      "bytes": 1024,
+      "path": "run-command.json",
+      "sha256": "10c8925603b74e84954818eed0ba73c6c56e57d6fee6ea0853426ec4753dedd1"
+    },
+    {
+      "bytes": 762,
+      "path": "scope.json",
+      "sha256": "1a33aaaf98ca5fe14827a0dc5c69b25852df8259c315cd9308d7eefd4edca8d1"
+    },
+    {
+      "bytes": 1708,
+      "path": "before-pins.json",
+      "sha256": "ec5206b80dd31d99cffd51c13847fb36e95d1fbbceb09bd99abee72b51dbc18e"
+    },
+    {
+      "bytes": 1708,
+      "path": "after-pins.json",
+      "sha256": "ec5206b80dd31d99cffd51c13847fb36e95d1fbbceb09bd99abee72b51dbc18e"
+    },
+    {
+      "bytes": 2872,
+      "path": "docker-01/detailed-resources.json",
+      "sha256": "a7d2d2d3c1872990ef1be344add3fb184b03528d72d54379c757c48e5ff37c8a"
+    },
+    {
+      "bytes": 249,
+      "path": "docker-01/resources.json",
+      "sha256": "6dd45c6a2c7e70d275ccbcf221d60c57c28bd8f111f0f050032dbabeb15f08a4"
+    },
+    {
+      "bytes": 2100,
+      "path": "docker-01/source384-result.json",
+      "sha256": "3ec248eb208ce7ee40edc9152c14dd1eebb7ed21d6ccbe29c87d0452f3f7ca1d"
+    },
+    {
+      "bytes": 3795,
+      "path": "docker-01/source384-probe.stdout",
+      "sha256": "89d108d0347e4abadc5ee8e18c1c018aff0591a2cfcf22baf027d4b15100cb72"
+    },
+    {
+      "bytes": 73067,
+      "path": "docker-01/deployment/deployment.json",
+      "sha256": "9357b6d3a1cc75fc5999767b520daed8f92e4342132b309c823a978eea4bdddd"
+    },
+    {
+      "bytes": 2824,
+      "path": "docker-01/worker-boundary/deployment.json",
+      "sha256": "5532441cb6673636912a4aa197129ae0a89b2af876a4c473ff6748d143a50489"
+    },
+    {
+      "bytes": 36,
+      "path": "containers-before.json",
+      "sha256": "11c8e4d6b9ed9a59fde466cfd0aa636f30594fd28fe2d25fb0490db81ffc2463"
+    },
+    {
+      "bytes": 36,
+      "path": "containers-after.json",
+      "sha256": "11c8e4d6b9ed9a59fde466cfd0aa636f30594fd28fe2d25fb0490db81ffc2463"
+    },
+    {
+      "bytes": 149,
+      "path": "exit.json",
+      "sha256": "4efc4932e3f076d906c0db6d9534ee94c66d74b8830a7f7fedd05e917a99b9a5"
+    }
+  ],
+  "failed_boundary": "initial Source384 root lease before native index/model",
+  "failure_pressure_below_thresholds": true,
+  "initial_context_seconds": 37.222293511003954,
+  "instrumented_diagnostic": true,
+  "minimum_available_mib_without_other_root_reservations": 8602,
+  "native_qualification_seconds": 48.63689575099852,
+  "native_source384_worker_launched": false,
+  "official_verifier_executed": false,
+  "original_full_trial_reason_not_retrospectively_proven": true,
+  "page_cache_dropped": false,
+  "pre_pressure_below_thresholds": true,
+  "provider_calls": 0,
+  "qualified": false,
+  "requested_memory_mib": 6144,
+  "same_codex_and_worker_setup": true,
+  "same_cpu_memory_profile": true,
+  "schema": "source384-lean-resource-diagnostic-verdict@1",
+  "source_pins_unchanged": true
+}

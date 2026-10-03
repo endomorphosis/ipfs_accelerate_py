@@ -1,0 +1,21 @@
+{
+  "admission_changes": false,
+  "archive_sha256": "a83b157f478dbcb869f134e71bfd02b17bdb7f82f3de8d281cc6202f66464d0b",
+  "benchmark_result": false,
+  "cache_drop": false,
+  "credential_contents_recorded": false,
+  "install_codex": true,
+  "instrumented_diagnostic": true,
+  "manifest_sha256": "4d13cfeb3ad2daf67a50c135babbf58c6a197a71f70376bc730051508ce8fb27",
+  "official_verifier_executed": false,
+  "provider_calls": 0,
+  "qualification_exec_seconds": 300,
+  "qualification_inner_seconds": 270,
+  "qualification_outer_seconds": 2300,
+  "resource_profile": "source384-5cpu-12gib@1",
+  "setup_operation_timeouts_unchanged": true,
+  "source384_context": true,
+  "source384_native_seconds": 90,
+  "source_mutations": false,
+  "worker_boundary_installed": true
+}

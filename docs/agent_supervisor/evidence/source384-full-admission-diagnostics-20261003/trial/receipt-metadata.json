@@ -1,0 +1,120 @@
+{
+  "copied_receipts": {
+    "execute-exit.json": {
+      "bytes": 107,
+      "path": "execute-exit.json",
+      "sha256": "90b43cf639257410f5426fd997534997664ae730fb79e874bbd3c75735a681ee"
+    },
+    "public-after-receipt.json": {
+      "bytes": 534,
+      "path": "trial-01/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__YF7vcfn/agent/public-output-evidence/after/receipt.json",
+      "sha256": "aaf6cd51e4d167cb11a72654a4297150b453af2f78314881b41de743dfa883b2"
+    },
+    "public-before-receipt.json": {
+      "bytes": 535,
+      "path": "trial-01/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__YF7vcfn/agent/public-output-evidence/before/receipt.json",
+      "sha256": "87c64c8ab8db8c2725b37337933516d3f0157fc0d34be13dc0c521b93a37565b"
+    },
+    "public-output-receipt.json": {
+      "bytes": 1396,
+      "path": "trial-01/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__YF7vcfn/agent/public-output-evidence/receipt.json",
+      "sha256": "851c35cea89c845bfa5f20c79890c6d941bca43f5a34a4f85e91eb94a7854d2b"
+    },
+    "supervisor-result.json": {
+      "bytes": 1870,
+      "path": "trial-01/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__YF7vcfn/agent/supervisor-result.json",
+      "sha256": "04a33ddb2646263c63a780455f1624abef6c2aaaea656ab5516ce20c1b4defaf"
+    },
+    "supervisor.stderr": {
+      "bytes": 0,
+      "path": "trial-01/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__YF7vcfn/agent/supervisor.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "supervisor.stdout": {
+      "bytes": 99,
+      "path": "trial-01/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__YF7vcfn/agent/supervisor.stdout",
+      "sha256": "f81bd064d5ff332d296a651316856e99f09020a8a7136b6a4ad2397ada2eff23"
+    }
+  },
+  "omitted": [
+    "raw source bodies",
+    "diff bodies",
+    "auth material",
+    "verifier inputs and code",
+    "model payloads",
+    "private supervisor state",
+    "large deployment and Harbor metadata bodies"
+  ],
+  "original_receipts": [
+    {
+      "bytes": 1870,
+      "path": "trial-01/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__YF7vcfn/agent/supervisor-result.json",
+      "sha256": "04a33ddb2646263c63a780455f1624abef6c2aaaea656ab5516ce20c1b4defaf"
+    },
+    {
+      "bytes": 535,
+      "path": "trial-01/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__YF7vcfn/agent/public-output-evidence/before/receipt.json",
+      "sha256": "87c64c8ab8db8c2725b37337933516d3f0157fc0d34be13dc0c521b93a37565b"
+    },
+    {
+      "bytes": 534,
+      "path": "trial-01/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__YF7vcfn/agent/public-output-evidence/after/receipt.json",
+      "sha256": "aaf6cd51e4d167cb11a72654a4297150b453af2f78314881b41de743dfa883b2"
+    },
+    {
+      "bytes": 1396,
+      "path": "trial-01/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__YF7vcfn/agent/public-output-evidence/receipt.json",
+      "sha256": "851c35cea89c845bfa5f20c79890c6d941bca43f5a34a4f85e91eb94a7854d2b"
+    },
+    {
+      "bytes": 99,
+      "path": "trial-01/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__YF7vcfn/agent/supervisor.stdout",
+      "sha256": "f81bd064d5ff332d296a651316856e99f09020a8a7136b6a4ad2397ada2eff23"
+    },
+    {
+      "bytes": 0,
+      "path": "trial-01/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__YF7vcfn/agent/supervisor.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 107,
+      "path": "execute-exit.json",
+      "sha256": "90b43cf639257410f5426fd997534997664ae730fb79e874bbd3c75735a681ee"
+    },
+    {
+      "bytes": 16118,
+      "path": "trial-01/receipt.json",
+      "sha256": "ca26eca975f2b60a2d0ec72f95d3ba912220665caf718ca079151015009e0cae"
+    },
+    {
+      "bytes": 2739,
+      "path": "trial-01/config.json",
+      "sha256": "bcdefec583bcf2a0078ebb8e7f50464f0ce324d2e2994b709719345818024957"
+    },
+    {
+      "bytes": 29728,
+      "path": "trial-01/preparation.json",
+      "sha256": "59110cd8313747e593817e28ba04969cd2ef5ed6558b4e378c2c3b9efe664972"
+    },
+    {
+      "bytes": 11684,
+      "path": "trial-01/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__YF7vcfn/result.json",
+      "sha256": "bdb3ba44c10c781d02fb2b87e1653295b2b5679526ea8c718b944d8b76623e4f"
+    },
+    {
+      "bytes": 73066,
+      "path": "trial-01/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__YF7vcfn/agent/deployment/deployment.json",
+      "sha256": "44d06be5cc0b0082a8a6bc5839b76812cbb9b1b547d6520f3220e9830fa86a3e"
+    },
+    {
+      "bytes": 1576,
+      "path": "trial-01/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__YF7vcfn/trial.log",
+      "sha256": "349c8c2f43c8c66382114ac5ba262635271f5d88cd6089c0df42a4eaeb79002e"
+    },
+    {
+      "bytes": 662,
+      "path": "resources-before.json",
+      "sha256": "fa6c19319dd26442ceb11afc198411aca02b063e593dbad159bcd6b70b48799a"
+    }
+  ]
+}

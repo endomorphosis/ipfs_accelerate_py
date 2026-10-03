@@ -1,0 +1,53 @@
+{
+  "arm": "full",
+  "benchmark_advantage_claimed": false,
+  "context_input_audit": {
+    "all_observed_coding_inputs_verified": null,
+    "any_model_input_verified": null,
+    "any_native_input_verified": null,
+    "capsules": [],
+    "completion_authority": false,
+    "execution_authority": false,
+    "input_scope": "router task prompt; provider harness/system context is outside this digest",
+    "invocations": [],
+    "matches": [],
+    "provider_calls": 0,
+    "raw_prompts_exported": false,
+    "read_errors": [],
+    "reason": "no_coding_receipt",
+    "schema": "terminal-final-context-audit@1",
+    "status": "unknown",
+    "task_correctness_established": false,
+    "world_scope": "sealed historical capture; claims may supersede its intent revision"
+  },
+  "error": {
+    "message": "timed out waiting for a resource lease",
+    "type": "LeaseTimeoutError"
+  },
+  "intent_preplanning": {
+    "advice_sha256": "526e1b2165049774001e9c4019320bb57a196bebc8a8fb9ea785470dd5ab2ddd",
+    "artifact": "intent-advice.json",
+    "artifact_sha256": "f363851fb88147e318c4ed673f6757e3e238b3d6f95c07a66efab4e9f6bbc529",
+    "before_goal_decomposition": true,
+    "completion_authority": false,
+    "execution_authority": false,
+    "instruction_sha256": "89b1abdf0af19399f720233b5cdf6b2e8e0ff7b6e3fe3e2a3af0d4d298a8641a",
+    "seconds": 0.297813932,
+    "status": "fail_open_no_checkpoint"
+  },
+  "max_total_agent_seconds": 285,
+  "official_reward": null,
+  "phases": {
+    "initial_context_seconds": 37.437531710995245,
+    "prepare_seconds": 10.369426156001282
+  },
+  "production_activation": false,
+  "provider_invocations": [],
+  "remaining_processes": null,
+  "reserved_cleanup_seconds": 40,
+  "schema": "terminal-admitted-supervisor-run@1",
+  "seconds": 48.44143541200174,
+  "task_completed": false,
+  "work_cutoff_seconds": 245,
+  "worker_cleanup_returncode": 0
+}

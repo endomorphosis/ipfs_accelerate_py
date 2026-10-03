@@ -1,0 +1,25 @@
+{
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py",
+    "benchmarks/agent_supervisor/container_coding/test_native_supervisor_diagnostics.py",
+    "benchmarks/agent_supervisor/container_coding/test_cleanup_deadline.py",
+    "benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/source384-full-trial-diagnostics-20261003/focused-03.xml"
+  ],
+  "environment_overrides": {
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "CUDA_VISIBLE_DEVICES": "",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/source384-full-trial-diagnostics-20261003/focused-03-seals.duckdb"
+  },
+  "source_generation": "final-sources.json",
+  "scope": "new diagnostics plus existing native diagnostics and cleanup controls; no model or benchmark"
+}

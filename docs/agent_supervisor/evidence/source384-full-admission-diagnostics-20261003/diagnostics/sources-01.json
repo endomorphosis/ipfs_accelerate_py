@@ -1,0 +1,12 @@
+[
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+    "sha256": "a2dfc3b06eed0ff84d8ae996885ef561ce4530e0712996114b431eda96c4fe4e",
+    "bytes": 37974
+  },
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py",
+    "sha256": "582160e6ebc8caf2fc6af2f609a7434cfd81fc9dbedee6760c2300b2f6bb55b2",
+    "bytes": 8183
+  }
+]

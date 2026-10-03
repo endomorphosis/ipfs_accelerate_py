@@ -1,0 +1,64 @@
+{
+  "archive_rehashed_during_this_packaging": false,
+  "archive_sha256": "a83b157f478dbcb869f134e71bfd02b17bdb7f82f3de8d281cc6202f66464d0b",
+  "diagnostics_fix_in_this_archive": false,
+  "full_trial_and_reproduction_same_archive": true,
+  "manifest_bytes": 6067252,
+  "manifest_entry_count": 26905,
+  "manifest_rehashed_during_this_packaging": true,
+  "manifest_sha256": "4d13cfeb3ad2daf67a50c135babbf58c6a197a71f70376bc730051508ce8fb27",
+  "original_manifest_location": "/home/barberb/lift_coding/artifacts/source384-full-supervisor-preflight-20261003/bundle/manifest.json",
+  "runtime_archive_and_full_manifest_payload_omitted": true,
+  "schema": "full-admission-diagnostic-archive-pins@1",
+  "selected_entries": [
+    {
+      "bytes": 35770,
+      "mode": 420,
+      "path": "source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "06bbb1538f31541951f34717516a8842099df99b634ed44bd15baed7c89b17cf"
+    },
+    {
+      "bytes": 12062,
+      "mode": 420,
+      "path": "source/benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py",
+      "sha256": "9ea34e3c4c63644f86d013d52e7969357b1ad4b063de109dd72ecc7e11644b18"
+    },
+    {
+      "bytes": 71016,
+      "mode": 420,
+      "path": "source/benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+      "sha256": "c4e3dcc3aa2fae3d77fa538ec4855778d26a5cd70392ff54d4ae6b399653869d"
+    },
+    {
+      "bytes": 35549,
+      "mode": 420,
+      "path": "source/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+      "sha256": "3812801ae64eb5357a5a923f68731686b39377dbec3e45ac0fd15a08ebf4c722"
+    },
+    {
+      "bytes": 17751,
+      "mode": 420,
+      "path": "source/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
+      "sha256": "5e7da432a206b07900822044326dde963b5bf8cb9c1f39d313e1a6ceed56e66f"
+    },
+    {
+      "bytes": 3454,
+      "mode": 420,
+      "path": "datasets/ipfs_datasets_py/logic/software_contracts/codebase_resources.py",
+      "sha256": "207f5b168f0cacf2ed6356c622a87e2bc8531c9a252c79de2c19ce5bca710700"
+    },
+    {
+      "bytes": 90193,
+      "mode": 420,
+      "path": "datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+      "sha256": "9f4cf68dcaf21dbae8fd3b4d2bec8ee37480c6fe9c0bf35ed50f30d6cc2b7174"
+    },
+    {
+      "bytes": 4534,
+      "mode": 420,
+      "path": "datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py",
+      "sha256": "23569b40b44d9130c30c62be564d58908a509fb1f40c6377e89f2fc1e3c799c5"
+    }
+  ],
+  "source_selection_scope": "selected pinned entries, not a complete archive inventory"
+}

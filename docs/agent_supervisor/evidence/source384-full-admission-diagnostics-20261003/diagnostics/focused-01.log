@@ -1,0 +1,48 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002
+configfile: pytest.ini
+plugins: platformdirs-4.12.1, anyio-4.15.1, mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 30 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_metadata_excludes_frame_locals_source_and_exception_chain [32mPASSED[0m[32m [  3%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_traceback_walk_and_retained_frames_are_bounded[80-False] [32mPASSED[0m[32m [  6%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_traceback_walk_and_retained_frames_are_bounded[300-True] [32mPASSED[0m[32m [ 10%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_generated_filename_and_function_names_are_bounded [32mPASSED[0m[32m [ 13%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_resource_failure_retains_traceback_without_diagnostic_message [32mPASSED[0m[32m [ 16%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_traceback_failure_does_not_suppress_resource_sample [32mPASSED[0m[32m [ 20%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_actual_canonical_resource_probe_reports_only_finite_resource_values [32mPASSED[0m[32m [ 23%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_driver_failure_retains_primary_result_phase_and_cleanup[None-prepare] [32mPASSED[0m[32m [ 26%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_driver_failure_retains_primary_result_phase_and_cleanup[None-initial_context] [32mPASSED[0m[32m [ 30%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_driver_failure_retains_primary_result_phase_and_cleanup[None-planning] [32mPASSED[0m[32m [ 33%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_driver_failure_retains_primary_result_phase_and_cleanup[resources-prepare] [32mPASSED[0m[32m [ 36%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_driver_failure_retains_primary_result_phase_and_cleanup[resources-initial_context] [32mPASSED[0m[32m [ 40%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_driver_failure_retains_primary_result_phase_and_cleanup[resources-planning] [32mPASSED[0m[32m [ 43%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_driver_failure_retains_primary_result_phase_and_cleanup[helper-prepare] [32mPASSED[0m[32m [ 46%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_driver_failure_retains_primary_result_phase_and_cleanup[helper-initial_context] [32mPASSED[0m[32m [ 50%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py::test_driver_failure_retains_primary_result_phase_and_cleanup[helper-planning] [32mPASSED[0m[32m [ 53%][0m
+benchmarks/agent_supervisor/container_coding/test_native_supervisor_diagnostics.py::test_startup_diagnostics_retain_failure_frames_without_messages_or_credentials [32mPASSED[0m[32m [ 56%][0m
+benchmarks/agent_supervisor/container_coding/test_native_supervisor_diagnostics.py::test_diagnostics_do_not_follow_log_links [32mPASSED[0m[32m [ 60%][0m
+benchmarks/agent_supervisor/container_coding/test_native_supervisor_diagnostics.py::test_managed_child_failure_is_preserved_when_supervisor_log_is_empty [32mPASSED[0m[32m [ 63%][0m
+benchmarks/agent_supervisor/container_coding/test_cleanup_deadline.py::test_work_alarm_is_replaced_and_cleanup_stays_bounded [32mPASSED[0m[32m [ 66%][0m
+benchmarks/agent_supervisor/container_coding/test_cleanup_deadline.py::test_cleanup_gets_its_window_after_work_deadline_has_already_fired [32mPASSED[0m[32m [ 70%][0m
+benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py::test_refresh_deadline_escapes_optional_exception_handlers_and_restores_outer_alarm [32mPASSED[0m[32m [ 73%][0m
+benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py::test_unsettled_or_unrequested_work_never_rebuilds[change0] [32mPASSED[0m[32m [ 76%][0m
+benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py::test_unsettled_or_unrequested_work_never_rebuilds[change1] [32mPASSED[0m[32m [ 80%][0m
+benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py::test_unsettled_or_unrequested_work_never_rebuilds[change2] [32mPASSED[0m[32m [ 83%][0m
+benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py::test_unsettled_or_unrequested_work_never_rebuilds[change3] [32mPASSED[0m[32m [ 86%][0m
+benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py::test_finalization_reserve_and_current_retrieval_are_required [32mPASSED[0m[32m [ 90%][0m
+benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py::test_real_refresh_alarm_interrupts_component_without_consuming_cleanup_reserve [32mPASSED[0m[32m [ 93%][0m
+benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py::test_failed_learned_refresh_keeps_actual_inference_cost_and_unknown_totals[False] [32mPASSED[0m[32m [ 96%][0m
+benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py::test_failed_learned_refresh_keeps_actual_inference_cost_and_unknown_totals[True] [32mPASSED[0m[32m [100%][0m
+
+- generated xml file: /home/barberb/lift_coding/artifacts/source384-full-trial-diagnostics-20261003/focused-01.xml -
+============================= slowest 10 durations =============================
+5.10s call     benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py::test_real_refresh_alarm_interrupts_component_without_consuming_cleanup_reserve
+2.98s call     benchmarks/agent_supervisor/container_coding/test_cleanup_deadline.py::test_work_alarm_is_replaced_and_cleanup_stays_bounded
+2.84s call     benchmarks/agent_supervisor/container_coding/test_cleanup_deadline.py::test_cleanup_gets_its_window_after_work_deadline_has_already_fired
+
+(7 durations < 0.005s hidden.  Use -vv to show these durations.)
+[32m============================= [32m[1m30 passed[0m[32m in 24.06s[0m[32m ==============================[0m

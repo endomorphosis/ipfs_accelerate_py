@@ -1,0 +1,17 @@
+[
+  {
+    "bytes": 1934,
+    "path": "benchmarks/agent_supervisor/container_coding/test_native_supervisor_diagnostics.py",
+    "sha256": "f37a2b5a80ef1f7827a793d30074670bac556678bb15b65ee1503a4a5151b9bc"
+  },
+  {
+    "bytes": 2325,
+    "path": "benchmarks/agent_supervisor/container_coding/test_cleanup_deadline.py",
+    "sha256": "290cfc975c23a1c47a65df7e374386dcb35de983f816e780b77d533fa23b8ad6"
+  },
+  {
+    "bytes": 5226,
+    "path": "benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py",
+    "sha256": "27103c9b591e4c22a556739c5f1fa67aa95acc24e24c7c1442d8820c1bbd9195"
+  }
+]

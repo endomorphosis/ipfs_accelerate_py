@@ -1,0 +1,105 @@
+{
+  "admission_changed": false,
+  "benchmark_executed": false,
+  "budgets_changed": false,
+  "completion_authority": false,
+  "distinct_final_controls": 30,
+  "driver_injected_refusal_stages": [
+    "prepare",
+    "initial_context",
+    "planning"
+  ],
+  "existing_neighbor_controls": 14,
+  "final_suite": "focused-03",
+  "limitations": [
+    "No causal finding about the prior LeaseTimeoutError follows from this patch.",
+    "The preceding trial and active external diagnostic use their earlier frozen archive generation.",
+    "No automatic replay or benchmark retry was launched by this task."
+  ],
+  "model_calls": 0,
+  "negative_controls": [
+    "source/locals/exception-chain content excluded",
+    "deep traceback/long metadata bounded",
+    "resource failure retains frame metadata",
+    "traceback failure retains resource sample",
+    "whole helper failure preserves primary error/phase/cleanup",
+    "resource/diagnostic failures do not change authority or task result"
+  ],
+  "new_diagnostic_controls": 16,
+  "proof_authority": false,
+  "provider_calls": 0,
+  "qualified": true,
+  "resource_observation": "actual canonical ProofHostResources sampled at exception handling, not the original lease decision; failures retain error type only",
+  "resource_sampler_actual_test": true,
+  "retained_intermediate_skip_reason": "focused-02 reused AST seals for 11 unchanged neighbor controls; final focused-03 used an isolated fresh seal DB and executed all30",
+  "schema": "terminal-container-failure-diagnostics-qualification@1",
+  "scope": "bounded metadata-only failure observation; original task error/result/cleanup unchanged",
+  "source_files": [
+    {
+      "bytes": 38012,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "f19a4b733847389a4c99e752e442257a021cb34be467ac56bfe62aa631d89ddf"
+    },
+    {
+      "bytes": 8179,
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py",
+      "sha256": "556b0c27e09374c68341f38c4051d1e48a3545310a9c2d23eb986c9d2cdc2724"
+    }
+  ],
+  "test_generations": [
+    {
+      "cases": 30,
+      "counts": {
+        "error": 0,
+        "failure": 0,
+        "passed": 30,
+        "skipped": 0
+      },
+      "exit": {
+        "returncode": 0,
+        "seconds": 25.019155216999934
+      },
+      "name": "focused-01",
+      "pytest_seconds": 23.901,
+      "source_manifest": "sources-01.json"
+    },
+    {
+      "cases": 30,
+      "counts": {
+        "error": 0,
+        "failure": 0,
+        "passed": 19,
+        "skipped": 11
+      },
+      "exit": {
+        "returncode": 0,
+        "seconds": 12.859224362997338
+      },
+      "name": "focused-02",
+      "pytest_seconds": 11.934,
+      "source_manifest": "final-sources.json"
+    },
+    {
+      "cases": 30,
+      "counts": {
+        "error": 0,
+        "failure": 0,
+        "passed": 30,
+        "skipped": 0
+      },
+      "exit": {
+        "returncode": 0,
+        "seconds": 28.413388088003558
+      },
+      "name": "focused-03",
+      "pytest_seconds": 27.62,
+      "source_manifest": "final-sources.json"
+    }
+  ],
+  "traceback_bounds": {
+    "filename_characters": 512,
+    "function_characters": 128,
+    "retained_frames": 20,
+    "walk_frames": 256
+  }
+}

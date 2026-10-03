@@ -299,3 +299,43 @@ original host-relative receipt names. Resolve
 resolve under `host/`; `docker-01/qualification.json` is already package-relative.
 The manifest contains each resolved file and its digest. This clarification
 preserves the sealed evidence bytes and does not change the test or run result.
+
+## First full trial with native proof backends
+
+A fresh archive adds the complete pinned Lean toolchain to the qualified
+Source384 runtime. All 11,719 preceding members remain identical; 15,186 Lean
+assets add 3,305,142,714 uncompressed bytes. Archive SHA256 is
+`a83b157f478dbcb869f134e71bfd02b17bdb7f82f3de8d281cc6202f66464d0b`.
+Existing deployment installs Z3, the pinned Codex provider and the worker
+boundary. The single full-arm `fix-code-vulnerability` trial retains the
+five-CPU/12-GiB profile, 300-second agent limit, 285-second driver limit and
+245-second work cutoff.
+
+The official verifier returns reward **0.0**. Preparation takes 10.369 seconds;
+initial context refuses a resource lease after 37.438 seconds, before planning,
+Doctor dispatch or coding. The driver takes 48.441 seconds, and Harbor records
+51.914 seconds of agent execution. There are zero observed provider calls;
+token and cost counters remain null. Intent preprocessing fails open because
+no Intent checkpoint is selected. The deployment preserves all 218 originals;
+the narrower post-agent public capture confirms unchanged Bottle and an absent
+report. The container is removed. This trial did not retain a traceback or
+actual cgroup sample, so its generic error alone cannot establish a cause.
+
+A separate diagnostic repeats the exact archive, Codex setup and worker
+boundary without provider calls or an official verifier. It observes the
+actual five-CPU/12-GiB limits and reproduces refusal at Source384's root lease,
+before indexing or inference. Available memory is 5,484 MiB at failure versus
+8,602 MiB required by the existing 6,144-MiB request and 2,458-MiB headroom.
+The earlier sample records 6,487,437,312 bytes of file cache; CPU, memory and
+I/O pressure samples remain below their refusal thresholds. No admission
+policy, limit or cache state is changed by this diagnostic. These observations
+establish the reproduced memory shortfall, not a retroactive resource sample
+for the original trial.
+
+The driver now preserves a bounded traceback of file/function/line metadata,
+the failing phase and a canonical resource sample taken while handling the
+error. Sampling failures preserve the primary error and cleanup. Thirty
+controls pass; no source text or local variable values are exported. The
+closed evidence package is
+`docs/agent_supervisor/evidence/source384-full-admission-diagnostics-20261003`.
+This improves diagnosis and leaves the full task acceptance gate open.

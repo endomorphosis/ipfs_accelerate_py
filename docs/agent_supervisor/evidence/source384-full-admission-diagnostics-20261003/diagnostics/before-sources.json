@@ -1,0 +1,10 @@
+{
+  "scope": "pre-diagnostics producer, unchanged failed full-trial generation",
+  "files": [
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "06bbb1538f31541951f34717516a8842099df99b634ed44bd15baed7c89b17cf",
+      "bytes": 35770
+    }
+  ]
+}

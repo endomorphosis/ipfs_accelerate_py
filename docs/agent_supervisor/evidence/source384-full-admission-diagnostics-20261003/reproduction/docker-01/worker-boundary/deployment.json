@@ -1,0 +1,81 @@
+{
+  "boundary": {
+    "allowed_worktree_roots": [
+      "/opt/ipfs-supervisor/worktrees"
+    ],
+    "container_id": "e4067a0d5933407b499473f56d0791d516e90958af7bf54d274e10c06baa9569",
+    "image_id": "sha256:65da42c37a7e60ee8c286d9562c90a3fbd5d330fccf3bcf56d57061897df134b",
+    "namespaces": {
+      "mnt": "mnt:[4026534079]",
+      "net": "net:[4026534084]",
+      "pid": "pid:[4026534082]"
+    },
+    "owner_private_paths": [
+      "/opt/ipfs-supervisor/state",
+      "/opt/ipfs-supervisor/home",
+      "/opt/ipfs-supervisor/codex-auth"
+    ],
+    "owner_uid": 1000,
+    "schema": "supervisor-container-worker-boundary@1",
+    "single_worker": true,
+    "validation_repository_roots": [
+      "/app"
+    ],
+    "worker_uid": 1001
+  },
+  "boundary_sha256": "f5cf42dfd5683177525cdfb9d4af812790a888f8dd5ccd9bb569d221a8307384",
+  "candidate_runner_argv": [
+    "/opt/ipfs-supervisor/bin/validation-worker"
+  ],
+  "implementation_command": "/opt/ipfs-supervisor/bin/router-worker --model gpt-5.6-sol --reasoning-effort high --timeout 90",
+  "provider_calls": 0,
+  "qualification": {
+    "completion_authority": false,
+    "permission_evidence": {
+      "boundary": {
+        "completion_authority": false,
+        "container_id": "e4067a0d5933407b499473f56d0791d516e90958af7bf54d274e10c06baa9569",
+        "image_id": "sha256:65da42c37a7e60ee8c286d9562c90a3fbd5d330fccf3bcf56d57061897df134b",
+        "manifest_sha256": "f5cf42dfd5683177525cdfb9d4af812790a888f8dd5ccd9bb569d221a8307384",
+        "namespaces": {
+          "mnt": "mnt:[4026534079]",
+          "net": "net:[4026534084]",
+          "pid": "pid:[4026534082]"
+        },
+        "owner_uid": 1000,
+        "purpose": "coding",
+        "schema": "supervisor-container-worker-boundary@1",
+        "worker_uid": 1001
+      },
+      "candidate_write": true,
+      "gid": 1000,
+      "groups": [
+        1000
+      ],
+      "original_task_python": "Python 3.11.17",
+      "pid": 8759,
+      "private_denials": [
+        "/opt/ipfs-supervisor/state/preflight-key:rb",
+        "/opt/ipfs-supervisor/state/preflight-key:ab",
+        "/opt/ipfs-supervisor/state/preflight-owner.duckdb:rb",
+        "/opt/ipfs-supervisor/state/preflight-owner.duckdb:ab",
+        ".git:write",
+        ".git:unlink"
+      ],
+      "prompt_bytes": 0,
+      "prompt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "provider_calls": 0,
+      "runtime_python": "3.12.12",
+      "schema": "container-worker-preflight@1",
+      "uid": 1001,
+      "workspace": "/opt/ipfs-supervisor/worktrees/provider-free"
+    },
+    "provider_calls": 0,
+    "qualified": true,
+    "remaining_worker_pids": [],
+    "termination_worker_pid": 8768
+  },
+  "qualified": true,
+  "schema": "container-worker-deployment@1",
+  "worker_worktree_root": "/opt/ipfs-supervisor/worktrees"
+}

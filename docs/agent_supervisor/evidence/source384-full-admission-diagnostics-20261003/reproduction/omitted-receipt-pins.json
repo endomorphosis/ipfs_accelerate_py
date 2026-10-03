@@ -1,0 +1,14 @@
+[
+  {
+    "bytes": 77488,
+    "original_relative_path": "docker-01/qualification.json",
+    "reason": "duplicative receipt; source384-result/resources/deployment and exact metadata retained",
+    "sha256": "0493a09a67dc0fedbdf59bb0b07b6efb948602e023c1540f382d7b91674d8284"
+  },
+  {
+    "bytes": 2243,
+    "original_relative_path": "docker-01/source384-context.json",
+    "reason": "duplicative receipt; source384-result/resources/deployment and exact metadata retained",
+    "sha256": "c867657bce34992996473930098541b5d421767008c1b6d836c6e0322de16e72"
+  }
+]

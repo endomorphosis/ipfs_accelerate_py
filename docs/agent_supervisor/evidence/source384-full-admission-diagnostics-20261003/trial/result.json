@@ -1,0 +1,125 @@
+{
+  "arm": "full",
+  "authority": {
+    "completion": false,
+    "execution": false,
+    "proof": false
+  },
+  "benchmark_advantage_claimed": false,
+  "cleanup": {
+    "container_absent": true,
+    "observation": "cleanup-observation.json",
+    "remaining_processes": null,
+    "worker_cleanup_returncode": 0
+  },
+  "cli_version": "0.158.0",
+  "deadlines_seconds": {
+    "max_total_agent_seconds": 285,
+    "reserved_cleanup_seconds": 40,
+    "work_cutoff_seconds": 245
+  },
+  "diagnostic_limits": {
+    "reason": "Driver catches exceptions into error.type/message; stderr is empty, stdout has no traceback. Exact lease acquisition frame is not retained.",
+    "structured_error_file": "trial-01/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__YF7vcfn/agent/supervisor-result.json",
+    "traceback_retained": false
+  },
+  "driver_returncode": 1,
+  "durations_seconds": {
+    "agent_execution": 51.9143,
+    "agent_setup": 215.330073,
+    "deployment": 191.3022279440047,
+    "environment_setup": 7.568282,
+    "initial_context_seconds": 37.437531710995245,
+    "prepare_seconds": 10.369426156001282,
+    "supervisor": 48.44143541200174,
+    "verifier": 2.034892
+  },
+  "error": {
+    "message": "timed out waiting for a resource lease",
+    "type": "LeaseTimeoutError"
+  },
+  "failure_before_planning_and_repair": true,
+  "failure_phase": "initial_context",
+  "harbor_exception_type": null,
+  "input_preservation": {
+    "all_original_inputs_unchanged_across_deployment": true,
+    "host_original_task_inputs_unchanged": true,
+    "original_input_count": 218,
+    "post_agent_declared_public_files_unchanged": true,
+    "public_diff_bytes": {
+      "bottle.py": 0,
+      "report.jsonl": 0
+    },
+    "public_files": {
+      "bottle.py": {
+        "bytes": 175565,
+        "sha256": "761756ce31753e526c48d28ccbca13a5d2493b16fe37aff3e1e4d2efaf3a2bba",
+        "status": "captured"
+      },
+      "report.jsonl": {
+        "status": "missing"
+      }
+    },
+    "scope": "All 218 originals compared before/after deployment. Post-agent capture covers bottle.py and report.jsonl only; no full 218-file post-agent snapshot is claimed."
+  },
+  "intent_preplanning": {
+    "advice_sha256": "526e1b2165049774001e9c4019320bb57a196bebc8a8fb9ea785470dd5ab2ddd",
+    "artifact": "intent-advice.json",
+    "artifact_sha256": "f363851fb88147e318c4ed673f6757e3e238b3d6f95c07a66efab4e9f6bbc529",
+    "before_goal_decomposition": true,
+    "completion_authority": false,
+    "execution_authority": false,
+    "instruction_sha256": "89b1abdf0af19399f720233b5cdf6b2e8e0ff7b6e3fe3e2a3af0d4d298a8641a",
+    "seconds": 0.297813932,
+    "status": "fail_open_no_checkpoint"
+  },
+  "matched_baseline_present": false,
+  "model": "gpt-5.6-sol",
+  "native_setup_qualification": "Deployment qualified; distinct from the coding-task runtime, which was not started.",
+  "native_task_worker_started": false,
+  "observed_provider_invocations": 0,
+  "parallel_workers": 1,
+  "planning_doctor_proof_and_coding_routes": "not reached; no corresponding report fields or receipts",
+  "reasoning_effort": "high",
+  "resource_controls": {
+    "actual_container_cgroup_observation": null,
+    "actual_limit_scope": "No per-container cgroup observation retained for this trial. Host resources-before.json is archive-build capacity only.",
+    "config_sha256": "bcdefec583bcf2a0078ebb8e7f50464f0ce324d2e2994b709719345818024957",
+    "configuration_unchanged": true,
+    "declared_environment": {
+      "cpu_enforcement_policy": "limit",
+      "delete": true,
+      "memory_enforcement_policy": "limit",
+      "override_cpus": 5,
+      "override_memory_mb": 12288,
+      "type": "docker"
+    },
+    "observed_configuration_status": "observed",
+    "profile": "source384-5cpu-12gib@1"
+  },
+  "reward": {
+    "reward": 0.0
+  },
+  "reward_source": "Harbor result.json verifier_result.rewards (output only; verifier source not inspected)",
+  "runtime_archive_sha256": "a83b157f478dbcb869f134e71bfd02b17bdb7f82f3de8d281cc6202f66464d0b",
+  "schema": "terminal-full-supervisor-trial-outcome@1",
+  "source384_inference_receipt_present": false,
+  "source384_selected": true,
+  "task": "fix-code-vulnerability",
+  "task_completed": false,
+  "trial": "fix-code-vulnerability__YF7vcfn",
+  "trial_count": 1,
+  "usage": {
+    "all_invocations_receipted": false,
+    "billing_total_verified": false,
+    "cache_included_in_input": true,
+    "cached_input_tokens": null,
+    "dollar_cost": null,
+    "input_tokens": null,
+    "observed_complete_sessions": false,
+    "output_tokens": null,
+    "provider_calls": 0,
+    "source": "observed_native_cumulative_totals",
+    "total_tokens": null
+  }
+}

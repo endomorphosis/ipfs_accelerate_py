@@ -7,7 +7,6 @@ verifier runs afterwards and remains outside this process's indexed context.
 from __future__ import annotations
 
 import argparse
-from collections import deque
 import hashlib
 import json
 import os
@@ -103,40 +102,6 @@ def _native_diagnostics(state: Path) -> dict:
                 ) if key in value and type(value[key]) in (str, int, bool, type(None))}
             except (OSError, ValueError, TypeError):
                 result[name] = {"readable_json": False}
-    return result
-
-
-def _failure_diagnostics(error: Exception, *, phase: str) -> dict:
-    """Observe a failure without exporting source, locals or exception chains.
-
-    These observations grant no authority and never change admission. Resource
-    values are a new sample at error handling, not the earlier lease decision.
-    A bounded traceback walk avoids source/linecache reads during unwinding.
-    """
-    result = {"error_phase": phase}
-    try:
-        frames = deque(maxlen=20)
-        current = error.__traceback__
-        walked = 0
-        while current is not None and walked < 256:
-            code = current.tb_frame.f_code
-            frames.append({"file": code.co_filename[:512],
-                           "function": code.co_name[:128], "line": current.tb_lineno})
-            current = current.tb_next
-            walked += 1
-        result["error_traceback"] = {"frames": list(frames),
-            "frames_walked": walked, "frames_omitted": walked - len(frames),
-            "walk_truncated": current is not None}
-    except Exception as diagnostic_error:
-        result["failure_traceback_error"] = type(diagnostic_error).__name__[:128]
-    try:
-        from dataclasses import asdict
-        from ipfs_datasets_py.optimizers.logic_theorem_optimizer.proof_resource_safety import (
-            collect_proof_host_resources,
-        )
-        result["failure_resources"] = asdict(collect_proof_host_resources())
-    except Exception as diagnostic_error:
-        result["failure_resource_error"] = type(diagnostic_error).__name__[:128]
     return result
 
 
@@ -422,7 +387,6 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
             raise RuntimeError("isolated planning router did not complete successfully")
         return {"text": text, "observation": receipt.get("usage", {}), "execution_receipt": receipt}
 
-    phase = "prepare"
     try:
         before = time.monotonic()
         try:
@@ -437,7 +401,6 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
         finally:
             report["phases"]["prepare_seconds"] = time.monotonic() - before
         if arm == "full":
-            phase = "initial_context"
             before = time.monotonic()
             try:
                 report["initial_context"] = preparation.initial_context(state=state,
@@ -453,7 +416,6 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
                         canonical_cve_manifest_sha256=canonical_cve_manifest_sha256)))
             finally:
                 report["phases"]["initial_context_seconds"] = time.monotonic() - before
-        phase = "planning"
         before = time.monotonic()
         try:
             planned = preparation.plan(state=state, provider_callable=isolated_planner,
@@ -465,7 +427,6 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
             raise RuntimeError("the model proposal did not pass independent admission")
         bundle = None
         if arm == "full":
-            phase = "context"
             before = time.monotonic()
             try:
                 context = preparation.context(state=state, model_snapshot=model_snapshot,
@@ -474,13 +435,11 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
                 report["phases"]["context_seconds"] = time.monotonic() - before
             report["context"] = context
             bundle = context["context_bundle"]
-        phase = "admission"
         admission = json.loads((state / "admission.json").read_text())
         verified = verify_local_benchmark_admission(admission, initial=True)
         task = verified["graph"].tasks[0]
         doctor = None
         if arm == "full":
-            phase = "doctor"
             before = time.monotonic()
             try:
                 doctor = prepare_terminal_doctor_dispatch(repository=Path("/app"), state=state,
@@ -488,7 +447,6 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
             finally:
                 report["phases"]["doctor_seconds"] = time.monotonic() - before
             report["doctor_dispatch"] = doctor
-        phase = "implementation_setup"
         report["implementation_route"] = doctor["route"] if doctor is not None else "model_router"
         implementation = implementation_argv(router=ROUTER, model=preparation.MODEL,
             reasoning=preparation.REASONING, timeout=remaining(25),
@@ -503,7 +461,6 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
                 "--public-instruction-sha256", instruction_context["sha256"],
                 "--public-instruction-task-cid", task.task_cid]
         command = shlex.join(implementation)
-        phase = "native_execution"
         with open_existing_native_owner(
             database=state / "intent.duckdb", checkout=Path("/app"), state_dir=state / "owner",
             repository_id=verified["manifest"]["repository_cid"],
@@ -563,13 +520,6 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
         )
     except Exception as error:
         report["error"] = {"type": type(error).__name__, "message": str(error)[:2048]}
-        report["error_phase"] = phase
-        try:
-            report.update(_failure_diagnostics(error, phase=phase))
-        except Exception as diagnostic_error:
-            # Optional observation must never suppress the primary failure or
-            # prevent the existing cleanup and durable result publication.
-            report["failure_diagnostics_error"] = type(diagnostic_error).__name__[:128]
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, previous_alarm)
