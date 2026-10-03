@@ -69,6 +69,11 @@ try:
   if any(receipt[k] is not False for k in ('proof_authority','execution_authority','completion_authority','formalization_authority')):
    raise ValueError('Source384 preparation cannot grant authority')
   if receipt['config_path']!=str(config_path):raise ValueError('relocated model config was not consumed')
+  # Keep only export-binding metadata across warm replay. The full inference
+  # remains in its immutable file and is independently revalidated below.
+  worker_receipt=inference['report']['worker_receipt']
+  inference_key=inference['report']['key']
+  del raw,inference
   phase='warm_observation';phase_started=before=time.monotonic()
   validate_source384_context(repository=root,expected_receipt=receipt)
   result['warm_observation_seconds']=time.monotonic()-before
@@ -77,8 +82,8 @@ try:
    inference_sha256=receipt['inference_sha256'],source_head=receipt['source_head'],
    signed_source_hashes=receipt['source_hashes'],coverage=receipt['summary']['coverage'],
    source384_summary=receipt['summary'],source384_resource_profile=receipt['resource_profile'],
-   native_worker_receipt=inference['report']['worker_receipt'],
-   native_inference_key=inference['report']['key'],native_worker_executed=True,
+   native_worker_receipt=worker_receipt,
+   native_inference_key=inference_key,native_worker_executed=True,
    inference_executed=True,neural_inference_replayed=False,
    source384_seconds=receipt['seconds'],context_seconds=context['seconds'],
    context_nonoverlapping_seconds=context['nonoverlapping_seconds'])
