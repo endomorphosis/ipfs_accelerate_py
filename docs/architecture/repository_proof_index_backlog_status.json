@@ -1,6 +1,6 @@
 {
   "schema": "repository-proof-index-backlog-status/v1",
-  "updated_at_utc": "2026-10-02T16:55:20.736278+00:00",
+  "updated_at_utc": "2026-10-03T00:30:22.138099+00:00",
   "scope": "Frozen 32-task acceptance ledger. Declared-profile criterion qualification and production closure with all prerequisites are tracked separately.",
   "source": {
     "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
@@ -13,7 +13,7 @@
     "criteria": 32,
     "production_closed": 18,
     "production_open": 14,
-    "criteria_qualified_for_declared_profile": 24
+    "criteria_qualified_for_declared_profile": 26
   },
   "evidence": {
     "foundation-tests-log": {
@@ -384,6 +384,29 @@
     "benchmark-declared-controls": {
       "path": "docs/agent_supervisor/evidence/benchmark-declared-controls-recovery-20261002/manifest.json",
       "sha256": "0507453b659da825edb98fcb17f0cb4f4478e6bc100579febfb6af38aa60eb05",
+      "retention": "repository_evidence"
+    },
+    "repository-process-limits": {
+      "path": "docs/agent_supervisor/evidence/repository-process-limits-20261002/manifest.json",
+      "sha256": "21036136064c417b4d71112ae4e2ee0bade62b1c395127b9b2385c41a6fd6c5e",
+      "retention": "repository_evidence"
+    },
+    "native-peer-transport": {
+      "repository": "ipfs_datasets_py",
+      "path": "docs/software_contracts/evidence/codebase-peer-transport-20261002/manifest.json",
+      "sha256": "1fc47a901f7a8447f20fa18befd69b57bc26afbd18b3af9f33edf174854aea26",
+      "retention": "repository_evidence"
+    },
+    "native-peer-recovery": {
+      "repository": "ipfs_datasets_py",
+      "path": "docs/software_contracts/evidence/codebase-peer-recovery-20261002/manifest.json",
+      "sha256": "16c65e91b8025783336834f900ed91db5c8b07645fa906a33e36cbfbc88afcce",
+      "retention": "repository_evidence"
+    },
+    "selected-checkpoint-preparation": {
+      "repository": "ipfs_accelerate_py",
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/manifest.json",
+      "sha256": "8918f5f49e13c83537b5a1d75c05ced917abc5f52794b8178142bded8b747133",
       "retention": "repository_evidence"
     }
   },
@@ -825,17 +848,18 @@
       "criterion": "Integrate independent scan/index/proof/training selections and complete phase accounting under the trial deadline. Freeze model/index before admission. Qualify declared optional-parent retention versus required-training rejection, cancellation and demand-driven proof selection without dropping inventory entries or silently changing planning strategy.",
       "source_line": 292,
       "production_acceptance": "open",
-      "local_status": "partial_local_qualification",
+      "local_status": "criterion_qualified_prerequisites_open",
       "locally_qualified_portions": [
         "Added callable native_repository_finite_supervision qualification entrypoint with explicit model-off selection, bounded current-source preparation/candidate observation, signed native startup/worker/stop, independent checks and cold successor comparison. Actual resource-pressure refusal is retained; provider/model counters are zero.",
         "Fourteen controls pass independent full inventory/training/inference/proof selections, actual pinned checkpoint inference, optional parent retention and required-training refusal for real regressed0/3 child, and cancellation without source advance. Budgeted native preparations now feed the full behavioral daemon; full trial parent delegation qualification is in progress.",
         "Nine actual helper controls qualify private cross-process native parent delegation, exact task/repository bindings, sibling validation, cancellation and released-parent refusal. Opt-in full-trial driver uses one3GiB model-off parent and1GiB phases with contiguous phase wall accounting; full joined execution remains unqualified because actual host memory/disk policy refused admission. No admission threshold was changed.",
         "The opt-in --pipeline-resources driver now joins managed source preparation, phase-local proof parents, protected public checks, v2 daemon-to-worker delegation and STOP/finalization. Thirty-three controlled tests pass with real native owners/processes and explicitly injected host telemetry or driver failure doubles; eight legacy selection/retention guards also pass. Workload-derived disk declarations retain conservative per-phase charges. The fresh actual-host run refuses at host_disk_high_watermark in0.066511s before work, preserving result.json and complete phase accounting. Full execution remains unqualified.",
         "All33managed-preparation/delegation/driver controls also pass under the revised bounded-lifecycle adapter; historical evidence remains pinned to its original producer. Full native pipeline execution remains pending disk admission.",
-        "The previously pending model-off full managed native run completed after exact archive compaction and canonical cache-path repair:178.179s, real START/repair/validation/publication/STOP, matching cold successor semantics,0provider calls and no owned leaks. Its existing evidence is linked here; selected-checkpoint whole-pipeline qualification remains separate."
+        "The previously pending model-off full managed native run completed after exact archive compaction and canonical cache-path repair:178.179s, real START/repair/validation/publication/STOP, matching cold successor semantics,0provider calls and no owned leaks. Its existing evidence is linked here; selected-checkpoint whole-pipeline qualification remains separate.",
+        "The explicit selected-checkpoint profile now qualifies the full authored finite pipeline: 195.348s, all three 15-entry inventories, unchanged 90s planning limit, contiguous whole-trial accounting, three real pinned-parent 384D inference calls, zero head refits/provider calls, exact source/model admission, cold successor agreement and clean STOP. 83 distinct controls pass across 85 selected attempts; two genuine pre-work CPU admission refusals remain recorded. Actual optional training retains the parent after a 0/3 child versus 3/3 parent canary; required training refuses before inference. Checkpoint outputs remain unsupported/unqualified candidates; the existing deterministic symbolic strategy and independent proof checks govern repair."
       ],
       "remaining_work": [
-        "Complete selected-checkpoint whole-trial phase/deadline and independent-selection qualification. The model-off managed pipeline is qualified; broader resource criterionRPI-022 remains open."
+        "Own declared finite-profile qualification passes. Production closure awaits RPI-010 and RPI-022."
       ],
       "evidence": [
         "finite-native-summary",
@@ -849,9 +873,18 @@
         "managed-preparation-worker-integration",
         "pipeline-lifecycle-cap",
         "formal-cache-exact-path",
-        "managed-native-full-pipeline"
+        "managed-native-full-pipeline",
+        "selected-checkpoint-preparation"
       ],
-      "criterion_acceptance": "not_yet_qualified"
+      "criterion_acceptance": "qualified_for_declared_profile",
+      "qualified_profile": "finite-offset-scalar-cohort@1; bounded local source384 preparation and native symbolic supervisor with complete 15-entry inventory",
+      "blocking_dependencies": [
+        "RPI-010",
+        "RPI-022"
+      ],
+      "out_of_profile_extensions": [
+        "Learned intent interpretation, qualified neural formalization, arbitrary repository repair, full resource enforcement and matched Terminal-Bench/Codex efficiency remain unqualified."
+      ]
     },
     {
       "id": "RPI-019",
@@ -939,10 +972,11 @@
         "Opt-in protected pipeline adapter passes31controlled-owner tests with actual subprocesses and durable disk records under explicitly injected host telemetry. It bounds queued and retained payloads, reserves validation/cleanup compartments, retains unsafe native child reservations across scope exit and garbage collection, and recovers through protected cleanup using the same authority and disk roots. Actual-host admission remains refused by the unchanged disk watermark; this is not full-pipeline qualification.",
         "The opt-in --pipeline-resources driver now joins managed source preparation, phase-local proof parents, protected public checks, v2 daemon-to-worker delegation and STOP/finalization. Thirty-three controlled tests pass with real native owners/processes and explicitly injected host telemetry or driver failure doubles; eight legacy selection/retention guards also pass. Workload-derived disk declarations retain conservative per-phase charges. The fresh actual-host run refuses at host_disk_high_watermark in0.066511s before work, preserving result.json and complete phase accounting. Full execution remains unqualified.",
         "The retained Python lifecycle inventory now has a fixed process-local cap reserved before host admission:31ordinary plus1cleanup-only slot. Waiting entries, native-expired retained contexts and outer-close races remain counted; explicit safe recovery releases handles while preserving durable disk claims. Seventy-two distinct current-producer controlled checks pass, including39pipeline/lifecycle and33managed-preparation/driver regressions. A fresh actual-host probe refused at the unchanged disk watermark before work; no default-host or full-pipeline qualification is claimed.",
-        "After reversible exact archive compaction cleared actual disk admission, managed-native-02 exposed checkout proof-cache relocation outside the declared roots. An explicit canonical native cache path fixes creation and verified worker/cold-successor reopening without changing default migration.109 distinct controls pass across26 path,22 legacy cache,43 managed and18 actual successor checks. A fresh managed-native-03 completed the full authored finite model-off pipeline in178.179s with default host sampling, real START/repair/validation/publication/STOP, matching cold successor semantics, zero provider calls and no owned processes/leases or retained reservations."
+        "After reversible exact archive compaction cleared actual disk admission, managed-native-02 exposed checkout proof-cache relocation outside the declared roots. An explicit canonical native cache path fixes creation and verified worker/cold-successor reopening without changing default migration.109 distinct controls pass across26 path,22 legacy cache,43 managed and18 actual successor checks. A fresh managed-native-03 completed the full authored finite model-off pipeline in178.179s with default host sampling, real START/repair/validation/publication/STOP, matching cold successor semantics, zero provider calls and no owned processes/leases or retained reservations.",
+        "Opt-in RepositoryProcessLimits reuses the existing native runner to enforce per-process CPU, virtual address-space and per-file limits within an admitted phase, with no extra host reservation. Fresh 52 controls pass after reboot; 10 recovered producer/test hashes match historical qualification. Aggregate RSS, process count and named-root disk remain sampled; no cgroup/GPU/host-wide hard envelope is claimed."
       ],
       "remaining_work": [
-        "The bounded cooperative sampled CPU pipeline is now qualified. Full criterion acceptance still requires GPU/per-device admission, host-wide retained-payload accounting, hard enforcement, gradual recovery and the complete pressure matrix. External supervisor/worker RSS and bounded ambient semantic temporary snapshots are not included in its named-root/direct-child census; unrelated external writers remain outside its disk enforcement. No learned pipeline or matched benchmark is implied."
+        "The bounded cooperative sampled CPU pipeline and opt-in per-process kernel ceilings are qualified. Full criterion acceptance still requires GPU/per-device admission, host-wide retained-payload accounting, aggregate hard enforcement, gradual recovery and the complete pressure matrix. External supervisor/worker RSS and bounded ambient semantic temporary snapshots are not included in the named-root/direct-child census; unrelated external writers remain outside its disk enforcement. No learned pipeline or matched benchmark is implied by the resource controls."
       ],
       "evidence": [
         "foundation-tests-log",
@@ -955,7 +989,8 @@
         "managed-preparation-worker-integration",
         "pipeline-lifecycle-cap",
         "formal-cache-exact-path",
-        "managed-native-full-pipeline"
+        "managed-native-full-pipeline",
+        "repository-process-limits"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },
@@ -1174,19 +1209,31 @@
       "criterion": "Carry scoped round/worker/attempt/fence/source/model/bucket bindings and exact SHA-256/CID artifact references through existing task/proof-context transport. Qualify lost responses, duplicate delivery, unavailable peers and stale completion. Initially run federation only. Future gradient mode requires injected collective backend plus deployment verifier, fixed membership/step/bucket ordering, declared reduction/scaling and resource/device accounting; failure aborts without fallback to FedAvg. Transport receipts never certify numerical work or proof authority.",
       "source_line": 305,
       "production_acceptance": "open",
-      "local_status": "partial_local_qualification",
+      "local_status": "criterion_qualified_prerequisites_open",
       "locally_qualified_portions": [
         "Additive source-bound8D federation, exact binary sparse reductions, existing DuckDB queue dispatch/history, parallel cancellation and native expected-parent retention APIs are implemented.237current protocol/worker controls pass;19queue and40history controls passed separately. The initial12-case full native matrix was blocked by actual supervisor disk admission; later results below supersede that status. This is a separate8D protocol and does not establish distributed384D training or model quality.",
-        "The actual12-case local federation matrix now passes, including exact retry, lost committed completion reply, source/artifact failure, indexed restart and cancellation. Existing local queue controls cover duplicate concurrent claims and expired/replaced completions. The current dispatcher only accepts a local TaskQueue; missing local artifacts or handler failures do not qualify unavailable peers."
+        "The actual12-case local federation matrix now passes, including exact retry, lost committed completion reply, source/artifact failure, indexed restart and cancellation. Existing local queue controls cover duplicate concurrent claims and expired/replaced completions. The current dispatcher only accepts a local TaskQueue; missing local artifacts or handler failures do not qualify unavailable peers.",
+        "Two explicit local peer processes carry exact source/model/round/client/attempt/fence and artifact bindings through existing TaskQueue and MCP++ framed stdio with shared CAS. Final 49 distinct controls pass: 12 actual durable recovery, 13 actual transport, 5 bounded manifest and 19 neighboring dispatcher checks. Actual committed completion reply loss and fresh-process recovery reconstruct the same sidecar with numerical-worker and peer-delivery tripwires. No refit, model-head move or new proof authority is created. Native producer pins remain unchanged; intermediate mandatory-seal skips are retained separately from the fresh 19-test pass."
       ],
       "remaining_work": [
-        "Implement and qualify a bounded actual peer transport, including unavailable peers and its scoped attempt/fence/artifact recovery, before claiming the complete frozen transport criterion. Resource/training dependencies remain open; gradient synchronization remains unavailable and fails closed without falling back to federation."
+        "Own declared local-profile qualification passes. Production closure awaits RPI-010, RPI-022 and RPI-030."
       ],
       "evidence": [
         "source-federation-implementation",
-        "native-source-federation"
+        "native-source-federation",
+        "native-peer-transport",
+        "native-peer-recovery"
       ],
-      "criterion_acceptance": "not_yet_qualified"
+      "criterion_acceptance": "qualified_for_declared_profile",
+      "qualified_profile": "bounded local 8D federation; two sequential process profiles with shared immutable CAS and canonical queue/registry owners",
+      "blocking_dependencies": [
+        "RPI-010",
+        "RPI-022",
+        "RPI-030"
+      ],
+      "out_of_profile_extensions": [
+        "Remote networking, multiple machines, distributed 384D training and gradient collectives remain unqualified. Unsupported training modes fail closed without fallback to federation."
+      ]
     },
     {
       "id": "RPI-032",

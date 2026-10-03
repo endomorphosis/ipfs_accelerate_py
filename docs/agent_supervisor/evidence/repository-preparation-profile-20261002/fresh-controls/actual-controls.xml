@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="13" time="105.616" timestamp="2026-10-03T00:13:27.229517+00:00" hostname="spark-b271"><testcase classname="integration.test_repository_preparation_profile" name="test_independent_index_contract_and_demanded_proof_preserve_inventory" time="1.597"><failure message="ipfs_accelerate_py.agent_supervisor.runtime.repository_resource_bridge.RepositoryResourceError: supervisor lane policy refused repository envelope: host_cpu_high_watermark">prepared = (&lt;ipfs_datasets_py.logic.software_contracts.codebase_ir.RepositoryCodebaseIndex object at 0xff822668bbf0&gt;, PosixPath('...6ui3s3rcvjslizx3mmexjircq', 'receipt_cid': 'baguqeerarrttyk4gwfajcg7vnwbr7zf7ieg2rwjj7yq234crgn73ae5ebiaq', ...}, ...})
+finite_tools = {'dependency_scope': 'Exact selected native executable bytes; ambient shared libraries, Python standard library and Le...4d177cea085', 'size_bytes': 13824}, 'policy_cid': 'baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq', ...}
+tmp_path = PosixPath('/home/barberb/lift_coding/artifacts/repository-preparation-recovery-20261002/actual-fixture/test_independent_index_contrac0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xff8225d35b80&gt;
+
+    def test_independent_index_contract_and_demanded_proof_preserve_inventory(prepared, finite_tools, tmp_path, monkeypatch):
+        from ipfs_datasets_py.logic.software_contracts import codebase_finite_integer_observation as native
+        index, repository, prior, _ = prepared
+        contract = IntegerOffsetContract("calc.py", "increment", "n", 2)
+        selected = prep.RepositoryPreparationSelection(CodebaseScanPolicy(), index_contracts=(contract,))
+&gt;       with managed(tmp_path, prior.repository_id, "demand") as (pipeline, attempts):
+
+test/integration/test_repository_preparation_profile.py:59: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+test/integration/test_repository_preparation_profile.py:36: in managed
+    with RepositoryPipelineResources(supervisor).reserve(repository_id=repository_id, workspace=root,
+/usr/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/repository_pipeline_resources.py:539: in reserve
+    with self.bridge.reserve(repository_id=repository_id, workspace=workspace,
+/usr/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py:303: in reserve
+    _require(local is not None and decision.admitted, "supervisor lane policy refused repository envelope: " + decision.reason)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = False
+message = 'supervisor lane policy refused repository envelope: host_cpu_high_watermark'
+
+    def _require(value, message):
+        if not value:
+&gt;           raise RepositoryResourceError(message)
+E           ipfs_accelerate_py.agent_supervisor.runtime.repository_resource_bridge.RepositoryResourceError: supervisor lane policy refused repository envelope: host_cpu_high_watermark
+
+ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py:56: RepositoryResourceError</failure></testcase><testcase classname="integration.test_repository_preparation_profile" name="test_actual_managed_shared384_policies_keep_parent_and_bound_phases[pinned_parent]" time="11.158" /><testcase classname="integration.test_repository_preparation_profile" name="test_actual_managed_shared384_policies_keep_parent_and_bound_phases[optional_training]" time="17.957" /><testcase classname="integration.test_repository_preparation_profile" name="test_actual_managed_shared384_policies_keep_parent_and_bound_phases[required_training]" time="10.711" /><testcase classname="integration.test_repository_preparation_profile" name="test_cancelled_managed_parent_preserves_failed_phase_and_source" time="1.575" /><testcase classname="integration.test_repository_preparation_profile" name="test_process_local_observer_replays_live_fences_and_immutable_dependencies[none]" time="6.087" /><testcase classname="integration.test_repository_preparation_profile" name="test_process_local_observer_replays_live_fences_and_immutable_dependencies[descriptor]" time="6.210" /><testcase classname="integration.test_repository_preparation_profile" name="test_process_local_observer_replays_live_fences_and_immutable_dependencies[producer]" time="6.195" /><testcase classname="integration.test_repository_preparation_profile" name="test_process_local_observer_replays_live_fences_and_immutable_dependencies[dependency]" time="5.710" /><testcase classname="integration.test_repository_preparation_profile" name="test_process_local_observer_replays_live_fences_and_immutable_dependencies[source]" time="6.089" /><testcase classname="integration.test_repository_preparation_profile" name="test_process_local_observer_replays_live_fences_and_immutable_dependencies[report]" time="5.383" /><testcase classname="integration.test_repository_preparation_profile" name="test_process_local_observer_replays_live_fences_and_immutable_dependencies[scope]" time="5.971" /><testcase classname="integration.test_repository_preparation_profile" name="test_process_local_observer_replays_live_fences_and_immutable_dependencies[different_receipt]" time="6.131" /></testsuite></testsuites>

@@ -1,0 +1,81 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/test
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 13 items
+
+test/integration/test_repository_preparation_profile.py::test_independent_index_contract_and_demanded_proof_preserve_inventory [31mFAILED[0m[31m [  7%][0m
+test/integration/test_repository_preparation_profile.py::test_actual_managed_shared384_policies_keep_parent_and_bound_phases[pinned_parent] [32mPASSED[0m[31m [ 15%][0m
+test/integration/test_repository_preparation_profile.py::test_actual_managed_shared384_policies_keep_parent_and_bound_phases[optional_training] [32mPASSED[0m[31m [ 23%][0m
+test/integration/test_repository_preparation_profile.py::test_actual_managed_shared384_policies_keep_parent_and_bound_phases[required_training] [32mPASSED[0m[31m [ 30%][0m
+test/integration/test_repository_preparation_profile.py::test_cancelled_managed_parent_preserves_failed_phase_and_source [32mPASSED[0m[31m [ 38%][0m
+test/integration/test_repository_preparation_profile.py::test_process_local_observer_replays_live_fences_and_immutable_dependencies[none] [32mPASSED[0m[31m [ 46%][0m
+test/integration/test_repository_preparation_profile.py::test_process_local_observer_replays_live_fences_and_immutable_dependencies[descriptor] [32mPASSED[0m[31m [ 53%][0m
+test/integration/test_repository_preparation_profile.py::test_process_local_observer_replays_live_fences_and_immutable_dependencies[producer] [32mPASSED[0m[31m [ 61%][0m
+test/integration/test_repository_preparation_profile.py::test_process_local_observer_replays_live_fences_and_immutable_dependencies[dependency] [32mPASSED[0m[31m [ 69%][0m
+test/integration/test_repository_preparation_profile.py::test_process_local_observer_replays_live_fences_and_immutable_dependencies[source] [32mPASSED[0m[31m [ 76%][0m
+test/integration/test_repository_preparation_profile.py::test_process_local_observer_replays_live_fences_and_immutable_dependencies[report] [32mPASSED[0m[31m [ 84%][0m
+test/integration/test_repository_preparation_profile.py::test_process_local_observer_replays_live_fences_and_immutable_dependencies[scope] [32mPASSED[0m[31m [ 92%][0m
+test/integration/test_repository_preparation_profile.py::test_process_local_observer_replays_live_fences_and_immutable_dependencies[different_receipt] [32mPASSED[0m[31m [100%][0m
+
+=================================== FAILURES ===================================
+[31m[1m____ test_independent_index_contract_and_demanded_proof_preserve_inventory _____[0m
+
+prepared = (<ipfs_datasets_py.logic.software_contracts.codebase_ir.RepositoryCodebaseIndex object at 0xff822668bbf0>, PosixPath('...6ui3s3rcvjslizx3mmexjircq', 'receipt_cid': 'baguqeerarrttyk4gwfajcg7vnwbr7zf7ieg2rwjj7yq234crgn73ae5ebiaq', ...}, ...})
+finite_tools = {'dependency_scope': 'Exact selected native executable bytes; ambient shared libraries, Python standard library and Le...4d177cea085', 'size_bytes': 13824}, 'policy_cid': 'baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq', ...}
+tmp_path = PosixPath('/home/barberb/lift_coding/artifacts/repository-preparation-recovery-20261002/actual-fixture/test_independent_index_contrac0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xff8225d35b80>
+
+    [0m[94mdef[39;49;00m [92mtest_independent_index_contract_and_demanded_proof_preserve_inventory[39;49;00m(prepared, finite_tools, tmp_path, monkeypatch):[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_datasets_py[39;49;00m[04m[96m.[39;49;00m[04m[96mlogic[39;49;00m[04m[96m.[39;49;00m[04m[96msoftware_contracts[39;49;00m [94mimport[39;49;00m codebase_finite_integer_observation [94mas[39;49;00m native[90m[39;49;00m
+        index, repository, prior, _ = prepared[90m[39;49;00m
+        contract = IntegerOffsetContract([33m"[39;49;00m[33mcalc.py[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mincrement[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mn[39;49;00m[33m"[39;49;00m, [94m2[39;49;00m)[90m[39;49;00m
+        selected = prep.RepositoryPreparationSelection(CodebaseScanPolicy(), index_contracts=(contract,))[90m[39;49;00m
+>       [94mwith[39;49;00m managed(tmp_path, prior.repository_id, [33m"[39;49;00m[33mdemand[39;49;00m[33m"[39;49;00m) [94mas[39;49;00m (pipeline, attempts):[90m[39;49;00m
+
+[1m[31mtest/integration/test_repository_preparation_profile.py[0m:59: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mtest/integration/test_repository_preparation_profile.py[0m:36: in managed
+    [0m[94mwith[39;49;00m RepositoryPipelineResources(supervisor).reserve(repository_id=repository_id, workspace=root,[90m[39;49;00m
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_pipeline_resources.py[0m:539: in reserve
+    [0m[94mwith[39;49;00m [96mself[39;49;00m.bridge.reserve(repository_id=repository_id, workspace=workspace,[90m[39;49;00m
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py[0m:303: in reserve
+    [0m_require(local [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m [95mand[39;49;00m decision.admitted, [33m"[39;49;00m[33msupervisor lane policy refused repository envelope: [39;49;00m[33m"[39;49;00m + decision.reason)[90m[39;49;00m
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = False
+message = 'supervisor lane policy refused repository envelope: host_cpu_high_watermark'
+
+    [0m[94mdef[39;49;00m [92m_require[39;49;00m(value, message):[90m[39;49;00m
+        [94mif[39;49;00m [95mnot[39;49;00m value:[90m[39;49;00m
+>           [94mraise[39;49;00m RepositoryResourceError(message)[90m[39;49;00m
+[1m[31mE           ipfs_accelerate_py.agent_supervisor.runtime.repository_resource_bridge.RepositoryResourceError: supervisor lane policy refused repository envelope: host_cpu_high_watermark[0m
+
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py[0m:56: RepositoryResourceError
+- generated xml file: /home/barberb/lift_coding/artifacts/repository-preparation-recovery-20261002/actual-controls.xml -
+============================= slowest 10 durations =============================
+17.96s call     integration/test_repository_preparation_profile.py::test_actual_managed_shared384_policies_keep_parent_and_bound_phases[optional_training]
+10.71s call     integration/test_repository_preparation_profile.py::test_actual_managed_shared384_policies_keep_parent_and_bound_phases[required_training]
+10.02s call     integration/test_repository_preparation_profile.py::test_actual_managed_shared384_policies_keep_parent_and_bound_phases[pinned_parent]
+4.64s call     integration/test_repository_preparation_profile.py::test_process_local_observer_replays_live_fences_and_immutable_dependencies[descriptor]
+4.59s call     integration/test_repository_preparation_profile.py::test_process_local_observer_replays_live_fences_and_immutable_dependencies[producer]
+4.58s call     integration/test_repository_preparation_profile.py::test_process_local_observer_replays_live_fences_and_immutable_dependencies[none]
+4.53s call     integration/test_repository_preparation_profile.py::test_process_local_observer_replays_live_fences_and_immutable_dependencies[source]
+4.51s call     integration/test_repository_preparation_profile.py::test_process_local_observer_replays_live_fences_and_immutable_dependencies[different_receipt]
+4.36s call     integration/test_repository_preparation_profile.py::test_process_local_observer_replays_live_fences_and_immutable_dependencies[scope]
+4.25s call     integration/test_repository_preparation_profile.py::test_process_local_observer_replays_live_fences_and_immutable_dependencies[dependency]
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m test/integration/test_repository_preparation_profile.py::[1mtest_independent_index_contract_and_demanded_proof_preserve_inventory[0m - ipfs_accelerate_py.agent_supervisor.runtime.repository_resource_bridge.Repo...
+[31m=================== [31m[1m1 failed[0m, [32m12 passed[0m[31m in 105.65s (0:01:45)[0m[31m ===================[0m

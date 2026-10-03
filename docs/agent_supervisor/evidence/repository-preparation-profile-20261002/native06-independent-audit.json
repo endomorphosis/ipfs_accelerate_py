@@ -1,0 +1,25 @@
+{
+  "schema": "independent-native-preparation-receipt-audit@1",
+  "valid": true,
+  "result_sha256": "a560497189a47673dcfa03036ca03b114e3b4c77756d85fa5285d1d2765436a2",
+  "source_sha256": "49ea5c81adb106f2986f210778ec44c253d516e077fee9dd71c17dfcb18beffd",
+  "seconds": 195.34828769699925,
+  "phase_sum": 195.34828769699925,
+  "planning_seconds": 78.39907219199995,
+  "planning_limit": 90,
+  "trial_limit": 600,
+  "inventory_counts": [
+    15,
+    15,
+    15
+  ],
+  "checkpoint_version": "sha256:b8b5b6d7289bd571b8ddf9ee723b7e718b5064954647591f277d74fab17a1421",
+  "inference_calls": 3,
+  "head_refits": 0,
+  "remaining_processes": 0,
+  "remaining_leases": 0,
+  "provider_calls": 0,
+  "provider_tokens": 0,
+  "neural_formalization_qualified": false,
+  "benchmark_result": false
+}

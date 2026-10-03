@@ -1,0 +1,1819 @@
+{
+  "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+  "closed": {
+    "active_phases": 0,
+    "closed": true,
+    "completion_authority": false,
+    "events": [
+      {
+        "disk": {
+          "cleanup_error": null,
+          "enforcement": "cooperative_admission_and_polled_usage_not_kernel_quota",
+          "ledger_path": "/home/barberb/lift_coding/artifacts/repository-preparation-recovery-20261002/actual-fixture/lifecycle3840/required_training-ledger.json",
+          "record": {
+            "artifacts_durable_asserted": true,
+            "attempt_directory": {
+              "device": 66306,
+              "inode": 8790759,
+              "path": "/home/barberb/lift_coding/artifacts/repository-preparation-recovery-20261002/actual-fixture/lifecycle3840/required_training-attempts/0d4ea7a3fc5b552e8685234e-1-scan"
+            },
+            "attempt_exceeded_reservation": false,
+            "child": null,
+            "child_process_slots": 1,
+            "cpu_slots": 1,
+            "created_at": 1790986452.7667582,
+            "external_charges": {
+              "pipeline-1041a2b28b4ddd704bc6b1688d25673687985ceacb11f8256b008cfa37f69185": 16777216
+            },
+            "final_accounting": {
+              "additional_requested_bytes": 0,
+              "charged_bytes": 2501967,
+              "inventory": {
+                "apparent_bytes": 2501967,
+                "entry_count": 141,
+                "special_file_count": 0,
+                "symlink_count": 0
+              },
+              "limit_bytes": 140000000000,
+              "minimum_filesystem_free_bytes": 243817967616,
+              "observed_apparent_bytes": 2501967,
+              "outstanding_full_reservations_bytes": 0,
+              "scope": "named_roots_only_apparent_bytes"
+            },
+            "final_attempt_bytes": 0,
+            "final_external_charged_bytes": 16777216,
+            "final_total_charged_bytes": 16777216,
+            "finalization_profile": {
+              "global_accounting_seconds": 0.004082346000359394,
+              "global_inventory_count": 1,
+              "ledger_lock_wait_seconds": 0.00018683000052988064,
+              "process_check_seconds": 2.9120001272531226e-06,
+              "schema_version": "daemon-resource-finalization-profile/v1",
+              "scope": "one_fresh_locked_census_with_full_claim_checked_before_release",
+              "strict_attempt_inventory_count": 1,
+              "strict_attempt_inventory_seconds": 0.00031031100024847547
+            },
+            "last_charge_usage": {
+              "additional_requested_bytes": 0,
+              "attempt_bytes": 0,
+              "attempt_limit_bytes": 16777216,
+              "charged_bytes": 19081700,
+              "checked_at": 1790986452.890883,
+              "external_charged_bytes": 16777216,
+              "inventory": {
+                "apparent_bytes": 2304484,
+                "entry_count": 140,
+                "special_file_count": 0,
+                "symlink_count": 0
+              },
+              "limit_bytes": 140000000000,
+              "minimum_filesystem_free_bytes": 243818188800,
+              "observed_apparent_bytes": 2304484,
+              "outstanding_full_reservations_bytes": 16777216,
+              "scope": "named_roots_only_apparent_bytes",
+              "total_attempt_charged_bytes": 16777216
+            },
+            "last_usage": {
+              "additional_requested_bytes": 0,
+              "attempt_bytes": 0,
+              "attempt_limit_bytes": 16777216,
+              "charged_bytes": 19279183,
+              "checked_at": 1790986454.1643698,
+              "external_charged_bytes": 16777216,
+              "group_rss": {
+                "available": true,
+                "live_processes": 0,
+                "rss_bytes": 0
+              },
+              "inventory": {
+                "apparent_bytes": 2501967,
+                "entry_count": 141,
+                "special_file_count": 0,
+                "symlink_count": 0
+              },
+              "limit_bytes": 140000000000,
+              "memory_limit_bytes": 1073741824,
+              "minimum_filesystem_free_bytes": 243817967616,
+              "observed_apparent_bytes": 2501967,
+              "outstanding_full_reservations_bytes": 16777216,
+              "process_slot_estimate_exceeded": false,
+              "reserved_child_process_slots": 1,
+              "scope": "named_roots_only_apparent_bytes",
+              "total_attempt_charged_bytes": 16777216
+            },
+            "memory_mb": 1024,
+            "owner_pid": 1252595,
+            "parent_lease_id": "348ebe9b57784d51934e97d5f2af5498",
+            "prior_children": [],
+            "released_at": 1790986454.1643856,
+            "reservation_id": "86412efe10674ae8a08f391332d95ad1",
+            "scheduler_lane": "hammer_lean",
+            "status": "released",
+            "storage_bytes": 16777216,
+            "workload": "canonical_trainer"
+          },
+          "reservation_id": "86412efe10674ae8a08f391332d95ad1",
+          "resource_lease": {
+            "acquired_at": 1790986452.775224,
+            "cancelled": true,
+            "child_process_slots": 1,
+            "cpu_slots": 1,
+            "gpu_memory_mb": 0,
+            "lane": "hammer_lean",
+            "lease_id": "f3d6367a69384d499c7811e03e3e2504",
+            "memory_mb": 1024,
+            "owner_pid": 1252595,
+            "parent_lease_id": "348ebe9b57784d51934e97d5f2af5498",
+            "released": true,
+            "requires_gpu": false,
+            "unified_memory_mb": 0,
+            "wait_seconds": 6.399995982064866e-07
+          },
+          "roots": [
+            {
+              "device": 66306,
+              "inode": 8790594,
+              "path": "/home/barberb/lift_coding/artifacts/repository-preparation-recovery-20261002/actual-fixture/lifecycle3840"
+            }
+          ],
+          "scheduler_lane": "hammer_lean",
+          "schema": "daemon-resource-reservations-v1",
+          "status": "released",
+          "storage_limit_bytes": 140000000000,
+          "workload": "canonical_trainer"
+        },
+        "elapsed_ms": 1442,
+        "payload_bytes": 2731,
+        "phase": "scan",
+        "protected": false,
+        "request_id": "d256bb19f3314cf5a4e8db473024329f",
+        "status": "completed"
+      },
+      {
+        "disk": {
+          "cleanup_error": null,
+          "enforcement": "cooperative_admission_and_polled_usage_not_kernel_quota",
+          "ledger_path": "/home/barberb/lift_coding/artifacts/repository-preparation-recovery-20261002/actual-fixture/lifecycle3840/required_training-ledger.json",
+          "record": {
+            "artifacts_durable_asserted": true,
+            "attempt_directory": {
+              "device": 66306,
+              "inode": 8790761,
+              "path": "/home/barberb/lift_coding/artifacts/repository-preparation-recovery-20261002/actual-fixture/lifecycle3840/required_training-attempts/0d4ea7a3fc5b552e8685234e-2-semantic_index"
+            },
+            "attempt_exceeded_reservation": false,
+            "child": null,
+            "child_process_slots": 1,
+            "cpu_slots": 1,
+            "created_at": 1790986454.2100239,
+            "external_charges": {
+              "pipeline-1041a2b28b4ddd704bc6b1688d25673687985ceacb11f8256b008cfa37f69185": 16777216
+            },
+            "final_accounting": {
+              "additional_requested_bytes": 0,
+              "charged_bytes": 2525842,
+              "inventory": {
+                "apparent_bytes": 2525842,
+                "entry_count": 143,
+                "special_file_count": 0,
+                "symlink_count": 0
+              },
+              "limit_bytes": 140000000000,
+              "minimum_filesystem_free_bytes": 243817943040,
+              "observed_apparent_bytes": 2525842,
+              "outstanding_full_reservations_bytes": 0,
+              "scope": "named_roots_only_apparent_bytes"
+            },
+            "final_attempt_bytes": 0,
+            "final_external_charged_bytes": 16777216,
+            "final_total_charged_bytes": 16777216,
+            "finalization_profile": {
+              "global_accounting_seconds": 0.0019855369992001215,
+              "global_inventory_count": 1,
+              "ledger_lock_wait_seconds": 8.144599996739998e-05,
+              "process_check_seconds": 7.360004019574262e-07,
+              "schema_version": "daemon-resource-finalization-profile/v1",
+              "scope": "one_fresh_locked_census_with_full_claim_checked_before_release",
+              "strict_attempt_inventory_count": 1,
+              "strict_attempt_inventory_seconds": 0.00011068000003433554
+            },
+            "last_charge_usage": {
+              "additional_requested_bytes": 0,
+              "attempt_bytes": 0,
+              "attempt_limit_bytes": 16777216,
+              "charged_bytes": 19281493,
+              "checked_at": 1790986454.3268888,
+              "external_charged_bytes": 16777216,
+              "inventory": {
+                "apparent_bytes": 2504277,
+                "entry_count": 142,
+                "special_file_count": 0,
+                "symlink_count": 0
+              },
+              "limit_bytes": 140000000000,
+              "minimum_filesystem_free_bytes": 243817971712,
+              "observed_apparent_bytes": 2504277,
+              "outstanding_full_reservations_bytes": 16777216,
+              "scope": "named_roots_only_apparent_bytes",
+              "total_attempt_charged_bytes": 16777216
+            },
+            "last_usage": {
+              "additional_requested_bytes": 0,
+              "attempt_bytes": 0,
+              "attempt_limit_bytes": 16777216,
+              "charged_bytes": 19303058,
+              "checked_at": 1790986454.4886444,
+              "external_charged_bytes": 16777216,
+              "group_rss": {
+                "available": true,
+                "live_processes": 0,
+                "rss_bytes": 0
+              },
+              "inventory": {
+                "apparent_bytes": 2525842,
+                "entry_count": 143,
+                "special_file_count": 0,
+                "symlink_count": 0
+              },
+              "limit_bytes": 140000000000,
+              "memory_limit_bytes": 1073741824,
+              "minimum_filesystem_free_bytes": 243817943040,
+              "observed_apparent_bytes": 2525842,
+              "outstanding_full_reservations_bytes": 16777216,
+              "process_slot_estimate_exceeded": false,
+              "reserved_child_process_slots": 1,
+              "scope": "named_roots_only_apparent_bytes",
+              "total_attempt_charged_bytes": 16777216
+            },
+            "memory_mb": 1024,
+            "owner_pid": 1252595,
+            "parent_lease_id": "ca08763aa503469d89ce01e1d0f538ca",
+            "prior_children": [],
+            "released_at": 1790986454.4886506,
+            "reservation_id": "541162f8736a41c88b6172ae53a27181",
+            "scheduler_lane": "hammer_lean",
+            "status": "released",
+            "storage_bytes": 16777216,
+            "workload": "canonical_trainer"
+          },
+          "reservation_id": "541162f8736a41c88b6172ae53a27181",
+          "resource_lease": {
+            "acquired_at": 1790986454.2178626,
+            "cancelled": true,
+            "child_process_slots": 1,
+            "cpu_slots": 1,
+            "gpu_memory_mb": 0,
+            "lane": "hammer_lean",
+            "lease_id": "7eca675e7c1b4e15ba2efbbc63d08b1f",
+            "memory_mb": 1024,
+            "owner_pid": 1252595,
+            "parent_lease_id": "ca08763aa503469d89ce01e1d0f538ca",
+            "released": true,
+            "requires_gpu": false,
+            "unified_memory_mb": 0,
+            "wait_seconds": 5.59999534743838e-07
+          },
+          "roots": [
+            {
+              "device": 66306,
+              "inode": 8790594,
+              "path": "/home/barberb/lift_coding/artifacts/repository-preparation-recovery-20261002/actual-fixture/lifecycle3840"
+            }
+          ],
+          "scheduler_lane": "hammer_lean",
+          "schema": "daemon-resource-reservations-v1",
+          "status": "released",
+          "storage_limit_bytes": 140000000000,
+          "workload": "canonical_trainer"
+        },
+        "elapsed_ms": 320,
+        "payload_bytes": 2741,
+        "phase": "semantic_index",
+        "protected": false,
+        "request_id": "d7195dc30f3b446ab8a9bea595f72a33",
+        "status": "completed"
+      },
+      {
+        "disk": {
+          "cleanup_error": null,
+          "enforcement": "cooperative_admission_and_polled_usage_not_kernel_quota",
+          "ledger_path": "/home/barberb/lift_coding/artifacts/repository-preparation-recovery-20261002/actual-fixture/lifecycle3840/required_training-ledger.json",
+          "record": {
+            "artifacts_durable_asserted": true,
+            "attempt_directory": {
+              "device": 66306,
+              "inode": 8790764,
+              "path": "/home/barberb/lift_coding/artifacts/repository-preparation-recovery-20261002/actual-fixture/lifecycle3840/required_training-attempts/0d4ea7a3fc5b552e8685234e-3-sql"
+            },
+            "attempt_exceeded_reservation": false,
+            "child": null,
+            "child_process_slots": 1,
+            "cpu_slots": 1,
+            "created_at": 1790986454.525601,
+            "external_charges": {
+              "pipeline-1041a2b28b4ddd704bc6b1688d25673687985ceacb11f8256b008cfa37f69185": 16777216
+            },
+            "final_accounting": {
+              "additional_requested_bytes": 0,
+              "charged_bytes": 2535889,
+              "inventory": {
+                "apparent_bytes": 2535889,
+                "entry_count": 145,
+                "special_file_count": 0,
+                "symlink_count": 0
+              },
+              "limit_bytes": 140000000000,
+              "minimum_filesystem_free_bytes": 243817922560,
+              "observed_apparent_bytes": 2535889,
+              "outstanding_full_reservations_bytes": 0,
+              "scope": "named_roots_only_apparent_bytes"
+            },
+            "final_attempt_bytes": 0,
+            "final_external_charged_bytes": 16777216,
+            "final_total_charged_bytes": 16777216,
+            "finalization_profile": {
+              "global_accounting_seconds": 0.004201667999950587,
+              "global_inventory_count": 1,
+              "ledger_lock_wait_seconds": 0.00018111700046574697,
+              "process_check_seconds": 2.415999915683642e-06,
+              "schema_version": "daemon-resource-finalization-profile/v1",
+              "scope": "one_fresh_locked_census_with_full_claim_checked_before_release",
+              "strict_attempt_inventory_count": 1,
+              "strict_attempt_inventory_seconds": 0.00030410299950744957
+            },
+            "last_charge_usage": {
+              "additional_requested_bytes": 0,
+              "attempt_bytes": 0,
+              "attempt_limit_bytes": 16777216,
+              "charged_bytes": 19305355,
+              "checked_at": 1790986454.628705,
+              "external_charged_bytes": 16777216,
+              "inventory": {
+                "apparent_bytes": 2528139,
+                "entry_count": 144,
+                "special_file_count": 0,
+                "symlink_count": 0
+              },
+              "limit_bytes": 140000000000,
+              "minimum_filesystem_free_bytes": 243817938944,
+              "observed_apparent_bytes": 2528139,
+              "outstanding_full_reservations_bytes": 16777216,
+              "scope": "named_roots_only_apparent_bytes",
+              "total_attempt_charged_bytes": 16777216
+            },
+            "last_usage": {
+              "additional_requested_bytes": 0,
+              "attempt_bytes": 0,
+              "attempt_limit_bytes": 16777216,
+              "charged_bytes": 19313105,
+              "checked_at": 1790986455.5796728,
+              "external_charged_bytes": 16777216,
+              "group_rss": {
+                "available": true,
+                "live_processes": 0,
+                "rss_bytes": 0
+              },
+              "inventory": {
+                "apparent_bytes": 2535889,
+                "entry_count": 145,
+                "special_file_count": 0,
+                "symlink_count": 0
+              },
+              "limit_bytes": 140000000000,
+              "memory_limit_bytes": 1073741824,
+              "minimum_filesystem_free_bytes": 243817922560,
+              "observed_apparent_bytes": 2535889,
+              "outstanding_full_reservations_bytes": 16777216,
+              "process_slot_estimate_exceeded": false,
+              "reserved_child_process_slots": 1,
+              "scope": "named_roots_only_apparent_bytes",
+              "total_attempt_charged_bytes": 16777216
+            },
+            "memory_mb": 1024,
+            "owner_pid": 1252595,
+            "parent_lease_id": "82b108d4a9a2459baa1717c870ea0282",
+            "prior_children": [],
+            "released_at": 1790986455.5796866,
+            "reservation_id": "ed4569c85b7f4d4a88d7fa40fb9bc91e",
+            "scheduler_lane": "hammer_lean",
+            "status": "released",
+            "storage_bytes": 16777216,
+            "workload": "canonical_trainer"
+          },
+          "reservation_id": "ed4569c85b7f4d4a88d7fa40fb9bc91e",
+          "resource_lease": {
+            "acquired_at": 1790986454.5329127,
+            "cancelled": true,
+            "child_process_slots": 1,
+            "cpu_slots": 1,
+            "gpu_memory_mb": 0,
+            "lane": "hammer_lean",
+            "lease_id": "419775de67234b6ba7d333b08fd86153",
+            "memory_mb": 1024,
+            "owner_pid": 1252595,
+            "parent_lease_id": "82b108d4a9a2459baa1717c870ea0282",
+            "released": true,
+            "requires_gpu": false,
+            "unified_memory_mb": 0,
+            "wait_seconds": 2.720007614698261e-07
+          },
+          "roots": [
+            {
+              "device": 66306,
+              "inode": 8790594,
+              "path": "/home/barberb/lift_coding/artifacts/repository-preparation-recovery-20261002/actual-fixture/lifecycle3840"
+            }
+          ],
+          "scheduler_lane": "hammer_lean",
+          "schema": "daemon-resource-reservations-v1",
+          "status": "released",
+          "storage_limit_bytes": 140000000000,
+          "workload": "canonical_trainer"
+        },
+        "elapsed_ms": 1093,
+        "payload_bytes": 2730,
+        "phase": "sql",
+        "protected": false,
+        "request_id": "8ce6d6c420a04ad4b7b03427d2e99bf1",
+        "status": "completed"
+      },
+      {
+        "disk": {
+          "cleanup_error": null,
+          "enforcement": "cooperative_admission_and_polled_usage_not_kernel_quota",
+          "ledger_path": "/home/barberb/lift_coding/artifacts/repository-preparation-recovery-20261002/actual-fixture/lifecycle3840/required_training-ledger.json",
+          "record": {
+            "artifacts_durable_asserted": true,
+            "attempt_directory": {
+              "device": 66306,
+              "inode": 8790766,
+              "path": "/home/barberb/lift_coding/artifacts/repository-preparation-recovery-20261002/actual-fixture/lifecycle3840/required_training-attempts/0d4ea7a3fc5b552e8685234e-4-semantic_index"
+            },
+            "attempt_exceeded_reservation": false,
+            "child": null,
+            "child_process_slots": 1,
+            "cpu_slots": 1,
+            "created_at": 1790986455.6268935,
+            "external_charges": {
+              "pipeline-1041a2b28b4ddd704bc6b1688d25673687985ceacb11f8256b008cfa37f69185": 16777216
+            },
+            "final_accounting": {
+              "additional_requested_bytes": 0,
+              "charged_bytes": 2591834,
+              "inventory": {
+                "apparent_bytes": 2591834,
+                "entry_count": 148,
+                "special_file_count": 0,
+                "symlink_count": 0
+              },
+              "limit_bytes": 140000000000,
+              "minimum_filesystem_free_bytes": 243817844736,
+              "observed_apparent_bytes": 2591834,
+              "outstanding_full_reservations_bytes": 0,
+              "scope": "named_roots_only_apparent_bytes"
+            },
+            "final_attempt_bytes": 0,
+            "final_external_charged_bytes": 16777216,
+            "final_total_charged_bytes": 16777216,
+            "finalization_profile": {
+              "global_accounting_seconds": 0.00221174600028462,
+              "global_inventory_count": 1,
+              "ledger_lock_wait_seconds": 8.579799941799138e-05,
+              "process_check_seconds": 1.2000000424450263e-06,
+              "schema_version": "daemon-resource-finalization-profile/v1",
+              "scope": "one_fresh_locked_census_with_full_claim_checked_before_release",
+              "strict_attempt_inventory_count": 1,
+              "strict_attempt_inventory_seconds": 0.0001162490007118322
+            },
+            "last_charge_usage": {
+              "additional_requested_bytes": 0,
+              "attempt_bytes": 0,
+              "attempt_limit_bytes": 16777216,
+              "charged_bytes": 19315413,
+              "checked_at": 1790986455.7487836,
+              "external_charged_bytes": 16777216,
+              "inventory": {
+                "apparent_bytes": 2538197,
+                "entry_count": 146,
+                "special_file_count": 0,
+                "symlink_count": 0
+              },
+              "limit_bytes": 140000000000,
+              "minimum_filesystem_free_bytes": 243817914368,
+              "observed_apparent_bytes": 2538197,
+              "outstanding_full_reservations_bytes": 16777216,
+              "scope": "named_roots_only_apparent_bytes",
+              "total_attempt_charged_bytes": 16777216
+            },
+            "last_usage": {
+              "additional_requested_bytes": 0,
+              "attempt_bytes": 0,
+              "attempt_limit_bytes": 16777216,
+              "charged_bytes": 19369050,
+              "checked_at": 1790986456.5892925,
+              "external_charged_bytes": 16777216,
+              "group_rss": {
+                "available": true,
+                "live_processes": 0,
+                "rss_bytes": 0
+              },
+              "inventory": {
+                "apparent_bytes": 2591834,
+                "entry_count": 148,
+                "special_file_count": 0,
+                "symlink_count": 0
+              },
+              "limit_bytes": 140000000000,
+              "memory_limit_bytes": 1073741824,
+              "minimum_filesystem_free_bytes": 243817844736,
+              "observed_apparent_bytes": 2591834,
+              "outstanding_full_reservations_bytes": 16777216,
+              "process_slot_estimate_exceeded": false,
+              "reserved_child_process_slots": 1,
+              "scope": "named_roots_only_apparent_bytes",
+              "total_attempt_charged_bytes": 16777216
+            },
+            "memory_mb": 1024,
+            "owner_pid": 1252595,
+            "parent_lease_id": "c8757a44aa21400db6f2f90edf613456",
+            "prior_children": [],
+            "released_at": 1790986456.5892992,
+            "reservation_id": "28bad03c303b455791d2b56d33fda89a",
+            "scheduler_lane": "hammer_lean",
+            "status": "released",
+            "storage_bytes": 16777216,
+            "workload": "canonical_trainer"
+          },
+          "reservation_id": "28bad03c303b455791d2b56d33fda89a",
+          "resource_lease": {
+            "acquired_at": 1790986455.6348217,
+            "cancelled": true,
+            "child_process_slots": 1,
+            "cpu_slots": 1,
+            "gpu_memory_mb": 0,
+            "lane": "hammer_lean",
+            "lease_id": "7a6079b010864581a22283f131724009",
+            "memory_mb": 1024,
+            "owner_pid": 1252595,
+            "parent_lease_id": "c8757a44aa21400db6f2f90edf613456",
+            "released": true,
+            "requires_gpu": false,
+            "unified_memory_mb": 0,
+            "wait_seconds": 7.039998308755457e-07
+          },
+          "roots": [
+            {
+              "device": 66306,
+              "inode": 8790594,
+              "path": "/home/barberb/lift_coding/artifacts/repository-preparation-recovery-20261002/actual-fixture/lifecycle3840"
+            }
+          ],
+          "scheduler_lane": "hammer_lean",
+          "schema": "daemon-resource-reservations-v1",
+          "status": "released",
+          "storage_limit_bytes": 140000000000,
+          "workload": "canonical_trainer"
+        },
+        "elapsed_ms": 1005,
+        "payload_bytes": 2741,
+        "phase": "semantic_index",
+        "protected": false,
+        "request_id": "f040f22390354ded8879036f90a201c0",
+        "status": "completed"
+      },
+      {
+        "disk": {
+          "cleanup_error": null,
+          "enforcement": "cooperative_admission_and_polled_usage_not_kernel_quota",
+          "ledger_path": "/home/barberb/lift_coding/artifacts/repository-preparation-recovery-20261002/actual-fixture/lifecycle3840/required_training-ledger.json",
+          "record": {
+            "artifacts_durable_asserted": true,
+            "attempt_directory": {
+              "device": 66306,
+              "inode": 8790768,
+              "path": "/home/barberb/lift_coding/artifacts/repository-preparation-recovery-20261002/actual-fixture/lifecycle3840/required_training-attempts/0d4ea7a3fc5b552e8685234e-5-training"
+            },
+            "attempt_exceeded_reservation": false,
+            "child": null,
+            "child_process_slots": 1,
+            "cpu_slots": 1,
+            "created_at": 1790986456.6268313,
+            "external_charges": {
+              "pipeline-1041a2b28b4ddd704bc6b1688d25673687985ceacb11f8256b008cfa37f69185": 16777216
+            },
+            "final_accounting": {
+              "additional_requested_bytes": 0,
+              "charged_bytes": 3006908,
+              "inventory": {
+                "apparent_bytes": 3006908,
+                "entry_count": 155,
+                "special_file_count": 0,
+                "symlink_count": 0
+              },
+              "limit_bytes": 140000000000,
+              "minimum_filesystem_free_bytes": 243817156608,
+              "observed_apparent_bytes": 3006908,
+              "outstanding_full_reservations_bytes": 0,
+              "scope": "named_roots_only_apparent_bytes"
+            },
+            "final_attempt_bytes": 0,
+            "final_external_charged_bytes": 16777216,
+            "final_total_charged_bytes": 16777216,
+            "finalization_profile": {
+              "global_accounting_seconds": 0.002255401000184065,
+              "global_inventory_count": 1,
+              "ledger_lock_wait_seconds": 8.40700004118844e-05,
+              "process_check_seconds": 8.639999578008428e-07,
+              "schema_version": "daemon-resource-finalization-profile/v1",
+              "scope": "one_fresh_locked_census_with_full_claim_checked_before_release",
+              "strict_attempt_inventory_count": 1,
+              "strict_attempt_inventory_seconds": 0.00011296799948468106
+            },
+            "last_charge_usage": {
+              "additional_requested_bytes": 0,
+              "attempt_bytes": 0,
+              "attempt_limit_bytes": 16777216,
+              "charged_bytes": 19371350,
+              "checked_at": 1790986456.7290835,
+              "external_charged_bytes": 16777216,
+              "inventory": {
+                "apparent_bytes": 2594134,
+                "entry_count": 149,
+                "special_file_count": 0,
+                "symlink_count": 0
+              },
+              "limit_bytes": 140000000000,
+              "minimum_filesystem_free_bytes": 243817836544,
+              "observed_apparent_bytes": 2594134,
+              "outstanding_full_reservations_bytes": 16777216,
+              "scope": "named_roots_only_apparent_bytes",
+              "total_attempt_charged_bytes": 16777216
+            },
+            "last_usage": {
+              "additional_requested_bytes": 0,
+              "attempt_bytes": 0,
+              "attempt_limit_bytes": 16777216,
+              "charged_bytes": 19784124,
+              "checked_at": 1790986463.3643343,
+              "external_charged_bytes": 16777216,
+              "group_rss": {
+                "available": true,
+                "live_processes": 0,
+                "rss_bytes": 0
+              },
+              "inventory": {
+                "apparent_bytes": 3006908,
+                "entry_count": 155,
+                "special_file_count": 0,
+                "symlink_count": 0
+              },
+              "limit_bytes": 140000000000,
+              "memory_limit_bytes": 4294967296,
+              "minimum_filesystem_free_bytes": 243817156608,
+              "observed_apparent_bytes": 3006908,
+              "outstanding_full_reservations_bytes": 16777216,
+              "process_slot_estimate_exceeded": false,
+              "reserved_child_process_slots": 1,
+              "scope": "named_roots_only_apparent_bytes",
+              "total_attempt_charged_bytes": 16777216
+            },
+            "memory_mb": 4096,
+            "owner_pid": 1252595,
+            "parent_lease_id": "c19b795bdae94bc0aed966ff6b9b3701",
+            "prior_children": [],
+            "released_at": 1790986463.3643403,
+            "reservation_id": "81c5a9badaa3484e97750b2107d3d456",
+            "scheduler_lane": "hammer_lean",
+            "status": "released",
+            "storage_bytes": 16777216,
+            "workload": "canonical_trainer"
+          },
+          "reservation_id": "81c5a9badaa3484e97750b2107d3d456",
+          "resource_lease": {
+            "acquired_at": 1790986456.6337762,
+            "cancelled": true,
+            "child_process_slots": 1,
+            "cpu_slots": 1,
+            "gpu_memory_mb": 0,
+            "lane": "hammer_lean",
+            "lease_id": "4aad5dbb0cf54577b750ebd4533eb63c",
+            "memory_mb": 4096,
+            "owner_pid": 1252595,
+            "parent_lease_id": "c19b795bdae94bc0aed966ff6b9b3701",
+            "released": true,
+            "requires_gpu": false,
+            "unified_memory_mb": 0,
+            "wait_seconds": 2.400001903879456e-07
+          },
+          "roots": [
+            {
+              "device": 66306,
+              "inode": 8790594,
+              "path": "/home/barberb/lift_coding/artifacts/repository-preparation-recovery-20261002/actual-fixture/lifecycle3840"
+            }
+          ],
+          "scheduler_lane": "hammer_lean",
+          "schema": "daemon-resource-reservations-v1",
+          "status": "released",
+          "storage_limit_bytes": 140000000000,
+          "workload": "canonical_trainer"
+        },
+        "elapsed_ms": 6774,
+        "payload_bytes": 2735,
+        "phase": "training",
+        "protected": false,
+        "request_id": "63d33617e8ba48b9b9a39e1c64d0fe84",
+        "status": "completed"
+      }
+    ],
+    "hard_enforcement": false,
+    "lifecycle": {
+      "awaiting_host_admission": 0,
+      "host_resource_authority": false,
+      "maximum": 32,
+      "ordinary": 0,
+      "pending_reap": 0,
+      "recovery_only": 0,
+      "recovery_only_maximum": 1,
+      "reserved": 0,
+      "schema": "repository-pipeline-lifecycle-inventory@1",
+      "scope": "process_local_python_handles_only"
+    },
+    "limitations": [
+      "CPU admission and process-group RSS sampling are not aggregate kernel enforcement",
+      "disk authority covers the existing ledger's named roots, not all host filesystems",
+      "payload bounds cover references retained by this adapter, not caller-owned copies or model tensors",
+      "consumer APIs must honor native lease/cancellation/thread options and reap their own children",
+      "validation and cleanup share a protected compartment and can queue behind each other",
+      "GPU, unknown devices, hard enforcement and gradual host recovery are not qualified"
+    ],
+    "owned_disk_bytes": 83886080,
+    "policy": {
+      "maximum_queued_payload_bytes": 4194304,
+      "maximum_retained_payload_bytes": 16777216,
+      "protected_cpu_slots": 1,
+      "protected_disk_bytes": 67108864,
+      "protected_memory_mb": 1024,
+      "protected_phase_slots": 8,
+      "protected_process_slots": 1,
+      "protected_queue_slots": 1,
+      "protected_queued_payload_bytes": 65536,
+      "protected_retained_payload_bytes": 1048576
+    },
+    "profile": "cpu-protected-payload-durable-disk@1",
+    "queued_payload_bytes": 0,
+    "queued_phases": 0,
+    "recovery_only": false,
+    "retained_disk_reservations": [],
+    "retained_host_phase_count": 0,
+    "retained_payload_bytes": 0,
+    "root": {
+      "active_phase_count": 0,
+      "budget": {
+        "cpu_slots": 2,
+        "device": "cpu",
+        "disk_bytes": 536870912,
+        "enforcement": "sampled",
+        "maximum_phases": 128,
+        "maximum_queued_metadata_bytes": 65536,
+        "maximum_queued_phases": 8,
+        "memory_mb": 6144,
+        "process_slots": 2,
+        "threads_per_process": 1,
+        "wall_time_ms": 240000
+      },
+      "closed": true,
+      "completion_authority": false,
+      "events": [
+        {
+          "child_lease_id": "348ebe9b57784d51934e97d5f2af5498",
+          "demand": {
+            "cpu_slots": 1,
+            "disk_bytes": 16777216,
+            "memory_mb": 1024,
+            "phase": "scan",
+            "process_slots": 1,
+            "threads_per_process": 1
+          },
+          "execution_time_ms": 1424,
+          "parent_lease_id": "257cf7faad1b4ed285c329643bf62bb1",
+          "queue_time_ms": 9,
+          "request_id": "5049dab5d4c340e689df4493d08a5b2d",
+          "status": "completed"
+        },
+        {
+          "child_lease_id": "ca08763aa503469d89ce01e1d0f538ca",
+          "demand": {
+            "cpu_slots": 1,
+            "disk_bytes": 16777216,
+            "memory_mb": 1024,
+            "phase": "semantic_index",
+            "process_slots": 1,
+            "threads_per_process": 1
+          },
+          "execution_time_ms": 303,
+          "parent_lease_id": "257cf7faad1b4ed285c329643bf62bb1",
+          "queue_time_ms": 9,
+          "request_id": "eb1e51ffa748408eaaeba693338e1ce1",
+          "status": "completed"
+        },
+        {
+          "child_lease_id": "82b108d4a9a2459baa1717c870ea0282",
+          "demand": {
+            "cpu_slots": 1,
+            "disk_bytes": 16777216,
+            "memory_mb": 1024,
+            "phase": "sql",
+            "process_slots": 1,
+            "threads_per_process": 1
+          },
+          "execution_time_ms": 1077,
+          "parent_lease_id": "257cf7faad1b4ed285c329643bf62bb1",
+          "queue_time_ms": 7,
+          "request_id": "89af8b9fc39f4299b5558b1aa179eaaa",
+          "status": "completed"
+        },
+        {
+          "child_lease_id": "c8757a44aa21400db6f2f90edf613456",
+          "demand": {
+            "cpu_slots": 1,
+            "disk_bytes": 16777216,
+            "memory_mb": 1024,
+            "phase": "semantic_index",
+            "process_slots": 1,
+            "threads_per_process": 1
+          },
+          "execution_time_ms": 987,
+          "parent_lease_id": "257cf7faad1b4ed285c329643bf62bb1",
+          "queue_time_ms": 9,
+          "request_id": "ddcff9c78d6748beb16e4fc99aef523e",
+          "status": "completed"
+        },
+        {
+          "child_lease_id": "c19b795bdae94bc0aed966ff6b9b3701",
+          "demand": {
+            "cpu_slots": 1,
+            "disk_bytes": 16777216,
+            "memory_mb": 4096,
+            "phase": "training",
+            "process_slots": 1,
+            "threads_per_process": 1
+          },
+          "execution_time_ms": 6760,
+          "parent_lease_id": "257cf7faad1b4ed285c329643bf62bb1",
+          "queue_time_ms": 7,
+          "request_id": "176267bf8d8142888e7607f31295bf94",
+          "status": "completed"
+        }
+      ],
+      "hard_enforcement": false,
+      "host_authority": {
+        "owner": "datasets.GlobalResourceScheduler",
+        "policy_sha256": "03793b8f3246f9c5d2af6cd64c4aaee6ef09dd1041f6d0ff0d07ef87a955147a",
+        "root_lease_id": "257cf7faad1b4ed285c329643bf62bb1",
+        "state_path": "/tmp/ipfs-datasets-resource-scheduler-1000.json"
+      },
+      "limitations": [
+        "disk_is_local_declared_reservation_plus_free_space_sampling_not_shared_host_disk_authority",
+        "queue_bytes_measure_bridge_request_metadata_not_retained_training_or_inference_payloads",
+        "thread_limits_are_explicit_consumer_requirements_not_global_in_process_thread_enforcement",
+        "cpu_ram_process_leases_are_admission_accounting_not_kernel_cgroups",
+        "gpu_per_device_provider_admission_and_hard_enforcement_are_unsupported",
+        "native_pressure_backoff_preserved_gradual_recovery_not_newly_qualified",
+        "validation_reserve_is_global_only_training_can_occupy_its_entire_parent_envelope"
+      ],
+      "native_parent": {
+        "acquired_at": 1790986452.729172,
+        "cancelled": true,
+        "child_process_slots": 2,
+        "cpu_slots": 2,
+        "gpu_memory_mb": 0,
+        "lane": "orchestration",
+        "lease_id": "257cf7faad1b4ed285c329643bf62bb1",
+        "memory_mb": 6144,
+        "owner_pid": 1252595,
+        "parent_lease_id": null,
+        "released": true,
+        "requires_gpu": false,
+        "unified_memory_mb": 0,
+        "wait_seconds": 8.639999578008428e-07
+      },
+      "owned_active_root_count": 0,
+      "profile": "cpu-shared-native-sampled@1",
+      "queued_metadata_bytes": 0,
+      "queued_phase_count": 0,
+      "repository_id": "repository:lifecycle384",
+      "schema": "repository-shared-host-envelope@1",
+      "shared_active_root_count": 0,
+      "supervisor_lease_id": "resource-lease:87201a3c78fb47fc8d9f5d0d33597cce",
+      "supervisor_role": "local_lane_policy_bookkeeping_not_another_host_authority",
+      "task_execution_authority": false,
+      "validation_reservation_scope": "global_only_siblings_share_parent_envelope",
+      "validation_reserve": {
+        "cpu_slots": 2,
+        "memory_mb": 0
+      }
+    },
+    "schema": "repository-pipeline-resources@1",
+    "task_execution_authority": false
+  },
+  "frozen": null,
+  "parent_retained": true,
+  "preparation": {
+    "benchmark_score": false,
+    "checked_proofs": [],
+    "complete_inventory": {
+      "ast_failed": 0,
+      "ast_ok": 9,
+      "ast_partial": 0,
+      "captured_entries": 9,
+      "checked_evidence_records": 0,
+      "checked_properties": 0,
+      "declared_contracts": 0,
+      "declared_execution_records": 0,
+      "formalized_properties": 0,
+      "inventory_entries": 9,
+      "modeled_contracts": 0,
+      "opaque_entries": 0,
+      "semantic_symbols": 18,
+      "source_bound_models": 0,
+      "unindexed_entries": 0,
+      "unmodeled_contracts": 0,
+      "unmodeled_inventory_units": 9
+    },
+    "completion_authority": false,
+    "deadline_enforcement": "cooperative_parent_and_native_subprocess_limits",
+    "discovery": {
+      "proof_authority": false,
+      "record_cid": "baguqeerarqip7ltqjsucxkx5pc6zntwqfnx4qdzbxry63lag27xd7ndckmta",
+      "source_head": {
+        "ast_revision_id": "rev:repository:lifecycle384:snapshot:baguqeera6pabjsgcrci5b3ejdst3f6t5huhh74g7gnl34x6r7254hfgofwxa",
+        "generation": 4,
+        "manifest_cid": "baguqeeraipx5rvf5hz45hyfyhilabgh5a5siuoemd7rehna5z3rmowl4xv2q",
+        "receipt_cid": "baguqeeraqcednbtr3mm6dwmtb3rwjknwk7e4vkvpvcticskkddg22i3s4lga",
+        "repository_id": "repository:lifecycle384",
+        "schema": "codebase-head@1",
+        "snapshot_cid": "baguqeera6pabjsgcrci5b3ejdst3f6t5huhh74g7gnl34x6r7254hfgofwxa"
+      },
+      "source_observed_live": true,
+      "training_authority": false
+    },
+    "elapsed_seconds": 10.640974951999851,
+    "evaluation_population_use": {
+      "holdout_used_for_runtime_selection": true,
+      "training_holdout": "development_retention_gate",
+      "untouched_final_benchmark_test": false
+    },
+    "execution_authority": false,
+    "inference": null,
+    "managed_pipeline": {
+      "disk_enforcement": "precharged_ceiling_plus_sampled_final_named_root_growth",
+      "external_process_rss_captured": false,
+      "external_write_ceiling_bytes_per_phase": 16777216,
+      "hard_disk_quota": false,
+      "schema": "repository-managed-preparation@1"
+    },
+    "model": {
+      "enabled": true,
+      "expected_head": {
+        "branch": "main",
+        "generation": 1,
+        "variant_id": "codebase-source384:d45824b91045888c0ea4dcd0acad3e6f303aed1a9cc38a30406dd3f85caeb352",
+        "version_id": "sha256:b8b5b6d7289bd571b8ddf9ee723b7e718b5064954647591f277d74fab17a1421"
+      },
+      "fallback_reason": "child_unqualified_or_incomplete",
+      "identity": "pinned-source384-parent@1",
+      "version_id": "sha256:b8b5b6d7289bd571b8ddf9ee723b7e718b5064954647591f277d74fab17a1421"
+    },
+    "model_promotion_performed": false,
+    "model_provider_calls": 0,
+    "model_provider_tokens": 0,
+    "numerical_training_attempted": true,
+    "policy_receipt_cid": "baguqeera4s625za3b26dyjycuoo4ujwlbkfpbzjrrdh5hanjlkovchhyecba",
+    "qualified": false,
+    "schema": "repository-benchmark-preparation@1",
+    "selection": {
+      "index_contracts": [],
+      "inference_paths": [
+        "holdout_0.py",
+        "holdout_1.py",
+        "holdout_2.py"
+      ],
+      "inventory_policy": {
+        "admitted_modes": [
+          "git-clean",
+          "git-working"
+        ],
+        "capabilities": {
+          "opaque_entries": {
+            "boundary_inventory": true,
+            "content_capture": false,
+            "selection_eligible": false,
+            "structural_ast": false
+          },
+          "other_utf8_files": {
+            "exact_source_capture": true,
+            "runtime_semantics": false,
+            "semantic_index": "artifact_metadata_only",
+            "structural_ast": false,
+            "target_execution": false
+          },
+          "proof": "selection_references_only_no_obligation_or_evidence_admission",
+          "python_pytest": {
+            "exact_source_capture": true,
+            "runtime_semantics": false,
+            "semantic_index": "conservative_static_observations",
+            "structural_ast": true,
+            "target_execution": false
+          },
+          "submodules_and_nested_repositories": {
+            "boundary_inventory": true,
+            "content_capture": false,
+            "disposition": "opaque_nonregular_boundary",
+            "recursive_analysis": false
+          },
+          "training": "selection_references_only_no_label_or_sample_admission"
+        },
+        "custom_exclusions": [],
+        "dirty_overlay": "exact_head_index_disposition_and_captured_source_identity",
+        "effective_exclusions": [
+          ".eggs",
+          ".git",
+          ".hg",
+          ".mypy_cache",
+          ".nox",
+          ".pytest_cache",
+          ".ruff_cache",
+          ".semantic-index",
+          ".semantic_index",
+          ".svn",
+          ".tox",
+          ".venv",
+          "__pycache__",
+          "build",
+          "coverage",
+          "dist",
+          "env",
+          "external",
+          "htmlcov",
+          "node_modules",
+          "semantic-index-state",
+          "site-packages",
+          "third-party",
+          "third_party",
+          "vendor",
+          "venv"
+        ],
+        "exclusion_matching": "raw_path_component_or_repository_relative_subtree",
+        "external_ignore_policy": "reject_active_patterns_and_fence_configuration_and_exact_bytes",
+        "inventory": "all_nonexcluded_entries_no_training_or_proof_filter",
+        "max_entries": 256,
+        "max_file_bytes": 65536,
+        "profile": "codebase-single-root-python-structural@1",
+        "schema": "codebase-scan-policy@1",
+        "source_forest": "one_committed_git_root_with_opaque_nested_boundaries",
+        "untracked_population": "git_standard_untracked_with_captured_repository_ignore_files"
+      },
+      "model_policy": "required_training",
+      "proof_contracts": [],
+      "proof_inputs": [],
+      "training_selections": [
+        {
+          "group_id": "train_0.py",
+          "path": "train_0.py",
+          "role": "train"
+        },
+        {
+          "group_id": "train_1.py",
+          "path": "train_1.py",
+          "role": "train"
+        },
+        {
+          "group_id": "train_2.py",
+          "path": "train_2.py",
+          "role": "train"
+        },
+        {
+          "group_id": "validation_0.py",
+          "path": "validation_0.py",
+          "role": "validation"
+        },
+        {
+          "group_id": "validation_1.py",
+          "path": "validation_1.py",
+          "role": "validation"
+        },
+        {
+          "group_id": "validation_2.py",
+          "path": "validation_2.py",
+          "role": "validation"
+        },
+        {
+          "group_id": "holdout_0.py",
+          "path": "holdout_0.py",
+          "role": "holdout"
+        },
+        {
+          "group_id": "holdout_1.py",
+          "path": "holdout_1.py",
+          "role": "holdout"
+        },
+        {
+          "group_id": "holdout_2.py",
+          "path": "holdout_2.py",
+          "role": "holdout"
+        }
+      ]
+    },
+    "semantic_manifest_cid": "baguqeerabyafe6bd75kafa4lzgw4lyopjawcuvwnvhedcixgl4agtaunrztq",
+    "source_head": {
+      "ast_revision_id": "rev:repository:lifecycle384:snapshot:baguqeera6pabjsgcrci5b3ejdst3f6t5huhh74g7gnl34x6r7254hfgofwxa",
+      "generation": 4,
+      "manifest_cid": "baguqeeraipx5rvf5hz45hyfyhilabgh5a5siuoemd7rehna5z3rmowl4xv2q",
+      "receipt_cid": "baguqeeraqcednbtr3mm6dwmtb3rwjknwk7e4vkvpvcticskkddg22i3s4lga",
+      "repository_id": "repository:lifecycle384",
+      "schema": "codebase-head@1",
+      "snapshot_cid": "baguqeera6pabjsgcrci5b3ejdst3f6t5huhh74g7gnl34x6r7254hfgofwxa"
+    },
+    "stages": [
+      {
+        "elapsed_seconds": 1.4281054509992828,
+        "managed_resources": {
+          "disk_reservation_id": "86412efe10674ae8a08f391332d95ad1",
+          "external_write_ceiling_bytes": 16777216,
+          "named_roots_only": true,
+          "payload_bytes": 2731,
+          "sampled_named_root_growth_bytes": 197469
+        },
+        "phase": "scan",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 0.30770787700021174,
+        "managed_resources": {
+          "disk_reservation_id": "541162f8736a41c88b6172ae53a27181",
+          "external_write_ceiling_bytes": 16777216,
+          "named_roots_only": true,
+          "payload_bytes": 2741,
+          "sampled_named_root_growth_bytes": 21552
+        },
+        "phase": "semantic_index",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 1.0780295109998406,
+        "managed_resources": {
+          "disk_reservation_id": "ed4569c85b7f4d4a88d7fa40fb9bc91e",
+          "external_write_ceiling_bytes": 16777216,
+          "named_roots_only": true,
+          "payload_bytes": 2730,
+          "sampled_named_root_growth_bytes": 7736
+        },
+        "phase": "sql",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 0.9927023870004632,
+        "managed_resources": {
+          "disk_reservation_id": "28bad03c303b455791d2b56d33fda89a",
+          "external_write_ceiling_bytes": 16777216,
+          "named_roots_only": true,
+          "payload_bytes": 2741,
+          "sampled_named_root_growth_bytes": 53621
+        },
+        "phase": "semantic_index",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 6.760641415999999,
+        "managed_resources": {
+          "disk_reservation_id": "81c5a9badaa3484e97750b2107d3d456",
+          "external_write_ceiling_bytes": 16777216,
+          "named_roots_only": true,
+          "payload_bytes": 2735,
+          "sampled_named_root_growth_bytes": 412758
+        },
+        "phase": "training",
+        "status": "completed"
+      }
+    ],
+    "training": {
+      "current_source_verified": true,
+      "evaluation": {
+        "child_holdout": {
+          "count": 3,
+          "exact_targets": 0,
+          "outside_training_coverage": 0,
+          "semantic_leaf_correct": 6,
+          "semantic_leaf_count": 12,
+          "valid_candidates": 3,
+          "within_training_coverage": 3
+        },
+        "holdout_used_for_selection": false,
+        "parent_holdout": {
+          "count": 3,
+          "exact_targets": 3,
+          "outside_training_coverage": 0,
+          "semantic_leaf_correct": 12,
+          "semantic_leaf_count": 12,
+          "valid_candidates": 3,
+          "within_training_coverage": 3
+        },
+        "scope": "fixed_schema_source_target_reconstruction",
+        "zero_head_holdout": {
+          "count": 3,
+          "exact_targets": 1,
+          "outside_training_coverage": 0,
+          "semantic_leaf_correct": 10,
+          "semantic_leaf_count": 12,
+          "valid_candidates": 3,
+          "within_training_coverage": 3
+        }
+      },
+      "generation_version_id": "sha256:7bfb4d90492591ccedf38fefa2710ddb6e4cdc56936c4485a33822217164792a",
+      "historical_replay": false,
+      "job_sha256": "9d35fb98685c4f91f2325b211cd075c546e0a38edb07322ac8c9b1796e6ac13c",
+      "native_run_id": "source384:generation:0a6e954d1e66d67473f14c9b2389a1ff72405146a332178febcb2e2fb019ae9c",
+      "numerical_child_version_id": "sha256:6ef6a61db9d13e638250875f4aee94daa9712a7d2938740c70be5fe53380534d",
+      "promotion_performed": false,
+      "schema": "codebase-training-job@1",
+      "status": "completed",
+      "training_executed": true
+    },
+    "training_job": {
+      "admitted": false,
+      "corpus_sha256": "d0d67fd93b5a324342df1356c9210fdb94a55d339e0a8e4adeccf25936a4a4a1",
+      "expected_source_head": {
+        "ast_revision_id": "rev:repository:lifecycle384:snapshot:baguqeera6pabjsgcrci5b3ejdst3f6t5huhh74g7gnl34x6r7254hfgofwxa",
+        "generation": 4,
+        "manifest_cid": "baguqeeraipx5rvf5hz45hyfyhilabgh5a5siuoemd7rehna5z3rmowl4xv2q",
+        "receipt_cid": "baguqeeraqcednbtr3mm6dwmtb3rwjknwk7e4vkvpvcticskkddg22i3s4lga",
+        "repository_id": "repository:lifecycle384",
+        "schema": "codebase-head@1",
+        "snapshot_cid": "baguqeera6pabjsgcrci5b3ejdst3f6t5huhh74g7gnl34x6r7254hfgofwxa"
+      },
+      "generation_request": {
+        "branch": "main",
+        "corpus_sha256": "d0d67fd93b5a324342df1356c9210fdb94a55d339e0a8e4adeccf25936a4a4a1",
+        "embedding_snapshot": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd",
+        "environment": {
+          "distributions": {
+            "numpy": {
+              "installed_record_sha256": "d9179f8b5b5266483191ed05176322bf4179384dd4db82c7da5d63623903cf6e",
+              "version": "1.26.4"
+            },
+            "sentence-transformers": {
+              "installed_record_sha256": "07e791b93cdc25e67015c72ecef3a0daf81c3f43c8e2eea62ad16d3136658f79",
+              "version": "5.4.1"
+            },
+            "threadpoolctl": {
+              "installed_record_sha256": "ff8e876dc324cf340bc7f6cbc35e2c146594732e571da2469b015747744cd5a0",
+              "version": "3.6.0"
+            },
+            "torch": {
+              "installed_record_sha256": "89125ca3a3ec9a25450024febb8a1880cf92743b9e7b2db5196e16b9a07eee90",
+              "version": "2.13.0"
+            },
+            "transformers": {
+              "installed_record_sha256": "7ed5f79259246ff5cb4af588c2529c2e5d96a50f571de8e8dccc5d8cfd9f2f61",
+              "version": "4.52.1"
+            }
+          },
+          "numerical": {
+            "dtype": "float64",
+            "linalg_binary": "/home/barberb/.local/lib/python3.12/site-packages/numpy/linalg/_umath_linalg.cpython-312-aarch64-linux-gnu.so",
+            "linalg_binary_sha256": "e4b9779f0a6505fc6ec43eb88c69cad899d150914762aa549256c1331b991377",
+            "numpy_version": "1.26.4"
+          },
+          "platform": {
+            "machine": "aarch64",
+            "release": "6.17.0-1014-nvidia",
+            "system": "Linux"
+          },
+          "python": {
+            "executable": "/usr/bin/python3.12",
+            "executable_sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+            "implementation": "CPython",
+            "version": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]"
+          },
+          "scope": "exact_interpreter_numpy_linalg_distribution_metadata_and_frozen_worker_launch_not_full_OS_closure",
+          "worker_launch": {
+            "bytecode_disabled": true,
+            "device": "cpu",
+            "environment": {
+              "CUDA_VISIBLE_DEVICES": "",
+              "LANG": "C.UTF-8",
+              "LC_ALL": "C.UTF-8",
+              "MKL_NUM_THREADS": "1",
+              "NUMEXPR_NUM_THREADS": "1",
+              "OMP_NUM_THREADS": "1",
+              "OPENBLAS_NUM_THREADS": "1",
+              "PATH": "/usr/bin:/bin",
+              "TOKENIZERS_PARALLELISM": "false"
+            },
+            "isolated": true,
+            "owner_sha256": "7f0c148bdc1ff0cc01a8cc0bfd115417118eaa2f4f2db0f0d2f2ad23198b95e8"
+          }
+        },
+        "expected_model_head": {
+          "branch": "main",
+          "generation": 1,
+          "variant_id": "codebase-source384:d45824b91045888c0ea4dcd0acad3e6f303aed1a9cc38a30406dd3f85caeb352",
+          "version_id": "sha256:b8b5b6d7289bd571b8ddf9ee723b7e718b5064954647591f277d74fab17a1421"
+        },
+        "operation_id": "managed:required_training:training",
+        "parent_version_id": "sha256:b8b5b6d7289bd571b8ddf9ee723b7e718b5064954647591f277d74fab17a1421",
+        "producer": {
+          "corpus_owner": {
+            "checked_property_owner": {
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/backends/process.py": "742cdee25455c35d43945b0463ebbc606da5c1826e95691b69afb07e9d3fd96f",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/families/models.py": "1a92305ef498812e3757147179907d4ddf4a4518371034fc2363922d5d5fed3f",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/families/namespaces.py": "ba097e653158a812d66ead978d6405d61adaa293521305333579b19bd69a432d",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/formalization/autoencoder/native_family_lake_v4.py": "863d2bfa94bced7e4e756be83c058c30e82e568eaf09ed7b81e9fa62a8c91a1e",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/formalization/autoencoder/native_family_lean_emitters.py": "6da3dc9981ad7eb805894be5a0822f1ae2cae3572b80d73a7eb691250fe5c1fe",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/formalization/autoencoder/native_interpretation_expressions.py": "9afebafd2896848b55860c986b78f155f17448e1cb576843a540b86781bbf3c6",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/formalization/autoencoder/native_program_lean.py": "14d9a4aebb305ffaa26ca30c9ab154b12df9acdd77b10a033da9f1928d7e3288",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/formalization/autoencoder/native_program_lean_v2.py": "1a2fc0f709c546ee4be00189a4d47322457024e2987b68c0e4b574588fed70d0",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/formalization/autoencoder/native_tla_projection.py": "e1611c42195afbb1a436df9216e26dcc7b1d5630bcb23bd6a8b55c9e7b5f9cdc",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/formalization/autoencoder/security/source_program_binding_384.py": "956666bac015713e1b292d563a8224a71e547ad50e4e13d04299f1056893f283",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/formalization/autoencoder/security/source_program_binding_384_v2.py": "fce62d147c82612cf5c59f1bbbbc56516b93e02e4440cc1ada3c5f27071c9a66",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/formalization/autoencoder/security/source_state_model.py": "b102539b0a1f0b62d4f7954eabc26a712ed3a74ad2544f11e6a8d64f924ce45a",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/formalization/autoencoder/source_program_lake_384.py": "da3d9cf1839f4cf47283a4938f3433ce70cd11cad17c8644f822a1adb15ae2e8",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/formalization/autoencoder/source_state_lake.py": "c09ddd4ef5c98ff22b4b9b06751f689872abc741d9fcf23bf505577b141bc0a2",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/formalization/autoencoder/source_state_lean.py": "f7dd8b35d2fa04a0051d1852082bbd46e2cb65dd5686a2dd2f53705017222f10",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/ir_core/artifacts.py": "63896fb1fb4ef22be50d76996ce404119a5d209d01f046a6a842b7b96848ebc6",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/ir_core/canonical.py": "339b5778581c19525a7685edf432aaf124cd12e02d37cd0eca88cb25ab86c0d0",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/ir_core/claims.py": "282cdd3a6ba18a90079886337d360bae44da172748faa3ad2715d2071070de3b",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/ir_core/diagnostics.py": "508fd3c2dce94a1eb1e2dff19f8f578ccec2d1e94eb1db2742f75783e23ff198",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/ir_core/evidence.py": "826743829d2964b97e13720b5ea52907de77f6b18e8886e5a3c0fb6a977fdeff",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/ir_core/identity.py": "606bffc1f938c59f44651eeb65cb9c0738e16e465aabba0ad82ef05e3b5b3b0e",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/ir_core/provenance.py": "16eaf7c258550e5625bc19e6e7468c94133aedd1e85e64075f057ab4e52c3efe",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/authorization.py": "78f04e9231f9d04d98ab3597e52e8bb8c49d63047544657d33491b161effeeb7",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/concurrency.py": "4d47e1ffd235282b841ae00644832ec9105fc90ee9dbf05ced901f937e0e346a",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/contracts.py": "0238a345e5c35aec78801891562e896d719bca0424eab8ad790d5da2c239c5aa",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/heap.py": "62e61bcd48cd17201dcd52f5e9d9458da44ef6c2af3dbe7b64587d77ac8c8e1b",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/hyperproperties.py": "c49cb173aa9cd9cbbb69f72e461c0c7c048264cbbd7b92af7fd3c7390bd69ecb",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/ir.py": "40f59ac33b5e8c282b06d7d8dec34940ffa8013f50fc65fc71e19a1ea41ef282",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/program.py": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/properties.py": "0b438555895505df283d7f151887a14d826df27259f4f5eee0ac584b74dbe10a",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/protocol.py": "46e69f306c9eb2368d5d1abe589b10dfa10d09ab2e0ef3018585c76bd7c6335a",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/refinement.py": "975b8493035f414e82a611499c119aab9843b0b8546bd1cb82d04344f170874d",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/separation.py": "b8f2985c26c8fc2db6f6bbbd4c5959554d6ce6f21d228618eba2d47f3ea5a9a4",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/source_adapters.py": "f6c038c20a258c729abc6c76483c83bafc75394794af58aa868e1f9b0e851bb1",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/state.py": "085841a600ed8f8fde202e720d1f70e5a0432e4bf80d20ff11fe60c90107c54c",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/syntax_bridge.py": "cc46f305dede1cadb358a524f30dbb894b84ab062f0c083c3138c7e43f271116",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/temporal.py": "56d8a6d3a5e7f11dd9f4d9d2096ec0f787a481b006abac311d212bbc622558dc",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/trace.py": "4751f221cbe8ae8f2b328e3db3faf620b57288df9c3d22baba6e289f80523512",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/transitions.py": "982d7e3a243fb70f5f797b7b6efdb45faebb3895945b06c04a9421fbe4ba7d86",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/vc.py": "bc738a32af07afb4cc787d0ea5f743dc01e99d52230a45669bb04222e6cf7bf9",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/syntax_core/ast.py": "4709513f18ab270858fe9595d88a847ddc52092606c52c7802947abed1ab9ac4",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/syntax_core/contracts.py": "ce6d49e05ca2b09a84a3125ed6ad4c4aae4adf2c5943d3a4fd4eeeb057b444a8",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/syntax_core/signatures.py": "49dd4fb0096661a05a15f056eb57248349e2b4e0b02e83239f36db36788c75bf",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_schema_lake.py": "f78a630fc808278b6c82eaa248fbaeefd7f60462db7e974fccdb634938ac9d55"
+            },
+            "corpus_owner": "f040f6a5e958daaaebe0a7833621ac93396d075f217e2656771d75ca28b61d20",
+            "source_owner": {
+              "decoder": {
+                "runtime_sha256": "3f9ca9ce7b4cf2a2d10d6aeb1fae78543c468133d2fa0df9fcb32f63f89e90f7",
+                "shared_runtime": {
+                  "legal_codec_sha256": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+                  "native": {
+                    "dependencies": {
+                      "ipfs_datasets_py.logic.intent_ir.decoder": "7bab5781c07e00b54b0283d3a2962926f75935caedc80eceb23264cb388be257",
+                      "ipfs_datasets_py.logic.intent_ir.formalize.rich_grammar": "6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b",
+                      "ipfs_datasets_py.logic.intent_ir.schema": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56",
+                      "ipfs_datasets_py.logic.security_ir.model": "abc3aea9c2f4d1ce513ee2c9fc4c304d8bd387ded18e0d646247417422225d39",
+                      "ipfs_datasets_py.logic.software_verification.program": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+                      "ipfs_datasets_py.logic.ui_ux_ir.decoder": "21e8315b0054f7755512212d610d4e3f5f4ac86387f3b27edb9632fa8ca68bc3",
+                      "ipfs_datasets_py.logic.ui_ux_ir.schema": "8a7b0cc90151043514d263b1a2655d6d41a2835dacd6b56018ba5c0c89961855",
+                      "ipfs_datasets_py.optimizers.logic_theorem_optimizer.modal_latent_formula": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36"
+                    },
+                    "runtime": "66c5ee320f9c7aacd3b246d0666c7fc3ee928e4679892e1e90c838e1b291dbc6",
+                    "scope": "listed_numerical_and_native_validator_modules_only"
+                  },
+                  "numerical": {
+                    "files": {
+                      "canonical_contracts.py": "d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b",
+                      "legal_formula_codec.py": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+                      "legal_ir_grammar_decoder.py": "0b1eae24b00157ae74a2700f23ca95c7f9957dc755078caaf179e64070fdeffd",
+                      "modal_latent_formula.py": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36",
+                      "tree_pin.py": "587165942fb06ea9effc836b555e0ac0606c5876b013a374a1e76d25ee069e4d"
+                    },
+                    "scope": "listed_latent_decoder_and_grammar_sources_only"
+                  },
+                  "runtime_sha256": "8de8096e895de9df08ccf5352dfd704806823296821d98b5badf08bb553a52e4"
+                }
+              },
+              "files": {
+                "ipfs_datasets_py.logic.backends.codebase_process": "5c569b34afd75e1942f11fcb9ecf20d57799d2762927d9379813ce94aca437e1",
+                "ipfs_datasets_py.logic.formalization.autoencoder.security.source_program_binding_384": "956666bac015713e1b292d563a8224a71e547ad50e4e13d04299f1056893f283",
+                "ipfs_datasets_py.logic.formalization.autoencoder.security.source_program_binding_384_v2": "fce62d147c82612cf5c59f1bbbbc56516b93e02e4440cc1ada3c5f27071c9a66",
+                "ipfs_datasets_py.logic.formalization.autoencoder.source_embeddings_384": "fb3a5aa8ec005e98a2c62dc1d7e3e807a75820fedc156a8080c1f18063d17da7",
+                "ipfs_datasets_py.logic.formalization.autoencoder.source_program_runtime_384_v2": "3c133913082b1f8d9683e4934e8bc2537b7e4bc2f6a9e373f5a2e99dc612eef8",
+                "ipfs_datasets_py.logic.software_contracts.codebase_source_384": "7f0c148bdc1ff0cc01a8cc0bfd115417118eaa2f4f2db0f0d2f2ad23198b95e8",
+                "ipfs_datasets_py.logic.software_contracts.codebase_source_384_worker": "81304aa208c4f849a3a187ce95e4fa2554918cb6c73a94f0982dd99350249428"
+              },
+              "numerics": {
+                "grouped_recipe": {
+                  "decoder_implementation": {
+                    "runtime_sha256": "3f9ca9ce7b4cf2a2d10d6aeb1fae78543c468133d2fa0df9fcb32f63f89e90f7",
+                    "shared_runtime": {
+                      "legal_codec_sha256": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+                      "native": {
+                        "dependencies": {
+                          "ipfs_datasets_py.logic.intent_ir.decoder": "7bab5781c07e00b54b0283d3a2962926f75935caedc80eceb23264cb388be257",
+                          "ipfs_datasets_py.logic.intent_ir.formalize.rich_grammar": "6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b",
+                          "ipfs_datasets_py.logic.intent_ir.schema": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56",
+                          "ipfs_datasets_py.logic.security_ir.model": "abc3aea9c2f4d1ce513ee2c9fc4c304d8bd387ded18e0d646247417422225d39",
+                          "ipfs_datasets_py.logic.software_verification.program": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+                          "ipfs_datasets_py.logic.ui_ux_ir.decoder": "21e8315b0054f7755512212d610d4e3f5f4ac86387f3b27edb9632fa8ca68bc3",
+                          "ipfs_datasets_py.logic.ui_ux_ir.schema": "8a7b0cc90151043514d263b1a2655d6d41a2835dacd6b56018ba5c0c89961855",
+                          "ipfs_datasets_py.optimizers.logic_theorem_optimizer.modal_latent_formula": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36"
+                        },
+                        "runtime": "66c5ee320f9c7aacd3b246d0666c7fc3ee928e4679892e1e90c838e1b291dbc6",
+                        "scope": "listed_numerical_and_native_validator_modules_only"
+                      },
+                      "numerical": {
+                        "files": {
+                          "canonical_contracts.py": "d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b",
+                          "legal_formula_codec.py": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+                          "legal_ir_grammar_decoder.py": "0b1eae24b00157ae74a2700f23ca95c7f9957dc755078caaf179e64070fdeffd",
+                          "modal_latent_formula.py": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36",
+                          "tree_pin.py": "587165942fb06ea9effc836b555e0ac0606c5876b013a374a1e76d25ee069e4d"
+                        },
+                        "scope": "listed_latent_decoder_and_grammar_sources_only"
+                      },
+                      "runtime_sha256": "8de8096e895de9df08ccf5352dfd704806823296821d98b5badf08bb553a52e4"
+                    }
+                  },
+                  "public_api_sha256": "3237d133cf9c67c616e6cc9420e263534dfc4ba4bc1c2b866f3948fdcdcd417a",
+                  "recipe_sha256": "c6dda0f85937f7ece993cf0bc82aebc72144457507db218cf83f9c9b495994a4",
+                  "scope": "recipe_public_api_named_ui_semantics_and_decoder_declared_modules",
+                  "ui_semantic_contracts": {
+                    "ui_flogic": "2671912bf789bf3c8ea6412023006c0436a3fd838b7e787a41f9743e102a6909",
+                    "ui_semantic_components": "72567a0e24bae8d2c0cac70bd06e4b7249016de271c35be6d215bccd054018c5",
+                    "ui_source_contract_384": "09fe94c4cc04cc6df1d302d5fbeb87141d5dbda5aec33d12bb626201dc01790a"
+                  }
+                },
+                "numerics_sha256": "3b811e6b271c6389bdd4e790daf8b442ce4c62a6c63f5f615900f175110afe28"
+              }
+            }
+          },
+          "generation_owner": "51a8d38ecc01f48f693f1526bf33617ad99bdf871bd1ee04d2c62ba7bc94c089",
+          "numerical_owner": {
+            "decoder": {
+              "runtime_sha256": "3f9ca9ce7b4cf2a2d10d6aeb1fae78543c468133d2fa0df9fcb32f63f89e90f7",
+              "shared_runtime": {
+                "legal_codec_sha256": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+                "native": {
+                  "dependencies": {
+                    "ipfs_datasets_py.logic.intent_ir.decoder": "7bab5781c07e00b54b0283d3a2962926f75935caedc80eceb23264cb388be257",
+                    "ipfs_datasets_py.logic.intent_ir.formalize.rich_grammar": "6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b",
+                    "ipfs_datasets_py.logic.intent_ir.schema": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56",
+                    "ipfs_datasets_py.logic.security_ir.model": "abc3aea9c2f4d1ce513ee2c9fc4c304d8bd387ded18e0d646247417422225d39",
+                    "ipfs_datasets_py.logic.software_verification.program": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+                    "ipfs_datasets_py.logic.ui_ux_ir.decoder": "21e8315b0054f7755512212d610d4e3f5f4ac86387f3b27edb9632fa8ca68bc3",
+                    "ipfs_datasets_py.logic.ui_ux_ir.schema": "8a7b0cc90151043514d263b1a2655d6d41a2835dacd6b56018ba5c0c89961855",
+                    "ipfs_datasets_py.optimizers.logic_theorem_optimizer.modal_latent_formula": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36"
+                  },
+                  "runtime": "66c5ee320f9c7aacd3b246d0666c7fc3ee928e4679892e1e90c838e1b291dbc6",
+                  "scope": "listed_numerical_and_native_validator_modules_only"
+                },
+                "numerical": {
+                  "files": {
+                    "canonical_contracts.py": "d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b",
+                    "legal_formula_codec.py": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+                    "legal_ir_grammar_decoder.py": "0b1eae24b00157ae74a2700f23ca95c7f9957dc755078caaf179e64070fdeffd",
+                    "modal_latent_formula.py": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36",
+                    "tree_pin.py": "587165942fb06ea9effc836b555e0ac0606c5876b013a374a1e76d25ee069e4d"
+                  },
+                  "scope": "listed_latent_decoder_and_grammar_sources_only"
+                },
+                "runtime_sha256": "8de8096e895de9df08ccf5352dfd704806823296821d98b5badf08bb553a52e4"
+              }
+            },
+            "files": {
+              "ipfs_datasets_py.logic.backends.codebase_process": "5c569b34afd75e1942f11fcb9ecf20d57799d2762927d9379813ce94aca437e1",
+              "ipfs_datasets_py.logic.formalization.autoencoder.security.source_program_binding_384": "956666bac015713e1b292d563a8224a71e547ad50e4e13d04299f1056893f283",
+              "ipfs_datasets_py.logic.formalization.autoencoder.security.source_program_binding_384_v2": "fce62d147c82612cf5c59f1bbbbc56516b93e02e4440cc1ada3c5f27071c9a66",
+              "ipfs_datasets_py.logic.formalization.autoencoder.source_embeddings_384": "fb3a5aa8ec005e98a2c62dc1d7e3e807a75820fedc156a8080c1f18063d17da7",
+              "ipfs_datasets_py.logic.formalization.autoencoder.source_program_runtime_384_v2": "3c133913082b1f8d9683e4934e8bc2537b7e4bc2f6a9e373f5a2e99dc612eef8",
+              "ipfs_datasets_py.logic.software_contracts.codebase_source_384": "7f0c148bdc1ff0cc01a8cc0bfd115417118eaa2f4f2db0f0d2f2ad23198b95e8",
+              "ipfs_datasets_py.logic.software_contracts.codebase_source_384_worker": "81304aa208c4f849a3a187ce95e4fa2554918cb6c73a94f0982dd99350249428"
+            },
+            "numerics": {
+              "grouped_recipe": {
+                "decoder_implementation": {
+                  "runtime_sha256": "3f9ca9ce7b4cf2a2d10d6aeb1fae78543c468133d2fa0df9fcb32f63f89e90f7",
+                  "shared_runtime": {
+                    "legal_codec_sha256": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+                    "native": {
+                      "dependencies": {
+                        "ipfs_datasets_py.logic.intent_ir.decoder": "7bab5781c07e00b54b0283d3a2962926f75935caedc80eceb23264cb388be257",
+                        "ipfs_datasets_py.logic.intent_ir.formalize.rich_grammar": "6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b",
+                        "ipfs_datasets_py.logic.intent_ir.schema": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56",
+                        "ipfs_datasets_py.logic.security_ir.model": "abc3aea9c2f4d1ce513ee2c9fc4c304d8bd387ded18e0d646247417422225d39",
+                        "ipfs_datasets_py.logic.software_verification.program": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+                        "ipfs_datasets_py.logic.ui_ux_ir.decoder": "21e8315b0054f7755512212d610d4e3f5f4ac86387f3b27edb9632fa8ca68bc3",
+                        "ipfs_datasets_py.logic.ui_ux_ir.schema": "8a7b0cc90151043514d263b1a2655d6d41a2835dacd6b56018ba5c0c89961855",
+                        "ipfs_datasets_py.optimizers.logic_theorem_optimizer.modal_latent_formula": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36"
+                      },
+                      "runtime": "66c5ee320f9c7aacd3b246d0666c7fc3ee928e4679892e1e90c838e1b291dbc6",
+                      "scope": "listed_numerical_and_native_validator_modules_only"
+                    },
+                    "numerical": {
+                      "files": {
+                        "canonical_contracts.py": "d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b",
+                        "legal_formula_codec.py": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+                        "legal_ir_grammar_decoder.py": "0b1eae24b00157ae74a2700f23ca95c7f9957dc755078caaf179e64070fdeffd",
+                        "modal_latent_formula.py": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36",
+                        "tree_pin.py": "587165942fb06ea9effc836b555e0ac0606c5876b013a374a1e76d25ee069e4d"
+                      },
+                      "scope": "listed_latent_decoder_and_grammar_sources_only"
+                    },
+                    "runtime_sha256": "8de8096e895de9df08ccf5352dfd704806823296821d98b5badf08bb553a52e4"
+                  }
+                },
+                "public_api_sha256": "3237d133cf9c67c616e6cc9420e263534dfc4ba4bc1c2b866f3948fdcdcd417a",
+                "recipe_sha256": "c6dda0f85937f7ece993cf0bc82aebc72144457507db218cf83f9c9b495994a4",
+                "scope": "recipe_public_api_named_ui_semantics_and_decoder_declared_modules",
+                "ui_semantic_contracts": {
+                  "ui_flogic": "2671912bf789bf3c8ea6412023006c0436a3fd838b7e787a41f9743e102a6909",
+                  "ui_semantic_components": "72567a0e24bae8d2c0cac70bd06e4b7249016de271c35be6d215bccd054018c5",
+                  "ui_source_contract_384": "09fe94c4cc04cc6df1d302d5fbeb87141d5dbda5aec33d12bb626201dc01790a"
+                }
+              },
+              "numerics_sha256": "3b811e6b271c6389bdd4e790daf8b442ce4c62a6c63f5f615900f175110afe28"
+            }
+          }
+        },
+        "schema": "codebase-model-generation@1",
+        "source_head": {
+          "ast_revision_id": "rev:repository:lifecycle384:snapshot:baguqeera6pabjsgcrci5b3ejdst3f6t5huhh74g7gnl34x6r7254hfgofwxa",
+          "generation": 4,
+          "manifest_cid": "baguqeeraipx5rvf5hz45hyfyhilabgh5a5siuoemd7rehna5z3rmowl4xv2q",
+          "receipt_cid": "baguqeeraqcednbtr3mm6dwmtb3rwjknwk7e4vkvpvcticskkddg22i3s4lga",
+          "repository_id": "repository:lifecycle384",
+          "schema": "codebase-head@1",
+          "snapshot_cid": "baguqeera6pabjsgcrci5b3ejdst3f6t5huhh74g7gnl34x6r7254hfgofwxa"
+        }
+      },
+      "head_refits_per_attempt": 1,
+      "input_bytes": 1025900,
+      "job_sha256": "9d35fb98685c4f91f2325b211cd075c546e0a38edb07322ac8c9b1796e6ac13c",
+      "native_run_id": "source384:generation:0a6e954d1e66d67473f14c9b2389a1ff72405146a332178febcb2e2fb019ae9c",
+      "numerical_request_sha256": "0cd77f6658952697fc267101b813d3a149cf0eb5e9ca2202e726bcf7b98c57ce",
+      "optimizer_steps": 0,
+      "policy": {
+        "expected_head": {
+          "branch": "main",
+          "generation": 1,
+          "variant_id": "codebase-source384:d45824b91045888c0ea4dcd0acad3e6f303aed1a9cc38a30406dd3f85caeb352",
+          "version_id": "sha256:b8b5b6d7289bd571b8ddf9ee723b7e718b5064954647591f277d74fab17a1421"
+        },
+        "head_refits": 1,
+        "max_attempts": 1,
+        "max_checkpoint_bytes": 33554432,
+        "max_input_bytes": 33554432,
+        "max_samples": 9,
+        "memory_bytes": 4294967296,
+        "optimizer_steps": 0,
+        "schema": "autoencoder-run-lifecycle@1",
+        "wall_time_seconds": 90.0
+      },
+      "producer": {
+        "generation": {
+          "corpus_owner": {
+            "checked_property_owner": {
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/backends/process.py": "742cdee25455c35d43945b0463ebbc606da5c1826e95691b69afb07e9d3fd96f",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/families/models.py": "1a92305ef498812e3757147179907d4ddf4a4518371034fc2363922d5d5fed3f",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/families/namespaces.py": "ba097e653158a812d66ead978d6405d61adaa293521305333579b19bd69a432d",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/formalization/autoencoder/native_family_lake_v4.py": "863d2bfa94bced7e4e756be83c058c30e82e568eaf09ed7b81e9fa62a8c91a1e",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/formalization/autoencoder/native_family_lean_emitters.py": "6da3dc9981ad7eb805894be5a0822f1ae2cae3572b80d73a7eb691250fe5c1fe",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/formalization/autoencoder/native_interpretation_expressions.py": "9afebafd2896848b55860c986b78f155f17448e1cb576843a540b86781bbf3c6",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/formalization/autoencoder/native_program_lean.py": "14d9a4aebb305ffaa26ca30c9ab154b12df9acdd77b10a033da9f1928d7e3288",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/formalization/autoencoder/native_program_lean_v2.py": "1a2fc0f709c546ee4be00189a4d47322457024e2987b68c0e4b574588fed70d0",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/formalization/autoencoder/native_tla_projection.py": "e1611c42195afbb1a436df9216e26dcc7b1d5630bcb23bd6a8b55c9e7b5f9cdc",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/formalization/autoencoder/security/source_program_binding_384.py": "956666bac015713e1b292d563a8224a71e547ad50e4e13d04299f1056893f283",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/formalization/autoencoder/security/source_program_binding_384_v2.py": "fce62d147c82612cf5c59f1bbbbc56516b93e02e4440cc1ada3c5f27071c9a66",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/formalization/autoencoder/security/source_state_model.py": "b102539b0a1f0b62d4f7954eabc26a712ed3a74ad2544f11e6a8d64f924ce45a",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/formalization/autoencoder/source_program_lake_384.py": "da3d9cf1839f4cf47283a4938f3433ce70cd11cad17c8644f822a1adb15ae2e8",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/formalization/autoencoder/source_state_lake.py": "c09ddd4ef5c98ff22b4b9b06751f689872abc741d9fcf23bf505577b141bc0a2",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/formalization/autoencoder/source_state_lean.py": "f7dd8b35d2fa04a0051d1852082bbd46e2cb65dd5686a2dd2f53705017222f10",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/ir_core/artifacts.py": "63896fb1fb4ef22be50d76996ce404119a5d209d01f046a6a842b7b96848ebc6",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/ir_core/canonical.py": "339b5778581c19525a7685edf432aaf124cd12e02d37cd0eca88cb25ab86c0d0",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/ir_core/claims.py": "282cdd3a6ba18a90079886337d360bae44da172748faa3ad2715d2071070de3b",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/ir_core/diagnostics.py": "508fd3c2dce94a1eb1e2dff19f8f578ccec2d1e94eb1db2742f75783e23ff198",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/ir_core/evidence.py": "826743829d2964b97e13720b5ea52907de77f6b18e8886e5a3c0fb6a977fdeff",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/ir_core/identity.py": "606bffc1f938c59f44651eeb65cb9c0738e16e465aabba0ad82ef05e3b5b3b0e",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/ir_core/provenance.py": "16eaf7c258550e5625bc19e6e7468c94133aedd1e85e64075f057ab4e52c3efe",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/authorization.py": "78f04e9231f9d04d98ab3597e52e8bb8c49d63047544657d33491b161effeeb7",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/concurrency.py": "4d47e1ffd235282b841ae00644832ec9105fc90ee9dbf05ced901f937e0e346a",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/contracts.py": "0238a345e5c35aec78801891562e896d719bca0424eab8ad790d5da2c239c5aa",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/heap.py": "62e61bcd48cd17201dcd52f5e9d9458da44ef6c2af3dbe7b64587d77ac8c8e1b",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/hyperproperties.py": "c49cb173aa9cd9cbbb69f72e461c0c7c048264cbbd7b92af7fd3c7390bd69ecb",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/ir.py": "40f59ac33b5e8c282b06d7d8dec34940ffa8013f50fc65fc71e19a1ea41ef282",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/program.py": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/properties.py": "0b438555895505df283d7f151887a14d826df27259f4f5eee0ac584b74dbe10a",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/protocol.py": "46e69f306c9eb2368d5d1abe589b10dfa10d09ab2e0ef3018585c76bd7c6335a",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/refinement.py": "975b8493035f414e82a611499c119aab9843b0b8546bd1cb82d04344f170874d",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/separation.py": "b8f2985c26c8fc2db6f6bbbd4c5959554d6ce6f21d228618eba2d47f3ea5a9a4",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/source_adapters.py": "f6c038c20a258c729abc6c76483c83bafc75394794af58aa868e1f9b0e851bb1",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/state.py": "085841a600ed8f8fde202e720d1f70e5a0432e4bf80d20ff11fe60c90107c54c",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/syntax_bridge.py": "cc46f305dede1cadb358a524f30dbb894b84ab062f0c083c3138c7e43f271116",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/temporal.py": "56d8a6d3a5e7f11dd9f4d9d2096ec0f787a481b006abac311d212bbc622558dc",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/trace.py": "4751f221cbe8ae8f2b328e3db3faf620b57288df9c3d22baba6e289f80523512",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/transitions.py": "982d7e3a243fb70f5f797b7b6efdb45faebb3895945b06c04a9421fbe4ba7d86",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_verification/vc.py": "bc738a32af07afb4cc787d0ea5f743dc01e99d52230a45669bb04222e6cf7bf9",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/syntax_core/ast.py": "4709513f18ab270858fe9595d88a847ddc52092606c52c7802947abed1ab9ac4",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/syntax_core/contracts.py": "ce6d49e05ca2b09a84a3125ed6ad4c4aae4adf2c5943d3a4fd4eeeb057b444a8",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/syntax_core/signatures.py": "49dd4fb0096661a05a15f056eb57248349e2b4e0b02e83239f36db36788c75bf",
+              "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_schema_lake.py": "f78a630fc808278b6c82eaa248fbaeefd7f60462db7e974fccdb634938ac9d55"
+            },
+            "corpus_owner": "f040f6a5e958daaaebe0a7833621ac93396d075f217e2656771d75ca28b61d20",
+            "source_owner": {
+              "decoder": {
+                "runtime_sha256": "3f9ca9ce7b4cf2a2d10d6aeb1fae78543c468133d2fa0df9fcb32f63f89e90f7",
+                "shared_runtime": {
+                  "legal_codec_sha256": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+                  "native": {
+                    "dependencies": {
+                      "ipfs_datasets_py.logic.intent_ir.decoder": "7bab5781c07e00b54b0283d3a2962926f75935caedc80eceb23264cb388be257",
+                      "ipfs_datasets_py.logic.intent_ir.formalize.rich_grammar": "6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b",
+                      "ipfs_datasets_py.logic.intent_ir.schema": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56",
+                      "ipfs_datasets_py.logic.security_ir.model": "abc3aea9c2f4d1ce513ee2c9fc4c304d8bd387ded18e0d646247417422225d39",
+                      "ipfs_datasets_py.logic.software_verification.program": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+                      "ipfs_datasets_py.logic.ui_ux_ir.decoder": "21e8315b0054f7755512212d610d4e3f5f4ac86387f3b27edb9632fa8ca68bc3",
+                      "ipfs_datasets_py.logic.ui_ux_ir.schema": "8a7b0cc90151043514d263b1a2655d6d41a2835dacd6b56018ba5c0c89961855",
+                      "ipfs_datasets_py.optimizers.logic_theorem_optimizer.modal_latent_formula": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36"
+                    },
+                    "runtime": "66c5ee320f9c7aacd3b246d0666c7fc3ee928e4679892e1e90c838e1b291dbc6",
+                    "scope": "listed_numerical_and_native_validator_modules_only"
+                  },
+                  "numerical": {
+                    "files": {
+                      "canonical_contracts.py": "d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b",
+                      "legal_formula_codec.py": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+                      "legal_ir_grammar_decoder.py": "0b1eae24b00157ae74a2700f23ca95c7f9957dc755078caaf179e64070fdeffd",
+                      "modal_latent_formula.py": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36",
+                      "tree_pin.py": "587165942fb06ea9effc836b555e0ac0606c5876b013a374a1e76d25ee069e4d"
+                    },
+                    "scope": "listed_latent_decoder_and_grammar_sources_only"
+                  },
+                  "runtime_sha256": "8de8096e895de9df08ccf5352dfd704806823296821d98b5badf08bb553a52e4"
+                }
+              },
+              "files": {
+                "ipfs_datasets_py.logic.backends.codebase_process": "5c569b34afd75e1942f11fcb9ecf20d57799d2762927d9379813ce94aca437e1",
+                "ipfs_datasets_py.logic.formalization.autoencoder.security.source_program_binding_384": "956666bac015713e1b292d563a8224a71e547ad50e4e13d04299f1056893f283",
+                "ipfs_datasets_py.logic.formalization.autoencoder.security.source_program_binding_384_v2": "fce62d147c82612cf5c59f1bbbbc56516b93e02e4440cc1ada3c5f27071c9a66",
+                "ipfs_datasets_py.logic.formalization.autoencoder.source_embeddings_384": "fb3a5aa8ec005e98a2c62dc1d7e3e807a75820fedc156a8080c1f18063d17da7",
+                "ipfs_datasets_py.logic.formalization.autoencoder.source_program_runtime_384_v2": "3c133913082b1f8d9683e4934e8bc2537b7e4bc2f6a9e373f5a2e99dc612eef8",
+                "ipfs_datasets_py.logic.software_contracts.codebase_source_384": "7f0c148bdc1ff0cc01a8cc0bfd115417118eaa2f4f2db0f0d2f2ad23198b95e8",
+                "ipfs_datasets_py.logic.software_contracts.codebase_source_384_worker": "81304aa208c4f849a3a187ce95e4fa2554918cb6c73a94f0982dd99350249428"
+              },
+              "numerics": {
+                "grouped_recipe": {
+                  "decoder_implementation": {
+                    "runtime_sha256": "3f9ca9ce7b4cf2a2d10d6aeb1fae78543c468133d2fa0df9fcb32f63f89e90f7",
+                    "shared_runtime": {
+                      "legal_codec_sha256": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+                      "native": {
+                        "dependencies": {
+                          "ipfs_datasets_py.logic.intent_ir.decoder": "7bab5781c07e00b54b0283d3a2962926f75935caedc80eceb23264cb388be257",
+                          "ipfs_datasets_py.logic.intent_ir.formalize.rich_grammar": "6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b",
+                          "ipfs_datasets_py.logic.intent_ir.schema": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56",
+                          "ipfs_datasets_py.logic.security_ir.model": "abc3aea9c2f4d1ce513ee2c9fc4c304d8bd387ded18e0d646247417422225d39",
+                          "ipfs_datasets_py.logic.software_verification.program": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+                          "ipfs_datasets_py.logic.ui_ux_ir.decoder": "21e8315b0054f7755512212d610d4e3f5f4ac86387f3b27edb9632fa8ca68bc3",
+                          "ipfs_datasets_py.logic.ui_ux_ir.schema": "8a7b0cc90151043514d263b1a2655d6d41a2835dacd6b56018ba5c0c89961855",
+                          "ipfs_datasets_py.optimizers.logic_theorem_optimizer.modal_latent_formula": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36"
+                        },
+                        "runtime": "66c5ee320f9c7aacd3b246d0666c7fc3ee928e4679892e1e90c838e1b291dbc6",
+                        "scope": "listed_numerical_and_native_validator_modules_only"
+                      },
+                      "numerical": {
+                        "files": {
+                          "canonical_contracts.py": "d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b",
+                          "legal_formula_codec.py": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+                          "legal_ir_grammar_decoder.py": "0b1eae24b00157ae74a2700f23ca95c7f9957dc755078caaf179e64070fdeffd",
+                          "modal_latent_formula.py": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36",
+                          "tree_pin.py": "587165942fb06ea9effc836b555e0ac0606c5876b013a374a1e76d25ee069e4d"
+                        },
+                        "scope": "listed_latent_decoder_and_grammar_sources_only"
+                      },
+                      "runtime_sha256": "8de8096e895de9df08ccf5352dfd704806823296821d98b5badf08bb553a52e4"
+                    }
+                  },
+                  "public_api_sha256": "3237d133cf9c67c616e6cc9420e263534dfc4ba4bc1c2b866f3948fdcdcd417a",
+                  "recipe_sha256": "c6dda0f85937f7ece993cf0bc82aebc72144457507db218cf83f9c9b495994a4",
+                  "scope": "recipe_public_api_named_ui_semantics_and_decoder_declared_modules",
+                  "ui_semantic_contracts": {
+                    "ui_flogic": "2671912bf789bf3c8ea6412023006c0436a3fd838b7e787a41f9743e102a6909",
+                    "ui_semantic_components": "72567a0e24bae8d2c0cac70bd06e4b7249016de271c35be6d215bccd054018c5",
+                    "ui_source_contract_384": "09fe94c4cc04cc6df1d302d5fbeb87141d5dbda5aec33d12bb626201dc01790a"
+                  }
+                },
+                "numerics_sha256": "3b811e6b271c6389bdd4e790daf8b442ce4c62a6c63f5f615900f175110afe28"
+              }
+            }
+          },
+          "generation_owner": "51a8d38ecc01f48f693f1526bf33617ad99bdf871bd1ee04d2c62ba7bc94c089",
+          "numerical_owner": {
+            "decoder": {
+              "runtime_sha256": "3f9ca9ce7b4cf2a2d10d6aeb1fae78543c468133d2fa0df9fcb32f63f89e90f7",
+              "shared_runtime": {
+                "legal_codec_sha256": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+                "native": {
+                  "dependencies": {
+                    "ipfs_datasets_py.logic.intent_ir.decoder": "7bab5781c07e00b54b0283d3a2962926f75935caedc80eceb23264cb388be257",
+                    "ipfs_datasets_py.logic.intent_ir.formalize.rich_grammar": "6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b",
+                    "ipfs_datasets_py.logic.intent_ir.schema": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56",
+                    "ipfs_datasets_py.logic.security_ir.model": "abc3aea9c2f4d1ce513ee2c9fc4c304d8bd387ded18e0d646247417422225d39",
+                    "ipfs_datasets_py.logic.software_verification.program": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+                    "ipfs_datasets_py.logic.ui_ux_ir.decoder": "21e8315b0054f7755512212d610d4e3f5f4ac86387f3b27edb9632fa8ca68bc3",
+                    "ipfs_datasets_py.logic.ui_ux_ir.schema": "8a7b0cc90151043514d263b1a2655d6d41a2835dacd6b56018ba5c0c89961855",
+                    "ipfs_datasets_py.optimizers.logic_theorem_optimizer.modal_latent_formula": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36"
+                  },
+                  "runtime": "66c5ee320f9c7aacd3b246d0666c7fc3ee928e4679892e1e90c838e1b291dbc6",
+                  "scope": "listed_numerical_and_native_validator_modules_only"
+                },
+                "numerical": {
+                  "files": {
+                    "canonical_contracts.py": "d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b",
+                    "legal_formula_codec.py": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+                    "legal_ir_grammar_decoder.py": "0b1eae24b00157ae74a2700f23ca95c7f9957dc755078caaf179e64070fdeffd",
+                    "modal_latent_formula.py": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36",
+                    "tree_pin.py": "587165942fb06ea9effc836b555e0ac0606c5876b013a374a1e76d25ee069e4d"
+                  },
+                  "scope": "listed_latent_decoder_and_grammar_sources_only"
+                },
+                "runtime_sha256": "8de8096e895de9df08ccf5352dfd704806823296821d98b5badf08bb553a52e4"
+              }
+            },
+            "files": {
+              "ipfs_datasets_py.logic.backends.codebase_process": "5c569b34afd75e1942f11fcb9ecf20d57799d2762927d9379813ce94aca437e1",
+              "ipfs_datasets_py.logic.formalization.autoencoder.security.source_program_binding_384": "956666bac015713e1b292d563a8224a71e547ad50e4e13d04299f1056893f283",
+              "ipfs_datasets_py.logic.formalization.autoencoder.security.source_program_binding_384_v2": "fce62d147c82612cf5c59f1bbbbc56516b93e02e4440cc1ada3c5f27071c9a66",
+              "ipfs_datasets_py.logic.formalization.autoencoder.source_embeddings_384": "fb3a5aa8ec005e98a2c62dc1d7e3e807a75820fedc156a8080c1f18063d17da7",
+              "ipfs_datasets_py.logic.formalization.autoencoder.source_program_runtime_384_v2": "3c133913082b1f8d9683e4934e8bc2537b7e4bc2f6a9e373f5a2e99dc612eef8",
+              "ipfs_datasets_py.logic.software_contracts.codebase_source_384": "7f0c148bdc1ff0cc01a8cc0bfd115417118eaa2f4f2db0f0d2f2ad23198b95e8",
+              "ipfs_datasets_py.logic.software_contracts.codebase_source_384_worker": "81304aa208c4f849a3a187ce95e4fa2554918cb6c73a94f0982dd99350249428"
+            },
+            "numerics": {
+              "grouped_recipe": {
+                "decoder_implementation": {
+                  "runtime_sha256": "3f9ca9ce7b4cf2a2d10d6aeb1fae78543c468133d2fa0df9fcb32f63f89e90f7",
+                  "shared_runtime": {
+                    "legal_codec_sha256": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+                    "native": {
+                      "dependencies": {
+                        "ipfs_datasets_py.logic.intent_ir.decoder": "7bab5781c07e00b54b0283d3a2962926f75935caedc80eceb23264cb388be257",
+                        "ipfs_datasets_py.logic.intent_ir.formalize.rich_grammar": "6c40ac99d7e339651b6029764f94b12430ca515d4c5f7426770b013499efe92b",
+                        "ipfs_datasets_py.logic.intent_ir.schema": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56",
+                        "ipfs_datasets_py.logic.security_ir.model": "abc3aea9c2f4d1ce513ee2c9fc4c304d8bd387ded18e0d646247417422225d39",
+                        "ipfs_datasets_py.logic.software_verification.program": "f051f42d64c5f993451972924953cc7eaa6d17df097235ddabfd5d791d406f91",
+                        "ipfs_datasets_py.logic.ui_ux_ir.decoder": "21e8315b0054f7755512212d610d4e3f5f4ac86387f3b27edb9632fa8ca68bc3",
+                        "ipfs_datasets_py.logic.ui_ux_ir.schema": "8a7b0cc90151043514d263b1a2655d6d41a2835dacd6b56018ba5c0c89961855",
+                        "ipfs_datasets_py.optimizers.logic_theorem_optimizer.modal_latent_formula": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36"
+                      },
+                      "runtime": "66c5ee320f9c7aacd3b246d0666c7fc3ee928e4679892e1e90c838e1b291dbc6",
+                      "scope": "listed_numerical_and_native_validator_modules_only"
+                    },
+                    "numerical": {
+                      "files": {
+                        "canonical_contracts.py": "d66ecfaa2c967cda40a1cf4b82936a34039e38ccdb3044468697a4f90af2844b",
+                        "legal_formula_codec.py": "f90769a3d99131da5ba48bb84c6f830f521c92d98122bdaaa8dd88fc65042290",
+                        "legal_ir_grammar_decoder.py": "0b1eae24b00157ae74a2700f23ca95c7f9957dc755078caaf179e64070fdeffd",
+                        "modal_latent_formula.py": "ec5bdcd752d157c9fc0257a45551cfe9ce7be172af767e8ed769bf1bc8a31d36",
+                        "tree_pin.py": "587165942fb06ea9effc836b555e0ac0606c5876b013a374a1e76d25ee069e4d"
+                      },
+                      "scope": "listed_latent_decoder_and_grammar_sources_only"
+                    },
+                    "runtime_sha256": "8de8096e895de9df08ccf5352dfd704806823296821d98b5badf08bb553a52e4"
+                  }
+                },
+                "public_api_sha256": "3237d133cf9c67c616e6cc9420e263534dfc4ba4bc1c2b866f3948fdcdcd417a",
+                "recipe_sha256": "c6dda0f85937f7ece993cf0bc82aebc72144457507db218cf83f9c9b495994a4",
+                "scope": "recipe_public_api_named_ui_semantics_and_decoder_declared_modules",
+                "ui_semantic_contracts": {
+                  "ui_flogic": "2671912bf789bf3c8ea6412023006c0436a3fd838b7e787a41f9743e102a6909",
+                  "ui_semantic_components": "72567a0e24bae8d2c0cac70bd06e4b7249016de271c35be6d215bccd054018c5",
+                  "ui_source_contract_384": "09fe94c4cc04cc6df1d302d5fbeb87141d5dbda5aec33d12bb626201dc01790a"
+                }
+              },
+              "numerics_sha256": "3b811e6b271c6389bdd4e790daf8b442ce4c62a6c63f5f615900f175110afe28"
+            }
+          }
+        },
+        "lifecycle": "eac1c133605c859f41464aa10086996ec767942f14b4066c89b35653c7b7de39",
+        "registry": "a781f5534cf637455b975b31475ced608112c90e1578eca3f79ba916b85d2838"
+      },
+      "promotion_performed": false,
+      "proof_authority": false,
+      "retries": 0,
+      "samples": 9,
+      "schema": "codebase-training-job@1"
+    }
+  }
+}

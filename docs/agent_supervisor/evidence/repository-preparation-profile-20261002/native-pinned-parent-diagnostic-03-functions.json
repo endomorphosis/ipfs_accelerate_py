@@ -1,0 +1,227 @@
+[
+  {
+    "file": "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+    "line": 490,
+    "function": "load",
+    "primitive_calls": 137,
+    "calls": 137,
+    "self_seconds": 0.00117,
+    "cumulative_seconds": 50.426077751
+  },
+  {
+    "file": "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+    "line": 184,
+    "function": "from_dict",
+    "primitive_calls": 138,
+    "calls": 138,
+    "self_seconds": 0.0029510200000000004,
+    "cumulative_seconds": 42.539198812
+  },
+  {
+    "file": "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+    "line": 516,
+    "function": "load_ast_artifact",
+    "primitive_calls": 593,
+    "calls": 1739,
+    "self_seconds": 0.010808081,
+    "cumulative_seconds": 14.163173398000001
+  },
+  {
+    "file": "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+    "line": 180,
+    "function": "cid",
+    "primitive_calls": 159,
+    "calls": 159,
+    "self_seconds": 0.0005703080000000001,
+    "cumulative_seconds": 8.442722268
+  },
+  {
+    "file": "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+    "line": 172,
+    "function": "to_dict",
+    "primitive_calls": 162,
+    "calls": 162,
+    "self_seconds": 0.001567204,
+    "cumulative_seconds": 8.200869859
+  },
+  {
+    "file": "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+    "line": 114,
+    "function": "__post_init__",
+    "primitive_calls": 139,
+    "calls": 139,
+    "self_seconds": 0.0072858440000000005,
+    "cumulative_seconds": 7.056076654000001
+  },
+  {
+    "file": "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_scan_policy_live.py",
+    "line": 51,
+    "function": "scope",
+    "primitive_calls": 52,
+    "calls": 53,
+    "self_seconds": 0.000724872,
+    "cumulative_seconds": 6.152615811
+  },
+  {
+    "file": "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+    "line": 80,
+    "function": "__post_init__",
+    "primitive_calls": 2085,
+    "calls": 2085,
+    "self_seconds": 0.002443151,
+    "cumulative_seconds": 3.263015765
+  },
+  {
+    "file": "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+    "line": 193,
+    "function": "<genexpr>",
+    "primitive_calls": 2208,
+    "calls": 2208,
+    "self_seconds": 0.001105261,
+    "cumulative_seconds": 3.253933812
+  },
+  {
+    "file": "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+    "line": 96,
+    "function": "from_dict",
+    "primitive_calls": 2070,
+    "calls": 2070,
+    "self_seconds": 0.004642703000000001,
+    "cumulative_seconds": 3.2479436940000004
+  },
+  {
+    "file": "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/proof/finite_cache_correspondence.py",
+    "line": 146,
+    "function": "remaining",
+    "primitive_calls": 8697,
+    "calls": 8697,
+    "self_seconds": 0.004234556,
+    "cumulative_seconds": 3.191025894
+  },
+  {
+    "file": "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+    "line": 452,
+    "function": "checkpoint",
+    "primitive_calls": 1073,
+    "calls": 1426,
+    "self_seconds": 0.0035751660000000003,
+    "cumulative_seconds": 1.707600605
+  },
+  {
+    "file": "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/proof/finite_checked_cache.py",
+    "line": 290,
+    "function": "_replay_bundle",
+    "primitive_calls": 11,
+    "calls": 11,
+    "self_seconds": 0.0008453410000000001,
+    "cumulative_seconds": 0.8797904390000001
+  },
+  {
+    "file": "/tmp/ir-release-accelerate-20261001/benchmarks/agent_supervisor/container_coding/native_repository_finite_supervision.py",
+    "line": 250,
+    "function": "finish_managed",
+    "primitive_calls": 3,
+    "calls": 3,
+    "self_seconds": 2.5920000000000003e-06,
+    "cumulative_seconds": 0.5569976630000001
+  },
+  {
+    "file": "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/planning/finite_integer_plan_preview.py",
+    "line": 1,
+    "function": "<module>",
+    "primitive_calls": 1,
+    "calls": 1,
+    "self_seconds": 3.6112e-05,
+    "cumulative_seconds": 0.5099201010000001
+  },
+  {
+    "file": "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/proof/finite_checked_cache.py",
+    "line": 260,
+    "function": "_blob",
+    "primitive_calls": 121,
+    "calls": 121,
+    "self_seconds": 0.000218378,
+    "cumulative_seconds": 0.37491385200000005
+  },
+  {
+    "file": "/tmp/ir-release-accelerate-20261001/benchmarks/agent_supervisor/container_coding/native_repository_finite_supervision.py",
+    "line": 269,
+    "function": "advance_phase",
+    "primitive_calls": 4,
+    "calls": 4,
+    "self_seconds": 5.1296000000000005e-05,
+    "cumulative_seconds": 0.347147183
+  },
+  {
+    "file": "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+    "line": 378,
+    "function": "seal_manifest",
+    "primitive_calls": 1,
+    "calls": 1,
+    "self_seconds": 0.000153441,
+    "cumulative_seconds": 0.332906107
+  },
+  {
+    "file": "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_semantic_manifest.py",
+    "line": 86,
+    "function": "_artifact",
+    "primitive_calls": 78,
+    "calls": 78,
+    "self_seconds": 0.000273401,
+    "cumulative_seconds": 0.32566114
+  },
+  {
+    "file": "/tmp/ir-release-accelerate-20261001/benchmarks/agent_supervisor/container_coding/native_repository_finite_supervision.py",
+    "line": 360,
+    "function": "native_resources",
+    "primitive_calls": 9,
+    "calls": 9,
+    "self_seconds": 4.7263000000000005e-05,
+    "cumulative_seconds": 0.18220186700000002
+  },
+  {
+    "file": "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/proof/finite_checked_cache.py",
+    "line": 265,
+    "function": "_json",
+    "primitive_calls": 21,
+    "calls": 21,
+    "self_seconds": 0.00021146400000000002,
+    "cumulative_seconds": 0.153945459
+  },
+  {
+    "file": "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/proof/finite_checked_cache.py",
+    "line": 273,
+    "function": "_bundle",
+    "primitive_calls": 1,
+    "calls": 1,
+    "self_seconds": 0.000148275,
+    "cumulative_seconds": 0.14088450900000002
+  },
+  {
+    "file": "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_semantic_manifest.py",
+    "line": 47,
+    "function": "_implementation",
+    "primitive_calls": 18,
+    "calls": 18,
+    "self_seconds": 0.0012368090000000002,
+    "cumulative_seconds": 0.11724643700000001
+  },
+  {
+    "file": "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_scan_policy_live.py",
+    "line": 35,
+    "function": "remaining",
+    "primitive_calls": 130,
+    "calls": 134,
+    "self_seconds": 0.00039466400000000003,
+    "cumulative_seconds": 0.106816403
+  },
+  {
+    "file": "/tmp/ir-release-accelerate-20261001/benchmarks/agent_supervisor/container_coding/native_repository_finite_supervision.py",
+    "line": 27,
+    "function": "_write",
+    "primitive_calls": 3,
+    "calls": 3,
+    "self_seconds": 0.00019512700000000002,
+    "cumulative_seconds": 0.10072441400000001
+  }
+]

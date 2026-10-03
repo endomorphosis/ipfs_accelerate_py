@@ -1,0 +1,58 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/test
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 32 items
+
+test/api/test_repository_preparation_profile.py::test_model_off_profile_roundtrip_declares_index_without_eager_proof [32mPASSED[0m[32m [  3%][0m
+test/api/test_repository_preparation_profile.py::test_closed_profile_refuses_implicit_or_malformed_work[extra] [32mPASSED[0m[32m [  6%][0m
+test/api/test_repository_preparation_profile.py::test_closed_profile_refuses_implicit_or_malformed_work[schema] [32mPASSED[0m[32m [  9%][0m
+test/api/test_repository_preparation_profile.py::test_closed_profile_refuses_implicit_or_malformed_work[selection_extra] [32mPASSED[0m[32m [ 12%][0m
+test/api/test_repository_preparation_profile.py::test_closed_profile_refuses_implicit_or_malformed_work[selection_missing] [32mPASSED[0m[32m [ 15%][0m
+test/api/test_repository_preparation_profile.py::test_closed_profile_refuses_implicit_or_malformed_work[budget_extra] [32mPASSED[0m[32m [ 18%][0m
+test/api/test_repository_preparation_profile.py::test_closed_profile_refuses_implicit_or_malformed_work[implicit_index] [32mPASSED[0m[32m [ 21%][0m
+test/api/test_repository_preparation_profile.py::test_closed_profile_refuses_implicit_or_malformed_work[bool_memory] [32mPASSED[0m[32m [ 25%][0m
+test/api/test_repository_preparation_profile.py::test_closed_profile_refuses_implicit_or_malformed_work[unbounded_time] [32mPASSED[0m[32m [ 28%][0m
+test/api/test_repository_preparation_profile.py::test_closed_profile_refuses_implicit_or_malformed_work[fixture] [32mPASSED[0m[32m [ 31%][0m
+test/api/test_repository_preparation_profile.py::test_closed_profile_refuses_implicit_or_malformed_work[model_missing] [32mPASSED[0m[32m [ 34%][0m
+test/api/test_repository_preparation_profile.py::test_closed_profile_refuses_implicit_or_malformed_work[model_unselected] [32mPASSED[0m[32m [ 37%][0m
+test/api/test_repository_preparation_profile.py::test_closed_profile_refuses_implicit_or_malformed_work[nonlist_paths] [32mPASSED[0m[32m [ 40%][0m
+test/api/test_repository_preparation_profile.py::test_closed_profile_refuses_implicit_or_malformed_work[nonlist_domains] [32mPASSED[0m[32m [ 43%][0m
+test/api/test_repository_preparation_profile.py::test_closed_profile_refuses_implicit_or_malformed_work[training_extra] [32mPASSED[0m[32m [ 46%][0m
+test/api/test_repository_preparation_profile.py::test_closed_profile_refuses_implicit_or_malformed_work[wrong_structural_memory] [32mPASSED[0m[32m [ 50%][0m
+test/api/test_repository_preparation_profile.py::test_profile_loader_rejects_duplicate_keys_symlinks_and_oversized_input [32mPASSED[0m[32m [ 53%][0m
+test/api/test_repository_preparation_profile.py::test_numerical_and_protected_phase_memory_are_separately_declared [32mPASSED[0m[32m [ 56%][0m
+test/api/test_repository_preparation_profile.py::test_authored_cohort_is_separate_and_keeps_disjoint_role_populations [32mPASSED[0m[32m [ 59%][0m
+test/api/test_native_repository_managed_driver.py::test_managed_driver_keeps_primary_failure_and_cleanup_failure_artifact 
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-03 00:05:27 [[32m    INFO[0m] Registered service: ipfs (service_manager.py:93)
+2026-10-03 00:05:27 [[32m    INFO[0m] Registered test suite: core_infrastructure (test_framework.py:82)
+2026-10-03 00:05:27 [[32m    INFO[0m] Registered test suite: performance (test_framework.py:82)
+2026-10-03 00:05:27 [[32m    INFO[0m] Registered test suite: integration (test_framework.py:82)
+2026-10-03 00:05:27 [[32m    INFO[0m] Successfully imported ipfs_kit_py modules from /home/barberb/HACC/complaint-generator/ipfs_datasets_py/ipfs_kit_py/ipfs_kit_py/__init__.py (ipfs_kit_integration.py:327)
+2026-10-03 00:05:27 [[32m    INFO[0m] IPFS Kit integration enabled successfully (ipfs_kit_integration.py:344)
+2026-10-03 00:05:27 [[32m    INFO[0m] Storage initialized with distributed backend (storage_wrapper.py:92)
+[32mPASSED[0m[32m                                                                   [ 62%][0m
+test/api/test_native_repository_managed_driver.py::test_pipeline_cli_is_explicit_and_legacy_full_flag_is_distinct [32mPASSED[0m[32m [ 65%][0m
+test/api/test_native_repository_managed_driver.py::test_managed_driver_retains_primary_error_when_both_receipt_observers_fail [32mPASSED[0m[32m [ 68%][0m
+test/api/test_native_repository_finite_supervision.py::test_cold_generation_and_execution_receipts_remain_distinct [32mPASSED[0m[32m [ 71%][0m
+test/api/test_native_repository_finite_supervision.py::test_equal_counts_cannot_hide_different_source_requirements_or_observations[source] [32mPASSED[0m[32m [ 75%][0m
+test/api/test_native_repository_finite_supervision.py::test_equal_counts_cannot_hide_different_source_requirements_or_observations[snapshot] [32mPASSED[0m[32m [ 78%][0m
+test/api/test_native_repository_finite_supervision.py::test_equal_counts_cannot_hide_different_source_requirements_or_observations[domain] [32mPASSED[0m[32m [ 81%][0m
+test/api/test_native_repository_finite_supervision.py::test_equal_counts_cannot_hide_different_source_requirements_or_observations[query] [32mPASSED[0m[32m [ 84%][0m
+test/api/test_native_repository_finite_supervision.py::test_equal_counts_cannot_hide_different_source_requirements_or_observations[outcome] [32mPASSED[0m[32m [ 87%][0m
+test/api/test_native_repository_finite_supervision.py::test_equal_counts_cannot_hide_different_source_requirements_or_observations[scope] [32mPASSED[0m[32m [ 90%][0m
+test/api/test_native_repository_finite_supervision.py::test_equal_counts_cannot_hide_different_source_requirements_or_observations[proof] [32mPASSED[0m[32m [ 93%][0m
+test/api/test_native_repository_finite_supervision.py::test_equal_counts_cannot_hide_different_source_requirements_or_observations[tools] [32mPASSED[0m[32m [ 96%][0m
+test/api/test_native_repository_finite_supervision.py::test_equal_counts_cannot_hide_different_source_requirements_or_observations[clause] [32mPASSED[0m[32m [100%][0m
+
+- generated xml file: /home/barberb/lift_coding/artifacts/repository-preparation-recovery-20261002/final-pure-controls.xml -
+============================= slowest 10 durations =============================
+3.36s call     api/test_native_repository_managed_driver.py::test_managed_driver_keeps_primary_failure_and_cleanup_failure_artifact
+0.03s call     api/test_native_repository_managed_driver.py::test_managed_driver_retains_primary_error_when_both_receipt_observers_fail
+
+(8 durations < 0.005s hidden.  Use -vv to show these durations.)
+[32m============================= [32m[1m32 passed[0m[32m in 28.15s[0m[32m ==============================[0m

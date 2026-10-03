@@ -1,0 +1,20 @@
+[
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/repository_preparation_profile.py",
+    "sha256": "b65011af3ebb797b8db55e3a0f3a2242b36afdea17d08bb0331028d65fb28f20",
+    "source": "/home/barberb/lift_coding/artifacts/repository-preparation-profile-20261002/native-pinned-parent-02-source/repository_preparation_profile.py",
+    "recovery": "exact_preserved_producer"
+  },
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/native_repository_finite_supervision.py",
+    "sha256": "49ea5c81adb106f2986f210778ec44c253d516e077fee9dd71c17dfcb18beffd",
+    "source": "/home/barberb/lift_coding/artifacts/repository-preparation-profile-20261002/native-pinned-parent-02-source/native_repository_finite_supervision.py",
+    "recovery": "exact_preserved_producer"
+  },
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/repository_benchmark_preparation.py",
+    "sha256": "1e24b8802fb0b7a6893eee3c617f6175c5426002f145ab15cc16eb002b617489",
+    "source": "/home/barberb/lift_coding/artifacts/repository-preparation-profile-20261002/native-pinned-parent-02-source/repository_benchmark_preparation.py",
+    "recovery": "exact_preserved_producer"
+  }
+]

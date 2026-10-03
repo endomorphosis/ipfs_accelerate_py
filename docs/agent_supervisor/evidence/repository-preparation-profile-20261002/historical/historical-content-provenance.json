@@ -1,0 +1,9 @@
+{
+  "path": "ipfs_datasets_py/logic/software_contracts/content.py",
+  "sha256": "c69cb85f0901a9a678bcbdf7738ab00095bbe45c5b40d875f2099474bd2a059c",
+  "verified_against_native_semantic_manifests": [
+    "native-pinned-parent-01",
+    "native-pinned-parent-02",
+    "native-pinned-parent-diagnostic-03"
+  ]
+}

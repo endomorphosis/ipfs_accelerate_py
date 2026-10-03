@@ -1,0 +1,5 @@
+{
+  "path": "test/integration/test_repository_preparation_profile.py",
+  "sha256": "9eeff8159f27233a34590a541fb6df82ffa8bcc7e00e85f03189ee90e39e12f8",
+  "changed_scope": "new private pre-work CPU-admission retry helper and its sole independent-demand caller; other12 tests unchanged"
+}

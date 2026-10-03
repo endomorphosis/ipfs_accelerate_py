@@ -1,0 +1,435 @@
+{
+  "actual_full_loop": {
+    "behavioral_worker_fence_replayed": true,
+    "checked_cache_replay_agrees": true,
+    "cold_semantic_manifest_agrees": true,
+    "cold_successor_agrees": true,
+    "delegated_worker_resources_verified": true,
+    "final_public_check_exit_code": 0,
+    "initial_fact_count": 1,
+    "initial_residuals": [
+      "finite-integer-offset-goal"
+    ],
+    "numerical_head_refits": 0,
+    "numerical_inference_calls": 3,
+    "owned_remaining_leases": [],
+    "provider_calls": 0,
+    "provider_tokens": 0,
+    "remaining_processes": 0,
+    "seconds": 195.34828769699925,
+    "selected_operations": [
+      "task:finite:offset"
+    ],
+    "stale_checked_cache_refused": true,
+    "stale_dispatch_refused": true,
+    "stale_index_refused": true,
+    "stop": {
+      "audit_receipt_id": "sha256:d031e276c1d8cc255c17640477130a1ecfcdd4fab44ea7cb68f9a04ae29b4894",
+      "authority": "mutation",
+      "bounds": {
+        "content_id": "baguqeeraliqr2o2hxao5zg4aoeq2ezmoowsz2wj2ehqloqni2fhexl3dek6q",
+        "contract_version": 1,
+        "max_depth": 8,
+        "max_effects": 64,
+        "max_items": 256,
+        "max_paths": 128,
+        "max_serialized_bytes": 262144,
+        "max_text_bytes": 8192,
+        "schema": "ipfs_accelerate_py/agent-supervisor/control-bounds@1",
+        "timeout_ms": 30000
+      },
+      "caller": "did:key:z6Mkv46KbDRRMXFY5crifWUiy4q42dofMvEZndCyc8y7CGCm",
+      "contract_version": 1,
+      "data": {
+        "health_window_ms": 500,
+        "new_process_identity": null,
+        "old_tree_fenced": true,
+        "receipt_id": "sha256:5346b2bfc88ca829134cb4980981e38d4aeb181e9ac0c8be3d14661947a234fd",
+        "transition_artifact_sha256": "sha256:1b9e703600b31d67287777be11dc3498959278d48b87faa05cca83dbd376619f",
+        "transition_id": "sha256:cfa0d5829dae644d6eb028b907922e45ad3aa020974c083c7937b70285e744f8"
+      },
+      "effects": [
+        {
+          "applied": true,
+          "authority": "mutation",
+          "content_id": "baguqeera3twg2y2ponzfuzs7uvvskb2afhcjoniw3jcbhrplfp6c475osuqa",
+          "contract_version": 1,
+          "effect_id": "stop:isolated-process-tree",
+          "kind": "lifecycle_transition",
+          "paths": [
+            "lifecycle-transitions.jsonl",
+            "run"
+          ],
+          "receipt_id": "sha256:d031e276c1d8cc255c17640477130a1ecfcdd4fab44ea7cb68f9a04ae29b4894",
+          "resource": "baguqeeraf5ovo4ytmepi57rrtvqhv4in5uhmeh4boglfzqtx5ktooqlmkvyq",
+          "schema": "ipfs_accelerate_py/agent-supervisor/effect-claim@1"
+        }
+      ],
+      "error": null,
+      "idempotency_key": "admitted-ccf436e9343e41dcb53709d7bd20b08b:stop:1",
+      "objective_id": "sha256:76fd9ffc06aab0f27d2d3095183815a2b27f5be9859e72a578706ae9fb8076fc",
+      "operation": "stop",
+      "policy_id": "sha256:76fd9ffc06aab0f27d2d3095183815a2b27f5be9859e72a578706ae9fb8076fc",
+      "preview": null,
+      "repository_id": "baguqeeraf5ovo4ytmepi57rrtvqhv4in5uhmeh4boglfzqtx5ktooqlmkvyq",
+      "request_id": "baguqeerahulqg5hwbh5edpz5wyvnppuqsmnuiesfojsvqldvmj4dlvk7rxpa",
+      "schema": "ipfs_accelerate_py/agent-supervisor/operation-result@1",
+      "status": "succeeded",
+      "tree_id": "a20fad5ab88095d65482e59eaa018dbd137ba560"
+    },
+    "successor": {
+      "fact_count": 2,
+      "head": {
+        "ast_revision_id": "rev:repository:finite-native-qualification:snapshot:baguqeeram4kb4vszxvffldd4nn7utqdddbtpmaiwdowepkgbtzxsihbsq5zq",
+        "generation": 2,
+        "manifest_cid": "baguqeeralklrt64cmye57dn5ulvhcm54cihg6omiunwsc3ts5wqxnujk55ha",
+        "receipt_cid": "baguqeeraqenwcjl2tmgjfunlrtdsvlm55kpjob6dse3zdqjfixjy5y3klama",
+        "repository_id": "repository:finite-native-qualification",
+        "schema": "codebase-head@1",
+        "snapshot_cid": "baguqeeram4kb4vszxvffldd4nn7utqdddbtpmaiwdowepkgbtzxsihbsq5zq"
+      },
+      "observation_cid": "baguqeera6xyfeamchhdwflas726i2qgzsvtxz4qohq5sdqjsckuxurbd7twq",
+      "residuals": []
+    },
+    "task": {
+      "revision": 4,
+      "status": "completed"
+    }
+  },
+  "distinct_test_count": 83,
+  "final_native_producer_pins": {
+    "benchmarks.agent_supervisor.container_coding.native_repository_finite_supervision": {
+      "path": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/native_repository_finite_supervision.py",
+      "sha256": "49ea5c81adb106f2986f210778ec44c253d516e077fee9dd71c17dfcb18beffd"
+    },
+    "benchmarks.agent_supervisor.container_coding.repository_benchmark_preparation": {
+      "path": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/repository_benchmark_preparation.py",
+      "sha256": "1e24b8802fb0b7a6893eee3c617f6175c5426002f145ab15cc16eb002b617489"
+    },
+    "benchmarks.agent_supervisor.container_coding.repository_preparation_profile": {
+      "path": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/repository_preparation_profile.py",
+      "sha256": "b65011af3ebb797b8db55e3a0f3a2242b36afdea17d08bb0331028d65fb28f20"
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.repository_pipeline_resources": {
+      "path": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/ipfs_accelerate_py/agent_supervisor/runtime/repository_pipeline_resources.py",
+      "sha256": "192824a43fb8905e888df3aa85d836911e411f1dcb346628afb0aff2d28ef448"
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.repository_process_limits": {
+      "path": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/ipfs_accelerate_py/agent_supervisor/runtime/repository_process_limits.py",
+      "sha256": "d86b77625291ee02ce934fa67a783ffb9c1ca973426c63b259270597049620cb"
+    },
+    "ipfs_accelerate_py.agent_supervisor.runtime.repository_resource_bridge": {
+      "path": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py",
+      "sha256": "37bd578cf49735a7310c23b1d1cd204d623c0e9c3f2d808dd978390475403f8b"
+    },
+    "ipfs_datasets_py.duckdb_control.autoencoder_registry": {
+      "path": "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/duckdb_control/autoencoder_registry.py",
+      "sha256": "a781f5534cf637455b975b31475ced608112c90e1578eca3f79ba916b85d2838"
+    },
+    "ipfs_datasets_py.logic.software_contracts.codebase_runtime_384": {
+      "path": "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_contracts/codebase_runtime_384.py",
+      "sha256": "30ceb8d9604a1bc5c30eb9b9608fc21bb3fbd490ccceca6e9e4aa715a899f636"
+    },
+    "ipfs_datasets_py.logic.software_contracts.codebase_source_384": {
+      "path": "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_contracts/codebase_source_384.py",
+      "sha256": "7f0c148bdc1ff0cc01a8cc0bfd115417118eaa2f4f2db0f0d2f2ad23198b95e8"
+    },
+    "ipfs_datasets_py.logic.software_contracts.codebase_training_lifecycle": {
+      "path": "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_contracts/codebase_training_lifecycle.py",
+      "sha256": "eac1c133605c859f41464aa10086996ec767942f14b4066c89b35653c7b7de39"
+    },
+    "ipfs_datasets_py.logic.software_contracts.content": {
+      "path": "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_contracts/content.py",
+      "sha256": "b6f0299be63eb3d7d2517abcc431d51ff28668555fe464c0a54c99507d248eb4"
+    }
+  },
+  "full_loop_inference": [
+    {
+      "inventory_entries": 15,
+      "operation": "independent-cold-successor-preparation",
+      "statuses": [
+        "fail_open_source_contract_unsupported",
+        "unqualified_candidate",
+        "unqualified_candidate",
+        "unqualified_candidate"
+      ]
+    },
+    {
+      "inventory_entries": 15,
+      "operation": "initial-preparation",
+      "statuses": [
+        "fail_open_source_contract_unsupported",
+        "unqualified_candidate",
+        "unqualified_candidate",
+        "unqualified_candidate"
+      ]
+    },
+    {
+      "inventory_entries": 15,
+      "operation": "published-successor-preparation",
+      "statuses": [
+        "fail_open_source_contract_unsupported",
+        "unqualified_candidate",
+        "unqualified_candidate",
+        "unqualified_candidate"
+      ]
+    }
+  ],
+  "limitations": [
+    "Source384 outputs remain advisory; unknown or unsupported rows are retained.",
+    "Development canaries are not untouched test cohorts; no regressed child promotion.",
+    "Full native loop selects pinned_parent; optional and required training use actual managed preparation controls.",
+    "Resource enforcement is sampled/cooperative; this native loop selects no optional hard-limit profile.",
+    "Historical failures and exact producer snapshots are retained; profiled timings are diagnostic and cumulative costs overlap.",
+    "Cold successor is an independent reopened owner in the driver; separate fresh-process controls have their own scope.",
+    "No matched Codex/Terminal-Bench efficiency result is claimed."
+  ],
+  "model_policies": {
+    "optional_training": {
+      "child_canary": {
+        "count": 3,
+        "exact_targets": 0,
+        "outside_training_coverage": 0,
+        "semantic_leaf_correct": 6,
+        "semantic_leaf_count": 12,
+        "valid_candidates": 3,
+        "within_training_coverage": 3
+      },
+      "fallback_reason": "child_unqualified_or_incomplete",
+      "inference_executed": true,
+      "inventory": 9,
+      "model_identity": "pinned-source384-parent@1",
+      "parent_canary": {
+        "count": 3,
+        "exact_targets": 3,
+        "outside_training_coverage": 0,
+        "semantic_leaf_correct": 12,
+        "semantic_leaf_count": 12,
+        "valid_candidates": 3,
+        "within_training_coverage": 3
+      },
+      "promotion_performed": false,
+      "qualified": true,
+      "training_executed": true
+    },
+    "pinned_parent": {
+      "fallback_reason": null,
+      "inference_executed": true,
+      "inventory": 9,
+      "model_identity": "pinned-source384-parent@1",
+      "promotion_performed": false,
+      "qualified": true,
+      "training_executed": false
+    },
+    "required_training": {
+      "child_canary": {
+        "count": 3,
+        "exact_targets": 0,
+        "outside_training_coverage": 0,
+        "semantic_leaf_correct": 6,
+        "semantic_leaf_count": 12,
+        "valid_candidates": 3,
+        "within_training_coverage": 3
+      },
+      "fallback_reason": "child_unqualified_or_incomplete",
+      "inference_executed": false,
+      "inventory": 9,
+      "model_identity": "pinned-source384-parent@1",
+      "parent_canary": {
+        "count": 3,
+        "exact_targets": 3,
+        "outside_training_coverage": 0,
+        "semantic_leaf_correct": 12,
+        "semantic_leaf_count": 12,
+        "valid_candidates": 3,
+        "within_training_coverage": 3
+      },
+      "promotion_performed": false,
+      "qualified": false,
+      "training_executed": true
+    }
+  },
+  "native_attempts": [
+    {
+      "diagnostic_profiling": false,
+      "error": {
+        "message": "finite planning preview deadline exceeded",
+        "type": "LeaseTimeoutError"
+      },
+      "name": "native-pinned-parent-01",
+      "numerical_inference_calls": 1,
+      "provider_calls": 0,
+      "qualified": false,
+      "result_sha256": "5e6180a168cbb7f89a2809a37d63cb74b12428060652f1ac5d59a4a3dd984924",
+      "seconds": 130.53130090306513
+    },
+    {
+      "diagnostic_profiling": false,
+      "error": {
+        "message": "finite planning preview deadline exceeded",
+        "type": "LeaseTimeoutError"
+      },
+      "name": "native-pinned-parent-02",
+      "numerical_inference_calls": 1,
+      "provider_calls": 0,
+      "qualified": false,
+      "result_sha256": "6187510625dda207dbb4d6eb40bc8fe8cced6240546228674a923850227b9939",
+      "seconds": 126.50414303713478
+    },
+    {
+      "diagnostic_profiling": true,
+      "error": {
+        "message": "codebase observation deadline exceeded",
+        "type": "LeaseTimeoutError"
+      },
+      "name": "native-pinned-parent-diagnostic-03",
+      "numerical_inference_calls": 1,
+      "provider_calls": 0,
+      "qualified": false,
+      "result_sha256": "92113e70f84393d07d030828d3b4d4e2ee7fb91ce50d3597cd93ff29887a428a",
+      "seconds": 154.9716983952094
+    },
+    {
+      "diagnostic_profiling": false,
+      "error": {
+        "message": "codebase observation deadline exceeded",
+        "type": "LeaseTimeoutError"
+      },
+      "name": "native-pinned-parent-04",
+      "numerical_inference_calls": 1,
+      "provider_calls": 0,
+      "qualified": false,
+      "result_sha256": "2890bd4500208db2a07d93af2bb2ac597042e0ae06411e6f404e59ee8c3ac9d9",
+      "seconds": 148.70634671200014
+    },
+    {
+      "diagnostic_profiling": true,
+      "error": {
+        "message": "codebase observation deadline exceeded",
+        "type": "LeaseTimeoutError"
+      },
+      "name": "native-pinned-parent-diagnostic-05",
+      "numerical_inference_calls": 1,
+      "provider_calls": 0,
+      "qualified": false,
+      "result_sha256": "6062bf5e0f3cda8a440b8d04ab1683e70fe6a8d122b7b509637c72b32713e7ce",
+      "seconds": 152.82011374900003
+    },
+    {
+      "diagnostic_profiling": false,
+      "error": null,
+      "name": "native-pinned-parent-06",
+      "numerical_inference_calls": 3,
+      "provider_calls": 0,
+      "qualified": true,
+      "result_sha256": "a560497189a47673dcfa03036ca03b114e3b4c77756d85fa5285d1d2765436a2",
+      "seconds": 195.34828769699925
+    }
+  ],
+  "neural_formalization_qualified": false,
+  "qualified": true,
+  "schema": "repository-preparation-profile-qualification@1",
+  "scope": "Authored finite offset fixture,15 retained entries,original90s planning deadline; not Terminal-Bench reward",
+  "source_scope": [
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/native_repository_finite_supervision.py",
+      "sha256": "49ea5c81adb106f2986f210778ec44c253d516e077fee9dd71c17dfcb18beffd",
+      "size_bytes": 57107
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/repository_benchmark_preparation.py",
+      "sha256": "1e24b8802fb0b7a6893eee3c617f6175c5426002f145ab15cc16eb002b617489",
+      "size_bytes": 22347
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/repository_preparation_profile.py",
+      "sha256": "b65011af3ebb797b8db55e3a0f3a2242b36afdea17d08bb0331028d65fb28f20",
+      "size_bytes": 15861
+    },
+    {
+      "path": "test/api/test_repository_preparation_profile.py",
+      "sha256": "414eef897133f3affe50211febd2c939f41de9cc13c7c53106f7c4b17cbe75f8",
+      "size_bytes": 4917
+    },
+    {
+      "path": "test/integration/test_repository_preparation_profile.py",
+      "sha256": "9eeff8159f27233a34590a541fb6df82ffa8bcc7e00e85f03189ee90e39e12f8",
+      "size_bytes": 20873
+    },
+    {
+      "path": "docs/agent_supervisor/REPOSITORY_PREPARATION_PROFILE.md",
+      "sha256": "29b58931a77615ca392c08a306b7504226ee15d9dfb266e2596916435a0f03dd",
+      "size_bytes": 6083
+    }
+  ],
+  "test_attempt_count": 85,
+  "tests": [
+    {
+      "errors": 0,
+      "failures": 0,
+      "name": "final-pure-controls",
+      "scope": "profile_and_driver_controls",
+      "seconds": 28.106,
+      "skipped": 0,
+      "tests": 32
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "name": "final-legacy-controls",
+      "scope": "legacy_storage_with_controlled_host_telemetry",
+      "seconds": 26.587,
+      "skipped": 0,
+      "tests": 38
+    },
+    {
+      "errors": 0,
+      "failures": 1,
+      "name": "actual-controls",
+      "scope": "actual_default_host_shared384_and_live_observer_fences",
+      "seconds": 105.616,
+      "skipped": 0,
+      "tests": 13
+    },
+    {
+      "errors": 0,
+      "failures": 1,
+      "name": "actual-demand-retry",
+      "scope": "unchanged_independent_demand_case_after_host_cpu_refusal",
+      "seconds": 16.133,
+      "skipped": 0,
+      "tests": 1
+    },
+    {
+      "errors": 0,
+      "failures": 0,
+      "name": "actual-demand-retry-02",
+      "scope": "independent_demand_with_bounded_actual_prework_admission_retry",
+      "seconds": 22.396,
+      "skipped": 0,
+      "tests": 1
+    }
+  ],
+  "validation_admission_retry": {
+    "admission_threshold_changes": false,
+    "confirmed_sampler_defect": false,
+    "host_load_cause_not_isolated": true,
+    "initial_refusal": "host_cpu_high_watermark",
+    "retained_prework_refusals": 2,
+    "retried_cases": 1,
+    "retry_test_source": {
+      "changed_scope": "new private pre-work CPU-admission retry helper and its sole independent-demand caller; other12 tests unchanged",
+      "path": "test/integration/test_repository_preparation_profile.py",
+      "sha256": "9eeff8159f27233a34590a541fb6df82ffa8bcc7e00e85f03189ee90e39e12f8"
+    },
+    "runtime_source_changes": false,
+    "test_helper_changed": true,
+    "unchanged_other_test_function_asts": [
+      "managed",
+      "save",
+      "test_actual_managed_shared384_policies_keep_parent_and_bound_phases",
+      "test_cancelled_managed_parent_preserves_failed_phase_and_source",
+      "test_process_local_observer_replays_live_fences_and_immutable_dependencies"
+    ]
+  }
+}

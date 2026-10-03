@@ -1,0 +1,14 @@
+{
+  "attempts": [
+    {
+      "admitted": true,
+      "attempt": 1,
+      "elapsed_seconds": 0.02842154300014954,
+      "workload_started": false
+    }
+  ],
+  "maximum_attempts": 3,
+  "policy_unchanged": true,
+  "retry_window_seconds": 2.0,
+  "sampler": "actual_default"
+}

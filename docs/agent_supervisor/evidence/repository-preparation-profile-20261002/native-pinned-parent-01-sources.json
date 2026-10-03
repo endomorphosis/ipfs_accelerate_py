@@ -1,0 +1,38 @@
+{
+  "benchmarks.agent_supervisor.container_coding.native_repository_finite_supervision": {
+    "path": "/tmp/ir-release-accelerate-20261001/benchmarks/agent_supervisor/container_coding/native_repository_finite_supervision.py",
+    "sha256": "d177ea5593587e8dc9ac1805cd53245ba398b18bbd2ef43d689bb3bdcedd9645"
+  },
+  "benchmarks.agent_supervisor.container_coding.repository_benchmark_preparation": {
+    "path": "/tmp/ir-release-accelerate-20261001/benchmarks/agent_supervisor/container_coding/repository_benchmark_preparation.py",
+    "sha256": "1e24b8802fb0b7a6893eee3c617f6175c5426002f145ab15cc16eb002b617489"
+  },
+  "benchmarks.agent_supervisor.container_coding.repository_preparation_profile": {
+    "path": "/tmp/ir-release-accelerate-20261001/benchmarks/agent_supervisor/container_coding/repository_preparation_profile.py",
+    "sha256": "a9128915f2323fbbc70b6dc23a85497ae3847f532fe2440baa79de38c0cdddc1"
+  },
+  "ipfs_accelerate_py.agent_supervisor.runtime.repository_pipeline_resources": {
+    "path": "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_pipeline_resources.py",
+    "sha256": "192824a43fb8905e888df3aa85d836911e411f1dcb346628afb0aff2d28ef448"
+  },
+  "ipfs_accelerate_py.agent_supervisor.runtime.repository_resource_bridge": {
+    "path": "/tmp/ir-release-accelerate-20261001/ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py",
+    "sha256": "37bd578cf49735a7310c23b1d1cd204d623c0e9c3f2d808dd978390475403f8b"
+  },
+  "ipfs_datasets_py.duckdb_control.autoencoder_registry": {
+    "path": "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/duckdb_control/autoencoder_registry.py",
+    "sha256": "a781f5534cf637455b975b31475ced608112c90e1578eca3f79ba916b85d2838"
+  },
+  "ipfs_datasets_py.logic.software_contracts.codebase_runtime_384": {
+    "path": "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_runtime_384.py",
+    "sha256": "30ceb8d9604a1bc5c30eb9b9608fc21bb3fbd490ccceca6e9e4aa715a899f636"
+  },
+  "ipfs_datasets_py.logic.software_contracts.codebase_source_384": {
+    "path": "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_source_384.py",
+    "sha256": "7f0c148bdc1ff0cc01a8cc0bfd115417118eaa2f4f2db0f0d2f2ad23198b95e8"
+  },
+  "ipfs_datasets_py.logic.software_contracts.codebase_training_lifecycle": {
+    "path": "/tmp/ir-release-datasets-20261001/ipfs_datasets_py/logic/software_contracts/codebase_training_lifecycle.py",
+    "sha256": "eac1c133605c859f41464aa10086996ec767942f14b4066c89b35653c7b7de39"
+  }
+}

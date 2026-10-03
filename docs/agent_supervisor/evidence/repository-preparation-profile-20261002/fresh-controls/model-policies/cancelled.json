@@ -1,0 +1,126 @@
+{
+  "benchmark_score": false,
+  "checked_proofs": [],
+  "completion_authority": false,
+  "deadline_enforcement": "cooperative_parent_and_native_subprocess_limits",
+  "discovery": null,
+  "elapsed_seconds": 0.0001541720002933289,
+  "evaluation_population_use": {
+    "holdout_used_for_runtime_selection": false,
+    "training_holdout": "development_retention_gate",
+    "untouched_final_benchmark_test": false
+  },
+  "execution_authority": false,
+  "inference": null,
+  "managed_pipeline": {
+    "disk_enforcement": "precharged_ceiling_plus_sampled_final_named_root_growth",
+    "external_process_rss_captured": false,
+    "external_write_ceiling_bytes_per_phase": 16777216,
+    "hard_disk_quota": false,
+    "schema": "repository-managed-preparation@1"
+  },
+  "model": {
+    "enabled": false,
+    "identity": "explicit-model-off@1"
+  },
+  "model_promotion_performed": false,
+  "model_provider_calls": 0,
+  "model_provider_tokens": 0,
+  "policy_receipt_cid": null,
+  "qualified": false,
+  "schema": "repository-benchmark-preparation@1",
+  "selection": {
+    "index_contracts": [],
+    "inference_paths": [],
+    "inventory_policy": {
+      "admitted_modes": [
+        "git-clean",
+        "git-working"
+      ],
+      "capabilities": {
+        "opaque_entries": {
+          "boundary_inventory": true,
+          "content_capture": false,
+          "selection_eligible": false,
+          "structural_ast": false
+        },
+        "other_utf8_files": {
+          "exact_source_capture": true,
+          "runtime_semantics": false,
+          "semantic_index": "artifact_metadata_only",
+          "structural_ast": false,
+          "target_execution": false
+        },
+        "proof": "selection_references_only_no_obligation_or_evidence_admission",
+        "python_pytest": {
+          "exact_source_capture": true,
+          "runtime_semantics": false,
+          "semantic_index": "conservative_static_observations",
+          "structural_ast": true,
+          "target_execution": false
+        },
+        "submodules_and_nested_repositories": {
+          "boundary_inventory": true,
+          "content_capture": false,
+          "disposition": "opaque_nonregular_boundary",
+          "recursive_analysis": false
+        },
+        "training": "selection_references_only_no_label_or_sample_admission"
+      },
+      "custom_exclusions": [],
+      "dirty_overlay": "exact_head_index_disposition_and_captured_source_identity",
+      "effective_exclusions": [
+        ".eggs",
+        ".git",
+        ".hg",
+        ".mypy_cache",
+        ".nox",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".semantic-index",
+        ".semantic_index",
+        ".svn",
+        ".tox",
+        ".venv",
+        "__pycache__",
+        "build",
+        "coverage",
+        "dist",
+        "env",
+        "external",
+        "htmlcov",
+        "node_modules",
+        "semantic-index-state",
+        "site-packages",
+        "third-party",
+        "third_party",
+        "vendor",
+        "venv"
+      ],
+      "exclusion_matching": "raw_path_component_or_repository_relative_subtree",
+      "external_ignore_policy": "reject_active_patterns_and_fence_configuration_and_exact_bytes",
+      "inventory": "all_nonexcluded_entries_no_training_or_proof_filter",
+      "max_entries": 256,
+      "max_file_bytes": 65536,
+      "profile": "codebase-single-root-python-structural@1",
+      "schema": "codebase-scan-policy@1",
+      "source_forest": "one_committed_git_root_with_opaque_nested_boundaries",
+      "untracked_population": "git_standard_untracked_with_captured_repository_ignore_files"
+    },
+    "model_policy": "model_off",
+    "proof_contracts": [],
+    "proof_inputs": [],
+    "training_selections": []
+  },
+  "semantic_manifest_cid": null,
+  "source_head": null,
+  "stages": [
+    {
+      "elapsed_seconds": 0.00013767500058747828,
+      "error_type": "LeaseCancelledError",
+      "phase": "scan",
+      "status": "failed"
+    }
+  ],
+  "training": null
+}

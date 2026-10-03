@@ -1,0 +1,611 @@
+{
+  "files": [
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/native_repository_finite_supervision.py",
+      "sha256": "49ea5c81adb106f2986f210778ec44c253d516e077fee9dd71c17dfcb18beffd",
+      "size_bytes": 57107
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/repository_benchmark_preparation.py",
+      "sha256": "1e24b8802fb0b7a6893eee3c617f6175c5426002f145ab15cc16eb002b617489",
+      "size_bytes": 22347
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/repository_preparation_profile.py",
+      "sha256": "b65011af3ebb797b8db55e3a0f3a2242b36afdea17d08bb0331028d65fb28f20",
+      "size_bytes": 15861
+    },
+    {
+      "path": "test/api/test_repository_preparation_profile.py",
+      "sha256": "414eef897133f3affe50211febd2c939f41de9cc13c7c53106f7c4b17cbe75f8",
+      "size_bytes": 4917
+    },
+    {
+      "path": "test/integration/test_repository_preparation_profile.py",
+      "sha256": "9eeff8159f27233a34590a541fb6df82ffa8bcc7e00e85f03189ee90e39e12f8",
+      "size_bytes": 20873
+    },
+    {
+      "path": "docs/agent_supervisor/REPOSITORY_PREPARATION_PROFILE.md",
+      "sha256": "29b58931a77615ca392c08a306b7504226ee15d9dfb266e2596916435a0f03dd",
+      "size_bytes": 6083
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/fresh-controls/actual-controls.log",
+      "sha256": "ebef0dbba4073355e70b05a0961b2c130893e28cc2805d31d33d0a2a91699f1c",
+      "size_bytes": 9483
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/fresh-controls/actual-controls.xml",
+      "sha256": "7bbce9f79ac89375c5d54e57f1466e109750ba9c648603bc4c7b733a5d6b9f1b",
+      "size_bytes": 5622
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/fresh-controls/actual-demand-retry-02.log",
+      "sha256": "617b69a889d696859b89971e282dfaeedab07414e4f36b59b5e4373fe976bbc7",
+      "size_bytes": 5145
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/fresh-controls/actual-demand-retry-02.xml",
+      "sha256": "bb7d1e9db2d60df8927aa1932904312a832cf0afa946ca90976e7c901c2c532e",
+      "size_bytes": 409
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/fresh-controls/actual-demand-retry.log",
+      "sha256": "7ddcf1166bdf8e2a7aa4b67b939943a73cb3f83696a44dc114f2173926e5cedf",
+      "size_bytes": 6300
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/fresh-controls/actual-demand-retry.xml",
+      "sha256": "d2e75d0e1255000c849fb51480d6f06ba222242b93ce7fc3e7797a027fdb84c5",
+      "size_bytes": 3523
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/fresh-controls/demand-retry/independent-demand-admission.json",
+      "sha256": "ecc13aed0e413046ebed95c389ddf9df32f35d5b61b34374c06c4f712897db92",
+      "size_bytes": 273
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/fresh-controls/demand-retry/independent-demand.json",
+      "sha256": "ba63316b55cb56d939fef86c094cba88f6f3448a04d392009f3bcf3cb42eeffb",
+      "size_bytes": 91195
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/fresh-controls/final-legacy-controls.log",
+      "sha256": "e94aecbbeae843a61705f9fc89488984bec59a9a023d7a060c2b640e59158aa9",
+      "size_bytes": 8894
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/fresh-controls/final-legacy-controls.xml",
+      "sha256": "918913a1fc1da6aad7cfde305e16cada6823f201ff49e552a142017238426d38",
+      "size_bytes": 6671
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/fresh-controls/final-pure-controls.log",
+      "sha256": "4ab71219be8c18555377901ac340211bef7ef50af669ad86403130ac20f95e0e",
+      "size_bytes": 7415
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/fresh-controls/final-pure-controls.xml",
+      "sha256": "d769dc9856c73747c9518ebeb4dc2aa50689e013fd4eff572974e8ce8fe2568d",
+      "size_bytes": 5351
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/fresh-controls/model-policies/cancelled.json",
+      "sha256": "a083c1389c1d45bca44ab9aba052d359b1a8b32444ee9c2256f4007a0f846add",
+      "size_bytes": 3952
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/fresh-controls/model-policies/optional_training.json",
+      "sha256": "3e4a861ae107733d51d4717c76b5d10c4d87cf85bd5a843229aa0a9bdeb90f6a",
+      "size_bytes": 465501
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/fresh-controls/model-policies/pinned_parent.json",
+      "sha256": "d8ff722725be3f2fc2c9edd6fafcad9e6b93cbfeb8095365195adf8726258d36",
+      "size_bytes": 376939
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/fresh-controls/model-policies/required_training.json",
+      "sha256": "dcec64710729d19fe6d04ad62d079639a8822583266b2b267abef853c0490759",
+      "size_bytes": 104022
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/historical/actual-controls-01.log",
+      "sha256": "55906100874f5041286932bd7f6770917222b1c8441a689b3f9f46a71746d594",
+      "size_bytes": 6664
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/historical/actual-controls-01.xml",
+      "sha256": "01700931432864b2c8147f69d5864901a0ea057e5d8edfccf180af7f58cd14a3",
+      "size_bytes": 1101
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/historical/fence-timings-01.json",
+      "sha256": "cea7debfba16d233d0ff32b749a88781ee6b5aaa5ab087cb1df70b0512767218",
+      "size_bytes": 98
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/historical/historical-content-provenance.json",
+      "sha256": "963ae67fcfad9bfff61f26d7ab74817905af5f83cce35a29f60635a0a93cfdc1",
+      "size_bytes": 307
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/historical/historical-content.py",
+      "sha256": "c69cb85f0901a9a678bcbdf7738ab00095bbe45c5b40d875f2099474bd2a059c",
+      "size_bytes": 20207
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/historical/legacy-controls-01.log",
+      "sha256": "8eecfc3e1c8b6297f9e2c9e92dc74adbdb93c77fa42e59b75ffec28fa6e3c5ba",
+      "size_bytes": 8859
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/historical/legacy-controls-01.xml",
+      "sha256": "3d31c1e8c67a5d66f76d12300ea020c08c6b875ca67a87d790d6bb3437a66e7a",
+      "size_bytes": 6671
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/historical/observer-controls-01.log",
+      "sha256": "c2d33301715c83c00048e652158b589fd6f1640dc1d541a404e896c15679f034",
+      "size_bytes": 3820
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/historical/observer-controls-01.xml",
+      "sha256": "0d708511c4a8d5466dd63de80484db32034eb3dfae4f4caa857361200dbe73e4",
+      "size_bytes": 1479
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/historical/observer-controls-02.log",
+      "sha256": "c489b89bb1184e03440493c523b83eebb38d7b4ffda30c80ebc7cb1a3a7b8482",
+      "size_bytes": 4014
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/historical/observer-controls-02.xml",
+      "sha256": "6972cf7caf3aa3ffe1826f9ad72a7b6282954b9d8406b8048218b7765fe05eff",
+      "size_bytes": 1665
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/historical/observer-review.json",
+      "sha256": "bb633e2287d38478e0a5c5dcc8fd4743fe1941f45a9bb387c693f350376debfd",
+      "size_bytes": 965
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/historical/pinned-parent-profile.json",
+      "sha256": "a40f64541b11069fe1f5bb58b7fe1b504c2110149775721c6bdc5471440333dd",
+      "size_bytes": 3709
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/historical/pure-controls-01.log",
+      "sha256": "d3e26ee0ae16ba683e67bacadfdf95f39547aa325b6e2e5cac2962cc9b59b0ae",
+      "size_bytes": 7379
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/historical/pure-controls-01.xml",
+      "sha256": "cee6a3dccdd58863a0a81fdaff80ce86559d08473af16ccce46eb8dd21838f3e",
+      "size_bytes": 5351
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/historical/pure-controls-02.log",
+      "sha256": "df0ae1d5578ef3ccf7dedd1681708cba4f3acd9aad93ecd7a0161ac67d591b05",
+      "size_bytes": 7379
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/historical/pure-controls-02.xml",
+      "sha256": "824279425ef4cd0f900ce4dbc354e1174da514ed0b0ba27e6802398fbce6ea35",
+      "size_bytes": 5351
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-01/initial-preparation.json",
+      "sha256": "e5997c34a6d7448e1efbb17527b081842b56ce7b717e4578eedcdcf4a780983e",
+      "size_bytes": 355763
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-01/result.json",
+      "sha256": "5e6180a168cbb7f89a2809a37d63cb74b12428060652f1ac5d59a4a3dd984924",
+      "size_bytes": 472272
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-01-source/native_repository_finite_supervision.py",
+      "sha256": "d177ea5593587e8dc9ac1805cd53245ba398b18bbd2ef43d689bb3bdcedd9645",
+      "size_bytes": 56374
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-01-source/repository_benchmark_preparation.py",
+      "sha256": "1e24b8802fb0b7a6893eee3c617f6175c5426002f145ab15cc16eb002b617489",
+      "size_bytes": 22347
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-01-source/repository_preparation_profile.py",
+      "sha256": "a9128915f2323fbbc70b6dc23a85497ae3847f532fe2440baa79de38c0cdddc1",
+      "size_bytes": 11255
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-01-sources.json",
+      "sha256": "3d86e82c12fbfd9cd824bbec13642114bd706071915746004b613a1a7f62a7e5",
+      "size_bytes": 2576
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-01.log",
+      "sha256": "b7ca42ca6423b615e80b6668618bc5fa164f6ae20f69129c80a196f937ad113d",
+      "size_bytes": 28417
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-02/initial-preparation.json",
+      "sha256": "e7672c3289071261dc7109ce1e0aaea509483f20e7ea51321c183e888d211e3e",
+      "size_bytes": 355762
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-02/result.json",
+      "sha256": "6187510625dda207dbb4d6eb40bc8fe8cced6240546228674a923850227b9939",
+      "size_bytes": 472271
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-02-source/native_repository_finite_supervision.py",
+      "sha256": "49ea5c81adb106f2986f210778ec44c253d516e077fee9dd71c17dfcb18beffd",
+      "size_bytes": 57107
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-02-source/repository_benchmark_preparation.py",
+      "sha256": "1e24b8802fb0b7a6893eee3c617f6175c5426002f145ab15cc16eb002b617489",
+      "size_bytes": 22347
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-02-source/repository_preparation_profile.py",
+      "sha256": "b65011af3ebb797b8db55e3a0f3a2242b36afdea17d08bb0331028d65fb28f20",
+      "size_bytes": 15861
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-02-sources.json",
+      "sha256": "a0cfe151d69ca6dc52de0b0ba75e3d00a76ed9abeb18b14f4202234d5c92ca3d",
+      "size_bytes": 2576
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-02.log",
+      "sha256": "3022049a00d942c3d7f82892bca619e3cb7fc5ae1e5ab210c8d9d317ab3295d5",
+      "size_bytes": 29935
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-04/initial-preparation.json",
+      "sha256": "321d3a6fc22f54e2fdf591562bf4d0d0bc871ac9a78a827634f3e3eda5ad232a",
+      "size_bytes": 358566
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-04/result.json",
+      "sha256": "2890bd4500208db2a07d93af2bb2ac597042e0ae06411e6f404e59ee8c3ac9d9",
+      "size_bytes": 475024
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-04-source/benchmarks.agent_supervisor.container_coding.native_repository_finite_supervision.py",
+      "sha256": "49ea5c81adb106f2986f210778ec44c253d516e077fee9dd71c17dfcb18beffd",
+      "size_bytes": 57107
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-04-source/benchmarks.agent_supervisor.container_coding.repository_benchmark_preparation.py",
+      "sha256": "1e24b8802fb0b7a6893eee3c617f6175c5426002f145ab15cc16eb002b617489",
+      "size_bytes": 22347
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-04-source/benchmarks.agent_supervisor.container_coding.repository_preparation_profile.py",
+      "sha256": "b65011af3ebb797b8db55e3a0f3a2242b36afdea17d08bb0331028d65fb28f20",
+      "size_bytes": 15861
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-04-source/ipfs_accelerate_py.agent_supervisor.runtime.repository_pipeline_resources.py",
+      "sha256": "192824a43fb8905e888df3aa85d836911e411f1dcb346628afb0aff2d28ef448",
+      "size_bytes": 30506
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-04-source/ipfs_accelerate_py.agent_supervisor.runtime.repository_process_limits.py",
+      "sha256": "d86b77625291ee02ce934fa67a783ffb9c1ca973426c63b259270597049620cb",
+      "size_bytes": 3487
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-04-source/ipfs_accelerate_py.agent_supervisor.runtime.repository_resource_bridge.py",
+      "sha256": "37bd578cf49735a7310c23b1d1cd204d623c0e9c3f2d808dd978390475403f8b",
+      "size_bytes": 16608
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-04-source/ipfs_datasets_py.duckdb_control.autoencoder_registry.py",
+      "sha256": "a781f5534cf637455b975b31475ced608112c90e1578eca3f79ba916b85d2838",
+      "size_bytes": 61149
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-04-source/ipfs_datasets_py.logic.software_contracts.codebase_runtime_384.py",
+      "sha256": "30ceb8d9604a1bc5c30eb9b9608fc21bb3fbd490ccceca6e9e4aa715a899f636",
+      "size_bytes": 10799
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-04-source/ipfs_datasets_py.logic.software_contracts.codebase_source_384.py",
+      "sha256": "7f0c148bdc1ff0cc01a8cc0bfd115417118eaa2f4f2db0f0d2f2ad23198b95e8",
+      "size_bytes": 26428
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-04-source/ipfs_datasets_py.logic.software_contracts.codebase_training_lifecycle.py",
+      "sha256": "eac1c133605c859f41464aa10086996ec767942f14b4066c89b35653c7b7de39",
+      "size_bytes": 12793
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-04-source/ipfs_datasets_py.logic.software_contracts.content.py",
+      "sha256": "5085f785bbb7b906acc0a3e955e865cf835ab7492d1c82e71a6890463368d061",
+      "size_bytes": 24211
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-04-sources.json",
+      "sha256": "173ae4e5ed8a3d3f6097e228cdefc4ae9526f8331c20b0a81bccc21925a8dc55",
+      "size_bytes": 3460
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-04.log",
+      "sha256": "e7554daa4dfc246495a6a7c9edf72af442ea88579a35a0778348c1a8c1e5a562",
+      "size_bytes": 36286
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-06/independent-cold-successor-preparation.json",
+      "sha256": "2bbb573d518d1b3c0f7df6a08514a9495f0ac6479edf31516b2779cd21d6426c",
+      "size_bytes": 492543
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-06/initial-preparation.json",
+      "sha256": "8e8bc9d5a3d6c460a46fb3005e3d17dc94e0908e5bb38e85b6a62bc87e113c32",
+      "size_bytes": 358587
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-06/published-successor-preparation.json",
+      "sha256": "e0394ebf5e3f6185dd7be34c62d196a0683098f247e4bb15e3636225b47a4e09",
+      "size_bytes": 442320
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-06/result.json",
+      "sha256": "a560497189a47673dcfa03036ca03b114e3b4c77756d85fa5285d1d2765436a2",
+      "size_bytes": 2037061
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-06/semantic-manifest-comparison.json",
+      "sha256": "d129245cdff6f7b31e74da79bbce8e18e280dc189e41503486b832ab77ca19f6",
+      "size_bytes": 77685
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-06/successor-checked-cache-replay.json",
+      "sha256": "54c89190229044b60655b8af1dbcfe8c318ab6bd167e62cf5111204ef0c298a9",
+      "size_bytes": 375461
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-06/successor-semantic-comparison.json",
+      "sha256": "f8caeda95593f85c1ff1d8d4750fd4874a382924b2f9e40af3fad1c92e047e91",
+      "size_bytes": 21495
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-06-source/benchmarks.agent_supervisor.container_coding.native_repository_finite_supervision.py",
+      "sha256": "49ea5c81adb106f2986f210778ec44c253d516e077fee9dd71c17dfcb18beffd",
+      "size_bytes": 57107
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-06-source/benchmarks.agent_supervisor.container_coding.repository_benchmark_preparation.py",
+      "sha256": "1e24b8802fb0b7a6893eee3c617f6175c5426002f145ab15cc16eb002b617489",
+      "size_bytes": 22347
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-06-source/benchmarks.agent_supervisor.container_coding.repository_preparation_profile.py",
+      "sha256": "b65011af3ebb797b8db55e3a0f3a2242b36afdea17d08bb0331028d65fb28f20",
+      "size_bytes": 15861
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-06-source/ipfs_accelerate_py.agent_supervisor.runtime.repository_pipeline_resources.py",
+      "sha256": "192824a43fb8905e888df3aa85d836911e411f1dcb346628afb0aff2d28ef448",
+      "size_bytes": 30506
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-06-source/ipfs_accelerate_py.agent_supervisor.runtime.repository_process_limits.py",
+      "sha256": "d86b77625291ee02ce934fa67a783ffb9c1ca973426c63b259270597049620cb",
+      "size_bytes": 3487
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-06-source/ipfs_accelerate_py.agent_supervisor.runtime.repository_resource_bridge.py",
+      "sha256": "37bd578cf49735a7310c23b1d1cd204d623c0e9c3f2d808dd978390475403f8b",
+      "size_bytes": 16608
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-06-source/ipfs_datasets_py.duckdb_control.autoencoder_registry.py",
+      "sha256": "a781f5534cf637455b975b31475ced608112c90e1578eca3f79ba916b85d2838",
+      "size_bytes": 61149
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-06-source/ipfs_datasets_py.logic.software_contracts.codebase_runtime_384.py",
+      "sha256": "30ceb8d9604a1bc5c30eb9b9608fc21bb3fbd490ccceca6e9e4aa715a899f636",
+      "size_bytes": 10799
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-06-source/ipfs_datasets_py.logic.software_contracts.codebase_source_384.py",
+      "sha256": "7f0c148bdc1ff0cc01a8cc0bfd115417118eaa2f4f2db0f0d2f2ad23198b95e8",
+      "size_bytes": 26428
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-06-source/ipfs_datasets_py.logic.software_contracts.codebase_training_lifecycle.py",
+      "sha256": "eac1c133605c859f41464aa10086996ec767942f14b4066c89b35653c7b7de39",
+      "size_bytes": 12793
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-06-source/ipfs_datasets_py.logic.software_contracts.content.py",
+      "sha256": "b6f0299be63eb3d7d2517abcc431d51ff28668555fe464c0a54c99507d248eb4",
+      "size_bytes": 28720
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-06-sources.json",
+      "sha256": "3db17797f5bd864d8803bc0033d9bec0bcd91e4f4b4bab9d09ef6701f02f518b",
+      "size_bytes": 3460
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-06.log",
+      "sha256": "3099e943540383441274645edc2b5851290867f397c70f3b9b6bd38bde995b8c",
+      "size_bytes": 78491
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-diagnostic-03/initial-preparation.json",
+      "sha256": "116411f7ab76289b9e509d6f2339326ce8a8d25ca145056afb38ebec30a2596c",
+      "size_bytes": 355965
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-diagnostic-03/result.json",
+      "sha256": "92113e70f84393d07d030828d3b4d4e2ee7fb91ce50d3597cd93ff29887a428a",
+      "size_bytes": 472713
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-diagnostic-03-functions.json",
+      "sha256": "b16d024d0ceecf2494ef7a7e98842e8c42fec09233da190f70586eaf477dcf84",
+      "size_bytes": 7407
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-diagnostic-03-sources.json",
+      "sha256": "a0cfe151d69ca6dc52de0b0ba75e3d00a76ed9abeb18b14f4202234d5c92ca3d",
+      "size_bytes": 2576
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-diagnostic-03.log",
+      "sha256": "a9c16960e79d2ecda60c0070a7e8fbd7c251d78df831c589f1ab81c658679384",
+      "size_bytes": 21365
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-diagnostic-03.txt",
+      "sha256": "52c0759d9519e9eb79084bb9c0759357f99b7fb37668ef051b8deb6d33bfefe7",
+      "size_bytes": 6163
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-diagnostic-05/initial-preparation.json",
+      "sha256": "b2f99c8153e0cfb9ee66230a1497a3dd89f1f0f3251b3c429f65d2da6517f22e",
+      "size_bytes": 358787
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-diagnostic-05/result.json",
+      "sha256": "6062bf5e0f3cda8a440b8d04ab1683e70fe6a8d122b7b509637c72b32713e7ce",
+      "size_bytes": 475521
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-diagnostic-05-functions.json",
+      "sha256": "d901c6244eb213f6ea6ce95c667499ca40740c40eb07b56954de812027637df3",
+      "size_bytes": 29093
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-diagnostic-05-sources.json",
+      "sha256": "173ae4e5ed8a3d3f6097e228cdefc4ae9526f8331c20b0a81bccc21925a8dc55",
+      "size_bytes": 3460
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-diagnostic-05.log",
+      "sha256": "c8fe1c7901291dc0adf06af2b0fd37112b80fc3b6a93b9566f1cd218e4f249f0",
+      "size_bytes": 26705
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native-pinned-parent-diagnostic-05.txt",
+      "sha256": "6b0a62323b8eb466d4e34d2060e780ba95e9748756425b98ac3ced42fe9af9cd",
+      "size_bytes": 6768
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/native06-independent-audit.json",
+      "sha256": "e74007cef8974db44d7a26769e8de7898f05893f88c09e066e4a468ba93b43e6",
+      "size_bytes": 778
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/qualification.json",
+      "sha256": "4a6aceec6fc477e7cb1d83d57277523c00e2252ab51efbadcea7ef70f65df9b3",
+      "size_bytes": 17369
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/recovery/admission-retry-test-source.json",
+      "sha256": "cf8dccb21531539d6cb6bb0d46b37a77003bbfa212d2c9bc3d12ae66705be406",
+      "size_bytes": 286
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/recovery/admission-retry-test-source.py",
+      "sha256": "9eeff8159f27233a34590a541fb6df82ffa8bcc7e00e85f03189ee90e39e12f8",
+      "size_bytes": 20873
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/recovery/final-test-sources.json",
+      "sha256": "69c06982e197ac61b1afe59519a8481932e341a65f0f5453186e78f43da35b86",
+      "size_bytes": 1276
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/recovery/producer-recovery.json",
+      "sha256": "d31ed20c22156d4335e04db0a2081efa51b057c3c089fe11b31ec178e2c77a05",
+      "size_bytes": 1177
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/recovery/recovery.json",
+      "sha256": "4263f1126b17b1ac7a7077b690bd089c0792f84085a5de47d6951aa156e79f5d",
+      "size_bytes": 1991
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/recovery/run-actual-controls.sh",
+      "sha256": "982c120dd62a22a0386d611bc0ddc85a84094a564e766910b5c23034685df2f6",
+      "size_bytes": 1416
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/recovery/run-actual-demand-retry-02.sh",
+      "sha256": "689eb69e84fbcb1a3788782c672a3abc7f7d395384e33348da810398270ebc44",
+      "size_bytes": 1533
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/recovery/run-actual-demand-retry.sh",
+      "sha256": "9422819189e00eb771ee66d8fa86141bfbe01f14a5255437474ec16835c7b9a6",
+      "size_bytes": 1521
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/recovery/run-native06.sh",
+      "sha256": "d18f41034d900cf46ff5bb22d1eaa0f9f1781528eaf24830373402efe9306802",
+      "size_bytes": 872
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/recovery/test-doc-recovery.json",
+      "sha256": "e5f473fd0facfcf29300a43c65ff4e9ea7c1698e0a43037fb18338894bb6ab55",
+      "size_bytes": 1183
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/recovery/test-source/test__api__test_finite_integer_codebase.py",
+      "sha256": "5b1be6fc2a410a15cebe2dd1b04e781b9eaa888d7cc73eae2fabe2c334a84f63",
+      "size_bytes": 19022
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/recovery/test-source/test__api__test_native_repository_finite_supervision.py",
+      "sha256": "012deaa4c188ad0e1bc2ce10a1044bb1363de17478a4eb2b8a6050d639d709d6",
+      "size_bytes": 2884
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/recovery/test-source/test__api__test_native_repository_managed_driver.py",
+      "sha256": "4ddc60a9b0fc34068b436a5a11f74424ca906080e0e150053751bc2654384046",
+      "size_bytes": 4925
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/recovery/test-source/test__api__test_repository_preparation_profile.py",
+      "sha256": "414eef897133f3affe50211febd2c939f41de9cc13c7c53106f7c4b17cbe75f8",
+      "size_bytes": 4917
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/recovery/test-source/test__integration__test_repository_benchmark_preparation.py",
+      "sha256": "23edae560eb874124fe4d144a3c6e8022a4bd3a65320cef374b2b06c1f341e5b",
+      "size_bytes": 9603
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/recovery/test-source/test__integration__test_repository_managed_preparation_and_handoff.py",
+      "sha256": "9b752aec539228ec22175a0ef84445c9692d79bc357d571f2b0ba50ce0a5559e",
+      "size_bytes": 16195
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/recovery/test-source/test__integration__test_repository_preparation_profile.py",
+      "sha256": "4806f37e4a3fdb3f7f5f2333b29a14cac9b0b431a3f9fbeade657adeb6436ddd",
+      "size_bytes": 19066
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/recovery/test-source/test__integration__test_terminal_codebase_semantic_index.py",
+      "sha256": "baa8637e964f12f6f7b85d4b276391b070e85f52b544f3fbe1c45e6ceca48edf",
+      "size_bytes": 5746
+    },
+    {
+      "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/manifest.json",
+      "sha256": "8918f5f49e13c83537b5a1d75c05ced917abc5f52794b8178142bded8b747133",
+      "size_bytes": 31784
+    }
+  ],
+  "repository": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "schema": "repository-preparation-profile-file-scope@1"
+}

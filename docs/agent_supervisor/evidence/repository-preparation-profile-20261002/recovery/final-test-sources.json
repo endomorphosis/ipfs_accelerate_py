@@ -1,0 +1,34 @@
+[
+  {
+    "path": "test/api/test_repository_preparation_profile.py",
+    "sha256": "414eef897133f3affe50211febd2c939f41de9cc13c7c53106f7c4b17cbe75f8"
+  },
+  {
+    "path": "test/api/test_native_repository_managed_driver.py",
+    "sha256": "4ddc60a9b0fc34068b436a5a11f74424ca906080e0e150053751bc2654384046"
+  },
+  {
+    "path": "test/api/test_native_repository_finite_supervision.py",
+    "sha256": "012deaa4c188ad0e1bc2ce10a1044bb1363de17478a4eb2b8a6050d639d709d6"
+  },
+  {
+    "path": "test/integration/test_repository_preparation_profile.py",
+    "sha256": "4806f37e4a3fdb3f7f5f2333b29a14cac9b0b431a3f9fbeade657adeb6436ddd"
+  },
+  {
+    "path": "test/integration/test_repository_managed_preparation_and_handoff.py",
+    "sha256": "9b752aec539228ec22175a0ef84445c9692d79bc357d571f2b0ba50ce0a5559e"
+  },
+  {
+    "path": "test/integration/test_repository_benchmark_preparation.py",
+    "sha256": "23edae560eb874124fe4d144a3c6e8022a4bd3a65320cef374b2b06c1f341e5b"
+  },
+  {
+    "path": "test/integration/test_terminal_codebase_semantic_index.py",
+    "sha256": "baa8637e964f12f6f7b85d4b276391b070e85f52b544f3fbe1c45e6ceca48edf"
+  },
+  {
+    "path": "test/api/test_finite_integer_codebase.py",
+    "sha256": "5b1be6fc2a410a15cebe2dd1b04e781b9eaa888d7cc73eae2fabe2c334a84f63"
+  }
+]

@@ -1,0 +1,54 @@
+{
+  "doc_recovered": 1,
+  "files": [
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/repository_preparation_profile.py",
+      "sha256": "b65011af3ebb797b8db55e3a0f3a2242b36afdea17d08bb0331028d65fb28f20",
+      "size_bytes": 15861
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/native_repository_finite_supervision.py",
+      "sha256": "49ea5c81adb106f2986f210778ec44c253d516e077fee9dd71c17dfcb18beffd",
+      "size_bytes": 57107
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/repository_benchmark_preparation.py",
+      "sha256": "1e24b8802fb0b7a6893eee3c617f6175c5426002f145ab15cc16eb002b617489",
+      "size_bytes": 22347
+    },
+    {
+      "path": "test/api/test_repository_preparation_profile.py",
+      "sha256": "414eef897133f3affe50211febd2c939f41de9cc13c7c53106f7c4b17cbe75f8",
+      "size_bytes": 4917
+    },
+    {
+      "path": "test/integration/test_repository_preparation_profile.py",
+      "sha256": "4806f37e4a3fdb3f7f5f2333b29a14cac9b0b431a3f9fbeade657adeb6436ddd",
+      "size_bytes": 19066
+    },
+    {
+      "path": "docs/agent_supervisor/REPOSITORY_PREPARATION_PROFILE.md",
+      "sha256": "a0b2f407293cc7f7a4a945455f20db85297fb06849aa359dddfcb798d488be7e",
+      "size_bytes": 4636
+    }
+  ],
+  "historical_native_success": false,
+  "limitations": [
+    "No final-actual controls or native04 success existed at reboot.",
+    "Previous package-evidence.py was an unexecuted future packager and is not qualification evidence.",
+    "Documentation now states the pending qualification honestly."
+  ],
+  "native_run_pending": true,
+  "pure_controls": {
+    "errors": 0,
+    "failures": 0,
+    "seconds": 27.246,
+    "skipped": 0,
+    "tests": 32
+  },
+  "schema": "repository-preparation-reboot-recovery@1",
+  "semantic_reconstruction_used": false,
+  "sources_recovered": 3,
+  "test_source_recovery": "literal prior tool edits replayed after review, not inferred from pass logs",
+  "tests_recovered": 2
+}

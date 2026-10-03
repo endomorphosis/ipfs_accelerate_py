@@ -1,0 +1,33 @@
+[
+  {
+    "path": "test/api/test_repository_preparation_profile.py",
+    "sha256": "414eef897133f3affe50211febd2c939f41de9cc13c7c53106f7c4b17cbe75f8",
+    "source_session": "rollout-2026-10-02T04-35-58-01a0fae5-c900-7a62-9098-c671c16b6bec.jsonl",
+    "tool_call_lines": [
+      6139
+    ],
+    "recovery": "recorded_literal_file_edits_replayed_without_shell_execution"
+  },
+  {
+    "path": "test/integration/test_repository_preparation_profile.py",
+    "sha256": "4806f37e4a3fdb3f7f5f2333b29a14cac9b0b431a3f9fbeade657adeb6436ddd",
+    "source_session": "rollout-2026-10-02T04-35-58-01a0fae5-c900-7a62-9098-c671c16b6bec.jsonl",
+    "tool_call_lines": [
+      6158,
+      6172,
+      6389,
+      6427
+    ],
+    "recovery": "recorded_literal_file_edits_replayed_without_shell_execution"
+  },
+  {
+    "path": "docs/agent_supervisor/REPOSITORY_PREPARATION_PROFILE.md",
+    "sha256": "dc340de9adc2e66389327c5fece9f3f35fa16d17d142bd9d05ddef5b4b9a6b07",
+    "source_session": "rollout-2026-10-02T04-35-58-01a0fae5-c900-7a62-9098-c671c16b6bec.jsonl",
+    "tool_call_lines": [
+      6496,
+      6735
+    ],
+    "recovery": "recorded_literal_file_edits_replayed_without_shell_execution"
+  }
+]

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="16.133" timestamp="2026-10-03T00:16:30.619820+00:00" hostname="spark-b271"><testcase classname="integration.test_repository_preparation_profile" name="test_independent_index_contract_and_demanded_proof_preserve_inventory" time="1.650"><failure message="ipfs_accelerate_py.agent_supervisor.runtime.repository_resource_bridge.RepositoryResourceError: supervisor lane policy refused repository envelope: host_cpu_high_watermark">prepared = (&lt;ipfs_datasets_py.logic.software_contracts.codebase_ir.RepositoryCodebaseIndex object at 0xfc8a018f32c0&gt;, PosixPath('...tory:semantic-integration', 'receipt_cid': 'baguqeerae53fauk5pxri4ts52hquttxkhmbzwu6osdfg6imz3abxgzzpm5uq', ...}, ...})
+finite_tools = {'dependency_scope': 'Exact selected native executable bytes; ambient shared libraries, Python standard library and Le...4d177cea085', 'size_bytes': 13824}, 'policy_cid': 'baguqeeragnzlrf3tq5inpxclhape6kh2uw773746qwe36b6ryc4wu674zqeq', ...}
+tmp_path = PosixPath('/home/barberb/lift_coding/artifacts/repository-preparation-recovery-20261002/actual-demand-retry-fixture/test_independent_index_contrac0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xfc89fa7c2f30&gt;
+
+    def test_independent_index_contract_and_demanded_proof_preserve_inventory(prepared, finite_tools, tmp_path, monkeypatch):
+        from ipfs_datasets_py.logic.software_contracts import codebase_finite_integer_observation as native
+        index, repository, prior, _ = prepared
+        contract = IntegerOffsetContract("calc.py", "increment", "n", 2)
+        selected = prep.RepositoryPreparationSelection(CodebaseScanPolicy(), index_contracts=(contract,))
+&gt;       with managed(tmp_path, prior.repository_id, "demand") as (pipeline, attempts):
+
+test/integration/test_repository_preparation_profile.py:59: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+test/integration/test_repository_preparation_profile.py:36: in managed
+    with RepositoryPipelineResources(supervisor).reserve(repository_id=repository_id, workspace=root,
+/usr/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/repository_pipeline_resources.py:539: in reserve
+    with self.bridge.reserve(repository_id=repository_id, workspace=workspace,
+/usr/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py:303: in reserve
+    _require(local is not None and decision.admitted, "supervisor lane policy refused repository envelope: " + decision.reason)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = False
+message = 'supervisor lane policy refused repository envelope: host_cpu_high_watermark'
+
+    def _require(value, message):
+        if not value:
+&gt;           raise RepositoryResourceError(message)
+E           ipfs_accelerate_py.agent_supervisor.runtime.repository_resource_bridge.RepositoryResourceError: supervisor lane policy refused repository envelope: host_cpu_high_watermark
+
+ipfs_accelerate_py/agent_supervisor/runtime/repository_resource_bridge.py:56: RepositoryResourceError</failure></testcase></testsuite></testsuites>

@@ -98,24 +98,14 @@ def prepare_request(*, index, head, repository, intent, declared, tools, schedul
     if preparation_binding is not None:
         selection["prepared_source_model"] = preparation_binding
 
-    prepared_semantics = False
-    if preparation_binding is not None:
-        from .repository_preparation_profile import PreparedRepositoryObserver
-        prepared_semantics = (type(preparation_observer) is PreparedRepositoryObserver
-            and preparation_observer.verifies(index=index, repository=repository,
-                expected_head=head, descriptor=semantic_index))
-
     def observed_roots():
-        if prepared_semantics and not preparation_observer.verifies(index=index, repository=repository,
-                expected_head=head, descriptor=semantic_index):
-            raise ValueError("prepared semantic descriptor changed before planning admission")
         if preparation_binding is not None and preparation_observer() != preparation_binding:
             raise ValueError("frozen preparation changed before planning admission")
         if checked_cache is not None:
             lookup = checked_cache["owner"].lookup(owner_inputs=checked_cache["inputs"])
             if _cache_binding(lookup) != checked_cache["binding"]:
                 raise ValueError("finite checked cache changed before planning admission")
-        if semantic_index is not None and not prepared_semantics:
+        if semantic_index is not None:
             from .terminal_codebase_semantic_index import verify_semantic_index
             verify_semantic_index(index=index, repository=repository, expected_head=head,
                 descriptor=semantic_index, scheduler=scheduler, parent_lease=parent_lease,
@@ -414,22 +404,22 @@ def qualify(*, output: Path, python: Path, lean: Path, public_evidence: bool = F
                     resource_receipt_after_preparation=envelope.receipt(),
                     full_trial_parent_retained=trial_envelope is not None))
                 _write(output / (operation_id + "-preparation.json"), report["preparation_reports"][-1])
-                descriptor = dict(schema="terminal-codebase-semantic-index@1", manifest_cid=prepared["semantic_manifest_cid"],
+                if profile is not None:
+                    from .repository_preparation_profile import freeze_preparation
+                    report["numerical_head_refits"] += int(bool(prepared["training"] and prepared["training"].get("training_executed")))
+                    report["numerical_inference_calls"] += int(prepared["inference"] is not None)
+                    def observe_preparation():
+                        return freeze_preparation(index=index, repository=repository,
+                            expected_head=CodebaseHead.from_dict(prepared["source_head"]), report=prepared,
+                            selection=selection, model=selected_model, **native_resources())
+                    binding = observe_preparation()
+                    prepared_bindings[operation_id] = (binding, observe_preparation)
+                    report.setdefault("frozen_preparations", {})[operation_id] = binding
+                return CodebaseHead.from_dict(prepared["source_head"]), dict(
+                    schema="terminal-codebase-semantic-index@1", manifest_cid=prepared["semantic_manifest_cid"],
                     policy_receipt_cid=prepared["policy_receipt_cid"], head=prepared["source_head"],
                     contract=contract.to_dict(), coverage=prepared["complete_inventory"],
                     proof_authority=False, training_executed=False)
-                if profile is not None:
-                    from .repository_preparation_profile import PreparedRepositoryObserver
-                    report["numerical_head_refits"] += int(bool(prepared["training"] and prepared["training"].get("training_executed")))
-                    report["numerical_inference_calls"] += int(prepared["inference"] is not None)
-                    observe_preparation = PreparedRepositoryObserver(index=index, repository=repository,
-                        expected_head=CodebaseHead.from_dict(prepared["source_head"]), report=prepared,
-                        selection=selection, model=selected_model, semantic_descriptor=descriptor,
-                        resources=native_resources)
-                    binding = observe_preparation.binding
-                    prepared_bindings[operation_id] = (binding, observe_preparation)
-                    report.setdefault("frozen_preparations", {})[operation_id] = binding
-                return CodebaseHead.from_dict(prepared["source_head"]), descriptor
             return prepare_semantic_index(index=index, repository=repository,
                 repository_id=repository_id, operation_id=operation_id, expected_head=expected_head,
                 contract=IntegerOffsetContract("calc.py", "increment", "n", 2), scheduler=scheduler)
