@@ -1,0 +1,14 @@
+{
+  "archive_sha256": "a83b157f478dbcb869f134e71bfd02b17bdb7f82f3de8d281cc6202f66464d0b",
+  "body_payloads_recorded": false,
+  "complete_archive_scan": true,
+  "duplicate_names": {},
+  "manifest_rows": 26905,
+  "members": 26905,
+  "missing_manifest_members": [],
+  "nonregular": [],
+  "schema": "runtime-complete-tar-topology@1",
+  "seconds": 7.714151068998035,
+  "toolchain_ancestor_entries": [],
+  "unlisted_members": []
+}

@@ -1,0 +1,18 @@
+{
+  "advice_issued": false,
+  "archive_sha256": "a83b157f478dbcb869f134e71bfd02b17bdb7f82f3de8d281cc6202f66464d0b",
+  "candidate_sha256": "6a2d8941312a790deb2c3d2d04815dd656b98ccc04f75b79785970773a837cb6",
+  "container_cleanup_confirmed": true,
+  "error_component": "toolchains",
+  "error_type": "NotADirectoryError",
+  "filesystem_cause_confirmed": false,
+  "full_failing_row_not_retained": true,
+  "native_context_started": false,
+  "official_verifier_executed": false,
+  "provider_calls": 0,
+  "schema": "manifest-cache-diagnostic-refusal@1",
+  "source_pins_unchanged": true,
+  "status": "refused_during_complete_inventory_preflight",
+  "unsafe_path_check_relaxed": false,
+  "wrapper_sha256": "4d9573b3a971d312d31334cc1b1fd1b61ae68aece2d50260b7dc93f50980098a"
+}

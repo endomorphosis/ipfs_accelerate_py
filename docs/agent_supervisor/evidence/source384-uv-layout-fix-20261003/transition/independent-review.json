@@ -1,0 +1,30 @@
+{
+  "at": "2026-10-03T12:36:01.028429+00:00",
+  "controls_reviewed": {
+    "passed": 5,
+    "receipt": "controls.json"
+  },
+  "findings": [
+    "Probe reads metadata only for fixed /opt/ipfs-supervisor and /opt/ipfs-supervisor/toolchains; readlink is restricted to the latter and bounded4096bytes. No general home traversal, credential body, source body or command output is collected.",
+    "Raw docker exec uses Python-I-S-B without a shell; every probe has10s timeout and32KiB output bound.",
+    "Only SHA256 command/upload-target labels are logged; upload source/contents and environment values are not inspected.",
+    "At most256 events; first symlink/non-directory triggers a second fixed-path confirmation and refuses before the next deployment operation.",
+    "Instance exec/upload hooks restore in finally and native deployment cleanup remains in control; exact frozen archive, profile, operation budgets and outer2300s budget are retained.",
+    "source384_context=False prevents native context/model inference; no provider or verifier call is introduced."
+  ],
+  "limitations": [
+    "The experiment changes setup timing and is diagnostic-only, never benchmark or production qualification evidence.",
+    "No runtime creator of the confirmed27-byte toolchains symlink has been established yet.",
+    "Read-only installed Harbor review found bash-c execution and ordinary copy/mount setup, without an explicit toolchains relocation."
+  ],
+  "reviewer": "peer_recovery_fresh",
+  "schema": "read-only-independent-review@1",
+  "scope": "External setup-transition diagnostic only; no production edits or inference.",
+  "source_sha256": {
+    "layout_observer.py": "a04d1101a5aeff685179757625734f81fb4efb23fde88801a9fd41bee7492591",
+    "run_diagnostic.py": "2a70e38758eabb4c79fe0ee328a91ce76d49de8a86eeddb5f5793dc45affce5f",
+    "test_layout_observer.py": "48fd0f2280e007c500811ad5cd2e99b4ce19dcbc82f2b80b934d758cd9603aa5"
+  },
+  "tests_executed_by_reviewer": false,
+  "verdict": "no_launch_blocker"
+}

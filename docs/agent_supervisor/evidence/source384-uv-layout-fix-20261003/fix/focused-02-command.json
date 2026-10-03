@@ -1,0 +1,26 @@
+{
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_uv_layout.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/source384-uv-layout-fix-20261003/focused-02.xml"
+  ],
+  "environment_overrides": {
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "CUDA_VISIBLE_DEVICES": "",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/source384-uv-layout-fix-20261003/focused-02-seals.duckdb",
+    "SUPERVISOR_TEST_UV_0_9_24": "/home/barberb/lift_coding/artifacts/source384-uv-layout-fix-20261003/native-tool/uv-0.9.24",
+    "SUPERVISOR_TEST_UV_SHA256": "f66cdee4104f17feb7f7dc22bab75210d0ae0ad1be1a99a7bc67e3c0221755fc"
+  },
+  "source_generation": "final-sources.json",
+  "scope": "deployment controls and exact pinned UV offline migration; no benchmark/provider/model calls"
+}

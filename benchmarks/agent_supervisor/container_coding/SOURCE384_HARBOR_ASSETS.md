@@ -54,6 +54,14 @@ dependencies and other runtime packages still use their configured package
 indexes, and the existing 600-second installation bound remains unchanged.
 Omitting both options retains the ordinary pinned online installation.
 
+Managed Python installs under `/opt/ipfs-supervisor/python-runtime/python`,
+separate from the shipped `/opt/ipfs-supervisor/toolchains/lean` assets. Both
+UV installation and virtual-environment creation use that managed root;
+the runtime interpreter remains `/opt/ipfs-supervisor/venv/bin/python`.
+This separation prevents UV 0.9.24's legacy sibling-`toolchains` migration
+from relocating Lean. The [layout qualification](SOURCE384_DOCKER_QUALIFICATION.md#managed-python-and-lean-layout-collision)
+records the reproduced collision and native offline regression control.
+
 For `full_supervisor_benchmark prepare`, the optional `--source384-config`
 rechecks the selected local config against the archive. A full arm containing
 Source384 requires `--resource-profile source384-5cpu-12gib@1`. Select that same

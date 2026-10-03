@@ -1,0 +1,30 @@
+Traceback (most recent call last):
+  File "/opt/ipfs-supervisor/cache-diagnostic.py", line 85, in open_file
+    try:child = os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+NotADirectoryError: [Errno 20] Not a directory: 'toolchains'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/opt/ipfs-supervisor/cache-diagnostic.py", line 108, in advise
+    try:child=open_file(fd,row['path'])
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/ipfs-supervisor/cache-diagnostic.py", line 86, in open_file
+    except OSError as exc:raise path_refusal(exc,root,parent,part,name,position) from exc
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+PathRefusal: {"body_read": false, "component": "toolchains", "component_position": 0, "entry_nofollow": {"bytes": 27, "device": 122, "gid": 0, "inode": 7256347, "kind": "symlink", "links": 1, "mode": 41471, "uid": 0}, "errno": 20, "error_type": "NotADirectoryError", "parent_descriptor": {"bytes": 4096, "descriptor_target": "/opt/ipfs-supervisor", "device": 122, "gid": 0, "inode": 7227569, "kind": "directory", "links": 17, "mode": 16877, "uid": 0}, "path": "toolchains/lean/bin/cadical", "root_descriptor": {"bytes": 4096, "descriptor_target": "/opt/ipfs-supervisor", "device": 122, "gid": 0, "inode": 7227569, "kind": "directory", "links": 17, "mode": 16877, "uid": 0}, "schema": "manifest-cache-path-refusal@1"}
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "/opt/ipfs-supervisor/cache-diagnostic.py", line 176, in <module>
+    if __name__=='__main__':main()
+                            ^^^^^^
+  File "/opt/ipfs-supervisor/cache-diagnostic.py", line 171, in main
+    try: result=advise(ROOT,manifest['files'])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/ipfs-supervisor/cache-diagnostic.py", line 110, in advise
+    raise PathRefusal({**exc.details,'row_index':index,'manifest_row':row,
+PathRefusal: {"advice_issued": false, "body_read": false, "component": "toolchains", "component_position": 0, "entry_nofollow": {"bytes": 27, "device": 122, "gid": 0, "inode": 7256347, "kind": "symlink", "links": 1, "mode": 41471, "uid": 0}, "errno": 20, "error_type": "NotADirectoryError", "manifest_row": {"bytes": 1074760, "mode": 493, "path": "toolchains/lean/bin/cadical", "sha256": "9ea94a260380829735e3dc3b77a62eea078bb88edfe45f287193e9ae1afd5e0e"}, "parent_descriptor": {"bytes": 4096, "descriptor_target": "/opt/ipfs-supervisor", "device": 122, "gid": 0, "inode": 7227569, "kind": "directory", "links": 17, "mode": 16877, "uid": 0}, "path": "toolchains/lean/bin/cadical", "phase": "complete_inventory_preflight", "root_descriptor": {"bytes": 4096, "descriptor_target": "/opt/ipfs-supervisor", "device": 122, "gid": 0, "inode": 7227569, "kind": "directory", "links": 17, "mode": 16877, "uid": 0}, "row_index": 11707, "schema": "manifest-cache-path-refusal@1"}

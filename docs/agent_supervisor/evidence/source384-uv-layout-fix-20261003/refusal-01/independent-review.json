@@ -1,0 +1,31 @@
+{
+  "at": "2026-10-03T12:08:35.566702+00:00",
+  "controls_reviewed": {
+    "passed": 10,
+    "receipt": "controls-02.json",
+    "wrapper_final_validation": "wrapper-final-validation.json"
+  },
+  "findings": [
+    "Exact archive/manifest pins bind fresh native deployment before the helper is uploaded; resource profile and native/probe/outer deadlines remain unchanged.",
+    "Manifest reader uses no-follow nonblocking descriptors, regular-file/size checks and bounded reads after arming its timer; FIFO/symlink/oversize controls cover the initial review finding.",
+    "Selected files are closed manifest rows under explicit runtime prefixes; descriptor-relative traversal rejects escapes, symlinks, nonregular files and multiple links. All rows are preflighted before advice.",
+    "Only fdatasync and POSIX_FADV_DONTNEED act on selected read-only file descriptors. No global cache controls, cgroup writes, body writes, source mutation, scheduler changes, provider calls or verifier execution are added.",
+    "Stable inode/device/mode/link/ownership/size/time metadata is checked before and after advice and on final reopen. Tests also compare actual bytes. Runtime model/source owners independently validate selected assets later.",
+    "Hint failures are counted separately and never reported as successful reclamation. Wrapper telemetry labels global_drop_caches=False without asserting that pages were or were not reclaimed."
+  ],
+  "limitations": [
+    "Candidate deliberately avoids rereading selected bodies, so byte-hash validation relies on the fresh verified deployment and later native asset consumers; metadata checks do not replace cryptographic content validation.",
+    "POSIX advice is best effort. Available-memory change and admission/inference success must be measured in the authorized diagnostic, not inferred from these controls.",
+    "No test, Docker, model or provider execution was performed by this reviewer."
+  ],
+  "reviewer": "peer_recovery_fresh",
+  "schema": "read-only-independent-review@1",
+  "scope": "Off-tree diagnostic only; no production code changes or benchmark/qualification claims by this review.",
+  "source_sha256": {
+    "cache_candidate.py": "6a2d8941312a790deb2c3d2d04815dd656b98ccc04f75b79785970773a837cb6",
+    "run_diagnostic.py": "4d9573b3a971d312d31334cc1b1fd1b61ae68aece2d50260b7dc93f50980098a",
+    "test_cache_candidate.py": "dbb07f9c156d2b0ba32db41b6691d22e615c3389a35655cf056801cbaf62ad9d"
+  },
+  "tests_executed_by_reviewer": false,
+  "verdict": "no_launch_blocker"
+}

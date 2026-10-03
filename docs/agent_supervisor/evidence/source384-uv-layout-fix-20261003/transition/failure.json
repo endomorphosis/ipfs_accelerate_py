@@ -1,0 +1,4 @@
+{
+  "error": "fixed runtime toolchains path became symlink",
+  "error_type": "LayoutTransition"
+}

@@ -1,0 +1,4 @@
+{
+  "error": "bounded manifest-only cache advice failed",
+  "error_type": "ValueError"
+}

@@ -1,0 +1,66 @@
+{
+  "confirmation": {
+    "root": {
+      "bytes": 4096,
+      "device": 122,
+      "exists": true,
+      "gid": 0,
+      "inode": 7227569,
+      "kind": "directory",
+      "mode": 16877,
+      "uid": 0
+    },
+    "schema": "fixed-runtime-toolchains-layout@1",
+    "toolchains": {
+      "bytes": 27,
+      "device": 122,
+      "exists": true,
+      "gid": 0,
+      "inode": 7256347,
+      "kind": "symlink",
+      "link_target": "/opt/ipfs-supervisor/python",
+      "mode": 41471,
+      "uid": 0
+    }
+  },
+  "credential_contents_recorded": false,
+  "prior_kind": "directory",
+  "provider_calls": 0,
+  "schema": "runtime-layout-transition@1",
+  "source384_context_executed": false,
+  "stopped_before_next_operation": true,
+  "triggering_event": {
+    "at": 1791031047.5444176,
+    "call": {
+      "kind": "exec",
+      "number": 7,
+      "sha256": "1d2ce15a99859c520150b299baa54110e83fca4b4fe83ed01942a7259ca76992"
+    },
+    "observed": {
+      "root": {
+        "bytes": 4096,
+        "device": 122,
+        "exists": true,
+        "gid": 0,
+        "inode": 7227569,
+        "kind": "directory",
+        "mode": 16877,
+        "uid": 0
+      },
+      "schema": "fixed-runtime-toolchains-layout@1",
+      "toolchains": {
+        "bytes": 27,
+        "device": 122,
+        "exists": true,
+        "gid": 0,
+        "inode": 7256347,
+        "kind": "symlink",
+        "link_target": "/opt/ipfs-supervisor/python",
+        "mode": 41471,
+        "uid": 0
+      }
+    },
+    "sequence": 14,
+    "when": "after"
+  }
+}

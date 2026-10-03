@@ -1,0 +1,15 @@
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "/opt/ipfs-supervisor/cache-diagnostic.py", line 146, in <module>
+    if __name__=='__main__':main()
+                            ^^^^^^
+  File "/opt/ipfs-supervisor/cache-diagnostic.py", line 141, in main
+    try: result=advise(ROOT,manifest['files'])
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/ipfs-supervisor/cache-diagnostic.py", line 81, in advise
+    child=open_file(fd,row['path'])
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/ipfs-supervisor/cache-diagnostic.py", line 60, in open_file
+    child = os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+NotADirectoryError: [Errno 20] Not a directory: 'toolchains'

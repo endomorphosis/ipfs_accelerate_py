@@ -1,0 +1,10 @@
+test_event_bound (test_layout_observer.LayoutTests.test_event_bound) ... ok
+test_existing_bad_layout_refuses_before_action (test_layout_observer.LayoutTests.test_existing_bad_layout_refuses_before_action) ... ok
+test_real_probe_uses_raw_docker_without_shell (test_layout_observer.LayoutTests.test_real_probe_uses_raw_docker_without_shell) ... ok
+test_transition_stops_and_preserves_only_hashes (test_layout_observer.LayoutTests.test_transition_stops_and_preserves_only_hashes) ... ok
+test_upload_does_not_open_credentials (test_layout_observer.LayoutTests.test_upload_does_not_open_credentials) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.010s
+
+OK

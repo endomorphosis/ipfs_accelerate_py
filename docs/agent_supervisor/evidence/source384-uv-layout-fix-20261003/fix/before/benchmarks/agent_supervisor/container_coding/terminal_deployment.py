@@ -28,9 +28,6 @@ from ipfs_accelerate_py.agent_supervisor.runtime.source384_config import (
 
 ROOT = "/opt/ipfs-supervisor"
 PYTHON = ROOT + "/venv/bin/python"
-# UV 0.9.24 migrates a sibling `toolchains` directory when its selected
-# Python root is absent. Keep that legacy lookup away from shipped Lean.
-PYTHON_INSTALL_DIR = ROOT + "/python-runtime/python"
 CODEX_VERSION = "0.158.0"
 RUNTIME_PYTHON_VERSION = "3.12.12"
 TORCH_CPU_REQUIREMENT = "torch==2.13.0+cpu"
@@ -971,14 +968,14 @@ async def deploy_supervisor(
     await execute(
         "python-runtime-install",
         "python3 -m pip install --no-cache-dir uv==0.9.24 && "
-        "UV_PYTHON_INSTALL_DIR=" + PYTHON_INSTALL_DIR + " uv python install " + RUNTIME_PYTHON_VERSION,
+        "UV_PYTHON_INSTALL_DIR=" + ROOT + "/python uv python install " + RUNTIME_PYTHON_VERSION,
         timeout=300,
     )
     await execute(
         "python-create",
         "UV_PYTHON_INSTALL_DIR="
-        + PYTHON_INSTALL_DIR
-        + " uv venv --python "
+        + ROOT
+        + "/python uv venv --python "
         + RUNTIME_PYTHON_VERSION
         + " --seed "
         + ROOT

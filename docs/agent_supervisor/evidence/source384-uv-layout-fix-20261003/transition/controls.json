@@ -1,0 +1,18 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "unittest",
+    "-v",
+    "test_layout_observer.py"
+  ],
+  "cwd": "/home/barberb/lift_coding/artifacts/source384-docker-layout-transition-20261003",
+  "returncode": 0,
+  "seconds": 0.057233079001889564,
+  "source_sha256": {
+    "layout_observer.py": "a04d1101a5aeff685179757625734f81fb4efb23fde88801a9fd41bee7492591",
+    "run_diagnostic.py": "2a70e38758eabb4c79fe0ee328a91ce76d49de8a86eeddb5f5793dc45affce5f",
+    "test_layout_observer.py": "48fd0f2280e007c500811ad5cd2e99b4ce19dcbc82f2b80b934d758cd9603aa5"
+  }
+}

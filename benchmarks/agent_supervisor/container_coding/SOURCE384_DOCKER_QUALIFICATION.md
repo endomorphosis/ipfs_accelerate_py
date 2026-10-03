@@ -339,3 +339,29 @@ controls pass; no source text or local variable values are exported. The
 closed evidence package is
 `docs/agent_supervisor/evidence/source384-full-admission-diagnostics-20261003`.
 This improves diagnosis and leaves the full task acceptance gate open.
+
+## Managed Python and Lean layout collision
+
+Two bounded, manifest-only cache experiments refuse before issuing any cache
+advice: the deployed `toolchains` ancestor is a symlink. A complete tar audit
+finds 26,905 regular members, with no links, duplicate names or prefix collisions.
+A separate setup-step observer then records the actual transition during
+`python-runtime-install`: the normal Lean directory becomes a link to
+`/opt/ipfs-supervisor/python`. The observer stops at that operation and removes
+the container; it runs no inference, provider or verifier.
+
+The pinned [UV 0.9.24 implementation](https://github.com/astral-sh/uv/blob/0.9.24/crates/uv-python/src/managed.rs#L164-L177)
+migrates an existing sibling named `toolchains` when the selected Python
+installation directory is absent. Deployment now selects
+`/opt/ipfs-supervisor/python-runtime/python` for both Python installation and
+virtual-environment creation. The interpreter entrypoint remains
+`/opt/ipfs-supervisor/venv/bin/python`; Lean's path and all resource and time
+limits are unchanged. No symlink check is relaxed.
+
+Fifty-six focused controls pass with no skips. A real, pinned UV offline
+control reproduces the original migration and verifies that the nested layout
+preserves the Lean directory's inode and contents. Its missing-Python refusal
+is expected; this control does not claim a successful Python installation.
+The [closed layout evidence](../../../docs/agent_supervisor/evidence/source384-uv-layout-fix-20261003/README.md)
+separates these results from the subsequent cache and inference qualification.
+The layout fix alone does not establish sufficient memory or a task score.

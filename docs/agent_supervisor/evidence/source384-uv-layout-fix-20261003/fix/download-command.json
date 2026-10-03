@@ -1,0 +1,19 @@
+{
+  "argv": [
+    "python",
+    "-m",
+    "pip",
+    "download",
+    "--only-binary=:all:",
+    "--no-deps",
+    "--index-url",
+    "https://pypi.org/simple",
+    "--dest",
+    "/home/barberb/lift_coding/artifacts/source384-uv-layout-fix-20261003/native-tool",
+    "uv==0.9.24"
+  ],
+  "log": "uv-download.log",
+  "native_identity": "native-uv.json",
+  "returncode": 0,
+  "scope": "artifact-local official PyPI wheel retrieval; extracted scripts/uv binary used only via explicit test environment, no global installation"
+}

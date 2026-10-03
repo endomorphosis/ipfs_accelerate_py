@@ -1,0 +1,18 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "unittest",
+    "-v",
+    "test_cache_candidate.py"
+  ],
+  "cwd": "/home/barberb/lift_coding/artifacts/source384-docker-setup-cache-20261003",
+  "returncode": 0,
+  "seconds": 0.057307429997308645,
+  "source_sha256": {
+    "cache_candidate.py": "6a2d8941312a790deb2c3d2d04815dd656b98ccc04f75b79785970773a837cb6",
+    "run_diagnostic.py": "dc6798865017ff7c978b04a27c7c9e806003a1c06b55c1be083284a65121f262",
+    "test_cache_candidate.py": "dbb07f9c156d2b0ba32db41b6691d22e615c3389a35655cf056801cbaf62ad9d"
+  }
+}

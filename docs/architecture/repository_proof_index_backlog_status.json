@@ -1,6 +1,6 @@
 {
   "schema": "repository-proof-index-backlog-status/v1",
-  "updated_at_utc": "2026-10-03T12:10:28.644614+00:00",
+  "updated_at_utc": "2026-10-03T12:56:14.608799+00:00",
   "scope": "Frozen 32-task acceptance ledger. Declared-profile criterion qualification and production closure with all prerequisites are tracked separately.",
   "source": {
     "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
@@ -528,6 +528,12 @@
       "path": "docs/agent_supervisor/evidence/source384-full-admission-diagnostics-20261003/manifest.json",
       "sha256": "abe50e9b293a3744b96653a6ecf1393c5bad1de781072074917e9f520f024bf0",
       "retention": "repository_evidence"
+    },
+    "source384-uv-layout-fix": {
+      "repository": "ipfs_accelerate_py",
+      "path": "docs/agent_supervisor/evidence/source384-uv-layout-fix-20261003/manifest.json",
+      "sha256": "07bf0fc0629bc12c13dad2881c55d8b96346e3720a961039710ec7b534539ac0",
+      "retention": "repository_evidence"
     }
   },
   "criteria": [
@@ -869,7 +875,7 @@
       "local_status": "criterion_qualified",
       "locally_qualified_portions": [
         "Added owner-signed repository-finite-handoff@1 produced only after fresh current-source matching and complete candidate re-observation, with an independently pre-admitted signed native task. Native worker checks public DID signature, exact source preimage, instruction input, complete domain and clause bindings; malformed signatures, changed scope/material and stale dispatch are refused.",
-        "New independently signed repository-evidence fence binds complete behavioral snapshot and full original native task population, reopens durable native owners before launch and inside the worker, reconstructs retained exact semantic facts and repeats live source observation before/after materialization.10controls pass;6are explicitly artifact-integrity fault tests. Actual full native START→worker→public validation→publication→successor/cold agreement→STOP passed203.410s with0LLM calls. No fitting/learned inference occurs in this explicit model-off profile."
+        "New independently signed repository-evidence fence binds complete behavioral snapshot and full original native task population, reopens durable native owners before launch and inside the worker, reconstructs retained exact semantic facts and repeats live source observation before/after materialization.10controls pass;6are explicitly artifact-integrity fault tests. Actual full native START\u2192worker\u2192public validation\u2192publication\u2192successor/cold agreement\u2192STOP passed203.410s with0LLM calls. No fitting/learned inference occurs in this explicit model-off profile."
       ],
       "remaining_work": [],
       "evidence": [
@@ -1031,7 +1037,8 @@
         "The deployment pins pandas3.0.2 and NumPy1.26.4 and imports/reports them before native START; 91 focused deployment/transport/qualification controls pass. The fresh original-source archive preserves current inference/model identities and records three unrelated previously merged training-module deltas. This full-container attempt stops during the existing 600s CPU PyTorch installation, before pandas installation, START, Source384 preparation or inference. Whole attempt812.484s; raw timeout trace and absent-container observation retained. It therefore does not validate the corrected full inference path or change benchmark, proof or completion status.",
         "The optional locally supplied CPU Torch wheel is verified before transport and before installation; 136 deployment/wheel/transport controls pass with unchanged deadlines. Its first original-container run passes deployment in 65.266s, pandas/NumPy imports, native START/STOP and source/resource checks, then fails after 78.045s of initial context (89.425s probe) at a training-only canonical workspace import during inference publication. Frozen code and traceback establish the worker returned, but no exported inference artifact, model-load count or decoded coverage is qualified by that failed run. The minimal datasets correction shares canonical artifact staging with inference without importing training/proof initialization; the training workspace guard remains unchanged. Forty-three datasets integration tests and thirteen supervisor tests with the actual checkpoint pass, including blocked training imports and cold registry replay. The failed container and component controls remain distinct from the subsequent successful Docker generation.",
         "A fresh uninstrumented original-container run qualifies native startup, complete Source384 inference publication and warm validation with the same 218 original inputs plus two permitted framework files, five CPUs/12,288 MiB and unchanged deadlines. Actual Source384 takes 82.872100 seconds within 90 seconds; full initial context (147.267376 seconds), warm observation (13.403442 seconds) and complete probe (171.961792 seconds within 270 seconds) are distinct scopes. Setup takes 458.743056 seconds and the entire attempt 656.825078 seconds. The saved artifact verifies one model load and a successful 12.736-second CPU worker. Complete accounting retains 944 functions across 31 Python files: 127 decoded unsupported candidates, one token deferral, 737 selection deferrals and 79 unsupported normalizations. All proof, execution, completion and formalization authority remains false. Source-bearing raw inference stays local; public metadata binds its digest, canonical staged artifact, worker, key, coverage and source receipts. Container cleanup passes. This is one observed pipeline qualification, with no training, provider calls, official verifier, task repair, new reward/token comparison or latency-distribution claim.",
-        "The first full Harbor trial with the same Source384 runtime plus pinned Lean assets returns official reward 0.0. Initial context times out waiting for a resource lease after 37.438 seconds, before planning, Doctor dispatch or coding; observed provider calls are zero but token/cost counters remain null. Intent preprocessing fails open with no selected checkpoint. The original trial has no actual resource sample or traceback. A separate exact-archive diagnostic with Codex and worker-boundary setup measures the actual five-CPU/12-GiB limits and reproduces the Source384 root-lease refusal: 5,484 MiB available at failure versus 8,602 MiB required; an earlier sample contains about 6.49 GB file cache while pressure samples remain below thresholds. No policy or cache state is changed, and neither run establishes source proof or a successful repair. The container driver now exports bounded frame-only traceback metadata, failing phase and canonical failure-time resources; 30 controls preserve primary failure, authority and cleanup under diagnostic faults. Both containers are removed. The diagnostic is separate from the original trial and is not a retroactive measurement or a token-efficiency claim."
+        "The first full Harbor trial with the same Source384 runtime plus pinned Lean assets returns official reward 0.0. Initial context times out waiting for a resource lease after 37.438 seconds, before planning, Doctor dispatch or coding; observed provider calls are zero but token/cost counters remain null. Intent preprocessing fails open with no selected checkpoint. The original trial has no actual resource sample or traceback. A separate exact-archive diagnostic with Codex and worker-boundary setup measures the actual five-CPU/12-GiB limits and reproduces the Source384 root-lease refusal: 5,484 MiB available at failure versus 8,602 MiB required; an earlier sample contains about 6.49 GB file cache while pressure samples remain below thresholds. No policy or cache state is changed, and neither run establishes source proof or a successful repair. The container driver now exports bounded frame-only traceback metadata, failing phase and canonical failure-time resources; 30 controls preserve primary failure, authority and cleanup under diagnostic faults. Both containers are removed. The diagnostic is separate from the original trial and is not a retroactive measurement or a token-efficiency claim.",
+        "Two manifest-only cache probes refuse before any advice because the deployed Lean ancestor is a symlink. Complete archive metadata has only regular members. A separate setup-step observer proves the directory-to-symlink transition during pinned UV Python installation; UV 0.9.24 migrates a sibling toolchains directory into its Python root. Managed Python now uses an isolated parent, preserving the existing venv and Lean paths and all budgets. Fifty-six focused controls pass with no skips, including actual offline UV reproduction and inode/content preservation under the corrected layout. These controls do not establish cache reclamation, inference, task acceptance or token savings; the subsequent native cache experiment is separate."
       ],
       "remaining_work": [
         "The complete criterion above has not been qualified in the released integration.",
@@ -1055,7 +1062,8 @@
         "source384-inference-publication-import",
         "source384-docker-wheel",
         "source384-docker-inference-publication",
-        "source384-full-admission-diagnostics"
+        "source384-full-admission-diagnostics",
+        "source384-uv-layout-fix"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },
@@ -1280,7 +1288,7 @@
       "local_status": "criterion_qualified_prerequisites_open",
       "locally_qualified_portions": [
         "Additive codebase_ir/source_conditioned_384_v1 envelope reuses the unchanged shared SecurityIR structured runtime and sufficient-statistics ridge head fit. Exact original weights, fixed cohort roles, numerical parent relationships and source-target manifest joins are retained;8D and384D protocols stay separate.",
-        "Thirty final native controls qualify separate registered parent-centered384D head-refit lineage, two real nonzero updates with ordered CAS generations1→2→3, fixed development canaries3/3 in both rounds, full ancestral split/floor bindings, actual cancellation/restart and literal/guard feature collision refusal. Changed-source round2 embeds3 and reuses6 immutable feature rows. Changed-model projections rebuild exactly; replay cannot relabel old model artifacts. Full-head refit is not optimizer resume; fixed canaries are deployment-selection data, not unseen tests."
+        "Thirty final native controls qualify separate registered parent-centered384D head-refit lineage, two real nonzero updates with ordered CAS generations1\u21922\u21923, fixed development canaries3/3 in both rounds, full ancestral split/floor bindings, actual cancellation/restart and literal/guard feature collision refusal. Changed-source round2 embeds3 and reuses6 immutable feature rows. Changed-model projections rebuild exactly; replay cannot relabel old model artifacts. Full-head refit is not optimizer resume; fixed canaries are deployment-selection data, not unseen tests."
       ],
       "remaining_work": [
         "Own declared-profile qualification passes. Production closure awaits full resource prerequisites: RPI-010."

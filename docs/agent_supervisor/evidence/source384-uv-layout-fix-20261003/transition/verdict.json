@@ -1,0 +1,20 @@
+{
+  "after_kind": "symlink",
+  "archive_contained_symlink": false,
+  "archive_sha256": "a83b157f478dbcb869f134e71bfd02b17bdb7f82f3de8d281cc6202f66464d0b",
+  "before_kind": "directory",
+  "cache_advice_issued": false,
+  "cause": "Pinned UV installation changes existing sibling toolchains directory into a symlink pointing to its Python install directory",
+  "command": "python3 -m pip install --no-cache-dir uv==0.9.24 && UV_PYTHON_INSTALL_DIR=/opt/ipfs-supervisor/python uv python install 3.12.12",
+  "command_sha256": "1d2ce15a99859c520150b299baa54110e83fca4b4fe83ed01942a7259ca76992",
+  "container_cleanup_confirmed": true,
+  "directly_observed_transition": true,
+  "link_target": "/opt/ipfs-supervisor/python",
+  "official_verifier_executed": false,
+  "operation": "python-runtime-install",
+  "provider_calls": 0,
+  "schema": "runtime-layout-transition-verdict@1",
+  "source384_context_executed": false,
+  "source_pins_unchanged": true,
+  "upstream_algorithm_source_reviewed": false
+}

@@ -1,0 +1,11 @@
+{
+  "wheel": "uv-0.9.24-py3-none-manylinux_2_28_aarch64.whl",
+  "wheel_sha256": "1914d33e526167dc202ec4a59119c68467b31f7c71dcf8b1077571d091ca3e7c",
+  "wheel_bytes": 21000825,
+  "binary_path": "/home/barberb/lift_coding/artifacts/source384-uv-layout-fix-20261003/native-tool/uv-0.9.24",
+  "binary_sha256": "f66cdee4104f17feb7f7dc22bab75210d0ae0ad1be1a99a7bc67e3c0221755fc",
+  "binary_bytes": 47746872,
+  "version": "uv 0.9.24",
+  "pip_index": "https://pypi.org/simple",
+  "system_install_changed": false
+}

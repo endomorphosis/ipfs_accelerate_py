@@ -1,0 +1,40 @@
+{
+  "finding": "ManagedPythonInstallations.init migrates an existing sibling toolchains directory into the selected absent Python root and creates a symlink at the previous path; migration does not verify Python contents.",
+  "observed_at": "2026-10-03T12:40:58.581856+00:00",
+  "offline_regression": "uv --offline --no-config python install --no-python-downloads 3.12.12 calls init before refusing missing Python downloads; python dir does not call init and is unsuitable.",
+  "primary_sources": {
+    "dir": {
+      "bytes": 780,
+      "inspected_ranges": [
+        1,
+        25
+      ],
+      "sha256": "6eba1e627e149dfd94587f40a93497eecb8cfccd6ac623fb4167fec686ac1c65",
+      "url": "https://raw.githubusercontent.com/astral-sh/uv/0.9.24/crates/uv/src/commands/python/dir.rs"
+    },
+    "install": {
+      "bytes": 46046,
+      "inspected_ranges": [
+        204,
+        208,
+        408,
+        415
+      ],
+      "sha256": "35ae5c32ae5e3a460900fb1f3df9595d992f18e33f7319e45ba1bb76bbd4f0b0",
+      "url": "https://raw.githubusercontent.com/astral-sh/uv/0.9.24/crates/uv/src/commands/python/install.rs"
+    },
+    "managed": {
+      "bytes": 42858,
+      "inspected_ranges": [
+        131,
+        198
+      ],
+      "sha256": "2e56f0eea562891b9413f89f858829ef146bc57af0d0685a005e563c9a14f450",
+      "url": "https://raw.githubusercontent.com/astral-sh/uv/0.9.24/crates/uv-python/src/managed.rs"
+    }
+  },
+  "proposed_isolation": "Use /opt/ipfs-supervisor/python-runtime/python for both uv python install and uv venv, keeping the shipped /opt/ipfs-supervisor/toolchains outside that parent.",
+  "schema": "uv-pinned-primary-source-review@1",
+  "scope": "Source review only; no binary download, installation, model work or trial performed by reviewer.",
+  "version": "0.9.24"
+}

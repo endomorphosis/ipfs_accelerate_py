@@ -1,0 +1,22 @@
+[
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+    "sha256": "bb4e4f845f03026572530b81fde6a540a2cd0ab89b17e606587ddfbc33dfc285",
+    "bytes": 71228
+  },
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/test_terminal_uv_layout.py",
+    "sha256": "b41bb8ab24522fc5b5a047437c762bf1aeb943ca17fde7cd80f5f5c117fb9df5",
+    "bytes": 6490
+  },
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py",
+    "sha256": "b4233034b5288a3f2ea5935310970e80e26b9789c5d4da85b682a25457e29b11",
+    "bytes": 5333
+  },
+  {
+    "path": "benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py",
+    "sha256": "e3adc285954b0397831ef9adffc8f2dd6244562a3675cf923c8471c5e2b9ee40",
+    "bytes": 12320
+  }
+]

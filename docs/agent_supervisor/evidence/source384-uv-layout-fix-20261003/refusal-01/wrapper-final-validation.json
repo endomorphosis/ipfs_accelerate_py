@@ -1,0 +1,6 @@
+{
+  "wrapper_sha256": "4d9573b3a971d312d31334cc1b1fd1b61ae68aece2d50260b7dc93f50980098a",
+  "syntax_validated": true,
+  "change_since_controls02": "Only telemetry field page_cache_dropped renamed to global_drop_caches; advice may reclaim pages, actual freed bytes unknown.",
+  "candidate_unchanged": true
+}

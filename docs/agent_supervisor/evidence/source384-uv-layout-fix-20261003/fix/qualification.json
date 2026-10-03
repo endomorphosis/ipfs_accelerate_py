@@ -1,0 +1,52 @@
+{
+  "admission_changes": false,
+  "benchmark_executed": false,
+  "budgets_changed": false,
+  "cache_advice_added": false,
+  "controls": {
+    "failed": 0,
+    "final_xml": "focused-02.xml",
+    "log_elapsed_seconds": 2.14,
+    "new_native_and_command_controls": 3,
+    "passed": 56,
+    "previous_generation": "focused-01.xml (56passed; before final nested-directory assertion)",
+    "process_seconds": 2.9078799999988405,
+    "skipped": 0
+  },
+  "model_calls": 0,
+  "native_control_scope": "Pinned real UV offline initialization: old path renames sibling toolchains and creates symlink; nested path preserves authored Lean inode/content and initializes its own managed directory. Missing Python and disabled downloads intentionally produce nonzero exit in both cases. This does not qualify a complete Python install or Docker run.",
+  "native_uv": {
+    "binary_bytes": 47746872,
+    "binary_path": "/home/barberb/lift_coding/artifacts/source384-uv-layout-fix-20261003/native-tool/uv-0.9.24",
+    "binary_sha256": "f66cdee4104f17feb7f7dc22bab75210d0ae0ad1be1a99a7bc67e3c0221755fc",
+    "pip_index": "https://pypi.org/simple",
+    "system_install_changed": false,
+    "version": "uv 0.9.24",
+    "wheel": "uv-0.9.24-py3-none-manylinux_2_28_aarch64.whl",
+    "wheel_bytes": 21000825,
+    "wheel_sha256": "1914d33e526167dc202ec4a59119c68467b31f7c71dcf8b1077571d091ca3e7c"
+  },
+  "network_during_native_control": false,
+  "network_for_pinned_tool_download": true,
+  "provider_calls": 0,
+  "qualified": true,
+  "review": "independent-review.json",
+  "runtime_changes": {
+    "install_and_venv_timeout_seconds": 300,
+    "lean_asset_path_unchanged": "/opt/ipfs-supervisor/toolchains/lean",
+    "new_managed_root": "/opt/ipfs-supervisor/python-runtime/python",
+    "old_managed_root": "/opt/ipfs-supervisor/python",
+    "runtime_version_unchanged": "3.12.12",
+    "shared_by": [
+      "uv python install",
+      "uv venv"
+    ],
+    "uv_version_unchanged": "0.9.24",
+    "venv_python_unchanged": "/opt/ipfs-supervisor/venv/bin/python"
+  },
+  "schema": "terminal-uv-managed-layout-fix-qualification@1",
+  "source_manifest": "final-sources.json",
+  "system_uv_changed": false,
+  "task_source_used": false,
+  "tool_payloads_publication": "Exclude native-tool binary/wheel and test seal databases; metadata only."
+}

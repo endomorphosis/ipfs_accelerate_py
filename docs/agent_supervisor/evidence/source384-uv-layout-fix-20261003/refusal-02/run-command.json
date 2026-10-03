@@ -1,0 +1,21 @@
+{
+  "argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "/home/barberb/lift_coding/artifacts/source384-docker-setup-cache-20261003/retry-02/run_diagnostic.py"
+  ],
+  "candidate_sha256": "26f4b2c9a87611102e98aff6d18e4a409b2796fab2a4e64e3ae41a392f8ed742",
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "env": {
+    "HF_HUB_OFFLINE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:/home/barberb/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "external_diagnostic": true,
+  "wrapper_sha256": "4d9573b3a971d312d31334cc1b1fd1b61ae68aece2d50260b7dc93f50980098a"
+}

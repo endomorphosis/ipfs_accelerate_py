@@ -1,0 +1,124 @@
+"""UV's legacy Python migration must not rename shipped Lean assets."""
+import asyncio
+import hashlib
+import json
+import os
+from pathlib import Path
+import shlex
+import subprocess
+from types import SimpleNamespace
+
+import pytest
+
+from benchmarks.agent_supervisor.container_coding import terminal_deployment as deployment
+from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _inputs
+
+
+class RecordingEnvironment:
+    default_user = "root"
+
+    def __init__(self, *, fail_install=False):
+        self.commands = []
+        self.uploads = []
+        self.fail_install = fail_install
+
+    async def upload_file(self, source, destination):
+        self.uploads.append((source, destination))
+
+    async def exec(self, command, **kwargs):
+        self.commands.append((command, kwargs))
+        if self.fail_install and " uv python install " in command:
+            return SimpleNamespace(return_code=1, stdout="", stderr="authored install failure")
+        if command == "python3 -I -c " + shlex.quote(deployment.INPUT_SNAPSHOT):
+            stdout = json.dumps({"files": {"authored.py": {"sha256": "a" * 64}}, "head": "authored"})
+        elif command == deployment.PYTHON + " -P -c " + shlex.quote(deployment.NATIVE_IMPORT_PROBE):
+            stdout = json.dumps({"native_imports": True})
+        else:
+            stdout = ""
+        return SimpleNamespace(return_code=0, stdout=stdout, stderr="")
+
+
+def test_deployer_uses_one_nested_managed_root_and_preserves_venv_limits(tmp_path):
+    deployment.build_runtime_archive(output=tmp_path / "bundle", **_inputs(tmp_path))
+    environment = RecordingEnvironment()
+    report = asyncio.run(deployment.deploy_supervisor(environment, archive_dir=tmp_path / "bundle",
+        output=tmp_path / "deployed", install_codex=False))
+    commands = [row for row in environment.commands if "UV_PYTHON_INSTALL_DIR=" in row[0]]
+    assert len(commands) == 2
+    install, venv = commands
+    selected = deployment.PYTHON_INSTALL_DIR
+    assert selected == deployment.ROOT + "/python-runtime/python"
+    assert Path(selected).parent / "toolchains" != Path(deployment.ROOT) / "toolchains"
+    assert install[0].endswith("UV_PYTHON_INSTALL_DIR=" + selected + " uv python install 3.12.12")
+    assert venv[0] == "UV_PYTHON_INSTALL_DIR=" + selected + " uv venv --python 3.12.12 --seed " + deployment.ROOT + "/venv"
+    assert install[1]["timeout_sec"] == venv[1]["timeout_sec"] == 300
+    assert deployment.PYTHON == deployment.ROOT + "/venv/bin/python"
+    assert all("UV_PYTHON_INSTALL_DIR=" + deployment.ROOT + "/python " not in c for c, _ in commands)
+    assert report["original_inputs"] == report["retained_inputs"]
+    assert report["task_source_preserved"] is True
+    assert environment.default_user == "root"
+    assert report["provider_calls"] == 0
+
+
+def test_runtime_install_failure_does_not_fall_back_to_old_managed_root(tmp_path):
+    deployment.build_runtime_archive(output=tmp_path / "bundle", **_inputs(tmp_path))
+    environment = RecordingEnvironment(fail_install=True)
+    with pytest.raises(RuntimeError, match="python-runtime-install failed"):
+        asyncio.run(deployment.deploy_supervisor(environment, archive_dir=tmp_path / "bundle",
+            output=tmp_path / "deployed", install_codex=False))
+    assert sum(" uv python install " in command for command, _ in environment.commands) == 1
+    assert not any(" uv venv " in command for command, _ in environment.commands)
+    assert not (tmp_path / "deployed/deployment.json").exists()
+
+
+@pytest.fixture
+def pinned_uv():
+    selected = os.environ.get("SUPERVISOR_TEST_UV_0_9_24")
+    pin = os.environ.get("SUPERVISOR_TEST_UV_SHA256")
+    if selected is None and pin is None:
+        pytest.skip("explicit isolated uv0.9.24 binary and SHA required for native offline control")
+    assert selected and pin, "both binary and independent pin are required"
+    path = Path(selected)
+    assert path.is_file() and not path.is_symlink()
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == pin
+    version = subprocess.run([str(path), "--version"], capture_output=True, text=True,
+                             timeout=15, check=True).stdout.strip()
+    assert version == "uv 0.9.24"
+    return path
+
+
+def test_real_pinned_uv_offline_migration_preserves_lean_only_with_nested_root(tmp_path, pinned_uv):
+    """Initialization precedes the expected offline missing-Python refusal."""
+    for nested in (False, True):
+        root = tmp_path / ("nested" if nested else "legacy-collision")
+        lean = root / "toolchains/lean/bin/lean"
+        lean.parent.mkdir(parents=True)
+        lean.write_bytes(b"authored Lean asset; not a Python distribution\n")
+        original_inode = lean.stat().st_ino
+        original_body = lean.read_bytes()
+        old_directory_inode = (root / "toolchains").stat().st_ino
+        suffix = Path(deployment.PYTHON_INSTALL_DIR).relative_to(deployment.ROOT)
+        selected = root / suffix if nested else root / "python"
+        env = {"PATH": os.defpath, "UV_CACHE_DIR": str(root / "isolated-cache"),
+               "UV_PYTHON_BIN_DIR": str(root / "isolated-bin"),
+               "UV_PYTHON_INSTALL_DIR": str(selected), "UV_PYTHON_DOWNLOADS": "never",
+               "UV_NO_PROGRESS": "1", "UV_OFFLINE": "1", "UV_NO_CONFIG": "1"}
+        result = subprocess.run([str(pinned_uv), "--offline", "--no-config", "python", "install",
+            "--no-python-downloads", deployment.RUNTIME_PYTHON_VERSION], env=env, cwd=tmp_path,
+            capture_output=True, text=True, timeout=15)
+        assert result.returncode != 0
+        # The refusal is intentional: no Python payload or network is needed
+        # to exercise UV's real pre-install directory migration.
+        assert "download" in result.stderr.lower(), result.stderr
+        assert lean.read_bytes() == original_body and lean.stat().st_ino == original_inode
+        if nested:
+            assert selected.is_dir() and not selected.is_symlink()
+            assert not (root / "toolchains").is_symlink()
+            assert (root / "toolchains").stat().st_ino == old_directory_inode
+            assert not (selected.parent / "toolchains").exists()
+            assert not (root / "python").exists()
+        else:
+            assert (root / "toolchains").is_symlink()
+            assert (root / "toolchains").resolve() == selected
+            assert selected.stat().st_ino == old_directory_inode
+            assert (selected / "lean/bin/lean").read_bytes() == original_body

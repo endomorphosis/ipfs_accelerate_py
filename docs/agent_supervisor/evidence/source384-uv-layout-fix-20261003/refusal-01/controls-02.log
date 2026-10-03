@@ -1,0 +1,15 @@
+test_actual_syscalls_preserve_bytes_and_metadata (test_cache_candidate.CacheCandidateTests.test_actual_syscalls_preserve_bytes_and_metadata) ... ok
+test_ancestor_symlink_rejected_before_advice (test_cache_candidate.CacheCandidateTests.test_ancestor_symlink_rejected_before_advice) ... ok
+test_empty_duplicate_outside_and_traversal_rejected (test_cache_candidate.CacheCandidateTests.test_empty_duplicate_outside_and_traversal_rejected) ... ok
+test_fixed_inventory_bounds (test_cache_candidate.CacheCandidateTests.test_fixed_inventory_bounds) ... ok
+test_late_invalid_row_is_checked_before_any_advice (test_cache_candidate.CacheCandidateTests.test_late_invalid_row_is_checked_before_any_advice) ... ok
+test_leaf_symlink_rejected_before_advice (test_cache_candidate.CacheCandidateTests.test_leaf_symlink_rejected_before_advice) ... ok
+test_manifest_reader_rejects_fifo_symlink_and_oversized (test_cache_candidate.CacheCandidateTests.test_manifest_reader_rejects_fifo_symlink_and_oversized) ... ok
+test_mutation_during_advice_refused (test_cache_candidate.CacheCandidateTests.test_mutation_during_advice_refused) ... ok
+test_size_mode_nonregular_and_hardlink_rejected (test_cache_candidate.CacheCandidateTests.test_size_mode_nonregular_and_hardlink_rejected) ... ok
+test_sync_precedes_hint_and_errors_not_counted (test_cache_candidate.CacheCandidateTests.test_sync_precedes_hint_and_errors_not_counted) ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 0.011s
+
+OK
