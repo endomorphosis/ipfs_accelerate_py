@@ -1,0 +1,35 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/run_controls.py",
+    "--child",
+    "-q",
+    "/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/proposed/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py",
+    "--basetemp=/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-temp",
+    "--junitxml=/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "environment_overrides": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "NUMEXPR_MAX_THREADS": "1",
+    "CUDA_VISIBLE_DEVICES": "",
+    "TOKENIZERS_PARALLELISM": "false",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "CONTEXT_LIFETIME_MODE": "baseline",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-seal.duckdb",
+    "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-key-seal.db"
+  },
+  "scope": "Whole candidate module substituted before imports; native dependencies unchanged. No source edits, model or provider calls.",
+  "source_pins": {
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py": "3812801ae64eb5357a5a923f68731686b39377dbec3e45ac0fd15a08ebf4c722",
+    "/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/proposed/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py": "9e9ec3388ebe0d988d5156d7700ca7872e3aa855503fd3ccde8951d3122d3d73",
+    "/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/proposed/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py": "51125a5762987c48784431c4a695bcc0ec624b8d998bd2c03030cd1bbcce911c"
+  }
+}

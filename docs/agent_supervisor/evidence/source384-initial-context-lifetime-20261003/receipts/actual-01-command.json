@@ -1,0 +1,37 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py",
+    "test/integration/test_initial_learned_context_reuse.py",
+    "--basetemp=/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/actual-01-temp",
+    "--junitxml=/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/actual-01.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "environment_overrides": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "NUMEXPR_MAX_THREADS": "1",
+    "CUDA_VISIBLE_DEVICES": "",
+    "TOKENIZERS_PARALLELISM": "false",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/actual-01-seal.duckdb",
+    "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/actual-01-key-seal.db"
+  },
+  "source_pins": {
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py": "e4cec823a563d49a8e1dc58b1f7a17ed1794fc84bc4b12c2dc45feeec7ce7b9e",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py": "10b5f94cd48b0a1f1ffb1cb99a76071e9d0deedd704abed3739549198c75d6e5",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py": "f21470f8c25299e7795b6b11ccfc31ccd58058bb44a760eaa03aab427ea5ac14",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/test/integration/test_initial_learned_context_reuse.py": "827eaf3d05d667b1d0ce4d3089826d8ee6489f64c843c175e96ea9527c46678c"
+  },
+  "scope": "Actual on-disk native module and tests. No module overlay, no model/provider calls. One authored Source384 seam isolates only map lifetime."
+}

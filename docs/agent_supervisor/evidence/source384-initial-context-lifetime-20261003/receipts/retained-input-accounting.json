@@ -1,0 +1,31 @@
+{
+  "schema": "initial-context-retained-input-accounting@1",
+  "source_root": "/home/barberb/lift_coding/artifacts/terminal-source384-context-20261003/bottle-canary-04/app",
+  "scope": "Read-only reconstruction from retained prior public Bottle host artifacts. Object accounting is not current Docker RSS or proof of admission benefit.",
+  "interpreter": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]",
+  "native_snapshot": {
+    "rows": 426,
+    "dimensions": 268
+  },
+  "serialized_snapshot_bytes": 1152331,
+  "accounted_bytes": {
+    "serialized_snapshot_row": 1152420,
+    "native_vector_snapshot": 4339318,
+    "unused_semantic_worker_payload": 54704,
+    "empty_world_capture": 35830,
+    "indexed_qualification_result": 160037
+  },
+  "three_disjoint_candidate_objects_accounted_bytes": 5546372,
+  "other_objects_caveat": "World/index totals are individually accounted; shared scalar aliases with result/descriptor are not subtracted, so do not sum these as exact freed memory.",
+  "omitted": "Thin semantic view/reader; no loaded whole semantic graph. Descriptor shares construction summaries and is not added to their totals.",
+  "source_artifact_hashes": {
+    ".runtime/terminal-initial-context/semantic/worker-context.json": "dab3ccb2f90a4e5930ef2c7cdde12311bbda0766da10f2102f4f8f6543bf3d19",
+    ".runtime/terminal-initial-context/initial-world.json": "6484fbdb630274a40419fc9ac3f7f7bd82eb70abc6ce04bea5d49306a1dc8620",
+    ".runtime/terminal-initial-context/descriptor.json": "056e55caa7de21ca4794dbd527baa973e32c7731cd3aff5a930a9e09088cfa74",
+    ".runtime/terminal-vectors/result.json": "0a01bfe59ad02e02f8197128fee7bed8ecca1f5012b019d1e91216c911f78e5e"
+  },
+  "provider_calls": 0,
+  "model_calls": 0,
+  "database_read_only": true,
+  "rss_measured": false
+}

@@ -1,0 +1,617 @@
+2026-10-03 17:25:25,616 - ipfs_accelerate_py.ipfs_kit_integration - INFO - Successfully imported ipfs_kit_py modules from /home/barberb/HACC/complaint-generator/ipfs_datasets_py/ipfs_kit_py/ipfs_kit_py/__init__.py
+2026-10-03 17:25:25,616 - ipfs_accelerate_py.ipfs_kit_integration - INFO - IPFS Kit integration enabled successfully
+2026-10-03 17:25:25,616 - ipfs_accelerate_py.common.storage_wrapper - INFO - Storage initialized with distributed backend
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 13 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_real_pinned_inference_reaches_planner_and_dispatch_without_replay [31mFAILED[0m[31m [  7%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_source384_missing_selection_cannot_silently_use_legacy_profile 
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-03 17:26:11 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/actual-a-context-temp/test_source384_missing_selecti0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 17:26:11 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/actual-a-context-temp/test_source384_missing_selecti0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-03 17:26:11 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/actual-a-context-temp/test_source384_missing_selecti0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[32mPASSED[0m[31m                                                                   [ 15%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_checkpoint_change_during_router_is_rejected_before_admission [31mFAILED[0m[31m [ 23%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_source384_rejects_legacy_training_before_writes [32mPASSED[0m[31m [ 30%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_complete_create_manifest_source_population [32mPASSED[0m[31m [ 38%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_native_inventory_rejects_undeclared_captured_source [32mPASSED[0m[31m [ 46%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_native_inference_cannot_shrink_declared_population[paths0-1024-128] [32mPASSED[0m[31m [ 53%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_native_inference_cannot_shrink_declared_population[paths1-512-128] [32mPASSED[0m[31m [ 61%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_native_inference_cannot_shrink_declared_population[paths2-1024-64] [32mPASSED[0m[31m [ 69%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_observation_deadline_includes_read_and_asset_validation_time [32mPASSED[0m[31m [ 76%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_preparation_deadline_includes_preflight_before_output_or_admission[_output] [32mPASSED[0m[31m [ 84%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_preparation_deadline_includes_preflight_before_output_or_admission[_sources] [32mPASSED[0m[31m [ 92%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_preparation_deadline_includes_preflight_before_output_or_admission[_pins] [32mPASSED[0m[31m [100%][0m
+
+=================================== FAILURES ===================================
+[31m[1m____ test_real_pinned_inference_reaches_planner_and_dispatch_without_replay ____[0m
+
+original = (PosixPath('/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/actual-a-context-temp/test_real_pinn.../lift_coding/artifacts/initial-context-lifetime-20261003/actual-a-context-temp/test_real_pinned_inference_rea0/state'))
+selected_config = PosixPath('/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/actual-a-context-temp/test_real_pinned_inference_rea0/source384-config.json')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xe49f2ee76cf0>
+
+    [0m[94mdef[39;49;00m [92mtest_real_pinned_inference_reaches_planner_and_dispatch_without_replay[39;49;00m(original, selected_config, monkeypatch):[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_datasets_py[39;49;00m[04m[96m.[39;49;00m[04m[96mlogic[39;49;00m[04m[96m.[39;49;00m[04m[96msoftware_contracts[39;49;00m [94mimport[39;49;00m codebase_source_units_384 [94mas[39;49;00m native[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_accelerate_py[39;49;00m[04m[96m.[39;49;00m[04m[96magent_supervisor[39;49;00m[04m[96m.[39;49;00m[04m[96mruntime[39;49;00m[04m[96m.[39;49;00m[04m[96mtask_context_bundle[39;49;00m [94mimport[39;49;00m load_task_context_nomination[90m[39;49;00m
+        root, instruction, state = original[90m[39;49;00m
+        prepared = prep.prepare(repository=root, instruction=instruction, state=state)[90m[39;49;00m
+>       result = prep.initial_context(state=state, source384_config=selected_config)[90m[39;49;00m
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+
+[1m[31mbenchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py[0m:44: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+[1m[31mbenchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py[0m:381: in initial_context
+    [0m[94mreturn[39;49;00m prepare_initial_context(state=state, prepared=_load_prepared(state),[90m[39;49;00m
+[1m[31mbenchmarks/agent_supervisor/container_coding/terminal_initial_context.py[0m:241: in prepare_initial_context
+    [0msource384 = prepare_source384_context(repository=root,[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py[0m:214: in prepare_source384_context
+    [0m[94mwith[39;49;00m acquire_codebase_resources(scheduler=scheduler, parent_lease=parent_lease,[90m[39;49;00m
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31m../ir-release-datasets-20261002/ipfs_datasets_py/logic/software_contracts/codebase_resources.py[0m:78: in acquire_codebase_resources
+    [0mlease = owner.acquire(**request)[90m[39;49;00m
+            ^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.GlobalResourceScheduler object at 0xe49f2e16e030>
+lane = <ResourceLane.SNAPSHOT_EVALUATION: 'snapshot_evaluation'>, cpu_slots = 3
+memory_mb = 6144, gpu_memory_mb = 0, unified_memory_mb = 0
+child_process_slots = 3, requires_gpu = False, parent_lease = None
+parent = None, timeout = 30.0, cancel_event = None
+request_id = 'codebase-ir:prepare', owner_pid = None
+
+    [0m[94mdef[39;49;00m [92macquire[39;49;00m([90m[39;49;00m
+        [96mself[39;49;00m,[90m[39;49;00m
+        lane: Union[[96mstr[39;49;00m, ResourceLane],[90m[39;49;00m
+        *,[90m[39;49;00m
+        cpu_slots: [96mint[39;49;00m = [94m1[39;49;00m,[90m[39;49;00m
+        memory_mb: [96mint[39;49;00m = [94m0[39;49;00m,[90m[39;49;00m
+        gpu_memory_mb: [96mint[39;49;00m = [94m0[39;49;00m,[90m[39;49;00m
+        unified_memory_mb: [96mint[39;49;00m = [94m0[39;49;00m,[90m[39;49;00m
+        child_process_slots: [96mint[39;49;00m = [94m0[39;49;00m,[90m[39;49;00m
+        requires_gpu: [96mbool[39;49;00m = [94mFalse[39;49;00m,[90m[39;49;00m
+        parent_lease: Optional[Union[ResourceLease, ResourceLeaseToken, [96mstr[39;49;00m]] = [94mNone[39;49;00m,[90m[39;49;00m
+        parent: Optional[Union[ResourceLease, ResourceLeaseToken, [96mstr[39;49;00m]] = [94mNone[39;49;00m,[90m[39;49;00m
+        timeout: Optional[[96mfloat[39;49;00m] = [94mNone[39;49;00m,[90m[39;49;00m
+        cancel_event: Optional[CancellationSignal] = [94mNone[39;49;00m,[90m[39;49;00m
+        request_id: [96mstr[39;49;00m = [33m"[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+        owner_pid: Optional[[96mint[39;49;00m] = [94mNone[39;49;00m,[90m[39;49;00m
+    ) -> ResourceLease:[90m[39;49;00m
+    [90m    [39;49;00m[33m"""Wait for and return a root or nested lease.[39;49;00m
+    [33m[39;49;00m
+    [33m    Child resources are bounded by, but do not add to, the parent's[39;49;00m
+    [33m    global allocation.  ``parent`` is an alias for ``parent_lease``.[39;49;00m
+    [33m    Cancellation and timeouts remove the durable waiter before raising.[39;49;00m
+    [33m    """[39;49;00m[90m[39;49;00m
+    [90m[39;49;00m
+        lane_value = [96mself[39;49;00m._normalise_lane(lane)[90m[39;49;00m
+        [94mif[39;49;00m [96misinstance[39;49;00m(cpu_slots, [96mbool[39;49;00m) [95mor[39;49;00m [95mnot[39;49;00m [96misinstance[39;49;00m(cpu_slots, [96mint[39;49;00m) [95mor[39;49;00m cpu_slots <= [94m0[39;49;00m:[90m[39;49;00m
+            [94mraise[39;49;00m ResourceConfigurationError([33m"[39;49;00m[33mcpu_slots must be a positive integer[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mif[39;49;00m [96misinstance[39;49;00m(memory_mb, [96mbool[39;49;00m) [95mor[39;49;00m [95mnot[39;49;00m [96misinstance[39;49;00m(memory_mb, [96mint[39;49;00m) [95mor[39;49;00m memory_mb < [94m0[39;49;00m:[90m[39;49;00m
+            [94mraise[39;49;00m ResourceConfigurationError([33m"[39;49;00m[33mmemory_mb must be a non-negative integer[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mif[39;49;00m [96mself[39;49;00m.config.proof_safety_enabled [95mand[39;49;00m memory_mb == [94m0[39;49;00m:[90m[39;49;00m
+            [94mraise[39;49;00m ResourceConfigurationError([33m"[39;49;00m[33mproof safety requires a positive memory_mb reservation[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mif[39;49;00m ([90m[39;49;00m
+            [96misinstance[39;49;00m(gpu_memory_mb, [96mbool[39;49;00m)[90m[39;49;00m
+            [95mor[39;49;00m [95mnot[39;49;00m [96misinstance[39;49;00m(gpu_memory_mb, [96mint[39;49;00m)[90m[39;49;00m
+            [95mor[39;49;00m gpu_memory_mb < [94m0[39;49;00m[90m[39;49;00m
+        ):[90m[39;49;00m
+            [94mraise[39;49;00m ResourceConfigurationError([33m"[39;49;00m[33mgpu_memory_mb must be a non-negative integer[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mif[39;49;00m ([90m[39;49;00m
+            [96misinstance[39;49;00m(unified_memory_mb, [96mbool[39;49;00m)[90m[39;49;00m
+            [95mor[39;49;00m [95mnot[39;49;00m [96misinstance[39;49;00m(unified_memory_mb, [96mint[39;49;00m)[90m[39;49;00m
+            [95mor[39;49;00m unified_memory_mb < [94m0[39;49;00m[90m[39;49;00m
+        ):[90m[39;49;00m
+            [94mraise[39;49;00m ResourceConfigurationError([33m"[39;49;00m[33munified_memory_mb must be a non-negative integer[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mif[39;49;00m ([90m[39;49;00m
+            [96misinstance[39;49;00m(child_process_slots, [96mbool[39;49;00m)[90m[39;49;00m
+            [95mor[39;49;00m [95mnot[39;49;00m [96misinstance[39;49;00m(child_process_slots, [96mint[39;49;00m)[90m[39;49;00m
+            [95mor[39;49;00m child_process_slots < [94m0[39;49;00m[90m[39;49;00m
+        ):[90m[39;49;00m
+            [94mraise[39;49;00m ResourceConfigurationError([33m"[39;49;00m[33mchild_process_slots must be a non-negative integer[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mif[39;49;00m timeout [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m [95mand[39;49;00m ([95mnot[39;49;00m math.isfinite([96mfloat[39;49;00m(timeout)) [95mor[39;49;00m timeout < [94m0[39;49;00m):[90m[39;49;00m
+            [94mraise[39;49;00m ResourceConfigurationError([33m"[39;49;00m[33mtimeout must be non-negative and finite[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mif[39;49;00m parent [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m [95mand[39;49;00m parent_lease [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m:[90m[39;49;00m
+            [94mraise[39;49;00m ResourceConfigurationError([33m"[39;49;00m[33mspecify only one of parent and parent_lease[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        parent_id, parent_key = [96mself[39;49;00m._parent_authority(parent_lease [95mor[39;49;00m parent)[90m[39;49;00m
+        [94mif[39;49;00m [95mnot[39;49;00m parent_id:[90m[39;49;00m
+            reservations = [96mself[39;49;00m.config.reservations()[90m[39;49;00m
+            maximum_cpu = [96mself[39;49;00m.config.total_cpu_slots - [96msum[39;49;00m([90m[39;49;00m
+                reservation.cpu_slots[90m[39;49;00m
+                [94mfor[39;49;00m reserved_lane, reservation [95min[39;49;00m reservations.items()[90m[39;49;00m
+                [94mif[39;49;00m reserved_lane != lane_value[90m[39;49;00m
+            )[90m[39;49;00m
+            maximum_memory = ([90m[39;49;00m
+                [96mself[39;49;00m.config.total_memory_mb[90m[39;49;00m
+                - [96msum[39;49;00m([90m[39;49;00m
+                    reservation.memory_mb[90m[39;49;00m
+                    [94mfor[39;49;00m reserved_lane, reservation [95min[39;49;00m reservations.items()[90m[39;49;00m
+                    [94mif[39;49;00m reserved_lane != lane_value[90m[39;49;00m
+                )[90m[39;49;00m
+                - [96mself[39;49;00m.config.reserved_memory_mb[90m[39;49;00m
+            )[90m[39;49;00m
+            [94mif[39;49;00m cpu_slots > maximum_cpu [95mor[39;49;00m memory_mb > maximum_memory:[90m[39;49;00m
+                [94mraise[39;49;00m ResourceUnavailableError([90m[39;49;00m
+                    [33m"[39;49;00m[33mrequest exceeds capacity available to its reservation lane[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+                )[90m[39;49;00m
+            [94mif[39;49;00m gpu_memory_mb > [94m0[39;49;00m:[90m[39;49;00m
+                maximum_gpu_memory = ([90m[39;49;00m
+                    [94mNone[39;49;00m[90m[39;49;00m
+                    [94mif[39;49;00m [96mself[39;49;00m.config.total_gpu_memory_mb [95mis[39;49;00m [94mNone[39;49;00m[90m[39;49;00m
+                    [94melse[39;49;00m [96mself[39;49;00m.config.total_gpu_memory_mb - [96mself[39;49;00m.config.reserved_gpu_memory_mb[90m[39;49;00m
+                )[90m[39;49;00m
+                [94mif[39;49;00m maximum_gpu_memory [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m [95mand[39;49;00m gpu_memory_mb > maximum_gpu_memory:[90m[39;49;00m
+                    [94mraise[39;49;00m ResourceUnavailableError([90m[39;49;00m
+                        [33m"[39;49;00m[33mGPU memory request exceeds configured GPU capacity[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+                    )[90m[39;49;00m
+            [94mif[39;49;00m ([90m[39;49;00m
+                [96mself[39;49;00m.config.total_unified_memory_mb [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m[90m[39;49;00m
+                [95mand[39;49;00m unified_memory_mb > [96mself[39;49;00m.config.total_unified_memory_mb[90m[39;49;00m
+            ):[90m[39;49;00m
+                [94mraise[39;49;00m ResourceUnavailableError([90m[39;49;00m
+                    [33m"[39;49;00m[33munified memory request exceeds configured unified-memory capacity[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+                )[90m[39;49;00m
+            [94mif[39;49;00m child_process_slots > [96mself[39;49;00m.config.total_child_process_slots:[90m[39;49;00m
+                [94mraise[39;49;00m ResourceUnavailableError([90m[39;49;00m
+                    [33m"[39;49;00m[33mchild-process request exceeds configured process capacity[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+                )[90m[39;49;00m
+    [90m[39;49;00m
+        pid = [96mint[39;49;00m(owner_pid [94mif[39;49;00m owner_pid [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m [94melse[39;49;00m os.getpid())[90m[39;49;00m
+        birth_marker = _owner_birth_marker(pid)[90m[39;49;00m
+        waiter_id = uuid.uuid4().hex[90m[39;49;00m
+        started_wall = time.time()[90m[39;49;00m
+        started_mono = time.monotonic()[90m[39;49;00m
+        deadline = [94mNone[39;49;00m [94mif[39;49;00m timeout [95mis[39;49;00m [94mNone[39;49;00m [94melse[39;49;00m started_mono + [96mfloat[39;49;00m(timeout)[90m[39;49;00m
+        terminal: Optional[[96mstr[39;49;00m] = [94mNone[39;49;00m[90m[39;49;00m
+        granted_record: Optional[Dict[[96mstr[39;49;00m, Any]] = [94mNone[39;49;00m[90m[39;49;00m
+    [90m[39;49;00m
+        [94mwhile[39;49;00m granted_record [95mis[39;49;00m [94mNone[39;49;00m [95mand[39;49;00m terminal [95mis[39;49;00m [94mNone[39;49;00m:[90m[39;49;00m
+            now_wall = time.time()[90m[39;49;00m
+            now_mono = time.monotonic()[90m[39;49;00m
+            externally_cancelled = [96mbool[39;49;00m(cancel_event [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m [95mand[39;49;00m cancel_event.is_set())[90m[39;49;00m
+            [94mwith[39;49;00m [96mself[39;49;00m._locked_state() [94mas[39;49;00m state:[90m[39;49;00m
+                [96mself[39;49;00m._recover_stale_locked(state, now_wall)[90m[39;49;00m
+                [94mif[39;49;00m waiter_id [95mnot[39;49;00m [95min[39;49;00m state[[33m"[39;49;00m[33mwaiters[39;49;00m[33m"[39;49;00m]:[90m[39;49;00m
+                    [94mif[39;49;00m ([96mself[39;49;00m.config.max_waiting_requests [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m[90m[39;49;00m
+                            [95mand[39;49;00m [96mlen[39;49;00m(state[[33m"[39;49;00m[33mwaiters[39;49;00m[33m"[39;49;00m]) >= [96mself[39;49;00m.config.max_waiting_requests):[90m[39;49;00m
+                        [94mraise[39;49;00m ResourceUnavailableError([33m"[39;49;00m[33mresource admission queue is full; retry later[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+                    [94mif[39;49;00m parent_id:[90m[39;49;00m
+                        parent_record = state[[33m"[39;49;00m[33mleases[39;49;00m[33m"[39;49;00m].get(parent_id)[90m[39;49;00m
+                        [94mif[39;49;00m parent_record [95mis[39;49;00m [94mNone[39;49;00m:[90m[39;49;00m
+                            [94mraise[39;49;00m LeaseNotFoundError([33mf[39;49;00m[33m"[39;49;00m[33mparent lease [39;49;00m[33m{[39;49;00mparent_id[33m!r}[39;49;00m[33m is not active[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+                        [94mif[39;49;00m parent_key [95mand[39;49;00m parent_record.get([33m"[39;49;00m[33mlease_key[39;49;00m[33m"[39;49;00m) != parent_key:[90m[39;49;00m
+                            [94mraise[39;49;00m LeaseNotFoundError([33m"[39;49;00m[33mparent lease authority does not match[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+                        [94mif[39;49;00m cpu_slots > [96mint[39;49;00m(parent_record[[33m"[39;49;00m[33mcpu_slots[39;49;00m[33m"[39;49;00m]) [95mor[39;49;00m memory_mb > [96mint[39;49;00m([90m[39;49;00m
+                            parent_record[[33m"[39;49;00m[33mmemory_mb[39;49;00m[33m"[39;49;00m][90m[39;49;00m
+                        ):[90m[39;49;00m
+                            [94mraise[39;49;00m ResourceUnavailableError([90m[39;49;00m
+                                [33m"[39;49;00m[33mchild request exceeds parent lease capacity[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+                            )[90m[39;49;00m
+                        [94mif[39;49;00m gpu_memory_mb > [96mint[39;49;00m(parent_record.get([33m"[39;49;00m[33mgpu_memory_mb[39;49;00m[33m"[39;49;00m, [94m0[39;49;00m)):[90m[39;49;00m
+                            [94mraise[39;49;00m ResourceUnavailableError([90m[39;49;00m
+                                [33m"[39;49;00m[33mchild GPU memory request exceeds parent lease capacity[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+                            )[90m[39;49;00m
+                        [94mif[39;49;00m unified_memory_mb > [96mint[39;49;00m(parent_record.get([33m"[39;49;00m[33munified_memory_mb[39;49;00m[33m"[39;49;00m, [94m0[39;49;00m)):[90m[39;49;00m
+                            [94mraise[39;49;00m ResourceUnavailableError([90m[39;49;00m
+                                [33m"[39;49;00m[33mchild unified-memory request exceeds parent lease capacity[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+                            )[90m[39;49;00m
+                        [94mif[39;49;00m child_process_slots > [96mint[39;49;00m(parent_record.get([33m"[39;49;00m[33mchild_process_slots[39;49;00m[33m"[39;49;00m, [94m0[39;49;00m)):[90m[39;49;00m
+                            [94mraise[39;49;00m ResourceUnavailableError([90m[39;49;00m
+                                [33m"[39;49;00m[33mchild process request exceeds parent lease capacity[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+                            )[90m[39;49;00m
+                    sequence = [96mint[39;49;00m(state[[33m"[39;49;00m[33mnext_sequence[39;49;00m[33m"[39;49;00m])[90m[39;49;00m
+                    state[[33m"[39;49;00m[33mnext_sequence[39;49;00m[33m"[39;49;00m] = sequence + [94m1[39;49;00m[90m[39;49;00m
+                    state[[33m"[39;49;00m[33mwaiters[39;49;00m[33m"[39;49;00m][waiter_id] = {[90m[39;49;00m
+                        [33m"[39;49;00m[33mwaiter_id[39;49;00m[33m"[39;49;00m: waiter_id,[90m[39;49;00m
+                        [33m"[39;49;00m[33msequence[39;49;00m[33m"[39;49;00m: sequence,[90m[39;49;00m
+                        [33m"[39;49;00m[33mlane[39;49;00m[33m"[39;49;00m: lane_value,[90m[39;49;00m
+                        [33m"[39;49;00m[33mcpu_slots[39;49;00m[33m"[39;49;00m: cpu_slots,[90m[39;49;00m
+                        [33m"[39;49;00m[33mmemory_mb[39;49;00m[33m"[39;49;00m: memory_mb,[90m[39;49;00m
+                        [33m"[39;49;00m[33mgpu_memory_mb[39;49;00m[33m"[39;49;00m: gpu_memory_mb,[90m[39;49;00m
+                        [33m"[39;49;00m[33munified_memory_mb[39;49;00m[33m"[39;49;00m: unified_memory_mb,[90m[39;49;00m
+                        [33m"[39;49;00m[33mchild_process_slots[39;49;00m[33m"[39;49;00m: child_process_slots,[90m[39;49;00m
+                        [33m"[39;49;00m[33mrequires_gpu[39;49;00m[33m"[39;49;00m: [96mbool[39;49;00m(requires_gpu [95mor[39;49;00m gpu_memory_mb > [94m0[39;49;00m),[90m[39;49;00m
+                        [33m"[39;49;00m[33mparent_lease_id[39;49;00m[33m"[39;49;00m: parent_id,[90m[39;49;00m
+                        [33m"[39;49;00m[33mowner_pid[39;49;00m[33m"[39;49;00m: pid,[90m[39;49;00m
+                        [33m"[39;49;00m[33mowner_birth_marker[39;49;00m[33m"[39;49;00m: birth_marker,[90m[39;49;00m
+                        [33m"[39;49;00m[33mcreated_at[39;49;00m[33m"[39;49;00m: started_wall,[90m[39;49;00m
+                        [33m"[39;49;00m[33mrequest_id[39;49;00m[33m"[39;49;00m: [96mstr[39;49;00m(request_id)[:[94m256[39;49;00m],[90m[39;49;00m
+                        [33m"[39;49;00m[33msaturation_recorded[39;49;00m[33m"[39;49;00m: [94mFalse[39;49;00m,[90m[39;49;00m
+                    }[90m[39;49;00m
+                waiter = state[[33m"[39;49;00m[33mwaiters[39;49;00m[33m"[39;49;00m][waiter_id][90m[39;49;00m
+                parent_record = state[[33m"[39;49;00m[33mleases[39;49;00m[33m"[39;49;00m].get(parent_id) [94mif[39;49;00m parent_id [94melse[39;49;00m [94mNone[39;49;00m[90m[39;49;00m
+                parent_cancelled = [96mbool[39;49;00m([90m[39;49;00m
+                    parent_id [95mand[39;49;00m (parent_record [95mis[39;49;00m [94mNone[39;49;00m [95mor[39;49;00m parent_record.get([33m"[39;49;00m[33mcancelled[39;49;00m[33m"[39;49;00m))[90m[39;49;00m
+                )[90m[39;49;00m
+                timed_out = deadline [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m [95mand[39;49;00m now_mono >= deadline[90m[39;49;00m
+                can_grant_now = [96mself[39;49;00m._can_grant(state, waiter) [95mand[39;49;00m [96mself[39;49;00m._is_fair_turn(state, waiter)[90m[39;49;00m
+                [94mif[39;49;00m can_grant_now [95mand[39;49;00m [96mself[39;49;00m.config.proof_recovery_enabled:[90m[39;49;00m
+                    [90m# Another waiter's fairness probe can observe fresh pressure.[39;49;00m[90m[39;49;00m
+                    [90m# Recheck the shared fence before creating the actual lease.[39;49;00m[90m[39;49;00m
+                    can_grant_now = [96mself[39;49;00m._recovery_ready(state, waiter, time.time())[90m[39;49;00m
+                [94mif[39;49;00m ([90m[39;49;00m
+                    [95mnot[39;49;00m externally_cancelled[90m[39;49;00m
+                    [95mand[39;49;00m [95mnot[39;49;00m parent_cancelled[90m[39;49;00m
+                    [95mand[39;49;00m [95mnot[39;49;00m can_grant_now[90m[39;49;00m
+                    [95mand[39;49;00m [95mnot[39;49;00m waiter.get([33m"[39;49;00m[33msaturation_recorded[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+                ):[90m[39;49;00m
+                    waiter[[33m"[39;49;00m[33msaturation_recorded[39;49;00m[33m"[39;49;00m] = [94mTrue[39;49;00m[90m[39;49;00m
+                    state[[33m"[39;49;00m[33mmetrics[39;49;00m[33m"[39;49;00m][[33m"[39;49;00m[33msaturation_events_total[39;49;00m[33m"[39;49;00m] += [94m1[39;49;00m[90m[39;49;00m
+                [94mif[39;49;00m externally_cancelled [95mor[39;49;00m parent_cancelled:[90m[39;49;00m
+                    state[[33m"[39;49;00m[33mwaiters[39;49;00m[33m"[39;49;00m].pop(waiter_id, [94mNone[39;49;00m)[90m[39;49;00m
+                    wait_seconds = now_mono - started_mono[90m[39;49;00m
+                    [96mself[39;49;00m._record_wait(state, lane_value, wait_seconds)[90m[39;49;00m
+                    state[[33m"[39;49;00m[33mmetrics[39;49;00m[33m"[39;49;00m][[33m"[39;49;00m[33mcancellations_total[39;49;00m[33m"[39;49;00m] += [94m1[39;49;00m[90m[39;49;00m
+                    [96mself[39;49;00m._lane_metrics(state, lane_value)[[33m"[39;49;00m[33mcancellations_total[39;49;00m[33m"[39;49;00m] += [94m1[39;49;00m[90m[39;49;00m
+                    terminal = [33m"[39;49;00m[33mcancelled[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+                [94melif[39;49;00m timed_out [95mand[39;49;00m [95mnot[39;49;00m can_grant_now:[90m[39;49;00m
+                    state[[33m"[39;49;00m[33mwaiters[39;49;00m[33m"[39;49;00m].pop(waiter_id, [94mNone[39;49;00m)[90m[39;49;00m
+                    wait_seconds = now_mono - started_mono[90m[39;49;00m
+                    [96mself[39;49;00m._record_wait(state, lane_value, wait_seconds)[90m[39;49;00m
+                    state[[33m"[39;49;00m[33mmetrics[39;49;00m[33m"[39;49;00m][[33m"[39;49;00m[33mtimeouts_total[39;49;00m[33m"[39;49;00m] += [94m1[39;49;00m[90m[39;49;00m
+                    [96mself[39;49;00m._lane_metrics(state, lane_value)[[33m"[39;49;00m[33mtimeouts_total[39;49;00m[33m"[39;49;00m] += [94m1[39;49;00m[90m[39;49;00m
+                    terminal = [33m"[39;49;00m[33mtimeout[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+                [94melif[39;49;00m can_grant_now:[90m[39;49;00m
+                    state[[33m"[39;49;00m[33mwaiters[39;49;00m[33m"[39;49;00m].pop(waiter_id, [94mNone[39;49;00m)[90m[39;49;00m
+                    lease_id = uuid.uuid4().hex[90m[39;49;00m
+                    lease_key = uuid.uuid4().hex[90m[39;49;00m
+                    wait_seconds = now_mono - started_mono[90m[39;49;00m
+                    granted_record = {[90m[39;49;00m
+                        [33m"[39;49;00m[33mlease_id[39;49;00m[33m"[39;49;00m: lease_id,[90m[39;49;00m
+                        [33m"[39;49;00m[33mlease_key[39;49;00m[33m"[39;49;00m: lease_key,[90m[39;49;00m
+                        [33m"[39;49;00m[33msequence[39;49;00m[33m"[39;49;00m: waiter[[33m"[39;49;00m[33msequence[39;49;00m[33m"[39;49;00m],[90m[39;49;00m
+                        [33m"[39;49;00m[33mlane[39;49;00m[33m"[39;49;00m: lane_value,[90m[39;49;00m
+                        [33m"[39;49;00m[33mcpu_slots[39;49;00m[33m"[39;49;00m: cpu_slots,[90m[39;49;00m
+                        [33m"[39;49;00m[33mmemory_mb[39;49;00m[33m"[39;49;00m: memory_mb,[90m[39;49;00m
+                        [33m"[39;49;00m[33mgpu_memory_mb[39;49;00m[33m"[39;49;00m: gpu_memory_mb,[90m[39;49;00m
+                        [33m"[39;49;00m[33munified_memory_mb[39;49;00m[33m"[39;49;00m: unified_memory_mb,[90m[39;49;00m
+                        [33m"[39;49;00m[33mchild_process_slots[39;49;00m[33m"[39;49;00m: child_process_slots,[90m[39;49;00m
+                        [33m"[39;49;00m[33mrequires_gpu[39;49;00m[33m"[39;49;00m: [96mbool[39;49;00m(requires_gpu [95mor[39;49;00m gpu_memory_mb > [94m0[39;49;00m),[90m[39;49;00m
+                        [33m"[39;49;00m[33mparent_lease_id[39;49;00m[33m"[39;49;00m: parent_id,[90m[39;49;00m
+                        [33m"[39;49;00m[33mowner_pid[39;49;00m[33m"[39;49;00m: pid,[90m[39;49;00m
+                        [33m"[39;49;00m[33mowner_birth_marker[39;49;00m[33m"[39;49;00m: birth_marker,[90m[39;49;00m
+                        [33m"[39;49;00m[33macquired_at[39;49;00m[33m"[39;49;00m: now_wall,[90m[39;49;00m
+                        [33m"[39;49;00m[33mheartbeat_at[39;49;00m[33m"[39;49;00m: now_wall,[90m[39;49;00m
+                        [33m"[39;49;00m[33mexpires_at[39;49;00m[33m"[39;49;00m: now_wall + [96mself[39;49;00m.config.lease_ttl_seconds,[90m[39;49;00m
+                        [33m"[39;49;00m[33mrequest_id[39;49;00m[33m"[39;49;00m: [96mstr[39;49;00m(request_id)[:[94m256[39;49;00m],[90m[39;49;00m
+                        [33m"[39;49;00m[33mcancelled[39;49;00m[33m"[39;49;00m: [94mFalse[39;49;00m,[90m[39;49;00m
+                        [33m"[39;49;00m[33mwait_seconds[39;49;00m[33m"[39;49;00m: wait_seconds,[90m[39;49;00m
+                    }[90m[39;49;00m
+                    state[[33m"[39;49;00m[33mleases[39;49;00m[33m"[39;49;00m][lease_id] = granted_record[90m[39;49;00m
+                    [94mif[39;49;00m [96mself[39;49;00m.config.proof_recovery_enabled:[90m[39;49;00m
+                        [96mself[39;49;00m._consume_recovery_grant(state, waiter, time.time())[90m[39;49;00m
+                    [96mself[39;49;00m._record_wait(state, lane_value, wait_seconds)[90m[39;49;00m
+                    state[[33m"[39;49;00m[33mmetrics[39;49;00m[33m"[39;49;00m][[33m"[39;49;00m[33macquisitions_total[39;49;00m[33m"[39;49;00m] += [94m1[39;49;00m[90m[39;49;00m
+                    [96mself[39;49;00m._lane_metrics(state, lane_value)[[33m"[39;49;00m[33macquisitions_total[39;49;00m[33m"[39;49;00m] += [94m1[39;49;00m[90m[39;49;00m
+    [90m[39;49;00m
+            [94mif[39;49;00m terminal [95mis[39;49;00m [94mNone[39;49;00m [95mand[39;49;00m granted_record [95mis[39;49;00m [94mNone[39;49;00m:[90m[39;49;00m
+                wait_for = [96mself[39;49;00m.config.poll_interval_seconds[90m[39;49;00m
+                [94mif[39;49;00m [96mself[39;49;00m.config.proof_safety_enabled:[90m[39;49;00m
+                    remaining_backoff = [96mfloat[39;49;00m(state.get([33m"[39;49;00m[33mproof_backoff[39;49;00m[33m"[39;49;00m, {}).get([33m"[39;49;00m[33muntil[39;49;00m[33m"[39;49;00m, [94m0[39;49;00m)) - time.time()[90m[39;49;00m
+                    wait_for = [96mmax[39;49;00m(wait_for, [96mmin[39;49;00m([94m1.0[39;49;00m, remaining_backoff))[90m[39;49;00m
+                [94mif[39;49;00m deadline [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m:[90m[39;49;00m
+                    wait_for = [96mmin[39;49;00m(wait_for, [96mmax[39;49;00m([94m0.0[39;49;00m, deadline - time.monotonic()))[90m[39;49;00m
+                [94mif[39;49;00m cancel_event [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m [95mand[39;49;00m [96mhasattr[39;49;00m(cancel_event, [33m"[39;49;00m[33mwait[39;49;00m[33m"[39;49;00m):[90m[39;49;00m
+                    [94mtry[39;49;00m:[90m[39;49;00m
+                        cancel_event.wait(wait_for)  [90m# type: ignore[attr-defined][39;49;00m[90m[39;49;00m
+                    [94mexcept[39;49;00m ([96mTypeError[39;49;00m, [96mValueError[39;49;00m):[90m[39;49;00m
+                        time.sleep(wait_for)[90m[39;49;00m
+                [94melse[39;49;00m:[90m[39;49;00m
+                    time.sleep(wait_for)[90m[39;49;00m
+    [90m[39;49;00m
+        [94mif[39;49;00m terminal == [33m"[39;49;00m[33mcancelled[39;49;00m[33m"[39;49;00m:[90m[39;49;00m
+            [94mraise[39;49;00m LeaseCancelledError([33m"[39;49;00m[33mresource lease request was cancelled[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mif[39;49;00m terminal == [33m"[39;49;00m[33mtimeout[39;49;00m[33m"[39;49;00m:[90m[39;49;00m
+>           [94mraise[39;49;00m LeaseTimeoutError([33m"[39;49;00m[33mtimed out waiting for a resource lease[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+[1m[31mE           ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.LeaseTimeoutError: timed out waiting for a resource lease[0m
+
+[1m[31m../ir-release-datasets-20261002/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py[0m:1613: LeaseTimeoutError
+[31m[1m______ test_checkpoint_change_during_router_is_rejected_before_admission _______[0m
+
+original = (PosixPath('/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/actual-a-context-temp/test_checkpoin.../lift_coding/artifacts/initial-context-lifetime-20261003/actual-a-context-temp/test_checkpoint_change_during_0/state'))
+selected_config = PosixPath('/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/actual-a-context-temp/test_checkpoint_change_during_0/source384-config.json')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xe49f0a947d70>
+
+    [0m[94mdef[39;49;00m [92mtest_checkpoint_change_during_router_is_rejected_before_admission[39;49;00m(original, selected_config, monkeypatch):[90m[39;49;00m
+        root, instruction, state = original[90m[39;49;00m
+        prepared = prep.prepare(repository=root, instruction=instruction, state=state)[90m[39;49;00m
+>       prep.initial_context(state=state, source384_config=selected_config)[90m[39;49;00m
+
+[1m[31mbenchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py[0m:117: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+[1m[31mbenchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py[0m:381: in initial_context
+    [0m[94mreturn[39;49;00m prepare_initial_context(state=state, prepared=_load_prepared(state),[90m[39;49;00m
+[1m[31mbenchmarks/agent_supervisor/container_coding/terminal_initial_context.py[0m:241: in prepare_initial_context
+    [0msource384 = prepare_source384_context(repository=root,[90m[39;49;00m
+[1m[31mipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py[0m:214: in prepare_source384_context
+    [0m[94mwith[39;49;00m acquire_codebase_resources(scheduler=scheduler, parent_lease=parent_lease,[90m[39;49;00m
+[1m[31m/usr/lib/python3.12/contextlib.py[0m:137: in __enter__
+    [0m[94mreturn[39;49;00m [96mnext[39;49;00m([96mself[39;49;00m.gen)[90m[39;49;00m
+           ^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31m../ir-release-datasets-20261002/ipfs_datasets_py/logic/software_contracts/codebase_resources.py[0m:78: in acquire_codebase_resources
+    [0mlease = owner.acquire(**request)[90m[39;49;00m
+            ^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.GlobalResourceScheduler object at 0xe49f2e16e030>
+lane = <ResourceLane.SNAPSHOT_EVALUATION: 'snapshot_evaluation'>, cpu_slots = 3
+memory_mb = 6144, gpu_memory_mb = 0, unified_memory_mb = 0
+child_process_slots = 3, requires_gpu = False, parent_lease = None
+parent = None, timeout = 30.0, cancel_event = None
+request_id = 'codebase-ir:prepare', owner_pid = None
+
+    [0m[94mdef[39;49;00m [92macquire[39;49;00m([90m[39;49;00m
+        [96mself[39;49;00m,[90m[39;49;00m
+        lane: Union[[96mstr[39;49;00m, ResourceLane],[90m[39;49;00m
+        *,[90m[39;49;00m
+        cpu_slots: [96mint[39;49;00m = [94m1[39;49;00m,[90m[39;49;00m
+        memory_mb: [96mint[39;49;00m = [94m0[39;49;00m,[90m[39;49;00m
+        gpu_memory_mb: [96mint[39;49;00m = [94m0[39;49;00m,[90m[39;49;00m
+        unified_memory_mb: [96mint[39;49;00m = [94m0[39;49;00m,[90m[39;49;00m
+        child_process_slots: [96mint[39;49;00m = [94m0[39;49;00m,[90m[39;49;00m
+        requires_gpu: [96mbool[39;49;00m = [94mFalse[39;49;00m,[90m[39;49;00m
+        parent_lease: Optional[Union[ResourceLease, ResourceLeaseToken, [96mstr[39;49;00m]] = [94mNone[39;49;00m,[90m[39;49;00m
+        parent: Optional[Union[ResourceLease, ResourceLeaseToken, [96mstr[39;49;00m]] = [94mNone[39;49;00m,[90m[39;49;00m
+        timeout: Optional[[96mfloat[39;49;00m] = [94mNone[39;49;00m,[90m[39;49;00m
+        cancel_event: Optional[CancellationSignal] = [94mNone[39;49;00m,[90m[39;49;00m
+        request_id: [96mstr[39;49;00m = [33m"[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+        owner_pid: Optional[[96mint[39;49;00m] = [94mNone[39;49;00m,[90m[39;49;00m
+    ) -> ResourceLease:[90m[39;49;00m
+    [90m    [39;49;00m[33m"""Wait for and return a root or nested lease.[39;49;00m
+    [33m[39;49;00m
+    [33m    Child resources are bounded by, but do not add to, the parent's[39;49;00m
+    [33m    global allocation.  ``parent`` is an alias for ``parent_lease``.[39;49;00m
+    [33m    Cancellation and timeouts remove the durable waiter before raising.[39;49;00m
+    [33m    """[39;49;00m[90m[39;49;00m
+    [90m[39;49;00m
+        lane_value = [96mself[39;49;00m._normalise_lane(lane)[90m[39;49;00m
+        [94mif[39;49;00m [96misinstance[39;49;00m(cpu_slots, [96mbool[39;49;00m) [95mor[39;49;00m [95mnot[39;49;00m [96misinstance[39;49;00m(cpu_slots, [96mint[39;49;00m) [95mor[39;49;00m cpu_slots <= [94m0[39;49;00m:[90m[39;49;00m
+            [94mraise[39;49;00m ResourceConfigurationError([33m"[39;49;00m[33mcpu_slots must be a positive integer[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mif[39;49;00m [96misinstance[39;49;00m(memory_mb, [96mbool[39;49;00m) [95mor[39;49;00m [95mnot[39;49;00m [96misinstance[39;49;00m(memory_mb, [96mint[39;49;00m) [95mor[39;49;00m memory_mb < [94m0[39;49;00m:[90m[39;49;00m
+            [94mraise[39;49;00m ResourceConfigurationError([33m"[39;49;00m[33mmemory_mb must be a non-negative integer[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mif[39;49;00m [96mself[39;49;00m.config.proof_safety_enabled [95mand[39;49;00m memory_mb == [94m0[39;49;00m:[90m[39;49;00m
+            [94mraise[39;49;00m ResourceConfigurationError([33m"[39;49;00m[33mproof safety requires a positive memory_mb reservation[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mif[39;49;00m ([90m[39;49;00m
+            [96misinstance[39;49;00m(gpu_memory_mb, [96mbool[39;49;00m)[90m[39;49;00m
+            [95mor[39;49;00m [95mnot[39;49;00m [96misinstance[39;49;00m(gpu_memory_mb, [96mint[39;49;00m)[90m[39;49;00m
+            [95mor[39;49;00m gpu_memory_mb < [94m0[39;49;00m[90m[39;49;00m
+        ):[90m[39;49;00m
+            [94mraise[39;49;00m ResourceConfigurationError([33m"[39;49;00m[33mgpu_memory_mb must be a non-negative integer[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mif[39;49;00m ([90m[39;49;00m
+            [96misinstance[39;49;00m(unified_memory_mb, [96mbool[39;49;00m)[90m[39;49;00m
+            [95mor[39;49;00m [95mnot[39;49;00m [96misinstance[39;49;00m(unified_memory_mb, [96mint[39;49;00m)[90m[39;49;00m
+            [95mor[39;49;00m unified_memory_mb < [94m0[39;49;00m[90m[39;49;00m
+        ):[90m[39;49;00m
+            [94mraise[39;49;00m ResourceConfigurationError([33m"[39;49;00m[33munified_memory_mb must be a non-negative integer[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mif[39;49;00m ([90m[39;49;00m
+            [96misinstance[39;49;00m(child_process_slots, [96mbool[39;49;00m)[90m[39;49;00m
+            [95mor[39;49;00m [95mnot[39;49;00m [96misinstance[39;49;00m(child_process_slots, [96mint[39;49;00m)[90m[39;49;00m
+            [95mor[39;49;00m child_process_slots < [94m0[39;49;00m[90m[39;49;00m
+        ):[90m[39;49;00m
+            [94mraise[39;49;00m ResourceConfigurationError([33m"[39;49;00m[33mchild_process_slots must be a non-negative integer[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mif[39;49;00m timeout [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m [95mand[39;49;00m ([95mnot[39;49;00m math.isfinite([96mfloat[39;49;00m(timeout)) [95mor[39;49;00m timeout < [94m0[39;49;00m):[90m[39;49;00m
+            [94mraise[39;49;00m ResourceConfigurationError([33m"[39;49;00m[33mtimeout must be non-negative and finite[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mif[39;49;00m parent [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m [95mand[39;49;00m parent_lease [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m:[90m[39;49;00m
+            [94mraise[39;49;00m ResourceConfigurationError([33m"[39;49;00m[33mspecify only one of parent and parent_lease[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        parent_id, parent_key = [96mself[39;49;00m._parent_authority(parent_lease [95mor[39;49;00m parent)[90m[39;49;00m
+        [94mif[39;49;00m [95mnot[39;49;00m parent_id:[90m[39;49;00m
+            reservations = [96mself[39;49;00m.config.reservations()[90m[39;49;00m
+            maximum_cpu = [96mself[39;49;00m.config.total_cpu_slots - [96msum[39;49;00m([90m[39;49;00m
+                reservation.cpu_slots[90m[39;49;00m
+                [94mfor[39;49;00m reserved_lane, reservation [95min[39;49;00m reservations.items()[90m[39;49;00m
+                [94mif[39;49;00m reserved_lane != lane_value[90m[39;49;00m
+            )[90m[39;49;00m
+            maximum_memory = ([90m[39;49;00m
+                [96mself[39;49;00m.config.total_memory_mb[90m[39;49;00m
+                - [96msum[39;49;00m([90m[39;49;00m
+                    reservation.memory_mb[90m[39;49;00m
+                    [94mfor[39;49;00m reserved_lane, reservation [95min[39;49;00m reservations.items()[90m[39;49;00m
+                    [94mif[39;49;00m reserved_lane != lane_value[90m[39;49;00m
+                )[90m[39;49;00m
+                - [96mself[39;49;00m.config.reserved_memory_mb[90m[39;49;00m
+            )[90m[39;49;00m
+            [94mif[39;49;00m cpu_slots > maximum_cpu [95mor[39;49;00m memory_mb > maximum_memory:[90m[39;49;00m
+                [94mraise[39;49;00m ResourceUnavailableError([90m[39;49;00m
+                    [33m"[39;49;00m[33mrequest exceeds capacity available to its reservation lane[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+                )[90m[39;49;00m
+            [94mif[39;49;00m gpu_memory_mb > [94m0[39;49;00m:[90m[39;49;00m
+                maximum_gpu_memory = ([90m[39;49;00m
+                    [94mNone[39;49;00m[90m[39;49;00m
+                    [94mif[39;49;00m [96mself[39;49;00m.config.total_gpu_memory_mb [95mis[39;49;00m [94mNone[39;49;00m[90m[39;49;00m
+                    [94melse[39;49;00m [96mself[39;49;00m.config.total_gpu_memory_mb - [96mself[39;49;00m.config.reserved_gpu_memory_mb[90m[39;49;00m
+                )[90m[39;49;00m
+                [94mif[39;49;00m maximum_gpu_memory [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m [95mand[39;49;00m gpu_memory_mb > maximum_gpu_memory:[90m[39;49;00m
+                    [94mraise[39;49;00m ResourceUnavailableError([90m[39;49;00m
+                        [33m"[39;49;00m[33mGPU memory request exceeds configured GPU capacity[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+                    )[90m[39;49;00m
+            [94mif[39;49;00m ([90m[39;49;00m
+                [96mself[39;49;00m.config.total_unified_memory_mb [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m[90m[39;49;00m
+                [95mand[39;49;00m unified_memory_mb > [96mself[39;49;00m.config.total_unified_memory_mb[90m[39;49;00m
+            ):[90m[39;49;00m
+                [94mraise[39;49;00m ResourceUnavailableError([90m[39;49;00m
+                    [33m"[39;49;00m[33munified memory request exceeds configured unified-memory capacity[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+                )[90m[39;49;00m
+            [94mif[39;49;00m child_process_slots > [96mself[39;49;00m.config.total_child_process_slots:[90m[39;49;00m
+                [94mraise[39;49;00m ResourceUnavailableError([90m[39;49;00m
+                    [33m"[39;49;00m[33mchild-process request exceeds configured process capacity[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+                )[90m[39;49;00m
+    [90m[39;49;00m
+        pid = [96mint[39;49;00m(owner_pid [94mif[39;49;00m owner_pid [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m [94melse[39;49;00m os.getpid())[90m[39;49;00m
+        birth_marker = _owner_birth_marker(pid)[90m[39;49;00m
+        waiter_id = uuid.uuid4().hex[90m[39;49;00m
+        started_wall = time.time()[90m[39;49;00m
+        started_mono = time.monotonic()[90m[39;49;00m
+        deadline = [94mNone[39;49;00m [94mif[39;49;00m timeout [95mis[39;49;00m [94mNone[39;49;00m [94melse[39;49;00m started_mono + [96mfloat[39;49;00m(timeout)[90m[39;49;00m
+        terminal: Optional[[96mstr[39;49;00m] = [94mNone[39;49;00m[90m[39;49;00m
+        granted_record: Optional[Dict[[96mstr[39;49;00m, Any]] = [94mNone[39;49;00m[90m[39;49;00m
+    [90m[39;49;00m
+        [94mwhile[39;49;00m granted_record [95mis[39;49;00m [94mNone[39;49;00m [95mand[39;49;00m terminal [95mis[39;49;00m [94mNone[39;49;00m:[90m[39;49;00m
+            now_wall = time.time()[90m[39;49;00m
+            now_mono = time.monotonic()[90m[39;49;00m
+            externally_cancelled = [96mbool[39;49;00m(cancel_event [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m [95mand[39;49;00m cancel_event.is_set())[90m[39;49;00m
+            [94mwith[39;49;00m [96mself[39;49;00m._locked_state() [94mas[39;49;00m state:[90m[39;49;00m
+                [96mself[39;49;00m._recover_stale_locked(state, now_wall)[90m[39;49;00m
+                [94mif[39;49;00m waiter_id [95mnot[39;49;00m [95min[39;49;00m state[[33m"[39;49;00m[33mwaiters[39;49;00m[33m"[39;49;00m]:[90m[39;49;00m
+                    [94mif[39;49;00m ([96mself[39;49;00m.config.max_waiting_requests [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m[90m[39;49;00m
+                            [95mand[39;49;00m [96mlen[39;49;00m(state[[33m"[39;49;00m[33mwaiters[39;49;00m[33m"[39;49;00m]) >= [96mself[39;49;00m.config.max_waiting_requests):[90m[39;49;00m
+                        [94mraise[39;49;00m ResourceUnavailableError([33m"[39;49;00m[33mresource admission queue is full; retry later[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+                    [94mif[39;49;00m parent_id:[90m[39;49;00m
+                        parent_record = state[[33m"[39;49;00m[33mleases[39;49;00m[33m"[39;49;00m].get(parent_id)[90m[39;49;00m
+                        [94mif[39;49;00m parent_record [95mis[39;49;00m [94mNone[39;49;00m:[90m[39;49;00m
+                            [94mraise[39;49;00m LeaseNotFoundError([33mf[39;49;00m[33m"[39;49;00m[33mparent lease [39;49;00m[33m{[39;49;00mparent_id[33m!r}[39;49;00m[33m is not active[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+                        [94mif[39;49;00m parent_key [95mand[39;49;00m parent_record.get([33m"[39;49;00m[33mlease_key[39;49;00m[33m"[39;49;00m) != parent_key:[90m[39;49;00m
+                            [94mraise[39;49;00m LeaseNotFoundError([33m"[39;49;00m[33mparent lease authority does not match[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+                        [94mif[39;49;00m cpu_slots > [96mint[39;49;00m(parent_record[[33m"[39;49;00m[33mcpu_slots[39;49;00m[33m"[39;49;00m]) [95mor[39;49;00m memory_mb > [96mint[39;49;00m([90m[39;49;00m
+                            parent_record[[33m"[39;49;00m[33mmemory_mb[39;49;00m[33m"[39;49;00m][90m[39;49;00m
+                        ):[90m[39;49;00m
+                            [94mraise[39;49;00m ResourceUnavailableError([90m[39;49;00m
+                                [33m"[39;49;00m[33mchild request exceeds parent lease capacity[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+                            )[90m[39;49;00m
+                        [94mif[39;49;00m gpu_memory_mb > [96mint[39;49;00m(parent_record.get([33m"[39;49;00m[33mgpu_memory_mb[39;49;00m[33m"[39;49;00m, [94m0[39;49;00m)):[90m[39;49;00m
+                            [94mraise[39;49;00m ResourceUnavailableError([90m[39;49;00m
+                                [33m"[39;49;00m[33mchild GPU memory request exceeds parent lease capacity[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+                            )[90m[39;49;00m
+                        [94mif[39;49;00m unified_memory_mb > [96mint[39;49;00m(parent_record.get([33m"[39;49;00m[33munified_memory_mb[39;49;00m[33m"[39;49;00m, [94m0[39;49;00m)):[90m[39;49;00m
+                            [94mraise[39;49;00m ResourceUnavailableError([90m[39;49;00m
+                                [33m"[39;49;00m[33mchild unified-memory request exceeds parent lease capacity[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+                            )[90m[39;49;00m
+                        [94mif[39;49;00m child_process_slots > [96mint[39;49;00m(parent_record.get([33m"[39;49;00m[33mchild_process_slots[39;49;00m[33m"[39;49;00m, [94m0[39;49;00m)):[90m[39;49;00m
+                            [94mraise[39;49;00m ResourceUnavailableError([90m[39;49;00m
+                                [33m"[39;49;00m[33mchild process request exceeds parent lease capacity[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+                            )[90m[39;49;00m
+                    sequence = [96mint[39;49;00m(state[[33m"[39;49;00m[33mnext_sequence[39;49;00m[33m"[39;49;00m])[90m[39;49;00m
+                    state[[33m"[39;49;00m[33mnext_sequence[39;49;00m[33m"[39;49;00m] = sequence + [94m1[39;49;00m[90m[39;49;00m
+                    state[[33m"[39;49;00m[33mwaiters[39;49;00m[33m"[39;49;00m][waiter_id] = {[90m[39;49;00m
+                        [33m"[39;49;00m[33mwaiter_id[39;49;00m[33m"[39;49;00m: waiter_id,[90m[39;49;00m
+                        [33m"[39;49;00m[33msequence[39;49;00m[33m"[39;49;00m: sequence,[90m[39;49;00m
+                        [33m"[39;49;00m[33mlane[39;49;00m[33m"[39;49;00m: lane_value,[90m[39;49;00m
+                        [33m"[39;49;00m[33mcpu_slots[39;49;00m[33m"[39;49;00m: cpu_slots,[90m[39;49;00m
+                        [33m"[39;49;00m[33mmemory_mb[39;49;00m[33m"[39;49;00m: memory_mb,[90m[39;49;00m
+                        [33m"[39;49;00m[33mgpu_memory_mb[39;49;00m[33m"[39;49;00m: gpu_memory_mb,[90m[39;49;00m
+                        [33m"[39;49;00m[33munified_memory_mb[39;49;00m[33m"[39;49;00m: unified_memory_mb,[90m[39;49;00m
+                        [33m"[39;49;00m[33mchild_process_slots[39;49;00m[33m"[39;49;00m: child_process_slots,[90m[39;49;00m
+                        [33m"[39;49;00m[33mrequires_gpu[39;49;00m[33m"[39;49;00m: [96mbool[39;49;00m(requires_gpu [95mor[39;49;00m gpu_memory_mb > [94m0[39;49;00m),[90m[39;49;00m
+                        [33m"[39;49;00m[33mparent_lease_id[39;49;00m[33m"[39;49;00m: parent_id,[90m[39;49;00m
+                        [33m"[39;49;00m[33mowner_pid[39;49;00m[33m"[39;49;00m: pid,[90m[39;49;00m
+                        [33m"[39;49;00m[33mowner_birth_marker[39;49;00m[33m"[39;49;00m: birth_marker,[90m[39;49;00m
+                        [33m"[39;49;00m[33mcreated_at[39;49;00m[33m"[39;49;00m: started_wall,[90m[39;49;00m
+                        [33m"[39;49;00m[33mrequest_id[39;49;00m[33m"[39;49;00m: [96mstr[39;49;00m(request_id)[:[94m256[39;49;00m],[90m[39;49;00m
+                        [33m"[39;49;00m[33msaturation_recorded[39;49;00m[33m"[39;49;00m: [94mFalse[39;49;00m,[90m[39;49;00m
+                    }[90m[39;49;00m
+                waiter = state[[33m"[39;49;00m[33mwaiters[39;49;00m[33m"[39;49;00m][waiter_id][90m[39;49;00m
+                parent_record = state[[33m"[39;49;00m[33mleases[39;49;00m[33m"[39;49;00m].get(parent_id) [94mif[39;49;00m parent_id [94melse[39;49;00m [94mNone[39;49;00m[90m[39;49;00m
+                parent_cancelled = [96mbool[39;49;00m([90m[39;49;00m
+                    parent_id [95mand[39;49;00m (parent_record [95mis[39;49;00m [94mNone[39;49;00m [95mor[39;49;00m parent_record.get([33m"[39;49;00m[33mcancelled[39;49;00m[33m"[39;49;00m))[90m[39;49;00m
+                )[90m[39;49;00m
+                timed_out = deadline [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m [95mand[39;49;00m now_mono >= deadline[90m[39;49;00m
+                can_grant_now = [96mself[39;49;00m._can_grant(state, waiter) [95mand[39;49;00m [96mself[39;49;00m._is_fair_turn(state, waiter)[90m[39;49;00m
+                [94mif[39;49;00m can_grant_now [95mand[39;49;00m [96mself[39;49;00m.config.proof_recovery_enabled:[90m[39;49;00m
+                    [90m# Another waiter's fairness probe can observe fresh pressure.[39;49;00m[90m[39;49;00m
+                    [90m# Recheck the shared fence before creating the actual lease.[39;49;00m[90m[39;49;00m
+                    can_grant_now = [96mself[39;49;00m._recovery_ready(state, waiter, time.time())[90m[39;49;00m
+                [94mif[39;49;00m ([90m[39;49;00m
+                    [95mnot[39;49;00m externally_cancelled[90m[39;49;00m
+                    [95mand[39;49;00m [95mnot[39;49;00m parent_cancelled[90m[39;49;00m
+                    [95mand[39;49;00m [95mnot[39;49;00m can_grant_now[90m[39;49;00m
+                    [95mand[39;49;00m [95mnot[39;49;00m waiter.get([33m"[39;49;00m[33msaturation_recorded[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+                ):[90m[39;49;00m
+                    waiter[[33m"[39;49;00m[33msaturation_recorded[39;49;00m[33m"[39;49;00m] = [94mTrue[39;49;00m[90m[39;49;00m
+                    state[[33m"[39;49;00m[33mmetrics[39;49;00m[33m"[39;49;00m][[33m"[39;49;00m[33msaturation_events_total[39;49;00m[33m"[39;49;00m] += [94m1[39;49;00m[90m[39;49;00m
+                [94mif[39;49;00m externally_cancelled [95mor[39;49;00m parent_cancelled:[90m[39;49;00m
+                    state[[33m"[39;49;00m[33mwaiters[39;49;00m[33m"[39;49;00m].pop(waiter_id, [94mNone[39;49;00m)[90m[39;49;00m
+                    wait_seconds = now_mono - started_mono[90m[39;49;00m
+                    [96mself[39;49;00m._record_wait(state, lane_value, wait_seconds)[90m[39;49;00m
+                    state[[33m"[39;49;00m[33mmetrics[39;49;00m[33m"[39;49;00m][[33m"[39;49;00m[33mcancellations_total[39;49;00m[33m"[39;49;00m] += [94m1[39;49;00m[90m[39;49;00m
+                    [96mself[39;49;00m._lane_metrics(state, lane_value)[[33m"[39;49;00m[33mcancellations_total[39;49;00m[33m"[39;49;00m] += [94m1[39;49;00m[90m[39;49;00m
+                    terminal = [33m"[39;49;00m[33mcancelled[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+                [94melif[39;49;00m timed_out [95mand[39;49;00m [95mnot[39;49;00m can_grant_now:[90m[39;49;00m
+                    state[[33m"[39;49;00m[33mwaiters[39;49;00m[33m"[39;49;00m].pop(waiter_id, [94mNone[39;49;00m)[90m[39;49;00m
+                    wait_seconds = now_mono - started_mono[90m[39;49;00m
+                    [96mself[39;49;00m._record_wait(state, lane_value, wait_seconds)[90m[39;49;00m
+                    state[[33m"[39;49;00m[33mmetrics[39;49;00m[33m"[39;49;00m][[33m"[39;49;00m[33mtimeouts_total[39;49;00m[33m"[39;49;00m] += [94m1[39;49;00m[90m[39;49;00m
+                    [96mself[39;49;00m._lane_metrics(state, lane_value)[[33m"[39;49;00m[33mtimeouts_total[39;49;00m[33m"[39;49;00m] += [94m1[39;49;00m[90m[39;49;00m
+                    terminal = [33m"[39;49;00m[33mtimeout[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+                [94melif[39;49;00m can_grant_now:[90m[39;49;00m
+                    state[[33m"[39;49;00m[33mwaiters[39;49;00m[33m"[39;49;00m].pop(waiter_id, [94mNone[39;49;00m)[90m[39;49;00m
+                    lease_id = uuid.uuid4().hex[90m[39;49;00m
+                    lease_key = uuid.uuid4().hex[90m[39;49;00m
+                    wait_seconds = now_mono - started_mono[90m[39;49;00m
+                    granted_record = {[90m[39;49;00m
+                        [33m"[39;49;00m[33mlease_id[39;49;00m[33m"[39;49;00m: lease_id,[90m[39;49;00m
+                        [33m"[39;49;00m[33mlease_key[39;49;00m[33m"[39;49;00m: lease_key,[90m[39;49;00m
+                        [33m"[39;49;00m[33msequence[39;49;00m[33m"[39;49;00m: waiter[[33m"[39;49;00m[33msequence[39;49;00m[33m"[39;49;00m],[90m[39;49;00m
+                        [33m"[39;49;00m[33mlane[39;49;00m[33m"[39;49;00m: lane_value,[90m[39;49;00m
+                        [33m"[39;49;00m[33mcpu_slots[39;49;00m[33m"[39;49;00m: cpu_slots,[90m[39;49;00m
+                        [33m"[39;49;00m[33mmemory_mb[39;49;00m[33m"[39;49;00m: memory_mb,[90m[39;49;00m
+                        [33m"[39;49;00m[33mgpu_memory_mb[39;49;00m[33m"[39;49;00m: gpu_memory_mb,[90m[39;49;00m
+                        [33m"[39;49;00m[33munified_memory_mb[39;49;00m[33m"[39;49;00m: unified_memory_mb,[90m[39;49;00m
+                        [33m"[39;49;00m[33mchild_process_slots[39;49;00m[33m"[39;49;00m: child_process_slots,[90m[39;49;00m
+                        [33m"[39;49;00m[33mrequires_gpu[39;49;00m[33m"[39;49;00m: [96mbool[39;49;00m(requires_gpu [95mor[39;49;00m gpu_memory_mb > [94m0[39;49;00m),[90m[39;49;00m
+                        [33m"[39;49;00m[33mparent_lease_id[39;49;00m[33m"[39;49;00m: parent_id,[90m[39;49;00m
+                        [33m"[39;49;00m[33mowner_pid[39;49;00m[33m"[39;49;00m: pid,[90m[39;49;00m
+                        [33m"[39;49;00m[33mowner_birth_marker[39;49;00m[33m"[39;49;00m: birth_marker,[90m[39;49;00m
+                        [33m"[39;49;00m[33macquired_at[39;49;00m[33m"[39;49;00m: now_wall,[90m[39;49;00m
+                        [33m"[39;49;00m[33mheartbeat_at[39;49;00m[33m"[39;49;00m: now_wall,[90m[39;49;00m
+                        [33m"[39;49;00m[33mexpires_at[39;49;00m[33m"[39;49;00m: now_wall + [96mself[39;49;00m.config.lease_ttl_seconds,[90m[39;49;00m
+                        [33m"[39;49;00m[33mrequest_id[39;49;00m[33m"[39;49;00m: [96mstr[39;49;00m(request_id)[:[94m256[39;49;00m],[90m[39;49;00m
+                        [33m"[39;49;00m[33mcancelled[39;49;00m[33m"[39;49;00m: [94mFalse[39;49;00m,[90m[39;49;00m
+                        [33m"[39;49;00m[33mwait_seconds[39;49;00m[33m"[39;49;00m: wait_seconds,[90m[39;49;00m
+                    }[90m[39;49;00m
+                    state[[33m"[39;49;00m[33mleases[39;49;00m[33m"[39;49;00m][lease_id] = granted_record[90m[39;49;00m
+                    [94mif[39;49;00m [96mself[39;49;00m.config.proof_recovery_enabled:[90m[39;49;00m
+                        [96mself[39;49;00m._consume_recovery_grant(state, waiter, time.time())[90m[39;49;00m
+                    [96mself[39;49;00m._record_wait(state, lane_value, wait_seconds)[90m[39;49;00m
+                    state[[33m"[39;49;00m[33mmetrics[39;49;00m[33m"[39;49;00m][[33m"[39;49;00m[33macquisitions_total[39;49;00m[33m"[39;49;00m] += [94m1[39;49;00m[90m[39;49;00m
+                    [96mself[39;49;00m._lane_metrics(state, lane_value)[[33m"[39;49;00m[33macquisitions_total[39;49;00m[33m"[39;49;00m] += [94m1[39;49;00m[90m[39;49;00m
+    [90m[39;49;00m
+            [94mif[39;49;00m terminal [95mis[39;49;00m [94mNone[39;49;00m [95mand[39;49;00m granted_record [95mis[39;49;00m [94mNone[39;49;00m:[90m[39;49;00m
+                wait_for = [96mself[39;49;00m.config.poll_interval_seconds[90m[39;49;00m
+                [94mif[39;49;00m [96mself[39;49;00m.config.proof_safety_enabled:[90m[39;49;00m
+                    remaining_backoff = [96mfloat[39;49;00m(state.get([33m"[39;49;00m[33mproof_backoff[39;49;00m[33m"[39;49;00m, {}).get([33m"[39;49;00m[33muntil[39;49;00m[33m"[39;49;00m, [94m0[39;49;00m)) - time.time()[90m[39;49;00m
+                    wait_for = [96mmax[39;49;00m(wait_for, [96mmin[39;49;00m([94m1.0[39;49;00m, remaining_backoff))[90m[39;49;00m
+                [94mif[39;49;00m deadline [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m:[90m[39;49;00m
+                    wait_for = [96mmin[39;49;00m(wait_for, [96mmax[39;49;00m([94m0.0[39;49;00m, deadline - time.monotonic()))[90m[39;49;00m
+                [94mif[39;49;00m cancel_event [95mis[39;49;00m [95mnot[39;49;00m [94mNone[39;49;00m [95mand[39;49;00m [96mhasattr[39;49;00m(cancel_event, [33m"[39;49;00m[33mwait[39;49;00m[33m"[39;49;00m):[90m[39;49;00m
+                    [94mtry[39;49;00m:[90m[39;49;00m
+                        cancel_event.wait(wait_for)  [90m# type: ignore[attr-defined][39;49;00m[90m[39;49;00m
+                    [94mexcept[39;49;00m ([96mTypeError[39;49;00m, [96mValueError[39;49;00m):[90m[39;49;00m
+                        time.sleep(wait_for)[90m[39;49;00m
+                [94melse[39;49;00m:[90m[39;49;00m
+                    time.sleep(wait_for)[90m[39;49;00m
+    [90m[39;49;00m
+        [94mif[39;49;00m terminal == [33m"[39;49;00m[33mcancelled[39;49;00m[33m"[39;49;00m:[90m[39;49;00m
+            [94mraise[39;49;00m LeaseCancelledError([33m"[39;49;00m[33mresource lease request was cancelled[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        [94mif[39;49;00m terminal == [33m"[39;49;00m[33mtimeout[39;49;00m[33m"[39;49;00m:[90m[39;49;00m
+>           [94mraise[39;49;00m LeaseTimeoutError([33m"[39;49;00m[33mtimed out waiting for a resource lease[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+[1m[31mE           ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.LeaseTimeoutError: timed out waiting for a resource lease[0m
+
+[1m[31m../ir-release-datasets-20261002/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py[0m:1613: LeaseTimeoutError
+[33m=============================== warnings summary ===============================[0m
+../../../.local/lib/python3.12/site-packages/_pytest/config/__init__.py:1345
+  /home/barberb/.local/lib/python3.12/site-packages/_pytest/config/__init__.py:1345: PytestAssertRewriteWarning: Module already imported so cannot be rewritten; anyio
+    self._mark_plugins_for_rewrite(hook, disable_autoload)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: /home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/actual-a-context.xml -
+============================= slowest 10 durations =============================
+30.82s call     benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_real_pinned_inference_reaches_planner_and_dispatch_without_replay
+30.75s call     benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_checkpoint_change_during_router_is_rejected_before_admission
+2.20s call     benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_source384_missing_selection_cannot_silently_use_legacy_profile
+0.37s call     benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_source384_rejects_legacy_training_before_writes
+0.05s setup    benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_real_pinned_inference_reaches_planner_and_dispatch_without_replay
+0.04s setup    benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_checkpoint_change_during_router_is_rejected_before_admission
+0.03s call     benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_complete_create_manifest_source_population
+0.01s setup    benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_source384_rejects_legacy_training_before_writes
+0.01s setup    benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_source384_missing_selection_cannot_silently_use_legacy_profile
+0.01s call     benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_preparation_deadline_includes_preflight_before_output_or_admission[_sources]
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::[1mtest_real_pinned_inference_reaches_planner_and_dispatch_without_replay[0m - ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.Leas...
+[31mFAILED[0m benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::[1mtest_checkpoint_change_during_router_is_rejected_before_admission[0m - ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.Leas...
+[31m============== [31m[1m2 failed[0m, [32m11 passed[0m, [33m1 warning[0m[31m in 76.81s (0:01:16)[0m[31m ==============[0m

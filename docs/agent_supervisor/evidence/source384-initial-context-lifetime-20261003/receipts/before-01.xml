@@ -1,0 +1,379 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="9" skipped="0" tests="10" time="21.900" timestamp="2026-10-03T17:03:24.039497+00:00" hostname="spark-b271"><testcase classname="artifacts.initial-context-lifetime-20261003.proposed.benchmarks.agent_supervisor.container_coding.test_terminal_initial_context_lifetime" name="test_native_construction_releases_finished_objects_before_fresh_replay[serialized_snapshot]" time="2.655"><failure message="AssertionError: serialized_snapshot remains live at final replay&#10;assert '{&quot;index_id&quot;: &quot;code-symbol-vector-index:sha256:7a6998308c9a4f06b255fba57d6d3a47ad00c4c1ca0a401b19ad517132ab18ff&quot;, &quot;sch...1b0ad8676bd020e9dccc6ed654d6ed2493b6bf9531a9e9bad3fa165d0d&quot;}], &quot;tombstones&quot;: [], &quot;lineage&quot;: [], &quot;max_row_bytes&quot;: 8192}' is None&#10; +  where '{&quot;index_id&quot;: &quot;code-symbol-vector-index:sha256:7a6998308c9a4f06b255fba57d6d3a47ad00c4c1ca0a401b19ad517132ab18ff&quot;, &quot;sch...1b0ad8676bd020e9dccc6ed654d6ed2493b6bf9531a9e9bad3fa165d0d&quot;}], &quot;tombstones&quot;: [], &quot;lineage&quot;: [], &quot;max_row_bytes&quot;: 8192}' = &lt;weakref at 0xffdbad20db20; to '_WeakText' at 0xffdbacfabb90&gt;()">original = (PosixPath('/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-temp/test_native_construct...barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-temp/test_native_construction_relea0/state'))
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xffdbad8d72f0&gt;
+released = 'serialized_snapshot'
+
+    @pytest.mark.parametrize("released", ["serialized_snapshot", "snapshot", "semantic_payload",
+        "semantic_view", "semantic_reader", "world_capture", "semantic_summary", "retrieval", "indexed"])
+    def test_native_construction_releases_finished_objects_before_fresh_replay(original, monkeypatch, released):
+        root, instruction, state = original
+        prepared = prep.prepare(repository=root, instruction=instruction, state=state)
+        refs = _track_native_construction(monkeypatch)
+        native_replay = initial._load_initial_context
+        observed = []
+    
+        def replay(**kwargs):
+            # Evaluate before the fresh loader creates a second set of native views.
+            assert released in refs
+            assert refs[released]() is None, f"{released} remains live at final replay"
+            observed.append(released)
+            return native_replay(**kwargs)
+    
+        monkeypatch.setattr(initial, "_load_initial_context", replay)
+&gt;       result = prep.initial_context(state=state)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+../../artifacts/initial-context-lifetime-20261003/proposed/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py:113: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py:381: in initial_context
+    return prepare_initial_context(state=state, prepared=_load_prepared(state),
+benchmarks/agent_supervisor/container_coding/terminal_initial_context.py:342: in prepare_initial_context
+    _load_initial_context(state=state, prepared=prepared, require_empty_owner=True, result=result)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+kwargs = {'state': PosixPath('/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-temp/test_native_...gep7fvqwggfrna', 'world_snapshot_cid': 'sha256:d35491b6569b26ddc40bde52941a4a012eb204dcb37f8cfbca8cb27abc397881', ...}}
+
+    def replay(**kwargs):
+        # Evaluate before the fresh loader creates a second set of native views.
+        assert released in refs
+&gt;       assert refs[released]() is None, f"{released} remains live at final replay"
+E       AssertionError: serialized_snapshot remains live at final replay
+E       assert '{"index_id": "code-symbol-vector-index:sha256:7a6998308c9a4f06b255fba57d6d3a47ad00c4c1ca0a401b19ad517132ab18ff", "sch...1b0ad8676bd020e9dccc6ed654d6ed2493b6bf9531a9e9bad3fa165d0d"}], "tombstones": [], "lineage": [], "max_row_bytes": 8192}' is None
+E        +  where '{"index_id": "code-symbol-vector-index:sha256:7a6998308c9a4f06b255fba57d6d3a47ad00c4c1ca0a401b19ad517132ab18ff", "sch...1b0ad8676bd020e9dccc6ed654d6ed2493b6bf9531a9e9bad3fa165d0d"}], "tombstones": [], "lineage": [], "max_row_bytes": 8192}' = &lt;weakref at 0xffdbad20db20; to '_WeakText' at 0xffdbacfabb90&gt;()
+
+../../artifacts/initial-context-lifetime-20261003/proposed/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py:108: AssertionError</failure></testcase><testcase classname="artifacts.initial-context-lifetime-20261003.proposed.benchmarks.agent_supervisor.container_coding.test_terminal_initial_context_lifetime" name="test_native_construction_releases_finished_objects_before_fresh_replay[snapshot]" time="1.990"><failure message="AssertionError: snapshot remains live at final replay&#10;assert CodeVectorIndexSnapshot(forest_id='baguqeeratedn2lj7l3c37een46htkxjrjrwqrb7zo3gviyyvygpbt3jqftea', tree_id='baguqeerat...1067811865475, 0.7071067811865475), metadata_refs=(), lineage_ids=()),), tombstones=(), lineage=(), max_row_bytes=8192) is None&#10; +  where CodeVectorIndexSnapshot(forest_id='baguqeeratedn2lj7l3c37een46htkxjrjrwqrb7zo3gviyyvygpbt3jqftea', tree_id='baguqeerat...1067811865475, 0.7071067811865475), metadata_refs=(), lineage_ids=()),), tombstones=(), lineage=(), max_row_bytes=8192) = &lt;weakref at 0xffdb842dafc0; to 'CodeVectorIndexSnapshot' at 0xffdbad15b2c0&gt;()">original = (PosixPath('/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-temp/test_native_construct...barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-temp/test_native_construction_relea1/state'))
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xffdb841fbd70&gt;
+released = 'snapshot'
+
+    @pytest.mark.parametrize("released", ["serialized_snapshot", "snapshot", "semantic_payload",
+        "semantic_view", "semantic_reader", "world_capture", "semantic_summary", "retrieval", "indexed"])
+    def test_native_construction_releases_finished_objects_before_fresh_replay(original, monkeypatch, released):
+        root, instruction, state = original
+        prepared = prep.prepare(repository=root, instruction=instruction, state=state)
+        refs = _track_native_construction(monkeypatch)
+        native_replay = initial._load_initial_context
+        observed = []
+    
+        def replay(**kwargs):
+            # Evaluate before the fresh loader creates a second set of native views.
+            assert released in refs
+            assert refs[released]() is None, f"{released} remains live at final replay"
+            observed.append(released)
+            return native_replay(**kwargs)
+    
+        monkeypatch.setattr(initial, "_load_initial_context", replay)
+&gt;       result = prep.initial_context(state=state)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+../../artifacts/initial-context-lifetime-20261003/proposed/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py:113: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py:381: in initial_context
+    return prepare_initial_context(state=state, prepared=_load_prepared(state),
+benchmarks/agent_supervisor/container_coding/terminal_initial_context.py:342: in prepare_initial_context
+    _load_initial_context(state=state, prepared=prepared, require_empty_owner=True, result=result)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+kwargs = {'state': PosixPath('/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-temp/test_native_...4fismm3y3bhvna', 'world_snapshot_cid': 'sha256:24caa81e86b0d4233acb2fb3cbe081b1f93d9cdf4cae904f3ea217bec736e630', ...}}
+
+    def replay(**kwargs):
+        # Evaluate before the fresh loader creates a second set of native views.
+        assert released in refs
+&gt;       assert refs[released]() is None, f"{released} remains live at final replay"
+E       AssertionError: snapshot remains live at final replay
+E       assert CodeVectorIndexSnapshot(forest_id='baguqeeratedn2lj7l3c37een46htkxjrjrwqrb7zo3gviyyvygpbt3jqftea', tree_id='baguqeerat...1067811865475, 0.7071067811865475), metadata_refs=(), lineage_ids=()),), tombstones=(), lineage=(), max_row_bytes=8192) is None
+E        +  where CodeVectorIndexSnapshot(forest_id='baguqeeratedn2lj7l3c37een46htkxjrjrwqrb7zo3gviyyvygpbt3jqftea', tree_id='baguqeerat...1067811865475, 0.7071067811865475), metadata_refs=(), lineage_ids=()),), tombstones=(), lineage=(), max_row_bytes=8192) = &lt;weakref at 0xffdb842dafc0; to 'CodeVectorIndexSnapshot' at 0xffdbad15b2c0&gt;()
+
+../../artifacts/initial-context-lifetime-20261003/proposed/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py:108: AssertionError</failure></testcase><testcase classname="artifacts.initial-context-lifetime-20261003.proposed.benchmarks.agent_supervisor.container_coding.test_terminal_initial_context_lifetime" name="test_native_construction_releases_finished_objects_before_fresh_replay[semantic_payload]" time="1.942"><failure message="AssertionError: semantic_payload remains live at final replay&#10;assert {'admissions': [{'admission': 'raw_source_required', 'assessment_cid': 'baguqeera4kwqfwcrktmqjlnysi6noc3wx2pasjufaj7d3...ylmpfe3jw3asczb4whtkltlma4mzbdyq'}], 'selector': 'lexical-query-symbol-name@1', 'semantic_equivalence_claimed': False}} is None&#10; +  where {'admissions': [{'admission': 'raw_source_required', 'assessment_cid': 'baguqeera4kwqfwcrktmqjlnysi6noc3wx2pasjufaj7d3...ylmpfe3jw3asczb4whtkltlma4mzbdyq'}], 'selector': 'lexical-query-symbol-name@1', 'semantic_equivalence_claimed': False}} = &lt;weakref at 0xffdb77eec040; to '_WeakDict' at 0xffdb77eec0a0&gt;()">original = (PosixPath('/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-temp/test_native_construct...barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-temp/test_native_construction_relea2/state'))
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xffdb842d3230&gt;
+released = 'semantic_payload'
+
+    @pytest.mark.parametrize("released", ["serialized_snapshot", "snapshot", "semantic_payload",
+        "semantic_view", "semantic_reader", "world_capture", "semantic_summary", "retrieval", "indexed"])
+    def test_native_construction_releases_finished_objects_before_fresh_replay(original, monkeypatch, released):
+        root, instruction, state = original
+        prepared = prep.prepare(repository=root, instruction=instruction, state=state)
+        refs = _track_native_construction(monkeypatch)
+        native_replay = initial._load_initial_context
+        observed = []
+    
+        def replay(**kwargs):
+            # Evaluate before the fresh loader creates a second set of native views.
+            assert released in refs
+            assert refs[released]() is None, f"{released} remains live at final replay"
+            observed.append(released)
+            return native_replay(**kwargs)
+    
+        monkeypatch.setattr(initial, "_load_initial_context", replay)
+&gt;       result = prep.initial_context(state=state)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+../../artifacts/initial-context-lifetime-20261003/proposed/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py:113: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py:381: in initial_context
+    return prepare_initial_context(state=state, prepared=_load_prepared(state),
+benchmarks/agent_supervisor/container_coding/terminal_initial_context.py:342: in prepare_initial_context
+    _load_initial_context(state=state, prepared=prepared, require_empty_owner=True, result=result)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+kwargs = {'state': PosixPath('/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-temp/test_native_...qs6asvxel4fiza', 'world_snapshot_cid': 'sha256:15745da7eb97b45b99c948366422f3929e36704271ddfb6e1da2e8de2137161f', ...}}
+
+    def replay(**kwargs):
+        # Evaluate before the fresh loader creates a second set of native views.
+        assert released in refs
+&gt;       assert refs[released]() is None, f"{released} remains live at final replay"
+E       AssertionError: semantic_payload remains live at final replay
+E       assert {'admissions': [{'admission': 'raw_source_required', 'assessment_cid': 'baguqeera4kwqfwcrktmqjlnysi6noc3wx2pasjufaj7d3...ylmpfe3jw3asczb4whtkltlma4mzbdyq'}], 'selector': 'lexical-query-symbol-name@1', 'semantic_equivalence_claimed': False}} is None
+E        +  where {'admissions': [{'admission': 'raw_source_required', 'assessment_cid': 'baguqeera4kwqfwcrktmqjlnysi6noc3wx2pasjufaj7d3...ylmpfe3jw3asczb4whtkltlma4mzbdyq'}], 'selector': 'lexical-query-symbol-name@1', 'semantic_equivalence_claimed': False}} = &lt;weakref at 0xffdb77eec040; to '_WeakDict' at 0xffdb77eec0a0&gt;()
+
+../../artifacts/initial-context-lifetime-20261003/proposed/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py:108: AssertionError</failure></testcase><testcase classname="artifacts.initial-context-lifetime-20261003.proposed.benchmarks.agent_supervisor.container_coding.test_terminal_initial_context_lifetime" name="test_native_construction_releases_finished_objects_before_fresh_replay[semantic_view]" time="2.056"><failure message="AssertionError: semantic_view remains live at final replay&#10;assert &lt;test_terminal_initial_context_lifetime._ViewWitness object at 0xffdb845fc2f0&gt; is None&#10; +  where &lt;test_terminal_initial_context_lifetime._ViewWitness object at 0xffdb845fc2f0&gt; = &lt;weakref at 0xffdbad20fb00; to '_ViewWitness' at 0xffdb845fc2f0&gt;()">original = (PosixPath('/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-temp/test_native_construct...barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-temp/test_native_construction_relea3/state'))
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xffdb77ed1730&gt;
+released = 'semantic_view'
+
+    @pytest.mark.parametrize("released", ["serialized_snapshot", "snapshot", "semantic_payload",
+        "semantic_view", "semantic_reader", "world_capture", "semantic_summary", "retrieval", "indexed"])
+    def test_native_construction_releases_finished_objects_before_fresh_replay(original, monkeypatch, released):
+        root, instruction, state = original
+        prepared = prep.prepare(repository=root, instruction=instruction, state=state)
+        refs = _track_native_construction(monkeypatch)
+        native_replay = initial._load_initial_context
+        observed = []
+    
+        def replay(**kwargs):
+            # Evaluate before the fresh loader creates a second set of native views.
+            assert released in refs
+            assert refs[released]() is None, f"{released} remains live at final replay"
+            observed.append(released)
+            return native_replay(**kwargs)
+    
+        monkeypatch.setattr(initial, "_load_initial_context", replay)
+&gt;       result = prep.initial_context(state=state)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+../../artifacts/initial-context-lifetime-20261003/proposed/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py:113: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py:381: in initial_context
+    return prepare_initial_context(state=state, prepared=_load_prepared(state),
+benchmarks/agent_supervisor/container_coding/terminal_initial_context.py:342: in prepare_initial_context
+    _load_initial_context(state=state, prepared=prepared, require_empty_owner=True, result=result)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+kwargs = {'state': PosixPath('/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-temp/test_native_...v2d7jqvnvhpscq', 'world_snapshot_cid': 'sha256:dde7e3acfa0d70e005bfce10a60a8dce591491af076ca77da8fe705ab48f3a66', ...}}
+
+    def replay(**kwargs):
+        # Evaluate before the fresh loader creates a second set of native views.
+        assert released in refs
+&gt;       assert refs[released]() is None, f"{released} remains live at final replay"
+E       AssertionError: semantic_view remains live at final replay
+E       assert &lt;test_terminal_initial_context_lifetime._ViewWitness object at 0xffdb845fc2f0&gt; is None
+E        +  where &lt;test_terminal_initial_context_lifetime._ViewWitness object at 0xffdb845fc2f0&gt; = &lt;weakref at 0xffdbad20fb00; to '_ViewWitness' at 0xffdb845fc2f0&gt;()
+
+../../artifacts/initial-context-lifetime-20261003/proposed/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py:108: AssertionError</failure></testcase><testcase classname="artifacts.initial-context-lifetime-20261003.proposed.benchmarks.agent_supervisor.container_coding.test_terminal_initial_context_lifetime" name="test_native_construction_releases_finished_objects_before_fresh_replay[semantic_reader]" time="2.012"><failure message="AssertionError: semantic_reader remains live at final replay&#10;assert &lt;function _semantic_view.&lt;locals&gt;.get_block at 0xffdb84333f60&gt; is None&#10; +  where &lt;function _semantic_view.&lt;locals&gt;.get_block at 0xffdb84333f60&gt; = &lt;weakref at 0xffdb842e6d90; to 'function' at 0xffdb84333f60 (get_block)&gt;()">original = (PosixPath('/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-temp/test_native_construct...barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-temp/test_native_construction_relea4/state'))
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xffdb8438cec0&gt;
+released = 'semantic_reader'
+
+    @pytest.mark.parametrize("released", ["serialized_snapshot", "snapshot", "semantic_payload",
+        "semantic_view", "semantic_reader", "world_capture", "semantic_summary", "retrieval", "indexed"])
+    def test_native_construction_releases_finished_objects_before_fresh_replay(original, monkeypatch, released):
+        root, instruction, state = original
+        prepared = prep.prepare(repository=root, instruction=instruction, state=state)
+        refs = _track_native_construction(monkeypatch)
+        native_replay = initial._load_initial_context
+        observed = []
+    
+        def replay(**kwargs):
+            # Evaluate before the fresh loader creates a second set of native views.
+            assert released in refs
+            assert refs[released]() is None, f"{released} remains live at final replay"
+            observed.append(released)
+            return native_replay(**kwargs)
+    
+        monkeypatch.setattr(initial, "_load_initial_context", replay)
+&gt;       result = prep.initial_context(state=state)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+../../artifacts/initial-context-lifetime-20261003/proposed/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py:113: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py:381: in initial_context
+    return prepare_initial_context(state=state, prepared=_load_prepared(state),
+benchmarks/agent_supervisor/container_coding/terminal_initial_context.py:342: in prepare_initial_context
+    _load_initial_context(state=state, prepared=prepared, require_empty_owner=True, result=result)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+kwargs = {'state': PosixPath('/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-temp/test_native_...5yw3uc2tetxwwq', 'world_snapshot_cid': 'sha256:5699b3056cb70df303d1e91746a60334eea9b60450cf15cef7d707314041dc72', ...}}
+
+    def replay(**kwargs):
+        # Evaluate before the fresh loader creates a second set of native views.
+        assert released in refs
+&gt;       assert refs[released]() is None, f"{released} remains live at final replay"
+E       AssertionError: semantic_reader remains live at final replay
+E       assert &lt;function _semantic_view.&lt;locals&gt;.get_block at 0xffdb84333f60&gt; is None
+E        +  where &lt;function _semantic_view.&lt;locals&gt;.get_block at 0xffdb84333f60&gt; = &lt;weakref at 0xffdb842e6d90; to 'function' at 0xffdb84333f60 (get_block)&gt;()
+
+../../artifacts/initial-context-lifetime-20261003/proposed/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py:108: AssertionError</failure></testcase><testcase classname="artifacts.initial-context-lifetime-20261003.proposed.benchmarks.agent_supervisor.container_coding.test_terminal_initial_context_lifetime" name="test_native_construction_releases_finished_objects_before_fresh_replay[world_capture]" time="2.070"><failure message="AssertionError: world_capture remains live at final replay&#10;assert {'completion_authority': False, 'completion_projection': {'completion_receipts': [], 'event_watermark': 0, 'projection...available', 'policy_root:unavailable'], 'capture_cid': 'baguqeera24scwcpwlqyvvzg3tmb3ocs32jbbllz7pzkpnbh74og3ham5fdla'} is None&#10; +  where {'completion_authority': False, 'completion_projection': {'completion_receipts': [], 'event_watermark': 0, 'projection...available', 'policy_root:unavailable'], 'capture_cid': 'baguqeera24scwcpwlqyvvzg3tmb3ocs32jbbllz7pzkpnbh74og3ham5fdla'} = &lt;weakref at 0xffdb840a6ca0; to '_WeakDict' at 0xffdb842a8910&gt;()">original = (PosixPath('/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-temp/test_native_construct...barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-temp/test_native_construction_relea5/state'))
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xffdb77e32390&gt;
+released = 'world_capture'
+
+    @pytest.mark.parametrize("released", ["serialized_snapshot", "snapshot", "semantic_payload",
+        "semantic_view", "semantic_reader", "world_capture", "semantic_summary", "retrieval", "indexed"])
+    def test_native_construction_releases_finished_objects_before_fresh_replay(original, monkeypatch, released):
+        root, instruction, state = original
+        prepared = prep.prepare(repository=root, instruction=instruction, state=state)
+        refs = _track_native_construction(monkeypatch)
+        native_replay = initial._load_initial_context
+        observed = []
+    
+        def replay(**kwargs):
+            # Evaluate before the fresh loader creates a second set of native views.
+            assert released in refs
+            assert refs[released]() is None, f"{released} remains live at final replay"
+            observed.append(released)
+            return native_replay(**kwargs)
+    
+        monkeypatch.setattr(initial, "_load_initial_context", replay)
+&gt;       result = prep.initial_context(state=state)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+../../artifacts/initial-context-lifetime-20261003/proposed/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py:113: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py:381: in initial_context
+    return prepare_initial_context(state=state, prepared=_load_prepared(state),
+benchmarks/agent_supervisor/container_coding/terminal_initial_context.py:342: in prepare_initial_context
+    _load_initial_context(state=state, prepared=prepared, require_empty_owner=True, result=result)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+kwargs = {'state': PosixPath('/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-temp/test_native_...m6zzvjcq5yyoiq', 'world_snapshot_cid': 'sha256:7444087da1ce7e04415f8cdd83d07e5a6d61dd514619d3cdf61a1ff93c302a5d', ...}}
+
+    def replay(**kwargs):
+        # Evaluate before the fresh loader creates a second set of native views.
+        assert released in refs
+&gt;       assert refs[released]() is None, f"{released} remains live at final replay"
+E       AssertionError: world_capture remains live at final replay
+E       assert {'completion_authority': False, 'completion_projection': {'completion_receipts': [], 'event_watermark': 0, 'projection...available', 'policy_root:unavailable'], 'capture_cid': 'baguqeera24scwcpwlqyvvzg3tmb3ocs32jbbllz7pzkpnbh74og3ham5fdla'} is None
+E        +  where {'completion_authority': False, 'completion_projection': {'completion_receipts': [], 'event_watermark': 0, 'projection...available', 'policy_root:unavailable'], 'capture_cid': 'baguqeera24scwcpwlqyvvzg3tmb3ocs32jbbllz7pzkpnbh74og3ham5fdla'} = &lt;weakref at 0xffdb840a6ca0; to '_WeakDict' at 0xffdb842a8910&gt;()
+
+../../artifacts/initial-context-lifetime-20261003/proposed/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py:108: AssertionError</failure></testcase><testcase classname="artifacts.initial-context-lifetime-20261003.proposed.benchmarks.agent_supervisor.container_coding.test_terminal_initial_context_lifetime" name="test_native_construction_releases_finished_objects_before_fresh_replay[semantic_summary]" time="1.964"><failure message="AssertionError: semantic_summary remains live at final replay&#10;assert {'schema': 'supervisor-semantic-context-preparation@1', 'task_id': 'TB-CODE-TASK', 'scope_cid': 'bafkreid7n34dyy4wxna5...mpletion_authority': False, 'authoritative': False}, 'full_supervisor_qualified': False, 'completion_authority': False} is None&#10; +  where {'schema': 'supervisor-semantic-context-preparation@1', 'task_id': 'TB-CODE-TASK', 'scope_cid': 'bafkreid7n34dyy4wxna5...mpletion_authority': False, 'authoritative': False}, 'full_supervisor_qualified': False, 'completion_authority': False} = &lt;weakref at 0xffdb77f013a0; to '_WeakDict' at 0xffdb77f02d00&gt;()">original = (PosixPath('/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-temp/test_native_construct...barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-temp/test_native_construction_relea6/state'))
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xffdb843869f0&gt;
+released = 'semantic_summary'
+
+    @pytest.mark.parametrize("released", ["serialized_snapshot", "snapshot", "semantic_payload",
+        "semantic_view", "semantic_reader", "world_capture", "semantic_summary", "retrieval", "indexed"])
+    def test_native_construction_releases_finished_objects_before_fresh_replay(original, monkeypatch, released):
+        root, instruction, state = original
+        prepared = prep.prepare(repository=root, instruction=instruction, state=state)
+        refs = _track_native_construction(monkeypatch)
+        native_replay = initial._load_initial_context
+        observed = []
+    
+        def replay(**kwargs):
+            # Evaluate before the fresh loader creates a second set of native views.
+            assert released in refs
+            assert refs[released]() is None, f"{released} remains live at final replay"
+            observed.append(released)
+            return native_replay(**kwargs)
+    
+        monkeypatch.setattr(initial, "_load_initial_context", replay)
+&gt;       result = prep.initial_context(state=state)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+../../artifacts/initial-context-lifetime-20261003/proposed/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py:113: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py:381: in initial_context
+    return prepare_initial_context(state=state, prepared=_load_prepared(state),
+benchmarks/agent_supervisor/container_coding/terminal_initial_context.py:342: in prepare_initial_context
+    _load_initial_context(state=state, prepared=prepared, require_empty_owner=True, result=result)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+kwargs = {'state': PosixPath('/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-temp/test_native_...uq7le6dsvh6eca', 'world_snapshot_cid': 'sha256:c61089479eddb637181573b8c44c44091fb70dc84c7b680c20b58a7e2a6fe8ea', ...}}
+
+    def replay(**kwargs):
+        # Evaluate before the fresh loader creates a second set of native views.
+        assert released in refs
+&gt;       assert refs[released]() is None, f"{released} remains live at final replay"
+E       AssertionError: semantic_summary remains live at final replay
+E       assert {'schema': 'supervisor-semantic-context-preparation@1', 'task_id': 'TB-CODE-TASK', 'scope_cid': 'bafkreid7n34dyy4wxna5...mpletion_authority': False, 'authoritative': False}, 'full_supervisor_qualified': False, 'completion_authority': False} is None
+E        +  where {'schema': 'supervisor-semantic-context-preparation@1', 'task_id': 'TB-CODE-TASK', 'scope_cid': 'bafkreid7n34dyy4wxna5...mpletion_authority': False, 'authoritative': False}, 'full_supervisor_qualified': False, 'completion_authority': False} = &lt;weakref at 0xffdb77f013a0; to '_WeakDict' at 0xffdb77f02d00&gt;()
+
+../../artifacts/initial-context-lifetime-20261003/proposed/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py:108: AssertionError</failure></testcase><testcase classname="artifacts.initial-context-lifetime-20261003.proposed.benchmarks.agent_supervisor.container_coding.test_terminal_initial_context_lifetime" name="test_native_construction_releases_finished_objects_before_fresh_replay[retrieval]" time="2.100"><failure message="AssertionError: retrieval remains live at final replay&#10;assert {'schema': 'supervisor-code-retrieval-context@1', 'sha256': 'ac6ef6f3af72c1364b252333e68bb829afdd194542ad30e68c54fbb63...f72c1364b252333e68bb829afdd194542ad30e68c54fbb63bd6b96a'}, 'execution_authority': False, 'completion_authority': False} is None&#10; +  where {'schema': 'supervisor-code-retrieval-context@1', 'sha256': 'ac6ef6f3af72c1364b252333e68bb829afdd194542ad30e68c54fbb63...f72c1364b252333e68bb829afdd194542ad30e68c54fbb63bd6b96a'}, 'execution_authority': False, 'completion_authority': False} = &lt;weakref at 0xffdb84364c70; to '_WeakDict' at 0xffdb84365a40&gt;()">original = (PosixPath('/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-temp/test_native_construct...barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-temp/test_native_construction_relea7/state'))
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xffdb8427d280&gt;
+released = 'retrieval'
+
+    @pytest.mark.parametrize("released", ["serialized_snapshot", "snapshot", "semantic_payload",
+        "semantic_view", "semantic_reader", "world_capture", "semantic_summary", "retrieval", "indexed"])
+    def test_native_construction_releases_finished_objects_before_fresh_replay(original, monkeypatch, released):
+        root, instruction, state = original
+        prepared = prep.prepare(repository=root, instruction=instruction, state=state)
+        refs = _track_native_construction(monkeypatch)
+        native_replay = initial._load_initial_context
+        observed = []
+    
+        def replay(**kwargs):
+            # Evaluate before the fresh loader creates a second set of native views.
+            assert released in refs
+            assert refs[released]() is None, f"{released} remains live at final replay"
+            observed.append(released)
+            return native_replay(**kwargs)
+    
+        monkeypatch.setattr(initial, "_load_initial_context", replay)
+&gt;       result = prep.initial_context(state=state)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+../../artifacts/initial-context-lifetime-20261003/proposed/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py:113: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py:381: in initial_context
+    return prepare_initial_context(state=state, prepared=_load_prepared(state),
+benchmarks/agent_supervisor/container_coding/terminal_initial_context.py:342: in prepare_initial_context
+    _load_initial_context(state=state, prepared=prepared, require_empty_owner=True, result=result)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+kwargs = {'state': PosixPath('/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-temp/test_native_...wvtgyaannvwcsa', 'world_snapshot_cid': 'sha256:6dfdc149393218340be48a8f8c592723ccee96c4cba6a1af93d71d30fa0cfaee', ...}}
+
+    def replay(**kwargs):
+        # Evaluate before the fresh loader creates a second set of native views.
+        assert released in refs
+&gt;       assert refs[released]() is None, f"{released} remains live at final replay"
+E       AssertionError: retrieval remains live at final replay
+E       assert {'schema': 'supervisor-code-retrieval-context@1', 'sha256': 'ac6ef6f3af72c1364b252333e68bb829afdd194542ad30e68c54fbb63...f72c1364b252333e68bb829afdd194542ad30e68c54fbb63bd6b96a'}, 'execution_authority': False, 'completion_authority': False} is None
+E        +  where {'schema': 'supervisor-code-retrieval-context@1', 'sha256': 'ac6ef6f3af72c1364b252333e68bb829afdd194542ad30e68c54fbb63...f72c1364b252333e68bb829afdd194542ad30e68c54fbb63bd6b96a'}, 'execution_authority': False, 'completion_authority': False} = &lt;weakref at 0xffdb84364c70; to '_WeakDict' at 0xffdb84365a40&gt;()
+
+../../artifacts/initial-context-lifetime-20261003/proposed/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py:108: AssertionError</failure></testcase><testcase classname="artifacts.initial-context-lifetime-20261003.proposed.benchmarks.agent_supervisor.container_coding.test_terminal_initial_context_lifetime" name="test_native_construction_releases_finished_objects_before_fresh_replay[indexed]" time="2.038"><failure message="AssertionError: indexed remains live at final replay&#10;assert {'schema': 'native-lexical-vector-qualification@1', 'status': 'qualified', 'source_sha256': {'bottle.py': '03719b10bcd...284369999659}, 'semantic_authority': False, 'full_system_qualified': False, 'provider_calls': 0, 'token_savings': None} is None&#10; +  where {'schema': 'native-lexical-vector-qualification@1', 'status': 'qualified', 'source_sha256': {'bottle.py': '03719b10bcd...284369999659}, 'semantic_authority': False, 'full_system_qualified': False, 'provider_calls': 0, 'token_savings': None} = &lt;weakref at 0xffdb84119a80; to '_WeakDict' at 0xffdb8411a3f0&gt;()">original = (PosixPath('/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-temp/test_native_construct...barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-temp/test_native_construction_relea8/state'))
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xffdbbe9f0980&gt;
+released = 'indexed'
+
+    @pytest.mark.parametrize("released", ["serialized_snapshot", "snapshot", "semantic_payload",
+        "semantic_view", "semantic_reader", "world_capture", "semantic_summary", "retrieval", "indexed"])
+    def test_native_construction_releases_finished_objects_before_fresh_replay(original, monkeypatch, released):
+        root, instruction, state = original
+        prepared = prep.prepare(repository=root, instruction=instruction, state=state)
+        refs = _track_native_construction(monkeypatch)
+        native_replay = initial._load_initial_context
+        observed = []
+    
+        def replay(**kwargs):
+            # Evaluate before the fresh loader creates a second set of native views.
+            assert released in refs
+            assert refs[released]() is None, f"{released} remains live at final replay"
+            observed.append(released)
+            return native_replay(**kwargs)
+    
+        monkeypatch.setattr(initial, "_load_initial_context", replay)
+&gt;       result = prep.initial_context(state=state)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+../../artifacts/initial-context-lifetime-20261003/proposed/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py:113: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py:381: in initial_context
+    return prepare_initial_context(state=state, prepared=_load_prepared(state),
+benchmarks/agent_supervisor/container_coding/terminal_initial_context.py:342: in prepare_initial_context
+    _load_initial_context(state=state, prepared=prepared, require_empty_owner=True, result=result)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+kwargs = {'state': PosixPath('/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/before-01-temp/test_native_...vfy4hy7zowkn6q', 'world_snapshot_cid': 'sha256:700e55f6eebcc01140da3679246dd7ea4796696a0db3069f59a33f251dc25de4', ...}}
+
+    def replay(**kwargs):
+        # Evaluate before the fresh loader creates a second set of native views.
+        assert released in refs
+&gt;       assert refs[released]() is None, f"{released} remains live at final replay"
+E       AssertionError: indexed remains live at final replay
+E       assert {'schema': 'native-lexical-vector-qualification@1', 'status': 'qualified', 'source_sha256': {'bottle.py': '03719b10bcd...284369999659}, 'semantic_authority': False, 'full_system_qualified': False, 'provider_calls': 0, 'token_savings': None} is None
+E        +  where {'schema': 'native-lexical-vector-qualification@1', 'status': 'qualified', 'source_sha256': {'bottle.py': '03719b10bcd...284369999659}, 'semantic_authority': False, 'full_system_qualified': False, 'provider_calls': 0, 'token_savings': None} = &lt;weakref at 0xffdb84119a80; to '_WeakDict' at 0xffdb8411a3f0&gt;()
+
+../../artifacts/initial-context-lifetime-20261003/proposed/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py:108: AssertionError</failure></testcase><testcase classname="artifacts.initial-context-lifetime-20261003.proposed.benchmarks.agent_supervisor.container_coding.test_terminal_initial_context_lifetime" name="test_fresh_replay_failure_still_prevents_success_marker" time="2.147" /></testsuite></testsuites>

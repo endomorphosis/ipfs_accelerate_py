@@ -1,0 +1,79 @@
+{
+  "after": {
+    "timestamp": 1791048403.0445783,
+    "state_path": "/tmp/ipfs-datasets-resource-scheduler-1000.json",
+    "state_sha256": "478b39c0a6fd69fb524dc624b7ae8deb13997ffca6de1ad745f3d1303f5fd357",
+    "config": {
+      "lane_reservations": {
+        "validation": {
+          "cpu_slots": 1,
+          "memory_mb": 0
+        }
+      },
+      "max_gpu_memory_percent": null,
+      "max_memory_percent": null,
+      "max_swap_percent": null,
+      "max_waiting_requests": 256,
+      "proof_backoff_seconds": 2.0,
+      "proof_cpu_stall_percent": 50.0,
+      "proof_io_stall_percent": 10.0,
+      "proof_memory_headroom_mb": 2458,
+      "proof_memory_stall_percent": 2.0,
+      "proof_recovery_enabled": false,
+      "proof_recovery_grants": 4,
+      "proof_recovery_interval_seconds": 0.25,
+      "proof_recovery_samples": 2,
+      "proof_safety_enabled": true,
+      "require_known_gpu_for_gpu_work": true,
+      "reserved_gpu_memory_mb": 0,
+      "reserved_memory_mb": 0,
+      "total_child_process_slots": 4,
+      "total_cpu_slots": 4,
+      "total_gpu_memory_mb": null,
+      "total_memory_mb": 9830,
+      "total_unified_memory_mb": null
+    },
+    "leases": [
+      {
+        "owner_pid": 3166921,
+        "request_id": "daemon:52b910f80aa343bfba9c9f560741f909",
+        "cpu_slots": 1,
+        "memory_mb": 4096,
+        "lane": "hammer_lean"
+      }
+    ],
+    "waiters": [],
+    "proof_recovery_present": false
+  },
+  "dependency_restored": true,
+  "selected_config": {
+    "max_waiting_requests": 256,
+    "proof_safety_enabled": true,
+    "proof_memory_headroom_mb": 2458,
+    "proof_memory_stall_percent": 2.0,
+    "proof_cpu_stall_percent": 50.0,
+    "proof_io_stall_percent": 10.0,
+    "proof_backoff_seconds": 2.0,
+    "proof_recovery_enabled": false,
+    "proof_recovery_samples": 2,
+    "proof_recovery_interval_seconds": 0.25,
+    "proof_recovery_grants": 4,
+    "total_cpu_slots": 4,
+    "total_memory_mb": 9830,
+    "total_gpu_memory_mb": null,
+    "total_unified_memory_mb": null,
+    "total_child_process_slots": 4,
+    "reserved_memory_mb": 0,
+    "reserved_gpu_memory_mb": 0,
+    "lane_reservations": {
+      "validation": {
+        "cpu_slots": 1,
+        "memory_mb": 0
+      }
+    },
+    "max_memory_percent": null,
+    "max_swap_percent": null,
+    "max_gpu_memory_percent": null,
+    "require_known_gpu_for_gpu_work": true
+  }
+}

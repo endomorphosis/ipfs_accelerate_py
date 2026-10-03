@@ -1,0 +1,53 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/run_configured_a.py"
+  ],
+  "pytest_args": [
+    "-q",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py",
+    "--basetemp=/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/actual-a-context-temp",
+    "--junitxml=/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/actual-a-context.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "environment_overrides": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "NUMEXPR_MAX_THREADS": "1",
+    "CUDA_VISIBLE_DEVICES": "",
+    "TOKENIZERS_PARALLELISM": "false",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "CODEBASE384_CHECKPOINT": "/home/barberb/lift_coding/artifacts/distributed384-20261001/run-01/security_ir/coordinator/checkpoints/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json",
+    "CODEBASE384_EMBEDDING_SNAPSHOT": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/actual-a-context-seal.duckdb",
+    "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/actual-a-context-key-seal.db"
+  },
+  "source_pins": {
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py": "e4faad01942759494384563af6b83b9502fd11be401227aa36e65a86a0cb01a0",
+    "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_contracts/codebase_ir.py": "4aa2e5287885aaecf2c2319a100b8e4b8bdad21b082990a4beadda84d7c61018",
+    "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_contracts/cache.py": "a0b1711a5fa1f5b39b92d43748548c8802f632d1131ad9a64dd7f49df51bdd8c",
+    "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py": "cad72bdf21e24b947e660f52bba5f1f95983a5f04e82a51425f29fda29198d58",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py": "e4cec823a563d49a8e1dc58b1f7a17ed1794fc84bc4b12c2dc45feeec7ce7b9e",
+    "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384_worker.py": "13f1a5519a4f3a9cec473795521858504d90b41075a554606daa354aff6bca6a",
+    "/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/run_configured_a.py": "70a6864ab681f7b4eed8812c5251e319e866be0e7b97d239f5bc7f27287735ec",
+    "/home/barberb/lift_coding/artifacts/initial-context-lifetime-20261003/configured_client_plugin.py": "4346eb21c1e440305a722765205fdf05e54fe18d3a3803933d18dc35c1f199b2",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py": "d52a738690ad21ca8ff6a68f02123ea7a9ff07b252d8173978c8a667b30b89cb"
+  },
+  "actual_on_disk_sources": true,
+  "owner_overlay": false,
+  "native_producer_recognized": true,
+  "scheduler_mode": "explicit_configured_client_same_native_ledger",
+  "host_default_startup_qualification": false,
+  "versions": {
+    "torch": "2.13.0",
+    "numpy": "1.26.4",
+    "transformers": "4.52.1",
+    "sentence-transformers": "5.4.1",
+    "tokenizers": "0.21.4"
+  }
+}

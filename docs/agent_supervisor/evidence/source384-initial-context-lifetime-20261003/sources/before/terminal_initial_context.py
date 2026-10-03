@@ -237,7 +237,6 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         from ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context import prepare_source384_context
         from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission as local
         manifest, _, _ = local._manifest(prepared["manifest"], initial=True)
-        del _
         source384 = prepare_source384_context(repository=root,
             source_hashes={name: source["sha256"] for name, source in manifest["sources"].items()},
             output=state / "source384-context", config_path=source384_config)
@@ -247,7 +246,6 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         from ipfs_accelerate_py.agent_supervisor.runtime.security_autoencoder_advisor import prepare_security_advice
         from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission as local
         manifest, _, _ = local._manifest(prepared["manifest"], initial=True)
-        del _
         paths = [name for name in prepared["worker_inputs"] if name.endswith(".py")]
         frozen_advice = prepare_security_advice(repository=root, paths=paths,
             source_hashes={name: manifest["sources"][name]["sha256"] for name in paths},
@@ -259,7 +257,6 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         from ipfs_datasets_py.logic.formalization.autoencoder.security.codebase_autoencoder import train_codebase_autoencoder
         from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission as local
         manifest, _, _ = local._manifest(prepared["manifest"], initial=True)
-        del _
         paths = [name for name in prepared["worker_inputs"] if name.endswith(".py")]
         learner = train_codebase_autoencoder(repository=root, paths=paths,
             source_hashes={name: manifest["sources"][name]["sha256"] for name in paths},
@@ -276,7 +273,6 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
     with duckdb.connect(str(vectors / "vectors.duckdb"), read_only=True, config={"threads": 1}) as connection:
         row = connection.execute("SELECT payload FROM snapshots WHERE id=?", [indexed["index_id"]]).fetchone()
         snapshot = CodeVectorIndexSnapshot.from_dict(json.loads(row[0]))
-        del row
     timings["persisted_snapshot_reopen"] = time.monotonic() - stage
     stage = time.monotonic()
     semantic = prepare_semantic_context(repository=root, paths=prepared["worker_inputs"],
@@ -287,14 +283,12 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         output=output / "semantic", max_symbols=1024, worker_query=prepared["query"], worker_max_bytes=32768)
     metadata = {"Semantic context artifact": (output / "semantic/worker-context.json").relative_to(root).as_posix(),
                 "Semantic context sha256": semantic["worker_payload_sha256"], "Semantic context refresh": "true"}
-    semantic_payload, view, get_block = _semantic_view(root, metadata, alias)
-    del semantic_payload
+    _, view, get_block = _semantic_view(root, metadata, alias)
     timings["semantic_build_reconstruction_and_hydration"] = time.monotonic() - stage
     stage = time.monotonic()
     retrieval = prepare_code_retrieval_context(repository=root, task_id=alias,
         query_text=prepared["query"], snapshot=snapshot,
         result=CodeVectorSearchResult.from_dict(indexed["hits"]), output=output / "code-retrieval.json")
-    del snapshot
     metadata.update(retrieval["metadata"])
     timings["retrieval_persistence"] = time.monotonic() - stage
     stage = time.monotonic()
@@ -343,8 +337,6 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         result["security_autoencoder_advice"] = frozen_advice
     if source384 is not None:
         result["source384_context"] = source384
-    # Replay reloads these artifacts; keep only the result that it verifies.
-    del view, get_block, capture, descriptor, metadata, semantic, retrieval, indexed
     # Strict source and live-owner replay before this result may reach a router.
     stage = time.monotonic()
     _load_initial_context(state=state, prepared=prepared, require_empty_owner=True, result=result)

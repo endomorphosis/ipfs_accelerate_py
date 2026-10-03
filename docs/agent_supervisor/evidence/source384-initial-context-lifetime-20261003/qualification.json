@@ -1,0 +1,103 @@
+{
+  "actual_context": {
+    "errors": 0,
+    "failures": 2,
+    "skips": 0,
+    "tests": 13
+  },
+  "actual_lifetime_and_neighbors": {
+    "errors": 0,
+    "failures": 0,
+    "skips": 0,
+    "tests": 18
+  },
+  "authored_tests": 10,
+  "baseline": "Nine historical weakref assertions failed and source-drift control passed. Eight remain the final regression contract; callback-global-destruction assertion removed as nondeterministic.",
+  "benchmark_result": false,
+  "compatible_existing_tests": 8,
+  "component_success": true,
+  "configured_client": {
+    "consumer_request_memory_mb": 6144,
+    "cpu_slots": 4,
+    "exact_failed_decision_snapshot": false,
+    "existing_foreign_lease_memory_mb": 4096,
+    "failure_location": "prepare_source384_context root acquire line214, before index/model execution",
+    "host_default_startup_qualification": false,
+    "mode": "explicit_configured_client_same_native_ledger",
+    "native_sampler": true,
+    "new_ledger": false,
+    "other_process_modified": false,
+    "proof_headroom_mb": 2458,
+    "retries": 0,
+    "sufficient_capacity_obstacle": true,
+    "sum_held_and_requested_memory_mb": 10240,
+    "thresholds_changed": false,
+    "total_memory_mb": 9830
+  },
+  "full_checkpoint_suite_success": false,
+  "implementation": "Explicit last-use deletions only; native validation order/output/authority/source checks preserved.",
+  "intermediate_local_artifact_hashes": {
+    "candidate-01": {
+      "-command.json": "65a27a2b4f16e23bfb7eef8be639c0d85f5dd41003b1952dbc6b0d3f4ed044f8",
+      "-exit.json": "beb8f64fbec9a0f5c9197f9246c84e3559bc79fb197a08daa07294357f545c81",
+      ".log": "88507b529728590c736b07acaddb46a3c3712f87e8d8ed7f16a1682cfc7cdd5c",
+      ".xml": "d67967dc9c45409f145ab1f499ddd54a5ab15bc3dfc6818e3dd3bb5eac112c8a"
+    },
+    "candidate-02": {
+      "-command.json": "1ec41f468354b1fa6f4223497bde8dd298e471bdcf2eeff6ff663e871dd7f80a",
+      "-exit.json": "412a987d19ffc509dbadef38e37076191fc784a424389e01cf129ff351e8b3ad",
+      ".log": "52087e75281b57a2f4203f4ee877b7b1617702269a8edf2a2d2b7f509e4a746b",
+      ".xml": "58b47d98c44f196288f7f5264c3ad9ac8c1e72fc17a5847e3417f1af2eeb645e"
+    },
+    "candidate-03": {
+      "-command.json": "399faf10086318d4ba9bd94e79b672e2b10735988b146b7551d9641915228cd5",
+      "-exit.json": "e90a11dee8001858be7f04cea1dc54747039f38e5ed873c7d1142fc54c09d79d",
+      ".log": "c90bd46e00c70bd7a5d510a1180a8fb26fb907e15e4b951812dd4dfd8d9e19eb",
+      ".xml": "414d674ec392e23e8288212dae0b87f93d722197bf63c4cdcd59af5ed46fb8f6"
+    },
+    "candidate-04": {
+      "-command.json": "380025d9520fc59b4de29519876b2866e208236fcb6bdfdfcd9891624d74992b",
+      "-exit.json": "02f23f6ae724c0524623ee296cd0283fa4c331064d7bddd53c9530e48d8d9043",
+      ".log": "ee72eb41dbbd2482c5934e6f2001833a7308e31268cced38f3195ba9dc54e796",
+      ".xml": "64b722c4b669f4f25890b35da3ada9ffdc06f6f71d0bfaaa18ee3c10f05f8cda"
+    },
+    "candidate-05": {
+      "-command.json": "ba55ee921176f04eb3988b8d83e7d75c5aa02415ebc1a4d287bcaae8df08dc27",
+      "-exit.json": "1774ec00c1e16bb5df0ae519cd56aa2c51a5682794d5e63b48c49caf3a525f20",
+      ".log": "3201df01f26d558818e30cd2d138237e7fdae2c6c9e9dce38f16d5729fada021",
+      ".xml": "3711c9218c7a2ec272ddd8e3bf3fe72adc1e297782a72f12b67d57a3473f5d35"
+    },
+    "candidate-06-selected": {
+      "-command.json": "f67bb92d9020e690ca0ebbcbd7ef7216cc876cf5ad808b340c626022241f934c",
+      "-exit.json": "6c8c2a84874ee7898b3fd002b61892127bd9d4c732ad209a1e88762a4890a71c",
+      ".log": "bde63a1b0a5b37f5450d7addff69e54910d71303f6493fbbbb1fc2c37034ab7d",
+      ".xml": "f71577c63d3924276140b668e0449918dca0e4cf05f1e3d2ffd1e88b7d95303e"
+    },
+    "reader-diagnostic-01": {
+      "-command.json": "31cc073c1aeff23874a96ada2265bfa34a213c3f312b7b8ca803b55840eb098b",
+      "-exit.json": "d827641f3d1d33a78fab6e3aa48183147cd5b74f23d7a7b84558b5a35d5e72f0",
+      ".log": "5b01731ae0e7c314b15a50b34bc8bd0addde7e8958797c7129af1de5fb423c9c",
+      ".xml": "046b959523e35df68be87f7eb6b0a7e80b274bed0e2cb248da7bcc76b27bb158"
+    }
+  },
+  "memory_accounting": {
+    "artifact": "receipts/retained-input-accounting.json",
+    "dimensions": 268,
+    "principal_objects_bytes": 5546372,
+    "rows": 426,
+    "scope": "Earlier retained public Bottle host artifacts; logical object accounting only. No current Docker or RSS estimate."
+  },
+  "no_gc_trim_or_cache_clear": true,
+  "no_new_docker_or_provider_calls": true,
+  "refinements": [
+    "Corrected authored fixture count assumption: native capsule total is verified against descriptor, not assumed1.",
+    "An optional unrelated formula neighbor failed collection on tests.unit.logic namespace; excluded from selected compatible suite.",
+    "Thin semantic callback can outlive caller deletion. One run retained it; isolated diagnostic passed without GC intervention. Retaining owner is not established and global callback destruction is not claimed.",
+    "Selected Source384 map test observed both controller and construction manifest calls; requires all observed maps released without assuming count1.",
+    "Explicit del _ after three optional manifest unpacks avoids extending their lifetime when replacing unused semantic tuple variable with a named payload."
+  ],
+  "remaining": "Fresh ordinary Docker qualification and full benchmark remain unqualified. This patch does not establish an admission-window memory benefit.",
+  "runtime_sha256": "e4cec823a563d49a8e1dc58b1f7a17ed1794fc84bc4b12c2dc45feeec7ce7b9e",
+  "schema": "source384-initial-context-lifetime-qualification@1",
+  "test_sha256": "10b5f94cd48b0a1f1ffb1cb99a76071e9d0deedd704abed3739549198c75d6e5"
+}

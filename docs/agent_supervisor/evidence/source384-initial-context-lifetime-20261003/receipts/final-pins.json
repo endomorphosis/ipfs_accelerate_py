@@ -1,0 +1,6 @@
+{
+  "runtime_sha256": "e4cec823a563d49a8e1dc58b1f7a17ed1794fc84bc4b12c2dc45feeec7ce7b9e",
+  "test_sha256": "10b5f94cd48b0a1f1ffb1cb99a76071e9d0deedd704abed3739549198c75d6e5",
+  "patch_sha256": "0d7572a8375b48415a048c3f7dfa4d00d4dcab0e721e4c0bcaad60dc8d92c0ad",
+  "applied_to_live": true
+}
