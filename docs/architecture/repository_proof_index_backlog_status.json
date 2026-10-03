@@ -1,6 +1,6 @@
 {
   "schema": "repository-proof-index-backlog-status/v1",
-  "updated_at_utc": "2026-10-03T00:30:22.138099+00:00",
+  "updated_at_utc": "2026-10-03T04:44:07.142776+00:00",
   "scope": "Frozen 32-task acceptance ledger. Declared-profile criterion qualification and production closure with all prerequisites are tracked separately.",
   "source": {
     "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
@@ -407,6 +407,24 @@
       "repository": "ipfs_accelerate_py",
       "path": "docs/agent_supervisor/evidence/repository-preparation-profile-20261002/manifest.json",
       "sha256": "8918f5f49e13c83537b5a1d75c05ced917abc5f52794b8178142bded8b747133",
+      "retention": "repository_evidence"
+    },
+    "bounded-checkpoint-replay": {
+      "repository": "ipfs_datasets_py",
+      "path": "docs/software_contracts/evidence/registry-bounded-replay-20261003/manifest.json",
+      "sha256": "949fad1aa05b3942b0054c015b6b18882dcd72290cc96056a754277f9d2faf26",
+      "retention": "repository_evidence"
+    },
+    "benchmark-formula-initialization": {
+      "repository": "ipfs_accelerate_py",
+      "path": "docs/agent_supervisor/evidence/benchmark-initial-context-20261003/manifest.json",
+      "sha256": "5bed27fb526f672c15d5a772ef66eee945651980f42cb655613fa1f50eaf7639",
+      "retention": "repository_evidence"
+    },
+    "shared-proof-pressure-recovery": {
+      "repository": "ipfs_datasets_py",
+      "path": "docs/software_contracts/evidence/repository-pressure-recovery-20261003/manifest.json",
+      "sha256": "93e8aeb76c4a1cadb8d09b704318be75f00490d70299c368f9bc9a38310dff1e",
       "retention": "repository_evidence"
     }
   },
@@ -894,11 +912,15 @@
       "source_line": 293,
       "production_acceptance": "open",
       "local_status": "pending_verification",
-      "locally_qualified_portions": [],
+      "locally_qualified_portions": [
+        "The actual container initialization wrapper now forwards frozen formula-decoder and reviewed header-protocol selections to the native initial context. 39 authored boundary and neighboring controls pass, with the three original TypeErrors retained. Frozen inference, DuckLake hydration and replay execute; this repairs a component boundary without establishing the complete joined acceptance matrix."
+      ],
       "remaining_work": [
         "The complete criterion above has not been qualified in the released integration."
       ],
-      "evidence": [],
+      "evidence": [
+        "benchmark-formula-initialization"
+      ],
       "criterion_acceptance": "not_yet_qualified"
     },
     {
@@ -910,13 +932,16 @@
       "production_acceptance": "open",
       "local_status": "partial_local_qualification",
       "locally_qualified_portions": [
-        "Native and supervisor preparations now freeze validated Harbor configuration, complete task hashes, common resource/time/retry/concurrency controls and model identity before execution. Collection rechecks declarations; legacy preparations remain unknown. Fresh recovery qualification passes92 controls and actual pinnedHarbor preflight/dry-run with0model calls. Replaying three retained receipts preserves their original results and unknown declaration match."
+        "Native and supervisor preparations now freeze validated Harbor configuration, complete task hashes, common resource/time/retry/concurrency controls and model identity before execution. Collection rechecks declarations; legacy preparations remain unknown. Fresh recovery qualification passes92 controls and actual pinnedHarbor preflight/dry-run with0model calls. Replaying three retained receipts preserves their original results and unknown declaration match.",
+        "Formula/protocol selection now reaches indexed benchmark initialization and has 39 passing controls. Audit distinguishes the existing Harbor composition from the separately qualified finite Source384 pipeline: the latter selects 3 CPU/process slots and a 6 GiB parent, while the original Harbor task declares 1 CPU and 2 GiB. No matched learned-repository result is inferred from either fixture."
       ],
       "remaining_work": [
-        "Execute the complete matched multi-arm campaign and frozen correctness/cost gates, including runtime enforcement, decoder/mask ablations, shared/repository children, cold/warm eligibility, independent review costs and official outcomes. Configuration-control qualification does not establish benchmark advantage."
+        "Execute the complete matched multi-arm campaign and frozen correctness/cost gates, including runtime enforcement, decoder/mask ablations, shared/repository children, cold/warm eligibility, independent review costs and official outcomes. Configuration-control qualification does not establish benchmark advantage.",
+        "Join Source384 preparation selection and portable assets, native registry, exact model/index observer and proof/planning consumers through the actual Harbor container route. Qualify the original task resource envelope or disclose a common larger-resource experiment across every arm before a learned-repository comparison."
       ],
       "evidence": [
-        "benchmark-declared-controls"
+        "benchmark-declared-controls",
+        "benchmark-formula-initialization"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },
@@ -973,10 +998,11 @@
         "The opt-in --pipeline-resources driver now joins managed source preparation, phase-local proof parents, protected public checks, v2 daemon-to-worker delegation and STOP/finalization. Thirty-three controlled tests pass with real native owners/processes and explicitly injected host telemetry or driver failure doubles; eight legacy selection/retention guards also pass. Workload-derived disk declarations retain conservative per-phase charges. The fresh actual-host run refuses at host_disk_high_watermark in0.066511s before work, preserving result.json and complete phase accounting. Full execution remains unqualified.",
         "The retained Python lifecycle inventory now has a fixed process-local cap reserved before host admission:31ordinary plus1cleanup-only slot. Waiting entries, native-expired retained contexts and outer-close races remain counted; explicit safe recovery releases handles while preserving durable disk claims. Seventy-two distinct current-producer controlled checks pass, including39pipeline/lifecycle and33managed-preparation/driver regressions. A fresh actual-host probe refused at the unchanged disk watermark before work; no default-host or full-pipeline qualification is claimed.",
         "After reversible exact archive compaction cleared actual disk admission, managed-native-02 exposed checkout proof-cache relocation outside the declared roots. An explicit canonical native cache path fixes creation and verified worker/cold-successor reopening without changing default migration.109 distinct controls pass across26 path,22 legacy cache,43 managed and18 actual successor checks. A fresh managed-native-03 completed the full authored finite model-off pipeline in178.179s with default host sampling, real START/repair/validation/publication/STOP, matching cold successor semantics, zero provider calls and no owned processes/leases or retained reservations.",
-        "Opt-in RepositoryProcessLimits reuses the existing native runner to enforce per-process CPU, virtual address-space and per-file limits within an admitted phase, with no extra host reservation. Fresh 52 controls pass after reboot; 10 recovered producer/test hashes match historical qualification. Aggregate RSS, process count and named-root disk remain sampled; no cgroup/GPU/host-wide hard envelope is claimed."
+        "Opt-in RepositoryProcessLimits reuses the existing native runner to enforce per-process CPU, virtual address-space and per-file limits within an admitted phase, with no extra host reservation. Fresh 52 controls pass after reboot; 10 recovered producer/test hashes match historical qualification. Aggregate RSS, process count and named-root disk remain sampled; no cgroup/GPU/host-wide hard envelope is claimed.",
+        "Opt-in shared proof-pressure recovery is integrated in the canonical datasets scheduler and selected by the default factory via IPFS_DATASETS_PROOF_RESOURCE_RECOVERY=1, which the supervisor bridge consumes. Durable spaced healthy samples and paced root/child grants survive independent-process restart; validation/cleanup bypass only added pacing. 87 final controls pass: 53 new unit, 30 neighboring scheduler/proof-safety and 4 actual-process controls under explicitly injected pressure/time. Defaults and pressure thresholds are unchanged. Tiny intervals that collapse at wall-clock precision refuse. The actual host probe sampled telemetry without writes and reported unavailable_policy_mismatch; no live opt-in admission or external-load recovery is claimed."
       ],
       "remaining_work": [
-        "The bounded cooperative sampled CPU pipeline and opt-in per-process kernel ceilings are qualified. Full criterion acceptance still requires GPU/per-device admission, host-wide retained-payload accounting, aggregate hard enforcement, gradual recovery and the complete pressure matrix. External supervisor/worker RSS and bounded ambient semantic temporary snapshots are not included in the named-root/direct-child census; unrelated external writers remain outside its disk enforcement. No learned pipeline or matched benchmark is implied by the resource controls."
+        "The bounded cooperative sampled CPU pipeline, opt-in per-process kernel ceilings and controlled shared recovery pacing are qualified. Full criterion acceptance still requires GPU/per-device admission, host-wide retained-payload accounting, aggregate hard enforcement, actual external-pressure recovery and the complete pressure/missing-telemetry matrix. The new opt-in pacing was tested with injected pressure and time; the existing host policy was preserved. External supervisor/worker RSS and bounded ambient semantic temporary snapshots remain outside the named-root/direct-child census; unrelated external writers remain outside disk enforcement."
       ],
       "evidence": [
         "foundation-tests-log",
@@ -990,7 +1016,8 @@
         "pipeline-lifecycle-cap",
         "formal-cache-exact-path",
         "managed-native-full-pipeline",
-        "repository-process-limits"
+        "repository-process-limits",
+        "shared-proof-pressure-recovery"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },
@@ -1155,7 +1182,8 @@
         "Additive CodebasePagedStager seals complete clean committed inventories, stages bounded deterministic source/AST shards, recovers exact cursors after native restart, and preserves deferred/opaque dispositions. Twenty-three focused tests pass, including exact byte/pin checks on parsed-cache hits, direct classifier-owner drift refusal and bounded eviction.",
         "Actual 320-file/20-shard qualification with native database reopen at 128 passes under the final producer pins. Removing per-unit full-manifest-root recomputation plus a bounded exact-byte-checked parsed cache reduced the measured fixture from 670.197 s to 26.821 s (observed 24.99x); single local trials with uncontrolled concurrent host load do not establish a timing distribution, general scaling or Terminal-Bench performance claim.",
         "Forty additional component controls qualify bounded complete dirty source/AST projections, immutable source-bound cursors, existing global dependency edges, cold/incremental page equality, explicit large-source deferral, optional Git batch reads preserving dirty CAS bytes, bounded watcher hints, and actual GTE/shared384 checkpoint inference with resident model reuse. Native model and parent-capacity controls use the actual default datasets scheduler; source/Git/watcher controls explicitly inject host telemetry. One local comparison loaded GTE once instead of four times and retained identical decoded rows; no timing distribution or benchmark advantage is claimed.",
-        "The opt-in dirty paged stager now seals a complete bounded working-tree inventory before parsing, extracts resumable pages, resolves the complete global graph, and publishes through the existing CodebaseCatalog transaction.49 controls cover cancellation/source-fence rollback and dirty-source behavior. An actual-default320-entry run with160 dirty files passed in168.164s across20 pages and native reopen at128; independent isolated replay passed in15.140s with an empty AST cache and parser tripwires. Earlier interrupted/expired/deadline attempts and exact producer bodies remain retained; these differently configured attempts are not a matched speedup comparison."
+        "The opt-in dirty paged stager now seals a complete bounded working-tree inventory before parsing, extracts resumable pages, resolves the complete global graph, and publishes through the existing CodebaseCatalog transaction.49 controls cover cancellation/source-fence rollback and dirty-source behavior. An actual-default320-entry run with160 dirty files passed in168.164s across20 pages and native reopen at128; independent isolated replay passed in15.140s with an empty AST cache and parser tripwires. Earlier interrupted/expired/deadline attempts and exact producer bodies remain retained; these differently configured attempts are not a matched speedup comparison.",
+        "The canonical registry now supplies bounded exact artifact reads to Source384 generations, prior generations/features/projections, attached model-generation corpora and resident replay. 148 final controls pass: 127 storage/lifecycle, 9 resident inference and 12 source-generation controls with real CPU inference/training and pinned Lake checks in their declared fixtures. Prior test generations and 12 initial missing-Lake skips remain separate. Limits apply before opening/reading and returned bytes share the verified descriptor; this is an input-byte bound, not total peak RSS or CUDA qualification."
       ],
       "remaining_work": [
         "Compatible CUDA inference and the complete memory/backpressure qualification remain unverified under the frozen criterion, together with the open RPI-022 resource dependency. The existing CPU feature trainer remains selected.",
@@ -1168,7 +1196,8 @@
         "paged-staging-native-final",
         "paged-staging-evidence-manifest",
         "repository-shards-resident-inference",
-        "dirty-paged-staging-native"
+        "dirty-paged-staging-native",
+        "bounded-checkpoint-replay"
       ],
       "criterion_acceptance": "not_yet_qualified",
       "out_of_profile_extensions": [

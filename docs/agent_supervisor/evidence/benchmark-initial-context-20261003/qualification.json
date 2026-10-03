@@ -1,0 +1,115 @@
+{
+  "schema": "benchmark-initial-formula-boundary-qualification@1",
+  "passed": 39,
+  "elapsed_seconds": 90.62,
+  "pre_fix_failures": 3,
+  "pre_fix_failure_kind": "unexpected formula_decoder/header_protocol keyword TypeError",
+  "scope": "actual authored frozen formula inference, native DuckLake hydration and replay through benchmark initial-context wrapper; no benchmark score or supervisor START qualification",
+  "provider_calls": 0,
+  "benchmark_advantage_claimed": false,
+  "native_default_host": true,
+  "fixture_training": "authored local checkpoint fixtures only; frozen inference refuses retraining",
+  "sources": [
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "sha256": "812ce093389f448d56dbc39cad0e8ae1081d314e9c3dce2fc2ec25df9ef26b4b",
+      "bytes": 50512
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_initial_formula_boundary.py",
+      "sha256": "929466ae783ec237fe4d476a8fd108f19181156437168e7cae739d12e21a5641",
+      "bytes": 3982
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+      "sha256": "5623268360c3be84cbb9560c57bfee89c7cfb072dead77052f364d8492913b38",
+      "bytes": 32205
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "2f0b4fbd8aed80466ff7e7ab5298854737d96b78abf393cf6bd539b104b716b1",
+      "bytes": 35076
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/security_autoencoder_advisor.py",
+      "sha256": "a3b3943bacb0becc7789c86414adab9f92e6977021919fb3e84b5e3c2baba491",
+      "bytes": 24340
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_formula_assets.py",
+      "sha256": "49c31103679e4535165e4bf626db38a075cb2a398bcf0405f4088b629cbfc127",
+      "bytes": 9185
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_frozen_security.py",
+      "sha256": "26b5c46ad755c99214551bea45cf0b635043c27ea484ec4672ed4d69c883f506",
+      "bytes": 13341
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py",
+      "sha256": "f21470f8c25299e7795b6b11ccfc31ccd58058bb44a760eaa03aab427ea5ac14",
+      "bytes": 7955
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_decoder.py",
+      "sha256": "d89ced7eaf0236d64f38cb58175f9312d12afb826fbea853b28de07fd6a97dff",
+      "bytes": 30274
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/security/security_formalization_pipeline.py",
+      "sha256": "f774e10badf64689c018c7bce8aa6197ae4f9b5ae64a8a40492822a8231f16c5",
+      "bytes": 10071
+    }
+  ],
+  "tests": [
+    "test_frozen_formula_runtime_selection_reaches_actual_inference_and_replay",
+    "test_wrapper_preserves_native_selection_rejection_before_index_writes[selection0-frozen security context profile]",
+    "test_wrapper_preserves_native_selection_rejection_before_index_writes[selection1-selected formula decoder]",
+    "test_real_decoder_package_relocates_and_infers_offline_after_archive",
+    "test_invalid_formula_selection_refused_before_archive[without_checkpoint]",
+    "test_invalid_formula_selection_refused_before_archive[protocol_without_decoder]",
+    "test_invalid_formula_selection_refused_before_archive[unknown_protocol]",
+    "test_invalid_formula_selection_refused_before_archive[training_mix]",
+    "test_package_drift_or_executable_extras_refuse_archive[weights.json]",
+    "test_package_drift_or_executable_extras_refuse_archive[manifest.json]",
+    "test_package_drift_or_executable_extras_refuse_archive[config.json]",
+    "test_package_drift_or_executable_extras_refuse_archive[training.json]",
+    "test_package_drift_or_executable_extras_refuse_archive[unexpected.py]",
+    "test_harbor_refuses_retargeted_formula_or_protocol_bindings[decoder_path]",
+    "test_harbor_refuses_retargeted_formula_or_protocol_bindings[descriptor_path]",
+    "test_harbor_refuses_retargeted_formula_or_protocol_bindings[protocol_path]",
+    "test_harbor_refuses_retargeted_formula_or_protocol_bindings[protocol_sha]",
+    "test_harbor_refuses_retargeted_formula_or_protocol_bindings[source_training]",
+    "test_harbor_refuses_retargeted_formula_or_protocol_bindings[mode]",
+    "test_prior_asset_free_profile_keeps_manifest_and_argument_defaults",
+    "test_bundle_cli_reads_explicit_formula_and_protocol_descriptors",
+    "test_frozen_runtime_selection_is_explicit_and_excludes_training",
+    "test_actual_frozen_advice_reaches_planner_and_admission_without_training",
+    "test_generic_local_refresh_recomputes_current_rows_with_same_frozen_weights",
+    "test_checkpoint_mode_rejects_training_and_package_overlap_before_writes",
+    "test_portable_package_is_exactly_pinned_and_relocated_in_runtime_archive",
+    "test_advice_selection_drift_refused_before_provider",
+    "test_builder_resolves_pinned_hub_before_packaging_and_runtime_remains_offline",
+    "test_lake_drift_invalidates_advice_and_refuses_refresh[world-lake-delete_catalog]",
+    "test_lake_drift_invalidates_advice_and_refuses_refresh[metadata-lake-delete_catalog]",
+    "test_lake_drift_invalidates_advice_and_refuses_refresh[world-lake-corrupt_parquet]",
+    "test_lake_drift_invalidates_advice_and_refuses_refresh[metadata-lake-corrupt_parquet]",
+    "test_canonical_native_cid_is_data_but_instruction_text_is_still_rejected",
+    "test_actual_semantic_producer_normalizes_only_objective_not_public_multiline_query",
+    "test_actual_initial_indexes_reach_planner_then_reuse_with_admitted_world",
+    "test_initial_evidence_drift_rejected_before_provider[source]",
+    "test_initial_evidence_drift_rejected_before_provider[retrieval]",
+    "test_initial_evidence_drift_rejected_before_provider[world]",
+    "test_initial_evidence_drift_rejected_before_provider[descriptor]"
+  ]
+}

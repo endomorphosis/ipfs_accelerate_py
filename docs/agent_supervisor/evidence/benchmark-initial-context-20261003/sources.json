@@ -1,0 +1,62 @@
+[
+  {
+    "repository": "accelerate",
+    "path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+    "sha256": "812ce093389f448d56dbc39cad0e8ae1081d314e9c3dce2fc2ec25df9ef26b4b",
+    "bytes": 50512
+  },
+  {
+    "repository": "accelerate",
+    "path": "benchmarks/agent_supervisor/container_coding/test_terminal_initial_formula_boundary.py",
+    "sha256": "929466ae783ec237fe4d476a8fd108f19181156437168e7cae739d12e21a5641",
+    "bytes": 3982
+  },
+  {
+    "repository": "accelerate",
+    "path": "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+    "sha256": "5623268360c3be84cbb9560c57bfee89c7cfb072dead77052f364d8492913b38",
+    "bytes": 32205
+  },
+  {
+    "repository": "accelerate",
+    "path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+    "sha256": "2f0b4fbd8aed80466ff7e7ab5298854737d96b78abf393cf6bd539b104b716b1",
+    "bytes": 35076
+  },
+  {
+    "repository": "accelerate",
+    "path": "ipfs_accelerate_py/agent_supervisor/runtime/security_autoencoder_advisor.py",
+    "sha256": "a3b3943bacb0becc7789c86414adab9f92e6977021919fb3e84b5e3c2baba491",
+    "bytes": 24340
+  },
+  {
+    "repository": "accelerate",
+    "path": "benchmarks/agent_supervisor/container_coding/test_terminal_formula_assets.py",
+    "sha256": "49c31103679e4535165e4bf626db38a075cb2a398bcf0405f4088b629cbfc127",
+    "bytes": 9185
+  },
+  {
+    "repository": "accelerate",
+    "path": "benchmarks/agent_supervisor/container_coding/test_terminal_frozen_security.py",
+    "sha256": "26b5c46ad755c99214551bea45cf0b635043c27ea484ec4672ed4d69c883f506",
+    "bytes": 13341
+  },
+  {
+    "repository": "accelerate",
+    "path": "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py",
+    "sha256": "f21470f8c25299e7795b6b11ccfc31ccd58058bb44a760eaa03aab427ea5ac14",
+    "bytes": 7955
+  },
+  {
+    "repository": "datasets",
+    "path": "ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_decoder.py",
+    "sha256": "d89ced7eaf0236d64f38cb58175f9312d12afb826fbea853b28de07fd6a97dff",
+    "bytes": 30274
+  },
+  {
+    "repository": "datasets",
+    "path": "ipfs_datasets_py/logic/formalization/autoencoder/security/security_formalization_pipeline.py",
+    "sha256": "f774e10badf64689c018c7bce8aa6197ae4f9b5ae64a8a40492822a8231f16c5",
+    "bytes": 10071
+  }
+]

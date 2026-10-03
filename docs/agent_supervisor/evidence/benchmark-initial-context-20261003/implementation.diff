@@ -1,0 +1,24 @@
+diff --git a/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py b/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py
+index e00535753..9ea2fd651 100644
+--- a/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py
++++ b/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py
+@@ -368,7 +368,8 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
+ def initial_context(*, state: Path, model_snapshot: Path | None = None, model_revision: str = "",
+                     train_autoencoder: bool = False, weight_transfer: dict | None = None,
+                     canonical_cve_training: dict | None = None, security_checkpoint: dict | None = None,
+-                    security_checkpoint_hub: dict | None = None) -> dict:
++                    security_checkpoint_hub: dict | None = None, formula_decoder: dict | None = None,
++                    header_protocol: dict | None = None) -> dict:
+     """Prepare source indexes and a real empty-owner observation before planning.
+ 
+     This cost belongs to the full arm's agent time. The subsequent context()
+@@ -381,7 +382,8 @@ def initial_context(*, state: Path, model_snapshot: Path | None = None, model_re
+         model_snapshot=model_snapshot, model_revision=model_revision,
+         required_raw_paths=[INSTRUCTION, SMOKE], train_autoencoder=train_autoencoder,
+         weight_transfer=weight_transfer, canonical_cve_training=canonical_cve_training,
+-        security_checkpoint=security_checkpoint, security_checkpoint_hub=security_checkpoint_hub)
++        security_checkpoint=security_checkpoint, security_checkpoint_hub=security_checkpoint_hub,
++        formula_decoder=formula_decoder, header_protocol=header_protocol)
+ 
+ 
+ def _plan_symbolic(*, state, prepared, initial, timeout_seconds):

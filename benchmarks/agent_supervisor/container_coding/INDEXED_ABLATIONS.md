@@ -91,6 +91,25 @@ claim. Compare official reward first, then total tokens, elapsed time, and cost.
 Use serial task trials initially to avoid confusing inter-task concurrency with
 parallel supervisor workers. A later matched concurrency sweep can measure both.
 
+## Frozen formula initialization repair
+
+The indexed preparation wrapper now forwards the selected frozen formula decoder
+and reviewed header protocol to the existing initial-context builder. Previously,
+the container supplied these fields and the wrapper rejected them as unexpected
+keywords before inference. The [boundary qualification](../../../docs/agent_supervisor/evidence/benchmark-initial-context-20261003/README.md)
+retains the three failing regressions and the subsequent **39 passing cases** in
+90.62 seconds. The tests execute authored frozen formula inference, native
+DuckLake hydration and replay, and reject incomplete selections before index
+writes. They make no provider calls and establish no new official benchmark score.
+
+The separate finite source384 supervisor qualification reserves three CPU/process
+slots and a 6-GiB parent envelope, including 4-GiB numerical phases. Harbor still
+runs the older Terminal-Bench composition in the task's original 1-CPU/2-GiB
+container. That composition has no source384 preparation-profile transport or
+frozen repository model/index observer binding. This forwarding repair does not
+join those two paths. A learned-repository benchmark still needs that integration
+and an explicitly qualified, matched resource profile for every compared arm.
+
 ## Required evidence before a full-system run qualifies
 
 - Prompt and admitted goal graph, including subgoals, executable tasks, and DAG.

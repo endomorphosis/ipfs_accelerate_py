@@ -1,0 +1,103 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002
+configfile: pytest.ini
+plugins: platformdirs-4.12.1, anyio-4.15.1, mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+
+[1m----------------------------- live log collection ------------------------------[0m
+2026-10-03 04:26:12 [[32m    INFO[0m] Registered service: ipfs (service_manager.py:93)
+2026-10-03 04:26:12 [[32m    INFO[0m] Registered test suite: core_infrastructure (test_framework.py:82)
+2026-10-03 04:26:12 [[32m    INFO[0m] Registered test suite: performance (test_framework.py:82)
+2026-10-03 04:26:12 [[32m    INFO[0m] Registered test suite: integration (test_framework.py:82)
+2026-10-03 04:26:12 [[32m    INFO[0m] Successfully imported ipfs_kit_py modules from /home/barberb/HACC/complaint-generator/ipfs_datasets_py/ipfs_kit_py/ipfs_kit_py/__init__.py (ipfs_kit_integration.py:327)
+2026-10-03 04:26:12 [[32m    INFO[0m] IPFS Kit integration enabled successfully (ipfs_kit_integration.py:344)
+2026-10-03 04:26:12 [[32m    INFO[0m] Storage initialized with distributed backend (storage_wrapper.py:92)
+collected 3 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_initial_formula_boundary.py::test_frozen_formula_runtime_selection_reaches_actual_inference_and_replay [31mFAILED[0m[31m [ 33%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_initial_formula_boundary.py::test_wrapper_preserves_native_selection_rejection_before_index_writes[selection0-frozen security context profile] [31mFAILED[0m[31m [ 66%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_initial_formula_boundary.py::test_wrapper_preserves_native_selection_rejection_before_index_writes[selection1-selected formula decoder] [31mFAILED[0m[31m [100%][0m
+
+=================================== FAILURES ===================================
+[31m[1m__ test_frozen_formula_runtime_selection_reaches_actual_inference_and_replay ___[0m
+
+original = (PosixPath('/home/barberb/lift_coding/artifacts/benchmark-initial-context-20261003/red/temp/test_frozen_formula_runtim...home/barberb/lift_coding/artifacts/benchmark-initial-context-20261003/red/temp/test_frozen_formula_runtime_se0/state'))
+checkpoint = {'schema': 'security-autoencoder-package-descriptor@1', 'domain': 'security-code@1', 'output': '/home/barberb/lift_cod...table-security-checkpoint', 'manifest_sha256': 'fa2efb7de88ca1e19e83a09b2c3051236d87abb7a557267b7347d55dbe4ff6e0', ...}
+formula_checkpoint = {'schema': 'security-formula-production-decoder@1', 'output': '/home/barberb/lift_coding/artifacts/benchmark-initial-c...ba6120d7f579e328dd537f7fb0', 'weights_sha256': '61a4fabcc44e1b48aba0159761f22684f5c9a8166acac6c20a22d47dfe6cb806', ...}
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xf811624fddf0>
+tmp_path = PosixPath('/home/barberb/lift_coding/artifacts/benchmark-initial-context-20261003/red/temp/test_frozen_formula_runtime_se0')
+
+    [0m[94mdef[39;49;00m[90m [39;49;00m[92mtest_frozen_formula_runtime_selection_reaches_actual_inference_and_replay[39;49;00m([90m[39;49;00m
+            original, checkpoint, formula_checkpoint, monkeypatch, tmp_path):[90m[39;49;00m
+        root, instruction, state = original[90m[39;49;00m
+        [90m# Authored boundary fixture, not a benchmark task or held-out quality claim.[39;49;00m[90m[39;49;00m
+        (root / [33m"[39;49;00m[33mbottle.py[39;49;00m[33m"[39;49;00m).write_text([33m"[39;49;00m[33mdef application(value):[39;49;00m[33m\n[39;49;00m[33m    return (value + 7) * (value - 4)[39;49;00m[33m\n[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+        prepared = prep.prepare(repository=root, instruction=instruction, state=state)[90m[39;49;00m
+        descriptor = tmp_path / [33m"[39;49;00m[33mformula-selection.json[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+        descriptor.write_text(json.dumps(formula_checkpoint))[90m[39;49;00m
+        protocol = {[33m"[39;49;00m[33mreview_ref[39;49;00m[33m"[39;49;00m: [33m"[39;49;00m[33mauthored:initial-formula-boundary[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mcallback_parameter[39;49;00m[33m"[39;49;00m: [33m"[39;49;00m[33mstart_response[39;49;00m[33m"[39;49;00m}[90m[39;49;00m
+        protocol_path = tmp_path / [33m"[39;49;00m[33mprotocol.json[39;49;00m[33m"[39;49;00m[90m[39;49;00m
+        protocol_path.write_text(json.dumps(protocol))[90m[39;49;00m
+        runtime = _security_runtime_inputs(security_checkpoint=Path(checkpoint[[33m"[39;49;00m[33moutput[39;49;00m[33m"[39;49;00m]),[90m[39;49;00m
+            security_checkpoint_manifest_sha256=checkpoint[[33m"[39;49;00m[33mmanifest_sha256[39;49;00m[33m"[39;49;00m], security_initializer=[94mNone[39;49;00m,[90m[39;49;00m
+            canonical_cve_export=[94mNone[39;49;00m, canonical_cve_manifest_sha256=[94mNone[39;49;00m,[90m[39;49;00m
+            formula_decoder_descriptor=descriptor, header_protocol_descriptor=protocol_path)[90m[39;49;00m
+        monkeypatch.setattr(security_formula_decoder, [33m"[39;49;00m[33mtrain_security_formula_decoder[39;49;00m[33m"[39;49;00m,[90m[39;49;00m
+                            [94mlambda[39;49;00m **_: pytest.fail([33m"[39;49;00m[33mfrozen initial inference retrained[39;49;00m[33m"[39;49;00m))[90m[39;49;00m
+>       receipt = prep.initial_context(state=state, **runtime)[90m[39;49;00m
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+[1m[31mE       TypeError: initial_context() got an unexpected keyword argument 'formula_decoder'[0m
+
+[1m[31mbenchmarks/agent_supervisor/container_coding/test_terminal_initial_formula_boundary.py[0m:33: TypeError
+[31m[1m_ test_wrapper_preserves_native_selection_rejection_before_index_writes[selection0-frozen security context profile] _[0m
+
+original = (PosixPath('/home/barberb/lift_coding/artifacts/benchmark-initial-context-20261003/red/temp/test_wrapper_preserves_nat...home/barberb/lift_coding/artifacts/benchmark-initial-context-20261003/red/temp/test_wrapper_preserves_native_0/state'))
+selection = {'formula_decoder': {}}
+diagnostic = 'frozen security context profile'
+
+    [0m[37m@pytest[39;49;00m.mark.parametrize([33m"[39;49;00m[33mselection,diagnostic[39;49;00m[33m"[39;49;00m, [[90m[39;49;00m
+        ({[33m"[39;49;00m[33mformula_decoder[39;49;00m[33m"[39;49;00m: {}}, [33m"[39;49;00m[33mfrozen security context profile[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+        ({[33m"[39;49;00m[33mheader_protocol[39;49;00m[33m"[39;49;00m: {}}, [33m"[39;49;00m[33mselected formula decoder[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+    ])[90m[39;49;00m
+    [94mdef[39;49;00m[90m [39;49;00m[92mtest_wrapper_preserves_native_selection_rejection_before_index_writes[39;49;00m(original, selection, diagnostic):[90m[39;49;00m
+        root, instruction, state = original[90m[39;49;00m
+        prep.prepare(repository=root, instruction=instruction, state=state)[90m[39;49;00m
+        [94mwith[39;49;00m pytest.raises([96mValueError[39;49;00m, match=diagnostic):[90m[39;49;00m
+>           prep.initial_context(state=state, **selection)[90m[39;49;00m
+[1m[31mE           TypeError: initial_context() got an unexpected keyword argument 'formula_decoder'[0m
+
+[1m[31mbenchmarks/agent_supervisor/container_coding/test_terminal_initial_formula_boundary.py[0m:58: TypeError
+[31m[1m_ test_wrapper_preserves_native_selection_rejection_before_index_writes[selection1-selected formula decoder] _[0m
+
+original = (PosixPath('/home/barberb/lift_coding/artifacts/benchmark-initial-context-20261003/red/temp/test_wrapper_preserves_nat...home/barberb/lift_coding/artifacts/benchmark-initial-context-20261003/red/temp/test_wrapper_preserves_native_1/state'))
+selection = {'header_protocol': {}}, diagnostic = 'selected formula decoder'
+
+    [0m[37m@pytest[39;49;00m.mark.parametrize([33m"[39;49;00m[33mselection,diagnostic[39;49;00m[33m"[39;49;00m, [[90m[39;49;00m
+        ({[33m"[39;49;00m[33mformula_decoder[39;49;00m[33m"[39;49;00m: {}}, [33m"[39;49;00m[33mfrozen security context profile[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+        ({[33m"[39;49;00m[33mheader_protocol[39;49;00m[33m"[39;49;00m: {}}, [33m"[39;49;00m[33mselected formula decoder[39;49;00m[33m"[39;49;00m),[90m[39;49;00m
+    ])[90m[39;49;00m
+    [94mdef[39;49;00m[90m [39;49;00m[92mtest_wrapper_preserves_native_selection_rejection_before_index_writes[39;49;00m(original, selection, diagnostic):[90m[39;49;00m
+        root, instruction, state = original[90m[39;49;00m
+        prep.prepare(repository=root, instruction=instruction, state=state)[90m[39;49;00m
+        [94mwith[39;49;00m pytest.raises([96mValueError[39;49;00m, match=diagnostic):[90m[39;49;00m
+>           prep.initial_context(state=state, **selection)[90m[39;49;00m
+[1m[31mE           TypeError: initial_context() got an unexpected keyword argument 'header_protocol'[0m
+
+[1m[31mbenchmarks/agent_supervisor/container_coding/test_terminal_initial_formula_boundary.py[0m:58: TypeError
+- generated xml file: /home/barberb/lift_coding/artifacts/benchmark-initial-context-20261003/red/tests.xml -
+============================= slowest 10 durations =============================
+3.34s setup    benchmarks/agent_supervisor/container_coding/test_terminal_initial_formula_boundary.py::test_frozen_formula_runtime_selection_reaches_actual_inference_and_replay
+0.54s call     benchmarks/agent_supervisor/container_coding/test_terminal_initial_formula_boundary.py::test_frozen_formula_runtime_selection_reaches_actual_inference_and_replay
+0.33s call     benchmarks/agent_supervisor/container_coding/test_terminal_initial_formula_boundary.py::test_wrapper_preserves_native_selection_rejection_before_index_writes[selection0-frozen security context profile]
+0.32s call     benchmarks/agent_supervisor/container_coding/test_terminal_initial_formula_boundary.py::test_wrapper_preserves_native_selection_rejection_before_index_writes[selection1-selected formula decoder]
+0.02s setup    benchmarks/agent_supervisor/container_coding/test_terminal_initial_formula_boundary.py::test_wrapper_preserves_native_selection_rejection_before_index_writes[selection1-selected formula decoder]
+0.01s setup    benchmarks/agent_supervisor/container_coding/test_terminal_initial_formula_boundary.py::test_wrapper_preserves_native_selection_rejection_before_index_writes[selection0-frozen security context profile]
+
+(3 durations < 0.005s hidden.  Use -vv to show these durations.)
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m benchmarks/agent_supervisor/container_coding/test_terminal_initial_formula_boundary.py::[1mtest_frozen_formula_runtime_selection_reaches_actual_inference_and_replay[0m - TypeError: initial_context() got an unexpected keyword argument 'formula_de...
+[31mFAILED[0m benchmarks/agent_supervisor/container_coding/test_terminal_initial_formula_boundary.py::[1mtest_wrapper_preserves_native_selection_rejection_before_index_writes[selection0-frozen security context profile][0m - TypeError: initial_context() got an unexpected keyword argument 'formula_de...
+[31mFAILED[0m benchmarks/agent_supervisor/container_coding/test_terminal_initial_formula_boundary.py::[1mtest_wrapper_preserves_native_selection_rejection_before_index_writes[selection1-selected formula decoder][0m - TypeError: initial_context() got an unexpected keyword argument 'header_pro...
+[31m============================== [31m[1m3 failed[0m[31m in 21.96s[0m[31m ==============================[0m

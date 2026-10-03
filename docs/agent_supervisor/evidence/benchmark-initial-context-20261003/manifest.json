@@ -1,0 +1,102 @@
+{
+  "schema": "benchmark-initial-context-evidence-manifest@1",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 2255,
+      "sha256": "14304ffbff3ceb4c34f68580ba87fde590eb005ee50319975c94e65ad57d7d8b"
+    },
+    {
+      "path": "green/tests.log",
+      "bytes": 46233,
+      "sha256": "c35e110e24a8a4325fe3f5148cd43180250aea31c26b203fd9b0357a72191ea1"
+    },
+    {
+      "path": "green/tests.xml",
+      "bytes": 7780,
+      "sha256": "8138de34498badc24c4db6252014799d1009b27bae47a1ee44fcff2700bbb704"
+    },
+    {
+      "path": "implementation.diff",
+      "bytes": 1850,
+      "sha256": "cbdf21a7313a46dffe37541dec2c8961613855d9bf6c5694850cfda5ebd80740"
+    },
+    {
+      "path": "qualification.json",
+      "bytes": 6290,
+      "sha256": "b4f6f7c9c336d5d3262450d5346740b2fa56afa351b5a2a9d0202f702e695c1d"
+    },
+    {
+      "path": "red/terminal_indexed_preparation.py",
+      "bytes": 50344,
+      "sha256": "2182aa45deb31f65f62ace83e767bd1240a1a61a471d31df99a0b6e928a299d3"
+    },
+    {
+      "path": "red/tests.log",
+      "bytes": 12249,
+      "sha256": "0b6f7b7cc1f24aa2794672aaef08b46477d337422cb9702fd2147de4aa44b1a6"
+    },
+    {
+      "path": "red/tests.xml",
+      "bytes": 6104,
+      "sha256": "c8b877f481b26502ed8b8f8649913656aa76591c24b0a18f698057d206ce2843"
+    },
+    {
+      "path": "sources/accelerate/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "bytes": 35076,
+      "sha256": "2f0b4fbd8aed80466ff7e7ab5298854737d96b78abf393cf6bd539b104b716b1"
+    },
+    {
+      "path": "sources/accelerate/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "bytes": 50512,
+      "sha256": "812ce093389f448d56dbc39cad0e8ae1081d314e9c3dce2fc2ec25df9ef26b4b"
+    },
+    {
+      "path": "sources/accelerate/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+      "bytes": 32205,
+      "sha256": "5623268360c3be84cbb9560c57bfee89c7cfb072dead77052f364d8492913b38"
+    },
+    {
+      "path": "sources/accelerate/benchmarks/agent_supervisor/container_coding/test_terminal_formula_assets.py",
+      "bytes": 9185,
+      "sha256": "49c31103679e4535165e4bf626db38a075cb2a398bcf0405f4088b629cbfc127"
+    },
+    {
+      "path": "sources/accelerate/benchmarks/agent_supervisor/container_coding/test_terminal_frozen_security.py",
+      "bytes": 13341,
+      "sha256": "26b5c46ad755c99214551bea45cf0b635043c27ea484ec4672ed4d69c883f506"
+    },
+    {
+      "path": "sources/accelerate/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py",
+      "bytes": 7955,
+      "sha256": "f21470f8c25299e7795b6b11ccfc31ccd58058bb44a760eaa03aab427ea5ac14"
+    },
+    {
+      "path": "sources/accelerate/benchmarks/agent_supervisor/container_coding/test_terminal_initial_formula_boundary.py",
+      "bytes": 3982,
+      "sha256": "929466ae783ec237fe4d476a8fd108f19181156437168e7cae739d12e21a5641"
+    },
+    {
+      "path": "sources/accelerate/ipfs_accelerate_py/agent_supervisor/runtime/security_autoencoder_advisor.py",
+      "bytes": 24340,
+      "sha256": "a3b3943bacb0becc7789c86414adab9f92e6977021919fb3e84b5e3c2baba491"
+    },
+    {
+      "path": "sources/datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formalization_pipeline.py",
+      "bytes": 10071,
+      "sha256": "f774e10badf64689c018c7bce8aa6197ae4f9b5ae64a8a40492822a8231f16c5"
+    },
+    {
+      "path": "sources/datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_decoder.py",
+      "bytes": 30274,
+      "sha256": "d89ced7eaf0236d64f38cb58175f9312d12afb826fbea853b28de07fd6a97dff"
+    },
+    {
+      "path": "sources.json",
+      "bytes": 2369,
+      "sha256": "c5d1abe7cd2f5228e6a2795d0e9377cf0fb1a4ba79d79fcbc34a71c476770e28"
+    }
+  ],
+  "bytes": 352415,
+  "scope": "authored frozen-inference initialization boundary; no official benchmark score"
+}
