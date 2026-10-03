@@ -1,0 +1,11 @@
+{
+  "returncode": 0,
+  "seconds": 2.7387791849978385,
+  "production_pins_unchanged": true,
+  "loaded_owners": {
+    "benchmarks.agent_supervisor.container_coding.terminal_deployment": "/home/barberb/lift_coding/artifacts/source384-wheel-cache-production-draft-20261003/timeout-02/proposed/benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+    "benchmarks.agent_supervisor.container_coding.full_supervisor_benchmark": "/home/barberb/lift_coding/artifacts/source384-wheel-cache-production-draft-20261003/timeout-02/proposed/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+    "benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_agent": "/home/barberb/lift_coding/artifacts/source384-wheel-cache-production-draft-20261003/timeout-02/proposed/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+    "benchmarks.agent_supervisor.container_coding.terminal_setup_cache_advice": "/home/barberb/lift_coding/artifacts/source384-wheel-cache-production-draft-20261003/timeout-02/proposed/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_advice.py"
+  }
+}

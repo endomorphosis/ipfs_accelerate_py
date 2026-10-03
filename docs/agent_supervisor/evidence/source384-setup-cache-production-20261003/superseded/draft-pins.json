@@ -1,0 +1,59 @@
+{
+  "schema": "source384-wheel-cache-production-draft@1",
+  "applied": false,
+  "files": [
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "before_sha256": "0ac7a65cc99502a0ba6a0cf853fbdead4f15e70acbe13a98baa9b064fb8f0f07",
+      "proposed_sha256": "0553f92c6c6ae171ec95c735f375d41dbdc30f634253827c98183996b6edb27d",
+      "bytes": 17211
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "before_sha256": "22c45e3ddcafa1e37a55a1cf7ee8db2ace30e0b7d91637d900d16e34cd62cde2",
+      "proposed_sha256": "e6af88bfcc3a8e284261fcc2a202bca27a64e753e8a94cdee9d6d6bc12b15628",
+      "bytes": 24228
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+      "before_sha256": "bb4e4f845f03026572530b81fde6a540a2cd0ab89b17e606587ddfbc33dfc285",
+      "proposed_sha256": "9f30530359cdfd04002de2f0b63034af31a53db079170add03b57fcff8cd6810",
+      "bytes": 74338
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_advice.py",
+      "before_sha256": null,
+      "proposed_sha256": "9b8ccd46848be1a9f11924c7ba845c41ab2366323bfece10104faa2bf2948105",
+      "bytes": 18179
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_codex.py",
+      "before_sha256": null,
+      "proposed_sha256": "054fd42d91d0b14a6955f7c35dfc96b0d0d9316e0e73cdf09f174ebd99582aa7",
+      "bytes": 12689
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_files.py",
+      "before_sha256": null,
+      "proposed_sha256": "44115d6f235387899a39e0508adda83da1a1e5d3b12013c474c1e8e1b2ea3e3d",
+      "bytes": 9235
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_libraries.py",
+      "before_sha256": null,
+      "proposed_sha256": "226e507598f03aa8e95c960eaadcc2260b9e5a356f7d4c7be8c922df857f158e",
+      "bytes": 41857
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py",
+      "before_sha256": null,
+      "proposed_sha256": "115956a00fd4353b3b255df6cbe2b5792d04692b48349703d63d17f5073dacca",
+      "bytes": 24980
+    }
+  ],
+  "patch_sha256": "684b039de9c866cd9fc53daea3e079b740d45ee32bc1b154a214a0e8e83b73f1",
+  "prior_draft": "artifacts/source384-native-cache-production-draft-20261003",
+  "syntax_checked": true,
+  "git_apply_check_exit_code": 0,
+  "native_context_qualified": false
+}

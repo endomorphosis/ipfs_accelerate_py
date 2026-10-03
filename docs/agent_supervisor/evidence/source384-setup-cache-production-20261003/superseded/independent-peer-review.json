@@ -1,0 +1,57 @@
+{
+  "checks": [
+    "Default selection None keeps prior behavior and performs no advice. A manifest with an explicit policy requires matching opt-in selection and cannot be silently enabled or dropped.",
+    "Closed selection binds full manifest SHA; binding matches active archived helper bodies, exact Source384 selection, architecture, Codex version/pins, CPU wheel SHA, extension source rows, fixed wheel members and installer mode policy.",
+    "Archive scope remains <=32768 allowed-prefix regular rows and8GiB; metadata preflight precedes hints, bounded manifest/code reads use nofollow descriptors. Archive bodies are not reread; archive verification remains the existing deployment owner responsibility.",
+    "Native finite-row engine accepts exactly4or131 rows, <=512MiB each and2GiB total. No-follow/no-atime descriptors stay held; distinct inode/path/size/mode/owner checks cover the full population before hashing, and every selected body hash passes before its population first hint.",
+    "Each native hint uses the same verified FD, syncs before advice, checks identity afterward and rechecks names; no payload body rereads after advice. Failures do not claim reclaimed bytes or admission authority.",
+    "Executable0755 and nonexecutable0644 rows exactly match the reviewed fixed131 installed selection. No installed payload permission normalization is added; mismatch refuses. Only the newly uploaded checked public exposure receipt is protected by root ownership0644.",
+    "Advice is after deploy_supervisor and deploy_worker_boundary in both Harbor setup and standalone native qualifier. The selected qualifier requires full Source384 and the common5CPU12GiB profile. No-index selection and incompatible layouts refuse.",
+    "The controller hashes exact isolated stdlib helper bodies before upload and the child verifies compiled bytes; public exposure receipt is checked and SHA-bound. Credentials are checked only by metadata in this added policy.",
+    "Archive/four-binary/131-payload receipts remain separate; success requires matching selected metadata and resource observation. Primary exceptions survive final receipt-write failure; absence of mandatory successful receipt remains refusal."
+  ],
+  "decision": "no_blocker_for_applying_opt_in_path_and_fresh_ordinary_qualification",
+  "draft_pins_sha256": "ab034ef4a5fefca25b21989de36a02d14683d189efb1dde83851dd1d74e1f750",
+  "fixed_rows": 131,
+  "fixed_rows_match_frozen131_diagnostic": true,
+  "limitations": [
+    "197 controls are local overlay fixtures and mocked transport, not actual production Docker qualification.",
+    "Frozen131 diagnostic accepted all advice but later failed cold replay child admission; this patch alone is not a demonstrated fix for that failure.",
+    "Advice syscall success/logical bytes do not establish memory reclamation; scheduler, reservations, headroom and deadlines remain unchanged.",
+    "No fresh benchmark, token score, native proof or autoencoder semantic coverage result is established. Root must run a fresh ordinary pinned archive after applying final owners.",
+    "Reviewer compared exact finite metadata and hashes but did not rehash the large CPU wheel or runtime archive again."
+  ],
+  "logical_selected_bytes": 565702269,
+  "patch_sha256": "684b039de9c866cd9fc53daea3e079b740d45ee32bc1b154a214a0e8e83b73f1",
+  "previous_seven_payload_owners_byte_identical": [
+    "terminal_setup_cache_files.py",
+    "full_supervisor_benchmark.py",
+    "full_supervisor_harbor_agent.py",
+    "terminal_deployment.py"
+  ],
+  "proposed_helpers": {
+    "terminal_setup_cache_advice.py": "9b8ccd46848be1a9f11924c7ba845c41ab2366323bfece10104faa2bf2948105",
+    "terminal_setup_cache_codex.py": "054fd42d91d0b14a6955f7c35dfc96b0d0d9316e0e73cdf09f174ebd99582aa7",
+    "terminal_setup_cache_files.py": "44115d6f235387899a39e0508adda83da1a1e5d3b12013c474c1e8e1b2ea3e3d",
+    "terminal_setup_cache_libraries.py": "226e507598f03aa8e95c960eaadcc2260b9e5a356f7d4c7be8c922df857f158e"
+  },
+  "read_only": true,
+  "reviewer": "peer_recovery_fresh",
+  "schema": "independent-production131-setup-cache-review@1",
+  "source_changes_by_reviewer": false,
+  "source_pin_export_sha256": "2d0625a867bc45a9a695ae2f750a57d75179c6aa28ef31250bd478f86ec7846d",
+  "tests_rerun_by_reviewer": false,
+  "total_passed": 197,
+  "verified_overlay_controls": [
+    {
+      "name": "overlay-authored-01",
+      "passed": 50,
+      "xml_sha256": "b661d604210601cb5ed0cf2cc7897bd8494ac30a0842c6df7536fe2306a01b37"
+    },
+    {
+      "name": "overlay-neighbors-01",
+      "passed": 147,
+      "xml_sha256": "d17828ae19cdb7866a5524c5ed202528a24814ccf52ac71138afbe0bd61e52a3"
+    }
+  ]
+}

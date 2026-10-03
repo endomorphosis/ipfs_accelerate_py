@@ -1,0 +1,14 @@
+{
+  "applied": false,
+  "bytes": 565702269,
+  "canonical_rows_sha256": "3cfe981126d86bd3f3e7730e6125d9aeb9c7b7a891a2e1edc4d641e5b15171c7",
+  "exact_rows_equal_reviewed_experiment": true,
+  "experimental_adapter_sha256": "eb1d4e2200deb0a671bb43d67e9a072b1f9ee7824623372bf72db86fea05290c",
+  "experimental_source_pins_sha256": "2d0625a867bc45a9a695ae2f750a57d75179c6aa28ef31250bd478f86ec7846d",
+  "pip_mode_review_sha256": "6543a736b0756cb717a71edd05de84a620c1dda19841d07e024728ac6da3acbe",
+  "prior_draft": "artifacts/source384-native-cache-production-draft-20261003",
+  "prior_patch_sha256": "d7f4b74f84929dedb3b5c817b58ba05379c9b23f142dc3c6071b970427ac361a",
+  "qualification": "payload identities were validated by failed instrumented Docker experiment; full Source384 qualification remains false",
+  "rows": 131,
+  "schema": "wheel-cache-draft-source-provenance@1"
+}

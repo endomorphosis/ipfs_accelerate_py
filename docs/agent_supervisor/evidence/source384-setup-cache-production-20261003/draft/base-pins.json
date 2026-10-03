@@ -1,0 +1,5 @@
+{
+  "benchmarks/agent_supervisor/container_coding/terminal_deployment.py": "bb4e4f845f03026572530b81fde6a540a2cd0ab89b17e606587ddfbc33dfc285",
+  "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "0ac7a65cc99502a0ba6a0cf853fbdead4f15e70acbe13a98baa9b064fb8f0f07",
+  "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "22c45e3ddcafa1e37a55a1cf7ee8db2ace30e0b7d91637d900d16e34cd62cde2"
+}

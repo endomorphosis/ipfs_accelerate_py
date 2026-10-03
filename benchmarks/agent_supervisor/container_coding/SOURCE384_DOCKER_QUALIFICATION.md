@@ -448,3 +448,18 @@ the remaining 28 are compatible existing context tests. A separate broad
 legacy test module still fails collection on a removed Copilot timeout import.
 This component result establishes neither a benchmark speedup nor a fix for
 the earlier cold-replay memory refusal.
+
+## Explicit setup cache integration
+
+The [production integration controls](../../../docs/agent_supervisor/evidence/source384-setup-cache-production-20261003/README.md)
+cover the opt-in `source384-native-aarch64-dontneed@1` setup policy in both
+Harbor and the ordinary native qualifier. The policy binds the archive,
+four public executable copies and 131 installed extension/wheel payloads to
+their exact source hashes. Advice runs after worker setup and before context
+construction. Omitting the policy preserves the existing setup behavior.
+
+All 204 actual-source tests pass with no skips. Six regression controls expose
+the earlier timeout bug: `TimeoutError` is an `OSError`, so the best-effort
+filesystem handlers swallowed the deadline exception. Both advice loops now
+propagate it. This component result does not qualify the full Docker profile;
+the memory admission failure still requires a fresh production-archive run.

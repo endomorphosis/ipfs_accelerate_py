@@ -1,0 +1,29 @@
+{
+  "actual_Docker_qualification": false,
+  "all_passed": true,
+  "all_selected_rows_equal_reviewed_experiment": true,
+  "applied": false,
+  "benchmarks_models_provider_calls": 0,
+  "distinct_tests": 197,
+  "live_base_pins_unchanged": true,
+  "patch_sha256": "684b039de9c866cd9fc53daea3e079b740d45ee32bc1b154a214a0e8e83b73f1",
+  "schema": "source384-wheel-cache-draft-overlay-validation@1",
+  "source_pins_sha256": "ab034ef4a5fefca25b21989de36a02d14683d189efb1dde83851dd1d74e1f750",
+  "source_provenance_sha256": "30186c6b17134bc0f7f244368c3c06cb9160f94eac402cd6605f66e5f87e26bb",
+  "suites": [
+    {
+      "exit_sha256": "e48c00c54d4d222cb7039977bcb981f06a08ce4442a61d0ba9e2ddd93f53e1ea",
+      "log_sha256": "afd404b2c058b3f317fe7903712986b20d050114005e28175194bb02be0c6830",
+      "name": "overlay-authored-01",
+      "tests": 50,
+      "xml_sha256": "b661d604210601cb5ed0cf2cc7897bd8494ac30a0842c6df7536fe2306a01b37"
+    },
+    {
+      "exit_sha256": "35488794c57f69816a4c4acd4a85829f1708ab225a679502ce790a1b8b412243",
+      "log_sha256": "ba807cbef4246901426d783346c47a3790520e5aabafaa166a1fd48a5ac17c6a",
+      "name": "overlay-neighbors-01",
+      "tests": 147,
+      "xml_sha256": "d17828ae19cdb7866a5524c5ed202528a24814ccf52ac71138afbe0bd61e52a3"
+    }
+  ]
+}

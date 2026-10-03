@@ -1,0 +1,46 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "/home/barberb/lift_coding/artifacts/source384-setup-cache-production-20261003/run_actual_controls.py"
+  ],
+  "pytest_argv": [
+    "-q",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_terminal_source384_transport.py",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/source384-setup-cache-production-20261003/actual-01.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "producer_pins": {
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "0553f92c6c6ae171ec95c735f375d41dbdc30f634253827c98183996b6edb27d",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "e6af88bfcc3a8e284261fcc2a202bca27a64e753e8a94cdee9d6d6bc12b15628",
+    "benchmarks/agent_supervisor/container_coding/terminal_deployment.py": "9f30530359cdfd04002de2f0b63034af31a53db079170add03b57fcff8cd6810",
+    "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_advice.py": "9b8ccd46848be1a9f11924c7ba845c41ab2366323bfece10104faa2bf2948105",
+    "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_codex.py": "ad8b81d7875740b97040ef5eadc4f76aa01d5f54ccfc4916e4c235e0fe0195f3",
+    "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_files.py": "6d2b2a58594df8511170ba9f4301d37512aa58e774d3bcabb747ce4a84f14624",
+    "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_libraries.py": "226e507598f03aa8e95c960eaadcc2260b9e5a356f7d4c7be8c922df857f158e",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py": "2934c129e4522fcf1e879caea81c4372a223988ee9733107acdbf09c05177b50"
+  },
+  "test_pins": {
+    "benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py": "2934c129e4522fcf1e879caea81c4372a223988ee9733107acdbf09c05177b50",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py": "b4233034b5288a3f2ea5935310970e80e26b9789c5d4da85b682a25457e29b11",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py": "ce0e2bbec41412fee5dc00a2c7dcddce648bc6f8e5e54b0ea268131be5b66327",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source384_transport.py": "f919519c7db6d0b5dd3741232b4ee249bfebed685d3a79fe81f758ba52a8fbe9",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py": "e3adc285954b0397831ef9adffc8f2dd6244562a3675cf923c8471c5e2b9ee40",
+    "benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py": "43220680bc409c8efb394d5fd440c4d92adf1a907db7594b760147d97364d008"
+  },
+  "source_mode": "actual on-disk A modules; no module-path or method overlays",
+  "a_head": "83c77280becd792c2eb02c6e67668557f04fc56b",
+  "d_head": "83a7fb9d239dee587bcd27ea451a0f6c16b77f41",
+  "environment": {
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "CUDA_VISIBLE_DEVICES": "",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/source384-setup-cache-production-20261003/actual-seals.duckdb"
+  }
+}

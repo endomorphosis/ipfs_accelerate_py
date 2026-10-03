@@ -1,0 +1,2803 @@
+--- a/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py
++++ b/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py
+@@ -94,7 +94,8 @@
+ 
+ 
+ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
+-               *, intent_requirement_contract: dict | None = None, resource_profile=None) -> dict:
++               *, intent_requirement_contract: dict | None = None, resource_profile=None,
++               setup_cache_selection: dict | None = None) -> dict:
+     if arm not in {"full", "no-index"}:
+         raise ValueError("unknown supervisor ablation")
+     config = baseline_config(dataset, output, resource_profile=resource_profile)
+@@ -110,13 +111,18 @@
+         config["agents"][0]["kwargs"]["intent_requirement_contract"] = _transport_intent_contract(intent_requirement_contract)
+     if resource_profile is not None:
+         config["agents"][0]["kwargs"]["resource_profile"] = resource_profile
++    if setup_cache_selection is not None:
++        from .terminal_setup_cache_advice import _selection_shape
++        _selection_shape(setup_cache_selection)
++        config["agents"][0]["kwargs"]["setup_cache_selection"] = json.loads(json.dumps(setup_cache_selection))
+     return config
+ 
+ 
+ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
+             intent_requirement_contract: Path | None = None,
+             intent_action_384_config: Path | None = None,
+-            source384_config: Path | None = None, resource_profile=None) -> dict:
++            source384_config: Path | None = None, resource_profile=None,
++            setup_cache_policy: str | None = None) -> dict:
+     from harbor.models.job.config import JobConfig
+     dataset = dataset.resolve(strict=True)
+     archive = archive.resolve(strict=True)
+@@ -144,10 +150,15 @@
+         _, expected_binding = _intent_action_384_assets(host_config)
+         if selected_intent != expected_binding:
+             raise ValueError("selected Intent384 config differs from the runtime archive")
++    from .terminal_setup_cache_advice import select_setup_cache, validate_setup_cache_prerequisites
++    setup_cache_selection = select_setup_cache(archive, setup_cache_policy)
++    validate_setup_cache_prerequisites(setup_cache_selection, install_codex=True,
++        auth_json=Path.home() / ".codex/auth.json", arm=arm, resource_profile=resource_profile)
+     requirements = _load_intent_requirement_contract(intent_requirement_contract, dataset=dataset)
+     task_hashes = _task_hashes(dataset / TASK)
+     declared_config = config_for(dataset, output, archive, arm,
+-        intent_requirement_contract=requirements, resource_profile=resource_profile)
++        intent_requirement_contract=requirements, resource_profile=resource_profile,
++        setup_cache_selection=setup_cache_selection)
+     if selected_source384 is not None and arm == "full":
+         validate_resource_profile(declared_config, resource_profile)
+     config = JobConfig.model_validate(declared_config, extra="forbid")
+@@ -176,7 +187,8 @@
+               "benchmark_advantage_claimed": False, **_intent_selection(requirements),
+               "intent_action_384": selected_intent, "source384": selected_source384,
+               "source384_enabled": selected_source384 is not None and arm == "full",
+-              "resource_profile": resource_profile}
++              "resource_profile": resource_profile,
++              **({"setup_cache_selection": setup_cache_selection} if setup_cache_selection is not None else {})}
+     _json(output / "preparation.json", result)
+     if dry.returncode:
+         raise RuntimeError("Harbor preflight failed; see retained logs")
+@@ -251,6 +263,9 @@
+     parser.add_argument("--archive", type=Path)
+     parser.add_argument("--arm", choices=("full", "no-index"), default="full")
+     parser.add_argument("--source384-config", type=Path, help="Verify the offline pinned parent matches the archive")
++    from .terminal_setup_cache_advice import POLICIES
++    parser.add_argument("--setup-cache-policy", choices=POLICIES,
++        help="Explicit matching runtime setup-cache policy; absent preserves default")
+     parser.add_argument("--resource-profile", choices=PROFILES, help="Explicit common limits; select identically for all comparison arms")
+     parser.add_argument("--intent-action-384-config", type=Path,
+         help="Verify the explicit local Intent384 configuration matches the packaged assets")
+@@ -263,7 +278,8 @@
+         result = prepare(dataset=args.dataset, output=args.output, archive=args.archive, arm=args.arm,
+                          intent_requirement_contract=args.intent_requirement_contract,
+                          intent_action_384_config=args.intent_action_384_config,
+-                         source384_config=args.source384_config, resource_profile=args.resource_profile)
++                         source384_config=args.source384_config, resource_profile=args.resource_profile,
++                         setup_cache_policy=args.setup_cache_policy)
+     else:
+         result = {"execute": execute, "collect": collect}[args.operation](args.output)
+     print(json.dumps(result, sort_keys=True, indent=2))
+--- a/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py
++++ b/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py
+@@ -225,7 +225,8 @@
+ class FullSupervisorAgent(BaseAgent):
+     def __init__(self, *args, runtime_archive: str, arm="full", auth_json: str | None = None,
+                  model_revision="", disable_intent_autoencoder: bool = False,
+-                 intent_requirement_contract: dict | None = None, resource_profile=None, **kwargs):
++                 intent_requirement_contract: dict | None = None, resource_profile=None,
++                 setup_cache_selection: dict | None = None, **kwargs):
+         super().__init__(*args, **kwargs)
+         if self.model_name != MODEL or arm not in {"full", "no-index"}:
+             raise ValueError("the isolated comparison requires the pinned model and explicit arm")
+@@ -236,6 +237,11 @@
+         if resource_profile not in (None, SOURCE384_PROFILE):
+             raise ValueError("unknown benchmark resource profile")
+         self.resource_profile = resource_profile
++        from .terminal_setup_cache_advice import validate_setup_cache_selection, validate_setup_cache_prerequisites
++        validate_setup_cache_selection(self.runtime_archive, setup_cache_selection)
++        validate_setup_cache_prerequisites(setup_cache_selection, install_codex=True,
++            auth_json=self.auth_json, arm=arm, resource_profile=resource_profile)
++        self.setup_cache_selection = json.loads(json.dumps(setup_cache_selection))
+         if type(disable_intent_autoencoder) is not bool:
+             raise ValueError("Intent ablation switch must be boolean")
+         self.disable_intent_autoencoder = disable_intent_autoencoder
+@@ -257,9 +263,22 @@
+         return "isolated-native-v1+codex-" + CLI_VERSION
+ 
+     async def setup(self, environment):
++        from .terminal_setup_cache_advice import (
++            validate_setup_cache_selection, validate_setup_cache_prerequisites, apply_setup_cache_advice,
++        )
++        selection = getattr(self, "setup_cache_selection", None)
++        validate_setup_cache_selection(self.runtime_archive, selection)
++        validate_setup_cache_prerequisites(selection, install_codex=True, auth_json=self.auth_json,
++            arm=self.arm, resource_profile=getattr(self, "resource_profile", None))
+         await deploy_supervisor(environment, archive_dir=self.runtime_archive,
+-                                output=self.logs_dir / "deployment", auth_json=self.auth_json)
+-        await deploy_worker_boundary(environment, output=self.logs_dir / "worker-boundary")
++                                output=self.logs_dir / "deployment", auth_json=self.auth_json,
++                                **({"setup_cache_selection": selection} if selection is not None else {}))
++        boundary = self.logs_dir / "worker-boundary"
++        await deploy_worker_boundary(environment, output=boundary)
++        if selection is not None:
++            self.setup_cache_receipt = await apply_setup_cache_advice(environment,
++                archive_dir=self.runtime_archive, expected=selection,
++                boundary_output=boundary, output=self.logs_dir / "setup-cache")
+ 
+     async def run(self, instruction: str, environment, context: AgentContext):
+         public = self.logs_dir / "instruction.md"
+@@ -281,7 +300,9 @@
+             requirement_path = ROOT + "/intent-requirements.json"
+             await environment.upload_file(artifact, requirement_path)
+             argv += ["--intent-requirement-contract", requirement_path]
+-        manifest = json.loads((self.runtime_archive / "manifest.json").read_text())
++        from .terminal_setup_cache_advice import validate_setup_cache_selection
++        manifest, _ = validate_setup_cache_selection(self.runtime_archive,
++            getattr(self, "setup_cache_selection", None))
+         if self.arm == "full" and manifest["learned_requirements"]:
+             argv += ["--model-snapshot", ROOT + "/models/embedding", "--model-revision", self.model_revision]
+         asset_arguments, asset_observation = security_asset_arguments(manifest, self.arm)
+@@ -300,6 +321,7 @@
+                             "intent_model_assets": intent_observation,
+                             "source384_assets": source384_observation,
+                             "resource_profile": getattr(self, "resource_profile", None),
++                            **({"setup_cache": self.setup_cache_receipt} if hasattr(self, "setup_cache_receipt") else {}),
+                             "planning_and_cold_index_charged_to_agent_time": True}
+         try:
+             context.metadata["public_input_capture"] = await asyncio.wait_for(
+--- a/benchmarks/agent_supervisor/container_coding/terminal_deployment.py
++++ b/benchmarks/agent_supervisor/container_coding/terminal_deployment.py
+@@ -725,11 +725,20 @@
+     source384_config: dict | None = None,
+     torch_cpu_wheel: Path | None = None,
+     torch_cpu_wheel_sha256: str | None = None,
++    setup_cache_policy: str | None = None,
+ ) -> dict:
+     """Package only source/code assets and explicitly selected native runtimes."""
+     output = Path(output).absolute()
+     if output.exists() or output.resolve() != output:
+         raise ValueError("fresh runtime archive directory required")
++    if setup_cache_policy is not None:
++        import platform
++        from .terminal_setup_cache_advice import POLICY
++        if (setup_cache_policy != POLICY or platform.machine() != "aarch64"
++                or source384_config is None or model_snapshot is not None
++                or any(value is not None for value in (intent_checkpoint,
++                    intent_projection_request, intent_action_384_config))):
++            raise ValueError("setup cache policy requires the supported regular Source384-only aarch64 layout")
+     if (torch_cpu_wheel is None) != (torch_cpu_wheel_sha256 is None):
+         raise ValueError("Torch CPU wheel path and independent SHA-256 must be paired")
+     if source384_config is not None and any(value is not None for value in (
+@@ -901,7 +910,14 @@
+     validate_intent_action_384_binding(manifest)
+     validate_source384_binding(manifest)
+     validate_torch_cpu_wheel_binding(manifest)
++    if setup_cache_policy is not None:
++        from .terminal_setup_cache_advice import binding_for_manifest
++        manifest["setup_cache"] = binding_for_manifest(manifest, setup_cache_policy)
+     (output / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
++    if setup_cache_policy is not None:
++        from .terminal_setup_cache_advice import select_setup_cache
++        selection = select_setup_cache(output, setup_cache_policy)
++        (output / "setup-cache-selection.json").write_text(json.dumps(selection, indent=2, sort_keys=True) + "\n")
+     return manifest
+ 
+ 
+@@ -912,8 +928,12 @@
+     output: Path,
+     auth_json: Path | None = None,
+     install_codex: bool = True,
++    setup_cache_selection: dict | None = None,
+ ) -> dict:
+     """Use actual Harbor exec/upload APIs; does not call any model or verifier."""
++    from .terminal_setup_cache_advice import validate_setup_cache_selection, validate_setup_cache_prerequisites
++    validate_setup_cache_selection(archive_dir, setup_cache_selection)
++    validate_setup_cache_prerequisites(setup_cache_selection, install_codex=install_codex, auth_json=auth_json)
+     output = Path(output)
+     output.mkdir(parents=True, exist_ok=False)
+     manifest = json.loads((Path(archive_dir) / "manifest.json").read_text())
+@@ -1140,6 +1160,7 @@
+     keep_container: bool = False,
+     resource_profile: str | None = None,
+     source384_context: bool = False,
++    setup_cache_selection: dict | None = None,
+ ) -> dict:
+     from harbor.environments.docker.docker import DockerEnvironment
+     from harbor.models.task.task import Task
+@@ -1154,6 +1175,15 @@
+     verify_torch_cpu_wheel_archive(Path(archive_dir) / "runtime.tar.gz", manifest)
+     if source384_context and (resource_profile != SOURCE384_PROFILE or validate_source384_binding(manifest) is None):
+         raise ValueError("Source384 qualification requires pinned assets and the explicit common profile")
++
++    from .terminal_setup_cache_advice import (
++        validate_setup_cache_selection, validate_setup_cache_prerequisites, apply_setup_cache_advice,
++    )
++    validate_setup_cache_selection(archive_dir, setup_cache_selection)
++    validate_setup_cache_prerequisites(setup_cache_selection, install_codex=install_codex,
++        auth_json=auth_json, resource_profile=resource_profile)
++    if setup_cache_selection is not None and not source384_context:
++        raise ValueError("selected cache qualification requires the complete Source384 context")
+ 
+     task = Task(task_dir)
+     output = Path(output)
+@@ -1181,7 +1211,15 @@
+             output=output / "deployment",
+             auth_json=auth_json,
+             install_codex=install_codex,
++            **({"setup_cache_selection": setup_cache_selection} if setup_cache_selection is not None else {}),
+         )
++        if setup_cache_selection is not None:
++            from .container_worker_deployment import deploy_worker_boundary
++            boundary = output / "worker-boundary"
++            await deploy_worker_boundary(environment, output=boundary)
++            report["setup_cache"] = await apply_setup_cache_advice(environment,
++                archive_dir=archive_dir, expected=setup_cache_selection,
++                boundary_output=boundary, output=output / "setup-cache")
+         if not selected:
+             return deployment
+         report["deployment"] = deployment
+@@ -1222,6 +1260,9 @@
+     build.add_argument("--torch-cpu-wheel", type=Path, help="Local pinned CPython 3.12 Torch CPU wheel")
+     build.add_argument("--torch-cpu-wheel-sha256", help="Independent SHA-256 of the selected Torch CPU wheel")
+     build.add_argument("--source384-config", type=Path, help="Pinned offline shared Source384 parent configuration")
++    from .terminal_setup_cache_advice import POLICIES, read_selection
++    build.add_argument("--setup-cache-policy", choices=POLICIES,
++        help="Explicit pinned setup advice after worker-boundary installation")
+     build.add_argument("--security-initializer", type=Path, help="independently admitted host fork descriptor JSON")
+     build.add_argument("--canonical-cve-export", type=Path)
+     build.add_argument("--canonical-cve-manifest-sha256")
+@@ -1248,6 +1289,8 @@
+     from .benchmark_resource_profile import PROFILES
+     deploy.add_argument("--resource-profile", choices=PROFILES,
+         help="Explicit common limits; default retains original task resources")
++    deploy.add_argument("--setup-cache-selection", type=Path,
++        help="Independently retained closed policy and manifest SHA selection")
+     deploy.add_argument("--source384-context", action="store_true",
+         help="Qualify actual pinned Source384 prepare/initial-context/replay without provider calls")
+     args = parser.parse_args()
+@@ -1262,6 +1305,7 @@
+             model_snapshot=args.model_snapshot,
+             torch_cpu_wheel=args.torch_cpu_wheel,
+             torch_cpu_wheel_sha256=args.torch_cpu_wheel_sha256,
++            setup_cache_policy=args.setup_cache_policy,
+             security_initializer=(_load_initializer_descriptor(args.security_initializer)
+                                   if args.security_initializer else None),
+             canonical_cve_export=args.canonical_cve_export,
+@@ -1297,6 +1341,7 @@
+                 keep_container=args.keep_container,
+                 resource_profile=args.resource_profile,
+                 source384_context=args.source384_context,
++                setup_cache_selection=(read_selection(args.setup_cache_selection) if args.setup_cache_selection else None),
+             )
+         )
+         print(
+--- /dev/null
++++ b/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_advice.py
+@@ -0,0 +1,343 @@
++"""Explicit, pinned Source384 setup-cache advice; no admission authority.
++
++The policy supports the regular Source384 layout, two public aarch64 Codex
++0.158.0 executables and 131 fixed extension and CPU-wheel payloads. Absent selection does nothing.
++"""
++from __future__ import annotations
++
++import asyncio
++import hashlib
++import json
++import os
++from pathlib import Path
++import platform
++import re
++import shlex
++import stat
++
++POLICY = "source384-native-aarch64-dontneed@1"
++POLICIES = (POLICY,)
++ROOT = "/opt/ipfs-supervisor"
++PROFILE = "source384-5cpu-12gib@1"
++MAX_MANIFEST = 8 * 1024**2
++MAX_HELPER = 65536
++MAX_RECEIPT = 32768
++MAX_RESULT = 262144
++PREFIX = "source/benchmarks/agent_supervisor/container_coding/"
++HELPERS = ("terminal_setup_cache_advice.py", "terminal_setup_cache_files.py",
++           "terminal_setup_cache_codex.py", "terminal_setup_cache_libraries.py")
++CODEX_PINS = {
++    "codex": "0059c73b149a1433b634e26ad8a715e02717a9920665a9cc5676941db03c45cd",
++    "codex-code-mode-host": "68237b34d0bc182e99c43ca2197a25120339c154dd3fc29f908c2a1b022efa5b",
++}
++
++
++def _sha(raw):
++    return hashlib.sha256(raw).hexdigest()
++
++
++def _regular_bytes(path, maximum):
++    """Read one bounded public artifact; never use this for credentials."""
++    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
++    with os.fdopen(fd, "rb") as stream:
++        before = os.fstat(stream.fileno())
++        if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
++                or not 0 < before.st_size <= maximum):
++            raise ValueError("bounded singleton public artifact required")
++        raw = stream.read(maximum + 1)
++        after = os.fstat(stream.fileno())
++    fields = ("st_dev", "st_ino", "st_mode", "st_nlink", "st_uid", "st_gid",
++              "st_size", "st_mtime_ns", "st_ctime_ns")
++    if len(raw) != before.st_size or any(getattr(before, k) != getattr(after, k) for k in fields):
++        raise ValueError("public artifact changed during read")
++    return raw
++
++
++def read_selection(path):
++    value = json.loads(_regular_bytes(Path(path), MAX_RECEIPT))
++    _selection_shape(value)
++    return value
++
++
++def _selection_shape(value):
++    if (type(value) is not dict or set(value) != {"schema", "policy", "manifest_sha256"}
++            or value["schema"] != "terminal-setup-cache-selection@1"
++            or value["policy"] != POLICY or type(value["manifest_sha256"]) is not str
++            or not re.fullmatch("[0-9a-f]{64}", value["manifest_sha256"])):
++        raise ValueError("closed supported setup cache selection required")
++
++
++def library_binding_for_manifest(manifest):
++    """Bind exact installed paths to their immutable shipped source artifacts."""
++    from .terminal_deployment import validate_torch_cpu_wheel_binding
++    from .terminal_setup_cache_libraries import (ROWS, WHEEL_SHA256, TORCH_REQUIREMENT,
++        SOURCE_PINS_SHA256, SOURCE_SELECTION, INSTALLER_MODE_POLICY)
++    wheel = validate_torch_cpu_wheel_binding(manifest)
++    if (wheel is None or wheel["sha256"] != WHEEL_SHA256
++            or wheel["requirement"] != TORCH_REQUIREMENT
++            or not wheel["path"].endswith("manylinux_2_28_aarch64.whl")):
++        raise ValueError("native cache policy requires its exact supported aarch64 CPU wheel")
++    inventory = {row["path"]: row for row in manifest["files"]}
++    selected = []
++    for row in ROWS:
++        record = dict(row)
++        if row["role"] == "installed_duckdb_extension":
++            source_path = "extensions/" + row["name"]
++            source = inventory.get(source_path)
++            if (source is None or source["sha256"] != row["sha256"]
++                    or source["bytes"] != row["expected_bytes"] or source["mode"] != row["mode"]):
++                raise ValueError("native extension cache row differs from the shipped source")
++            record.update(source_kind="archive_member", source_path=source_path)
++        else:
++            # These exact128 member hashes were extracted from WHEEL_SHA256;
++            # the pinned adapter body and binding preserve that finite selection.
++            prefix = "venv/lib/python3.12/site-packages/"
++            if row["role"] != "installed_torch_wheel_payload" or not row["path"].startswith(prefix):
++                raise ValueError("unsupported native library source")
++            record.update(source_kind="wheel_member", source_path=row["path"][len(prefix):])
++        selected.append(record)
++    return dict(schema="terminal-native-library-cache-binding@1", wheel_sha256=WHEEL_SHA256,
++                torch_requirement=TORCH_REQUIREMENT, source_pins_sha256=SOURCE_PINS_SHA256,
++                source_selection=SOURCE_SELECTION, installer_mode_policy=INSTALLER_MODE_POLICY, rows=selected)
++
++
++def binding_for_manifest(manifest, policy):
++    """Build a closed policy using the actual archived helper byte identities."""
++    if policy is None:
++        return None
++    if policy != POLICY or platform.machine() != "aarch64":
++        raise ValueError("unsupported setup cache policy or architecture")
++    from .terminal_deployment import validate_source384_binding
++    from .terminal_setup_cache_files import checked_rows
++    if validate_source384_binding(manifest) is None or manifest.get("codex_version") != "0.158.0":
++        raise ValueError("setup cache policy requires the pinned Source384 and Codex profile")
++    if manifest.get("learned_requirements"):
++        raise ValueError("legacy relocated embedding layout is unsupported by setup cache policy")
++    checked_rows(manifest["files"])
++    rows = {row["path"]: row for row in manifest["files"]}
++    pins = {}
++    for name in HELPERS:
++        row = rows.get(PREFIX + name)
++        raw = _regular_bytes(Path(__file__).with_name(name), MAX_HELPER)
++        if row is None or row["sha256"] != _sha(raw) or row["bytes"] != len(raw):
++            raise ValueError("archived cache helper differs from the active canonical owner")
++        pins[name] = _sha(raw)
++    return dict(schema="terminal-setup-cache-binding@1", policy=POLICY,
++                architecture="aarch64", codex_version="0.158.0",
++                codex_sha256=dict(CODEX_PINS), helpers=pins,
++                native_libraries=library_binding_for_manifest(manifest))
++
++
++def validate_manifest_binding(manifest):
++    binding = manifest.get("setup_cache")
++    if binding is None:
++        return None
++    if type(binding) is not dict or set(binding) != {
++            "schema", "policy", "architecture", "codex_version", "codex_sha256", "helpers", "native_libraries"}:
++        raise ValueError("closed setup cache manifest binding required")
++    expected = binding_for_manifest(manifest, binding.get("policy"))
++    if binding != expected:
++        raise ValueError("setup cache manifest binding or native pins changed")
++    return binding
++
++
++def select_setup_cache(archive_dir, policy):
++    path = Path(archive_dir) / "manifest.json"
++    raw = path.read_bytes() if policy is None else _regular_bytes(path, MAX_MANIFEST)
++    manifest = json.loads(raw)
++    binding = validate_manifest_binding(manifest)
++    if policy is None:
++        if binding is not None:
++            raise ValueError("archive cache policy requires explicit matching selection")
++        return None
++    if policy != POLICY or binding is None or binding["policy"] != policy:
++        raise ValueError("selected cache policy differs from the archive")
++    return dict(schema="terminal-setup-cache-selection@1", policy=policy,
++                manifest_sha256=_sha(raw))
++
++
++def validate_setup_cache_selection(archive_dir, expected):
++    if expected is not None:
++        _selection_shape(expected)
++    path = Path(archive_dir) / "manifest.json"
++    raw = path.read_bytes() if expected is None else _regular_bytes(path, MAX_MANIFEST)
++    if expected is not None and _sha(raw) != expected["manifest_sha256"]:
++        raise ValueError("prepared cache manifest changed")
++    manifest = json.loads(raw)
++    binding = validate_manifest_binding(manifest)
++    if (expected is None) != (binding is None):
++        raise ValueError("cache policy cannot be enabled or dropped after preparation")
++    return manifest, binding
++
++
++def validate_setup_cache_prerequisites(expected, *, install_codex, auth_json,
++                                       arm="full", resource_profile=PROFILE):
++    if expected is None:
++        return
++    _selection_shape(expected)
++    if (install_codex is not True or arm != "full" or resource_profile != PROFILE
++            or platform.machine() != "aarch64"):
++        raise ValueError("selected cache policy requires full Source384, aarch64 Codex and common resources")
++    if auth_json is None:
++        raise ValueError("selected worker boundary requires an explicit supported auth file")
++    # Check only metadata. Never read, hash, serialize or include this path in a receipt.
++    try:
++        info = Path(auth_json).lstat()
++    except OSError:
++        raise ValueError("selected worker boundary auth file is unavailable") from None
++    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or not 0 < info.st_size <= 65536:
++        raise ValueError("selected worker boundary requires one bounded regular auth file")
++
++
++def isolated_loader(modules, *, run, argv, receipt_bytes=None):
++    """Execute exact shipped stdlib helpers without ambient Python import paths."""
++    selection = dict(modules=modules, run=run, argv=argv, receipt_bytes=receipt_bytes)
++    return "selection=" + repr(selection) + "\n" + r'''
++import hashlib,os,stat,sys,types
++def code(path,pin):
++ fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
++ with os.fdopen(fd,'rb') as stream:
++  before=os.fstat(stream.fileno())
++  if not stat.S_ISREG(before.st_mode) or before.st_nlink!=1 or not 0<before.st_size<=65536:
++   raise ValueError('bounded singleton code file required')
++  raw=stream.read(65537)
++  after=os.fstat(stream.fileno())
++ if any(getattr(before,k)!=getattr(after,k) for k in ('st_dev','st_ino','st_mode','st_nlink','st_size','st_mtime_ns','st_ctime_ns')):
++  raise ValueError('cache helper changed during read')
++ if len(raw)!=before.st_size or hashlib.sha256(raw).hexdigest()!=pin:
++  raise ValueError('cache helper code digest differs')
++ return compile(raw,path,'exec')
++compiled=[(name,path,code(path,pin)) for name,path,pin in selection['modules']]
++for name,path,body in compiled:
++ if name==selection['run']:
++  sys.argv=[path,*selection['argv']]
++  if selection['receipt_bytes'] is None:
++   exec(body,{'__name__':'__main__','__file__':path})
++  else:
++   module=types.ModuleType(name);module.__file__=path
++   exec(body,module.__dict__)
++   module.protect_receipt(os.path.dirname(selection['argv'][0]),selection['receipt_bytes'])
++   module.main()
++ else:
++  module=types.ModuleType(name);module.__file__=path
++  exec(body,module.__dict__);sys.modules[name]=module
++'''
++
++
++async def apply_setup_cache_advice(environment, *, archive_dir, expected, boundary_output, output):
++    """After worker-boundary setup, advise three closed public populations."""
++    manifest, binding = validate_setup_cache_selection(archive_dir, expected)
++    if binding is None:
++        return None
++    from .terminal_setup_cache_codex import require_receipt
++    from .terminal_deployment import PYTHON
++    receipt_path = Path(boundary_output) / "installation/native-codex-binary.log"
++    receipt_raw = _regular_bytes(receipt_path, MAX_RECEIPT)
++    require_receipt(json.loads(receipt_raw))
++    output = Path(output)
++    output.mkdir(parents=True, exist_ok=False)
++    report = dict(schema="terminal-setup-cache-advice@1", completed=False,
++                  selection=expected, archive_sha256=manifest["archive_sha256"],
++                  policy=POLICY, advice_is_best_effort=True, freed_bytes_claimed=False,
++                  admission_authority=False, global_drop_caches=False, credential_contents_recorded=False)
++    # Upload exact already-validated local bytes, then verify again in the isolated child.
++    receipt_copy = output / "native-exposure.json"
++    receipt_copy.write_bytes(receipt_raw)
++    manifest_copy = output / "manifest-selection.json"
++    manifest_raw = _regular_bytes(Path(archive_dir) / "manifest.json", MAX_MANIFEST)
++    if _sha(manifest_raw) != expected["manifest_sha256"]:
++        raise ValueError("manifest changed before cache advice")
++    manifest_copy.write_bytes(manifest_raw)
++    report["post_boundary_receipt_sha256"] = _sha(receipt_raw)
++    modules = []
++    for name in HELPERS[1:]:
++        raw = _regular_bytes(Path(__file__).with_name(name), MAX_HELPER)
++        if _sha(raw) != binding["helpers"][name]:
++            raise ValueError("cache helper changed before transport")
++        local = output / name
++        local.write_bytes(raw)
++        remote = ROOT + "/" + name
++        await environment.upload_file(local, remote)
++        modules.append((name[:-3], remote, _sha(raw)))
++    await environment.upload_file(manifest_copy, ROOT + "/setup-cache-manifest.json")
++    await environment.upload_file(receipt_copy, ROOT + "/codex-cache-exposure.json")
++
++    async def invoke(label, selected_modules, run, argv, *, receipt_bytes=None):
++        loader = isolated_loader(selected_modules, run=run, argv=argv, receipt_bytes=receipt_bytes)
++        response = await asyncio.wait_for(environment.exec(
++            command=PYTHON + " -I -S -B -c " + shlex.quote(loader), cwd="/",
++            user="root", timeout_sec=60), timeout=60)
++        raw = response.stdout or ""
++        (output / (label + ".stderr")).write_text((response.stderr or "")[:4096])
++        if len(raw.encode()) > MAX_RESULT:
++            raise ValueError("cache advice response exceeds bound")
++        (output / (label + ".stdout")).write_text(raw)
++        if response.return_code != 0:
++            raise RuntimeError("selected cache advice failed: " + label)
++        return json.loads(raw)
++
++    primary_error = False
++    try:
++        report["phase"] = "archive_advice"
++        archive = await invoke("archive-advice", modules[:1], modules[0][0],
++            [ROOT + "/setup-cache-manifest.json", expected["manifest_sha256"], manifest["archive_sha256"]])
++        if (archive.get("schema") != "manifest-cache-advice@1"
++                or archive.get("manifest_sha256") != expected["manifest_sha256"]
++                or archive.get("archive_sha256") != manifest["archive_sha256"]
++                or archive.get("selected_files") != len(manifest["files"])
++                or archive.get("body_reads") != 0 or archive.get("metadata_unchanged") is not True
++                or archive.get("freed_bytes_claimed") is not False):
++            raise ValueError("archive advice receipt differs from selected population")
++        report["archive"] = archive
++        report["phase"] = "native_binary_advice"
++        native = await invoke("native-advice", modules[:2], modules[1][0],
++            [ROOT + "/codex-cache-exposure.json", _sha(receipt_raw)], receipt_bytes=len(receipt_raw))
++        if (native.get("schema") != "pinned-native-codex-cache-advice@1"
++                or native.get("post_boundary_receipt_sha256") != _sha(receipt_raw)
++                or native.get("codex_version") != "0.158.0" or native.get("selected_files") != 4
++                or native.get("hashed_files") != 4 or native.get("body_reads_after_advice") != 0
++                or native.get("body_read_bytes") != native.get("selected_bytes")
++                or type(native.get("selected_bytes")) is not int or not 0 < native["selected_bytes"] <= 2 * 1024**3
++                or native.get("metadata_unchanged") is not True or native.get("freed_bytes_claimed") is not False):
++            raise ValueError("native advice receipt differs from selected population")
++        report["native_binaries"] = native
++        report["phase"] = "native_library_advice"
++        libraries = await invoke("library-advice", modules, modules[2][0], [])
++        expected_rows = binding["native_libraries"]["rows"]
++        expected_bytes = sum(row["expected_bytes"] for row in expected_rows)
++        if (libraries.get("schema") != "pinned-native-libraries-cache-advice@1"
++                or libraries.get("wheel_sha256") != binding["native_libraries"]["wheel_sha256"]
++                or libraries.get("torch_requirement") != binding["native_libraries"]["torch_requirement"]
++                or libraries.get("selected_files") != 131 or libraries.get("hashed_files") != 131
++                or any(libraries.get(key) != binding["native_libraries"][key]
++                    for key in ("source_pins_sha256", "source_selection", "installer_mode_policy"))
++                or libraries.get("selected_bytes") != expected_bytes
++                or libraries.get("body_read_bytes") != expected_bytes
++                or libraries.get("body_reads_after_advice") != 0
++                or libraries.get("metadata_unchanged") is not True or libraries.get("freed_bytes_claimed") is not False):
++            raise ValueError("library advice receipt differs from the closed source binding")
++        observed_rows = libraries.get("files")
++        if type(observed_rows) is not list or len(observed_rows) != 131:
++            raise ValueError("exact native library receipt population required")
++        for actual, wanted in zip(observed_rows, expected_rows):
++            if type(actual) is not dict or any(actual.get(key) != wanted[key]
++                    for key in ("path", "name", "role", "uid", "mode", "expected_bytes", "sha256")):
++                raise ValueError("native library receipt row changed")
++        report["native_libraries"] = libraries
++        report["phase"] = "resource_observation"
++        from .terminal_source384_qualification import observe_resources
++        report["resources"] = await observe_resources(environment, output=output, profile=PROFILE)
++        report.update(completed=True, phase="complete")
++        return report
++    except BaseException as exc:
++        primary_error = True
++        report["error_type"] = type(exc).__name__
++        raise
++    finally:
++        try:
++            (output / "setup-cache-advice.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
++        except Exception:
++            # Keep an earlier advice failure exact. A missing mandatory receipt
++            # after successful advice still makes selected setup fail closed.
++            if not primary_error:
++                raise
+--- /dev/null
++++ b/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_codex.py
+@@ -0,0 +1,228 @@
++"""Advice for exactly four freshly hashed public native Codex binaries."""
++import hashlib
++from itertools import islice
++import json
++import os
++from pathlib import Path
++import re
++import signal
++import stat
++import sys
++import time
++if globals().get('__package__'):
++    from .terminal_setup_cache_files import root_fd, identity
++else:
++    from terminal_setup_cache_files import root_fd, identity
++
++ROOT='/opt/ipfs-supervisor'
++SOURCE_UID=1000
++TARGET_UID=0
++RECEIPT_UID=0
++MAX_FILE=512*1024**2
++MAX_TOTAL=2*1024**3
++PINS={
++ 'codex':'0059c73b149a1433b634e26ad8a715e02717a9920665a9cc5676941db03c45cd',
++ 'codex-code-mode-host':'68237b34d0bc182e99c43ca2197a25120339c154dd3fc29f908c2a1b022efa5b',
++}
++VENDOR_PATTERN='versions/node/*/lib/node_modules/@openai/codex/node_modules/@openai/codex-*/vendor/*/bin/codex'
++
++def require_receipt(value):
++    if (type(value) is not dict or set(value)!={'schema','codex_version','files','executable_checks','provider_calls'}
++            or value['schema']!='native-codex-runtime-bundle@1' or value['codex_version']!='0.158.0'
++            or type(value['provider_calls']) is not int or value['provider_calls']!=0
++            or type(value['files']) is not list or len(value['files'])!=2):
++        raise ValueError('exact post-boundary native Codex receipt required')
++    found=set()
++    for row in value['files']:
++        if (type(row) is not dict or set(row)!={'name','source_sha256','sha256','uid','mode'}
++                or row['name'] not in PINS or row['name'] in found
++                or row['sha256']!=PINS[row['name']] or row['source_sha256']!=PINS[row['name']]
++                or type(row['uid']) is not int or row['uid']!=0
++                or type(row['mode']) is not int or row['mode']!=0o755):
++            raise ValueError('native bundle rows differ from independent pins')
++        found.add(row['name'])
++    checks=value['executable_checks']
++    if type(checks) is not dict or set(checks)!=set(PINS):raise ValueError('both native checks required')
++    for row in checks.values():
++        if (type(row) is not dict or set(row)!={'returncode','stdout_sha256'}
++                or type(row['returncode']) is not int or row['returncode']!=0
++                or type(row['stdout_sha256']) is not str or not re.fullmatch('[0-9a-f]{64}',row['stdout_sha256'])):
++            raise ValueError('successful bounded native executable checks required')
++
++def selection(root):
++    # This is the exact unique-vendor selector used by native_codex_exposure_script.
++    matches=list(islice((root/'home/.nvm').glob(VENDOR_PATTERN),2))
++    if len(matches)!=1:raise ValueError('one exact installed Codex vendor bin required')
++    vendor=matches[0].parent
++    prefix=vendor.relative_to(root).as_posix()
++    if (not prefix.startswith('home/.nvm/versions/node/') or any(p in ('','..','.') for p in prefix.split('/'))):
++        raise ValueError('vendor location outside approved native package')
++    return [dict(path=prefix+'/'+name,name=name,role='vendor',uid=SOURCE_UID) for name in sorted(PINS)]+[
++        dict(path='provider-bin/'+name,name=name,role='exposed',uid=TARGET_UID) for name in sorted(PINS)]
++
++def open_binary(root, name):
++    if not hasattr(os,'O_NOATIME'):raise RuntimeError('O_NOATIME required; no fallback')
++    parent=os.dup(root)
++    try:
++        for part in name.split('/')[:-1]:
++            child=os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent)
++            os.close(parent);parent=child
++        return os.open(name.split('/')[-1],os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK|os.O_NOATIME,dir_fd=parent)
++    finally:os.close(parent)
++
++def require_binary(info,row):
++    if (not stat.S_ISREG(info.st_mode) or info.st_nlink!=1 or not 0<info.st_size<=MAX_FILE
++            or stat.S_IMODE(info.st_mode)!=row['mode'] or info.st_uid!=row['uid']
++            or (row['expected_bytes'] is not None and info.st_size!=row['expected_bytes'])):
++        detail=dict(path=row['path'],role=row['role'],expected_uid=row['uid'],
++            expected_mode=row['mode'],expected_bytes=row['expected_bytes'],
++            mode=stat.S_IMODE(info.st_mode),uid=info.st_uid,gid=info.st_gid,
++            bytes=info.st_size,nlink=info.st_nlink,device=info.st_dev,inode=info.st_ino,
++            file_type=stat.S_IFMT(info.st_mode))
++        raise ValueError('bounded protected singleton native binary required: '+json.dumps(detail,sort_keys=True))
++
++def protect_receipt(root, expected_bytes):
++    # Only the newly uploaded public receipt is deliberately re-owned/chmodded.
++    if type(expected_bytes) is not int or not 0<expected_bytes<=32768:
++        raise ValueError('bounded receipt byte count required')
++    owner=root_fd(root)
++    try:
++        fd=open_binary(owner,'codex-cache-exposure.json')
++        try:
++            before=os.fstat(fd)
++            if not stat.S_ISREG(before.st_mode) or before.st_nlink!=1 or before.st_size!=expected_bytes:
++                raise ValueError('fresh singleton bounded public receipt required before protection')
++            os.fchown(fd,RECEIPT_UID,-1);os.fchmod(fd,0o644)
++            after=os.fstat(fd)
++            stable=lambda s:(s.st_dev,s.st_ino,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_atime_ns)
++            if (stable(before)!=stable(after) or after.st_uid!=RECEIPT_UID
++                    or stat.S_IMODE(after.st_mode)!=0o644):
++                raise ValueError('public receipt identity changed during protection')
++            probe=open_binary(owner,'codex-cache-exposure.json')
++            try:
++                if identity(os.fstat(probe))!=identity(after):raise ValueError('public receipt path changed during protection')
++            finally:os.close(probe)
++            return dict(bytes=after.st_size,uid=after.st_uid,mode=stat.S_IMODE(after.st_mode),
++                body_reads=0,body_writes=0,identity_preserved=True)
++        finally:os.close(fd)
++    finally:os.close(owner)
++
++def advise(root, receipt):
++    require_receipt(receipt);root=Path(root)
++    rows=[dict(**row,mode=0o755,expected_bytes=None,sha256=PINS[row['name']]) for row in selection(root)]
++    result=advise_selected(root,rows,expected_count=4)
++    return dict(result,schema='pinned-native-codex-cache-advice@1',codex_version='0.158.0')
++
++def advise_selected(root, rows, *, expected_count):
++    if type(expected_count) is not int or expected_count not in (4,131):
++        raise ValueError('only selected four or 131 row population supported')
++    if type(rows) is not list or len(rows)!=expected_count:
++        raise ValueError('exact finite native population required')
++    paths=set()
++    for row in rows:
++        if type(row) is not dict or set(row)!={'path','name','role','uid','mode','expected_bytes','sha256'}:
++            raise ValueError('closed finite native row required')
++        name=row['path']
++        if (type(name) is not str or not name or len(name.encode())>4096
++                or name.startswith('/') or '\\' in name or '\x00' in name
++                or any(p in ('','.','..') for p in name.split('/')) or name in paths
++                or type(row['uid']) is not int or row['uid'] not in (0,1000)
++                or type(row['mode']) is not int or row['mode'] not in (0o644,0o755)
++                or type(row['name']) is not str or not 0<len(row['name'])<=256
++                or type(row['role']) is not str or not 0<len(row['role'])<=64
++                or type(row['sha256']) is not str or not re.fullmatch('[0-9a-f]{64}',row['sha256'])
++                or (row['expected_bytes'] is not None and (type(row['expected_bytes']) is not int
++                    or not 0<row['expected_bytes']<=MAX_FILE))):
++            raise ValueError('unsafe finite native row')
++        paths.add(name)
++    started=time.monotonic();root=Path(root);owner=root_fd(root)
++    descriptors=[];records=[];total=read_bytes=0;seen=set()
++    try:
++        # Open and verify the complete population before hashing or advice.
++        for row in rows:
++            try:fd=open_binary(owner,row['path'])
++            except OSError as exc:
++                exc.add_note('selected native binary nofollow open refused: '+json.dumps(
++                    dict(path=row['path'],role=row['role'],expected_uid=row['uid']),sort_keys=True))
++                raise
++            descriptors.append(fd)
++            info=os.fstat(fd);require_binary(info,row)
++            key=(info.st_dev,info.st_ino)
++            if key in seen:raise ValueError('distinct finite native copies required')
++            seen.add(key);total+=info.st_size
++            if total>MAX_TOTAL:raise ValueError('native selected byte bound exceeded')
++            records.append({**row,'bytes':info.st_size,
++                'identity':identity(info)})
++        for fd,row in zip(descriptors,records):
++            digest=hashlib.sha256();count=0
++            while True:
++                raw=os.read(fd,min(1024**2,row['bytes']-count+1))
++                if not raw:break
++                count+=len(raw);read_bytes+=len(raw)
++                if count>row['bytes']:raise ValueError('native body grew during hash')
++                digest.update(raw)
++            if count!=row['bytes'] or digest.hexdigest()!=row['sha256']:
++                raise ValueError('native body differs from independent version pin')
++            if identity(os.fstat(fd))!=row['identity']:raise ValueError('native metadata changed during hash')
++        # All bodies must be accepted before issuing even one hint.
++        for row in records:
++            probe=open_binary(owner,row['path'])
++            try:
++                if identity(os.fstat(probe))!=row['identity']:raise ValueError('native path changed after hash')
++            finally:os.close(probe)
++        advised=[];errors=[]
++        for fd,row in zip(descriptors,records):
++            if identity(os.fstat(fd))!=row['identity']:raise ValueError('native file changed before advice')
++            try:
++                os.fdatasync(fd);os.posix_fadvise(fd,0,0,os.POSIX_FADV_DONTNEED)
++                advised.append(row)
++            except TimeoutError:
++                raise
++            except OSError as exc:errors.append(dict(path=row['path'],error_type=type(exc).__name__,errno=exc.errno))
++            if identity(os.fstat(fd))!=row['identity']:raise ValueError('native metadata changed during advice')
++        for row in records:
++            probe=open_binary(owner,row['path'])
++            try:
++                if identity(os.fstat(probe))!=row['identity']:raise ValueError('native path changed after advice')
++            finally:os.close(probe)
++    finally:
++        for fd in descriptors:os.close(fd)
++        os.close(owner)
++    return dict(schema='pinned-public-native-cache-advice@1',
++        files=[{k:v for k,v in row.items() if k!='identity'} for row in records],
++        selected_files=expected_count,selected_bytes=total,hashed_files=expected_count,body_read_bytes=read_bytes,
++        body_reads_after_advice=0,body_writes=0,advised_files=len(advised),
++        advised_bytes=sum(row['bytes'] for row in advised),errors=errors,
++        metadata_unchanged=True,atime_preserved_with_noatime=True,
++        advice_is_best_effort=True,freed_bytes_claimed=False,global_drop_caches=False,
++        credential_contents_read=False,seconds=time.monotonic()-started)
++
++def read_receipt(root, expected_sha256):
++    parent=root_fd(root)
++    try:fd=open_binary(parent,'codex-cache-exposure.json')
++    finally:os.close(parent)
++    with os.fdopen(fd,'rb') as stream:
++        info=os.fstat(stream.fileno())
++        if (not stat.S_ISREG(info.st_mode) or info.st_nlink!=1 or info.st_uid!=RECEIPT_UID
++                or stat.S_IMODE(info.st_mode)!=0o644 or not 0<info.st_size<=32768):
++            raise ValueError('protected singleton bounded public receipt required')
++        raw=stream.read(32769)
++        if identity(os.fstat(stream.fileno()))!=identity(info):raise ValueError('receipt changed during read')
++    if hashlib.sha256(raw).hexdigest()!=expected_sha256:raise ValueError('post-boundary receipt changed')
++    return json.loads(raw)
++
++def main():
++    import platform
++    if platform.machine() != 'aarch64':raise ValueError('selected native cache policy requires aarch64')
++    if os.geteuid()!=0:raise ValueError('root permission required for exact noatime advice')
++    if len(sys.argv)!=3 or sys.argv[1]!=ROOT+'/codex-cache-exposure.json':
++        raise ValueError('fixed receipt path and independent digest required')
++    def expired(*args):raise TimeoutError('bounded native cache advice expired')
++    signal.signal(signal.SIGALRM,expired);signal.setitimer(signal.ITIMER_REAL,60)
++    try:
++        receipt=read_receipt(ROOT,sys.argv[2])
++        result=advise(ROOT,receipt);result['post_boundary_receipt_sha256']=sys.argv[2]
++        print(json.dumps(result,sort_keys=True,allow_nan=False))
++    finally:signal.setitimer(signal.ITIMER_REAL,0)
++
++if __name__=='__main__':main()
+--- /dev/null
++++ b/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_files.py
+@@ -0,0 +1,188 @@
++"""Bounded archive page-cache advice; never changes file bodies."""
++import hashlib
++import json
++import os
++from pathlib import Path, PurePosixPath
++import re
++import signal
++import stat
++import sys
++import time
++
++MAX_FILES = 32768
++MAX_BYTES = 8 * 1024**3
++MAX_MANIFEST = 8 * 1024**2
++ROOT = '/opt/ipfs-supervisor'
++PREFIXES = ('source/', 'datasets/', 'kit/', 'toolchains/lean/', 'extensions/',
++            'models/source384/', 'runtime-wheels/torch-cpu/')
++
++class PathRefusal(OSError):
++    def __init__(self, details):
++        self.details=details
++        super().__init__(json.dumps(details,sort_keys=True))
++
++def stat_metadata(info):
++    kind=('symlink' if stat.S_ISLNK(info.st_mode) else 'directory' if stat.S_ISDIR(info.st_mode)
++          else 'regular' if stat.S_ISREG(info.st_mode) else 'other')
++    return dict(kind=kind,mode=info.st_mode,device=info.st_dev,inode=info.st_ino,
++                links=info.st_nlink,uid=info.st_uid,gid=info.st_gid,bytes=info.st_size)
++
++def descriptor_metadata(fd):
++    value=stat_metadata(os.fstat(fd))
++    try:value['descriptor_target']=os.readlink('/proc/self/fd/'+str(fd))[:4096]
++    except OSError as exc:value['descriptor_target_error']=type(exc).__name__
++    return value
++
++def path_refusal(exc, root, parent, part, name, position):
++    try:entry=stat_metadata(os.stat(part,dir_fd=parent,follow_symlinks=False))
++    except OSError as nested:entry=dict(error_type=type(nested).__name__,errno=nested.errno)
++    return PathRefusal(dict(schema='manifest-cache-path-refusal@1',error_type=type(exc).__name__,
++        errno=exc.errno,path=name,component=part,component_position=position,
++        entry_nofollow=entry,parent_descriptor=descriptor_metadata(parent),
++        root_descriptor=descriptor_metadata(root),body_read=False))
++
++def checked_rows(rows):
++    if type(rows) is not list or not 1 <= len(rows) <= MAX_FILES:
++        raise ValueError('bounded nonempty inventory required')
++    seen = set(); total = 0
++    for row in rows:
++        if type(row) is not dict or set(row) != {'path','bytes','mode','sha256'}:
++            raise ValueError('closed inventory row required')
++        name = row['path']
++        if (type(name) is not str or not name or len(name.encode()) > 4096
++                or not name.startswith(PREFIXES) or '\\' in name or '\x00' in name
++                or any(part in ('', '.', '..') for part in name.split('/'))
++                or PurePosixPath(name).is_absolute() or name in seen):
++            raise ValueError('unsafe or duplicate inventory path')
++        if (type(row['bytes']) is not int or not 0 <= row['bytes'] <= MAX_BYTES
++                or type(row['mode']) is not int or row['mode'] not in (0o644,0o755)
++                or type(row['sha256']) is not str or not re.fullmatch('[0-9a-f]{64}',row['sha256'])):
++            raise ValueError('invalid expected file metadata')
++        total += row['bytes'];seen.add(name)
++        if total > MAX_BYTES:raise ValueError('inventory byte bound exceeded')
++    return total
++
++def root_fd(root):
++    root = Path(root)
++    if not root.is_absolute() or str(root.resolve(strict=True)) != str(root):
++        raise ValueError('canonical absolute runtime root required')
++    fd = os.open('/',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
++    try:
++        for part in root.parts[1:]:
++            child = os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd)
++            os.close(fd);fd=child
++        return fd
++    except BaseException:
++        os.close(fd);raise
++
++def open_file(root, name):
++    parent = os.dup(root)
++    try:
++        parts = name.split('/')
++        for position,part in enumerate(parts[:-1]):
++            try:child = os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent)
++            except OSError as exc:raise path_refusal(exc,root,parent,part,name,position) from exc
++            os.close(parent);parent=child
++        try:return os.open(parts[-1],os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=parent)
++        except OSError as exc:raise path_refusal(exc,root,parent,parts[-1],name,len(parts)-1) from exc
++    finally:
++        os.close(parent)
++
++def identity(info):
++    return (info.st_dev,info.st_ino,info.st_mode,info.st_nlink,info.st_uid,info.st_gid,
++            info.st_size,info.st_atime_ns,info.st_mtime_ns,info.st_ctime_ns)
++
++def require_file(info, row):
++    if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
++            or info.st_uid != 0 or info.st_gid != 0
++            or info.st_size != row['bytes'] or stat.S_IMODE(info.st_mode) != row['mode']):
++        raise ValueError('manifest metadata or regular-file identity differs')
++
++def advise(root, rows):
++    total = checked_rows(rows);started=time.monotonic();fd=root_fd(root)
++    original={};advised_files=advised_bytes=0;errors=[]
++    try:
++        # Check the entire population before issuing the first hint.
++        for index,row in enumerate(rows):
++            try:child=open_file(fd,row['path'])
++            except PathRefusal as exc:
++                raise PathRefusal({**exc.details,'row_index':index,'manifest_row':row,
++                    'phase':'complete_inventory_preflight','advice_issued':False}) from exc
++            try:
++                info=os.fstat(child);require_file(info,row)
++                original[row['path']]=identity(info)
++            finally:os.close(child)
++        for row in rows:
++            child=open_file(fd,row['path'])
++            try:
++                info=os.fstat(child);require_file(info,row)
++                if identity(info)!=original[row['path']]:raise ValueError('file changed after preflight')
++                try:
++                    os.fdatasync(child)
++                    os.posix_fadvise(child,0,0,os.POSIX_FADV_DONTNEED)
++                    advised_files+=1;advised_bytes+=row['bytes']
++                except TimeoutError:
++                    raise
++                except OSError as exc:
++                    # Advice is best effort; a failed syscall is never counted as successful.
++                    errors.append(dict(path=row['path'],error_type=type(exc).__name__,errno=exc.errno))
++                    if len(errors)>32:raise ValueError('too many cache advice errors')
++                if identity(os.fstat(child))!=original[row['path']]:raise ValueError('file metadata changed during advice')
++            finally:os.close(child)
++        # Detect path replacement after a descriptor was closed as well.
++        for row in rows:
++            child=open_file(fd,row['path'])
++            try:
++                if identity(os.fstat(child))!=original[row['path']]:raise ValueError('file path changed after advice')
++            finally:os.close(child)
++    finally:os.close(fd)
++    return dict(schema='manifest-cache-advice@1',selected_files=len(rows),selected_bytes=total,
++        advised_files=advised_files,advised_bytes=advised_bytes,errors=errors,
++        metadata_unchanged=True,body_reads=0,body_writes=0,advice_is_best_effort=True,
++        freed_bytes_claimed=False,global_drop_caches=False,cgroup_writes=False,
++        seconds=time.monotonic()-started)
++
++def manifest_bytes(path):
++    path=Path(path);parent=root_fd(path.parent)
++    try:fd=os.open(path.name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=parent)
++    finally:os.close(parent)
++    with os.fdopen(fd,'rb') as stream:
++        before=os.fstat(stream.fileno())
++        if not stat.S_ISREG(before.st_mode) or not 0<before.st_size<=MAX_MANIFEST:
++            raise ValueError('bounded regular manifest required')
++        raw=stream.read(MAX_MANIFEST+1)
++        after=os.fstat(stream.fileno())
++        if (before.st_dev,before.st_ino,before.st_size,before.st_mtime_ns,before.st_ctime_ns)!=(
++                after.st_dev,after.st_ino,after.st_size,after.st_mtime_ns,after.st_ctime_ns):
++            raise ValueError('manifest changed during read')
++    return raw
++
++def main():
++    if os.geteuid() != 0:
++        raise ValueError('root permission required for selected archive advice')
++    if len(sys.argv) != 4 or sys.argv[1] != ROOT + '/setup-cache-manifest.json':
++        raise ValueError('fixed manifest path and independent manifest/archive digests required')
++    expected_manifest, expected_archive = sys.argv[2:]
++    if not all(re.fullmatch('[0-9a-f]{64}', value) for value in (expected_manifest, expected_archive)):
++        raise ValueError('canonical SHA256 pins required')
++    def expired(*args):
++        raise TimeoutError('bounded archive advice expired')
++    signal.signal(signal.SIGALRM, expired)
++    signal.setitimer(signal.ITIMER_REAL, 60)
++    try:
++        raw = manifest_bytes(Path(sys.argv[1]))
++        if len(raw) > MAX_MANIFEST or hashlib.sha256(raw).hexdigest() != expected_manifest:
++            raise ValueError('exact archive manifest required')
++        manifest = json.loads(raw)
++        if manifest['archive_sha256'] != expected_archive:
++            raise ValueError('archive selection differs')
++        if manifest.get('setup_cache', {}).get('policy') != 'source384-native-aarch64-dontneed@1':
++            raise ValueError('explicit supported setup cache policy required')
++        result = advise(ROOT, manifest['files'])
++        result.update(manifest_sha256=expected_manifest, archive_sha256=expected_archive)
++        print(json.dumps(result, sort_keys=True, allow_nan=False))
++    finally:
++        signal.setitimer(signal.ITIMER_REAL, 0)
++
++if __name__ == '__main__':
++    main()
+--- /dev/null
++++ b/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_libraries.py
+@@ -0,0 +1,1207 @@
++"""Exactly 131 public installed payloads bound to the selected archive and wheel."""
++import json,signal,time
++if globals().get('__package__'):
++    from .terminal_setup_cache_codex import advise_selected
++else:
++    from terminal_setup_cache_codex import advise_selected
++ROOT='/opt/ipfs-supervisor'
++ROWS=[
++  {
++    "expected_bytes": 32143862,
++    "mode": 420,
++    "name": "ducklake.duckdb_extension",
++    "path": "home/.duckdb/extensions/v1.5.5/linux_arm64/ducklake.duckdb_extension",
++    "role": "installed_duckdb_extension",
++    "sha256": "d0b57c8e261b89a1ae367c7224f0857cfde72ab6cf2609f188e0de9b897b1088",
++    "uid": 1000
++  },
++  {
++    "expected_bytes": 19861758,
++    "mode": 420,
++    "name": "httpfs.duckdb_extension",
++    "path": "home/.duckdb/extensions/v1.5.5/linux_arm64/httpfs.duckdb_extension",
++    "role": "installed_duckdb_extension",
++    "sha256": "eba6e263e395a83966090f1f11ade63630b1b21422f0f2813858d179d42ea1e9",
++    "uid": 1000
++  },
++  {
++    "expected_bytes": 29708110,
++    "mode": 420,
++    "name": "quack.duckdb_extension",
++    "path": "home/.duckdb/extensions/v1.5.5/linux_arm64/quack.duckdb_extension",
++    "role": "installed_duckdb_extension",
++    "sha256": "41b2b9292bfb860c5ca8c5f818f9dd7a2c6bc24f9c750cffbc3169286fe59f08",
++    "uid": 1000
++  },
++  {
++    "expected_bytes": 262620152,
++    "mode": 493,
++    "name": "libtorch_cpu.so",
++    "path": "venv/lib/python3.12/site-packages/torch/lib/libtorch_cpu.so",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "5750e23245c46c34120d6a11f8389bac3493d000ea93ebfbe129a94e61f2e784",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 28237672,
++    "mode": 493,
++    "name": "libtorch_python.so",
++    "path": "venv/lib/python3.12/site-packages/torch/lib/libtorch_python.so",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "2634c578f87e437467f899c655240aaca2f7756c94388dd47af908bd24d0bc8b",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 24020337,
++    "mode": 493,
++    "name": "libopenblas.so.0",
++    "path": "venv/lib/python3.12/site-packages/torch/lib/libopenblas.so.0",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "7a6446210edb096b85c713c872f0dfd3b3e0c963a77d2629dfaf83380c441746",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 17850377,
++    "mode": 493,
++    "name": "libarm_compute.so",
++    "path": "venv/lib/python3.12/site-packages/torch/lib/libarm_compute.so",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "cd83d6783a1acd1b9c4a6291b2567beb1c4a4ca98f82e3ccb46cd347b048c35d",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 13729768,
++    "mode": 493,
++    "name": "test_api",
++    "path": "venv/lib/python3.12/site-packages/torch/bin/test_api",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "c1b984e86af6eb145fbfd8f3e019e4569a8d07de2e03582f68dc60b447f84d6b",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 12748704,
++    "mode": 493,
++    "name": "test_jit",
++    "path": "venv/lib/python3.12/site-packages/torch/bin/test_jit",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "af3745862bbef73c646008b242fb1253378240a39acffc3dea7174e11b25d696",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 4928560,
++    "mode": 493,
++    "name": "test_lazy",
++    "path": "venv/lib/python3.12/site-packages/torch/bin/test_lazy",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "e4ab2bf5469e3281a222f38d5d8efafeddee7586fbc9e40990f8f482ceea17b2",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 4783752,
++    "mode": 493,
++    "name": "protoc",
++    "path": "venv/lib/python3.12/site-packages/torch/bin/protoc",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "148926f95652cb5eaf67be9e19403b0a8f010afecae17aebea80c1f3b5881144",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 4783752,
++    "mode": 493,
++    "name": "protoc-3.13.0.0",
++    "path": "venv/lib/python3.12/site-packages/torch/bin/protoc-3.13.0.0",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "148926f95652cb5eaf67be9e19403b0a8f010afecae17aebea80c1f3b5881144",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 4364680,
++    "mode": 493,
++    "name": "op_registration_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/op_registration_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "34b479502c1b704cbc55cd4446b0e28459ded4ff9722150ef2d48e06a60b4b78",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 2324304,
++    "mode": 493,
++    "name": "c10_intrusive_ptr_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_intrusive_ptr_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "b4cff2abb814b5f2c9057ca221ab1bbd198b52e6932f21e3198c7565fd88f78b",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 2195793,
++    "mode": 420,
++    "name": "RedispatchFunctions.h",
++    "path": "venv/lib/python3.12/site-packages/torch/include/ATen/RedispatchFunctions.h",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "512efc63cb2e6b2f9b69c45de2bef8bf26abff428d4dd7fd0d65d22dea122f96",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 2103320,
++    "mode": 493,
++    "name": "c10_small_vector_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_small_vector_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "51df0571e77e7eccbe8038050e35f904776a285c5037564018a2245f11a08bd1",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 1796696,
++    "mode": 493,
++    "name": "libc10.so",
++    "path": "venv/lib/python3.12/site-packages/torch/lib/libc10.so",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "322122d803708b7078b7c754e4b044e6fcf9b607688ccc9be576d0a85274a8bf",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 1732642,
++    "mode": 420,
++    "name": "VmapGeneratedPlumbing.h",
++    "path": "venv/lib/python3.12/site-packages/torch/include/ATen/VmapGeneratedPlumbing.h",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "453f463dc99ca3807e0e08422ccb7dbfc691fe5e016bbcdb86e0de8bf2fc1370",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 1712376,
++    "mode": 493,
++    "name": "kernel_lambda_legacy_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/kernel_lambda_legacy_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "203f34112c6c621576d855ddb73988b6252b43bdb00b587dcdf71f4843f45e9b",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 1655209,
++    "mode": 493,
++    "name": "libgomp.so.1",
++    "path": "venv/lib/python3.12/site-packages/torch/lib/libgomp.so.1",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "7e2abc1b84b1470fa53a0b679e066c11adbc3a8d42aebf37687f6b1254421391",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 1563592,
++    "mode": 493,
++    "name": "kernel_function_legacy_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/kernel_function_legacy_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "077080638be754dd634fb452dbf2b2ca1c6d7fe78a9578cf9fca2060d24f602a",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 1553120,
++    "mode": 493,
++    "name": "List_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/List_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "22a950bf44751d6085f971043f5b545b85990d52169b175e6a0ec4fd7cbd3057",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 1485025,
++    "mode": 493,
++    "name": "libgfortran.so.5",
++    "path": "venv/lib/python3.12/site-packages/torch/lib/libgfortran.so.5",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "36f49edf8de93b5ad7e3324598b921f0229e0841eea3902a4d6fc9f949c77e94",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 1396680,
++    "mode": 493,
++    "name": "kernel_lambda_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/kernel_lambda_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "6bdc3ce9156762385a80baae94b747f3d0ea6639a76e7aba86731539717978c9",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 1376254,
++    "mode": 420,
++    "name": "common_methods_invocations.py",
++    "path": "venv/lib/python3.12/site-packages/torch/testing/_internal/common_methods_invocations.py",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "f195caae520c73e3744af853d48c6534589e867a5378f03e5df6ee700bac6c23",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 1352632,
++    "mode": 493,
++    "name": "test_aoti_abi_check",
++    "path": "venv/lib/python3.12/site-packages/torch/bin/test_aoti_abi_check",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "853d6819c5e1bb889d8d0b50fe21264b50a482fe2bf25d464ca6e2a8407076c7",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 1310273,
++    "mode": 493,
++    "name": "libarm_compute_graph.so",
++    "path": "venv/lib/python3.12/site-packages/torch/lib/libarm_compute_graph.so",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "c13e3b7d7e9fba243b3f6e7c3df9e3ad62a9703ad1763a8f8402d99c04d980b0",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 1236600,
++    "mode": 493,
++    "name": "make_boxed_from_unboxed_functor_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/make_boxed_from_unboxed_functor_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "ee5b254fd4e5fd41b6aecd65bc29f1851af2c7fd06f508bbf41e18bd9a8f0892",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 1227864,
++    "mode": 493,
++    "name": "ivalue_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/ivalue_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "6dc3c79ae220cc8f200d33f259f9921d728005b3fcc03e3e469a3baec314d416",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 1207952,
++    "mode": 493,
++    "name": "kernel_function_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/kernel_function_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "d27174b7598e3b783f0444c298817bb7bf5596350b50a53515073119b1b1011f",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 1172128,
++    "mode": 493,
++    "name": "cpu_rng_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/cpu_rng_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "fd4aafc3faed39ff16470e75afecc1e0ee206a8ccff09e8515a0952f86415ef1",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 1170736,
++    "mode": 493,
++    "name": "tensor_iterator_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/tensor_iterator_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "25343b8e84327f775c7ee03add9a9ad81cd57fe410b781369969f5a6f514e647",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 1099761,
++    "mode": 420,
++    "name": "_VariableFunctions.pyi",
++    "path": "venv/lib/python3.12/site-packages/torch/_C/_VariableFunctions.pyi",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "c2ed2e8b08879452ca2dd1cf7571afd213f5cd1bcee4d398beb29e6980ad578c",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 1099761,
++    "mode": 420,
++    "name": "_VF.pyi",
++    "path": "venv/lib/python3.12/site-packages/torch/_VF.pyi",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "c2ed2e8b08879452ca2dd1cf7571afd213f5cd1bcee4d398beb29e6980ad578c",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 1072392,
++    "mode": 493,
++    "name": "Dict_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/Dict_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "b9f19b143bbdc901fc7249061308d64f87ec50098b3997962ca8de908eeadad1",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 1018440,
++    "mode": 493,
++    "name": "test_profiler_collection",
++    "path": "venv/lib/python3.12/site-packages/torch/bin/test_profiler_collection",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "33fa7290bc696a39055b3ccf53a749caa0ef3c3e9145d3313dca0f727ddc87b1",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 944264,
++    "mode": 493,
++    "name": "legacy_vmap_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/legacy_vmap_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "620e52119ea7f60b07d86b4caa1b2705f8dff21b5f516e76204e5d0cc9425b4e",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 922808,
++    "mode": 493,
++    "name": "KernelFunction_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/KernelFunction_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "18c349c0b2da30b772cc6839ccfbfa19a48fd0823a7ef4b239d23e4b5b678c30",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 912992,
++    "mode": 493,
++    "name": "c10_optional_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_optional_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "613b748b7e9815bbd9f448f735823f045f3c0415effc484e7a57d2923c24f0c2",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 912720,
++    "mode": 493,
++    "name": "libtorchbind_test.so",
++    "path": "venv/lib/python3.12/site-packages/torch/lib/libtorchbind_test.so",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "f9f50bdbd43596954258d75e9eb30e6c6d97e23a4b83ef2c4018ff50e4dc76fa",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 903819,
++    "mode": 420,
++    "name": "RegistrationDeclarations.h",
++    "path": "venv/lib/python3.12/site-packages/torch/include/ATen/RegistrationDeclarations.h",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "63bf47f95b482eb912722bb3ec2f7e4c0b12e9958796debbdfd57250555f898f",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 902704,
++    "mode": 493,
++    "name": "c10_cow_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_cow_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "579bc64fa4bfb1428f38fc33bf68b9cbe72096e085c10922485c51886a8fdd35",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 890912,
++    "mode": 493,
++    "name": "inline_container_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/inline_container_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "f1e4944c748e1dc6c57742af04cfec16668669e39e757de4a264bc2e34c98324",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 865352,
++    "mode": 493,
++    "name": "pow_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/pow_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "09621af0de18ad108331f50492113814980c9ccf693777249f973734fe62528f",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 857912,
++    "mode": 493,
++    "name": "basic",
++    "path": "venv/lib/python3.12/site-packages/torch/test/basic",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "ffd412e158be8975785a04fd987d24c84d71dd8201d3b4e1183954bb2238dc77",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 855536,
++    "mode": 493,
++    "name": "MaybeOwned_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/MaybeOwned_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "27ded6f75172c38c1bc98fd9129cd37ff1f3ecc203b998f6b16281ee97dccaf1",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 807032,
++    "mode": 493,
++    "name": "test_cpp_rpc",
++    "path": "venv/lib/python3.12/site-packages/torch/bin/test_cpp_rpc",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "88ea46b70292f70a9286c40bd7155f972736c50b5a6a81baa05e6123d3b76b86",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 806560,
++    "mode": 493,
++    "name": "kernel_stackbased_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/kernel_stackbased_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "c4e13e4b8aeacaa65188449c2fa2abc07cade564c59575fe2660258502d68f31",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 805880,
++    "mode": 493,
++    "name": "IListRef_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/IListRef_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "7a7718f3ecf0337d939670409323bc6acfbeff6319b0ed37c3840c10a043d89f",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 801144,
++    "mode": 493,
++    "name": "c10_ordered_preserving_dict_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_ordered_preserving_dict_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "6c357bf135fe768afc7094d46b6f96d0288d98df355eaff707e3b5f11d25204d",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 798200,
++    "mode": 493,
++    "name": "type_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/type_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "b7dba5cc38feb94f143b22abb8db24a5ca009c8b1a0b7dd4bdabc11568d725e1",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 797344,
++    "mode": 493,
++    "name": "atest",
++    "path": "venv/lib/python3.12/site-packages/torch/test/atest",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "68d8b3c3d21901649fd9558903677446455dca1b33dec9cad6560d10ed522e2e",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 795840,
++    "mode": 493,
++    "name": "extension_backend_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/extension_backend_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "75514f932a4079ad0013973def73d9b57ddb7d42c681b9c1e3cc5867c74f95d5",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 795032,
++    "mode": 493,
++    "name": "cpu_generator_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/cpu_generator_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "acb9fa192245137627be209b2377f2cdd1dc9f70d92a109ecd9c5c39d38110e2",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 787520,
++    "mode": 493,
++    "name": "quantized_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/quantized_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "177cf3e2389bf297536c1ab16199e8d1cf42c5e0be41016b4aad7512b0981cb6",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 782856,
++    "mode": 493,
++    "name": "c10_ThreadLocal_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_ThreadLocal_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "da244d80172c04c6447f36d5fe28765a9fc952d2fe0ee0ef9e13cabfd7001d3c",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 781088,
++    "mode": 493,
++    "name": "test_parallel",
++    "path": "venv/lib/python3.12/site-packages/torch/test/test_parallel",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "4b9fcbea75e688bb55d41084a1cf09972977cb2f351d6b38a8aa8ab0bfe807ca",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 780552,
++    "mode": 493,
++    "name": "apply_utils_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/apply_utils_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "9b8520f3a2b11bae87b631a506c2aee2d7e92a7fdd11668d60c6f369a95f22a2",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 779576,
++    "mode": 493,
++    "name": "c10_WaitCounter_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_WaitCounter_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "b15a6219d36a88d488cbc465cb6c239789b6359db933e12e88d2d551102f8680",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 778312,
++    "mode": 493,
++    "name": "backend_fallback_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/backend_fallback_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "6167c420b29432ec560ac065ec066a25ac7fa30848d2cacdb28d66c7580e7bcc",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 777944,
++    "mode": 493,
++    "name": "c10_DispatchKeySet_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_DispatchKeySet_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "476dd04eb71a83ab9506ad2b48b47d2e8af65c322fbb4cdc4009db1c2abd7b96",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 777888,
++    "mode": 493,
++    "name": "scalar_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/scalar_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "c056a9e4b67867b0b5d345a2e2ff8202f9bc003f192c0221b84c74f172428e17",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 777552,
++    "mode": 493,
++    "name": "TCPStoreTest",
++    "path": "venv/lib/python3.12/site-packages/torch/bin/TCPStoreTest",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "45e8349796950711ec76d9eaa07ab102e6a68da0d07b560f6e80b3e9de2e6d01",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 776880,
++    "mode": 493,
++    "name": "scalar_tensor_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/scalar_tensor_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "f4a1ec4a4da649ebfd8b960283c30448efe9ed0be0430d2ac1ffb164b817b3f4",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 776856,
++    "mode": 493,
++    "name": "c10_SymInt_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_SymInt_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "194d0bc3a1ec0a63c0a1ec8e3ee2e1f4423026dd7b303b2629a5b62844bbcf5a",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 775136,
++    "mode": 493,
++    "name": "c10_logging_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_logging_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "c0452173af73c120ec070302b5cc4ce372096fc43b26efcc1a34c2e689494ac4",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 774488,
++    "mode": 493,
++    "name": "math_kernel_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/math_kernel_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "3315e3ccdf93ebecbd547a187e3b951c5d65c7b7c0989dbdbaaf2896628e6d21",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 772800,
++    "mode": 493,
++    "name": "c10_bfloat16_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_bfloat16_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "3be2fc2d3b32a9fb64c246a9742072b32836605193b09757b5e8bf2b1ef61355",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 772480,
++    "mode": 493,
++    "name": "memory_overlapping_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/memory_overlapping_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "467a62fa0bb5e6570e2fe534092f760c0be690c36f541d3d0941f523e5d0d894",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 772368,
++    "mode": 493,
++    "name": "half_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/half_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "038aaad87dadc896983cd966352008efd9db80da17a97b91e7957ade87e103fb",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 772280,
++    "mode": 493,
++    "name": "c10_Enumerate_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_Enumerate_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "11e664870049b574b4f188c6e98c759e12f17b40c3166b43006278fe0c81aab8",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 772216,
++    "mode": 493,
++    "name": "native_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/native_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "75a3c5957a7cb8e1cf57d7818a2191d390193dc4f79301c9f8f1533eb0325ac8",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 771816,
++    "mode": 493,
++    "name": "CppSignature_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/CppSignature_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "95d31568092d5e15d6ad953f59f16b6911814987891dea8dfd08e897f1a10f16",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 770984,
++    "mode": 493,
++    "name": "type_ptr_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/type_ptr_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "6e2ba953fbb21f10ca24f8a621dd53ed62ce5832852eb535b871e981f402fc20",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 770912,
++    "mode": 493,
++    "name": "stride_properties_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/stride_properties_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "011844096e4342bd334d32814d4f31dc151b7c348519ea07a9f6c073ee7932be",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 770824,
++    "mode": 493,
++    "name": "accelerator_graph_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/accelerator_graph_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "52c094b6631b5390e59e05ce0878563fcc25dc3a4acbf8ff9a4321692a845426",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 770176,
++    "mode": 493,
++    "name": "cpu_profiling_allocator_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/cpu_profiling_allocator_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "530c200785320d3072f73b4f83c2c75456593aa2c6ec826bcece7116c9c7ac67",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 769408,
++    "mode": 493,
++    "name": "memory_format_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/memory_format_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "8e88794276de37497bab24592e42d5f935a71cf33bab5a5b0c0d533a488b17a0",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 769376,
++    "mode": 493,
++    "name": "dlconvertor_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/dlconvertor_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "285b43cef5bb55dd572b35a59a3c661f8c17983def5af1379067d55fcac8344c",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 769120,
++    "mode": 493,
++    "name": "c10_string_util_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_string_util_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "bcf80c86bb77e5eee9c9fc2fb90ea219f74d88c8cb0961242a7ec83b76311f5e",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 767744,
++    "mode": 493,
++    "name": "xla_tensor_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/xla_tensor_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "17a1a0e3587b909378d14fd5d8844cfc95a00c074e204aa2af41efab8ba7f1ea",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 767392,
++    "mode": 493,
++    "name": "broadcast_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/broadcast_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "98e724e9a8ce9f4b3f930906ff04c093b2683d11e74fa180385f0252afae7d0f",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 767248,
++    "mode": 493,
++    "name": "undefined_tensor_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/undefined_tensor_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "fab173ece4ee77e3b9ab6f5c4dd16398585d2545a58d36faab3f0be9cff2facb",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 767176,
++    "mode": 493,
++    "name": "c10_complex_math_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_complex_math_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "7ac1c73f8078212031504e925e24914e2237ad060be273cb004753b678f1f052",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 766664,
++    "mode": 493,
++    "name": "weakref_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/weakref_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "c3de570409e86ff28642e58370c78cca0541b0bcaa1a9ec6321729537f379b9d",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 766416,
++    "mode": 493,
++    "name": "packedtensoraccessor_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/packedtensoraccessor_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "190831ddfbdac2eb264d51ea6f8ee8d10e258a184130cfaf38e9f0e9f612c977",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 765448,
++    "mode": 493,
++    "name": "test_comms_id",
++    "path": "venv/lib/python3.12/site-packages/torch/bin/test_comms_id",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "5889e29cf7e166fa0ed76a66a3f8aaea0fc32a6547866ccc1596e9d58261286e",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 764688,
++    "mode": 493,
++    "name": "wrapdim_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/wrapdim_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "8ccbd5f5eba7c56e240cbd96401f1d79eb0dd4fb940af9bc1770ed054c472571",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 764608,
++    "mode": 493,
++    "name": "c10_InlineStreamGuard_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_InlineStreamGuard_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "10d3668ef8265649eaa3128cebcb53ecf205bae3bd65dfffcc3c2cfc599b5ca0",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 764448,
++    "mode": 493,
++    "name": "thread_init_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/thread_init_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "a28961f5be4fc05134c4f4f7642379352eec6a44a3554cfdeab30efa0590578d",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 764344,
++    "mode": 493,
++    "name": "StorageUtils_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/StorageUtils_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "be3e9c403507d84ebe6441acd6f8ad690282e500eb2c703c0462eea0e835b80a",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 764264,
++    "mode": 493,
++    "name": "reportMemoryUsage_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/reportMemoryUsage_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "343f077563228dbbb11a9396e550c92ec732a5568aa436c6e9c97c5e4131568e",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 764080,
++    "mode": 493,
++    "name": "operator_name_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/operator_name_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "2f7b9b605e84c7007d1201967febc6f5a7a14dd1ce3dd6a8b3eede098d41dd76",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 759016,
++    "mode": 493,
++    "name": "c10_typeid_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_typeid_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "3eb38cd4d799f4330975e3466eca790435ce0cf3cb62eae17c67a5c6afa91f35",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 755776,
++    "mode": 493,
++    "name": "c10_complex_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_complex_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "f37be8bf3ed74bcc3c7b603dec3cd0bb153b84b19127df1c021ea65d43b0a90a",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 752504,
++    "mode": 493,
++    "name": "c10_Scalar_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_Scalar_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "91fbfc7d6cad4eb07064d0c9225ef787e6851d5532f2228769b4a589fde954da",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 751120,
++    "mode": 493,
++    "name": "c10_AllocatorConfig_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_AllocatorConfig_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "615c1b14cce0807d6dc12f146348221a61fdd60744f9da8ed7f125839261ed47",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 716440,
++    "mode": 493,
++    "name": "c10_LeftRight_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_LeftRight_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "ee06e0ab0150794b4a90039ae883c6cf3171aaec29c543f45003cb8beb76ec1d",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 710040,
++    "mode": 493,
++    "name": "c10_SizesAndStrides_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_SizesAndStrides_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "29a01c42af1ed0ac14cf3738d214b17701e24ef83df2a8e3f7edf33dc6e27c04",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 702880,
++    "mode": 493,
++    "name": "c10_Bitset_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_Bitset_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "3a74e3bade8766b3393348b242783cf04f2d8e714550b94d8459fbef7a58275d",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 702592,
++    "mode": 493,
++    "name": "test_dist_autograd",
++    "path": "venv/lib/python3.12/site-packages/torch/bin/test_dist_autograd",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "e24b7ee393c5c9677519e2954d08b1c03b2df334b135800482905e843bc6b013",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 702128,
++    "mode": 493,
++    "name": "operators_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/operators_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "9ba379133acecc2160766ad079ce7e37656e0bc0fe721771fbcc459c5fd82d9c",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 699144,
++    "mode": 493,
++    "name": "c10_ThreadLocalDebugInfo_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_ThreadLocalDebugInfo_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "c3a2932bf7b6d9059cb760065c2958636cbb2dad45ae2e47bf066236588c01dc",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 698920,
++    "mode": 493,
++    "name": "cpu_allocator_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/cpu_allocator_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "4fa71fd19db150c8f63a5710c1d14bedd949cfc41b8d111768856b2b65f1048b",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 698264,
++    "mode": 493,
++    "name": "c10_DeviceGuard_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_DeviceGuard_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "6bdf2efae77515ae72ba65d2a17929f9f67215efdcbc0b1ed3386fef3ae9b121",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 698064,
++    "mode": 493,
++    "name": "c10_InlineDeviceGuard_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_InlineDeviceGuard_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "4dce19391518521c0285d67f56181017af1d93a6d986e9345824590a93071f3b",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 697680,
++    "mode": 493,
++    "name": "lazy_tensor_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/lazy_tensor_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "5fbc6e58fe18b94330c936d371d905e745eac3e0492444a4f84d011807d83471",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 696424,
++    "mode": 493,
++    "name": "reduce_ops_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/reduce_ops_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "33be624259286bfea9780b1d0d6c43aa957a0e7c76b17a7898beb1f25e27028c",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 695424,
++    "mode": 493,
++    "name": "test_privateuse1_profiler",
++    "path": "venv/lib/python3.12/site-packages/torch/bin/test_privateuse1_profiler",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "a72e36341cd235ff3a25428eedc8faa366b5bc3c6a65811dd677beec8ff27d06",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 695016,
++    "mode": 493,
++    "name": "verify_api_visibility",
++    "path": "venv/lib/python3.12/site-packages/torch/test/verify_api_visibility",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "987595daad3a2bf005deffe0d098e2cd5a1e97aafae054b54d0b0883c263abad",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 693920,
++    "mode": 493,
++    "name": "c10_exception_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_exception_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "aa8d7b752add43a2e089d79118462b913f0289f53c3bb0180285fd4ae637ff8e",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 693352,
++    "mode": 493,
++    "name": "c10_TypeIndex_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_TypeIndex_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "8a526304ead9876634f106b024208a371cf7f33ff94ede6c58e2b965fd6a3f6a",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 692976,
++    "mode": 493,
++    "name": "c10_lazy_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_lazy_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "3adcfa01ab6841bc33d9cb3ebae7bba6a5b6d90bbf518ef428d49bd51b40077d",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 692944,
++    "mode": 493,
++    "name": "mobile_memory_cleanup",
++    "path": "venv/lib/python3.12/site-packages/torch/test/mobile_memory_cleanup",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "b21d0189e1322b7529007c6bc6dd9e8ba994dd0ad387d88a4347acb25b5b9f56",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 692936,
++    "mode": 493,
++    "name": "op_allowlist_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/op_allowlist_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "8538893ca72159a6a52f4f15a2ce2d8d3aba9efcd3297ab8c2bfa85044568930",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 692600,
++    "mode": 493,
++    "name": "c10_registry_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_registry_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "63037a68ab812fd25decbad4bbc3a1eadde89fd0e1ae92779dd563d73e1499fa",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 692464,
++    "mode": 493,
++    "name": "HashStoreTest",
++    "path": "venv/lib/python3.12/site-packages/torch/bin/HashStoreTest",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "3eb40007dc43ba85739d6c2960be5a676834bff6e709d5861b0e2146db8cc3db",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 691992,
++    "mode": 493,
++    "name": "c10_NetworkFlow_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_NetworkFlow_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "b3acffeba12f500107b674898efb7d1e691113d66223764ee1047ff95b88b973",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 690504,
++    "mode": 493,
++    "name": "FileStoreTest",
++    "path": "venv/lib/python3.12/site-packages/torch/bin/FileStoreTest",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "f6b69e92b48cf48991d8cadda14d15803f56bb0fecb0de17125be6d6e72e161f",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 689840,
++    "mode": 493,
++    "name": "c10_IntrusiveList_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_IntrusiveList_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "0df0e230438e3111580c2aee76815564cc6438819260dd2553d85c74ed71243f",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 688752,
++    "mode": 493,
++    "name": "c10_ssize_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_ssize_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "2e88e2ea5296ee4812460a6b6a00b2b51f5d516575274dd1fa9f70008052b206",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 686840,
++    "mode": 493,
++    "name": "c10_irange_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_irange_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "6799d731c6b917bc14b74f9f425173c4c5e2bf0aeb801132a9bf2a1c245c59d4",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 684792,
++    "mode": 493,
++    "name": "c10_accumulate_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_accumulate_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "92b60ec389a8f92b5692a07768e1d8f2b05dc22540033831be27729ae0fa901d",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 684144,
++    "mode": 493,
++    "name": "c10_Device_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_Device_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "f9668fe15ec23e705fcd16c713c467e37bea07cd7af7429171f11603840e9818",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 683520,
++    "mode": 493,
++    "name": "c10_flags_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_flags_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "86bafabde05777f412828aab4512c9da1e1b31bc91c20d276c042aa1c832b763",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 683232,
++    "mode": 493,
++    "name": "c10_Half_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_Half_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "462b31e54e667b531ee79b91bd926eb52021a8856419a8e15dd1cade6ac1245c",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 683080,
++    "mode": 493,
++    "name": "c10_Synchronized_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_Synchronized_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "d033ddb051eb57c627333bdad52e5e74cb786e0a63a1e62072a61e232b8820ae",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 682008,
++    "mode": 493,
++    "name": "c10_CompileTimeFunctionPointer_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_CompileTimeFunctionPointer_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "6a664a464e4b309edb7d4ae8bc4aab8828428affbc3fec270726210b0555f829",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 681608,
++    "mode": 493,
++    "name": "c10_bit_cast_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_bit_cast_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "30d2a84ee7eca0b99fc19a69f3937f65552b2006fe46e982263ddfe0a4a6b396",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 681200,
++    "mode": 493,
++    "name": "c10_tempfile_test",
++    "path": "venv/lib/python3.12/site-packages/torch/test/c10_tempfile_test",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "3d9421d088e86cdea19ccb4b0b66f6cc34f8fbb499a56f3b46bf04dc5439c061",
++    "uid": 0
++  },
++  {
++    "expected_bytes": 681120,
++    "mode": 493,
++    "name": "test_shim",
++    "path": "venv/lib/python3.12/site-packages/torch/bin/test_shim",
++    "role": "installed_torch_wheel_payload",
++    "sha256": "d177a48c49536e8b8645c45702c7cd311abfbaa629df112a5e247624d6d4fff8",
++    "uid": 0
++  }
++]
++WHEEL_SHA256='6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604'
++TORCH_REQUIREMENT='torch==2.13.0+cpu'
++SOURCE_PINS_SHA256='2d0625a867bc45a9a695ae2f750a57d75179c6aa28ef31250bd478f86ec7846d'
++SOURCE_SELECTION='three_archive_bound_extensions_plus_top128_cpu_wheel_members'
++INSTALLER_MODE_POLICY='pip_normal_file_0666_umask022_with_executable0755'
++
++def main():
++    import platform
++    if platform.machine() != 'aarch64':raise ValueError('selected native library policy requires aarch64')
++    def expired(*args):raise TimeoutError('bounded native library advice expired')
++    signal.signal(signal.SIGALRM,expired);signal.setitimer(signal.ITIMER_REAL,60)
++    try:
++        result=advise_selected(ROOT,ROWS,expected_count=131)
++        result.update(schema='pinned-native-libraries-cache-advice@1',wheel_sha256=WHEEL_SHA256,torch_requirement=TORCH_REQUIREMENT,
++            source_selection=SOURCE_SELECTION, source_pins_sha256=SOURCE_PINS_SHA256, installer_mode_policy=INSTALLER_MODE_POLICY)
++        print(json.dumps(result,sort_keys=True,allow_nan=False))
++    finally:signal.setitimer(signal.ITIMER_REAL,0)
++
++if __name__=='__main__':main()
+--- /dev/null
++++ b/benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py
+@@ -0,0 +1,549 @@
++"""Selected setup-cache transport controls; no Docker, model or provider calls."""
++import asyncio
++from copy import deepcopy
++import hashlib
++import json
++import os
++from pathlib import Path
++import stat
++import subprocess
++import sys
++import tarfile
++from types import SimpleNamespace
++from unittest.mock import AsyncMock
++
++import pytest
++
++from benchmarks.agent_supervisor.container_coding import terminal_deployment as deployment
++from benchmarks.agent_supervisor.container_coding import terminal_setup_cache_advice as policy
++from benchmarks.agent_supervisor.container_coding import terminal_setup_cache_codex as native
++from benchmarks.agent_supervisor.container_coding import terminal_setup_cache_files as archive_files
++from benchmarks.agent_supervisor.container_coding import terminal_setup_cache_libraries as libraries
++
++
++@pytest.fixture
++def selected_cache(tmp_path, monkeypatch):
++    # Source384's existing transport suite owns model validation. This fixture
++    # exercises the additive cache binding without loading a checkpoint.
++    monkeypatch.setattr(policy.platform, "machine", lambda: "aarch64")
++    monkeypatch.setattr(deployment, "validate_source384_binding", lambda m: m.get("source384"))
++    rows = []
++    for name in policy.HELPERS:
++        raw = Path(policy.__file__).with_name(name).read_bytes()
++        rows.append(dict(path=policy.PREFIX + name, bytes=len(raw), mode=0o644,
++                         sha256=hashlib.sha256(raw).hexdigest()))
++    rows.extend(dict(path="extensions/" + row["name"], bytes=row["expected_bytes"],
++        mode=row["mode"], sha256=row["sha256"]) for row in libraries.ROWS[:3])
++    wheel_path = "runtime-wheels/torch-cpu/torch-2.13.0+cpu-cp312-cp312-manylinux_2_28_aarch64.whl"
++    rows.append(dict(path=wheel_path, bytes=155005253, mode=0o644, sha256=libraries.WHEEL_SHA256))
++    manifest = dict(schema="terminal-supervisor-runtime-archive@1", archive_sha256="a" * 64,
++                    source384={"authored_fixture": True}, codex_version="0.158.0",
++                    learned_requirements=[], files=rows, torch_cpu_requirement=libraries.TORCH_REQUIREMENT,
++                    torch_cpu_wheel=dict(schema="terminal-torch-cpu-wheel@1", path=wheel_path,
++                        bytes=155005253, sha256=libraries.WHEEL_SHA256, requirement=libraries.TORCH_REQUIREMENT))
++    manifest["setup_cache"] = policy.binding_for_manifest(manifest, policy.POLICY)
++    root = tmp_path / "bundle"
++    root.mkdir()
++    (root / "manifest.json").write_text(json.dumps(manifest))
++    selection = policy.select_setup_cache(root, policy.POLICY)
++    auth = tmp_path / "auth.json"
++    auth.write_text("private authored fixture: never read")
++    auth.chmod(0o600)
++    return root, manifest, selection, auth
++
++
++def test_absent_policy_preserves_default_without_prerequisites(tmp_path):
++    manifest = {"schema": "legacy authored fixture", "files": []}
++    (tmp_path / "manifest.json").write_text(json.dumps(manifest))
++    assert policy.select_setup_cache(tmp_path, None) is None
++    assert policy.validate_setup_cache_selection(tmp_path, None) == (manifest, None)
++    policy.validate_setup_cache_prerequisites(None, install_codex=False, auth_json=None,
++                                              arm="no-index", resource_profile=None)
++    assert asyncio.run(policy.apply_setup_cache_advice(None, archive_dir=tmp_path,
++        expected=None, boundary_output=tmp_path / "absent", output=tmp_path / "unused")) is None
++    assert not (tmp_path / "unused").exists()
++
++
++@pytest.mark.parametrize("field,value", [
++    ("policy", "other"), ("architecture", "x86_64"), ("codex_version", "0.159.0"),
++    ("codex_sha256", {"codex": "f" * 64}), ("helpers", {}), ("extra", True),
++])
++def test_manifest_policy_pin_substitution_refused_before_container(selected_cache, field, value):
++    root, manifest, selection, auth = selected_cache
++    manifest["setup_cache"][field] = value
++    (root / "manifest.json").write_text(json.dumps(manifest))
++    with pytest.raises(ValueError):
++        policy.select_setup_cache(root, policy.POLICY)
++    # No environment object can be invoked when the prepared manifest differs.
++    with pytest.raises(ValueError):
++        asyncio.run(deployment.deploy_supervisor(None, archive_dir=root,
++            output=root / "deployment", auth_json=auth, setup_cache_selection=selection))
++    assert not (root / "deployment").exists()
++
++
++def test_policy_cannot_be_silently_enabled_or_dropped(selected_cache):
++    root, manifest, selection, _ = selected_cache
++    with pytest.raises(ValueError):
++        policy.validate_setup_cache_selection(root, None)
++    manifest.pop("setup_cache")
++    (root / "manifest.json").write_text(json.dumps(manifest))
++    with pytest.raises(ValueError):
++        policy.validate_setup_cache_selection(root, selection)
++    with pytest.raises(ValueError):
++        policy.select_setup_cache(root, policy.POLICY)
++
++
++@pytest.mark.parametrize("mutation", ["legacy_embedding", "unknown_model", "no_source384", "wrong_helper"])
++def test_incompatible_asset_layout_rejected(selected_cache, mutation):
++    _, manifest, _, _ = selected_cache
++    if mutation == "legacy_embedding":
++        manifest["learned_requirements"] = ["legacy"]
++    elif mutation == "unknown_model":
++        manifest["files"].append(dict(path="models/legal/weights.bin", bytes=1,
++            mode=0o644, sha256="b" * 64))
++    elif mutation == "no_source384":
++        manifest.pop("source384")
++    else:
++        manifest["files"][0]["sha256"] = "b" * 64
++    with pytest.raises(ValueError):
++        policy.binding_for_manifest(manifest, policy.POLICY)
++
++
++@pytest.mark.parametrize("overrides", [dict(install_codex=False), dict(auth_json=None),
++    dict(arm="no-index"), dict(resource_profile=None), dict(resource_profile="source384-5cpu-8gib@1")])
++def test_route_prerequisites_refuse_before_any_container_work(selected_cache, overrides):
++    _, _, selection, auth = selected_cache
++    kwargs = dict(install_codex=True, auth_json=auth, arm="full", resource_profile=policy.PROFILE)
++    kwargs.update(overrides)
++    with pytest.raises(ValueError):
++        policy.validate_setup_cache_prerequisites(selection, **kwargs)
++
++
++def test_auth_prerequisites_never_read_hash_or_log_credentials(selected_cache, monkeypatch):
++    _, _, selection, auth = selected_cache
++    def denied(*args, **kwargs):
++        raise AssertionError("credential body read")
++    monkeypatch.setattr(Path, "read_bytes", denied)
++    monkeypatch.setattr(Path, "read_text", denied)
++    policy.validate_setup_cache_prerequisites(selection, install_codex=True, auth_json=auth)
++    alias = auth.with_name("alias")
++    alias.symlink_to(auth)
++    with pytest.raises(ValueError):
++        policy.validate_setup_cache_prerequisites(selection, install_codex=True, auth_json=alias)
++    monkeypatch.setattr(policy.platform, "machine", lambda: "x86_64")
++    with pytest.raises(ValueError):
++        policy.validate_setup_cache_prerequisites(selection, install_codex=True, auth_json=auth)
++
++
++def test_isolated_loader_binds_dependencies_and_protects_receipt_before_main(tmp_path):
++    base = Path(archive_files.__file__)
++    fixture = tmp_path / "native_fixture.py"
++    fixture.write_text("from terminal_setup_cache_files import identity\n"
++        "ready=False\ndef protect_receipt(root,size):\n global ready\n assert size==19\n ready=True\n"
++        "def main():\n assert ready\n print('protected-before-main')\n")
++    modules = [("terminal_setup_cache_files", str(base), hashlib.sha256(base.read_bytes()).hexdigest()),
++               ("native_fixture", str(fixture), hashlib.sha256(fixture.read_bytes()).hexdigest())]
++    def execute(rows):
++        code = policy.isolated_loader(rows, run="native_fixture", argv=[str(tmp_path / "receipt"), "b" * 64], receipt_bytes=19)
++        return subprocess.run([sys.executable, "-I", "-S", "-B", "-c", code],
++                              capture_output=True, text=True, timeout=5)
++    result = execute(modules)
++    assert result.returncode == 0, result.stderr
++    assert result.stdout.strip() == "protected-before-main"
++    for index in range(2):
++        bad = list(modules)
++        name, path, _ = bad[index]
++        bad[index] = (name, path, "0" * 64)
++        assert execute(bad).returncode != 0
++
++
++def test_public_receipt_protection_keeps_strict_reader(selected_cache, tmp_path, monkeypatch):
++    monkeypatch.setattr(native, "RECEIPT_UID", os.getuid())
++    receipt = tmp_path / "codex-cache-exposure.json"
++    raw = b'{"public":true}'
++    receipt.write_bytes(raw)
++    receipt.chmod(0o664)
++    before = receipt.stat()
++    pin = hashlib.sha256(raw).hexdigest()
++    with pytest.raises(ValueError):
++        native.read_receipt(tmp_path, pin)
++    native.protect_receipt(tmp_path, len(raw))
++    assert native.read_receipt(tmp_path, pin) == {"public": True}
++    assert receipt.stat().st_ino == before.st_ino
++    assert receipt.stat().st_mtime_ns == before.st_mtime_ns
++    with pytest.raises(ValueError):
++        native.read_receipt(tmp_path, "0" * 64)
++
++
++def test_harbor_selected_order_is_deploy_boundary_then_advice(selected_cache, tmp_path, monkeypatch):
++    from benchmarks.agent_supervisor.container_coding import full_supervisor_harbor_agent as harbor
++    root, _, selection, auth = selected_cache
++    events = []
++    async def deployed(*args, **kwargs):
++        assert kwargs["setup_cache_selection"] == selection
++        events.append("deploy")
++    async def boundary(*args, **kwargs):
++        events.append("boundary")
++    async def advised(*args, **kwargs):
++        assert events == ["deploy", "boundary"]
++        assert kwargs["expected"] == selection
++        assert kwargs["boundary_output"] == tmp_path / "logs/worker-boundary"
++        events.append("advice")
++        return {"completed": True, "admission_authority": False}
++    monkeypatch.setattr(harbor, "deploy_supervisor", deployed)
++    monkeypatch.setattr(harbor, "deploy_worker_boundary", boundary)
++    monkeypatch.setattr(policy, "apply_setup_cache_advice", advised)
++    agent = SimpleNamespace(runtime_archive=root, auth_json=auth, arm="full",
++        resource_profile=policy.PROFILE, setup_cache_selection=selection, logs_dir=tmp_path / "logs")
++    asyncio.run(harbor.FullSupervisorAgent.setup(agent, object()))
++    assert events == ["deploy", "boundary", "advice"]
++    assert agent.setup_cache_receipt["admission_authority"] is False
++
++
++def test_prepared_harbor_kwargs_preserve_exact_selection_and_budget(selected_cache, tmp_path):
++    from benchmarks.agent_supervisor.container_coding.full_supervisor_benchmark import config_for
++    root, _, selection, _ = selected_cache
++    config = config_for(tmp_path, tmp_path / "trial", root, "full",
++                        resource_profile=policy.PROFILE, setup_cache_selection=selection)
++    agent = config["agents"][0]
++    assert agent["kwargs"]["setup_cache_selection"] == selection
++    assert agent["override_timeout_sec"] == 300 and agent["override_setup_timeout_sec"] == 1800
++    selection["manifest_sha256"] = "f" * 64
++    assert agent["kwargs"]["setup_cache_selection"] != selection
++
++
++@pytest.mark.parametrize("uid,gid", [(1000, 0), (0, 1000), (1000, 1000)])
++def test_archive_owner_must_match_root_owned_tar_population(uid, gid):
++    info = SimpleNamespace(st_mode=stat.S_IFREG | 0o644, st_nlink=1, st_size=17, st_uid=0, st_gid=0)
++    row = dict(bytes=17, mode=0o644)
++    archive_files.require_file(info, row)
++    info.st_uid, info.st_gid = uid, gid
++    with pytest.raises(ValueError):
++        archive_files.require_file(info, row)
++
++
++@pytest.mark.parametrize("mutation", ["extension", "wheel_pin", "wheel_version", "wheel_architecture", "library_pin", "library_path", "extra_library"])
++def test_native_library_policy_refuses_source_or_population_drift(selected_cache, mutation):
++    _, manifest, _, _ = selected_cache
++    if mutation == "extension":
++        next(row for row in manifest["files"] if row["path"].startswith("extensions/"))["sha256"] = "f" * 64
++    elif mutation == "wheel_pin":
++        manifest["torch_cpu_wheel"]["sha256"] = "f" * 64
++        next(row for row in manifest["files"] if row["path"].startswith("runtime-wheels/"))["sha256"] = "f" * 64
++    elif mutation == "wheel_version":
++        manifest["torch_cpu_wheel"]["requirement"] = "torch==2.14.0+cpu"
++    elif mutation == "wheel_architecture":
++        manifest["torch_cpu_wheel"]["path"] = manifest["torch_cpu_wheel"]["path"].replace("aarch64", "x86_64")
++        row = next(row for row in manifest["files"] if row["path"].startswith("runtime-wheels/"))
++        row["path"] = row["path"].replace("aarch64", "x86_64")
++    elif mutation == "library_pin":
++        manifest["setup_cache"]["native_libraries"]["rows"][3]["sha256"] = "f" * 64
++    elif mutation == "library_path":
++        manifest["setup_cache"]["native_libraries"]["rows"][3]["path"] = "home/.codex/auth.json"
++    else:
++        manifest["setup_cache"]["native_libraries"]["rows"].append(manifest["setup_cache"]["native_libraries"]["rows"][0])
++    with pytest.raises(ValueError):
++        policy.validate_manifest_binding(manifest)
++
++
++def test_library_binding_preserves_exact_rows_and_origin(selected_cache):
++    _, manifest, _, _ = selected_cache
++    binding = policy.library_binding_for_manifest(manifest)
++    assert len(binding["rows"]) == 131
++    assert sum(row["expected_bytes"] for row in binding["rows"]) == 565702269
++    assert [row["source_kind"] for row in binding["rows"]] == ["archive_member"] * 3 + ["wheel_member"] * 128
++    assert binding["wheel_sha256"] == libraries.WHEEL_SHA256
++    binding["rows"][0]["sha256"] = "f" * 64
++    assert libraries.ROWS[0]["sha256"] != "f" * 64
++
++
++def test_fixed_payload_identity_and_nonexecutable_mode_population(selected_cache):
++    # Golden identity comes from the separately reviewed wheel extraction and
++    # actual 131-body Docker check; no installed tree is discovered here.
++    encoded = json.dumps(libraries.ROWS, sort_keys=True, separators=(",", ":")).encode()
++    assert hashlib.sha256(encoded).hexdigest() == "3cfe981126d86bd3f3e7730e6125d9aeb9c7b7a891a2e1edc4d641e5b15171c7"
++    payloads = libraries.ROWS[3:]
++    assert payloads == sorted(payloads, key=lambda row: (-row["expected_bytes"], row["path"]))
++    assert {row["mode"] for row in payloads} == {0o644, 0o755}
++    assert all(row["uid"] == 0 and row["role"] == "installed_torch_wheel_payload" for row in payloads)
++    assert sum(row["expected_bytes"] for row in payloads) == 483988539
++    binding = policy.library_binding_for_manifest(selected_cache[1])
++    assert binding["source_pins_sha256"] == libraries.SOURCE_PINS_SHA256
++    assert binding["source_selection"] == libraries.SOURCE_SELECTION
++    assert binding["installer_mode_policy"] == libraries.INSTALLER_MODE_POLICY
++
++
++@pytest.mark.parametrize("field,value", [
++    ("installer_mode_policy", "trust_zip_mode"), ("source_selection", "scan_installed_tree"),
++    ("source_pins_sha256", "0" * 64),
++])
++def test_payload_provenance_substitution_refused(selected_cache, field, value):
++    root, manifest, _, _ = selected_cache
++    manifest["setup_cache"]["native_libraries"][field] = value
++    (root / "manifest.json").write_text(json.dumps(manifest))
++    with pytest.raises(ValueError):
++        policy.select_setup_cache(root, policy.POLICY)
++
++
++@pytest.fixture
++def tiny_payload_population(tmp_path):
++    root = tmp_path / "payloads"
++    root.mkdir()
++    rows = []
++    for number in range(131):
++        raw = ("authored public payload %d" % number).encode()
++        name = "%03d.bin" % number
++        mode = 0o644 if number % 2 else 0o755
++        path = root / name
++        path.write_bytes(raw)
++        path.chmod(mode)
++        rows.append(dict(path=name, name=name, role="authored_payload", uid=os.getuid(),
++            mode=mode, expected_bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest()))
++    return root, rows
++
++
++def test_131_finite_population_hashes_every_body_before_first_hint(tiny_payload_population, monkeypatch):
++    root, rows = tiny_payload_population
++    original_read = native.os.read
++    reads, hints = [], []
++    def read(fd, amount):
++        assert not hints, "body read after first advice"
++        raw = original_read(fd, amount)
++        if raw:
++            reads.append(raw)
++        return raw
++    def advise(fd, *args):
++        assert len(reads) == 131
++        hints.append(fd)
++    monkeypatch.setattr(native.os, "read", read)
++    monkeypatch.setattr(native.os, "posix_fadvise", advise)
++    result = native.advise_selected(root, rows, expected_count=131)
++    assert len(hints) == 131
++    assert result["body_read_bytes"] == sum(row["expected_bytes"] for row in rows)
++    assert result["body_reads_after_advice"] == 0
++    assert result["metadata_unchanged"] is True
++    assert result["freed_bytes_claimed"] is False
++
++
++@pytest.mark.parametrize("scope", ["archive", "codex", "libraries"])
++@pytest.mark.parametrize("syscall", ["fdatasync", "posix_fadvise"])
++def test_registered_advice_alarm_propagates_and_cleans_up(
++        tiny_payload_population, monkeypatch, capsys, scope, syscall):
++    """Invoke each real main's registered handler at the syscall boundary.
++
++    The clock is injected; no real process-wide alarm or 60 second wait is
++    required. Selection uses tiny public fixtures, while the advice loops,
++    handler, exception identity, descriptor cleanup and timer cleanup are real.
++    """
++    root, rows = tiny_payload_population
++    module = {"archive": archive_files, "codex": native, "libraries": libraries}[scope]
++    registered, timers, calls, expired_errors = [], [], [], []
++    opened = set()
++    monkeypatch.setattr(module, "ROOT", str(root))
++    monkeypatch.setattr(module.signal, "signal", lambda sig, handler: registered.append((sig, handler)))
++    monkeypatch.setattr(module.signal, "setitimer", lambda timer, seconds: timers.append((timer, seconds)))
++    monkeypatch.setattr(os, "geteuid", lambda: 0)
++    monkeypatch.setattr(policy.platform, "machine", lambda: "aarch64")
++    original_root_fd = archive_files.root_fd
++    def tracked_root(path):
++        fd = original_root_fd(path)
++        opened.add(fd)
++        return fd
++    monkeypatch.setattr(archive_files if scope == "archive" else native, "root_fd", tracked_root)
++    open_owner = archive_files if scope == "archive" else native
++    open_name = "open_file" if scope == "archive" else "open_binary"
++    original_open = getattr(open_owner, open_name)
++    def tracked_open(*args):
++        fd = original_open(*args)
++        opened.add(fd)
++        return fd
++    monkeypatch.setattr(open_owner, open_name, tracked_open)
++    if scope == "archive":
++        (root / "source").mkdir()
++        inventory = []
++        for row in rows[:2]:
++            (root / row["path"]).rename(root / "source" / row["path"])
++            inventory.append(dict(path="source/" + row["path"], bytes=row["expected_bytes"],
++                                  mode=row["mode"], sha256=row["sha256"]))
++        manifest = dict(archive_sha256="a" * 64, setup_cache={"policy": policy.POLICY}, files=inventory)
++        raw = json.dumps(manifest).encode()
++        manifest_path = root / "setup-cache-manifest.json"
++        manifest_path.write_bytes(raw)
++        monkeypatch.setattr(sys, "argv", ["archive", str(manifest_path), hashlib.sha256(raw).hexdigest(), "a" * 64])
++        original_require = archive_files.require_file
++        def fixture_owner(info, row):
++            # The production archive is root-owned; these temporary test files
++            # belong to the test runner. Preserve all other metadata checks.
++            return original_require(SimpleNamespace(st_mode=info.st_mode, st_nlink=info.st_nlink,
++                st_size=info.st_size, st_uid=0, st_gid=0), row)
++        monkeypatch.setattr(archive_files, "require_file", fixture_owner)
++    elif scope == "codex":
++        monkeypatch.setattr(sys, "argv", ["codex", str(root / "codex-cache-exposure.json"), "a" * 64])
++        monkeypatch.setattr(native, "read_receipt", lambda *args: {})
++        monkeypatch.setattr(native, "advise", lambda path, receipt: native.advise_selected(path, rows[:4], expected_count=4))
++    else:
++        monkeypatch.setattr(libraries, "ROWS", rows)
++    def invoke(name, fd):
++        calls.append((name, fd))
++        if name == syscall:
++            assert len(registered) == 1 and registered[0][0] == module.signal.SIGALRM
++            try:
++                registered[0][1](module.signal.SIGALRM, None)
++            except TimeoutError as error:
++                expired_errors.append(error)
++                raise
++    monkeypatch.setattr(os, "fdatasync", lambda fd: invoke("fdatasync", fd))
++    monkeypatch.setattr(os, "posix_fadvise", lambda fd, *args: invoke("posix_fadvise", fd))
++    with pytest.raises(TimeoutError) as raised:
++        module.main()
++    assert raised.value is expired_errors[0]
++    assert len(expired_errors) == 1
++    assert [name for name, _ in calls] == (["fdatasync"] if syscall == "fdatasync"
++                                         else ["fdatasync", "posix_fadvise"])
++    assert timers == [(module.signal.ITIMER_REAL, 60), (module.signal.ITIMER_REAL, 0)]
++    assert capsys.readouterr().out == ""
++    for fd in opened:
++        with pytest.raises(OSError):
++            os.fstat(fd)
++
++
++@pytest.mark.parametrize("mutation", ["last_digest", "last_mode", "last_size", "duplicate", "extra", "symlink", "hardlink", "population_bound"])
++def test_131_population_late_fault_never_advises(tiny_payload_population, monkeypatch, mutation):
++    root, rows = tiny_payload_population
++    hints = []
++    monkeypatch.setattr(native.os, "posix_fadvise", lambda *args: hints.append(args))
++    if mutation == "last_digest":
++        rows[-1]["sha256"] = "0" * 64
++    elif mutation == "last_mode":
++        (root / rows[-1]["path"]).chmod(0o664)
++    elif mutation == "last_size":
++        rows[-1]["expected_bytes"] += 1
++    elif mutation == "duplicate":
++        rows[-1] = dict(rows[0])
++    elif mutation == "extra":
++        rows.append(dict(rows[0]))
++    elif mutation == "population_bound":
++        monkeypatch.setattr(native, "MAX_TOTAL", sum(row["expected_bytes"] for row in rows) - 1)
++    else:
++        last = root / rows[-1]["path"]
++        last.unlink()
++        if mutation == "symlink":
++            last.symlink_to(root / rows[-2]["path"])
++        else:
++            os.link(root / rows[-2]["path"], last)
++    with pytest.raises((ValueError, OSError)):
++        native.advise_selected(root, rows, expected_count=131)
++    assert not hints
++
++
++@pytest.mark.parametrize("primary_failure", [False, "value", "timeout"])
++def test_receipt_write_failure_preserves_primary_or_refuses_success(
++        selected_cache, tmp_path, monkeypatch, primary_failure):
++    from benchmarks.agent_supervisor.container_coding import terminal_source384_qualification as qualify
++    root, manifest, selection, _ = selected_cache
++    receipt = dict(schema="native-codex-runtime-bundle@1", codex_version="0.158.0", provider_calls=0,
++        files=[dict(name=name, source_sha256=pin, sha256=pin, uid=0, mode=0o755)
++               for name, pin in native.PINS.items()],
++        executable_checks={name: dict(returncode=0, stdout_sha256="a" * 64) for name in native.PINS})
++    boundary = tmp_path / "boundary"
++    (boundary / "installation").mkdir(parents=True)
++    raw = json.dumps(receipt).encode()
++    (boundary / "installation/native-codex-binary.log").write_bytes(raw)
++    archive_result = dict(schema="manifest-cache-advice@1", manifest_sha256=selection["manifest_sha256"],
++        archive_sha256=manifest["archive_sha256"], selected_files=len(manifest["files"]),
++        body_reads=0, metadata_unchanged=True, freed_bytes_claimed=False)
++    codex_result = dict(schema="pinned-native-codex-cache-advice@1", codex_version="0.158.0",
++        post_boundary_receipt_sha256=hashlib.sha256(raw).hexdigest(), selected_files=4, hashed_files=4,
++        body_reads_after_advice=0, body_read_bytes=100, selected_bytes=100,
++        metadata_unchanged=True, freed_bytes_claimed=False)
++    count = sum(row["expected_bytes"] for row in libraries.ROWS)
++    library_result = dict(schema="pinned-native-libraries-cache-advice@1", wheel_sha256=libraries.WHEEL_SHA256,
++        torch_requirement=libraries.TORCH_REQUIREMENT, source_pins_sha256=libraries.SOURCE_PINS_SHA256,
++        source_selection=libraries.SOURCE_SELECTION, installer_mode_policy=libraries.INSTALLER_MODE_POLICY, selected_files=131, hashed_files=131,
++        selected_bytes=count, body_read_bytes=count, body_reads_after_advice=0,
++        metadata_unchanged=True, freed_bytes_claimed=False, files=deepcopy(libraries.ROWS))
++    primary = (TimeoutError("authored primary advice deadline") if primary_failure == "timeout"
++               else ValueError("authored primary advice failure"))
++    responses = [SimpleNamespace(return_code=0, stdout=json.dumps(value), stderr="")
++                 for value in (archive_result, codex_result, library_result)]
++    env = SimpleNamespace(upload_file=AsyncMock(), exec=AsyncMock(
++        side_effect=primary if primary_failure else responses))
++    monkeypatch.setattr(qualify, "observe_resources", AsyncMock(return_value={"actual_profile": policy.PROFILE}))
++    original = Path.write_text
++    def failing_write(path, *args, **kwargs):
++        if path.name == "setup-cache-advice.json":
++            raise OSError("authored receipt storage failure")
++        return original(path, *args, **kwargs)
++    monkeypatch.setattr(Path, "write_text", failing_write)
++    with pytest.raises(type(primary) if primary_failure else OSError) as raised:
++        asyncio.run(policy.apply_setup_cache_advice(env, archive_dir=root, expected=selection,
++            boundary_output=boundary, output=tmp_path / "advice"))
++    if primary_failure:
++        assert raised.value is primary
++        qualify.observe_resources.assert_not_called()
++    else:
++        assert "receipt storage failure" in str(raised.value)
++        assert env.exec.await_count == 3
++        qualify.observe_resources.assert_awaited_once()
++
++
++@pytest.mark.parametrize("advice_failure", [False, True])
++def test_qualifier_runs_same_boundary_advice_order_and_preserves_cleanup(
++        selected_cache, tmp_path, monkeypatch, advice_failure):
++    from benchmarks.agent_supervisor.container_coding import container_worker_deployment as worker
++    from benchmarks.agent_supervisor.container_coding import terminal_source384_qualification as qualify
++    from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile import SOURCE384_ENVIRONMENT
++    import harbor.environments.docker.docker as docker
++    root, manifest, _, auth = selected_cache
++    with tarfile.open(root / "runtime.tar.gz", "w:gz"):
++        pass
++    manifest["archive_sha256"] = hashlib.sha256((root / "runtime.tar.gz").read_bytes()).hexdigest()
++    (root / "manifest.json").write_text(json.dumps(manifest))
++    selection = policy.select_setup_cache(root, policy.POLICY)
++    task = tmp_path / "task"
++    (task / "environment").mkdir(parents=True)
++    (task / "tests").mkdir()
++    (task / "tests/test.sh").write_text("#!/bin/sh\nexit 0\n")
++    (task / "instruction.md").write_text("Inspect public source.")
++    (task / "task.toml").write_text("[environment]\ncpus=1\nmemory_mb=2048\nstorage_mb=10240\n")
++    events, constructors = [], []
++    async def event(name, value=None, **kwargs):
++        events.append(name)
++        return value
++    env = SimpleNamespace(start=lambda **kw: event("start"), stop=lambda **kw: event("stop"))
++    def constructor(**kwargs):
++        constructors.append(kwargs)
++        return env
++    async def deployed(*args, **kwargs):
++        assert kwargs["setup_cache_selection"] == selection
++        return await event("deploy", dict(original_inputs=dict(files={"bottle.py": dict(sha256="b" * 64)})))
++    async def boundary(*args, **kwargs):
++        await event("boundary")
++    async def advice(*args, **kwargs):
++        assert kwargs["expected"] == selection
++        assert events == ["start", "deploy", "boundary"]
++        await event("advice")
++        if advice_failure:
++            raise ValueError("authored cache metadata refusal")
++        return dict(completed=True, admission_authority=False)
++    monkeypatch.setattr(docker, "DockerEnvironment", constructor)
++    # This control exercises route ordering; the neighboring Torch suite owns
++    # archive payload verification. The fixture declares pins without large bytes.
++    monkeypatch.setattr(deployment, "verify_torch_cpu_wheel_archive",
++                        lambda archive, value: deployment.validate_torch_cpu_wheel_binding(value))
++    monkeypatch.setattr(deployment, "deploy_supervisor", deployed)
++    monkeypatch.setattr(worker, "deploy_worker_boundary", boundary)
++    monkeypatch.setattr(policy, "apply_setup_cache_advice", advice)
++    monkeypatch.setattr(qualify, "observe_resources", lambda *a, **kw: event("resources", {}))
++    monkeypatch.setattr(qualify, "qualify_context", lambda *a, **kw: event("context", dict(signed_source_hashes={"bottle.py": "b" * 64})))
++    run = deployment.qualify_original_container(task_dir=task, archive_dir=root,
++        output=tmp_path / "qualification", auth_json=auth, install_codex=True,
++        resource_profile=policy.PROFILE, source384_context=True, setup_cache_selection=selection)
++    if advice_failure:
++        with pytest.raises(ValueError, match="authored cache metadata refusal"):
++            asyncio.run(run)
++        assert events == ["start", "deploy", "boundary", "advice", "stop"]
++    else:
++        assert asyncio.run(run)["qualified"] is True
++        assert events == ["start", "deploy", "boundary", "advice", "resources", "context", "resources", "stop"]
++    assert {k: constructors[0][k] for k in SOURCE384_ENVIRONMENT} == SOURCE384_ENVIRONMENT

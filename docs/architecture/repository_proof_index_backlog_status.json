@@ -1,6 +1,6 @@
 {
   "schema": "repository-proof-index-backlog-status/v1",
-  "updated_at_utc": "2026-10-03T13:58:23.840147+00:00",
+  "updated_at_utc": "2026-10-03T15:31:47.580490+00:00",
   "scope": "Frozen 32-task acceptance ledger. Declared-profile criterion qualification and production closure with all prerequisites are tracked separately.",
   "source": {
     "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
@@ -558,6 +558,12 @@
       "path": "docs/agent_supervisor/evidence/worker-context-bundle-snapshot-20261003/manifest.json",
       "sha256": "8d6b4b364aa3fc9713f83096efc5ac29975329114c464d78b6bdc635d70e392f",
       "retention": "repository_evidence"
+    },
+    "source384-setup-cache-production": {
+      "repository": "ipfs_accelerate_py",
+      "path": "docs/agent_supervisor/evidence/source384-setup-cache-production-20261003/manifest.json",
+      "sha256": "12a04da6a4a58658dcec742d723293aa5763acd6b8dcc4e611c84d4c798e44e9",
+      "retention": "repository_evidence"
     }
   },
   "criteria": [
@@ -1066,7 +1072,8 @@
         "Three instrumented post-UV cache diagnostics remain separate failures. Advice to 26,905 archive files succeeds, but the archive-only run refuses the root lease with a later 8,195-MiB failure sample against the 8,602-MiB requirement. Four independently pinned public Codex executable copies add 628,736,528 logical bytes; their first attempt refuses an unprotected receipt, and the corrected receipt transport passes 18 helper controls and all four advice checks. Available memory rises from 5,256 to 8,194 MiB after archive advice and to 8,812 MiB after executable advice. The root lease is then admitted, but the first index child lease times out before source capture, publication or numerical inference; owner initialization may already have occurred. The later 8,592-MiB sample is not the exact child decision. Frozen scheduler code adds zero global memory for children while retaining root-envelope headroom checks. All original inputs and source pins remain intact, and containers are removed. Advice counts/lengths are not freed-memory measurements. No production cache policy, durable inference, official task result, provider use or token improvement is qualified; subsequent library experiments are separate.",
         "A separate instrumented diagnostic adds exactly three installed DuckDB extension copies and four Torch libraries, independently hash-bound to the archive and CPU wheel. All three advice populations pass, including 414,442,268 library bytes, and 25 helper controls pass. Available memory before context is 9,216 MiB. Index preparation and the numerical worker return, and closed output validation passes, but the post-worker source-observation child lease times out before inference publication. The source-free scheduler snapshot retains proof_memory_headroom after unwind, with zero active leases/waiters. The later 8,637-MiB sample is not the refusal-time measurement. Initial context takes 97.014 seconds and the probe 108.467 seconds, retaining all existing budgets. Worker-return control flow is not a published inference artifact; model-load and coverage counters remain null. Source pins and all 218 original inputs are preserved, the container is removed, and provider/verifier calls remain zero. Production cache integration, task acceptance and a new token score remain unqualified.",
         "A separate top128-wheel-payload diagnostic passes 30 helper/instrumentation controls and all three cache advice stages, with 131 installed payloads totaling 565,702,269 logical bytes. Initial Source384 preparation returns, but final initial-context cold replay fails at its second source-observation child lease. Eighteen source-free stage events show 73.285 MiB of anonymous growth during the preceding observation with file cache nearly unchanged; the next observation enters and errors at 8,561 MiB available against 8,602 MiB required. These are boundary samples, not internal admission samples. No exported inference artifact establishes model-load or coverage counts. Initial context lasts 177.945 seconds and the probe 189.732 seconds. Source pins, five-CPU/12-GiB limits, admission policy and deadlines are unchanged; the container is removed and provider/verifier calls remain zero. Production cache integration, full task acceptance and token comparisons remain unqualified.",
-        "Worker context construction now loads one fresh, task-bound nomination snapshot and derives its semantic, retrieval and world fields coherently. The previous complete-context path loaded eight times initially and eleven times on retry. Snapshot lifetime is one construction; direct helper calls and subsequent dispatch/retry calls validate anew. Original artifact read/evidence order, conflict refusal and artifact-specific source/digest checks are preserved. Thirty-six actual-source tests pass with no failures or skips, including eight authored native-class controls with controlled Source384/artifact seams and twenty-eight compatible existing cases. Eighteen separate boundary controls are not added to that count. A broad legacy test module independently fails collection on a removed Copilot timeout import; this is retained, not counted as passed. No measured benchmark speedup, numerical inference or full task qualification is claimed."
+        "Worker context construction now loads one fresh, task-bound nomination snapshot and derives its semantic, retrieval and world fields coherently. The previous complete-context path loaded eight times initially and eleven times on retry. Snapshot lifetime is one construction; direct helper calls and subsequent dispatch/retry calls validate anew. Original artifact read/evidence order, conflict refusal and artifact-specific source/digest checks are preserved. Thirty-six actual-source tests pass with no failures or skips, including eight authored native-class controls with controlled Source384/artifact seams and twenty-eight compatible existing cases. Eighteen separate boundary controls are not added to that count. A broad legacy test module independently fails collection on a removed Copilot timeout import; this is retained, not counted as passed. No measured benchmark speedup, numerical inference or full task qualification is claimed.",
+        "The explicit source384-native-aarch64-dontneed@1 setup policy is integrated into Harbor and the ordinary native qualifier. Its archive, four public executable copies and 131 installed extension/wheel payloads are bound to exact source hashes. Advice occurs after worker setup and before context construction; absent selection preserves existing behavior. All 204 actual-source controls pass without failures or skips. Six pre-fix regression cases demonstrate that TimeoutError, an OSError subclass, was swallowed by best-effort filesystem handlers; both advice loops now propagate it. No admission threshold or deadline changes. This is component validation only: a fresh production archive, ordinary Docker qualification and a full task run remain required, with no new task/token score."
       ],
       "remaining_work": [
         "The complete criterion above has not been qualified in the released integration.",
@@ -1095,7 +1102,8 @@
         "source384-setup-cache-diagnostics",
         "source384-native-library-cache-diagnostic",
         "source384-wheel-payload-cache-diagnostic",
-        "worker-context-bundle-snapshot"
+        "worker-context-bundle-snapshot",
+        "source384-setup-cache-production"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },

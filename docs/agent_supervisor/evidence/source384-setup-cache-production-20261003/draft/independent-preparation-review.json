@@ -1,0 +1,41 @@
+{
+  "draft_pins_sha256": "45c56317bc477862ed74459625c931711677476069336beb9f0f9452404c0c3c",
+  "findings": [
+    "Policy is absent by default, explicitly selected and manifest-bound before Docker; fixed architecture/profile/source/checkpoint/wheel prerequisites remain enforced.",
+    "Archive metadata-only advice is distinct from four exact public native executable and131 exact payload body-hash scopes. No broad installed-tree traversal or credential payload reads are added.",
+    "Finite native descriptors are held across all SHA validation and hints with nofollow/noatime/singleton/size/mode/UID/identity guards; all bodies verify before any advice in that population.",
+    "The production draft preserves separate receipts, existing admission authority, source and proof fences, and native deadlines; no reclaimed-memory or benchmark success claim is made.",
+    "Final handlers propagate TimeoutError before best-effort OSError. All six actual registered-alarm controls failed pre-fix and now pass with exact error identity, descriptor/timer cleanup, immediate stop and no success output.",
+    "Additional receipt-write regression preserves the original timeout."
+  ],
+  "limitations": [
+    "57 authored and147 neighboring controls are retained author-executed overlay results, not reviewer reruns.",
+    "Draft remains unapplied; failed131payload Docker diagnostic does not qualify production native context.",
+    "Controller receipt/hash validation binds finite public assets; cache advice is best effort, not content-integrity or memory-admission authority."
+  ],
+  "patch_sha256": "44f81ad7f704eeb16b696908923d3ea9c4c26f5d9eb018784e93f7755457239c",
+  "reviewer": "restart_preparation",
+  "schema": "independent-setup-cache-production-draft-review@1",
+  "scope": "Read-only full eight-file draft plus final two-handler correction and authored alarm controls; reviewer ran no tests and changed no production source.",
+  "verdict": "no_source_blocker_native_qualification_still_required",
+  "xml_counts": {
+    "final-authored-02.xml": {
+      "errors": 0,
+      "failures": 0,
+      "skips": 0,
+      "tests": 57
+    },
+    "final-neighbors-02.xml": {
+      "errors": 0,
+      "failures": 0,
+      "skips": 0,
+      "tests": 147
+    },
+    "prefail-01.xml": {
+      "errors": 0,
+      "failures": 6,
+      "skips": 0,
+      "tests": 6
+    }
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "actual_source_suite": {
+    "artifact": "actual/actual-01.xml",
+    "errors": 0,
+    "failures": 0,
+    "pytest_seconds": 40.35,
+    "runner_seconds": 40.81366354599595,
+    "runtime_source_mode": "actual checkout; no overlay or method injection",
+    "skips": 0,
+    "tests": 204
+  },
+  "applied_to_actual_checkout": true,
+  "benchmark_trial": false,
+  "default_selection": null,
+  "earlier_overlay_suites": {
+    "additional_distinct_tests": 0,
+    "authored_tests": 57,
+    "final_artifacts": [
+      "draft/final-authored-02.xml",
+      "draft/final-neighbors-02.xml"
+    ],
+    "neighboring_tests": 147
+  },
+  "exclusions": [
+    "benchmark source bodies",
+    "checkpoints",
+    "embeddings",
+    "native inference reports",
+    "runtime archives",
+    "executable or wheel payloads",
+    "credentials",
+    "private databases"
+  ],
+  "implementation_controls_passed": true,
+  "limits": [
+    "These controls use tiny authored public fixtures and mocked container transport.",
+    "The earlier 131-payload Docker experiment failed Source384 replay admission and is not reclassified.",
+    "Best-effort advice does not grant resource or proof authority; fresh ordinary qualification remains required."
+  ],
+  "model_provider_Docker_calls": 0,
+  "patch_sha256": "44f81ad7f704eeb16b696908923d3ea9c4c26f5d9eb018784e93f7755457239c",
+  "policy": "source384-native-aarch64-dontneed@1",
+  "prior_patch_sha256": "684b039de9c866cd9fc53daea3e079b740d45ee32bc1b154a214a0e8e83b73f1",
+  "production_Docker_qualification": false,
+  "reclaimed_memory_claim": false,
+  "regression": {
+    "artifact": "draft/prefail-01.xml",
+    "before_failures": 6,
+    "before_tests": 6,
+    "cause": "TimeoutError raised by the 60-second SIGALRM handler is a subclass of OSError; both advice loops swallowed it.",
+    "correction": "Re-raise TimeoutError before ordinary best-effort OSError handling in archive and finite advice loops.",
+    "timer_scope": "Registered real main handler invoked at injected syscall boundaries; no real 60-second delay."
+  },
+  "schema": "source384-setup-cache-implementation-qualification@1",
+  "selection": {
+    "archive": "exact verified manifest population",
+    "codex_binaries": 4,
+    "native_payload_bytes": 565702269,
+    "native_payloads": 131,
+    "original_source_pins_sha256": "2d0625a867bc45a9a695ae2f750a57d75179c6aa28ef31250bd478f86ec7846d"
+  },
+  "semantic_proof_repair_benchmark_success_claim": false
+}

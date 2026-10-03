@@ -1,0 +1,141 @@
+--- a/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_codex.py
++++ b/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_codex.py
+@@ -176,6 +176,8 @@
+             try:
+                 os.fdatasync(fd);os.posix_fadvise(fd,0,0,os.POSIX_FADV_DONTNEED)
+                 advised.append(row)
++            except TimeoutError:
++                raise
+             except OSError as exc:errors.append(dict(path=row['path'],error_type=type(exc).__name__,errno=exc.errno))
+             if identity(os.fstat(fd))!=row['identity']:raise ValueError('native metadata changed during advice')
+         for row in records:
+--- a/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_files.py
++++ b/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_files.py
+@@ -121,6 +121,8 @@
+                     os.fdatasync(child)
+                     os.posix_fadvise(child,0,0,os.POSIX_FADV_DONTNEED)
+                     advised_files+=1;advised_bytes+=row['bytes']
++                except TimeoutError:
++                    raise
+                 except OSError as exc:
+                     # Advice is best effort; a failed syscall is never counted as successful.
+                     errors.append(dict(path=row['path'],error_type=type(exc).__name__,errno=exc.errno))
+--- a/benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py
++++ b/benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py
+@@ -325,6 +325,88 @@
+     assert result["freed_bytes_claimed"] is False
+ 
+ 
++@pytest.mark.parametrize("scope", ["archive", "codex", "libraries"])
++@pytest.mark.parametrize("syscall", ["fdatasync", "posix_fadvise"])
++def test_registered_advice_alarm_propagates_and_cleans_up(
++        tiny_payload_population, monkeypatch, capsys, scope, syscall):
++    """Invoke each real main's registered handler at the syscall boundary.
++
++    The clock is injected; no real process-wide alarm or 60 second wait is
++    required. Selection uses tiny public fixtures, while the advice loops,
++    handler, exception identity, descriptor cleanup and timer cleanup are real.
++    """
++    root, rows = tiny_payload_population
++    module = {"archive": archive_files, "codex": native, "libraries": libraries}[scope]
++    registered, timers, calls, expired_errors = [], [], [], []
++    opened = set()
++    monkeypatch.setattr(module, "ROOT", str(root))
++    monkeypatch.setattr(module.signal, "signal", lambda sig, handler: registered.append((sig, handler)))
++    monkeypatch.setattr(module.signal, "setitimer", lambda timer, seconds: timers.append((timer, seconds)))
++    monkeypatch.setattr(os, "geteuid", lambda: 0)
++    monkeypatch.setattr(policy.platform, "machine", lambda: "aarch64")
++    original_root_fd = archive_files.root_fd
++    def tracked_root(path):
++        fd = original_root_fd(path)
++        opened.add(fd)
++        return fd
++    monkeypatch.setattr(archive_files if scope == "archive" else native, "root_fd", tracked_root)
++    open_owner = archive_files if scope == "archive" else native
++    open_name = "open_file" if scope == "archive" else "open_binary"
++    original_open = getattr(open_owner, open_name)
++    def tracked_open(*args):
++        fd = original_open(*args)
++        opened.add(fd)
++        return fd
++    monkeypatch.setattr(open_owner, open_name, tracked_open)
++    if scope == "archive":
++        (root / "source").mkdir()
++        inventory = []
++        for row in rows[:2]:
++            (root / row["path"]).rename(root / "source" / row["path"])
++            inventory.append(dict(path="source/" + row["path"], bytes=row["expected_bytes"],
++                                  mode=row["mode"], sha256=row["sha256"]))
++        manifest = dict(archive_sha256="a" * 64, setup_cache={"policy": policy.POLICY}, files=inventory)
++        raw = json.dumps(manifest).encode()
++        manifest_path = root / "setup-cache-manifest.json"
++        manifest_path.write_bytes(raw)
++        monkeypatch.setattr(sys, "argv", ["archive", str(manifest_path), hashlib.sha256(raw).hexdigest(), "a" * 64])
++        original_require = archive_files.require_file
++        def fixture_owner(info, row):
++            # The production archive is root-owned; these temporary test files
++            # belong to the test runner. Preserve all other metadata checks.
++            return original_require(SimpleNamespace(st_mode=info.st_mode, st_nlink=info.st_nlink,
++                st_size=info.st_size, st_uid=0, st_gid=0), row)
++        monkeypatch.setattr(archive_files, "require_file", fixture_owner)
++    elif scope == "codex":
++        monkeypatch.setattr(sys, "argv", ["codex", str(root / "codex-cache-exposure.json"), "a" * 64])
++        monkeypatch.setattr(native, "read_receipt", lambda *args: {})
++        monkeypatch.setattr(native, "advise", lambda path, receipt: native.advise_selected(path, rows[:4], expected_count=4))
++    else:
++        monkeypatch.setattr(libraries, "ROWS", rows)
++    def invoke(name, fd):
++        calls.append((name, fd))
++        if name == syscall:
++            assert len(registered) == 1 and registered[0][0] == module.signal.SIGALRM
++            try:
++                registered[0][1](module.signal.SIGALRM, None)
++            except TimeoutError as error:
++                expired_errors.append(error)
++                raise
++    monkeypatch.setattr(os, "fdatasync", lambda fd: invoke("fdatasync", fd))
++    monkeypatch.setattr(os, "posix_fadvise", lambda fd, *args: invoke("posix_fadvise", fd))
++    with pytest.raises(TimeoutError) as raised:
++        module.main()
++    assert raised.value is expired_errors[0]
++    assert len(expired_errors) == 1
++    assert [name for name, _ in calls] == (["fdatasync"] if syscall == "fdatasync"
++                                         else ["fdatasync", "posix_fadvise"])
++    assert timers == [(module.signal.ITIMER_REAL, 60), (module.signal.ITIMER_REAL, 0)]
++    assert capsys.readouterr().out == ""
++    for fd in opened:
++        with pytest.raises(OSError):
++            os.fstat(fd)
++
++
+ @pytest.mark.parametrize("mutation", ["last_digest", "last_mode", "last_size", "duplicate", "extra", "symlink", "hardlink", "population_bound"])
+ def test_131_population_late_fault_never_advises(tiny_payload_population, monkeypatch, mutation):
+     root, rows = tiny_payload_population
+@@ -354,7 +436,7 @@
+     assert not hints
+ 
+ 
+-@pytest.mark.parametrize("primary_failure", [False, True])
++@pytest.mark.parametrize("primary_failure", [False, "value", "timeout"])
+ def test_receipt_write_failure_preserves_primary_or_refuses_success(
+         selected_cache, tmp_path, monkeypatch, primary_failure):
+     from benchmarks.agent_supervisor.container_coding import terminal_source384_qualification as qualify
+@@ -380,7 +462,8 @@
+         source_selection=libraries.SOURCE_SELECTION, installer_mode_policy=libraries.INSTALLER_MODE_POLICY, selected_files=131, hashed_files=131,
+         selected_bytes=count, body_read_bytes=count, body_reads_after_advice=0,
+         metadata_unchanged=True, freed_bytes_claimed=False, files=deepcopy(libraries.ROWS))
+-    primary = ValueError("authored primary advice failure")
++    primary = (TimeoutError("authored primary advice deadline") if primary_failure == "timeout"
++               else ValueError("authored primary advice failure"))
+     responses = [SimpleNamespace(return_code=0, stdout=json.dumps(value), stderr="")
+                  for value in (archive_result, codex_result, library_result)]
+     env = SimpleNamespace(upload_file=AsyncMock(), exec=AsyncMock(
+@@ -392,7 +475,7 @@
+             raise OSError("authored receipt storage failure")
+         return original(path, *args, **kwargs)
+     monkeypatch.setattr(Path, "write_text", failing_write)
+-    with pytest.raises(ValueError if primary_failure else OSError) as raised:
++    with pytest.raises(type(primary) if primary_failure else OSError) as raised:
+         asyncio.run(policy.apply_setup_cache_advice(env, archive_dir=root, expected=selection,
+             boundary_output=boundary, output=tmp_path / "advice"))
+     if primary_failure:

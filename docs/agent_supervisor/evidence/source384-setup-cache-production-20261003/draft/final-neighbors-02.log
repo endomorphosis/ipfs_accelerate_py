@@ -1,0 +1,170 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /home/barberb/lift_coding/artifacts/source384-wheel-cache-production-draft-20261003/timeout-02
+configfile: ../../../.worktrees/ir-release-accelerate-20261002/pytest.ini
+plugins: platformdirs-4.12.1, anyio-4.15.1, mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 147 items
+
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_archive_contains_only_explicit_runtime_sources_and_native_assets [32mPASSED[0m[32m [  0%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_base_archive_pins_scalar_binding_dependencies_without_learned_assets [32mPASSED[0m[32m [  1%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_exact_native_import_probe_reports_available_scalar_dependencies [32mPASSED[0m[32m [  2%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_exact_native_import_probe_refuses_missing_pandas [32mPASSED[0m[32m [  2%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_extension_symlink_cannot_enter_runtime_archive [32mPASSED[0m[32m [  3%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_changed_runtime_archive_refused_before_container_calls [32mPASSED[0m[32m [  4%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_model_revision_survives_asset_packaging [32mPASSED[0m[32m [  4%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_model_revision_must_be_an_explicit_snapshot_directory [32mPASSED[0m[32m [  5%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_cgroup_limits_require_exact_finite_profile[cpu_max-max 100000] [32mPASSED[0m[32m [  6%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_cgroup_limits_require_exact_finite_profile[cpu_max-100000 100000] [32mPASSED[0m[32m [  6%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_cgroup_limits_require_exact_finite_profile[cpu_max-500000 0] [32mPASSED[0m[32m [  7%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_cgroup_limits_require_exact_finite_profile[memory_max-max] [32mPASSED[0m[32m [  8%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_cgroup_limits_require_exact_finite_profile[memory_max-2147483648] [32mPASSED[0m[32m [  8%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_cgroup_limits_require_exact_finite_profile[detected_cpu_slots-4] [32mPASSED[0m[32m [  9%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_cgroup_limits_require_exact_finite_profile[detected_cpu_slots-True] [32mPASSED[0m[32m [ 10%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_cgroup_limits_require_exact_finite_profile[detected_total_memory_mb-6144] [32mPASSED[0m[32m [ 10%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_cgroup_limits_require_exact_finite_profile[available_memory_mb-12289] [32mPASSED[0m[32m [ 11%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_cgroup_limits_require_exact_finite_profile[available_memory_mb-True] [32mPASSED[0m[32m [ 12%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_cgroup_limits_require_exact_finite_profile[extra-0] [32mPASSED[0m[32m [ 12%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_exact_cgroup_limits_and_default_options [32mPASSED[0m[32m [ 13%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_default_qualification_keeps_original_harbor_task_resources [32mPASSED[0m[32m [ 14%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_selected_qualification_enforces_limits_and_complete_source_receipt [32mPASSED[0m[32m [ 14%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_failed_qualification_is_retained_and_container_closed[source_omitted] [32mPASSED[0m[32m [ 15%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_failed_qualification_is_retained_and_container_closed[source_changed] [32mPASSED[0m[32m [ 16%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_failed_qualification_is_retained_and_container_closed[native_refusal] [32mPASSED[0m[32m [ 17%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_receipt_persistence_failure_still_closes_container [32mPASSED[0m[32m [ 17%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_invalid_selection_is_refused_before_docker[no_profile] [32mPASSED[0m[32m [ 18%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_invalid_selection_is_refused_before_docker[no_assets] [32mPASSED[0m[32m [ 19%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_invalid_selection_is_refused_before_docker[bad_switch] [32mPASSED[0m[32m [ 19%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_embedded_probes_compile_and_do_not_invoke_provider_or_verifier [32mPASSED[0m[32m [ 20%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_probe_receipt_matches_relocated_assets_and_actual_archive_producers[None] [32mPASSED[0m[32m [ 21%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_probe_receipt_matches_relocated_assets_and_actual_archive_producers[checkpoint] [32mPASSED[0m[32m [ 21%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_probe_receipt_matches_relocated_assets_and_actual_archive_producers[config] [32mPASSED[0m[32m [ 22%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_probe_receipt_matches_relocated_assets_and_actual_archive_producers[producer] [32mPASSED[0m[32m [ 23%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_probe_receipt_matches_relocated_assets_and_actual_archive_producers[provider] [32mPASSED[0m[32m [ 23%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_probe_receipt_matches_relocated_assets_and_actual_archive_producers[verifier] [32mPASSED[0m[32m [ 24%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_probe_receipt_matches_relocated_assets_and_actual_archive_producers[refused] [32mPASSED[0m[32m [ 25%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_probe_receipt_matches_relocated_assets_and_actual_archive_producers[export_changed] [32mPASSED[0m[32m [ 25%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_probe_receipt_matches_relocated_assets_and_actual_archive_producers[report_oversize] [32mPASSED[0m[32m [ 26%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_probe_receipt_matches_relocated_assets_and_actual_archive_producers[report_malformed] [32mPASSED[0m[32m [ 27%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_offline_selection_uses_native_compatibility_and_relocates_exact_assets [32mPASSED[0m[32m [ 27%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_invalid_selection_never_creates_an_archive[mode] [32mPASSED[0m[32m [ 28%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_invalid_selection_never_creates_an_archive[training] [32mPASSED[0m[32m [ 29%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_invalid_selection_never_creates_an_archive[boolean_training] [32mPASSED[0m[32m [ 29%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_invalid_selection_never_creates_an_archive[downloads] [32mPASSED[0m[32m [ 30%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_invalid_selection_never_creates_an_archive[extra] [32mPASSED[0m[32m [ 31%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_invalid_selection_never_creates_an_archive[revision] [32mPASSED[0m[32m [ 31%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_invalid_selection_never_creates_an_archive[assets] [32mPASSED[0m[32m [ 32%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_invalid_selection_never_creates_an_archive[changed_checkpoint] [32mPASSED[0m[32m [ 33%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_invalid_selection_never_creates_an_archive[wrong_domain] [32mPASSED[0m[32m [ 34%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_invalid_selection_never_creates_an_archive[missing_snapshot] [32mPASSED[0m[32m [ 34%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_invalid_selection_never_creates_an_archive[relative_checkpoint] [32mPASSED[0m[32m [ 35%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_invalid_selection_never_creates_an_archive[checkpoint_symlink] [32mPASSED[0m[32m [ 36%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_config_reader_rejects_unbounded_or_ambiguous_inputs[duplicate] [32mPASSED[0m[32m [ 36%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_config_reader_rejects_unbounded_or_ambiguous_inputs[nonfinite] [32mPASSED[0m[32m [ 37%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_config_reader_rejects_unbounded_or_ambiguous_inputs[symlink] [32mPASSED[0m[32m [ 38%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_config_reader_rejects_unbounded_or_ambiguous_inputs[fifo] [32mPASSED[0m[32m [ 38%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_config_reader_rejects_unbounded_or_ambiguous_inputs[oversize] [32mPASSED[0m[32m [ 39%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_modified_manifest_is_refused_before_harbor_invocation[config_path] [32mPASSED[0m[32m [ 40%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_modified_manifest_is_refused_before_harbor_invocation[config_hash] [32mPASSED[0m[32m [ 40%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_modified_manifest_is_refused_before_harbor_invocation[checkpoint_hash] [32mPASSED[0m[32m [ 41%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_modified_manifest_is_refused_before_harbor_invocation[extra_member] [32mPASSED[0m[32m [ 42%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_modified_manifest_is_refused_before_harbor_invocation[missing_member] [32mPASSED[0m[32m [ 42%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_modified_manifest_is_refused_before_harbor_invocation[duplicate_member] [32mPASSED[0m[32m [ 43%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_modified_manifest_is_refused_before_harbor_invocation[oversize_checkpoint] [32mPASSED[0m[32m [ 44%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_modified_manifest_is_refused_before_harbor_invocation[training_mix] [32mPASSED[0m[32m [ 44%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_tampered_archive_is_refused_before_container_access_even_with_new_outer_hash [32mPASSED[0m[32m [ 45%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_checkpoint_change_during_asset_capture_is_rechecked_without_blocking[fifo] [32mPASSED[0m[32m [ 46%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_checkpoint_change_during_asset_capture_is_rechecked_without_blocking[changed_bytes] [32mPASSED[0m[32m [ 46%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_source384_refuses_legacy_security_selection[security_initializer] [32mPASSED[0m[32m [ 47%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_source384_refuses_legacy_security_selection[canonical_cve_export] [32mPASSED[0m[32m [ 48%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_source384_refuses_legacy_security_selection[canonical_cve_manifest_sha256] [32mPASSED[0m[32m [ 48%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_source384_refuses_legacy_security_selection[security_checkpoint] [32mPASSED[0m[32m [ 49%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_source384_refuses_legacy_security_selection[security_checkpoint_manifest_sha256] [32mPASSED[0m[32m [ 50%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_source384_refuses_legacy_security_selection[security_checkpoint_hub_descriptor] [32mPASSED[0m[32m [ 51%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_source384_refuses_legacy_security_selection[security_checkpoint_cache] [32mPASSED[0m[32m [ 51%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_source384_refuses_legacy_security_selection[formula_decoder] [32mPASSED[0m[32m [ 52%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_source384_refuses_legacy_security_selection[header_protocol] [32mPASSED[0m[32m [ 53%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_manifest_rejects_all_legacy_security_bindings_even_empty[security_initializer] [32mPASSED[0m[32m [ 53%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_manifest_rejects_all_legacy_security_bindings_even_empty[canonical_cve_training] [32mPASSED[0m[32m [ 54%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_manifest_rejects_all_legacy_security_bindings_even_empty[security_checkpoint] [32mPASSED[0m[32m [ 55%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_manifest_rejects_all_legacy_security_bindings_even_empty[formula_decoder] [32mPASSED[0m[32m [ 55%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_manifest_rejects_all_legacy_security_bindings_even_empty[header_protocol] [32mPASSED[0m[32m [ 56%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_actual_harbor_adapter_forwards_only_full_selection[full] [32mPASSED[0m[32m [ 57%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_actual_harbor_adapter_forwards_only_full_selection[no-index] [32mPASSED[0m[32m [ 57%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_preparation_rejects_implicit_resources_and_binds_exact_config [32mPASSED[0m[32m [ 58%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_harbor_normalized_three_arm_limits_match_and_defaults_stay_original [32mPASSED[0m[32m [ 59%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_declared_profile_cannot_conceal_resource_mismatch[override_cpus-4] [32mPASSED[0m[32m [ 59%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_declared_profile_cannot_conceal_resource_mismatch[override_memory_mb-2048] [32mPASSED[0m[32m [ 60%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_declared_profile_cannot_conceal_resource_mismatch[cpu_enforcement_policy-request] [32mPASSED[0m[32m [ 61%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_declared_profile_cannot_conceal_resource_mismatch[memory_enforcement_policy-auto] [32mPASSED[0m[32m [ 61%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_selected_wheel_exact_bytes_and_closed_binding_roundtrip[aarch64] [32mPASSED[0m[32m [ 62%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_selected_wheel_exact_bytes_and_closed_binding_roundtrip[x86_64] [32mPASSED[0m[32m [ 63%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_selection_requires_path_and_independent_pin_together[path] [32mPASSED[0m[32m [ 63%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_selection_requires_path_and_independent_pin_together[pin] [32mPASSED[0m[32m [ 64%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_wheel_does_not_activate_a_new_model_runtime [32mPASSED[0m[32m [ 65%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_wrong_or_malformed_independent_pin_refused[0000000000000000000000000000000000000000000000000000000000000000] [32mPASSED[0m[32m [ 65%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_wrong_or_malformed_independent_pin_refused[AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA] [32mPASSED[0m[32m [ 66%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_wrong_or_malformed_independent_pin_refused[not-a-pin] [32mPASSED[0m[32m [ 67%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_wrong_or_malformed_independent_pin_refused[123] [32mPASSED[0m[32m [ 68%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_unsupported_version_runtime_or_wheel_filename_refused[torch-2.13.0+cu128-cp312-cp312-manylinux_2_28_aarch64.whl] [32mPASSED[0m[32m [ 68%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_unsupported_version_runtime_or_wheel_filename_refused[torch-2.12.0+cpu-cp312-cp312-manylinux_2_28_aarch64.whl] [32mPASSED[0m[32m [ 69%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_unsupported_version_runtime_or_wheel_filename_refused[torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_aarch64.whl] [32mPASSED[0m[32m [ 70%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_unsupported_version_runtime_or_wheel_filename_refused[unselected.whl] [32mPASSED[0m[32m [ 70%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_bounded_regular_independent_wheel_required[symlink] [32mPASSED[0m[32m [ 71%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_bounded_regular_independent_wheel_required[hardlink] [32mPASSED[0m[32m [ 72%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_bounded_regular_independent_wheel_required[oversize] [32mPASSED[0m[32m [ 72%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_bounded_regular_independent_wheel_required[missing] [32mPASSED[0m[32m [ 73%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_malformed_wheel_metadata_refused_even_with_matching_digest[package] [32mPASSED[0m[32m [ 74%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_malformed_wheel_metadata_refused_even_with_matching_digest[version] [32mPASSED[0m[32m [ 74%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_malformed_wheel_metadata_refused_even_with_matching_digest[tag] [32mPASSED[0m[32m [ 75%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_malformed_wheel_metadata_refused_even_with_matching_digest[duplicate] [32mPASSED[0m[32m [ 76%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_malformed_wheel_metadata_refused_even_with_matching_digest[oversized] [32mPASSED[0m[32m [ 76%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_malformed_wheel_metadata_refused_even_with_matching_digest[not-zip] [32mPASSED[0m[32m [ 77%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_unbound_or_malformed_selection_refused_before_container_calls[missing-binding] [32mPASSED[0m[32m [ 78%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_unbound_or_malformed_selection_refused_before_container_calls[missing-member] [32mPASSED[0m[32m [ 78%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_unbound_or_malformed_selection_refused_before_container_calls[wrong-size] [32mPASSED[0m[32m [ 79%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_unbound_or_malformed_selection_refused_before_container_calls[wrong-digest] [32mPASSED[0m[32m [ 80%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_unbound_or_malformed_selection_refused_before_container_calls[duplicate-member] [32mPASSED[0m[32m [ 80%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_unbound_or_malformed_selection_refused_before_container_calls[extra-member] [32mPASSED[0m[32m [ 81%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_unbound_or_malformed_selection_refused_before_container_calls[bad-path] [32mPASSED[0m[32m [ 82%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_unbound_or_malformed_selection_refused_before_container_calls[bad-requirement] [32mPASSED[0m[32m [ 82%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_unbound_or_malformed_selection_refused_before_container_calls[bool-size] [32mPASSED[0m[32m [ 83%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_unbound_or_malformed_selection_refused_before_container_calls[extra-key] [32mPASSED[0m[32m [ 84%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_tampered_tar_wheel_refused_with_recomputed_outer_digest[bytes] [32mPASSED[0m[32m [ 85%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_tampered_tar_wheel_refused_with_recomputed_outer_digest[missing] [32mPASSED[0m[32m [ 85%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_tampered_tar_wheel_refused_with_recomputed_outer_digest[symlink] [32mPASSED[0m[32m [ 86%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_tampered_tar_wheel_refused_with_recomputed_outer_digest[duplicate] [32mPASSED[0m[32m [ 87%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_unselected_tar_wheel_cannot_hide_from_empty_inventory [32mPASSED[0m[32m [ 87%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_exact_extracted_probe_runs_before_third_party_installation [32mPASSED[0m[32m [ 88%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_extracted_wheel_rechecked_before_install[changed] [32mPASSED[0m[32m [ 89%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_extracted_wheel_rechecked_before_install[wrong-platform] [32mPASSED[0m[32m [ 89%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_extracted_wheel_rechecked_before_install[wrong-size] [32mPASSED[0m[32m [ 90%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_install_selection_timeout_and_no_fallback[False-False] [32mPASSED[0m[32m [ 91%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_install_selection_timeout_and_no_fallback[True-False] [32mPASSED[0m[32m [ 91%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::test_install_selection_timeout_and_no_fallback[True-True] [32mPASSED[0m[32m [ 92%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::ReceiptTests::test_absent_or_partial_usage_stays_unknown [32mPASSED[0m[32m [ 93%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::ReceiptTests::test_all_arms_keep_original_task_resources_verifier_and_agent_budget [32mPASSED[0m[32m [ 93%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::ReceiptTests::test_conflicting_duplicate_rejected [32mPASSED[0m[32m [ 94%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::ReceiptTests::test_failed_and_successful_calls_both_count_cached_input_once [32mPASSED[0m[32m [ 95%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::ReceiptTests::test_nonportable_asset_binding_is_rejected_before_run [32mPASSED[0m[32m [ 95%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::ReceiptTests::test_only_full_arm_receives_explicit_portable_training_assets [32mPASSED[0m[32m [ 96%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::ReceiptTests::test_only_full_arm_receives_frozen_model_and_pinned_hub_provenance [32mPASSED[0m[32m [ 97%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::ExportTests::test_asset_flags_reach_full_execution_and_are_absent_from_no_index [32mPASSED[0m[32m [ 97%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::ExportTests::test_driver_failure_still_exports_outputs_and_capture_failure_does_not_mask_it [32mPASSED[0m[32m [ 98%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::ExportTests::test_failed_run_preserves_admission_without_exporting_owner_state [32mPASSED[0m[32m [ 99%][0m
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02::ExportTests::test_symbolic_contract_uses_existing_option_and_preserves_strategy_identity 
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-03 15:13:37 [[33m WARNING[0m] Executing <Task finished name='Task-140' coro=<ExportTests.test_symbolic_contract_uses_existing_option_and_preserves_strategy_identity() done, defined at /home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py:113> result=None created at /usr/lib/python3.12/asyncio/runners.py:100> took 0.228 seconds (base_events.py:1982)
+[32mPASSED[0m[32m                                                                   [100%][0m
+
+- generated xml file: /home/barberb/lift_coding/artifacts/source384-wheel-cache-production-draft-20261003/timeout-02/final-neighbors-02.xml -
+============================= slowest 10 durations =============================
+0.23s call     ::ExportTests::test_symbolic_contract_uses_existing_option_and_preserves_strategy_identity
+0.21s call     ::test_exact_native_import_probe_reports_available_scalar_dependencies
+0.11s call     ::test_exact_extracted_probe_runs_before_third_party_installation
+0.02s setup    ::test_default_qualification_keeps_original_harbor_task_resources
+0.02s call     ::test_preparation_rejects_implicit_resources_and_binds_exact_config
+
+(5 durations < 0.005s hidden.  Use -vv to show these durations.)
+[32m============================= [32m[1m147 passed[0m[32m in 2.32s[0m[32m ==============================[0m

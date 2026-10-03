@@ -1,0 +1,15 @@
+{
+  "returncode": 0,
+  "seconds": 40.81366354599595,
+  "production_pins_unchanged": true,
+  "all_owners_loaded_from_actual_checkout": true,
+  "loaded_owners": {
+    "benchmarks.agent_supervisor.container_coding.terminal_deployment": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+    "benchmarks.agent_supervisor.container_coding.terminal_setup_cache_advice": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_advice.py",
+    "benchmarks.agent_supervisor.container_coding.terminal_setup_cache_files": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_files.py",
+    "benchmarks.agent_supervisor.container_coding.terminal_setup_cache_codex": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_codex.py",
+    "benchmarks.agent_supervisor.container_coding.terminal_setup_cache_libraries": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/terminal_setup_cache_libraries.py",
+    "benchmarks.agent_supervisor.container_coding.full_supervisor_benchmark": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+    "benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_agent": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py"
+  }
+}

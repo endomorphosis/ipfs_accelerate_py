@@ -1,0 +1,9 @@
+{
+  "schema": "source384-cache-timeout-followup@1",
+  "prior_directory": "artifacts/source384-wheel-cache-production-draft-20261003",
+  "prior_patch_sha256": "684b039de9c866cd9fc53daea3e079b740d45ee32bc1b154a214a0e8e83b73f1",
+  "prior_pins_sha256": "ab034ef4a5fefca25b21989de36a02d14683d189efb1dde83851dd1d74e1f750",
+  "prior_review_superseded_by": "TimeoutError from the 60 second alarm is an OSError and was swallowed by the advice syscall loops.",
+  "prior_files_modified": false,
+  "production_applied": false
+}

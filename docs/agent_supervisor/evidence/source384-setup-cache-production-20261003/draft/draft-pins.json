@@ -1,0 +1,61 @@
+{
+  "schema": "source384-wheel-cache-production-draft@1",
+  "applied": false,
+  "files": [
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "before_sha256": "0ac7a65cc99502a0ba6a0cf853fbdead4f15e70acbe13a98baa9b064fb8f0f07",
+      "proposed_sha256": "0553f92c6c6ae171ec95c735f375d41dbdc30f634253827c98183996b6edb27d",
+      "bytes": 17211
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "before_sha256": "22c45e3ddcafa1e37a55a1cf7ee8db2ace30e0b7d91637d900d16e34cd62cde2",
+      "proposed_sha256": "e6af88bfcc3a8e284261fcc2a202bca27a64e753e8a94cdee9d6d6bc12b15628",
+      "bytes": 24228
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+      "before_sha256": "bb4e4f845f03026572530b81fde6a540a2cd0ab89b17e606587ddfbc33dfc285",
+      "proposed_sha256": "9f30530359cdfd04002de2f0b63034af31a53db079170add03b57fcff8cd6810",
+      "bytes": 74338
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_advice.py",
+      "before_sha256": null,
+      "proposed_sha256": "9b8ccd46848be1a9f11924c7ba845c41ab2366323bfece10104faa2bf2948105",
+      "bytes": 18179
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_codex.py",
+      "before_sha256": null,
+      "proposed_sha256": "ad8b81d7875740b97040ef5eadc4f76aa01d5f54ccfc4916e4c235e0fe0195f3",
+      "bytes": 12744
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_files.py",
+      "before_sha256": null,
+      "proposed_sha256": "6d2b2a58594df8511170ba9f4301d37512aa58e774d3bcabb747ce4a84f14624",
+      "bytes": 9298
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_libraries.py",
+      "before_sha256": null,
+      "proposed_sha256": "226e507598f03aa8e95c960eaadcc2260b9e5a356f7d4c7be8c922df857f158e",
+      "bytes": 41857
+    },
+    {
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py",
+      "before_sha256": null,
+      "proposed_sha256": "2934c129e4522fcf1e879caea81c4372a223988ee9733107acdbf09c05177b50",
+      "bytes": 29520
+    }
+  ],
+  "patch_sha256": "44f81ad7f704eeb16b696908923d3ea9c4c26f5d9eb018784e93f7755457239c",
+  "prior_draft": "artifacts/source384-wheel-cache-production-draft-20261003",
+  "syntax_checked": true,
+  "git_apply_check_exit_code": 0,
+  "native_context_qualified": false,
+  "prior_patch_sha256": "684b039de9c866cd9fc53daea3e079b740d45ee32bc1b154a214a0e8e83b73f1",
+  "timeout_patch_sha256": "0532ebca8ceba3d08d5ee6e690fbbde23ee182e874d11da0cbc53df747ad5262"
+}

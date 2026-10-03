@@ -1,0 +1,19 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "/home/barberb/lift_coding/artifacts/source384-wheel-cache-production-draft-20261003/timeout-02/run_overlay_neighbors.py"
+  ],
+  "pytest_argv": [
+    "-q",
+    "--rootdir=/home/barberb/lift_coding/artifacts/source384-wheel-cache-production-draft-20261003/timeout-02",
+    "--confcutdir=/home/barberb/lift_coding/artifacts/source384-wheel-cache-production-draft-20261003/timeout-02",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_terminal_source384_transport.py",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/source384-wheel-cache-production-draft-20261003/timeout-02/final-neighbors-02.xml"
+  ],
+  "scope": "draft-only module-path overlay; no production edits, Docker or model calls",
+  "producer_pins": "draft-pins.json"
+}

@@ -1,0 +1,39 @@
+{
+  "schema": "source384-cache-timeout-draft-validation@1",
+  "applied": false,
+  "actual_Docker_qualification": false,
+  "all_passed": true,
+  "distinct_tests": 204,
+  "suites": [
+    {
+      "name": "final-authored-02",
+      "tests": 57,
+      "exit_sha256": "7d96d61d3559bcfd876e97e30f16b9f7b32af54cca5b8cd359effc25bcfc3193",
+      "log_sha256": "79dceaca382d7c2570b601dcf12c658f649170a10ba4cbb2a5119022ba71f558",
+      "xml_sha256": "f8208d21aaba480d7ea774b10740efe850be953333921fe9bd7250c139c18473",
+      "process_seconds": 1.2158910169964656
+    },
+    {
+      "name": "final-neighbors-02",
+      "tests": 147,
+      "exit_sha256": "f16d89c427600581ce71f16df498e79282dc297c8b05b2563a092277fd1c849d",
+      "log_sha256": "a81375ec7d4547a2808c90f507d942c6801fd5e7739e779b9849ff32d6e0d165",
+      "xml_sha256": "9848319ca7b825736a1dd7ddbdcb2efc9b2fd4375d7d80872250071d3040a4d7",
+      "process_seconds": 2.7387791849978385
+    }
+  ],
+  "regression_before_fix": {
+    "tests": 6,
+    "failed": 6,
+    "source_pins": "prefail-01-command.json",
+    "xml_sha256": "22a4772b963741ae2691ba289dfaef623bc20716e0afa87a25a5b9001f42d305"
+  },
+  "prior_patch_sha256": "684b039de9c866cd9fc53daea3e079b740d45ee32bc1b154a214a0e8e83b73f1",
+  "patch_sha256": "44f81ad7f704eeb16b696908923d3ea9c4c26f5d9eb018784e93f7755457239c",
+  "timeout_patch_sha256": "0532ebca8ceba3d08d5ee6e690fbbde23ee182e874d11da0cbc53df747ad5262",
+  "source_pins_sha256": "45c56317bc477862ed74459625c931711677476069336beb9f0f9452404c0c3c",
+  "live_base_pins_unchanged": true,
+  "prior_generation_unchanged": true,
+  "models_provider_Docker_calls": 0,
+  "scope": "Module-path overlay. Exact registered alarm handler injected at fdatasync and posix_fadvise for archive/four-Codex/131-library mains; tiny public fixtures, no real timer delay. Existing receipt-storage failure case extended to preserve primary TimeoutError."
+}

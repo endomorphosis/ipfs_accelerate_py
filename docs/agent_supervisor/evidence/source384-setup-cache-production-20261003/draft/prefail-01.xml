@@ -1,0 +1,463 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="6" skipped="0" tests="6" time="0.191" timestamp="2026-10-03T15:12:46.629210+00:00" hostname="spark-b271"><testcase classname="proposed.benchmarks.agent_supervisor.container_coding.test_terminal_setup_cache_advice" name="test_registered_advice_alarm_propagates_and_cleans_up[fdatasync-archive]" time="0.005"><failure message="Failed: DID NOT RAISE TimeoutError">tiny_payload_population = (PosixPath('/tmp/pytest-of-barberb/pytest-360/test_registered_advice_alarm_p0/payloads'), [{'path': '000.bin', 'name':...ayload', 'uid': 1000, ...}, {'path': '005.bin', 'name': '005.bin', 'role': 'authored_payload', 'uid': 1000, ...}, ...])
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xecc3c92800b0&gt;
+capsys = &lt;_pytest.capture.CaptureFixture object at 0xecc3c92805f0&gt;
+scope = 'archive', syscall = 'fdatasync'
+
+    @pytest.mark.parametrize("scope", ["archive", "codex", "libraries"])
+    @pytest.mark.parametrize("syscall", ["fdatasync", "posix_fadvise"])
+    def test_registered_advice_alarm_propagates_and_cleans_up(
+            tiny_payload_population, monkeypatch, capsys, scope, syscall):
+        """Invoke each real main's registered handler at the syscall boundary.
+    
+        The clock is injected; no real process-wide alarm or 60 second wait is
+        required. Selection uses tiny public fixtures, while the advice loops,
+        handler, exception identity, descriptor cleanup and timer cleanup are real.
+        """
+        root, rows = tiny_payload_population
+        module = {"archive": archive_files, "codex": native, "libraries": libraries}[scope]
+        registered, timers, calls, expired_errors = [], [], [], []
+        opened = set()
+        monkeypatch.setattr(module, "ROOT", str(root))
+        monkeypatch.setattr(module.signal, "signal", lambda sig, handler: registered.append((sig, handler)))
+        monkeypatch.setattr(module.signal, "setitimer", lambda timer, seconds: timers.append((timer, seconds)))
+        monkeypatch.setattr(os, "geteuid", lambda: 0)
+        monkeypatch.setattr(policy.platform, "machine", lambda: "aarch64")
+        original_root_fd = archive_files.root_fd
+        def tracked_root(path):
+            fd = original_root_fd(path)
+            opened.add(fd)
+            return fd
+        monkeypatch.setattr(archive_files if scope == "archive" else native, "root_fd", tracked_root)
+        open_owner = archive_files if scope == "archive" else native
+        open_name = "open_file" if scope == "archive" else "open_binary"
+        original_open = getattr(open_owner, open_name)
+        def tracked_open(*args):
+            fd = original_open(*args)
+            opened.add(fd)
+            return fd
+        monkeypatch.setattr(open_owner, open_name, tracked_open)
+        if scope == "archive":
+            (root / "source").mkdir()
+            inventory = []
+            for row in rows[:2]:
+                (root / row["path"]).rename(root / "source" / row["path"])
+                inventory.append(dict(path="source/" + row["path"], bytes=row["expected_bytes"],
+                                      mode=row["mode"], sha256=row["sha256"]))
+            manifest = dict(archive_sha256="a" * 64, setup_cache={"policy": policy.POLICY}, files=inventory)
+            raw = json.dumps(manifest).encode()
+            manifest_path = root / "setup-cache-manifest.json"
+            manifest_path.write_bytes(raw)
+            monkeypatch.setattr(sys, "argv", ["archive", str(manifest_path), hashlib.sha256(raw).hexdigest(), "a" * 64])
+            original_require = archive_files.require_file
+            def fixture_owner(info, row):
+                # The production archive is root-owned; these temporary test files
+                # belong to the test runner. Preserve all other metadata checks.
+                return original_require(SimpleNamespace(st_mode=info.st_mode, st_nlink=info.st_nlink,
+                    st_size=info.st_size, st_uid=0, st_gid=0), row)
+            monkeypatch.setattr(archive_files, "require_file", fixture_owner)
+        elif scope == "codex":
+            monkeypatch.setattr(sys, "argv", ["codex", str(root / "codex-cache-exposure.json"), "a" * 64])
+            monkeypatch.setattr(native, "read_receipt", lambda *args: {})
+            monkeypatch.setattr(native, "advise", lambda path, receipt: native.advise_selected(path, rows[:4], expected_count=4))
+        else:
+            monkeypatch.setattr(libraries, "ROWS", rows)
+        def invoke(name, fd):
+            calls.append((name, fd))
+            if name == syscall:
+                assert len(registered) == 1 and registered[0][0] == module.signal.SIGALRM
+                try:
+                    registered[0][1](module.signal.SIGALRM, None)
+                except TimeoutError as error:
+                    expired_errors.append(error)
+                    raise
+        monkeypatch.setattr(os, "fdatasync", lambda fd: invoke("fdatasync", fd))
+        monkeypatch.setattr(os, "posix_fadvise", lambda fd, *args: invoke("posix_fadvise", fd))
+&gt;       with pytest.raises(TimeoutError) as raised:
+E       Failed: DID NOT RAISE TimeoutError
+
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02/proposed/benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py:397: Failed</failure></testcase><testcase classname="proposed.benchmarks.agent_supervisor.container_coding.test_terminal_setup_cache_advice" name="test_registered_advice_alarm_propagates_and_cleans_up[fdatasync-codex]" time="0.004"><failure message="Failed: DID NOT RAISE TimeoutError">tiny_payload_population = (PosixPath('/tmp/pytest-of-barberb/pytest-360/test_registered_advice_alarm_p1/payloads'), [{'path': '000.bin', 'name':...ayload', 'uid': 1000, ...}, {'path': '005.bin', 'name': '005.bin', 'role': 'authored_payload', 'uid': 1000, ...}, ...])
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xecc3c9282ea0&gt;
+capsys = &lt;_pytest.capture.CaptureFixture object at 0xecc3c9282f90&gt;
+scope = 'codex', syscall = 'fdatasync'
+
+    @pytest.mark.parametrize("scope", ["archive", "codex", "libraries"])
+    @pytest.mark.parametrize("syscall", ["fdatasync", "posix_fadvise"])
+    def test_registered_advice_alarm_propagates_and_cleans_up(
+            tiny_payload_population, monkeypatch, capsys, scope, syscall):
+        """Invoke each real main's registered handler at the syscall boundary.
+    
+        The clock is injected; no real process-wide alarm or 60 second wait is
+        required. Selection uses tiny public fixtures, while the advice loops,
+        handler, exception identity, descriptor cleanup and timer cleanup are real.
+        """
+        root, rows = tiny_payload_population
+        module = {"archive": archive_files, "codex": native, "libraries": libraries}[scope]
+        registered, timers, calls, expired_errors = [], [], [], []
+        opened = set()
+        monkeypatch.setattr(module, "ROOT", str(root))
+        monkeypatch.setattr(module.signal, "signal", lambda sig, handler: registered.append((sig, handler)))
+        monkeypatch.setattr(module.signal, "setitimer", lambda timer, seconds: timers.append((timer, seconds)))
+        monkeypatch.setattr(os, "geteuid", lambda: 0)
+        monkeypatch.setattr(policy.platform, "machine", lambda: "aarch64")
+        original_root_fd = archive_files.root_fd
+        def tracked_root(path):
+            fd = original_root_fd(path)
+            opened.add(fd)
+            return fd
+        monkeypatch.setattr(archive_files if scope == "archive" else native, "root_fd", tracked_root)
+        open_owner = archive_files if scope == "archive" else native
+        open_name = "open_file" if scope == "archive" else "open_binary"
+        original_open = getattr(open_owner, open_name)
+        def tracked_open(*args):
+            fd = original_open(*args)
+            opened.add(fd)
+            return fd
+        monkeypatch.setattr(open_owner, open_name, tracked_open)
+        if scope == "archive":
+            (root / "source").mkdir()
+            inventory = []
+            for row in rows[:2]:
+                (root / row["path"]).rename(root / "source" / row["path"])
+                inventory.append(dict(path="source/" + row["path"], bytes=row["expected_bytes"],
+                                      mode=row["mode"], sha256=row["sha256"]))
+            manifest = dict(archive_sha256="a" * 64, setup_cache={"policy": policy.POLICY}, files=inventory)
+            raw = json.dumps(manifest).encode()
+            manifest_path = root / "setup-cache-manifest.json"
+            manifest_path.write_bytes(raw)
+            monkeypatch.setattr(sys, "argv", ["archive", str(manifest_path), hashlib.sha256(raw).hexdigest(), "a" * 64])
+            original_require = archive_files.require_file
+            def fixture_owner(info, row):
+                # The production archive is root-owned; these temporary test files
+                # belong to the test runner. Preserve all other metadata checks.
+                return original_require(SimpleNamespace(st_mode=info.st_mode, st_nlink=info.st_nlink,
+                    st_size=info.st_size, st_uid=0, st_gid=0), row)
+            monkeypatch.setattr(archive_files, "require_file", fixture_owner)
+        elif scope == "codex":
+            monkeypatch.setattr(sys, "argv", ["codex", str(root / "codex-cache-exposure.json"), "a" * 64])
+            monkeypatch.setattr(native, "read_receipt", lambda *args: {})
+            monkeypatch.setattr(native, "advise", lambda path, receipt: native.advise_selected(path, rows[:4], expected_count=4))
+        else:
+            monkeypatch.setattr(libraries, "ROWS", rows)
+        def invoke(name, fd):
+            calls.append((name, fd))
+            if name == syscall:
+                assert len(registered) == 1 and registered[0][0] == module.signal.SIGALRM
+                try:
+                    registered[0][1](module.signal.SIGALRM, None)
+                except TimeoutError as error:
+                    expired_errors.append(error)
+                    raise
+        monkeypatch.setattr(os, "fdatasync", lambda fd: invoke("fdatasync", fd))
+        monkeypatch.setattr(os, "posix_fadvise", lambda fd, *args: invoke("posix_fadvise", fd))
+&gt;       with pytest.raises(TimeoutError) as raised:
+E       Failed: DID NOT RAISE TimeoutError
+
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02/proposed/benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py:397: Failed</failure></testcase><testcase classname="proposed.benchmarks.agent_supervisor.container_coding.test_terminal_setup_cache_advice" name="test_registered_advice_alarm_propagates_and_cleans_up[fdatasync-libraries]" time="0.007"><failure message="Failed: DID NOT RAISE TimeoutError">tiny_payload_population = (PosixPath('/tmp/pytest-of-barberb/pytest-360/test_registered_advice_alarm_p2/payloads'), [{'path': '000.bin', 'name':...ayload', 'uid': 1000, ...}, {'path': '005.bin', 'name': '005.bin', 'role': 'authored_payload', 'uid': 1000, ...}, ...])
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xecc3c9319910&gt;
+capsys = &lt;_pytest.capture.CaptureFixture object at 0xecc3c9319a00&gt;
+scope = 'libraries', syscall = 'fdatasync'
+
+    @pytest.mark.parametrize("scope", ["archive", "codex", "libraries"])
+    @pytest.mark.parametrize("syscall", ["fdatasync", "posix_fadvise"])
+    def test_registered_advice_alarm_propagates_and_cleans_up(
+            tiny_payload_population, monkeypatch, capsys, scope, syscall):
+        """Invoke each real main's registered handler at the syscall boundary.
+    
+        The clock is injected; no real process-wide alarm or 60 second wait is
+        required. Selection uses tiny public fixtures, while the advice loops,
+        handler, exception identity, descriptor cleanup and timer cleanup are real.
+        """
+        root, rows = tiny_payload_population
+        module = {"archive": archive_files, "codex": native, "libraries": libraries}[scope]
+        registered, timers, calls, expired_errors = [], [], [], []
+        opened = set()
+        monkeypatch.setattr(module, "ROOT", str(root))
+        monkeypatch.setattr(module.signal, "signal", lambda sig, handler: registered.append((sig, handler)))
+        monkeypatch.setattr(module.signal, "setitimer", lambda timer, seconds: timers.append((timer, seconds)))
+        monkeypatch.setattr(os, "geteuid", lambda: 0)
+        monkeypatch.setattr(policy.platform, "machine", lambda: "aarch64")
+        original_root_fd = archive_files.root_fd
+        def tracked_root(path):
+            fd = original_root_fd(path)
+            opened.add(fd)
+            return fd
+        monkeypatch.setattr(archive_files if scope == "archive" else native, "root_fd", tracked_root)
+        open_owner = archive_files if scope == "archive" else native
+        open_name = "open_file" if scope == "archive" else "open_binary"
+        original_open = getattr(open_owner, open_name)
+        def tracked_open(*args):
+            fd = original_open(*args)
+            opened.add(fd)
+            return fd
+        monkeypatch.setattr(open_owner, open_name, tracked_open)
+        if scope == "archive":
+            (root / "source").mkdir()
+            inventory = []
+            for row in rows[:2]:
+                (root / row["path"]).rename(root / "source" / row["path"])
+                inventory.append(dict(path="source/" + row["path"], bytes=row["expected_bytes"],
+                                      mode=row["mode"], sha256=row["sha256"]))
+            manifest = dict(archive_sha256="a" * 64, setup_cache={"policy": policy.POLICY}, files=inventory)
+            raw = json.dumps(manifest).encode()
+            manifest_path = root / "setup-cache-manifest.json"
+            manifest_path.write_bytes(raw)
+            monkeypatch.setattr(sys, "argv", ["archive", str(manifest_path), hashlib.sha256(raw).hexdigest(), "a" * 64])
+            original_require = archive_files.require_file
+            def fixture_owner(info, row):
+                # The production archive is root-owned; these temporary test files
+                # belong to the test runner. Preserve all other metadata checks.
+                return original_require(SimpleNamespace(st_mode=info.st_mode, st_nlink=info.st_nlink,
+                    st_size=info.st_size, st_uid=0, st_gid=0), row)
+            monkeypatch.setattr(archive_files, "require_file", fixture_owner)
+        elif scope == "codex":
+            monkeypatch.setattr(sys, "argv", ["codex", str(root / "codex-cache-exposure.json"), "a" * 64])
+            monkeypatch.setattr(native, "read_receipt", lambda *args: {})
+            monkeypatch.setattr(native, "advise", lambda path, receipt: native.advise_selected(path, rows[:4], expected_count=4))
+        else:
+            monkeypatch.setattr(libraries, "ROWS", rows)
+        def invoke(name, fd):
+            calls.append((name, fd))
+            if name == syscall:
+                assert len(registered) == 1 and registered[0][0] == module.signal.SIGALRM
+                try:
+                    registered[0][1](module.signal.SIGALRM, None)
+                except TimeoutError as error:
+                    expired_errors.append(error)
+                    raise
+        monkeypatch.setattr(os, "fdatasync", lambda fd: invoke("fdatasync", fd))
+        monkeypatch.setattr(os, "posix_fadvise", lambda fd, *args: invoke("posix_fadvise", fd))
+&gt;       with pytest.raises(TimeoutError) as raised:
+E       Failed: DID NOT RAISE TimeoutError
+
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02/proposed/benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py:397: Failed</failure></testcase><testcase classname="proposed.benchmarks.agent_supervisor.container_coding.test_terminal_setup_cache_advice" name="test_registered_advice_alarm_propagates_and_cleans_up[posix_fadvise-archive]" time="0.004"><failure message="Failed: DID NOT RAISE TimeoutError">tiny_payload_population = (PosixPath('/tmp/pytest-of-barberb/pytest-360/test_registered_advice_alarm_p3/payloads'), [{'path': '000.bin', 'name':...ayload', 'uid': 1000, ...}, {'path': '005.bin', 'name': '005.bin', 'role': 'authored_payload', 'uid': 1000, ...}, ...])
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xecc3c92819a0&gt;
+capsys = &lt;_pytest.capture.CaptureFixture object at 0xecc3c9281ac0&gt;
+scope = 'archive', syscall = 'posix_fadvise'
+
+    @pytest.mark.parametrize("scope", ["archive", "codex", "libraries"])
+    @pytest.mark.parametrize("syscall", ["fdatasync", "posix_fadvise"])
+    def test_registered_advice_alarm_propagates_and_cleans_up(
+            tiny_payload_population, monkeypatch, capsys, scope, syscall):
+        """Invoke each real main's registered handler at the syscall boundary.
+    
+        The clock is injected; no real process-wide alarm or 60 second wait is
+        required. Selection uses tiny public fixtures, while the advice loops,
+        handler, exception identity, descriptor cleanup and timer cleanup are real.
+        """
+        root, rows = tiny_payload_population
+        module = {"archive": archive_files, "codex": native, "libraries": libraries}[scope]
+        registered, timers, calls, expired_errors = [], [], [], []
+        opened = set()
+        monkeypatch.setattr(module, "ROOT", str(root))
+        monkeypatch.setattr(module.signal, "signal", lambda sig, handler: registered.append((sig, handler)))
+        monkeypatch.setattr(module.signal, "setitimer", lambda timer, seconds: timers.append((timer, seconds)))
+        monkeypatch.setattr(os, "geteuid", lambda: 0)
+        monkeypatch.setattr(policy.platform, "machine", lambda: "aarch64")
+        original_root_fd = archive_files.root_fd
+        def tracked_root(path):
+            fd = original_root_fd(path)
+            opened.add(fd)
+            return fd
+        monkeypatch.setattr(archive_files if scope == "archive" else native, "root_fd", tracked_root)
+        open_owner = archive_files if scope == "archive" else native
+        open_name = "open_file" if scope == "archive" else "open_binary"
+        original_open = getattr(open_owner, open_name)
+        def tracked_open(*args):
+            fd = original_open(*args)
+            opened.add(fd)
+            return fd
+        monkeypatch.setattr(open_owner, open_name, tracked_open)
+        if scope == "archive":
+            (root / "source").mkdir()
+            inventory = []
+            for row in rows[:2]:
+                (root / row["path"]).rename(root / "source" / row["path"])
+                inventory.append(dict(path="source/" + row["path"], bytes=row["expected_bytes"],
+                                      mode=row["mode"], sha256=row["sha256"]))
+            manifest = dict(archive_sha256="a" * 64, setup_cache={"policy": policy.POLICY}, files=inventory)
+            raw = json.dumps(manifest).encode()
+            manifest_path = root / "setup-cache-manifest.json"
+            manifest_path.write_bytes(raw)
+            monkeypatch.setattr(sys, "argv", ["archive", str(manifest_path), hashlib.sha256(raw).hexdigest(), "a" * 64])
+            original_require = archive_files.require_file
+            def fixture_owner(info, row):
+                # The production archive is root-owned; these temporary test files
+                # belong to the test runner. Preserve all other metadata checks.
+                return original_require(SimpleNamespace(st_mode=info.st_mode, st_nlink=info.st_nlink,
+                    st_size=info.st_size, st_uid=0, st_gid=0), row)
+            monkeypatch.setattr(archive_files, "require_file", fixture_owner)
+        elif scope == "codex":
+            monkeypatch.setattr(sys, "argv", ["codex", str(root / "codex-cache-exposure.json"), "a" * 64])
+            monkeypatch.setattr(native, "read_receipt", lambda *args: {})
+            monkeypatch.setattr(native, "advise", lambda path, receipt: native.advise_selected(path, rows[:4], expected_count=4))
+        else:
+            monkeypatch.setattr(libraries, "ROWS", rows)
+        def invoke(name, fd):
+            calls.append((name, fd))
+            if name == syscall:
+                assert len(registered) == 1 and registered[0][0] == module.signal.SIGALRM
+                try:
+                    registered[0][1](module.signal.SIGALRM, None)
+                except TimeoutError as error:
+                    expired_errors.append(error)
+                    raise
+        monkeypatch.setattr(os, "fdatasync", lambda fd: invoke("fdatasync", fd))
+        monkeypatch.setattr(os, "posix_fadvise", lambda fd, *args: invoke("posix_fadvise", fd))
+&gt;       with pytest.raises(TimeoutError) as raised:
+E       Failed: DID NOT RAISE TimeoutError
+
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02/proposed/benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py:397: Failed</failure></testcase><testcase classname="proposed.benchmarks.agent_supervisor.container_coding.test_terminal_setup_cache_advice" name="test_registered_advice_alarm_propagates_and_cleans_up[posix_fadvise-codex]" time="0.004"><failure message="Failed: DID NOT RAISE TimeoutError">tiny_payload_population = (PosixPath('/tmp/pytest-of-barberb/pytest-360/test_registered_advice_alarm_p4/payloads'), [{'path': '000.bin', 'name':...ayload', 'uid': 1000, ...}, {'path': '005.bin', 'name': '005.bin', 'role': 'authored_payload', 'uid': 1000, ...}, ...])
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xecc3c9262b70&gt;
+capsys = &lt;_pytest.capture.CaptureFixture object at 0xecc3c9260dd0&gt;
+scope = 'codex', syscall = 'posix_fadvise'
+
+    @pytest.mark.parametrize("scope", ["archive", "codex", "libraries"])
+    @pytest.mark.parametrize("syscall", ["fdatasync", "posix_fadvise"])
+    def test_registered_advice_alarm_propagates_and_cleans_up(
+            tiny_payload_population, monkeypatch, capsys, scope, syscall):
+        """Invoke each real main's registered handler at the syscall boundary.
+    
+        The clock is injected; no real process-wide alarm or 60 second wait is
+        required. Selection uses tiny public fixtures, while the advice loops,
+        handler, exception identity, descriptor cleanup and timer cleanup are real.
+        """
+        root, rows = tiny_payload_population
+        module = {"archive": archive_files, "codex": native, "libraries": libraries}[scope]
+        registered, timers, calls, expired_errors = [], [], [], []
+        opened = set()
+        monkeypatch.setattr(module, "ROOT", str(root))
+        monkeypatch.setattr(module.signal, "signal", lambda sig, handler: registered.append((sig, handler)))
+        monkeypatch.setattr(module.signal, "setitimer", lambda timer, seconds: timers.append((timer, seconds)))
+        monkeypatch.setattr(os, "geteuid", lambda: 0)
+        monkeypatch.setattr(policy.platform, "machine", lambda: "aarch64")
+        original_root_fd = archive_files.root_fd
+        def tracked_root(path):
+            fd = original_root_fd(path)
+            opened.add(fd)
+            return fd
+        monkeypatch.setattr(archive_files if scope == "archive" else native, "root_fd", tracked_root)
+        open_owner = archive_files if scope == "archive" else native
+        open_name = "open_file" if scope == "archive" else "open_binary"
+        original_open = getattr(open_owner, open_name)
+        def tracked_open(*args):
+            fd = original_open(*args)
+            opened.add(fd)
+            return fd
+        monkeypatch.setattr(open_owner, open_name, tracked_open)
+        if scope == "archive":
+            (root / "source").mkdir()
+            inventory = []
+            for row in rows[:2]:
+                (root / row["path"]).rename(root / "source" / row["path"])
+                inventory.append(dict(path="source/" + row["path"], bytes=row["expected_bytes"],
+                                      mode=row["mode"], sha256=row["sha256"]))
+            manifest = dict(archive_sha256="a" * 64, setup_cache={"policy": policy.POLICY}, files=inventory)
+            raw = json.dumps(manifest).encode()
+            manifest_path = root / "setup-cache-manifest.json"
+            manifest_path.write_bytes(raw)
+            monkeypatch.setattr(sys, "argv", ["archive", str(manifest_path), hashlib.sha256(raw).hexdigest(), "a" * 64])
+            original_require = archive_files.require_file
+            def fixture_owner(info, row):
+                # The production archive is root-owned; these temporary test files
+                # belong to the test runner. Preserve all other metadata checks.
+                return original_require(SimpleNamespace(st_mode=info.st_mode, st_nlink=info.st_nlink,
+                    st_size=info.st_size, st_uid=0, st_gid=0), row)
+            monkeypatch.setattr(archive_files, "require_file", fixture_owner)
+        elif scope == "codex":
+            monkeypatch.setattr(sys, "argv", ["codex", str(root / "codex-cache-exposure.json"), "a" * 64])
+            monkeypatch.setattr(native, "read_receipt", lambda *args: {})
+            monkeypatch.setattr(native, "advise", lambda path, receipt: native.advise_selected(path, rows[:4], expected_count=4))
+        else:
+            monkeypatch.setattr(libraries, "ROWS", rows)
+        def invoke(name, fd):
+            calls.append((name, fd))
+            if name == syscall:
+                assert len(registered) == 1 and registered[0][0] == module.signal.SIGALRM
+                try:
+                    registered[0][1](module.signal.SIGALRM, None)
+                except TimeoutError as error:
+                    expired_errors.append(error)
+                    raise
+        monkeypatch.setattr(os, "fdatasync", lambda fd: invoke("fdatasync", fd))
+        monkeypatch.setattr(os, "posix_fadvise", lambda fd, *args: invoke("posix_fadvise", fd))
+&gt;       with pytest.raises(TimeoutError) as raised:
+E       Failed: DID NOT RAISE TimeoutError
+
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02/proposed/benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py:397: Failed</failure></testcase><testcase classname="proposed.benchmarks.agent_supervisor.container_coding.test_terminal_setup_cache_advice" name="test_registered_advice_alarm_propagates_and_cleans_up[posix_fadvise-libraries]" time="0.006"><failure message="Failed: DID NOT RAISE TimeoutError">tiny_payload_population = (PosixPath('/tmp/pytest-of-barberb/pytest-360/test_registered_advice_alarm_p5/payloads'), [{'path': '000.bin', 'name':...ayload', 'uid': 1000, ...}, {'path': '005.bin', 'name': '005.bin', 'role': 'authored_payload', 'uid': 1000, ...}, ...])
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xecc3c930e6f0&gt;
+capsys = &lt;_pytest.capture.CaptureFixture object at 0xecc3c930e7e0&gt;
+scope = 'libraries', syscall = 'posix_fadvise'
+
+    @pytest.mark.parametrize("scope", ["archive", "codex", "libraries"])
+    @pytest.mark.parametrize("syscall", ["fdatasync", "posix_fadvise"])
+    def test_registered_advice_alarm_propagates_and_cleans_up(
+            tiny_payload_population, monkeypatch, capsys, scope, syscall):
+        """Invoke each real main's registered handler at the syscall boundary.
+    
+        The clock is injected; no real process-wide alarm or 60 second wait is
+        required. Selection uses tiny public fixtures, while the advice loops,
+        handler, exception identity, descriptor cleanup and timer cleanup are real.
+        """
+        root, rows = tiny_payload_population
+        module = {"archive": archive_files, "codex": native, "libraries": libraries}[scope]
+        registered, timers, calls, expired_errors = [], [], [], []
+        opened = set()
+        monkeypatch.setattr(module, "ROOT", str(root))
+        monkeypatch.setattr(module.signal, "signal", lambda sig, handler: registered.append((sig, handler)))
+        monkeypatch.setattr(module.signal, "setitimer", lambda timer, seconds: timers.append((timer, seconds)))
+        monkeypatch.setattr(os, "geteuid", lambda: 0)
+        monkeypatch.setattr(policy.platform, "machine", lambda: "aarch64")
+        original_root_fd = archive_files.root_fd
+        def tracked_root(path):
+            fd = original_root_fd(path)
+            opened.add(fd)
+            return fd
+        monkeypatch.setattr(archive_files if scope == "archive" else native, "root_fd", tracked_root)
+        open_owner = archive_files if scope == "archive" else native
+        open_name = "open_file" if scope == "archive" else "open_binary"
+        original_open = getattr(open_owner, open_name)
+        def tracked_open(*args):
+            fd = original_open(*args)
+            opened.add(fd)
+            return fd
+        monkeypatch.setattr(open_owner, open_name, tracked_open)
+        if scope == "archive":
+            (root / "source").mkdir()
+            inventory = []
+            for row in rows[:2]:
+                (root / row["path"]).rename(root / "source" / row["path"])
+                inventory.append(dict(path="source/" + row["path"], bytes=row["expected_bytes"],
+                                      mode=row["mode"], sha256=row["sha256"]))
+            manifest = dict(archive_sha256="a" * 64, setup_cache={"policy": policy.POLICY}, files=inventory)
+            raw = json.dumps(manifest).encode()
+            manifest_path = root / "setup-cache-manifest.json"
+            manifest_path.write_bytes(raw)
+            monkeypatch.setattr(sys, "argv", ["archive", str(manifest_path), hashlib.sha256(raw).hexdigest(), "a" * 64])
+            original_require = archive_files.require_file
+            def fixture_owner(info, row):
+                # The production archive is root-owned; these temporary test files
+                # belong to the test runner. Preserve all other metadata checks.
+                return original_require(SimpleNamespace(st_mode=info.st_mode, st_nlink=info.st_nlink,
+                    st_size=info.st_size, st_uid=0, st_gid=0), row)
+            monkeypatch.setattr(archive_files, "require_file", fixture_owner)
+        elif scope == "codex":
+            monkeypatch.setattr(sys, "argv", ["codex", str(root / "codex-cache-exposure.json"), "a" * 64])
+            monkeypatch.setattr(native, "read_receipt", lambda *args: {})
+            monkeypatch.setattr(native, "advise", lambda path, receipt: native.advise_selected(path, rows[:4], expected_count=4))
+        else:
+            monkeypatch.setattr(libraries, "ROWS", rows)
+        def invoke(name, fd):
+            calls.append((name, fd))
+            if name == syscall:
+                assert len(registered) == 1 and registered[0][0] == module.signal.SIGALRM
+                try:
+                    registered[0][1](module.signal.SIGALRM, None)
+                except TimeoutError as error:
+                    expired_errors.append(error)
+                    raise
+        monkeypatch.setattr(os, "fdatasync", lambda fd: invoke("fdatasync", fd))
+        monkeypatch.setattr(os, "posix_fadvise", lambda fd, *args: invoke("posix_fadvise", fd))
+&gt;       with pytest.raises(TimeoutError) as raised:
+E       Failed: DID NOT RAISE TimeoutError
+
+artifacts/source384-wheel-cache-production-draft-20261003/timeout-02/proposed/benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py:397: Failed</failure></testcase></testsuite></testsuites>
