@@ -1,0 +1,337 @@
+{
+  "actual_cgroups": {
+    "available_memory_mb": 9216,
+    "cpu_max": "500000 100000",
+    "detected_cpu_slots": 5,
+    "detected_total_memory_mb": 12288,
+    "memory_max": "12884901888"
+  },
+  "admission_estimate": {
+    "actual_native_admission_required": true,
+    "derived_default_headroom_mb": 2458,
+    "exact_admission_decision": false,
+    "live_available_memory_mb": 9216,
+    "minimum_available_memory_mb": 8602,
+    "requested_parent_memory_mb": 6144
+  },
+  "advantage_claimed": false,
+  "archive_cache": {
+    "advice_is_best_effort": true,
+    "advised_bytes": 3914232094,
+    "advised_files": 26905,
+    "archive_sha256": "a83b157f478dbcb869f134e71bfd02b17bdb7f82f3de8d281cc6202f66464d0b",
+    "body_reads": 0,
+    "body_writes": 0,
+    "cgroup_writes": false,
+    "freed_bytes_claimed": false,
+    "global_drop_caches": false,
+    "manifest_sha256": "4d13cfeb3ad2daf67a50c135babbf58c6a197a71f70376bc730051508ce8fb27",
+    "metadata_unchanged": true,
+    "schema": "manifest-cache-advice@1",
+    "seconds": 8.702661617004196,
+    "selected_bytes": 3914232094,
+    "selected_files": 26905
+  },
+  "archive_cache_error_count": 0,
+  "archive_cache_status": {
+    "candidate_sha256": "26f4b2c9a87611102e98aff6d18e4a409b2796fab2a4e64e3ae41a392f8ed742",
+    "returncode": 0
+  },
+  "artifact_directory": "/home/barberb/lift_coding/artifacts/source384-docker-native-library-cache-20261003",
+  "benchmark_result": false,
+  "cleanup": {
+    "no_matching_containers": true,
+    "receipt_present": true,
+    "scope": "Retained docker-ps filter observation; not a global process inventory."
+  },
+  "deadlines_seconds": {
+    "qualification_exec_seconds": 300,
+    "qualification_inner_seconds": 270,
+    "qualification_outer_seconds": 2300,
+    "source384_native_seconds": 90
+  },
+  "diagnostic_only": true,
+  "error": {
+    "error_phase": "initial_context",
+    "error_type": "LeaseTimeoutError"
+  },
+  "failure_resources": {
+    "available_memory_mb": 8637,
+    "cpu_slots": 5,
+    "cpu_stall_percent": 16.29,
+    "io_stall_percent": 0.02,
+    "memory_stall_percent": 0.1,
+    "total_memory_mb": 12288
+  },
+  "host_archive_generation": {
+    "actual_host_deployment_source_sha256": "bb4e4f845f03026572530b81fde6a540a2cd0ab89b17e606587ddfbc33dfc285",
+    "archive_deployment_source_sha256": "c4e3dcc3aa2fae3d77fa538ec4855778d26a5cd70392ff54d4ae6b399653869d",
+    "archive_not_rebuilt": true,
+    "archive_sha256": "a83b157f478dbcb869f134e71bfd02b17bdb7f82f3de8d281cc6202f66464d0b",
+    "archived_deployment_module_not_used_to_install_python": true,
+    "selected_source384_owners_unchanged": true
+  },
+  "inference": {
+    "coverage": null,
+    "model_loads": null,
+    "native_worker_executed": null,
+    "raw_export_publicly_included": false,
+    "verified": false
+  },
+  "input_preservation": {
+    "original_count": 218,
+    "original_inputs_equal_across_deployment": true,
+    "original_inventory_sha256": "677e4399f7f38d2bf55fa7cf82c41d8d30bfa8cb97aa8e1faf9b01d7c858e13d",
+    "reported_preserved": true,
+    "retained_inventory_sha256": "677e4399f7f38d2bf55fa7cf82c41d8d30bfa8cb97aa8e1faf9b01d7c858e13d",
+    "scope": "Full original input inventory compared across deployment; no post-agent full-tree claim."
+  },
+  "native_library_cache": {
+    "advice_is_best_effort": true,
+    "advised_bytes": 414442268,
+    "advised_files": 7,
+    "body_read_bytes": 414442268,
+    "body_reads_after_advice": 0,
+    "body_writes": 0,
+    "freed_bytes_claimed": false,
+    "global_drop_caches": false,
+    "hashed_files": 7,
+    "metadata_unchanged": true,
+    "schema": "pinned-native-libraries-cache-advice@1",
+    "seconds": 0.20662395600083983,
+    "selected_bytes": 414442268,
+    "selected_files": 7,
+    "source_pins_sha256": "abbb454825437057bbf33cdbd30aa5ff76fb1d1005724d602b7bc4c8bf8743c9"
+  },
+  "native_library_cache_error_count": 0,
+  "native_library_cache_status": {
+    "candidate_sha256": "f848ab59419a86d8c1329e5eecca01bafccce7400fc72f20991ebb9da4528cea",
+    "returncode": 0
+  },
+  "native_source384_phase_passed": false,
+  "official_verifier_executed": false,
+  "payload_policy": "No raw source, embeddings, weights, native report bodies, credentials or verifier inputs copied. Model/coverage claims require exact retained-native-export verification.",
+  "process": {
+    "returncode": 1,
+    "seconds": 368.04462550800235,
+    "source_pins_unchanged": true
+  },
+  "production_qualification_claimed": false,
+  "provider_binary_cache": {
+    "advice_is_best_effort": true,
+    "advised_bytes": 628736528,
+    "advised_files": 4,
+    "body_read_bytes": 628736528,
+    "body_writes": 0,
+    "freed_bytes_claimed": false,
+    "global_drop_caches": false,
+    "metadata_unchanged": true,
+    "post_boundary_receipt_sha256": "06b48e1be4d82bad4fcb1c4b86a879ec47622f82bb69ae96e655665f0e6a65eb",
+    "schema": "pinned-native-codex-cache-advice@1",
+    "seconds": 0.39337856200290844,
+    "selected_bytes": 628736528,
+    "selected_files": 4
+  },
+  "provider_binary_cache_error_count": 0,
+  "provider_binary_cache_status": {
+    "candidate_sha256": "1c13733b9789ee8199a4ec60fe1bb45958940d018caffa850fd10926beaa7057",
+    "post_boundary_receipt_sha256": "06b48e1be4d82bad4fcb1c4b86a879ec47622f82bb69ae96e655665f0e6a65eb",
+    "returncode": 0
+  },
+  "provider_binary_exposure_present": true,
+  "provider_calls_reported": 0,
+  "raw_qualifier_passed": false,
+  "receipt_pins": {
+    "cache-advice-status.json": {
+      "bytes": 112,
+      "sha256": "0ba37afef56ec3552a0c76c06496ecc39c5c3f676bd24da828d8e0d395698119"
+    },
+    "cache-advice.json": {
+      "bytes": 574,
+      "sha256": "e4cf96b5a289e398a97a81958dbc7fa8045826de1925b25bc7182e8eefda010e"
+    },
+    "codex-cache-advice-status.json": {
+      "bytes": 214,
+      "sha256": "f02d4323ba2be9531b67acd2d198479639726bf8f9f22207f77d3dd20cfce5b6"
+    },
+    "codex-cache-advice.json": {
+      "bytes": 2068,
+      "sha256": "73f6e50304ae4c82d17a9a7843449dacf6f1e5068c1522e8fd7a0d713fd5a74b"
+    },
+    "containers-after.json": {
+      "bytes": 36,
+      "sha256": "11c8e4d6b9ed9a59fde466cfd0aa636f30594fd28fe2d25fb0490db81ffc2463"
+    },
+    "docker-01/admission-estimate.json": {
+      "bytes": 282,
+      "sha256": "ce0d4646b683631143a6b4ce961bff72bf1d072afda0dd86fb3a08d3b958f9c9"
+    },
+    "docker-01/cache-resources-after.json": {
+      "bytes": 2875,
+      "sha256": "d1fa2f695a54989008bd7a8b2e80924dfbc914de390bc7b7dceef9e69f89faa3"
+    },
+    "docker-01/cache-resources-before.json": {
+      "bytes": 2872,
+      "sha256": "8e73a5509ca7e4f4f50e1ce2d9f54713a6de6f1298267eec402458f494d07490"
+    },
+    "docker-01/codex-cache-resources-after.json": {
+      "bytes": 2873,
+      "sha256": "e53d47fa71eb0b0678c9091d9c2363cca5d36336844b413c378c3b22c9594066"
+    },
+    "docker-01/codex-cache-resources-before.json": {
+      "bytes": 2875,
+      "sha256": "6470d5f9de03aa3bb9db94b4d2a2dff1b15accd71b7f9babfc3aa439c1bd5c7f"
+    },
+    "docker-01/deployment/deployment.json": {
+      "bytes": 73067,
+      "sha256": "6b0c716b2158e2c5f0a97761292b89a3d8f4c609a2a19167601c3dcd466d71ba"
+    },
+    "docker-01/detailed-resources.json": {
+      "bytes": 2874,
+      "sha256": "16fcea43c5cba63bc1f87b9948e8692b667200dc56bf5152e8114821ccc18f06"
+    },
+    "docker-01/library-cache-resources-after.json": {
+      "bytes": 2873,
+      "sha256": "2a1e60e95177b10790cbb091d8f22f17290a4d47c99b618fe0d2512195e28575"
+    },
+    "docker-01/library-cache-resources-before.json": {
+      "bytes": 2874,
+      "sha256": "891de275df7c101ffc4b73ff7c6be03584b2bc7529e35d9398ce77a821e1353b"
+    },
+    "docker-01/qualification.json": {
+      "bytes": 77488,
+      "sha256": "bb4ed582392a5755988b1cab4446c369be847007303ecf8ea6581cd0cab73bd2"
+    },
+    "docker-01/resources.json": {
+      "bytes": 249,
+      "sha256": "bc1a84ff780465797a6cd6673b4e6d0a8eed40c4d9862ca33b55fe33e01a2617"
+    },
+    "docker-01/source384-context.json": {
+      "bytes": 2244,
+      "sha256": "b7cf1007baeed3d6751220ee3790685238a949c6a0b40cdf77ec29d0fa142a79"
+    },
+    "docker-01/source384-result.json": {
+      "bytes": 2101,
+      "sha256": "a6d1217f7af69c20594b1314ac1c1dae95e0541c742fdfc1d267774631fa1bda"
+    },
+    "docker-01/worker-boundary/installation/native-codex-binary.log": {
+      "bytes": 793,
+      "sha256": "06b48e1be4d82bad4fcb1c4b86a879ec47622f82bb69ae96e655665f0e6a65eb"
+    },
+    "exit.json": {
+      "bytes": 150,
+      "sha256": "191ae45bdd13de0b7211c2a476a6285485f79823b6b6ce61f798fe7d3eb524fc"
+    },
+    "failure.json": {
+      "bytes": 119,
+      "sha256": "f3a3eab34ce3c6937fbf7a4c99069649c18cccd3d61b3182ec019257a06b3f4f"
+    },
+    "host-archive-provenance.json": {
+      "bytes": 968,
+      "sha256": "504a5391782eebc568d6dd475d676ee4859072e5123cd5233427805f1691dd00"
+    },
+    "library-cache-advice-status.json": {
+      "bytes": 112,
+      "sha256": "c7151174b27b449db0b867255229a23c0fdd304f2e60dce57d170b64d84fb8c4"
+    },
+    "library-cache-advice.json": {
+      "bytes": 3180,
+      "sha256": "95c47257a7342f7264afd750a677a258d4a4c8b7881edd8035d7691fd28cc8af"
+    },
+    "post-context-scheduler.json": {
+      "bytes": 1010,
+      "sha256": "e6ec48bb59b218b4cd2736d36a47574561e7ba1881fb6bb59c08becbb0401155"
+    },
+    "scope.json": {
+      "bytes": 1641,
+      "sha256": "8023f84341d17b9cd875b6488adfa4282e106a1e66690647ed10a30cefcf8345"
+    },
+    "verdict.json": {
+      "bytes": 4750,
+      "sha256": "4a0ae85f3878c4f4924aa8d4396a4eeb4833e8e7a339e505a5e83c5eddc7f72f"
+    }
+  },
+  "reported_failure_boundary": "post_worker_source_observation_child_lease_refused",
+  "resource_profile": "source384-5cpu-12gib@1",
+  "resource_samples": {
+    "cache-resources-after.json": {
+      "available_memory_mb": 8193,
+      "cpu_slots": 5,
+      "cpu_stall_percent": 21.94,
+      "io_stall_percent": 4.83,
+      "memory_stall_percent": 0.0,
+      "total_memory_mb": 12288
+    },
+    "cache-resources-before.json": {
+      "available_memory_mb": 4430,
+      "cpu_slots": 5,
+      "cpu_stall_percent": 21.9,
+      "io_stall_percent": 0.15,
+      "memory_stall_percent": 0.0,
+      "total_memory_mb": 12288
+    },
+    "codex-cache-resources-after.json": {
+      "available_memory_mb": 8810,
+      "cpu_slots": 5,
+      "cpu_stall_percent": 22.31,
+      "io_stall_percent": 4.83,
+      "memory_stall_percent": 0.0,
+      "total_memory_mb": 12288
+    },
+    "codex-cache-resources-before.json": {
+      "available_memory_mb": 8192,
+      "cpu_slots": 5,
+      "cpu_stall_percent": 21.94,
+      "io_stall_percent": 4.83,
+      "memory_stall_percent": 0.0,
+      "total_memory_mb": 12288
+    },
+    "detailed-resources.json": {
+      "available_memory_mb": 9216,
+      "cpu_slots": 5,
+      "cpu_stall_percent": 22.31,
+      "io_stall_percent": 3.96,
+      "memory_stall_percent": 0.0,
+      "total_memory_mb": 12288
+    },
+    "library-cache-resources-after.json": {
+      "available_memory_mb": 9216,
+      "cpu_slots": 5,
+      "cpu_stall_percent": 22.31,
+      "io_stall_percent": 3.96,
+      "memory_stall_percent": 0.0,
+      "total_memory_mb": 12288
+    },
+    "library-cache-resources-before.json": {
+      "available_memory_mb": 8810,
+      "cpu_slots": 5,
+      "cpu_stall_percent": 22.31,
+      "io_stall_percent": 4.83,
+      "memory_stall_percent": 0.0,
+      "total_memory_mb": 12288
+    }
+  },
+  "scheduler_after_unwind": {
+    "counts": {
+      "active_child_lease_count": 0,
+      "active_lease_count": 0,
+      "active_root_lease_count": 0,
+      "waiting_request_count": 0
+    },
+    "observation": "after_context_unwind",
+    "proof_backoff": {
+      "reason": "proof_memory_headroom",
+      "until": 1791035152.0825527
+    },
+    "proof_memory_headroom_mb": 2458,
+    "scope": "Snapshot after context unwound; not the actual child admission state or memory sample."
+  },
+  "schema": "source-free-cache-diagnostic-outcome@2",
+  "timings_seconds": {
+    "deployment": 192.10708819700085,
+    "phase_seconds": 97.01350516800449,
+    "prepare_seconds": 10.435561653997866,
+    "seconds": 108.46736702099588
+  },
+  "token_counters": null
+}

@@ -1,0 +1,32 @@
+{
+  "files": [
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/docker-01/deployment/deployment.json",
+      "bytes": 73067,
+      "generation": "archive-only",
+      "original_and_retained_equal": true,
+      "original_count": 218,
+      "reason": "Duplicative deployment/source-hash inventory body; exact equality independently checked in source-free outcome.",
+      "sha256": "876d3ab8d65b810eb87715c2f30ab3f2f6960b2f2efce56e93692bae8ef41327"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/docker-01/deployment/deployment.json",
+      "bytes": 73066,
+      "generation": "binary-receipt-refusal",
+      "original_and_retained_equal": true,
+      "original_count": 218,
+      "reason": "Duplicative deployment/source-hash inventory body; exact equality independently checked in source-free outcome.",
+      "sha256": "a4aa71f4ffcdb5520c36a091c9bdf37809f069b2ba436987518d252893c54b8e"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/docker-01/deployment/deployment.json",
+      "bytes": 73066,
+      "generation": "four-binary-child-refusal",
+      "original_and_retained_equal": true,
+      "original_count": 218,
+      "reason": "Duplicative deployment/source-hash inventory body; exact equality independently checked in source-free outcome.",
+      "sha256": "e776f21b27b6cc9a24758da8abe5982109b0233f9a80f15d5fa6fbbd9a21bb90"
+    }
+  ],
+  "schema": "omitted-original-receipt-pins@1"
+}

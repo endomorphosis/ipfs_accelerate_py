@@ -1,0 +1,44 @@
+{
+  "controls": {
+    "process_seconds": 0.21785216800344642,
+    "qualification_scope": "authored local fixtures and exact isolated bootstrap; no actual installed-binary Docker run yet",
+    "raw_log": "controls-03.log",
+    "reported_passed": 14,
+    "reported_run_seconds": 0.144,
+    "source_receipt": "controls-03.json",
+    "wrapper_generation": "controls-03 binds preceding wrapper 8de59aad; final wrapper cfdae554 changes descriptive docstring and scope labels only"
+  },
+  "decision": "no_blocker_for_root_authorized_bounded_diagnostic",
+  "limitations": [
+    "advice is best effort; no assertion of resident pages or freed memory",
+    "four public binary bodies are intentionally read for hash validation; no broad private or credential-file scope",
+    "container file sizes must be measured; host sizing hypothesis is not a container identity claim",
+    "fixed host UV layout differs from the old immutable a83 archive and must remain explicit in run provenance",
+    "this is an off-tree diagnostic, not production integration or benchmark qualification",
+    "root retains launch authorization; this review does not claim a Docker run occurred"
+  ],
+  "production_files_modified": false,
+  "read_only": true,
+  "reviewed_scope": [
+    "strict version-0.158.0 independent two-name SHA pins and four-copy selection",
+    "fresh post-worker-boundary exposure receipt with closed schema and two successful executable checks",
+    "bounded root-owned singleton 0644 receipt opened without following links and rechecked after read",
+    "canonical runtime root and nofollow/noatime executable descriptors with ownership/mode/link/size fences",
+    "four distinct held descriptors, maximum 512 MiB each and 2 GiB total, streaming hashes before all hints",
+    "all body hashes match independent receipt pins; path and metadata checks around hints; no body reads after first hint",
+    "stdlib-only -I -S -B bootstrap verifies both helper bytes and explicitly binds cache_candidate through sys.modules",
+    "unchanged archive helper, original task population, source admission thresholds, resource profile and native context deadline",
+    "bounded telemetry, ordinary cleanup and explicit archive-versus-native-body-read scope"
+  ],
+  "reviewer": "/root/restart_cid",
+  "schema": "source384-native-codex-cache-independent-review@1",
+  "source_sha256": {
+    "cache_candidate.py": "26f4b2c9a87611102e98aff6d18e4a409b2796fab2a4e64e3ae41a392f8ed742",
+    "codex_cache_candidate.py": "254f38d4651348c04f04774d053e233cd10aa42479997851ed9b8a18c3fe273e",
+    "controls-03.json": "87db2c0ed0c3fedce76ba38e1d47da9525aa0ea1d231fd82eae6776cf0a40540",
+    "controls-03.log": "67c9f1d1052a723e4344c48b465bf0dc4b2d4341601c02ae6ff6badeb56e31ce",
+    "run_diagnostic.py": "cfdae5542a266ede8131645cbf95842d285503385b5b7b511d637e84030b1b6d",
+    "test_codex_cache_candidate.py": "daeaa547694df313c1499030a580128824b43dc95df897f2a563734afd8e4e8b"
+  },
+  "tests_rerun_by_reviewer": false
+}

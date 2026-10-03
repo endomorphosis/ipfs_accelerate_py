@@ -365,3 +365,53 @@ is expected; this control does not claim a successful Python installation.
 The [closed layout evidence](../../../docs/agent_supervisor/evidence/source384-uv-layout-fix-20261003/README.md)
 separates these results from the subsequent cache and inference qualification.
 The layout fix alone does not establish sufficient memory or a task score.
+
+## Cache diagnostics after the layout fix
+
+Three subsequent instrumented runs retain the five-CPU/12-GiB profile and
+all admission thresholds and deadlines. They use the corrected host deployer
+with the preceding immutable `a83b157f` archive; they do not qualify a new
+production archive or cache policy.
+
+Archive-only advice succeeds for 26,905 files, then the Source384 root lease
+is refused. Available memory at failure is 8,195 MiB against the existing
+8,602-MiB requirement. Advice to four additional, independently pinned public
+Codex executable copies first refuses an unprotected transport receipt. The
+retry fixes only that receipt's ownership and mode, then passes all four
+executable checks and advice operations. The corresponding helper suites pass
+12, 14 and 18 controls per generation; these overlapping counts are separate.
+
+In the retry, available memory rises from 5,256 to 8,194 MiB across archive
+advice and then to 8,812 MiB across executable advice. The root lease is
+admitted, but the first index child lease times out before source capture,
+publication or numerical inference. Owner-store initialization may already
+have occurred. The later failure-handling sample is 8,592 MiB; it is not the
+exact child-admission sample. The scheduler adds zero new global memory for
+children while conservatively checking outstanding root reservations plus
+headroom. That behavior is consistent with the observed shortfall and does
+not establish a child double-counting defect.
+
+The [closed diagnostic evidence](../../../docs/agent_supervisor/evidence/source384-setup-cache-diagnostics-20261003/README.md)
+preserves all three failures separately. Successful advice counts and logical
+byte lengths are not measurements of reclaimed memory. No inference artifact,
+model coverage, provider use, official task score or token improvement is
+qualified by these runs. All containers were removed. Further library-cache
+experiments remain separate until their outcomes and production integration
+are qualified.
+
+The next [seven-library diagnostic](../../../docs/agent_supervisor/evidence/source384-native-library-cache-diagnostic-20261003/README.md)
+adds three installed DuckDB extension copies and four Torch libraries. Their
+414,442,268 bytes match independent hashes from the pinned archive and CPU
+wheel. All three advice stages pass, and available memory before context is
+9,216 MiB. Twenty-five helper controls pass with no skips.
+
+This run returns from index preparation and the numerical worker, and validates
+the worker's output shape. The following source-observation child lease then
+times out, before publishing an inference artifact. The retained scheduler
+snapshot explicitly records `proof_memory_headroom` after unwind; the later
+8,637-MiB memory sample is not the original decision sample. Initial context
+lasts 97.014 seconds and the probe 108.467 seconds. All leases and waiters are
+released and the container is removed. Control-flow evidence of a returned
+worker does not establish published inference, model-load counts or coverage;
+those counters remain unavailable. This run has zero provider calls and no
+official verifier. The production cache integration remains unqualified.

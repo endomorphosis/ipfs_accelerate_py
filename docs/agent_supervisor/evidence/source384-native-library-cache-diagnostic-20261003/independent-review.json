@@ -1,0 +1,54 @@
+{
+  "decision": "no_blocker_for_previously_root_authorized_diagnostic",
+  "limitations": [
+    "no actual new Docker result yet",
+    "logical sizes/advice syscall success do not prove reclaimed memory",
+    "post-context telemetry is not lease-time admission evidence",
+    "old immutable a83 archive uses intentionally different current host UV deployer; this remains an off-tree experiment",
+    "native context and subsequent benchmark remain unqualified until their own complete receipts"
+  ],
+  "production_files_modified": false,
+  "read_only_review": true,
+  "reported_controls": {
+    "passed": 25,
+    "prior_generation": "controls-01 retains24 pass before optional telemetry error-write guard",
+    "process_seconds": 0.3696732229946065,
+    "receipt": "controls-02.json",
+    "seconds": 0.294
+  },
+  "reviewer": "/root/restart_cid",
+  "schema": "finite-native-library-cache-independent-review@1",
+  "scope": [
+    "four-Codex adapter retains exact prior receipt/selection/pins and semantic refusal fences",
+    "shared finite-row engine validates closed row shapes, exact4or7 count, distinct normalized paths, bounded sizes and fixed ownership/modes",
+    "seven fixed paths map exactly to three archived extension SHA/byte rows and four named CPU-wheel member SHA/byte/mode rows",
+    "all bodies SHA verified before first hint; held nofollow/noatime descriptors and metadata/path checks retained; no body rereads after hints",
+    "exact isolated loader binds all three helper modules by SHA without ambient path additions",
+    "wrapper calls advice after worker boundary, records archive/four-binary/seven-library receipts and bounded resource observations separately",
+    "post-unwind scheduler owner snapshot selects source-free fields; normal owner stale recovery may occur after context ends",
+    "optional scheduler failure and failed error-receipt write preserve primary success or exact exception",
+    "no provider/verifier, benchmark-input, credential, broad home/cache/package scan or cgroup-policy mutation added"
+  ],
+  "sha256": {
+    "cache_candidate.py": "26f4b2c9a87611102e98aff6d18e4a409b2796fab2a4e64e3ae41a392f8ed742",
+    "codex_cache_candidate.py": "1c13733b9789ee8199a4ec60fe1bb45958940d018caffa850fd10926beaa7057",
+    "controls-02.json": "3647ff87be4c2b850a4361955bdbc860b9b2226603d707d0beb9b81557b5e86a",
+    "controls-02.log": "c1eba63b0005208ac6285eb5818a6d042e76d8a18d436143876520ed4ba2f3c9",
+    "finite-library-source-pins.json": "abbb454825437057bbf33cdbd30aa5ff76fb1d1005724d602b7bc4c8bf8743c9",
+    "native_library_cache_candidate.py": "f848ab59419a86d8c1329e5eecca01bafccce7400fc72f20991ebb9da4528cea",
+    "pin_native_libraries.py": "9067bcab0b7b37965b26d64d641e34da9a4aee9fad9fbd9aec0e25166eed6602",
+    "run_diagnostic.py": "a7e586d3dd735fb426f137afe0090182b62c0bcc15cd513b9d09218cefeae871",
+    "source-pin-reproduction.json": "28759d38c3746b324aa638ac62ba4b1855c8a3a34086fc05fe6a9dd43816d699",
+    "test_codex_cache_candidate.py": "11cf109376fc0ad2e530078acd32af0ce2c6a7a0c93400e15c2995d75543026e",
+    "test_native_library_cache_candidate.py": "9abc44d21fd96a5a779babacd423a65b96f49012223f8561a17b5182ef2f6e77"
+  },
+  "source_provenance": {
+    "additional_selected_files": 7,
+    "body_reads_required": true,
+    "independent_reviewer_large_wheel_rehash": false,
+    "logical_bytes": 414442268,
+    "reproduction_script_reviewed": true,
+    "source_pins_reproduction_reported_exact": true
+  },
+  "tests_rerun_by_reviewer": false
+}

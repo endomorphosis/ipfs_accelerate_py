@@ -1,0 +1,68 @@
+{
+  "actual_resource_profile": "5 CPU /12288 MiB",
+  "admission_or_deadline_changes": false,
+  "advantage_claimed": false,
+  "advised_bytes_are_freed_bytes": false,
+  "all_containers_removed": true,
+  "all_generations_qualified": false,
+  "archived_deployer_sha256": "c4e3dcc3aa2fae3d77fa538ec4855778d26a5cd70392ff54d4ae6b399653869d",
+  "benchmark_result": false,
+  "completion_authority": false,
+  "coverage": null,
+  "diagnostic_only": true,
+  "excluded": [
+    "private auth",
+    "task/instruction/source/diff bodies",
+    "hidden verifier inputs",
+    "Source384 inference/report bodies",
+    "embeddings and checkpoints",
+    "executable or runtime archive payloads",
+    "databases",
+    "pending seven-payload experiment"
+  ],
+  "execution_authority": false,
+  "generations": [
+    {
+      "archive_advised_bytes": 3914232094,
+      "archive_hints": 26905,
+      "controls_inherited_unchanged": true,
+      "directory": "archive-only",
+      "failure_available_mib": 8195,
+      "helper_controls": 12,
+      "minimum_root_mib": 8602,
+      "outcome": "root lease refused"
+    },
+    {
+      "archive_hints": 26905,
+      "directory": "binary-receipt-refusal",
+      "helper_controls": 14,
+      "metadata_limit": "Uploaded source was0664; destination stat was not retained, so exact destination ownership is not retrospectively asserted.",
+      "native_binary_body_reads": 0,
+      "native_binary_hints": 0,
+      "native_context_reached": false,
+      "outcome": "public receipt protection refused"
+    },
+    {
+      "archive_hints": 26905,
+      "directory": "four-binary-child-refusal",
+      "failure_available_mib": 8592,
+      "helper_controls": 18,
+      "index_snapshot_publication_or_model_inference_reached": false,
+      "native_binary_hashed_and_advised_bytes": 628736528,
+      "native_binary_hints": 4,
+      "outcome": "root admitted; first index child lease refused",
+      "owner_store_initialization_may_have_occurred": true
+    }
+  ],
+  "host_deployer_sha256": "bb4e4f845f03026572530b81fde6a540a2cd0ab89b17e606587ddfbc33dfc285",
+  "model_loads": null,
+  "official_verifier_executed": false,
+  "original_inputs_preserved_across_each_deployment": 218,
+  "production_cache_policy_changed": false,
+  "proof_authority": false,
+  "provider_calls": 0,
+  "runtime_archive_sha256": "a83b157f478dbcb869f134e71bfd02b17bdb7f82f3de8d281cc6202f66464d0b",
+  "schema": "completed-setup-cache-diagnostics-evidence@1",
+  "seven_payload_experiment_included": false,
+  "uv_fix_evidence_manifest_sha256": "07bf0fc0629bc12c13dad2881c55d8b96346e3720a961039710ec7b534539ac0"
+}

@@ -1,0 +1,19 @@
+test_actual_syscalls_exact_four_bytes_metadata_parity (test_codex_cache_candidate.CodexCacheTests.test_actual_syscalls_exact_four_bytes_metadata_parity) ... ok
+test_ambiguous_vendor_refused (test_codex_cache_candidate.CodexCacheTests.test_ambiguous_vendor_refused) ... ok
+test_body_corruption_refuses_before_any_hint (test_codex_cache_candidate.CodexCacheTests.test_body_corruption_refuses_before_any_hint) ... ok
+test_descriptors_closed_on_hash_failure (test_codex_cache_candidate.CodexCacheTests.test_descriptors_closed_on_hash_failure) ... ok
+test_exact_isolated_loader_binds_base_and_candidate (test_codex_cache_candidate.CodexCacheTests.test_exact_isolated_loader_binds_base_and_candidate) ... ok
+test_hint_error_is_explicit_not_success (test_codex_cache_candidate.CodexCacheTests.test_hint_error_is_explicit_not_success) ... ok
+test_leaf_symlink_hardlink_and_mode_refused (test_codex_cache_candidate.CodexCacheTests.test_leaf_symlink_hardlink_and_mode_refused) ... ok
+test_no_reads_after_first_hint (test_codex_cache_candidate.CodexCacheTests.test_no_reads_after_first_hint) ... ok
+test_noatime_permission_failure_has_no_fallback (test_codex_cache_candidate.CodexCacheTests.test_noatime_permission_failure_has_no_fallback) ... ok
+test_parent_symlink_refused (test_codex_cache_candidate.CodexCacheTests.test_parent_symlink_refused) ... ok
+test_partial_read_and_metadata_drift_refused_before_hint (test_codex_cache_candidate.CodexCacheTests.test_partial_read_and_metadata_drift_refused_before_hint) ... ok
+test_receipt_leaf_guard_and_hash (test_codex_cache_candidate.CodexCacheTests.test_receipt_leaf_guard_and_hash) ... ok
+test_size_and_owner_bounds (test_codex_cache_candidate.CodexCacheTests.test_size_and_owner_bounds) ... ok
+test_wrong_and_extra_duplicate_receipt_rows_refuse_before_hint (test_codex_cache_candidate.CodexCacheTests.test_wrong_and_extra_duplicate_receipt_rows_refuse_before_hint) ... ok
+
+----------------------------------------------------------------------
+Ran 14 tests in 0.144s
+
+OK

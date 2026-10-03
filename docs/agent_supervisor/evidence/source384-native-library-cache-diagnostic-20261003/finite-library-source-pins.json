@@ -1,0 +1,53 @@
+{
+  "archive_manifest_sha256": "4d13cfeb3ad2daf67a50c135babbf58c6a197a71f70376bc730051508ce8fb27",
+  "extensions": [
+    {
+      "bytes": 32143862,
+      "mode": 420,
+      "path": "extensions/ducklake.duckdb_extension",
+      "sha256": "d0b57c8e261b89a1ae367c7224f0857cfde72ab6cf2609f188e0de9b897b1088"
+    },
+    {
+      "bytes": 19861758,
+      "mode": 420,
+      "path": "extensions/httpfs.duckdb_extension",
+      "sha256": "eba6e263e395a83966090f1f11ade63630b1b21422f0f2813858d179d42ea1e9"
+    },
+    {
+      "bytes": 29708110,
+      "mode": 420,
+      "path": "extensions/quack.duckdb_extension",
+      "sha256": "41b2b9292bfb860c5ca8c5f818f9dd7a2c6bc24f9c750cffbc3169286fe59f08"
+    }
+  ],
+  "provider_calls": 0,
+  "schema": "finite-native-library-source-pins@1",
+  "torch": [
+    {
+      "bytes": 262620152,
+      "mode": 493,
+      "sha256": "5750e23245c46c34120d6a11f8389bac3493d000ea93ebfbe129a94e61f2e784",
+      "wheel_member": "torch/lib/libtorch_cpu.so"
+    },
+    {
+      "bytes": 28237672,
+      "mode": 493,
+      "sha256": "2634c578f87e437467f899c655240aaca2f7756c94388dd47af908bd24d0bc8b",
+      "wheel_member": "torch/lib/libtorch_python.so"
+    },
+    {
+      "bytes": 24020337,
+      "mode": 493,
+      "sha256": "7a6446210edb096b85c713c872f0dfd3b3e0c963a77d2629dfaf83380c441746",
+      "wheel_member": "torch/lib/libopenblas.so.0"
+    },
+    {
+      "bytes": 17850377,
+      "mode": 493,
+      "sha256": "cd83d6783a1acd1b9c4a6291b2567beb1c4a4ca98f82e3ccb46cd347b048c35d",
+      "wheel_member": "torch/lib/libarm_compute.so"
+    }
+  ],
+  "wheel_members_read": 4,
+  "wheel_sha256": "6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604"
+}

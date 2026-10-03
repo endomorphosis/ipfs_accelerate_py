@@ -1,0 +1,116 @@
+{
+  "archive_advice": {
+    "advised_bytes": 3914232094,
+    "advised_files": 26905,
+    "errors": [],
+    "seconds": 9.561415908996423
+  },
+  "benchmark_result": false,
+  "container_removed": true,
+  "failure_location": "codebase_ir._prepare -> acquire_codebase_resources -> parent_lease.acquire_child",
+  "failure_resources": {
+    "available_memory_mb": 8592,
+    "cpu_slots": 5,
+    "cpu_stall_percent": 36.91,
+    "io_stall_percent": 0.34,
+    "memory_stall_percent": 0.01,
+    "total_memory_mb": 12288
+  },
+  "files": {
+    "after-pins.json": "3fa6e6ff13969b96118f4a804fa61344f6d95abe6c32d1b20abee50f8358c5ed",
+    "before-pins.json": "3fa6e6ff13969b96118f4a804fa61344f6d95abe6c32d1b20abee50f8358c5ed",
+    "cache-advice.json": "7abe16de88fd682dc09a554dbe94793e114e391cf54c396a6b968a6ca2f0edb1",
+    "codex-cache-advice.json": "be243858c4f48eb5fc1671f2fd851a786b5790d39f55e1a84384251ea17ba301",
+    "containers-after.json": "11c8e4d6b9ed9a59fde466cfd0aa636f30594fd28fe2d25fb0490db81ffc2463",
+    "controls-02.json": "7d2b42f4198a8c87abbbd18ee18cd3fa885be1bdb276b43c6f07413990367486",
+    "docker-01/cache-resources-after.json": "b72a74c7b4c867f541583de6d13f58ba2b603ef925a09683c4530febef83a0a2",
+    "docker-01/cache-resources-before.json": "fe99e4f13230b7acdfcc62994896179a3892625936cf74938bda3aeeb6e74ace",
+    "docker-01/codex-cache-resources-after.json": "a2663d8c574a9fca1ae41b83646b74375b3eecc1ac9e498f45ae764ef580f516",
+    "docker-01/codex-cache-resources-before.json": "51d06c334e0cc9a60d2a201d1d53eb59343d89663d2ffc754668e8ed35332b7a",
+    "docker-01/detailed-resources.json": "802d1a60aa6722568fbfb36869e7075fcb7187f25c8448c847532d18e4997b4b",
+    "docker-01/source384-context.json": "b72eb0e54f8127b386eb11d86f0a9a1f8010410eeb65c48d9930a5128e9e01ab",
+    "docker-01/source384-probe.stdout": "d512f4a2f48e7eaac1a04a1fa8dbb7626d140c9b276ce09f7a64d67e7384aad5",
+    "exit.json": "66a7bf4e31e107d7c3697ea68bd02dac7cc09f17eba1d4d947ac8252d966ddaf",
+    "independent-review.json": "6ea0dc438ecfbde321fa45ebb3a181c22f0fa05f7cb2ee7a7feb973fdd02cdc1"
+  },
+  "freed_bytes_claimed": false,
+  "indexing_started": false,
+  "initial_context_seconds": 37.20931221700448,
+  "interpretation": "Child inherits the parent reservation; scheduler adds zero extra demand for child but rechecks headroom plus outstanding roots. The final sample is10MiB below unchanged8602MiB threshold. No evidence of child double counting. This is one failed diagnostic, not inference or benchmark qualification.",
+  "memory_mb": {
+    "after_archive": 8194,
+    "after_native_binaries": 8812,
+    "before_archive": 5256,
+    "before_native_binaries": 8194,
+    "before_native_context": 8811,
+    "failure": 8592,
+    "minimum_with_root_outstanding": 8602,
+    "proof_headroom": 2458,
+    "root_reservation": 6144
+  },
+  "native_public_binaries": {
+    "advice_is_best_effort": true,
+    "advised_bytes": 628736528,
+    "advised_files": 4,
+    "atime_preserved_with_noatime": true,
+    "body_read_bytes": 628736528,
+    "body_reads_after_advice": 0,
+    "body_writes": 0,
+    "codex_version": "0.158.0",
+    "credential_contents_read": false,
+    "errors": [],
+    "files": [
+      {
+        "bytes": 247446792,
+        "name": "codex",
+        "path": "home/.nvm/versions/node/v22.23.3/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex",
+        "role": "vendor",
+        "sha256": "0059c73b149a1433b634e26ad8a715e02717a9920665a9cc5676941db03c45cd",
+        "uid": 1000
+      },
+      {
+        "bytes": 66921472,
+        "name": "codex-code-mode-host",
+        "path": "home/.nvm/versions/node/v22.23.3/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex-code-mode-host",
+        "role": "vendor",
+        "sha256": "68237b34d0bc182e99c43ca2197a25120339c154dd3fc29f908c2a1b022efa5b",
+        "uid": 1000
+      },
+      {
+        "bytes": 247446792,
+        "name": "codex",
+        "path": "provider-bin/codex",
+        "role": "exposed",
+        "sha256": "0059c73b149a1433b634e26ad8a715e02717a9920665a9cc5676941db03c45cd",
+        "uid": 0
+      },
+      {
+        "bytes": 66921472,
+        "name": "codex-code-mode-host",
+        "path": "provider-bin/codex-code-mode-host",
+        "role": "exposed",
+        "sha256": "68237b34d0bc182e99c43ca2197a25120339c154dd3fc29f908c2a1b022efa5b",
+        "uid": 0
+      }
+    ],
+    "freed_bytes_claimed": false,
+    "global_drop_caches": false,
+    "hashed_files": 4,
+    "metadata_unchanged": true,
+    "post_boundary_receipt_sha256": "06b48e1be4d82bad4fcb1c4b86a879ec47622f82bb69ae96e655665f0e6a65eb",
+    "schema": "pinned-native-codex-cache-advice@1",
+    "seconds": 0.3890260869957274,
+    "selected_bytes": 628736528,
+    "selected_files": 4
+  },
+  "native_seconds": 48.696872755994264,
+  "neural_inference_executed": false,
+  "official_verifier_executed": false,
+  "outcome": "root_admitted_first_index_child_lease_refused",
+  "prepare_seconds": 10.416078353999183,
+  "provider_calls": 0,
+  "qualified": false,
+  "root_admission_evidence": "Trace reached prepare_current inside the entered parent lease, through _owners and selected config validation.",
+  "schema": "bounded-setup-cache-native-outcome@1",
+  "source_pins_unchanged": true
+}

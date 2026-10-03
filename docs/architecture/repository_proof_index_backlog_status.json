@@ -1,6 +1,6 @@
 {
   "schema": "repository-proof-index-backlog-status/v1",
-  "updated_at_utc": "2026-10-03T12:56:14.608799+00:00",
+  "updated_at_utc": "2026-10-03T13:58:23.840147+00:00",
   "scope": "Frozen 32-task acceptance ledger. Declared-profile criterion qualification and production closure with all prerequisites are tracked separately.",
   "source": {
     "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
@@ -534,6 +534,18 @@
       "path": "docs/agent_supervisor/evidence/source384-uv-layout-fix-20261003/manifest.json",
       "sha256": "07bf0fc0629bc12c13dad2881c55d8b96346e3720a961039710ec7b534539ac0",
       "retention": "repository_evidence"
+    },
+    "source384-setup-cache-diagnostics": {
+      "repository": "ipfs_accelerate_py",
+      "path": "docs/agent_supervisor/evidence/source384-setup-cache-diagnostics-20261003/manifest.json",
+      "sha256": "46941ee221c49b67f48c5fff9b5f5925993757186bcd6e6b53640c11884983bf",
+      "retention": "repository_evidence"
+    },
+    "source384-native-library-cache-diagnostic": {
+      "repository": "ipfs_accelerate_py",
+      "path": "docs/agent_supervisor/evidence/source384-native-library-cache-diagnostic-20261003/manifest.json",
+      "sha256": "985fe67d33a2b2ef13d2b406383d576e400acdb00bcfc875a9bc665e474574c1",
+      "retention": "repository_evidence"
     }
   },
   "criteria": [
@@ -1038,7 +1050,9 @@
         "The optional locally supplied CPU Torch wheel is verified before transport and before installation; 136 deployment/wheel/transport controls pass with unchanged deadlines. Its first original-container run passes deployment in 65.266s, pandas/NumPy imports, native START/STOP and source/resource checks, then fails after 78.045s of initial context (89.425s probe) at a training-only canonical workspace import during inference publication. Frozen code and traceback establish the worker returned, but no exported inference artifact, model-load count or decoded coverage is qualified by that failed run. The minimal datasets correction shares canonical artifact staging with inference without importing training/proof initialization; the training workspace guard remains unchanged. Forty-three datasets integration tests and thirteen supervisor tests with the actual checkpoint pass, including blocked training imports and cold registry replay. The failed container and component controls remain distinct from the subsequent successful Docker generation.",
         "A fresh uninstrumented original-container run qualifies native startup, complete Source384 inference publication and warm validation with the same 218 original inputs plus two permitted framework files, five CPUs/12,288 MiB and unchanged deadlines. Actual Source384 takes 82.872100 seconds within 90 seconds; full initial context (147.267376 seconds), warm observation (13.403442 seconds) and complete probe (171.961792 seconds within 270 seconds) are distinct scopes. Setup takes 458.743056 seconds and the entire attempt 656.825078 seconds. The saved artifact verifies one model load and a successful 12.736-second CPU worker. Complete accounting retains 944 functions across 31 Python files: 127 decoded unsupported candidates, one token deferral, 737 selection deferrals and 79 unsupported normalizations. All proof, execution, completion and formalization authority remains false. Source-bearing raw inference stays local; public metadata binds its digest, canonical staged artifact, worker, key, coverage and source receipts. Container cleanup passes. This is one observed pipeline qualification, with no training, provider calls, official verifier, task repair, new reward/token comparison or latency-distribution claim.",
         "The first full Harbor trial with the same Source384 runtime plus pinned Lean assets returns official reward 0.0. Initial context times out waiting for a resource lease after 37.438 seconds, before planning, Doctor dispatch or coding; observed provider calls are zero but token/cost counters remain null. Intent preprocessing fails open with no selected checkpoint. The original trial has no actual resource sample or traceback. A separate exact-archive diagnostic with Codex and worker-boundary setup measures the actual five-CPU/12-GiB limits and reproduces the Source384 root-lease refusal: 5,484 MiB available at failure versus 8,602 MiB required; an earlier sample contains about 6.49 GB file cache while pressure samples remain below thresholds. No policy or cache state is changed, and neither run establishes source proof or a successful repair. The container driver now exports bounded frame-only traceback metadata, failing phase and canonical failure-time resources; 30 controls preserve primary failure, authority and cleanup under diagnostic faults. Both containers are removed. The diagnostic is separate from the original trial and is not a retroactive measurement or a token-efficiency claim.",
-        "Two manifest-only cache probes refuse before any advice because the deployed Lean ancestor is a symlink. Complete archive metadata has only regular members. A separate setup-step observer proves the directory-to-symlink transition during pinned UV Python installation; UV 0.9.24 migrates a sibling toolchains directory into its Python root. Managed Python now uses an isolated parent, preserving the existing venv and Lean paths and all budgets. Fifty-six focused controls pass with no skips, including actual offline UV reproduction and inode/content preservation under the corrected layout. These controls do not establish cache reclamation, inference, task acceptance or token savings; the subsequent native cache experiment is separate."
+        "Two manifest-only cache probes refuse before any advice because the deployed Lean ancestor is a symlink. Complete archive metadata has only regular members. A separate setup-step observer proves the directory-to-symlink transition during pinned UV Python installation; UV 0.9.24 migrates a sibling toolchains directory into its Python root. Managed Python now uses an isolated parent, preserving the existing venv and Lean paths and all budgets. Fifty-six focused controls pass with no skips, including actual offline UV reproduction and inode/content preservation under the corrected layout. These controls do not establish cache reclamation, inference, task acceptance or token savings; the subsequent native cache experiment is separate.",
+        "Three instrumented post-UV cache diagnostics remain separate failures. Advice to 26,905 archive files succeeds, but the archive-only run refuses the root lease with a later 8,195-MiB failure sample against the 8,602-MiB requirement. Four independently pinned public Codex executable copies add 628,736,528 logical bytes; their first attempt refuses an unprotected receipt, and the corrected receipt transport passes 18 helper controls and all four advice checks. Available memory rises from 5,256 to 8,194 MiB after archive advice and to 8,812 MiB after executable advice. The root lease is then admitted, but the first index child lease times out before source capture, publication or numerical inference; owner initialization may already have occurred. The later 8,592-MiB sample is not the exact child decision. Frozen scheduler code adds zero global memory for children while retaining root-envelope headroom checks. All original inputs and source pins remain intact, and containers are removed. Advice counts/lengths are not freed-memory measurements. No production cache policy, durable inference, official task result, provider use or token improvement is qualified; subsequent library experiments are separate.",
+        "A separate instrumented diagnostic adds exactly three installed DuckDB extension copies and four Torch libraries, independently hash-bound to the archive and CPU wheel. All three advice populations pass, including 414,442,268 library bytes, and 25 helper controls pass. Available memory before context is 9,216 MiB. Index preparation and the numerical worker return, and closed output validation passes, but the post-worker source-observation child lease times out before inference publication. The source-free scheduler snapshot retains proof_memory_headroom after unwind, with zero active leases/waiters. The later 8,637-MiB sample is not the refusal-time measurement. Initial context takes 97.014 seconds and the probe 108.467 seconds, retaining all existing budgets. Worker-return control flow is not a published inference artifact; model-load and coverage counters remain null. Source pins and all 218 original inputs are preserved, the container is removed, and provider/verifier calls remain zero. Production cache integration, task acceptance and a new token score remain unqualified."
       ],
       "remaining_work": [
         "The complete criterion above has not been qualified in the released integration.",
@@ -1063,7 +1077,9 @@
         "source384-docker-wheel",
         "source384-docker-inference-publication",
         "source384-full-admission-diagnostics",
-        "source384-uv-layout-fix"
+        "source384-uv-layout-fix",
+        "source384-setup-cache-diagnostics",
+        "source384-native-library-cache-diagnostic"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },

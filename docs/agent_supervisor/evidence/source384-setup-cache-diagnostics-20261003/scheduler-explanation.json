@@ -1,0 +1,18 @@
+{
+  "behavior": "The safety gate includes configured headroom plus all outstanding root envelopes. A child adds zero additional global reservation, but the active root reservation still remains in the check.",
+  "child_double_counting_claimed": false,
+  "failure_handling_available_mib": 8592,
+  "function": "ResourceScheduler._can_grant",
+  "headroom_mib": 2458,
+  "inspected_lines": [
+    1260,
+    1303
+  ],
+  "interpretation": "Conservative outstanding-envelope headroom is an explanation consistent with the later sample and frozen code. The sample is not the exact child admission measurement; no decision receipt or backlog state proves the precise rejection cause.",
+  "policy_change_proposed_or_applied": false,
+  "resulting_threshold_if_no_other_root_reservations": 8602,
+  "schema": "code-and-sample-consistency-review@1",
+  "single_observed_root_memory_mib": 6144,
+  "source": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+  "source_sha256": "9f4cf68dcaf21dbae8fd3b4d2bec8ee37480c6fe9c0bf35ed50f30d6cc2b7174"
+}

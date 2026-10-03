@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "<string>", line 16, in <module>
+  File "/opt/ipfs-supervisor/codex-cache-diagnostic.py", line 159, in <module>
+    if __name__=='__main__':main()
+                            ^^^^^^
+  File "/opt/ipfs-supervisor/codex-cache-diagnostic.py", line 154, in main
+    receipt=read_receipt(ROOT,sys.argv[2])
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/ipfs-supervisor/codex-cache-diagnostic.py", line 141, in read_receipt
+    raise ValueError('protected singleton bounded public receipt required')
+ValueError: protected singleton bounded public receipt required

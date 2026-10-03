@@ -1,0 +1,16 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-I",
+    "-S",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/source384-docker-native-library-cache-20261003/pin_native_libraries.py",
+    "/home/barberb/lift_coding/artifacts/source384-full-supervisor-preflight-20261003/bundle/manifest.json",
+    "/home/barberb/lift_coding/artifacts/source384-torch-wheel-20261003/torch-2.13.0+cpu-cp312-cp312-manylinux_2_28_aarch64.whl"
+  ],
+  "exact_reproduction": true,
+  "output_sha256": "abbb454825437057bbf33cdbd30aa5ff76fb1d1005724d602b7bc4c8bf8743c9",
+  "returncode": 0,
+  "script_sha256": "9067bcab0b7b37965b26d64d641e34da9a4aee9fad9fbd9aec0e25166eed6602",
+  "seconds": 0.8797942789969966
+}

@@ -1,0 +1,121 @@
+{
+  "actual_refusal_sample_retained": false,
+  "advice": {
+    "archive": {
+      "advised_bytes": 3914232094,
+      "advised_files": 26905,
+      "errors": [],
+      "seconds": 8.702661617004196
+    },
+    "codex": {
+      "advised_bytes": 628736528,
+      "advised_files": 4,
+      "body_read_bytes": 628736528,
+      "errors": [],
+      "seconds": 0.39337856200290844
+    },
+    "native_libraries": {
+      "advised_bytes": 414442268,
+      "advised_files": 7,
+      "body_read_bytes": 414442268,
+      "errors": [],
+      "seconds": 0.20662395600083983
+    }
+  },
+  "benchmark_result": false,
+  "container_removed": true,
+  "durable_inference_receipt_created": false,
+  "failure_resources_after_unwind": {
+    "available_memory_mb": 8637,
+    "cpu_slots": 5,
+    "cpu_stall_percent": 16.29,
+    "io_stall_percent": 0.02,
+    "memory_stall_percent": 0.1,
+    "total_memory_mb": 12288
+  },
+  "files": {
+    "after-pins.json": "3fa6e6ff13969b96118f4a804fa61344f6d95abe6c32d1b20abee50f8358c5ed",
+    "before-pins.json": "3fa6e6ff13969b96118f4a804fa61344f6d95abe6c32d1b20abee50f8358c5ed",
+    "cache-advice.json": "e4cf96b5a289e398a97a81958dbc7fa8045826de1925b25bc7182e8eefda010e",
+    "codex-cache-advice.json": "73f6e50304ae4c82d17a9a7843449dacf6f1e5068c1522e8fd7a0d713fd5a74b",
+    "containers-after.json": "11c8e4d6b9ed9a59fde466cfd0aa636f30594fd28fe2d25fb0490db81ffc2463",
+    "controls-02.json": "3647ff87be4c2b850a4361955bdbc860b9b2226603d707d0beb9b81557b5e86a",
+    "docker-01/source384-context.json": "b7cf1007baeed3d6751220ee3790685238a949c6a0b40cdf77ec29d0fa142a79",
+    "docker-01/source384-probe.stdout": "f3290e2f408767f1cd3aaa771703e3c1373df24d2715b62c13bc2d1ffead1e24",
+    "exit.json": "191ae45bdd13de0b7211c2a476a6285485f79823b6b6ce61f798fe7d3eb524fc",
+    "finite-library-source-pins.json": "abbb454825437057bbf33cdbd30aa5ff76fb1d1005724d602b7bc4c8bf8743c9",
+    "independent-review.json": "fe173910d7c3f4e4fd0933ae8ec459b3897bec77253a11fc9b275e53ed4a9ae4",
+    "library-cache-advice.json": "95c47257a7342f7264afd750a677a258d4a4c8b7881edd8035d7691fd28cc8af",
+    "post-context-scheduler.json": "e6ec48bb59b218b4cd2736d36a47574561e7ba1881fb6bb59c08becbb0401155",
+    "source-pin-reproduction.json": "28759d38c3746b324aa638ac62ba4b1855c8a3a34086fc05fe6a9dd43816d699"
+  },
+  "freed_bytes_claimed": false,
+  "initial_context_seconds": 97.01350516800449,
+  "initial_index_preparation_returned": true,
+  "model_load_count_retained": false,
+  "native_seconds": 108.46736702099588,
+  "neural_formalization_claimed": false,
+  "official_verifier_executed": false,
+  "outcome": "post_worker_source_observation_child_lease_refused",
+  "post_unwind_scheduler": {
+    "observation": "after_context_unwind",
+    "proof_memory_headroom_mb": 2458,
+    "schema": "post-context-source-free-scheduler@1",
+    "snapshot": {
+      "active_child_lease_count": 0,
+      "active_lease_count": 0,
+      "active_root_lease_count": 0,
+      "allocated": {
+        "cpu_slots": 0,
+        "memory_mb": 0
+      },
+      "available": {
+        "child_process_slots": 4,
+        "cpu_slots": 4,
+        "gpu_memory_mb": null,
+        "memory_mb": 9830,
+        "unified_memory_mb": null
+      },
+      "capacity": {
+        "child_process_slots": 4,
+        "cpu_slots": 4,
+        "gpu_memory_mb": null,
+        "memory_mb": 9830,
+        "reserved_gpu_memory_mb": 0,
+        "reserved_memory_mb": 0,
+        "unified_memory_mb": null,
+        "usable_gpu_memory_mb": null,
+        "usable_memory_mb": 9830
+      },
+      "proof_backoff": {
+        "reason": "proof_memory_headroom",
+        "until": 1791035152.0825527
+      },
+      "proof_recovery": {},
+      "schema_version": "legal-ir-global-resource-scheduler-v1",
+      "waiting_request_count": 0
+    }
+  },
+  "pre_native_host": {
+    "available_memory_mb": 9216,
+    "cpu_slots": 5,
+    "cpu_stall_percent": 22.31,
+    "io_stall_percent": 3.96,
+    "memory_stall_percent": 0.0,
+    "total_memory_mb": 12288
+  },
+  "prepare_seconds": 10.435561653997866,
+  "provider_calls": 0,
+  "qualified": false,
+  "root_admitted": true,
+  "schema": "bounded-native-library-cache-outcome@1",
+  "scope_limit": "Post-unwind memory is not the admission-decision sample. Existing scheduler snapshot retains actual backoff reason proof_memory_headroom; no policy changes or performance success claimed.",
+  "source_pins_unchanged": true,
+  "threshold_accounting": {
+    "additional_child_memory_mb": 0,
+    "minimum_live_available_mb": 8602,
+    "proof_headroom_mb": 2458,
+    "root_memory_mb": 6144
+  },
+  "worker_execution_evidence": "Frozen traceback reaches codebase_source_units_384.py248 post-worker output validation then source observation; numerical worker returned but no durable result artifact was published."
+}

@@ -1,0 +1,30 @@
+{
+  "at": "2026-10-03T12:22:51.419081+00:00",
+  "controls_reviewed": {
+    "passed": 12,
+    "receipt": "controls.json",
+    "returncode": 0
+  },
+  "findings": [
+    "Refusal now retains the already-validated bounded manifest row/index, failed component and position, no-follow entry type/device/inode/mode/ownership, and held parent/root fd metadata.",
+    "No failed symlink target is followed or read; /proc/self/fd readlink identifies already-open directory descriptors. No source bodies, local variables or credential data are read.",
+    "Original no-follow traversal, complete inventory preflight, fdatasync/advice order, identity rechecks, timer, archive pins and resource/deadline contracts remain unchanged.",
+    "New controls distinguish a symlink ancestor from a regular-file ancestor and assert advice_issued=false for preflight refusal.",
+    "No descriptor-lifetime bug identified in the earlier helper; prior ENOTDIR cause is still unconfirmed and requires retained actual filesystem metadata."
+  ],
+  "limitations": [
+    "Only twelve authored controls reviewed; no tests, Docker, model or provider work run by this reviewer.",
+    "Descriptor-metadata sampling can fail independently and cause a safe refusal; it does not relax path validation.",
+    "Diagnostic outcome cannot be promoted to production qualification or benchmark success."
+  ],
+  "reviewer": "peer_recovery_fresh",
+  "schema": "read-only-independent-review@1",
+  "scope": "Only bounded refusal-context change over reviewed manifest-only off-tree cache diagnostic; wrapper unchanged.",
+  "source_sha256": {
+    "cache_candidate.py": "26f4b2c9a87611102e98aff6d18e4a409b2796fab2a4e64e3ae41a392f8ed742",
+    "run_diagnostic.py": "4d9573b3a971d312d31334cc1b1fd1b61ae68aece2d50260b7dc93f50980098a",
+    "test_cache_candidate.py": "4105862e491d9c9856b5d1c8c4f21f0bca47d4bd1ad9e36f31a18952bfae4564"
+  },
+  "tests_executed_by_reviewer": false,
+  "verdict": "no_launch_blocker"
+}

@@ -1,0 +1,617 @@
+{
+  "copies": [
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/cache_candidate.py",
+      "bytes": 8784,
+      "path": "archive-only/cache_candidate.py",
+      "sha256": "26f4b2c9a87611102e98aff6d18e4a409b2796fab2a4e64e3ae41a392f8ed742"
+    },
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/run_diagnostic.py",
+      "bytes": 9984,
+      "path": "archive-only/run_diagnostic.py",
+      "sha256": "4d9573b3a971d312d31334cc1b1fd1b61ae68aece2d50260b7dc93f50980098a"
+    },
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/run-command.json",
+      "bytes": 1254,
+      "path": "archive-only/run-command.json",
+      "sha256": "a47a7d835293349dc5694e89c441d200dbe416d5dc3bad198da553c4773ee60a"
+    },
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/scope.json",
+      "bytes": 983,
+      "path": "archive-only/scope.json",
+      "sha256": "673cce4942a0c528849545a5f7c5052ae07b58db008a125effdb2ca3ef821587"
+    },
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/host-archive-provenance.json",
+      "bytes": 968,
+      "path": "archive-only/host-archive-provenance.json",
+      "sha256": "504a5391782eebc568d6dd475d676ee4859072e5123cd5233427805f1691dd00"
+    },
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/before-pins.json",
+      "bytes": 1708,
+      "path": "archive-only/before-pins.json",
+      "sha256": "3fa6e6ff13969b96118f4a804fa61344f6d95abe6c32d1b20abee50f8358c5ed"
+    },
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/after-pins.json",
+      "bytes": 1708,
+      "path": "archive-only/after-pins.json",
+      "sha256": "3fa6e6ff13969b96118f4a804fa61344f6d95abe6c32d1b20abee50f8358c5ed"
+    },
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/containers-before.json",
+      "bytes": 36,
+      "path": "archive-only/containers-before.json",
+      "sha256": "11c8e4d6b9ed9a59fde466cfd0aa636f30594fd28fe2d25fb0490db81ffc2463"
+    },
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/containers-after.json",
+      "bytes": 36,
+      "path": "archive-only/containers-after.json",
+      "sha256": "11c8e4d6b9ed9a59fde466cfd0aa636f30594fd28fe2d25fb0490db81ffc2463"
+    },
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/exit.json",
+      "bytes": 150,
+      "path": "archive-only/exit.json",
+      "sha256": "4fab82649573633610ef28cfc40bf056c928d4b3d8bd6a03d0bac2965883b273"
+    },
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/failure.json",
+      "bytes": 119,
+      "path": "archive-only/failure.json",
+      "sha256": "f3a3eab34ce3c6937fbf7a4c99069649c18cccd3d61b3182ec019257a06b3f4f"
+    },
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/cache-advice.json",
+      "bytes": 574,
+      "path": "archive-only/cache-advice.json",
+      "sha256": "23d5e0279b190ef32dbd906ab19c006c54f4290e5b4c104f57caa1465851ff1b"
+    },
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/cache-advice-status.json",
+      "bytes": 112,
+      "path": "archive-only/cache-advice-status.json",
+      "sha256": "0ba37afef56ec3552a0c76c06496ecc39c5c3f676bd24da828d8e0d395698119"
+    },
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/independent-review.json",
+      "bytes": 1957,
+      "path": "archive-only/independent-review.json",
+      "sha256": "b09d27598325ac445d88f44d5867de921008b390b2e1443912f5b24351207d6f"
+    },
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/verdict.json",
+      "bytes": 3824,
+      "path": "archive-only/verdict.json",
+      "sha256": "a1a3e61ed8c3f8b03a57ed8b2082e38cde6e78b81bc878371db3c87250f043f1"
+    },
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/docker-01/qualification.json",
+      "bytes": 77488,
+      "path": "archive-only/docker-01/qualification.json",
+      "sha256": "72791e89366e8e53fd71a57f739cdd6d7f5826f820cd99adaa4d36a54f524059"
+    },
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/docker-01/cache-resources-before.json",
+      "bytes": 2851,
+      "path": "archive-only/docker-01/cache-resources-before.json",
+      "sha256": "fd6dc85ac40a38ab9a3f1f029011a675a5fc878ec81a103e7478cdd0185dd8be"
+    },
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/docker-01/cache-resources-after.json",
+      "bytes": 2856,
+      "path": "archive-only/docker-01/cache-resources-after.json",
+      "sha256": "71991679c79fd0bbb0765b7bb4126ef34774c5dadf26bdd4fa67d73b01908831"
+    },
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/test_cache_candidate.py",
+      "bytes": 5868,
+      "path": "archive-only/test_cache_candidate.py",
+      "sha256": "4105862e491d9c9856b5d1c8c4f21f0bca47d4bd1ad9e36f31a18952bfae4564"
+    },
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/controls.json",
+      "bytes": 594,
+      "path": "archive-only/controls.json",
+      "sha256": "772d2469043df941497b1ace854ca1341de29f6830aad7242a048462fa4d1c79"
+    },
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/controls.log",
+      "bytes": 1803,
+      "path": "archive-only/controls.log",
+      "sha256": "ed620daf8cf54b8c509278d2f29d8e1de59af800edbe1c9767d524c936d1911c"
+    },
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/docker-01/resources.json",
+      "bytes": 249,
+      "path": "archive-only/docker-01/resources.json",
+      "sha256": "4b9a1acd190dcacd518c2f46db3b4aca48aad21fd11f56b9e69fa1a78f06a88c"
+    },
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/docker-01/admission-estimate.json",
+      "bytes": 282,
+      "path": "archive-only/docker-01/admission-estimate.json",
+      "sha256": "d903b881a9c060675a05b1893ddde59f8487cb7fc21a58792dfd4b11a78bb238"
+    },
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/docker-01/detailed-resources.json",
+      "bytes": 2856,
+      "path": "archive-only/docker-01/detailed-resources.json",
+      "sha256": "df877724b5f3440758d43e3261b54791548b158098153dfa444f037b4c39c225"
+    },
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/docker-01/source384-result.json",
+      "bytes": 2103,
+      "path": "archive-only/docker-01/source384-result.json",
+      "sha256": "aab91e430c725e0a106ec74baeed6a364ade3bc06be0e127f3e666560a2da83f"
+    },
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/docker-01/source384-probe-status.json",
+      "bytes": 19,
+      "path": "archive-only/docker-01/source384-probe-status.json",
+      "sha256": "4df7e306bff9cf8b6546ba28ccb1707b05fcfbd81e618b394b02855490cbb4b1"
+    },
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/docker-01/source384-probe.stdout",
+      "bytes": 3813,
+      "path": "archive-only/docker-01/source384-probe.stdout",
+      "sha256": "7939b60efcd1fcbc667d705aa4aa2d6d197d706392e51a2a805739361e101a6b"
+    },
+    {
+      "artifact": "source384-docker-setup-cache-fixed-layout-20261003/docker-01/source384-probe.stderr",
+      "bytes": 0,
+      "path": "archive-only/docker-01/source384-probe.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/cache_candidate.py",
+      "bytes": 8784,
+      "path": "binary-receipt-refusal/cache_candidate.py",
+      "sha256": "26f4b2c9a87611102e98aff6d18e4a409b2796fab2a4e64e3ae41a392f8ed742"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/run_diagnostic.py",
+      "bytes": 13958,
+      "path": "binary-receipt-refusal/run_diagnostic.py",
+      "sha256": "cfdae5542a266ede8131645cbf95842d285503385b5b7b511d637e84030b1b6d"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/run-command.json",
+      "bytes": 1510,
+      "path": "binary-receipt-refusal/run-command.json",
+      "sha256": "3b91f7b7aabf50531c8ce94150c01e0bd132e26e85a1a9bf73f8bbfcceaea883"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/scope.json",
+      "bytes": 1267,
+      "path": "binary-receipt-refusal/scope.json",
+      "sha256": "3038ed3b877237113e1d902b374e08c844633f5b41750d2f857e2146f7d109d5"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/host-archive-provenance.json",
+      "bytes": 968,
+      "path": "binary-receipt-refusal/host-archive-provenance.json",
+      "sha256": "504a5391782eebc568d6dd475d676ee4859072e5123cd5233427805f1691dd00"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/before-pins.json",
+      "bytes": 1708,
+      "path": "binary-receipt-refusal/before-pins.json",
+      "sha256": "3fa6e6ff13969b96118f4a804fa61344f6d95abe6c32d1b20abee50f8358c5ed"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/after-pins.json",
+      "bytes": 1708,
+      "path": "binary-receipt-refusal/after-pins.json",
+      "sha256": "3fa6e6ff13969b96118f4a804fa61344f6d95abe6c32d1b20abee50f8358c5ed"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/containers-before.json",
+      "bytes": 36,
+      "path": "binary-receipt-refusal/containers-before.json",
+      "sha256": "11c8e4d6b9ed9a59fde466cfd0aa636f30594fd28fe2d25fb0490db81ffc2463"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/containers-after.json",
+      "bytes": 36,
+      "path": "binary-receipt-refusal/containers-after.json",
+      "sha256": "11c8e4d6b9ed9a59fde466cfd0aa636f30594fd28fe2d25fb0490db81ffc2463"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/exit.json",
+      "bytes": 149,
+      "path": "binary-receipt-refusal/exit.json",
+      "sha256": "8f67f468a68e76e325964c9151332a420ac37a398982753e0c27a63e2b880c59"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/failure.json",
+      "bytes": 96,
+      "path": "binary-receipt-refusal/failure.json",
+      "sha256": "b55cef679c59cfe38074a530d532440d1bfba7f01dc88e7df7be457383603fc6"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/cache-advice.json",
+      "bytes": 573,
+      "path": "binary-receipt-refusal/cache-advice.json",
+      "sha256": "3bec22bf97e9cc2f4858cf7e520f0fccd5bf043ff8fdb1d3e32bd5d952b19e4a"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/cache-advice-status.json",
+      "bytes": 112,
+      "path": "binary-receipt-refusal/cache-advice-status.json",
+      "sha256": "0ba37afef56ec3552a0c76c06496ecc39c5c3f676bd24da828d8e0d395698119"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/independent-review.json",
+      "bytes": 2981,
+      "path": "binary-receipt-refusal/independent-review.json",
+      "sha256": "5ba90a30abc6205d6b68f6a90a43e4cffad0d71f46a9b595e7c82a5051cf05d8"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/verdict.json",
+      "bytes": 1409,
+      "path": "binary-receipt-refusal/verdict.json",
+      "sha256": "0b95f373ff2b31493dab7d73a975408f3ab56fa7b849ec1c2d8b439bc6d65a21"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/docker-01/qualification.json",
+      "bytes": 355,
+      "path": "binary-receipt-refusal/docker-01/qualification.json",
+      "sha256": "a69a97c5aea6bf450649017d357fc05a477288189675808599aab25a21482ca3"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/docker-01/cache-resources-before.json",
+      "bytes": 2863,
+      "path": "binary-receipt-refusal/docker-01/cache-resources-before.json",
+      "sha256": "20faa9a2893b9ce04bc5812f6c32da9be0a8366e29ae4ae9d4fd2c5b16a1efbb"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/docker-01/cache-resources-after.json",
+      "bytes": 2868,
+      "path": "binary-receipt-refusal/docker-01/cache-resources-after.json",
+      "sha256": "6289a047030fea7b692cb16d9c72fd8381be5d55aa151efa9d305c9fd986707b"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/codex_cache_candidate.py",
+      "bytes": 8594,
+      "path": "binary-receipt-refusal/codex_cache_candidate.py",
+      "sha256": "254f38d4651348c04f04774d053e233cd10aa42479997851ed9b8a18c3fe273e"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/test_codex_cache_candidate.py",
+      "bytes": 8913,
+      "path": "binary-receipt-refusal/test_codex_cache_candidate.py",
+      "sha256": "daeaa547694df313c1499030a580128824b43dc95df897f2a563734afd8e4e8b"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/codex-cache-advice-status.json",
+      "bytes": 214,
+      "path": "binary-receipt-refusal/codex-cache-advice-status.json",
+      "sha256": "ee3de8836f2594356ba642bda2ff3efe0db3013cf4b2f98fa4a752245e31c5aa"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/experiment-provenance.json",
+      "bytes": 1082,
+      "path": "binary-receipt-refusal/experiment-provenance.json",
+      "sha256": "d349f758df4dbc73dfdb46fb63d237175e9cdc7485ac85910853b8e0573faca4"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/final-sources.json",
+      "bytes": 387,
+      "path": "binary-receipt-refusal/final-sources.json",
+      "sha256": "f7ba38c4e6323cdec0078a65b48d5750a0730aeb290601c6b61f509c3513b621"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/controls-03.json",
+      "bytes": 704,
+      "path": "binary-receipt-refusal/controls-03.json",
+      "sha256": "87db2c0ed0c3fedce76ba38e1d47da9525aa0ea1d231fd82eae6776cf0a40540"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/controls-03.log",
+      "bytes": 2011,
+      "path": "binary-receipt-refusal/controls-03.log",
+      "sha256": "67c9f1d1052a723e4344c48b465bf0dc4b2d4341601c02ae6ff6badeb56e31ce"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/docker-01/codex-cache-advice.stdout",
+      "bytes": 608,
+      "path": "binary-receipt-refusal/docker-01/codex-cache-advice.stdout",
+      "sha256": "b7cd586326f912cd797a81c049c858b97cac6fdcf4df7589f4c368459d55f330"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/docker-01/codex-cache-advice.stderr",
+      "bytes": 0,
+      "path": "binary-receipt-refusal/docker-01/codex-cache-advice.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/docker-01/worker-boundary/installation/native-codex-binary.log",
+      "bytes": 793,
+      "path": "binary-receipt-refusal/docker-01/worker-boundary/installation/native-codex-binary.log",
+      "sha256": "06b48e1be4d82bad4fcb1c4b86a879ec47622f82bb69ae96e655665f0e6a65eb"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/docker-01/codex-cache-resources-before.json",
+      "bytes": 2868,
+      "path": "binary-receipt-refusal/docker-01/codex-cache-resources-before.json",
+      "sha256": "6d32d89ab9149fb0b4f59dbe3ae014df3a258b7c0d85e0fd040d9d307aae7707"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/cache_candidate.py",
+      "bytes": 8784,
+      "path": "four-binary-child-refusal/cache_candidate.py",
+      "sha256": "26f4b2c9a87611102e98aff6d18e4a409b2796fab2a4e64e3ae41a392f8ed742"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/run_diagnostic.py",
+      "bytes": 14178,
+      "path": "four-binary-child-refusal/run_diagnostic.py",
+      "sha256": "a79fbce2b60d80c9114c9554a33ff87551993d2a40d38f31bdd7fe6c17d11c5d"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/run-command.json",
+      "bytes": 1504,
+      "path": "four-binary-child-refusal/run-command.json",
+      "sha256": "fa291d0eb1d2ab5c85e02811078d3321187010f124e15859569bf0a76b8893d1"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/scope.json",
+      "bytes": 1267,
+      "path": "four-binary-child-refusal/scope.json",
+      "sha256": "de3306807e28dbc23f65925d8c3a778b85f08124e21ae79a6d8b833dfacc013c"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/host-archive-provenance.json",
+      "bytes": 968,
+      "path": "four-binary-child-refusal/host-archive-provenance.json",
+      "sha256": "504a5391782eebc568d6dd475d676ee4859072e5123cd5233427805f1691dd00"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/before-pins.json",
+      "bytes": 1708,
+      "path": "four-binary-child-refusal/before-pins.json",
+      "sha256": "3fa6e6ff13969b96118f4a804fa61344f6d95abe6c32d1b20abee50f8358c5ed"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/after-pins.json",
+      "bytes": 1708,
+      "path": "four-binary-child-refusal/after-pins.json",
+      "sha256": "3fa6e6ff13969b96118f4a804fa61344f6d95abe6c32d1b20abee50f8358c5ed"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/containers-before.json",
+      "bytes": 36,
+      "path": "four-binary-child-refusal/containers-before.json",
+      "sha256": "11c8e4d6b9ed9a59fde466cfd0aa636f30594fd28fe2d25fb0490db81ffc2463"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/containers-after.json",
+      "bytes": 36,
+      "path": "four-binary-child-refusal/containers-after.json",
+      "sha256": "11c8e4d6b9ed9a59fde466cfd0aa636f30594fd28fe2d25fb0490db81ffc2463"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/exit.json",
+      "bytes": 149,
+      "path": "four-binary-child-refusal/exit.json",
+      "sha256": "66a7bf4e31e107d7c3697ea68bd02dac7cc09f17eba1d4d947ac8252d966ddaf"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/failure.json",
+      "bytes": 119,
+      "path": "four-binary-child-refusal/failure.json",
+      "sha256": "f3a3eab34ce3c6937fbf7a4c99069649c18cccd3d61b3182ec019257a06b3f4f"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/cache-advice.json",
+      "bytes": 574,
+      "path": "four-binary-child-refusal/cache-advice.json",
+      "sha256": "7abe16de88fd682dc09a554dbe94793e114e391cf54c396a6b968a6ca2f0edb1"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/cache-advice-status.json",
+      "bytes": 112,
+      "path": "four-binary-child-refusal/cache-advice-status.json",
+      "sha256": "0ba37afef56ec3552a0c76c06496ecc39c5c3f676bd24da828d8e0d395698119"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/independent-review.json",
+      "bytes": 1779,
+      "path": "four-binary-child-refusal/independent-review.json",
+      "sha256": "6ea0dc438ecfbde321fa45ebb3a181c22f0fa05f7cb2ee7a7feb973fdd02cdc1"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/verdict.json",
+      "bytes": 5301,
+      "path": "four-binary-child-refusal/verdict.json",
+      "sha256": "b05da263ce4af6b60e8697409d4b714a7a1b99adda502249326f73d0387021c9"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/docker-01/qualification.json",
+      "bytes": 77487,
+      "path": "four-binary-child-refusal/docker-01/qualification.json",
+      "sha256": "4549c82b3241dc4ed6a76dd93f8a4c0f64feb799757076743557cfcddf33189a"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/docker-01/cache-resources-before.json",
+      "bytes": 2879,
+      "path": "four-binary-child-refusal/docker-01/cache-resources-before.json",
+      "sha256": "fe99e4f13230b7acdfcc62994896179a3892625936cf74938bda3aeeb6e74ace"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/docker-01/cache-resources-after.json",
+      "bytes": 2881,
+      "path": "four-binary-child-refusal/docker-01/cache-resources-after.json",
+      "sha256": "b72a74c7b4c867f541583de6d13f58ba2b603ef925a09683c4530febef83a0a2"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/codex_cache_candidate.py",
+      "bytes": 10666,
+      "path": "four-binary-child-refusal/codex_cache_candidate.py",
+      "sha256": "615ea1b563c7c280e4d622665a9420d5948dd217837bee84d5f85169b14c62c3"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/test_codex_cache_candidate.py",
+      "bytes": 11513,
+      "path": "four-binary-child-refusal/test_codex_cache_candidate.py",
+      "sha256": "11cf109376fc0ad2e530078acd32af0ce2c6a7a0c93400e15c2995d75543026e"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/codex-cache-advice-status.json",
+      "bytes": 214,
+      "path": "four-binary-child-refusal/codex-cache-advice-status.json",
+      "sha256": "c97489ef4680cacd210a11425c89abc9238cc34c7493c58466346f633d766046"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/experiment-provenance.json",
+      "bytes": 1349,
+      "path": "four-binary-child-refusal/experiment-provenance.json",
+      "sha256": "be1007f6db3101fbb449b06d96700be34caf7710b9fb94e8069f822e46b37c8d"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/final-sources.json",
+      "bytes": 387,
+      "path": "four-binary-child-refusal/final-sources.json",
+      "sha256": "ce0836e0a432a5e54a5ec4b42f381a364c78f6d3ec0172ce0d94ddb1d9b346c6"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/controls-02.json",
+      "bytes": 713,
+      "path": "four-binary-child-refusal/controls-02.json",
+      "sha256": "7d2b42f4198a8c87abbbd18ee18cd3fa885be1bdb276b43c6f07413990367486"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/controls-02.log",
+      "bytes": 2707,
+      "path": "four-binary-child-refusal/controls-02.log",
+      "sha256": "d06aaf91dffedbbabd9873395bc1e9e1dacbe7b2fbe3b25c9132a31f3e7e8fd7"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/docker-01/codex-cache-advice.stdout",
+      "bytes": 1641,
+      "path": "four-binary-child-refusal/docker-01/codex-cache-advice.stdout",
+      "sha256": "5bf967bc9b434b0693dd823096d99d44adcc576806b8f26162d79cdff0d5f2b8"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/docker-01/codex-cache-advice.stderr",
+      "bytes": 0,
+      "path": "four-binary-child-refusal/docker-01/codex-cache-advice.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/docker-01/worker-boundary/installation/native-codex-binary.log",
+      "bytes": 793,
+      "path": "four-binary-child-refusal/docker-01/worker-boundary/installation/native-codex-binary.log",
+      "sha256": "06b48e1be4d82bad4fcb1c4b86a879ec47622f82bb69ae96e655665f0e6a65eb"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/docker-01/codex-cache-resources-before.json",
+      "bytes": 2881,
+      "path": "four-binary-child-refusal/docker-01/codex-cache-resources-before.json",
+      "sha256": "51d06c334e0cc9a60d2a201d1d53eb59343d89663d2ffc754668e8ed35332b7a"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/docker-01/resources.json",
+      "bytes": 249,
+      "path": "four-binary-child-refusal/docker-01/resources.json",
+      "sha256": "a413d0276c9a7b13561674913b58974e375d050b8586b8f723e611df3a3d493d"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/docker-01/admission-estimate.json",
+      "bytes": 282,
+      "path": "four-binary-child-refusal/docker-01/admission-estimate.json",
+      "sha256": "b7e3741e3c778129c518ab9d728d1dd5808c7488d259b9c6a9edd6b495d3e58a"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/docker-01/detailed-resources.json",
+      "bytes": 2880,
+      "path": "four-binary-child-refusal/docker-01/detailed-resources.json",
+      "sha256": "802d1a60aa6722568fbfb36869e7075fcb7187f25c8448c847532d18e4997b4b"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/docker-01/source384-result.json",
+      "bytes": 2102,
+      "path": "four-binary-child-refusal/docker-01/source384-result.json",
+      "sha256": "6e6c0220357d695e89623c20464946abbf21f685f7865a6aa22c70df1e4d9857"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/docker-01/source384-probe-status.json",
+      "bytes": 19,
+      "path": "four-binary-child-refusal/docker-01/source384-probe-status.json",
+      "sha256": "4df7e306bff9cf8b6546ba28ccb1707b05fcfbd81e618b394b02855490cbb4b1"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/docker-01/source384-probe.stdout",
+      "bytes": 6187,
+      "path": "four-binary-child-refusal/docker-01/source384-probe.stdout",
+      "sha256": "d512f4a2f48e7eaac1a04a1fa8dbb7626d140c9b276ce09f7a64d67e7384aad5"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/docker-01/source384-probe.stderr",
+      "bytes": 0,
+      "path": "four-binary-child-refusal/docker-01/source384-probe.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/codex-cache-advice.json",
+      "bytes": 1871,
+      "path": "four-binary-child-refusal/codex-cache-advice.json",
+      "sha256": "be243858c4f48eb5fc1671f2fd851a786b5790d39f55e1a84384251ea17ba301"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/docker-01/codex-cache-resources-after.json",
+      "bytes": 2880,
+      "path": "four-binary-child-refusal/docker-01/codex-cache-resources-after.json",
+      "sha256": "a2663d8c574a9fca1ae41b83646b74375b3eecc1ac9e498f45ae764ef580f516"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/source-free-outcome.json",
+      "bytes": 9311,
+      "path": "four-binary-child-refusal/source-free-outcome.json",
+      "sha256": "3f6c358a6be7f5d28e39d98769b3f90ba44e5a4b76e4d33075201b2bfc8d1328"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/source-free-outcome.md",
+      "bytes": 2395,
+      "path": "four-binary-child-refusal/source-free-outcome.md",
+      "sha256": "52798a1ae5e934a3a4e34871a2694bf807fb7338e92d5601a38eb5d151e927c0"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/retry-02/independent-outcome-audit.json",
+      "bytes": 2384,
+      "path": "four-binary-child-refusal/independent-outcome-audit.json",
+      "sha256": "7d3a11a2e8ef816c7ea055252479f563112a145d1700c945780ec597eff264dc"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/preceding-archive-only-outcome.json",
+      "bytes": 7559,
+      "path": "archive-only/source-free-outcome.json",
+      "sha256": "b7487cd34e51e87b144d599cce37f84a38af935cd679b1dbeeec46cb4b9d9229"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/first-safe-refusal-outcome.json",
+      "bytes": 6697,
+      "path": "binary-receipt-refusal/source-free-outcome.json",
+      "sha256": "5329ed91ca799a19aacf5c77945c71175fc6d470a508812dbfb442fe4857a860"
+    },
+    {
+      "artifact": "source384-docker-native-codex-cache-20261003/collect_outcome.py",
+      "bytes": 12890,
+      "path": "collect_outcome.py",
+      "sha256": "b3a6143a5e7e1e8af79434678a09db8a99a80d05ba17355eac03ebca3ad9f1b8"
+    },
+    {
+      "artifact": "source384-setup-cache-diagnostics-20261003/package_evidence.py",
+      "bytes": 14535,
+      "path": "package_evidence.py",
+      "sha256": "fa7b25d1d45a5c7034b0e068f43badcf588094ceb3f9a850a10e94e4b5e6a6fe"
+    }
+  ],
+  "schema": "explicit-whitelist-provenance@1"
+}

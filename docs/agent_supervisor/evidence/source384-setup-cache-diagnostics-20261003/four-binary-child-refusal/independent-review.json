@@ -1,0 +1,30 @@
+{
+  "decision": "no_blocker_for_root_authorized_retry",
+  "limits": [
+    "no actual retry or released-memory result yet",
+    "receipt metadata changes are intentional transport preparation; public executable metadata must remain unchanged",
+    "root launch authorization remains separate"
+  ],
+  "production_files_modified": false,
+  "read_only": true,
+  "reviewed": [
+    "newly uploaded exact public receipt only: singleton regular file and bounded exact byte length before fchown/fchmod",
+    "held descriptor and post-protection identity/path checks; strict root0644/read-time SHA checks remain",
+    "no permission relaxation for binary population, archive or credentials",
+    "isolated SHA-verified native module loaded before protect_receipt then strict main",
+    "meaningful authored 0664 fixture, hardlink/FIFO/symlink/size refusal before mutation and path replacement controls",
+    "selected metadata-only error context preserves original OSError type",
+    "18 final authored controls reported pass0.115s; prior17pass1error remains distinct"
+  ],
+  "reviewer": "/root/restart_cid",
+  "schema": "native-codex-cache-receipt-protection-review@1",
+  "sha256": {
+    "cache_candidate.py": "26f4b2c9a87611102e98aff6d18e4a409b2796fab2a4e64e3ae41a392f8ed742",
+    "codex_cache_candidate.py": "615ea1b563c7c280e4d622665a9420d5948dd217837bee84d5f85169b14c62c3",
+    "controls-02.json": "7d2b42f4198a8c87abbbd18ee18cd3fa885be1bdb276b43c6f07413990367486",
+    "controls-02.log": "d06aaf91dffedbbabd9873395bc1e9e1dacbe7b2fbe3b25c9132a31f3e7e8fd7",
+    "run_diagnostic.py": "a79fbce2b60d80c9114c9554a33ff87551993d2a40d38f31bdd7fe6c17d11c5d",
+    "test_codex_cache_candidate.py": "11cf109376fc0ad2e530078acd32af0ce2c6a7a0c93400e15c2995d75543026e"
+  },
+  "tests_rerun": false
+}

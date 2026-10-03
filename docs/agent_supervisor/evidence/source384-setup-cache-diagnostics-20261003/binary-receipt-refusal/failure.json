@@ -1,0 +1,4 @@
+{
+  "error": "bounded pinned native binary cache advice failed",
+  "error_type": "ValueError"
+}

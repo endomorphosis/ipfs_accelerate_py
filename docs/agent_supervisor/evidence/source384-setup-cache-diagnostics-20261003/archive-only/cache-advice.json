@@ -1,0 +1,18 @@
+{
+  "advice_is_best_effort": true,
+  "advised_bytes": 3914232094,
+  "advised_files": 26905,
+  "archive_sha256": "a83b157f478dbcb869f134e71bfd02b17bdb7f82f3de8d281cc6202f66464d0b",
+  "body_reads": 0,
+  "body_writes": 0,
+  "cgroup_writes": false,
+  "errors": [],
+  "freed_bytes_claimed": false,
+  "global_drop_caches": false,
+  "manifest_sha256": "4d13cfeb3ad2daf67a50c135babbf58c6a197a71f70376bc730051508ce8fb27",
+  "metadata_unchanged": true,
+  "schema": "manifest-cache-advice@1",
+  "seconds": 7.839980140000989,
+  "selected_bytes": 3914232094,
+  "selected_files": 26905
+}

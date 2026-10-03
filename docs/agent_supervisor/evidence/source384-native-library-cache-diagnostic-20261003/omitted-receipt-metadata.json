@@ -1,0 +1,19 @@
+{
+  "files": [
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-native-library-cache-20261003/docker-01/deployment/deployment.json",
+      "bytes": 73067,
+      "reason": "Duplicate complete source-hash inventories and deployment metadata; selected outcome fields and independent equality checks retained.",
+      "sha256": "6b0c716b2158e2c5f0a97761292b89a3d8f4c609a2a19167601c3dcd466d71ba"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-native-library-cache-20261003/docker-01/qualification.json",
+      "bytes": 77488,
+      "reason": "Duplicate complete source-hash inventories and deployment metadata; selected outcome fields and independent equality checks retained.",
+      "sha256": "bb4ed582392a5755988b1cab4446c369be847007303ecf8ea6581cd0cab73bd2"
+    }
+  ],
+  "native_inference_export_present": false,
+  "schema": "omitted-local-receipt-descriptors@1",
+  "task_bodies_auth_checkpoint_binary_and_database_payloads_included": false
+}

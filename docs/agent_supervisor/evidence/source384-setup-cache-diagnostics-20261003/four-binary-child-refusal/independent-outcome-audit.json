@@ -1,0 +1,54 @@
+{
+  "admission_sample_scope": "8592MiB is a fresh failure-handling sample.8602MiB was the root admission estimate; the root was already held. This is not the exact child lease decision or a demonstrated cause.",
+  "advice_bytes_are_not_freed_byte_measurements": true,
+  "archive_advice_passed": true,
+  "archive_advised_bytes": 3914232094,
+  "archive_files": 26905,
+  "at": "2026-10-03T13:28:47.660353+00:00",
+  "cleanup_absent": true,
+  "coverage": null,
+  "failure_boundary": {
+    "index_owner_frame": 609,
+    "index_owner_sha256": "2cc174e71f17a23daabd1c8855d96c621811addfe5152f386810ec23918b1463",
+    "index_snapshot_and_publication_reached": false,
+    "name": "first index.prepare_current child resource lease",
+    "native_inference_reached": false,
+    "owner_store_initialization_may_have_occurred": true
+  },
+  "failure_resources": {
+    "available_memory_mb": 8592,
+    "cpu_slots": 5,
+    "cpu_stall_percent": 36.91,
+    "io_stall_percent": 0.34,
+    "memory_stall_percent": 0.01,
+    "total_memory_mb": 12288
+  },
+  "helper_review_sha256": "6ea0dc438ecfbde321fa45ebb3a181c22f0fa05f7cb2ee7a7feb973fdd02cdc1",
+  "input_preservation": "218 originals exactly equal across deployment",
+  "model_loads": null,
+  "official_verifier_executed": false,
+  "outcome_sha256": "3f6c358a6be7f5d28e39d98769b3f90ba44e5a4b76e4d33075201b2bfc8d1328",
+  "production_cache_policy_changed": false,
+  "provider_binary_advice_passed": true,
+  "provider_binary_copies": 4,
+  "provider_binary_hashed_and_advised_bytes": 628736528,
+  "provider_binary_receipt_sha256_verified": true,
+  "provider_calls": 0,
+  "reviewer": "peer_recovery_fresh",
+  "root_lease_admitted": {
+    "consumer_frame": 219,
+    "consumer_sha256": "5e7da432a206b07900822044326dde963b5bf8cb9c1f39d313e1a6ceed56e66f",
+    "status": "inferred_from_exact_native_trace_and_frozen_control_flow"
+  },
+  "schema": "independent-source-free-cache-outcome-audit@1",
+  "scope": "Instrumented diagnostic outcome only; no production qualification, benchmark score or advantage.",
+  "source_and_model_payloads_copied": false,
+  "source_pins_unchanged": true,
+  "tests_or_docker_run_by_reviewer": false,
+  "trace_descriptor": {
+    "bytes": 6187,
+    "path": "docker-01/source384-probe.stdout",
+    "sha256": "d512f4a2f48e7eaac1a04a1fa8dbb7626d140c9b276ce09f7a64d67e7384aad5"
+  },
+  "verdict": "artifact_claims_verified_failure_retained"
+}

@@ -1,0 +1,59 @@
+{
+  "actual_resource_profile": "5 CPU /12288 MiB",
+  "admission_evidence_limit": "The retained backoff reason and later resource sample do not capture the exact child admission decision sample or its contemporaneous scheduler state.",
+  "advice_bytes_are_freed_bytes": false,
+  "advice_scopes": {
+    "archive": {
+      "bytes": 3914232094,
+      "files": 26905
+    },
+    "public_binary_copies": {
+      "bytes": 628736528,
+      "files": 4
+    },
+    "public_native_libraries": {
+      "bytes": 414442268,
+      "files": 7
+    }
+  },
+  "before_after_live_source_pins_equal": true,
+  "benchmark_result": false,
+  "cleanup_absent": true,
+  "coverage": null,
+  "decision": "receipt_and_control_flow_claims_verified_failure_retained",
+  "durable_inference_publication_reached": false,
+  "failure_boundary": {
+    "consumer_sha256": "5e7da432a206b07900822044326dde963b5bf8cb9c1f39d313e1a6ceed56e66f",
+    "index_owner_line": 712,
+    "index_owner_sha256": "2cc174e71f17a23daabd1c8855d96c621811addfe5152f386810ec23918b1463",
+    "name": "post-worker source observation child resource lease",
+    "unit_owner_line": 248,
+    "unit_owner_sha256": "1ab971c23d2b8982d4e1c8af74b24cc10da704ec29fa260777836d7be1db68f6"
+  },
+  "focused_controls": 25,
+  "helper_review_sha256": "fe173910d7c3f4e4fd0933ae8ec459b3897bec77253a11fc9b275e53ed4a9ae4",
+  "independent_library_pin_comparison": "Seven installed row hashes/sizes/modes equal reviewed archive-extension and CPU-wheel-member metadata. No wheel payload rehash by this reviewer.",
+  "input_preservation": "218 originals exactly equal across deployment",
+  "model_loads": null,
+  "official_verifier_executed": false,
+  "outcome_sha256": "e79c8294d550fbd4ed3df7224509b51439978d3aa93ef8013ff43d04e0d3e67c",
+  "payloads_copied": false,
+  "post_unwind_available_memory_mib": 8637,
+  "post_unwind_leases_and_waiters": 0,
+  "post_unwind_scheduler_reason": "proof_memory_headroom",
+  "production_cache_policy_changed": false,
+  "production_qualification_claimed": false,
+  "provider_calls": 0,
+  "reviewed_source_and_controls_hashes_equal": true,
+  "reviewer": "peer_recovery_fresh",
+  "root_admitted_and_initial_index_returned": "Inferred from frozen consumer control flow and exact later native traceback.",
+  "schema": "independent-seven-library-diagnostic-outcome-audit@1",
+  "tests_models_or_docker_run_by_reviewer": false,
+  "trace_descriptor": {
+    "bytes": 11598,
+    "path": "docker-01/source384-probe.stdout",
+    "sha256": "f3290e2f408767f1cd3aaa771703e3c1373df24d2715b62c13bc2d1ffead1e24"
+  },
+  "verdict_sha256": "4a0ae85f3878c4f4924aa8d4396a4eeb4833e8e7a339e505a5e83c5eddc7f72f",
+  "worker_return_and_closed_output_validation": "Inferred from units384.py line248 observe frame after line247 _worker return and _validate_output on line248; not a persisted inference receipt."
+}

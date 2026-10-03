@@ -1,0 +1,26 @@
+{
+  "archive_advice_bytes": 3914232094,
+  "archive_advice_files": 26905,
+  "available_memory_after_archive_mb": 8303,
+  "available_memory_before_archive_mb": 5386,
+  "container_removed": true,
+  "files": {
+    "after-pins.json": "3fa6e6ff13969b96118f4a804fa61344f6d95abe6c32d1b20abee50f8358c5ed",
+    "before-pins.json": "3fa6e6ff13969b96118f4a804fa61344f6d95abe6c32d1b20abee50f8358c5ed",
+    "cache-advice.json": "3bec22bf97e9cc2f4858cf7e520f0fccd5bf043ff8fdb1d3e32bd5d952b19e4a",
+    "codex-cache-advice-status.json": "ee3de8836f2594356ba642bda2ff3efe0db3013cf4b2f98fa4a752245e31c5aa",
+    "containers-after.json": "11c8e4d6b9ed9a59fde466cfd0aa636f30594fd28fe2d25fb0490db81ffc2463",
+    "docker-01/codex-cache-advice.stdout": "b7cd586326f912cd797a81c049c858b97cac6fdcf4df7589f4c368459d55f330",
+    "exit.json": "8f67f468a68e76e325964c9151332a420ac37a398982753e0c27a63e2b880c59",
+    "failure.json": "b55cef679c59cfe38074a530d532440d1bfba7f01dc88e7df7be457383603fc6"
+  },
+  "inference_executed": false,
+  "metadata_cause_limit": "Retained source receipt metadata differs from required protected destination; no destination stat was retained.",
+  "native_codex_advice_calls": 0,
+  "native_codex_body_reads": 0,
+  "outcome": "uploaded-public-receipt-metadata-refused",
+  "receipt_source_mode": "0664",
+  "receipt_source_uid": 1000,
+  "schema": "native-codex-cache-refusal@1",
+  "source_pins_unchanged": true
+}

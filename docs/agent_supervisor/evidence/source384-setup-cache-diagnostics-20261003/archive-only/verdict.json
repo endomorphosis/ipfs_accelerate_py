@@ -1,0 +1,113 @@
+{
+  "actual_advised_bytes_not_freed_bytes": true,
+  "admission_policy_changed": false,
+  "advice_seconds": 7.839980140000989,
+  "advised_bytes": 3914232094,
+  "advised_files": 26905,
+  "archive_sha256": "a83b157f478dbcb869f134e71bfd02b17bdb7f82f3de8d281cc6202f66464d0b",
+  "archived_deployment_sha256": "c4e3dcc3aa2fae3d77fa538ec4855778d26a5cd70392ff54d4ae6b399653869d",
+  "artifact_hashes": [
+    {
+      "bytes": 968,
+      "path": "host-archive-provenance.json",
+      "sha256": "504a5391782eebc568d6dd475d676ee4859072e5123cd5233427805f1691dd00"
+    },
+    {
+      "bytes": 1254,
+      "path": "run-command.json",
+      "sha256": "a47a7d835293349dc5694e89c441d200dbe416d5dc3bad198da553c4773ee60a"
+    },
+    {
+      "bytes": 9984,
+      "path": "run_diagnostic.py",
+      "sha256": "4d9573b3a971d312d31334cc1b1fd1b61ae68aece2d50260b7dc93f50980098a"
+    },
+    {
+      "bytes": 8784,
+      "path": "cache_candidate.py",
+      "sha256": "26f4b2c9a87611102e98aff6d18e4a409b2796fab2a4e64e3ae41a392f8ed742"
+    },
+    {
+      "bytes": 574,
+      "path": "cache-advice.json",
+      "sha256": "23d5e0279b190ef32dbd906ab19c006c54f4290e5b4c104f57caa1465851ff1b"
+    },
+    {
+      "bytes": 112,
+      "path": "cache-advice-status.json",
+      "sha256": "0ba37afef56ec3552a0c76c06496ecc39c5c3f676bd24da828d8e0d395698119"
+    },
+    {
+      "bytes": 2851,
+      "path": "docker-01/cache-resources-before.json",
+      "sha256": "fd6dc85ac40a38ab9a3f1f029011a675a5fc878ec81a103e7478cdd0185dd8be"
+    },
+    {
+      "bytes": 2856,
+      "path": "docker-01/cache-resources-after.json",
+      "sha256": "71991679c79fd0bbb0765b7bb4126ef34774c5dadf26bdd4fa67d73b01908831"
+    },
+    {
+      "bytes": 2856,
+      "path": "docker-01/detailed-resources.json",
+      "sha256": "df877724b5f3440758d43e3261b54791548b158098153dfa444f037b4c39c225"
+    },
+    {
+      "bytes": 2103,
+      "path": "docker-01/source384-result.json",
+      "sha256": "aab91e430c725e0a106ec74baeed6a364ade3bc06be0e127f3e666560a2da83f"
+    },
+    {
+      "bytes": 3813,
+      "path": "docker-01/source384-probe.stdout",
+      "sha256": "7939b60efcd1fcbc667d705aa4aa2d6d197d706392e51a2a805739361e101a6b"
+    },
+    {
+      "bytes": 1708,
+      "path": "before-pins.json",
+      "sha256": "3fa6e6ff13969b96118f4a804fa61344f6d95abe6c32d1b20abee50f8358c5ed"
+    },
+    {
+      "bytes": 1708,
+      "path": "after-pins.json",
+      "sha256": "3fa6e6ff13969b96118f4a804fa61344f6d95abe6c32d1b20abee50f8358c5ed"
+    },
+    {
+      "bytes": 36,
+      "path": "containers-before.json",
+      "sha256": "11c8e4d6b9ed9a59fde466cfd0aa636f30594fd28fe2d25fb0490db81ffc2463"
+    },
+    {
+      "bytes": 36,
+      "path": "containers-after.json",
+      "sha256": "11c8e4d6b9ed9a59fde466cfd0aa636f30594fd28fe2d25fb0490db81ffc2463"
+    },
+    {
+      "bytes": 150,
+      "path": "exit.json",
+      "sha256": "4fab82649573633610ef28cfc40bf056c928d4b3d8bd6a03d0bac2965883b273"
+    }
+  ],
+  "available_after_mib": 8289,
+  "available_at_failure_mib": 8195,
+  "available_before_mib": 4462,
+  "body_reads": 0,
+  "body_writes": 0,
+  "cache_advice_errors": [],
+  "container_cleanup_confirmed": true,
+  "explicit_host_setup_generation_change": true,
+  "failed_boundary": "initial Source384 root resource lease before index/model",
+  "failure_pressure_below_thresholds": true,
+  "host_deployment_sha256": "bb4e4f845f03026572530b81fde6a540a2cd0ab89b17e606587ddfbc33dfc285",
+  "metadata_unchanged": true,
+  "minimum_root_admission_mib": 8602,
+  "native_deadline_changed": false,
+  "native_qualification_seconds": 48.652912224999454,
+  "official_verifier_executed": false,
+  "provider_calls": 0,
+  "qualified": false,
+  "schema": "fixed-layout-manifest-cache-qualification-verdict@1",
+  "source384_worker_launched": false,
+  "source_pins_unchanged": true,
+  "strict_manifest_preflight_passed": true
+}

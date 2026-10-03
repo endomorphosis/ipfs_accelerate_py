@@ -1,0 +1,23 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "unittest",
+    "-v",
+    "test_codex_cache_candidate.py",
+    "test_native_library_cache_candidate.py"
+  ],
+  "cwd": "/home/barberb/lift_coding/artifacts/source384-docker-native-library-cache-20261003",
+  "returncode": 0,
+  "seconds": 0.3696732229946065,
+  "source_sha256": {
+    "cache_candidate.py": "26f4b2c9a87611102e98aff6d18e4a409b2796fab2a4e64e3ae41a392f8ed742",
+    "codex_cache_candidate.py": "1c13733b9789ee8199a4ec60fe1bb45958940d018caffa850fd10926beaa7057",
+    "finite-library-source-pins.json": "abbb454825437057bbf33cdbd30aa5ff76fb1d1005724d602b7bc4c8bf8743c9",
+    "native_library_cache_candidate.py": "f848ab59419a86d8c1329e5eecca01bafccce7400fc72f20991ebb9da4528cea",
+    "run_diagnostic.py": "a7e586d3dd735fb426f137afe0090182b62c0bcc15cd513b9d09218cefeae871",
+    "test_codex_cache_candidate.py": "11cf109376fc0ad2e530078acd32af0ce2c6a7a0c93400e15c2995d75543026e",
+    "test_native_library_cache_candidate.py": "9abc44d21fd96a5a779babacd423a65b96f49012223f8561a17b5182ef2f6e77"
+  }
+}

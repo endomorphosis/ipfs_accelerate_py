@@ -1,0 +1,182 @@
+{
+  "actual_cgroups": null,
+  "admission_estimate": null,
+  "advantage_claimed": false,
+  "archive_cache": {
+    "advice_is_best_effort": true,
+    "advised_bytes": 3914232094,
+    "advised_files": 26905,
+    "archive_sha256": "a83b157f478dbcb869f134e71bfd02b17bdb7f82f3de8d281cc6202f66464d0b",
+    "body_reads": 0,
+    "body_writes": 0,
+    "cgroup_writes": false,
+    "freed_bytes_claimed": false,
+    "global_drop_caches": false,
+    "manifest_sha256": "4d13cfeb3ad2daf67a50c135babbf58c6a197a71f70376bc730051508ce8fb27",
+    "metadata_unchanged": true,
+    "schema": "manifest-cache-advice@1",
+    "seconds": 8.57581662099983,
+    "selected_bytes": 3914232094,
+    "selected_files": 26905
+  },
+  "archive_cache_error_count": 0,
+  "archive_cache_status": {
+    "candidate_sha256": "26f4b2c9a87611102e98aff6d18e4a409b2796fab2a4e64e3ae41a392f8ed742",
+    "returncode": 0
+  },
+  "artifact_directory": "/home/barberb/lift_coding/artifacts/source384-docker-native-codex-cache-20261003",
+  "benchmark_result": false,
+  "cleanup": {
+    "no_matching_containers": true,
+    "receipt_present": true,
+    "scope": "Retained docker-ps filter observation; not a global process inventory."
+  },
+  "deadlines_seconds": {
+    "qualification_exec_seconds": 300,
+    "qualification_inner_seconds": 270,
+    "qualification_outer_seconds": 2300,
+    "source384_native_seconds": 90
+  },
+  "diagnostic_only": true,
+  "error": {
+    "error_type": "ValueError"
+  },
+  "failure_resources": null,
+  "host_archive_generation": {
+    "actual_host_deployment_source_sha256": "bb4e4f845f03026572530b81fde6a540a2cd0ab89b17e606587ddfbc33dfc285",
+    "archive_deployment_source_sha256": "c4e3dcc3aa2fae3d77fa538ec4855778d26a5cd70392ff54d4ae6b399653869d",
+    "archive_not_rebuilt": true,
+    "archive_sha256": "a83b157f478dbcb869f134e71bfd02b17bdb7f82f3de8d281cc6202f66464d0b",
+    "archived_deployment_module_not_used_to_install_python": true,
+    "selected_source384_owners_unchanged": true
+  },
+  "inference": {
+    "coverage": null,
+    "model_loads": null,
+    "native_worker_executed": null,
+    "raw_export_publicly_included": false,
+    "verified": false
+  },
+  "input_preservation": {
+    "original_count": 218,
+    "original_inputs_equal_across_deployment": true,
+    "original_inventory_sha256": "677e4399f7f38d2bf55fa7cf82c41d8d30bfa8cb97aa8e1faf9b01d7c858e13d",
+    "reported_preserved": true,
+    "retained_inventory_sha256": "677e4399f7f38d2bf55fa7cf82c41d8d30bfa8cb97aa8e1faf9b01d7c858e13d",
+    "scope": "Full original input inventory compared across deployment; no post-agent full-tree claim."
+  },
+  "native_source384_phase_passed": null,
+  "official_verifier_executed": false,
+  "payload_policy": "No raw source, embeddings, weights, native report bodies, credentials or verifier inputs copied. Model/coverage claims require exact retained-native-export verification.",
+  "process": {
+    "returncode": 1,
+    "seconds": 254.4187953110013,
+    "source_pins_unchanged": true
+  },
+  "production_qualification_claimed": false,
+  "provider_binary_cache": null,
+  "provider_binary_cache_error_count": null,
+  "provider_binary_cache_status": {
+    "candidate_sha256": "254f38d4651348c04f04774d053e233cd10aa42479997851ed9b8a18c3fe273e",
+    "post_boundary_receipt_sha256": "06b48e1be4d82bad4fcb1c4b86a879ec47622f82bb69ae96e655665f0e6a65eb",
+    "returncode": 1
+  },
+  "provider_binary_exposure_present": true,
+  "provider_calls_reported": 0,
+  "raw_qualifier_passed": false,
+  "receipt_pins": {
+    "cache-advice-status.json": {
+      "bytes": 112,
+      "sha256": "0ba37afef56ec3552a0c76c06496ecc39c5c3f676bd24da828d8e0d395698119"
+    },
+    "cache-advice.json": {
+      "bytes": 573,
+      "sha256": "3bec22bf97e9cc2f4858cf7e520f0fccd5bf043ff8fdb1d3e32bd5d952b19e4a"
+    },
+    "codex-cache-advice-status.json": {
+      "bytes": 214,
+      "sha256": "ee3de8836f2594356ba642bda2ff3efe0db3013cf4b2f98fa4a752245e31c5aa"
+    },
+    "containers-after.json": {
+      "bytes": 36,
+      "sha256": "11c8e4d6b9ed9a59fde466cfd0aa636f30594fd28fe2d25fb0490db81ffc2463"
+    },
+    "docker-01/cache-resources-after.json": {
+      "bytes": 2868,
+      "sha256": "6289a047030fea7b692cb16d9c72fd8381be5d55aa151efa9d305c9fd986707b"
+    },
+    "docker-01/cache-resources-before.json": {
+      "bytes": 2863,
+      "sha256": "20faa9a2893b9ce04bc5812f6c32da9be0a8366e29ae4ae9d4fd2c5b16a1efbb"
+    },
+    "docker-01/codex-cache-resources-before.json": {
+      "bytes": 2868,
+      "sha256": "6d32d89ab9149fb0b4f59dbe3ae014df3a258b7c0d85e0fd040d9d307aae7707"
+    },
+    "docker-01/deployment/deployment.json": {
+      "bytes": 73066,
+      "sha256": "a4aa71f4ffcdb5520c36a091c9bdf37809f069b2ba436987518d252893c54b8e"
+    },
+    "docker-01/qualification.json": {
+      "bytes": 355,
+      "sha256": "a69a97c5aea6bf450649017d357fc05a477288189675808599aab25a21482ca3"
+    },
+    "docker-01/worker-boundary/installation/native-codex-binary.log": {
+      "bytes": 793,
+      "sha256": "06b48e1be4d82bad4fcb1c4b86a879ec47622f82bb69ae96e655665f0e6a65eb"
+    },
+    "exit.json": {
+      "bytes": 149,
+      "sha256": "8f67f468a68e76e325964c9151332a420ac37a398982753e0c27a63e2b880c59"
+    },
+    "failure.json": {
+      "bytes": 96,
+      "sha256": "b55cef679c59cfe38074a530d532440d1bfba7f01dc88e7df7be457383603fc6"
+    },
+    "host-archive-provenance.json": {
+      "bytes": 968,
+      "sha256": "504a5391782eebc568d6dd475d676ee4859072e5123cd5233427805f1691dd00"
+    },
+    "scope.json": {
+      "bytes": 1267,
+      "sha256": "3038ed3b877237113e1d902b374e08c844633f5b41750d2f857e2146f7d109d5"
+    },
+    "verdict.json": {
+      "bytes": 1409,
+      "sha256": "0b95f373ff2b31493dab7d73a975408f3ab56fa7b849ec1c2d8b439bc6d65a21"
+    }
+  },
+  "reported_failure_boundary": "uploaded-public-receipt-metadata-refused",
+  "resource_profile": "source384-5cpu-12gib@1",
+  "resource_samples": {
+    "cache-resources-after.json": {
+      "available_memory_mb": 8303,
+      "cpu_slots": 5,
+      "cpu_stall_percent": 23.16,
+      "io_stall_percent": 10.76,
+      "memory_stall_percent": 0.06,
+      "total_memory_mb": 12288
+    },
+    "cache-resources-before.json": {
+      "available_memory_mb": 5386,
+      "cpu_slots": 5,
+      "cpu_stall_percent": 24.64,
+      "io_stall_percent": 2.49,
+      "memory_stall_percent": 0.13,
+      "total_memory_mb": 12288
+    },
+    "codex-cache-resources-before.json": {
+      "available_memory_mb": 8303,
+      "cpu_slots": 5,
+      "cpu_stall_percent": 23.16,
+      "io_stall_percent": 10.76,
+      "memory_stall_percent": 0.06,
+      "total_memory_mb": 12288
+    }
+  },
+  "schema": "source-free-cache-diagnostic-outcome@1",
+  "timings_seconds": {
+    "deployment": 192.4146289499986
+  },
+  "token_counters": null
+}

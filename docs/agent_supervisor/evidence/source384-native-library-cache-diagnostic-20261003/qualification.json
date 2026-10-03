@@ -1,0 +1,66 @@
+{
+  "actual_cpu_max": "500000 100000",
+  "actual_memory_max": "12884901888",
+  "admission_or_deadline_changed": false,
+  "advantage_claimed": false,
+  "advice": {
+    "archive": {
+      "bytes": 3914232094,
+      "files": 26905
+    },
+    "native_binary_copies": {
+      "bytes": 628736528,
+      "files": 4
+    },
+    "native_libraries": {
+      "bytes": 414442268,
+      "files": 7
+    }
+  },
+  "advice_bytes_are_freed_bytes": false,
+  "all_advice_scopes_metadata_unchanged": true,
+  "archive_sha256": "a83b157f478dbcb869f134e71bfd02b17bdb7f82f3de8d281cc6202f66464d0b",
+  "archived_deployer_sha256": "c4e3dcc3aa2fae3d77fa538ec4855778d26a5cd70392ff54d4ae6b399653869d",
+  "benchmark_result": false,
+  "container_cleanup_observed": true,
+  "controls": {
+    "passed": 25,
+    "receipt": "controls-02.json",
+    "scope": "Authored helper/diagnostic controls, not model tests; earlier24-control generation excluded.",
+    "source_generation": "final-sources.json"
+  },
+  "coverage": null,
+  "deadlines_seconds": {
+    "container_exec": 300,
+    "outer": 2300,
+    "qualifier_probe": 270,
+    "source384_native": 90
+  },
+  "diagnostic_only": true,
+  "durable_inference_receipt_created": false,
+  "exact_child_admission_sample_retained": false,
+  "failure_boundary": "Post-worker source observation child resource lease",
+  "failure_error": "LeaseTimeoutError",
+  "host_deployer_sha256": "bb4e4f845f03026572530b81fde6a540a2cd0ab89b17e606587ddfbc33dfc285",
+  "initial_index_and_worker_output_validation_returned": "Control-flow inference from exact frozen traceback; no published numerical report.",
+  "model_loads": null,
+  "next_128_wheel_member_experiment_included": false,
+  "official_verifier_executed": false,
+  "original_files_preserved_across_deployment": 218,
+  "post_unwind_active_leases_and_waiters": 0,
+  "post_unwind_available_memory_mib": 8637,
+  "post_unwind_backoff_reason": "proof_memory_headroom",
+  "prior_three_generation_package_manifest_sha256": "46941ee221c49b67f48c5fff9b5f5925993757186bcd6e6b53640c11884983bf",
+  "production_cache_policy_changed": false,
+  "provider_calls": 0,
+  "qualified": false,
+  "resource_profile": "source384-5cpu-12gib@1",
+  "schema": "seven-library-diagnostic-evidence@1",
+  "timings_seconds": {
+    "deployment": 192.10708819700085,
+    "initial_context_until_failure": 97.01350516800449,
+    "native_probe": 108.46736702099588,
+    "prepare": 10.435561653997866,
+    "whole_diagnostic": 368.04462550800235
+  }
+}

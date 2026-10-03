@@ -1,0 +1,16 @@
+{
+  "additional_body_reads": "Four SHA-verified public executable bodies only; no credential bodies.",
+  "advice_scope": "Archive manifest regular files followed by exactly two native Codex0.158 source binaries and their two exposed copies.",
+  "archive_sha256": "a83b157f478dbcb869f134e71bfd02b17bdb7f82f3de8d281cc6202f66464d0b",
+  "archived_deployer_sha256": "c4e3dcc3aa2fae3d77fa538ec4855778d26a5cd70392ff54d4ae6b399653869d",
+  "controls": "controls-03 and exact sources preserved under controls-03-sources; final wrapper label-only change",
+  "freed_bytes_claimed": false,
+  "host_deployer_sha256": "bb4e4f845f03026572530b81fde6a540a2cd0ab89b17e606587ddfbc33dfc285",
+  "intentional_difference": "Host deployer uses qualified nested UV runtime directory; archived deployer is not invoked for Python installation. Exact archive otherwise unchanged.",
+  "official_verifier_executed": false,
+  "production_cache_policy_changed": false,
+  "provider_calls": 0,
+  "resource_profile": "source384-5cpu-12gib@1",
+  "schema": "native-codex-cache-experiment@1",
+  "source384_seconds": 90
+}
