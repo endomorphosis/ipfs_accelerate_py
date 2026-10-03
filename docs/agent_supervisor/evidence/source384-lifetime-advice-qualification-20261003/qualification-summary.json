@@ -1,0 +1,160 @@
+{
+  "archive_sha256": "4240d87a63757c976f3013b4293df321d84b3670fd36996f58454bcc39cc2d64",
+  "benchmark_result": false,
+  "cleanup_verified": true,
+  "controller_seconds": 423.8399558329984,
+  "coverage": {
+    "candidate_statuses": {
+      "fail_open_source_contract_unsupported": 127
+    },
+    "file_dispositions": {
+      "inventoried": 27,
+      "no_function_units": 4
+    },
+    "files": 31,
+    "functions": 944,
+    "selected_units": 128,
+    "unit_dispositions": {
+      "decoded_unverified_candidate": 127,
+      "deferred_gte_token_limit": 1,
+      "deferred_selection_budget": 737,
+      "unsupported_normalization": 79
+    }
+  },
+  "download_calls_during_inference": 0,
+  "freed_memory_measured": false,
+  "official_verifier_executed": false,
+  "original_container_sources_consumed": true,
+  "profile": "source384-5cpu-12gib@1",
+  "proof_authority": false,
+  "provider_calls": 0,
+  "public_task_inputs_unchanged": true,
+  "qualification_exec_seconds": 300,
+  "qualification_inner_seconds": 270,
+  "qualification_outer_seconds": 2300,
+  "qualified": true,
+  "resources_after": {
+    "available_memory_mb": 8968,
+    "cgroup_path": "/sys/fs/cgroup",
+    "cpu_max": "500000 100000",
+    "detected_cpu_slots": 5,
+    "detected_total_memory_mb": 12288,
+    "memory_max": "12884901888",
+    "schema": "terminal-source384-cgroup-observation@1"
+  },
+  "resources_before": {
+    "available_memory_mb": 9339,
+    "cgroup_path": "/sys/fs/cgroup",
+    "cpu_max": "500000 100000",
+    "detected_cpu_slots": 5,
+    "detected_total_memory_mb": 12288,
+    "memory_max": "12884901888",
+    "schema": "terminal-source384-cgroup-observation@1"
+  },
+  "schema": "ordinary-source384-lifetime-advice-qualification@1",
+  "setup": {
+    "advice_completed": true,
+    "policy": "source384-native-aarch64-dontneed@1",
+    "qualified": true,
+    "seconds": 194.81230696900457,
+    "steps": [
+      {
+        "return_code": 0,
+        "step": "original-inputs"
+      },
+      {
+        "return_code": 0,
+        "step": "root-create"
+      },
+      {
+        "return_code": 0,
+        "step": "archive-extract"
+      },
+      {
+        "return_code": 0,
+        "step": "source-generation"
+      },
+      {
+        "return_code": 0,
+        "step": "system-install"
+      },
+      {
+        "return_code": 0,
+        "step": "python-runtime-install"
+      },
+      {
+        "return_code": 0,
+        "step": "python-create"
+      },
+      {
+        "return_code": 0,
+        "step": "torch-cpu-wheel-verify"
+      },
+      {
+        "return_code": 0,
+        "step": "torch-cpu-install"
+      },
+      {
+        "return_code": 0,
+        "step": "python-install"
+      },
+      {
+        "return_code": 0,
+        "step": "account-create"
+      },
+      {
+        "return_code": 0,
+        "step": "native-extensions"
+      },
+      {
+        "return_code": 0,
+        "step": "codex-native-expose"
+      },
+      {
+        "return_code": 0,
+        "step": "codex-version"
+      },
+      {
+        "return_code": 0,
+        "step": "auth-permissions"
+      },
+      {
+        "return_code": 0,
+        "step": "auth-status"
+      },
+      {
+        "return_code": 0,
+        "step": "native-imports"
+      },
+      {
+        "return_code": 0,
+        "step": "empty-native-start"
+      },
+      {
+        "return_code": 0,
+        "step": "retained-inputs"
+      }
+    ],
+    "task_source_preserved": true
+  },
+  "source384_native_deadline_seconds": 90,
+  "source_pins_unchanged": true,
+  "timings": {
+    "context_nonoverlapping_seconds": {
+      "empty_native_world_capture": 0.4480054099985864,
+      "final_evidence_verification": 11.743022677008412,
+      "persisted_snapshot_reopen": 0.33494930499000475,
+      "retrieval_persistence": 1.4311804119934095,
+      "semantic_build_reconstruction_and_hydration": 39.80227709199244,
+      "source384_capture_and_inference": 76.95513338100864,
+      "vector_qualification": 6.989925885995035
+    },
+    "context_seconds": 137.71160844199767,
+    "initial_context_seconds": 137.8088140010077,
+    "prepare_seconds": 10.412882258999161,
+    "seconds": 159.48432632400363,
+    "source384_seconds": 76.88394876300299,
+    "warm_observation_seconds": 10.264094800004386
+  },
+  "training_steps": 0
+}

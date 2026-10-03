@@ -1,0 +1,67 @@
+{
+  "added_framework_paths": [
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/action_contrastive_decoder_training.py",
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/action_factorized_clause_decoder_experiment.py",
+    "datasets/ipfs_datasets_py/logic/software_contracts/codebase_header_context.py",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_resource_diagnostics.py"
+  ],
+  "changed_framework_paths": [
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/long_span_source_value_training.py",
+    "datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py",
+    "datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_embedding_runtime.py",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py"
+  ],
+  "current": {
+    "archive_sha256": "4240d87a63757c976f3013b4293df321d84b3670fd36996f58454bcc39cc2d64",
+    "initial_context_seconds": 137.8088140010077,
+    "qualified": true,
+    "resources_after": {
+      "available_memory_mb": 8968,
+      "cgroup_path": "/sys/fs/cgroup",
+      "cpu_max": "500000 100000",
+      "detected_cpu_slots": 5,
+      "detected_total_memory_mb": 12288,
+      "memory_max": "12884901888",
+      "schema": "terminal-source384-cgroup-observation@1"
+    },
+    "resources_before": {
+      "available_memory_mb": 9339,
+      "cgroup_path": "/sys/fs/cgroup",
+      "cpu_max": "500000 100000",
+      "detected_cpu_slots": 5,
+      "detected_total_memory_mb": 12288,
+      "memory_max": "12884901888",
+      "schema": "terminal-source384-cgroup-observation@1"
+    },
+    "source384_seconds": 76.88394876300299,
+    "warm_observation_seconds": 10.264094800004386
+  },
+  "interpretation": "Two single runs under uncontrolled host conditions and multiple source changes; no causal allocation/speedup/freed-byte attribution. Previous failed phase timing is not a matched completed phase. Current success qualifies this retained runtime only, not full supervisor benchmark reward.",
+  "previous": {
+    "archive_sha256": "a36bf3550eb17a0c3a1f190f5cad2364a66b07994e9ecacd6637666d5df761e0",
+    "context_seconds": 159.39397933999862,
+    "evidence_manifest_sha256": "cc1ce11035b8fd0003c8a6991ecbe796bbdf17fefdc620120a5c5b0f0e93774b",
+    "failure": "LeaseTimeoutError at second cold-replay observation",
+    "post_unwind_failure_resources": {
+      "available_memory_mb": 8667,
+      "cpu_slots": 5,
+      "cpu_stall_percent": 41.31,
+      "io_stall_percent": 0.16,
+      "memory_stall_percent": 0.0,
+      "total_memory_mb": 12288
+    },
+    "qualified": false,
+    "resources_before": {
+      "available_memory_mb": 9350,
+      "cgroup_path": "/sys/fs/cgroup",
+      "cpu_max": "500000 100000",
+      "detected_cpu_slots": 5,
+      "detected_total_memory_mb": 12288,
+      "memory_max": "12884901888",
+      "schema": "terminal-source384-cgroup-observation@1"
+    }
+  },
+  "schema": "ordinary-qualification-comparison@1"
+}

@@ -1,0 +1,42 @@
+{
+  "schema": "source384-next-bundle-independent-audit@1",
+  "verdict": "pass",
+  "reviewer": "restart_cid",
+  "archive_sha256": "4240d87a63757c976f3013b4293df321d84b3670fd36996f58454bcc39cc2d64",
+  "manifest_sha256": "b749d42b246fce2a7013c8637cf43e77e4bca8a8fd81b1abb8692bb739ce8602",
+  "build_audit_sha256": "c1f8df36b89f73998b16fdf4e43f51b19f3bb704cf19852109648d4fb2bb3cff",
+  "builder_sha256": "ceccc4fd5ebb8deb7015e47a6f795f6a58280970a5509a749d14e78a020a3a45",
+  "preceding_manifest_sha256": "eb4913c3a11dbf93d166f0f333d80f314a2ce876f9673763b27f50a1f33d67f0",
+  "member_count": 26922,
+  "logical_bytes": 3914547213,
+  "compressed_bytes": 1338008638,
+  "exact_changed": [
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/long_span_source_value_training.py",
+    "datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py",
+    "datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_embedding_runtime.py",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py"
+  ],
+  "exact_added": [
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/action_contrastive_decoder_training.py",
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/action_factorized_clause_decoder_experiment.py",
+    "datasets/ipfs_datasets_py/logic/software_contracts/codebase_header_context.py",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_resource_diagnostics.py"
+  ],
+  "removed": [],
+  "live_frozen_source_pins_verified": 33,
+  "source_revisions": {
+    "accelerate": "907dae9bc05affedfe5f97e56da3197d4f110cb9",
+    "datasets": "8879dce383b680de7d1643295af400b0f617eff0"
+  },
+  "checkpoint_config_assets_unchanged": true,
+  "gte_assets_unchanged": true,
+  "wheel_binding_and_member_unchanged": true,
+  "setup_cache_policy_and_libraries_unchanged": true,
+  "active_changes": "A initial context, driver, qualifier plus diagnostic helper; D source-unit context and embedding verifier",
+  "inactive_changes": "D captured-header adapter and two action modules added; long-span training module updated. Header is not selected by Source384; action imports occur only in long-span training owner.",
+  "inactive_reference_review": "Searched the software_contracts and formalization/autoencoder native source trees: action references only at long_span_source_value_training.py lines36/285; no current Source384 owner/header import.",
+  "verification_scope": "Independent small manifest/live-source review; builder full-tar SHA/mode/uid/gid verification receipt inspected. No duplicate full-tar read or hash, model run, task read or Docker run.",
+  "qualification_claim": "Build identity only; no native pipeline success, reclaimed-memory, benchmark or proof claim."
+}

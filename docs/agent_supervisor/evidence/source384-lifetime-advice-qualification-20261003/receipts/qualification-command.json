@@ -1,0 +1,117 @@
+{
+  "admission_sha256": "1d69ae5c3cbae05e51ce5184ccd6f95892e046ae0f21ab5200f4313f7c3b0589",
+  "argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/source384-initial-context-lifetime-20261003/run_qualification.py"
+  ],
+  "benchmark_result": false,
+  "build_audit_sha256": "c1f8df36b89f73998b16fdf4e43f51b19f3bb704cf19852109648d4fb2bb3cff",
+  "cache_policy": "source384-native-aarch64-dontneed@1",
+  "component_review": {
+    "passed_scopes": [
+      "D verified embedding advice:40 current unit controls and7 native checkpoint/inference/replay controls passed; existing16CPU/99688MiB ledger with24922MiB headroom reused unchanged.",
+      "A caller lifetime:18 actual controls passed.",
+      "A checkpoint consumer:11 of13 actual cases passed; remaining2 are resource refusals listed separately.",
+      "A bounded failure diagnostics:39 actual controls passed, zero skips, one explicitly deselected case; success-path resource policy is unchanged."
+    ],
+    "receipt_bindings": {
+      "caller_and_checkpoint": {
+        "path": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/docs/agent_supervisor/evidence/source384-initial-context-lifetime-20261003/manifest.json",
+        "sha256": "49904b660bc8cad37ba3e0e725ab590b74d30bc3b879870029e2a8dc5058efa4"
+      },
+      "diagnostics_root_review": {
+        "path": "/home/barberb/lift_coding/artifacts/source384-failure-scheduler-diagnostics-20261003/root-review.json",
+        "sha256": "048ad572cba46ef1cfe1150382cd5ee2a5410ad5437c5183383fe14614efe1bf"
+      },
+      "failure_diagnostics": {
+        "path": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/docs/agent_supervisor/evidence/source384-failure-scheduler-diagnostics-20261003/manifest.json",
+        "sha256": "e1d565f9cc034a1bf4ab1777d0b701c9e8451ce9516a89ffa489d1452d27c55a"
+      },
+      "verified_embedding_advice": {
+        "path": "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/docs/software_contracts/evidence/source384-verified-embedding-advice-20261003/manifest.json",
+        "sha256": "3ccdc575d3a3a6510a1f9f66123fc4347bde2c063547f0c35085d35c2c4f8b7a"
+      }
+    },
+    "receipt_metadata": {
+      "passed_scopes": [
+        {
+          "actual_current_tests": 47,
+          "host_native_profile": {
+            "cpu_slots": 16,
+            "headroom_mb": 24922,
+            "memory_mb": 99688,
+            "mode": "existing configured-client ledger with native sampler; unchanged policy"
+          },
+          "native_checkpoint_inference_replay_tests": 7,
+          "native_container_admission_claim": false,
+          "scope": "D verified embedding advice",
+          "unit_tests": 40
+        },
+        {
+          "scope": "A initial-context caller lifetime",
+          "source": "Root reviewed closed caller_and_checkpoint receipt binding; exact generations and native resource refusals retained.",
+          "tests": 18
+        },
+        {
+          "passed_tests": 11,
+          "scope": "A checkpoint consumer cases",
+          "source": "Root reviewed closed caller_and_checkpoint receipt binding; exact generations and native resource refusals retained.",
+          "total_tests": 13
+        }
+      ],
+      "resource_blocked_scopes": [
+        {
+          "observed_profile": {
+            "cpu_slots": 4,
+            "foreign_reservation_mb": 4096,
+            "memory_mb": 9830,
+            "request_mb": 6144
+          },
+          "phase": "Source384 root admission before indexing or model loading",
+          "policy_changed": false,
+          "retry_performed": false,
+          "scope": "A checkpoint consumer cases",
+          "source": "Root reviewed closed caller_and_checkpoint receipt binding; exact generations and native resource refusals retained.",
+          "tests": 2
+        }
+      ]
+    },
+    "resource_blocked_scopes": [
+      "A checkpoint consumer:2 cases refused initial6144MiB root admission before index/model work because a foreign4096MiB lease occupied the later4CPU/9830MiB ledger; no retry, reset, process kill or policy change."
+    ],
+    "unresolved_code_or_test_packaging_failures": []
+  },
+  "credential_contents_recorded": false,
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "diagnostic_only": false,
+  "env": {
+    "HF_HUB_OFFLINE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:/home/barberb/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "inherited_environment_recipe": "/home/barberb/lift_coding/artifacts/source384-full-supervisor-preflight-20261003/prepare-command.json",
+  "inherited_environment_recipe_sha256": "5204f81fb32b680286cfdba8a147b64a473efea6a856accfecaf8e870a42443e",
+  "later_full_harbor_setup_seconds": 1800,
+  "official_verifier_executed": false,
+  "preceding_ordinary_qualifier": "/home/barberb/lift_coding/artifacts/source384-production-cache-20261003/run_qualification.py",
+  "preceding_ordinary_qualifier_sha256": "ad677991909587b0bdca064b8526c32b2af7b3e7f9f465552b50efc7766a876a",
+  "provider_calls": 0,
+  "qualification_aggregate_setup_timeout": null,
+  "qualification_exec_seconds": 300,
+  "qualification_inner_seconds": 270,
+  "qualification_outer_seconds": 2300,
+  "resource_profile": "source384-5cpu-12gib@1",
+  "runtime_hooks_installed": false,
+  "script_sha256": "7edb9838173dc79cb3a69bbbc681007c4a6e7f5d342aaeabc73e1092bc175c54",
+  "selected_archive_sha256": "4240d87a63757c976f3013b4293df321d84b3670fd36996f58454bcc39cc2d64",
+  "selected_manifest_sha256": "b749d42b246fce2a7013c8637cf43e77e4bca8a8fd81b1abb8692bb739ce8602",
+  "setup_operation_timeouts_unchanged": true,
+  "source384_native_seconds": 90
+}

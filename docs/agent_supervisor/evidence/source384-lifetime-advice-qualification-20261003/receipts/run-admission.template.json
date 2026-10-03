@@ -1,0 +1,63 @@
+{
+  "build_audit_sha256": null,
+  "component_review": {
+    "passed_scopes": [
+      "D verified embedding advice:40 current unit controls and7 native checkpoint/inference/replay controls passed; existing16CPU/99688MiB ledger with24922MiB headroom reused unchanged.",
+      "A caller lifetime:18 actual controls passed.",
+      "A checkpoint consumer:11 of13 actual cases passed; remaining2 are resource refusals listed separately.",
+      "A bounded failure diagnostics:39 actual controls passed, zero skips, one explicitly deselected case; success-path resource policy is unchanged."
+    ],
+    "receipt_metadata": {
+      "passed_scopes": [
+        {
+          "actual_current_tests": 47,
+          "host_native_profile": {
+            "cpu_slots": 16,
+            "headroom_mb": 24922,
+            "memory_mb": 99688,
+            "mode": "existing configured-client ledger with native sampler; unchanged policy"
+          },
+          "native_checkpoint_inference_replay_tests": 7,
+          "native_container_admission_claim": false,
+          "scope": "D verified embedding advice",
+          "unit_tests": 40
+        },
+        {
+          "scope": "A initial-context caller lifetime",
+          "source": "peer reported actual current generation; final receipt binding pending",
+          "tests": 18
+        },
+        {
+          "passed_tests": 11,
+          "scope": "A checkpoint consumer cases",
+          "source": "peer reported current generation; final receipt binding pending",
+          "total_tests": 13
+        }
+      ],
+      "resource_blocked_scopes": [
+        {
+          "observed_profile": {
+            "cpu_slots": 4,
+            "foreign_reservation_mb": 4096,
+            "memory_mb": 9830,
+            "request_mb": 6144
+          },
+          "phase": "Source384 root admission before indexing or model loading",
+          "policy_changed": false,
+          "retry_performed": false,
+          "scope": "A checkpoint consumer cases",
+          "source": "peer reported before/after retained foreign lease; final receipt binding pending",
+          "tests": 2
+        }
+      ]
+    },
+    "resource_blocked_scopes": [
+      "A checkpoint consumer:2 cases refused initial6144MiB root admission before index/model work because a foreign4096MiB lease occupied the later4CPU/9830MiB ledger; no retry, reset, process kill or policy change."
+    ],
+    "unresolved_code_or_test_packaging_failures": []
+  },
+  "current_producer_component_review_complete": false,
+  "fresh_archive_audited": false,
+  "root_go_received": false,
+  "scope_note": "Final current-generation component review includes D47, A18, A11/13 with2 recorded admission refusals, and diagnostics39. Actual build audit and root execution authorization are required before Docker; previous ordinary Docker failed."
+}

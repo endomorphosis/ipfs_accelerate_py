@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/source384-initial-context-lifetime-20261003/run_qualification.py"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "at": 1791049469.6844077,
+  "admission_sha256": "1d69ae5c3cbae05e51ce5184ccd6f95892e046ae0f21ab5200f4313f7c3b0589",
+  "template_sha256": "6fc79012309ad0f4f26870e32ef5eafd0a8a1f278ef99d6586b19cd7ee1bffef"
+}

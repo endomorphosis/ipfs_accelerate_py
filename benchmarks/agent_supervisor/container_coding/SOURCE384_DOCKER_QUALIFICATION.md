@@ -518,3 +518,36 @@ counts remain unavailable for this run. There are no provider or verifier calls.
 The five-CPU/12-GiB profile, admission rules and deadlines are unchanged. The
 full task remains gated on qualification; RPI-019 remains open and the backlog
 remains 18 closed criteria out of 32. No new reward or token score is available.
+
+
+## Ordinary qualification with verified GTE advice
+
+The [subsequent ordinary qualification](../../../docs/agent_supervisor/evidence/source384-lifetime-advice-qualification-20261003/README.md)
+passes setup, native START, checkpoint inference, context replay and cleanup in
+the unchanged five-CPU/12-GiB profile. Source384 completes in 76.884 seconds
+against its 90-second deadline; initial context takes 137.809 seconds, the native
+probe 159.484 seconds, and the controller 423.840 seconds including setup. A
+separate warm observation takes 10.264 seconds. The 33 frozen runtime pins and
+public task inputs remain unchanged.
+
+The 220 signed inputs yield 31 Python files and 944 functions. Of 128 selected
+units, 127 decode into unverified candidates and one exceeds the token limit.
+All 127 candidates remain unsupported by the source-contract guard; the planner
+summary exposes two samples and explicitly omits 125. Actual inference uses one
+model load, with zero provider calls, training steps or proof authority.
+
+The shared GTE verifier now optionally advises the same nine fully verified
+file descriptors after all byte counts, hashes and identities pass; Source384
+binds this requested policy in its inference key. Other callers keep the
+unchanged default. The caller also drops completed construction objects before
+fresh validation. Forty datasets unit controls and seven native checkpoint
+controls pass; 18 caller controls pass. The coordinated host consumer suite has
+11 passes and two initial admission refusals under a foreign 4096MiB reservation
+in its later 9830MiB ledger. Those refusals remain distinct from the current
+container success. Failure diagnostics pass 39 controls without changing policy.
+
+This is one retained successful run with multiple changes and uncontrolled host
+conditions, not measured cache reclamation or a general speedup. It permits a
+fresh full task trial; it supplies no benchmark reward or token score. RPI-019
+remains open, automatic post-publication Source384 successor inference remains
+unavailable, and the backlog stays 18 closed criteria out of 32.

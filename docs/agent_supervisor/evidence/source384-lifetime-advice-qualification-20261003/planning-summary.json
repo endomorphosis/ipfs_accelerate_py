@@ -1,0 +1,46 @@
+{
+  "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+  "completion_authority": false,
+  "coverage": {
+    "candidate_statuses": {
+      "fail_open_source_contract_unsupported": 127
+    },
+    "file_dispositions": {
+      "inventoried": 27,
+      "no_function_units": 4
+    },
+    "files": 31,
+    "functions": 944,
+    "selected_units": 128,
+    "unit_dispositions": {
+      "decoded_unverified_candidate": 127,
+      "deferred_gte_token_limit": 1,
+      "deferred_selection_budget": 737,
+      "unsupported_normalization": 79
+    }
+  },
+  "execution_authority": false,
+  "formalization_authority": false,
+  "inference_sha256": "14204dfa455c0f3f0196d7d5a9e36e6f93bb7ecf94f626c9b8e66981fb13f7e8",
+  "mode": "pinned_parent",
+  "model_promotion_performed": false,
+  "nomination_only": true,
+  "omitted_candidates": 125,
+  "proof_authority": false,
+  "provider_calls": 0,
+  "published_candidate_sample_count": 2,
+  "repository_retention": "not_evaluated",
+  "schema": "terminal-source384-planning-summary@1",
+  "source_files": 220,
+  "source_head": {
+    "ast_revision_id": "rev:terminal-source384:e468e82318b8a7313af7d960d86dd17d71bbaf9b2d9ddb326878808e5e0910b6:snapshot:baguqeera4ewciao5x6qeibu3i5lc7k4nx45kvltmwwzlusybkdfoujnfpawa",
+    "generation": 1,
+    "manifest_cid": "baguqeeramudd54jqzzvsiw52isdco4kh6fuywyvusvuuyzztrmry7owcsvia",
+    "receipt_cid": "baguqeeraaubp7to2zsil4yeianf2utcpdss6pzbq74mq5cq3phtddwyzolwa",
+    "repository_id": "terminal-source384:e468e82318b8a7313af7d960d86dd17d71bbaf9b2d9ddb326878808e5e0910b6",
+    "schema": "codebase-head@1",
+    "snapshot_cid": "baguqeera4ewciao5x6qeibu3i5lc7k4nx45kvltmwwzlusybkdfoujnfpawa"
+  },
+  "training_steps": 0,
+  "version_id": "sha256:65603504d2ac09f3b491296466248d87ab1119a0b15c36ec1325928cda37dab2"
+}

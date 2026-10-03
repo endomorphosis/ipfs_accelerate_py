@@ -1,0 +1,14 @@
+{
+  "argv": [
+    "python3",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/source384-initial-context-lifetime-20261003/build_fresh.py"
+  ],
+  "cwd": "/home/barberb/lift_coding",
+  "builder_sha256": "ceccc4fd5ebb8deb7015e47a6f795f6a58280970a5509a749d14e78a020a3a45",
+  "root_go": "build only; no Docker before root-bound audit",
+  "source_revisions": {
+    "accelerate": "907dae9bc05affedfe5f97e56da3197d4f110cb9",
+    "datasets": "8879dce383b680de7d1643295af400b0f617eff0"
+  }
+}

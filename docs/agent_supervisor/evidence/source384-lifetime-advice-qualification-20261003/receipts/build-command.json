@@ -1,0 +1,67 @@
+{
+  "argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-m",
+    "benchmarks.agent_supervisor.container_coding.terminal_deployment",
+    "bundle",
+    "--output",
+    "/home/barberb/lift_coding/artifacts/source384-initial-context-lifetime-20261003/bundle",
+    "--source",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+    "--datasets",
+    "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002",
+    "--kit",
+    "/home/barberb/lift_coding/external/ipfs_kit",
+    "--extension-dir",
+    "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64",
+    "--source384-config",
+    "/home/barberb/lift_coding/artifacts/terminal-source384-context-20261003/bottle-canary-04/source384-config.json",
+    "--torch-cpu-wheel",
+    "/home/barberb/lift_coding/artifacts/source384-torch-wheel-20261003/torch-2.13.0+cpu-cp312-cp312-manylinux_2_28_aarch64.whl",
+    "--torch-cpu-wheel-sha256",
+    "6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604",
+    "--lean-toolchain",
+    "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1",
+    "--setup-cache-policy",
+    "source384-native-aarch64-dontneed@1"
+  ],
+  "benchmark_executed": false,
+  "builder_sha256": "ceccc4fd5ebb8deb7015e47a6f795f6a58280970a5509a749d14e78a020a3a45",
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "env": {
+    "HF_HUB_OFFLINE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:/home/barberb/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "environment_recipe": "/home/barberb/lift_coding/artifacts/source384-full-supervisor-preflight-20261003/prepare-command.json",
+  "environment_recipe_sha256": "5204f81fb32b680286cfdba8a147b64a473efea6a856accfecaf8e870a42443e",
+  "expected_added": [
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/action_contrastive_decoder_training.py",
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/action_factorized_clause_decoder_experiment.py",
+    "datasets/ipfs_datasets_py/logic/software_contracts/codebase_header_context.py",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_resource_diagnostics.py"
+  ],
+  "expected_changed": [
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/long_span_source_value_training.py",
+    "datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py",
+    "datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_embedding_runtime.py",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py"
+  ],
+  "inherited_producer_pins_sha256": "5e9641bfbbe4440eaf4b6482fde1bf1567820d40e2a4e56c9a2614f30bea871f",
+  "preceding_archive_sha256": "a36bf3550eb17a0c3a1f190f5cad2364a66b07994e9ecacd6637666d5df761e0",
+  "preceding_build_audit_sha256": "872cea0d943cfa215bdd137e8228e8484dc294a52a85dbf31e8bf0db6f3ae4e3",
+  "preceding_manifest_sha256": "eb4913c3a11dbf93d166f0f333d80f314a2ce876f9673763b27f50a1f33d67f0",
+  "provider_calls": 0,
+  "source_revisions": {
+    "accelerate": "907dae9bc05affedfe5f97e56da3197d4f110cb9",
+    "datasets": "8879dce383b680de7d1643295af400b0f617eff0"
+  }
+}

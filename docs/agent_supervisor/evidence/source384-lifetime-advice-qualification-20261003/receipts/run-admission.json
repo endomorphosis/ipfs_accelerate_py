@@ -1,0 +1,82 @@
+{
+  "at": "2026-10-03T17:43:58.066180+00:00",
+  "build_audit_sha256": "c1f8df36b89f73998b16fdf4e43f51b19f3bb704cf19852109648d4fb2bb3cff",
+  "component_review": {
+    "passed_scopes": [
+      "D verified embedding advice:40 current unit controls and7 native checkpoint/inference/replay controls passed; existing16CPU/99688MiB ledger with24922MiB headroom reused unchanged.",
+      "A caller lifetime:18 actual controls passed.",
+      "A checkpoint consumer:11 of13 actual cases passed; remaining2 are resource refusals listed separately.",
+      "A bounded failure diagnostics:39 actual controls passed, zero skips, one explicitly deselected case; success-path resource policy is unchanged."
+    ],
+    "receipt_bindings": {
+      "caller_and_checkpoint": {
+        "path": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/docs/agent_supervisor/evidence/source384-initial-context-lifetime-20261003/manifest.json",
+        "sha256": "49904b660bc8cad37ba3e0e725ab590b74d30bc3b879870029e2a8dc5058efa4"
+      },
+      "diagnostics_root_review": {
+        "path": "/home/barberb/lift_coding/artifacts/source384-failure-scheduler-diagnostics-20261003/root-review.json",
+        "sha256": "048ad572cba46ef1cfe1150382cd5ee2a5410ad5437c5183383fe14614efe1bf"
+      },
+      "failure_diagnostics": {
+        "path": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/docs/agent_supervisor/evidence/source384-failure-scheduler-diagnostics-20261003/manifest.json",
+        "sha256": "e1d565f9cc034a1bf4ab1777d0b701c9e8451ce9516a89ffa489d1452d27c55a"
+      },
+      "verified_embedding_advice": {
+        "path": "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002/docs/software_contracts/evidence/source384-verified-embedding-advice-20261003/manifest.json",
+        "sha256": "3ccdc575d3a3a6510a1f9f66123fc4347bde2c063547f0c35085d35c2c4f8b7a"
+      }
+    },
+    "receipt_metadata": {
+      "passed_scopes": [
+        {
+          "actual_current_tests": 47,
+          "host_native_profile": {
+            "cpu_slots": 16,
+            "headroom_mb": 24922,
+            "memory_mb": 99688,
+            "mode": "existing configured-client ledger with native sampler; unchanged policy"
+          },
+          "native_checkpoint_inference_replay_tests": 7,
+          "native_container_admission_claim": false,
+          "scope": "D verified embedding advice",
+          "unit_tests": 40
+        },
+        {
+          "scope": "A initial-context caller lifetime",
+          "source": "Root reviewed closed caller_and_checkpoint receipt binding; exact generations and native resource refusals retained.",
+          "tests": 18
+        },
+        {
+          "passed_tests": 11,
+          "scope": "A checkpoint consumer cases",
+          "source": "Root reviewed closed caller_and_checkpoint receipt binding; exact generations and native resource refusals retained.",
+          "total_tests": 13
+        }
+      ],
+      "resource_blocked_scopes": [
+        {
+          "observed_profile": {
+            "cpu_slots": 4,
+            "foreign_reservation_mb": 4096,
+            "memory_mb": 9830,
+            "request_mb": 6144
+          },
+          "phase": "Source384 root admission before indexing or model loading",
+          "policy_changed": false,
+          "retry_performed": false,
+          "scope": "A checkpoint consumer cases",
+          "source": "Root reviewed closed caller_and_checkpoint receipt binding; exact generations and native resource refusals retained.",
+          "tests": 2
+        }
+      ]
+    },
+    "resource_blocked_scopes": [
+      "A checkpoint consumer:2 cases refused initial6144MiB root admission before index/model work because a foreign4096MiB lease occupied the later4CPU/9830MiB ledger; no retry, reset, process kill or policy change."
+    ],
+    "unresolved_code_or_test_packaging_failures": []
+  },
+  "current_producer_component_review_complete": true,
+  "fresh_archive_audited": true,
+  "root_go_received": true,
+  "scope_note": "Root authorizes one ordinary qualification of the reviewed fresh archive under the unchanged5CPU/12GiB resource profile and existing deadlines. All component pass/refusal scopes remain explicit. No Docker pass, memory improvement, inference completion or benchmark score is presumed."
+}

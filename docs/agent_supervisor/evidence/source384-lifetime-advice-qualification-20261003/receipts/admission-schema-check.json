@@ -1,0 +1,13 @@
+{
+  "schema": "admission-template-schema-check@1",
+  "passed": 3,
+  "validator_sha256": "7edb9838173dc79cb3a69bbbc681007c4a6e7f5d342aaeabc73e1092bc175c54",
+  "template_sha256": "1ade962aaaca6db4715322c26d8adc7c7af600767a5a3ec560b7525a65027e6a",
+  "production_qualifier_edited": false,
+  "execution": false,
+  "cases": [
+    "exact current template accepted",
+    "structured passed list refused",
+    "structured blocked list refused"
+  ]
+}
