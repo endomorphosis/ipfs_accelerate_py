@@ -1,0 +1,15 @@
+{
+  "schema": "initial-context-staging-qualification@1",
+  "distinct_controls": 32,
+  "actual_checkout_passed": true,
+  "source_scope": [
+    "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+    "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_nomination_staging.py"
+  ],
+  "additional_native_lifecycle_controls": 2,
+  "real_model_inference": false,
+  "benchmark_reward": null,
+  "measured_saving_seconds": null,
+  "limits_unchanged": true
+}

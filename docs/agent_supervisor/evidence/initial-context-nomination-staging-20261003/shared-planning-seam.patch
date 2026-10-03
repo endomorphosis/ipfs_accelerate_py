@@ -1,0 +1,13 @@
+--- a/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py
++++ b/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py
+@@ -479,8 +479,8 @@
+     constraints = prepared["constraints"]
+     initial = None
+     if (state / "initial-context-result.json").exists():
+-        from .terminal_initial_context import load_initial_context
+-        initial = load_initial_context(state=state, prepared=prepared, require_empty_owner=True)
++        from .terminal_initial_context import load_initial_context, stage_initial_context_nomination
++        initial = stage_initial_context_nomination(state=state, prepared=prepared, require_empty_owner=True)
+         constraints = {**constraints, "constraint_summaries": [
+             *constraints["constraint_summaries"], *initial["summaries"]]}
+     if strategy == "intent_symbolic":

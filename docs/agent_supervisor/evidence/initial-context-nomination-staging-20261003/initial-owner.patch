@@ -1,0 +1,66 @@
+--- a/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py
++++ b/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py
+@@ -362,7 +362,25 @@
+     return _load_initial_context(state=state, prepared=prepared, require_empty_owner=require_empty_owner, result=result)
+ 
+ 
+-def _load_initial_context(*, state: Path, prepared: dict, require_empty_owner: bool, result: dict) -> dict:
++def stage_initial_context_nomination(*, state: Path, prepared: dict, require_empty_owner: bool) -> dict:
++    """Decode bounded nominations for construction, without numerical currentness.
++
++    This result cannot authorize dispatch, admission, or context publication.
++    Those owners must still call load_initial_context at their existing live
++    gates. Source/manifest, semantic, retrieval and native world checks remain
++    unchanged here; only the optional Source384 observer is deferred.
++    """
++    marker = state / "initial-context-result.json"
++    if marker.is_symlink() or marker.stat().st_size > MAX_BYTES:
++        raise ValueError("initial context receipt is outside bounds")
++    result = json.loads(marker.read_bytes())
++    staged = _load_initial_context(state=state, prepared=prepared,
++        require_empty_owner=require_empty_owner, result=result, _stage_source384=True)
++    return {**staged, "source384_currentness": "not_established_by_nomination_staging"}
++
++
++def _load_initial_context(*, state: Path, prepared: dict, require_empty_owner: bool, result: dict,
++                          _stage_source384: bool = False) -> dict:
+     root = Path(prepared["repository"]).resolve(strict=True)
+     descriptor = _read(root, result["descriptor"])
+     if (descriptor.get("schema") != SCHEMA or descriptor["request_cid"] != PromptWorkflowRequest.from_dict(prepared["request"]).request_cid
+@@ -394,7 +412,8 @@
+                 or selected != {"config_path": source384["config_path"],
+                     "config_sha256": source384["config_sha256"]}):
+             raise ValueError("Source384 context differs from selected model/source declaration")
+-        validate_source384_context(repository=root, expected_receipt=source384)
++        if not _stage_source384:
++            validate_source384_context(repository=root, expected_receipt=source384)
+     elif source384_selection.exists() or result.get("source384_context") is not None:
+         raise ValueError("selected Source384 context is missing")
+     selection = state / "security-checkpoint-selection.json"
+@@ -476,7 +495,9 @@
+ 
+ def bind_admitted_context(*, state: Path, prepared: dict, admission: dict, verified: dict,
+                          output: Path, model_snapshot: Path | None, model_revision: str) -> dict:
+-    loaded = load_initial_context(state=state, prepared=prepared, require_empty_owner=False)
++    # The final live gate below must pass before this private construction can
++    # become a task context. Do not replay numerical advice just to nominate it.
++    loaded = stage_initial_context_nomination(state=state, prepared=prepared, require_empty_owner=False)
+     descriptor = loaded["descriptor"]
+     actual_model = str(model_snapshot.resolve(strict=True)) if model_snapshot else None
+     if descriptor["model_snapshot"] != actual_model or descriptor["model_revision"] != model_revision:
+@@ -498,8 +519,13 @@
+         world = persist_intent_world_snapshot(capture, output=output / "world", task_id=task.task_key)
+         load_intent_world_context(artifact=Path(world["artifact"]), expected_sha256=world["artifact_sha256"],
+             task_id=task.task_key, repository_id=view.root.repository_id, intent=intent)
+-    # Source artifacts must still verify after the independently owned capture.
+-    load_initial_context(state=state, prepared=prepared, require_empty_owner=False)
++    # Source/model artifacts must verify after the independently owned capture,
++    # and the checked selection must be the one used by this construction.
++    current = load_initial_context(state=state, prepared=prepared, require_empty_owner=False)
++    if (current["receipt"]["descriptor"] != loaded["receipt"]["descriptor"]
++            or current["descriptor"] != loaded["descriptor"]
++            or current["summaries"] != loaded["summaries"]):
++        raise ValueError("initial context nomination changed during admitted world capture")
+     metadata = {**descriptor["metadata"],
+         "World context artifact": Path(world["artifact"]).relative_to(root).as_posix(),
+         "World context sha256": world["artifact_sha256"], "World context repository": view.root.repository_id}

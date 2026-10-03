@@ -1,0 +1,153 @@
+{
+  "schema": "authored-post-context-lifecycle-timing@1",
+  "events": [
+    {
+      "method": "AdmittedBenchmarkRuntime._verify",
+      "thread": "MainThread",
+      "entered_seconds": 27.914398855995387,
+      "seconds": 0.11287425900809467,
+      "outcome": "returned"
+    },
+    {
+      "method": "AdmittedBenchmarkRuntime._verify",
+      "thread": "MainThread",
+      "entered_seconds": 28.0279470509995,
+      "seconds": 0.05598744399321731,
+      "outcome": "returned"
+    },
+    {
+      "method": "AdmittedBenchmarkRuntime._verify",
+      "thread": "MainThread",
+      "entered_seconds": 28.084012738996535,
+      "seconds": 0.051123026001732796,
+      "outcome": "returned"
+    },
+    {
+      "method": "AdmittedBenchmarkRuntime._verify",
+      "thread": "MainThread",
+      "entered_seconds": 28.170044561993564,
+      "seconds": 0.06242424099764321,
+      "outcome": "returned"
+    },
+    {
+      "method": "AdmittedBenchmarkRuntime._verify",
+      "thread": "admitted-supervisor-bootstrap",
+      "entered_seconds": 43.79211852500157,
+      "seconds": 0.060850821988424286,
+      "outcome": "returned"
+    },
+    {
+      "method": "AdmittedBenchmarkRuntime.start",
+      "thread": "MainThread",
+      "entered_seconds": 27.890680292999605,
+      "seconds": 17.09818400700169,
+      "outcome": "returned"
+    },
+    {
+      "method": "AdmittedBenchmarkRuntime._verify",
+      "thread": "MainThread",
+      "entered_seconds": 44.98887348399148,
+      "seconds": 0.06983218800451141,
+      "outcome": "returned"
+    },
+    {
+      "method": "AdmittedBenchmarkRuntime._verify",
+      "thread": "MainThread",
+      "entered_seconds": 79.73980120899796,
+      "seconds": 0.011012809001840651,
+      "outcome": "raised"
+    },
+    {
+      "method": "AdmittedBenchmarkRuntime._verify",
+      "thread": "MainThread",
+      "entered_seconds": 79.86616396300087,
+      "seconds": 0.15696161300002132,
+      "outcome": "raised"
+    },
+    {
+      "method": "AdmittedBenchmarkRuntime._verify",
+      "thread": "MainThread",
+      "entered_seconds": 80.15978094599268,
+      "seconds": 0.1779131170042092,
+      "outcome": "returned"
+    },
+    {
+      "method": "AdmittedBenchmarkRuntime._verify",
+      "thread": "MainThread",
+      "entered_seconds": 80.35650370699295,
+      "seconds": 0.06336429899965879,
+      "outcome": "raised"
+    },
+    {
+      "method": "AdmittedBenchmarkRuntime.start",
+      "thread": "MainThread",
+      "entered_seconds": 80.42018368499703,
+      "seconds": 0.00683237100020051,
+      "outcome": "raised"
+    },
+    {
+      "method": "AdmittedBenchmarkRuntime.stop",
+      "thread": "MainThread",
+      "entered_seconds": 80.42703226499725,
+      "seconds": 0.37491515900183003,
+      "outcome": "returned"
+    },
+    {
+      "method": "AdmittedBenchmarkRuntime._verify",
+      "thread": "MainThread",
+      "entered_seconds": 80.81424363898986,
+      "seconds": 0.14314766401366796,
+      "outcome": "returned"
+    },
+    {
+      "method": "AdmittedBenchmarkRuntime._verify",
+      "thread": "MainThread",
+      "entered_seconds": 81.06075503300235,
+      "seconds": 0.06882620599935763,
+      "outcome": "raised"
+    },
+    {
+      "method": "AdmittedBenchmarkRuntime.stop",
+      "thread": "MainThread",
+      "entered_seconds": 81.12965223399806,
+      "seconds": 0.07138274300086778,
+      "outcome": "returned"
+    },
+    {
+      "method": "AdmittedBenchmarkRuntime._verify",
+      "thread": "MainThread",
+      "entered_seconds": 81.20112491700274,
+      "seconds": 0.02680749499995727,
+      "outcome": "raised"
+    },
+    {
+      "method": "AdmittedBenchmarkRuntime.stop",
+      "thread": "MainThread",
+      "entered_seconds": 81.22798764599429,
+      "seconds": 0.0725970409985166,
+      "outcome": "returned"
+    },
+    {
+      "method": "PortalImplementationDaemon._compile_implementation_context",
+      "thread": "MainThread",
+      "entered_seconds": 86.86785830999725,
+      "seconds": 0.04379796699504368,
+      "outcome": "returned"
+    }
+  ],
+  "source_pins": {
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py": "cb456430970ebab2e9544266b37dd1c686427b9803d28bec625840f2eeea3ac2",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "4c335f79a8b96deda32544b461281bdbcf6914c12ec49df1d86249188786452c",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "a576ea51549b4a83ec9f5a6cae132c3a1b2badb826c437295cd2f68cd7b0faf0",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/test/integration/test_admitted_context_refresh.py": "d56c144cdfae543e51abb1b66d392f20e520541304c21f02f8a95ee9d48fce56",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py": "adeb2512d74ac3031653868e69bcd1afa0065adbcb8da9355d9fb1692f60658c",
+    "/home/barberb/lift_coding/artifacts/initial-context-nomination-staging-20261003/run_post_context.py": "c47b313217c89f9735a23e54a2ec75a82fa2a28c000dc391030cde1cd1eedbfa"
+  },
+  "scope": "External method timers on actual native START/bootstrap/STOP and prompt compilation controls. Source384 validator is explicitly authored by those tests; fixture is small. No model or provider. Not a full benchmark latency estimate.",
+  "wrappers_restored": true,
+  "model_calls": 0,
+  "provider_calls": 0,
+  "docker_runs": 0,
+  "runtime_bounds_unchanged": true,
+  "independent_native_source384_latency_qualified": false
+}

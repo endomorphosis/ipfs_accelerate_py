@@ -1,0 +1,32 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/initial-context-nomination-staging-20261003/run_controls.py",
+    "--child",
+    "-q",
+    "/home/barberb/lift_coding/artifacts/initial-context-nomination-staging-20261003/proposed-A/benchmarks/agent_supervisor/container_coding/test_terminal_nomination_staging.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/initial-context-nomination-staging-20261003/candidate-final-04.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "mode": "candidate",
+  "source_pins": {
+    "proposed-A/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": "1e07eb4f0515cf09b7f9f5a6ff8a30876acec981cae035e970f2dc26a66f14b9",
+    "proposed-A/benchmarks/agent_supervisor/container_coding/test_terminal_nomination_staging.py": "c58f622969df254f93b320bf210c5869a91aa9b4b089e561ba348984fdb44984",
+    "proposed-A/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py": "42d0d56a15f51d5562bbd5e647cb7ac0692998444438e824f1aa60456fc94883",
+    "run_controls.py": "781ead5da685c265d71b53e78e6e9886fc19c47f215f597a966c56f60e93bd54"
+  },
+  "environment": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "NOMINATION_MODE": "candidate",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/initial-context-nomination-staging-20261003/candidate-final-04-seal.duckdb"
+  },
+  "scope": "Whole-module off-tree overlay; authored numerical observer, native signed manifests/indexes/world/intent. No model/provider/Docker."
+}
