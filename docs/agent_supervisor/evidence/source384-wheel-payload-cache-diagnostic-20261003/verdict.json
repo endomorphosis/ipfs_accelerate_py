@@ -1,0 +1,158 @@
+{
+  "benchmark_result": false,
+  "container_removed": true,
+  "failed_observation_enter": {
+    "elapsed_seconds": 158.55506645699643,
+    "error_type": null,
+    "event": "enter",
+    "host": {
+      "available_memory_mb": 8561,
+      "cpu_slots": 5,
+      "cpu_stall_percent": 28.97,
+      "io_stall_percent": 0.6,
+      "memory_stall_percent": 0.0,
+      "total_memory_mb": 12288
+    },
+    "memory_current_bytes": 3907313664,
+    "memory_stat": {
+      "active_anon": 529035264,
+      "active_file": 127311872,
+      "anon": 532885504,
+      "file": 2974810112,
+      "file_dirty": 33697792,
+      "file_mapped": 78204928,
+      "file_writeback": 0,
+      "inactive_anon": 0,
+      "inactive_file": 2851336192,
+      "kernel": 398999552,
+      "slab": 396909288
+    },
+    "process_statm": "800815 150230 20118 4168 0 187077 0",
+    "stage": "source_observation"
+  },
+  "failed_observation_error": {
+    "elapsed_seconds": 188.56429661499715,
+    "error_type": "LeaseTimeoutError",
+    "event": "error",
+    "host": {
+      "available_memory_mb": 8561,
+      "cpu_slots": 5,
+      "cpu_stall_percent": 36.2,
+      "io_stall_percent": 0.62,
+      "memory_stall_percent": 0.0,
+      "total_memory_mb": 12288
+    },
+    "memory_current_bytes": 3907686400,
+    "memory_stat": {
+      "active_anon": 529346560,
+      "active_file": 127311872,
+      "anon": 533184512,
+      "file": 2974810112,
+      "file_dirty": 1060864,
+      "file_mapped": 78204928,
+      "file_writeback": 0,
+      "inactive_anon": 0,
+      "inactive_file": 2851336192,
+      "kernel": 399011840,
+      "slab": 396920352
+    },
+    "process_statm": "800815 150240 20118 4168 0 187077 0",
+    "stage": "source_observation"
+  },
+  "failure_resources_after_unwind": {
+    "available_memory_mb": 8723,
+    "cpu_slots": 5,
+    "cpu_stall_percent": 36.2,
+    "io_stall_percent": 0.62,
+    "memory_stall_percent": 0.0,
+    "total_memory_mb": 12288
+  },
+  "files": {
+    "after-pins.json": "3fa6e6ff13969b96118f4a804fa61344f6d95abe6c32d1b20abee50f8358c5ed",
+    "before-pins.json": "3fa6e6ff13969b96118f4a804fa61344f6d95abe6c32d1b20abee50f8358c5ed",
+    "cache-advice.json": "3f02538b9e7f2b9efe985517faeb1b2dac77afdce8591099f66f1090e65a0d96",
+    "codex-cache-advice.json": "d717851bc9a6578c50947a6dee7f128b37440b72bde644b44c569dd0a0c12a71",
+    "containers-after.json": "11c8e4d6b9ed9a59fde466cfd0aa636f30594fd28fe2d25fb0490db81ffc2463",
+    "controls-03.json": "21c4292908065d0435eee47860db342df0e35ad448ef7ad72aa38ae79cf6447d",
+    "docker-01/source384-context.json": "6d3e7121715472153b07eb627a39209140b0b1976cf0b099fcd59d3ebf34c156",
+    "docker-01/source384-probe.stdout": "3b0b378d93d6115019390aa20e7a9890e6f86cb0d24420fe960201c92b92c249",
+    "exit.json": "3dbe63e766e3f481ac091b7bbd0e787fde41e26f575355e669de52b45c4de699",
+    "finite-library-source-pins.json": "2d0625a867bc45a9a695ae2f750a57d75179c6aa28ef31250bd478f86ec7846d",
+    "independent-review.json": "fc17ce66c22219de9aa2945a906d55ceff791420f54f983c549a9076a4c63e74",
+    "instrumented-probe.py": "df0992e5687427b0528730d845429b15c634d3380e0dae7f456f90a0e693c95e",
+    "library-cache-advice.json": "9173c1f9e10951736b1c56080c116375a10b181631a3dcf8d1457bdc8aff8215",
+    "native-resource-events.jsonl": "e308c4fddc37a3ad3b84d2fc8f1c197a6ddb8ad314ee7f925ee380b0a08971bb",
+    "post-context-scheduler.json": "5fef55b1ebd1867f20bbbf2cdbc47782e38269db59711e989cd9e004dd9612b3",
+    "resource-analysis.json": "81e0939a8de92b92949d95326d4055753621c1209bfece794f1c8e46699b7135"
+  },
+  "freed_bytes_claimed": false,
+  "inference_artifact_exported": false,
+  "inference_publication_evidence": "Control-flow evidence only; no inference artifact or native receipt was exported from the failed context.",
+  "initial_context_seconds": 177.9453202299992,
+  "initial_prepare_return_evidence": "Frozen traceback is in terminal_initial_context._load_initial_context after prepare_source384_context returned; four earlier inference observation returns appear in the resource trace.",
+  "initial_source384_prepare_returned": true,
+  "instrumented_diagnostic": true,
+  "library_advised_bytes": 565702269,
+  "library_advised_files": 131,
+  "model_load_counters_retained": false,
+  "native_seconds": 189.73168191300647,
+  "official_verifier_executed": false,
+  "outcome": "cold_replay_second_source_observation_child_lease_refused",
+  "post_unwind_scheduler": {
+    "observation": "after_context_unwind",
+    "proof_memory_headroom_mb": 2458,
+    "schema": "post-context-source-free-scheduler@1",
+    "snapshot": {
+      "active_child_lease_count": 0,
+      "active_lease_count": 0,
+      "active_root_lease_count": 0,
+      "allocated": {
+        "cpu_slots": 0,
+        "memory_mb": 0
+      },
+      "available": {
+        "child_process_slots": 4,
+        "cpu_slots": 4,
+        "gpu_memory_mb": null,
+        "memory_mb": 9830,
+        "unified_memory_mb": null
+      },
+      "capacity": {
+        "child_process_slots": 4,
+        "cpu_slots": 4,
+        "gpu_memory_mb": null,
+        "memory_mb": 9830,
+        "reserved_gpu_memory_mb": 0,
+        "reserved_memory_mb": 0,
+        "unified_memory_mb": null,
+        "usable_gpu_memory_mb": null,
+        "usable_memory_mb": 9830
+      },
+      "proof_backoff": {
+        "reason": "proof_memory_headroom",
+        "until": 1791036828.344127
+      },
+      "proof_recovery": {},
+      "schema_version": "legal-ir-global-resource-scheduler-v1",
+      "waiting_request_count": 0
+    }
+  },
+  "pre_native_host": {
+    "available_memory_mb": 9399,
+    "cpu_slots": 5,
+    "cpu_stall_percent": 19.42,
+    "io_stall_percent": 6.36,
+    "memory_stall_percent": 0.01,
+    "total_memory_mb": 12288
+  },
+  "prepare_seconds": 10.674617694996414,
+  "production_qualification_claimed": false,
+  "proof_claimed": false,
+  "provider_calls": 0,
+  "qualified": false,
+  "scheduler_policy_changed": false,
+  "schema": "bounded-top128-wheel-cache-outcome@1",
+  "selected_installed_extensions": 3,
+  "selected_wheel_members": 128,
+  "source_pins_unchanged": true
+}

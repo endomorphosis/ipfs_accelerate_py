@@ -1,0 +1,24 @@
+{
+  "adapter_sha256": "eb1d4e2200deb0a671bb43d67e9a072b1f9ee7824623372bf72db86fea05290c",
+  "all_wheel_rows_match_pip_umask022_mode_formula": true,
+  "extension_bytes": 81713730,
+  "independent_reviewer_large_wheel_rehash": false,
+  "row_mapping_and_sha_size_mode_uid_consistent": true,
+  "rows": 131,
+  "runtime_installed_body_checks_pending": true,
+  "schema": "finite131-source-binding-review@1",
+  "source_pins_sha256": "2d0625a867bc45a9a695ae2f750a57d75179c6aa28ef31250bd478f86ec7846d",
+  "top_selection_order_consistent": true,
+  "total_bytes": 565702269,
+  "wheel_bytes": 483988539,
+  "wheel_member_suffixes": [
+    "",
+    ".0",
+    ".1",
+    ".5",
+    ".h",
+    ".py",
+    ".pyi",
+    ".so"
+  ]
+}

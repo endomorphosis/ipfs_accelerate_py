@@ -1,0 +1,39 @@
+{
+  "observation": "after_context_unwind",
+  "proof_memory_headroom_mb": 2458,
+  "schema": "post-context-source-free-scheduler@1",
+  "snapshot": {
+    "active_child_lease_count": 0,
+    "active_lease_count": 0,
+    "active_root_lease_count": 0,
+    "allocated": {
+      "cpu_slots": 0,
+      "memory_mb": 0
+    },
+    "available": {
+      "child_process_slots": 4,
+      "cpu_slots": 4,
+      "gpu_memory_mb": null,
+      "memory_mb": 9830,
+      "unified_memory_mb": null
+    },
+    "capacity": {
+      "child_process_slots": 4,
+      "cpu_slots": 4,
+      "gpu_memory_mb": null,
+      "memory_mb": 9830,
+      "reserved_gpu_memory_mb": 0,
+      "reserved_memory_mb": 0,
+      "unified_memory_mb": null,
+      "usable_gpu_memory_mb": null,
+      "usable_memory_mb": 9830
+    },
+    "proof_backoff": {
+      "reason": "proof_memory_headroom",
+      "until": 1791036828.344127
+    },
+    "proof_recovery": {},
+    "schema_version": "legal-ir-global-resource-scheduler-v1",
+    "waiting_request_count": 0
+  }
+}

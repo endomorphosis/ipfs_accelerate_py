@@ -415,3 +415,36 @@ released and the container is removed. Control-flow evidence of a returned
 worker does not establish published inference, model-load counts or coverage;
 those counters remain unavailable. This run has zero provider calls and no
 official verifier. The production cache integration remains unqualified.
+
+The subsequent [top128 wheel payload diagnostic](../../../docs/agent_supervisor/evidence/source384-wheel-payload-cache-diagnostic-20261003/README.md)
+passes 30 helper and instrumentation controls. All advice stages pass, including
+131 installed payloads totaling 565,702,269 logical bytes. Initial Source384
+preparation returns, but final initial-context validation fails at the second
+source observation around cold replay. No inference artifact was exported;
+model-load and decoded-coverage counters remain unavailable.
+
+Eighteen source-free stage events localize 73.285 MiB of anonymous growth to
+the preceding observation, with file cache nearly unchanged. The next observation
+enters and fails with 8,561 MiB available against the 8,602-MiB requirement.
+These boundary samples do not capture each internal admission decision.
+Owner teardown releases memory afterward. The trace does not yet distinguish
+DuckDB buffers from Python allocations or allocator retention. Initial context
+lasts 177.945 seconds and the native probe 189.732 seconds. The same resource
+limits and deadlines remain in force, the container is removed, and no provider
+or verifier runs. Production integration and the full task remain unqualified.
+
+## Coherent worker context construction
+
+The [worker context change](../../../docs/agent_supervisor/evidence/worker-context-bundle-snapshot-20261003/README.md)
+loads one fresh task-bound nomination per construction, replacing eight
+separate metadata loads initially and eleven on a complete-context retry.
+Semantic, retrieval and world fields come from that immutable snapshot. Each
+artifact retains its source/digest checks; original read and evidence order
+is preserved. Direct helper calls and subsequent dispatches validate anew.
+
+Thirty-six actual-source tests pass with no failures or skips. The eight new
+native-class controls use controlled Source384 and artifact-reader seams;
+the remaining 28 are compatible existing context tests. A separate broad
+legacy test module still fails collection on a removed Copilot timeout import.
+This component result establishes neither a benchmark speedup nor a fix for
+the earlier cold-replay memory refusal.

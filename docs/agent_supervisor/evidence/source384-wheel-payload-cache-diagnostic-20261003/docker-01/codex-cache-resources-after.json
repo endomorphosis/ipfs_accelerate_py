@@ -1,0 +1,32 @@
+{
+  "cgroup": {
+    "cpu.max": "500000 100000\n",
+    "cpu.pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=145568\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=129987\n",
+    "cpu.stat": "usage_usec 116044457\nuser_usec 81894085\nsystem_usec 34150372\nnice_usec 0\ncore_sched.force_idle_usec 0\nnr_periods 2007\nnr_throttled 1\nthrottled_usec 10714\nnr_bursts 0\nburst_usec 0\n",
+    "io.pressure": "some avg10=7.55 avg60=1.76 avg300=0.42 total=1823060\nfull avg10=7.55 avg60=1.76 avg300=0.42 total=1822938\n",
+    "memory.current": "3608682496\n",
+    "memory.high": "max\n",
+    "memory.max": "12884901888\n",
+    "memory.pressure": "some avg10=0.00 avg60=0.00 avg300=0.00 total=14177\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=14177\n",
+    "memory.stat": "anon 12107776\nfile 3204882432\nkernel 390463488\nkernel_stack 32768\npagetables 217088\nsec_pagetables 0\npercpu 9328\nsock 0\nvmalloc 16384\nshmem 0\nzswap 0\nzswapped 0\nfile_mapped 7655424\nfile_dirty 392802304\nfile_writeback 0\nswapcached 0\nanon_thp 0\nfile_thp 0\nshmem_thp 0\ninactive_anon 0\nactive_anon 11956224\ninactive_file 3184971776\nactive_file 19910656\nunevictable 0\nslab_reclaimable 390009152\nslab_unreclaimable 269352\nslab 390278504\nworkingset_refault_anon 0\nworkingset_refault_file 31603\nworkingset_activate_anon 0\nworkingset_activate_file 7603\nworkingset_restore_anon 0\nworkingset_restore_file 0\nworkingset_nodereclaim 0\npgdemote_kswapd 0\npgdemote_direct 0\npgdemote_khugepaged 0\npgdemote_proactive 0\npgpromote_success 0\npgscan 636133\npgsteal 636133\npswpin 0\npswpout 0\npgscan_kswapd 512991\npgscan_direct 123142\npgscan_khugepaged 0\npgscan_proactive 0\npgsteal_kswapd 512991\npgsteal_direct 123142\npgsteal_khugepaged 0\npgsteal_proactive 0\npgfault 4012416\npgmajfault 573\npgrefill 118\npgactivate 0\npgdeactivate 0\npglazyfree 4500\npglazyfreed 0\nswpin_zero 0\nswpout_zero 0\nzswpin 0\nzswpout 0\nzswpwb 0\nthp_fault_alloc 0\nthp_collapse_alloc 0\nthp_swpout 0\nthp_swpout_fallback 0\nnuma_pages_migrated 0\nnuma_pte_updates 0\nnuma_hint_faults 0\n"
+  },
+  "cgroup_path": "/sys/fs/cgroup",
+  "global_drop_caches": false,
+  "host": {
+    "available_memory_mb": 8846,
+    "cpu_slots": 5,
+    "cpu_stall_percent": 19.42,
+    "io_stall_percent": 7.55,
+    "memory_stall_percent": 0.01,
+    "total_memory_mb": 12288
+  },
+  "memory_policy_changed": false,
+  "proc_pressure": {
+    "cpu": "some avg10=19.42 avg60=18.79 avg300=23.26 total=15778233171\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n",
+    "io": "some avg10=4.37 avg60=4.24 avg300=2.66 total=1129088918\nfull avg10=4.34 avg60=4.04 avg300=2.54 total=1058724393\n",
+    "memory": "some avg10=0.01 avg60=0.12 avg300=0.04 total=102628622\nfull avg10=0.01 avg60=0.10 avg300=0.03 total=97594676\n"
+  },
+  "provider_calls": 0,
+  "schema": "source384-lean-resource-diagnostic@1",
+  "timestamp": 1791036637.4994016
+}

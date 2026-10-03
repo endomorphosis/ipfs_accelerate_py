@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "python",
+    "-B",
+    "-c",
+    "from ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback import _DEFAULT_COPILOT_TIMEOUT_SECONDS"
+  ],
+  "assertion": "Legacy test imports _DEFAULT_COPILOT_TIMEOUT_SECONDS, absent from the current canonical llm_merge_resolver_fallback module.",
+  "candidate_methods_installed": false,
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "log": "baseline-collection-import.log",
+  "returncode": 1,
+  "runtime_owner_changed": false,
+  "schema": "unchanged-baseline-test-import-reproduction@1",
+  "seconds": 0.24647291300061624,
+  "stubs_or_fix_applied": false
+}

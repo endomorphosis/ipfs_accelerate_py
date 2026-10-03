@@ -1,0 +1,63 @@
+{
+  "advice_is_best_effort": true,
+  "advised_bytes": 628736528,
+  "advised_files": 4,
+  "atime_preserved_with_noatime": true,
+  "body_read_bytes": 628736528,
+  "body_reads_after_advice": 0,
+  "body_writes": 0,
+  "codex_version": "0.158.0",
+  "credential_contents_read": false,
+  "errors": [],
+  "files": [
+    {
+      "bytes": 247446792,
+      "expected_bytes": null,
+      "mode": 493,
+      "name": "codex",
+      "path": "home/.nvm/versions/node/v22.23.3/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex",
+      "role": "vendor",
+      "sha256": "0059c73b149a1433b634e26ad8a715e02717a9920665a9cc5676941db03c45cd",
+      "uid": 1000
+    },
+    {
+      "bytes": 66921472,
+      "expected_bytes": null,
+      "mode": 493,
+      "name": "codex-code-mode-host",
+      "path": "home/.nvm/versions/node/v22.23.3/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex-code-mode-host",
+      "role": "vendor",
+      "sha256": "68237b34d0bc182e99c43ca2197a25120339c154dd3fc29f908c2a1b022efa5b",
+      "uid": 1000
+    },
+    {
+      "bytes": 247446792,
+      "expected_bytes": null,
+      "mode": 493,
+      "name": "codex",
+      "path": "provider-bin/codex",
+      "role": "exposed",
+      "sha256": "0059c73b149a1433b634e26ad8a715e02717a9920665a9cc5676941db03c45cd",
+      "uid": 0
+    },
+    {
+      "bytes": 66921472,
+      "expected_bytes": null,
+      "mode": 493,
+      "name": "codex-code-mode-host",
+      "path": "provider-bin/codex-code-mode-host",
+      "role": "exposed",
+      "sha256": "68237b34d0bc182e99c43ca2197a25120339c154dd3fc29f908c2a1b022efa5b",
+      "uid": 0
+    }
+  ],
+  "freed_bytes_claimed": false,
+  "global_drop_caches": false,
+  "hashed_files": 4,
+  "metadata_unchanged": true,
+  "post_boundary_receipt_sha256": "06b48e1be4d82bad4fcb1c4b86a879ec47622f82bb69ae96e655665f0e6a65eb",
+  "schema": "pinned-native-codex-cache-advice@1",
+  "seconds": 0.48069754100288264,
+  "selected_bytes": 628736528,
+  "selected_files": 4
+}

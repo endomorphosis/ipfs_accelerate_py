@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="0" skipped="0" tests="1" time="3.981" timestamp="2026-10-03T14:48:33.421824+00:00" hostname="spark-b271"><testcase classname="" name="api.test_agent_supervisor_todo_daemon_port" time="0.000"><error message="collection failure">ImportError while importing test module '/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/test/api/test_agent_supervisor_todo_daemon_port.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/usr/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+test/api/test_agent_supervisor_todo_daemon_port.py:80: in &lt;module&gt;
+    from ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback import (
+E   ImportError: cannot import name '_DEFAULT_COPILOT_TIMEOUT_SECONDS' from 'ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback' (/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/ipfs_accelerate_py/agent_supervisor/integrations/llm_merge_resolver_fallback.py)</error></testcase></testsuite></testsuites>

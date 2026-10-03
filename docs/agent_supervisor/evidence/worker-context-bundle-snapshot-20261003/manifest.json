@@ -1,0 +1,135 @@
+{
+  "files": [
+    {
+      "bytes": 3229,
+      "path": "README.md",
+      "sha256": "d02d4afeffb01d7b222eb886e32fd4052fa62c29511ba9613cde8df0a37fcfd7"
+    },
+    {
+      "bytes": 1081,
+      "path": "actual-source-01-command.json",
+      "sha256": "0f29a4c8686ba65feb17aea72440c0a9dfedae6892418f5f700ac9dfc4da32fd"
+    },
+    {
+      "bytes": 225,
+      "path": "actual-source-01-exit.json",
+      "sha256": "ef50627f6fbf5fa95618bd0b456c5f9ada8305900d5f55b581910bb77765a715"
+    },
+    {
+      "bytes": 57714,
+      "path": "actual-source-01.log",
+      "sha256": "a790d2e22a235bdd405c2df8c7830237bad67924dd7408248395a889cfb9f85f"
+    },
+    {
+      "bytes": 5973,
+      "path": "actual-source-01.xml",
+      "sha256": "5075295330302a04cc32ca506f7e3bdf8a8620746ef3881c64e41519f319ce3a"
+    },
+    {
+      "bytes": 668,
+      "path": "baseline-collection-import.json",
+      "sha256": "442e9a0fdf5bd899c1c19a042816757fdc2fba77221ee532529be77e7cc17b3f"
+    },
+    {
+      "bytes": 424,
+      "path": "baseline-collection-import.log",
+      "sha256": "666ae706c5aee4d75ca90268285e0e12b2dfc23354e11c1117f453ea3309085f"
+    },
+    {
+      "bytes": 504,
+      "path": "candidate-pins.json",
+      "sha256": "16b6e665c0b052e3c3d5b3329a2ba413c2439a7f17757c752e60da372107332b"
+    },
+    {
+      "bytes": 10459,
+      "path": "candidate.patch",
+      "sha256": "aadfea5871013d6d6b8d5244d802f255ab855ce26d20b65571cc57520df7debb"
+    },
+    {
+      "bytes": 1961,
+      "path": "controls-summary.json",
+      "sha256": "63f89b609af4fe05eafdd704e6002230f5e2ecf37e7a8a2642ef1df6771358c8"
+    },
+    {
+      "bytes": 1315,
+      "path": "independent-preparation-review.json",
+      "sha256": "391c27120c9c7066298faa7833356f146fb138647d767260b6b8cec1b0ef9ba0"
+    },
+    {
+      "bytes": 1621,
+      "path": "native-class-01-command.json",
+      "sha256": "db874de27c3263874c68ca6e54936d640dad96fd0ac3c77c04b4685ff287d8e9"
+    },
+    {
+      "bytes": 2476,
+      "path": "native-class-01.log",
+      "sha256": "834c510233b809ac31a290ab545648c76a0493da469241651b3e9f50d10b6b04"
+    },
+    {
+      "bytes": 1291,
+      "path": "native-class-01.xml",
+      "sha256": "7dfc8316773cbabe05db5f03a8987550f20ce9e941d7567cc2730c40344f7ace"
+    },
+    {
+      "bytes": 1615,
+      "path": "native-class-02-command.json",
+      "sha256": "edbd52b6fe4f2bf6b513b75c878cda862721bdd7a75bc8e89320dd1d5f2d314f"
+    },
+    {
+      "bytes": 3297,
+      "path": "native-class-02.log",
+      "sha256": "76a43be9d307d92a71db3fe796aeddcb0c36737f80fbd3c5a0d9006d0f16505d"
+    },
+    {
+      "bytes": 8793,
+      "path": "native-class-02.xml",
+      "sha256": "c0d04d7035df83211fbe389d90cbee20e2432628b519ece3cc79c5e3de592faf"
+    },
+    {
+      "bytes": 1347,
+      "path": "native-class-03-command.json",
+      "sha256": "79df71a3df09370f3ad2e5f2632d905e2b623b8633fe9075cd4962418f453923"
+    },
+    {
+      "bytes": 98,
+      "path": "native-class-03.log",
+      "sha256": "7a61f8399ee727504c4a7c38a83adab2783e64d82eaa38d44a3492f2c92060f5"
+    },
+    {
+      "bytes": 1735,
+      "path": "native-class-03.xml",
+      "sha256": "cc9d2e51832c74546be8af46cb18f883b0efca72d3185e3b00c2e71278620a9d"
+    },
+    {
+      "bytes": 498,
+      "path": "omitted-source-descriptors.json",
+      "sha256": "483c4436cc6b8a762c608c486daeaaaf88735ad160806d6c23c449fa7a6c82f0"
+    },
+    {
+      "bytes": 8878,
+      "path": "package_evidence.py",
+      "sha256": "aac8834ea11d6490e9325eb37cfac4b036ed8d4422098c2490b6dea5cc4e6324"
+    },
+    {
+      "bytes": 6246,
+      "path": "provenance.json",
+      "sha256": "c750c4ca5053fc81e756b88db661f76f359910ede10c4de480de857da7f677c6"
+    },
+    {
+      "bytes": 2698,
+      "path": "qualification.json",
+      "sha256": "90d2803c4630608d311ba5c7045f63a12bac971987b0702e8b9397edc1734aac"
+    },
+    {
+      "bytes": 6401,
+      "path": "test_worker_context_snapshot-02.py",
+      "sha256": "69f77784a76dd065416fba60bf66e751d8218ec95197913b48e88484dbf4a70e"
+    },
+    {
+      "bytes": 6500,
+      "path": "test_worker_context_snapshot.py",
+      "sha256": "cdd6b1962460af8366ab94c163218a44705b01abd1f1dd8e938f79a21222cf1b"
+    }
+  ],
+  "schema": "closed-worker-context-single-snapshot-evidence@1"
+}

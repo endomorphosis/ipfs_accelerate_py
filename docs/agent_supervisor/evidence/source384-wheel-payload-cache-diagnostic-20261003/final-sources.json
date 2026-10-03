@@ -1,0 +1,11 @@
+{
+  "cache_candidate.py": "26f4b2c9a87611102e98aff6d18e4a409b2796fab2a4e64e3ae41a392f8ed742",
+  "codex_cache_candidate.py": "6f7b9b73e40ba6b089793deb97748be6dcc05ae002462ea0b73ea1a924ba7ee7",
+  "finite-library-source-pins.json": "2d0625a867bc45a9a695ae2f750a57d75179c6aa28ef31250bd478f86ec7846d",
+  "native_library_cache_candidate.py": "eb1d4e2200deb0a671bb43d67e9a072b1f9ee7824623372bf72db86fea05290c",
+  "resource_runtime.py": "1da7ae06e42fbb337d8c74861afc84b22798dbdb220903c7b11ab8d4fb61d125",
+  "run_diagnostic.py": "f2237e5429fd7dd395532e3fe502ac251c403e2928ae6bd7c621a3e4f7299218",
+  "test_codex_cache_candidate.py": "11cf109376fc0ad2e530078acd32af0ce2c6a7a0c93400e15c2995d75543026e",
+  "test_native_library_cache_candidate.py": "1b3eaaff9a0ac66197311dfd08929b6d30c0a0d8d7a166346ab06ac25c7685a7",
+  "test_resource_runtime.py": "ef679a7e880ca1590a0612b7aec61585845ffd5477ee7c01507f1275cca9d775"
+}

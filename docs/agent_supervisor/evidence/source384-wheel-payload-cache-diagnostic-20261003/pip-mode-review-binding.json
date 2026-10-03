@@ -1,0 +1,16 @@
+{
+  "actual_metadata_mismatch": "refuse_before_body_reads_or_advice",
+  "expected_file_modes": {
+    "nonexecutables": "0644",
+    "regular_zip_entries_with_any_execute_bit": "0755"
+  },
+  "expected_installer_umask": "022",
+  "pip_version": "26.2.1",
+  "public_primary_sources": [
+    "https://github.com/pypa/pip/blob/26.2.1/src/pip/_internal/operations/install/wheel.py",
+    "https://github.com/pypa/pip/blob/26.2.1/src/pip/_internal/utils/unpacking.py"
+  ],
+  "review_path": "/home/barberb/lift_coding/artifacts/source384-pip-installed-mode-review-20261003/review.json",
+  "review_sha256": "6543a736b0756cb717a71edd05de84a620c1dda19841d07e024728ac6da3acbe",
+  "zip_modes_preserved": false
+}

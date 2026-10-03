@@ -1,0 +1,52 @@
+{
+  "actual_source_suite": {
+    "ast_slicing": false,
+    "command": "actual-source-01-command.json",
+    "failed": 0,
+    "method_injection": false,
+    "neighbor_cases": 28,
+    "new_cases": 8,
+    "passed": 36,
+    "process_seconds": 74.05074847800279,
+    "pytest_seconds": 71.91,
+    "skipped": 0,
+    "xml": "actual-source-01.xml"
+  },
+  "aggregate_speedup_measured": false,
+  "authorization_or_semantic_authority_changed": false,
+  "base_owner_sha256": "bfbbdb6d827cbf9e6a8ff258d7e3f7bfcea259926591afe3cb910a337fe76fb8",
+  "behavior": "One fresh normalized immutable metadata snapshot per initial or retry context construction; exact live bundle validation once, same artifact-specific checks and original ordering.",
+  "benchmark_result": false,
+  "cross_construction_cache": false,
+  "current_nomination_loads_per_construction_when_bundle_selected": 1,
+  "docker_qualification_run": false,
+  "earlier_off_tree_runs": {
+    "collection_failure": "native-class-01",
+    "corrected_focused_run": "native-class-03",
+    "reason": "Initial new test assumed compiler retained insertion order; compiler canonicalizes evidence. Final test separately verifies original read order and final membership.",
+    "test_assertion_failure": "native-class-02"
+  },
+  "final_owner_sha256": "a576ea51549b4a83ec9f5a6cae132c3a1b2badb826c437295cd2f68cd7b0faf0",
+  "focused_test": "test/api/semantic_state/test_worker_context_snapshot.py",
+  "focused_test_sha256": "cdd6b1962460af8366ab94c163218a44705b01abd1f1dd8e938f79a21222cf1b",
+  "independent_start_dispatch_publication_fences_changed": false,
+  "large_daemon_bodies_included": false,
+  "legacy_suite_blocker": {
+    "artifact": "baseline-collection-import.json",
+    "candidate_independent": true,
+    "description": "Legacy todo-daemon-port test module imports absent private Copilot timeout constant. Excluded without stubs; not repaired here."
+  },
+  "native_source384_checkpoint_replay_timing_measured": false,
+  "owner": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+  "patch": "candidate.patch",
+  "patch_sha256": "aadfea5871013d6d6b8d5244d802f255ab855ce26d20b65571cc57520df7debb",
+  "prior_nomination_loads_when_all_three_artifacts_present": {
+    "initial": 8,
+    "retry": 11
+  },
+  "production_change_applied": true,
+  "provider_calls": 0,
+  "retry_case_scope": "Actual retry method reaches diagnostic boundary after evidence construction; test stops there before unrelated compiler/diagnostic work.",
+  "schema": "worker-context-single-snapshot-qualification@1",
+  "source384_validator_in_focused_new_cases": "Controlled seam records or rejects; real bundle parser and imported daemon/context compiler execute."
+}

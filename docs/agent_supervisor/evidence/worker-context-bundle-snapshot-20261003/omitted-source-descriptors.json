@@ -1,0 +1,16 @@
+{
+  "files": [
+    {
+      "bytes": 3184494,
+      "path": "before.py",
+      "sha256": "bfbbdb6d827cbf9e6a8ff258d7e3f7bfcea259926591afe3cb910a337fe76fb8"
+    },
+    {
+      "bytes": 3186057,
+      "path": "candidate.py",
+      "sha256": "a576ea51549b4a83ec9f5a6cae132c3a1b2badb826c437295cd2f68cd7b0faf0"
+    }
+  ],
+  "reason": "Full daemon bodies are retained locally; compact exact diff plus before/after hashes avoid duplicate multi-megabyte snapshots.",
+  "schema": "large-owner-body-pins@1"
+}

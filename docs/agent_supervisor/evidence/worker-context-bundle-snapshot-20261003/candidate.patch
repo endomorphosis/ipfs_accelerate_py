@@ -1,0 +1,192 @@
+--- a/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py
++++ b/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py
+@@ -61800,24 +61800,35 @@
+             "IMPLEMENTATION_DAEMON_COMMAND."
+         )
+ 
+-    def _task_metadata_value(self, task: PortalTask, *keys: str) -> str:
++    def _task_metadata_snapshot(
++        self, task: PortalTask, *, include_context: bool = False,
++    ) -> Mapping[str, str]:
++        """Copy one task's metadata and optionally validate its live nomination."""
+         normalized = {
+             str(key).strip().lower().replace("_", " "): str(value).strip()
+             for key, value in task.metadata.items()
+         }
+         bundle = getattr(self, "_task_context_nomination_bundle", None)
+-        if bundle is not None:
+-            from ..runtime.task_context_bundle import KEYS, load_task_context_nomination
+-
+-            if any(str(key).strip().lower().replace("_", " ") in KEYS for key in keys):
+-                nominations = load_task_context_nomination(
+-                    repository=self.repo_root, artifact=bundle["artifact"],
+-                    expected_sha256=bundle["sha256"], task_id=task.task_id,
+-                    task_cid=normalized.get("database task cid") or task.canonical_task_cid,
+-                )
+-                if any(key in normalized and normalized[key] != value for key, value in nominations.items()):
+-                    raise ValueError("launch context nomination conflicts with task metadata")
+-                normalized.update(nominations)
++        if include_context and bundle is not None:
++            from ..runtime.task_context_bundle import load_task_context_nomination
++
++            nominations = load_task_context_nomination(
++                repository=self.repo_root, artifact=bundle["artifact"],
++                expected_sha256=bundle["sha256"], task_id=task.task_id,
++                task_cid=normalized.get("database task cid") or task.canonical_task_cid,
++            )
++            if any(key in normalized and normalized[key] != value for key, value in nominations.items()):
++                raise ValueError("launch context nomination conflicts with task metadata")
++            normalized.update(nominations)
++        return MappingProxyType(normalized)
++
++    def _task_metadata_value(self, task: PortalTask, *keys: str) -> str:
++        include_context = False
++        if getattr(self, "_task_context_nomination_bundle", None) is not None:
++            from ..runtime.task_context_bundle import KEYS
++
++            include_context = any(str(key).strip().lower().replace("_", " ") in KEYS for key in keys)
++        normalized = self._task_metadata_snapshot(task, include_context=include_context)
+         for key in keys:
+             value = normalized.get(str(key).strip().lower().replace("_", " "))
+             if value:
+@@ -63997,10 +64008,12 @@
+ 
+     def _world_implementation_references(
+         self, task: PortalTask, *, repository_id: str, tree_id: str,
+-        semantic_references: tuple = (),
++        semantic_references: tuple = (), context_metadata: Mapping[str, str] | None = None,
+     ) -> tuple:
+         """Consume a sealed world observation without conferring authority."""
+-        artifact = str(self._task_metadata_value(task, "world context artifact") or "")
++        metadata = (self._task_metadata_snapshot(task, include_context=True)
++                    if context_metadata is None else context_metadata)
++        artifact = str(metadata.get("world context artifact") or "")
+         if not artifact:
+             return ()
+         from ..semantic_state.intent_world_snapshot import (
+@@ -64015,9 +64028,9 @@
+             raise ValueError("world context artifact escapes repository")
+         context = load_intent_world_context(
+             artifact=path,
+-            expected_sha256=str(self._task_metadata_value(task, "world context sha256") or ""),
++            expected_sha256=str(metadata.get("world context sha256") or ""),
+             task_id=task.task_id,
+-            repository_id=str(self._task_metadata_value(task, "world context repository") or ""),
++            repository_id=str(metadata.get("world context repository") or ""),
+             intent=getattr(self, "_world_intent_repository", None),
+         )
+         if semantic_references:
+@@ -64076,15 +64089,18 @@
+ 
+     def _code_retrieval_implementation_references(
+         self, task: PortalTask, *, repository_id: str, tree_id: str,
++        context_metadata: Mapping[str, str] | None = None,
+     ) -> tuple:
+-        artifact = self._task_metadata_value(task, "code retrieval artifact")
++        metadata = (self._task_metadata_snapshot(task, include_context=True)
++                    if context_metadata is None else context_metadata)
++        artifact = metadata.get("code retrieval artifact")
+         if not artifact:
+             return ()
+         from ..runtime.code_retrieval_context import load_code_retrieval_context
+ 
+         text = load_code_retrieval_context(
+             repository=self.repo_root, artifact=str(artifact), task_id=task.task_id,
+-            expected_sha256=str(self._task_metadata_value(task, "code retrieval sha256") or ""),
++            expected_sha256=str(metadata.get("code retrieval sha256") or ""),
+         )
+         return build_text_context_references(
+             text, reference_prefix="code-retrieval", kind="code-retrieval-context",
+@@ -64093,10 +64109,13 @@
+         )
+ 
+     def _semantic_implementation_references(
+-        self, task: PortalTask, attempt: int, *, repository_id: str, tree_id: str
++        self, task: PortalTask, attempt: int, *, repository_id: str, tree_id: str,
++        context_metadata: Mapping[str, str] | None = None,
+     ) -> tuple:
+         """Resolve source-bound evidence on every dispatch, including retries."""
+-        artifact = self._task_metadata_value(task, "semantic context artifact")
++        metadata = (self._task_metadata_snapshot(task, include_context=True)
++                    if context_metadata is None else context_metadata)
++        artifact = metadata.get("semantic context artifact")
+         if not artifact:
+             return ()
+         from ..runtime.semantic_context_runtime import (
+@@ -64106,10 +64125,10 @@
+             validate_semantic_worker_nomination,
+         )
+ 
+-        digest = str(self._task_metadata_value(task, "semantic context sha256") or "")
++        digest = str(metadata.get("semantic context sha256") or "")
+         request = dict(repository=self.repo_root, artifact=str(artifact),
+                        expected_sha256=digest, task_id=task.task_id)
+-        refresh = str(self._task_metadata_value(task, "semantic context refresh") or "").strip().lower() in {"true", "1", "yes"}
++        refresh = str(metadata.get("semantic context refresh") or "").strip().lower() in {"true", "1", "yes"}
+         cache_key = (str(self.repo_root), task.task_id, str(artifact), digest)
+         cache = getattr(self, "_semantic_context_resolutions", {})
+         resolved = cache.get(cache_key) if refresh else None
+@@ -64176,10 +64195,12 @@
+             )
+         retry_evidence = parent_capsule.evidence
+         semantic_changed = False
++        context_metadata = self._task_metadata_snapshot(task, include_context=True)
+         semantic_references = ()
+-        if self._task_metadata_value(task, "semantic context artifact"):
++        if context_metadata.get("semantic context artifact"):
+             semantic_references = self._semantic_implementation_references(
+                 task, attempt, repository_id=repository_id, tree_id=tree_id,
++                context_metadata=context_metadata,
+             )
+             previous_semantic = tuple(item for item in retry_evidence if item.kind == "semantic-context")
+             if previous_semantic != tuple(semantic_references):
+@@ -64188,11 +64209,12 @@
+                     *(item for item in retry_evidence if item.kind != "semantic-context"),
+                     *semantic_references,
+                 )
+-        if self._task_metadata_value(task, "world context artifact"):
++        if context_metadata.get("world context artifact"):
+             # Compare world and source evidence from this same dispatch, after
+             # refresh; HEAD alone cannot detect dirty source changes.
+             current_world = self._world_implementation_references(
+                 task, repository_id=repository_id, tree_id=tree_id,
++                context_metadata=context_metadata,
+                 semantic_references=semantic_references,
+             )
+             old_world = tuple(item for item in retry_evidence if item.kind == "intent-world-context")
+@@ -64202,9 +64224,10 @@
+                     *(item for item in retry_evidence if item.kind != "intent-world-context"),
+                     *current_world,
+                 )
+-        if self._task_metadata_value(task, "code retrieval artifact"):
++        if context_metadata.get("code retrieval artifact"):
+             current_retrieval = self._code_retrieval_implementation_references(
+                 task, repository_id=repository_id, tree_id=tree_id,
++                context_metadata=context_metadata,
+             )
+             old_retrieval = tuple(item for item in retry_evidence if item.kind == "code-retrieval-context")
+             if old_retrieval != tuple(current_retrieval):
+@@ -65048,17 +65071,23 @@
+                     )
+                 ),
+             )
++        # One live nomination per construction; no cross-dispatch cache.
++        # Each artifact consumer still performs its independent source checks.
++        context_metadata = self._task_metadata_snapshot(task, include_context=True)
+         semantic_references = self._semantic_implementation_references(
+             task, attempt, repository_id=repository_id, tree_id=tree_id,
++            context_metadata=context_metadata,
+         )
+         evidence = (
+             *evidence,
+             *semantic_references,
+             *self._code_retrieval_implementation_references(
+                 task, repository_id=repository_id, tree_id=tree_id,
++                context_metadata=context_metadata,
+             ),
+             *self._world_implementation_references(
+                 task, repository_id=repository_id, tree_id=tree_id,
++                context_metadata=context_metadata,
+                 semantic_references=semantic_references,
+             ),
+         )

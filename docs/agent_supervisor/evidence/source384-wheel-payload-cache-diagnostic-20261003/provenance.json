@@ -1,0 +1,344 @@
+{
+  "copies": [
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/verdict.json",
+      "bytes": 6013,
+      "path": "verdict.json",
+      "sha256": "c8b20e2cb4b4cd4abfdf9358d74e3fbed027a980fc2f0252f5a988d72c959679"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/resource-analysis.json",
+      "bytes": 5638,
+      "path": "resource-analysis.json",
+      "sha256": "81e0939a8de92b92949d95326d4055753621c1209bfece794f1c8e46699b7135"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/native-resource-events.jsonl",
+      "bytes": 11318,
+      "path": "native-resource-events.jsonl",
+      "sha256": "e308c4fddc37a3ad3b84d2fc8f1c197a6ddb8ad314ee7f925ee380b0a08971bb"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/native-resource-collection.json",
+      "bytes": 101,
+      "path": "native-resource-collection.json",
+      "sha256": "5e27c5f473c55db95e272b81e7d7b01074df6ebd4fc559d4ea2f83a41e5a423e"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/post-context-scheduler.json",
+      "bytes": 1009,
+      "path": "post-context-scheduler.json",
+      "sha256": "5fef55b1ebd1867f20bbbf2cdbc47782e38269db59711e989cd9e004dd9612b3"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/controls-03.json",
+      "bytes": 1938,
+      "path": "controls-03.json",
+      "sha256": "21c4292908065d0435eee47860db342df0e35ad448ef7ad72aa38ae79cf6447d"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/controls-03.log",
+      "bytes": 4803,
+      "path": "controls-03.log",
+      "sha256": "0ff82d2d457f6d9bc250c3fabe9aecc2a27b91c17c265780e09cb5c64a271ba7"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/independent-review.json",
+      "bytes": 2855,
+      "path": "independent-review.json",
+      "sha256": "fc17ce66c22219de9aa2945a906d55ceff791420f54f983c549a9076a4c63e74"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/independent-row-audit.json",
+      "bytes": 706,
+      "path": "independent-row-audit.json",
+      "sha256": "79207c047a3bda6f7b8bbf3111fdfd7b3f21345201cb87cd695bd2bb2613310b"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/pip-mode-review-binding.json",
+      "bytes": 695,
+      "path": "pip-mode-review-binding.json",
+      "sha256": "55db10ccb3651bd79dc52a2b7ea2f46b8654ead57d01e0428194badb708386e5"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/source-pin-reproduction.json",
+      "bytes": 710,
+      "path": "source-pin-reproduction.json",
+      "sha256": "5bb019c47f873df6216378d7123ca31ec9649a9cbedf31cd7640df0684182bed"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/finite-library-source-pins.json",
+      "bytes": 28695,
+      "path": "finite-library-source-pins.json",
+      "sha256": "2d0625a867bc45a9a695ae2f750a57d75179c6aa28ef31250bd478f86ec7846d"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/final-sources.json",
+      "bytes": 902,
+      "path": "final-sources.json",
+      "sha256": "b187b5473e7efb807508ea69b4e6f1e01347e6b1c372e8579eb59f954c54981a"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/before-pins.json",
+      "bytes": 1708,
+      "path": "before-pins.json",
+      "sha256": "3fa6e6ff13969b96118f4a804fa61344f6d95abe6c32d1b20abee50f8358c5ed"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/after-pins.json",
+      "bytes": 1708,
+      "path": "after-pins.json",
+      "sha256": "3fa6e6ff13969b96118f4a804fa61344f6d95abe6c32d1b20abee50f8358c5ed"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/scope.json",
+      "bytes": 1896,
+      "path": "scope.json",
+      "sha256": "3b0ddcecbe1dae1a0c7e64cd835908ee42a07ef81136575715f887cacf634f3d"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/experiment-provenance.json",
+      "bytes": 2057,
+      "path": "experiment-provenance.json",
+      "sha256": "cab7ac798b3ab75f2d43df14f12e1c8377c750083cfadb942a5bd9a2735a58e8"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/host-archive-provenance.json",
+      "bytes": 968,
+      "path": "host-archive-provenance.json",
+      "sha256": "504a5391782eebc568d6dd475d676ee4859072e5123cd5233427805f1691dd00"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/run-command.json",
+      "bytes": 2012,
+      "path": "run-command.json",
+      "sha256": "910416481df7cfea51e0b4c35844b992bb3d005300e874e73d7c2f49828a3f27"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/launch.json",
+      "bytes": 1075,
+      "path": "launch.json",
+      "sha256": "7c14d09d08567930997f4a5a6aafe5b119b3fd62c325314d5fbea61d6cca662d"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/launcher-exit.json",
+      "bytes": 88,
+      "path": "launcher-exit.json",
+      "sha256": "30532ab702e3cbbfac7a8c189e094531b5760b9642c430533db13dc0ee80b52b"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/exit.json",
+      "bytes": 150,
+      "path": "exit.json",
+      "sha256": "3dbe63e766e3f481ac091b7bbd0e787fde41e26f575355e669de52b45c4de699"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/failure.json",
+      "bytes": 119,
+      "path": "failure.json",
+      "sha256": "f3a3eab34ce3c6937fbf7a4c99069649c18cccd3d61b3182ec019257a06b3f4f"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/containers-before.json",
+      "bytes": 36,
+      "path": "containers-before.json",
+      "sha256": "11c8e4d6b9ed9a59fde466cfd0aa636f30594fd28fe2d25fb0490db81ffc2463"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/containers-after.json",
+      "bytes": 36,
+      "path": "containers-after.json",
+      "sha256": "11c8e4d6b9ed9a59fde466cfd0aa636f30594fd28fe2d25fb0490db81ffc2463"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/cache-advice.json",
+      "bytes": 574,
+      "path": "cache-advice.json",
+      "sha256": "3f02538b9e7f2b9efe985517faeb1b2dac77afdce8591099f66f1090e65a0d96"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/cache-advice-status.json",
+      "bytes": 112,
+      "path": "cache-advice-status.json",
+      "sha256": "0ba37afef56ec3552a0c76c06496ecc39c5c3f676bd24da828d8e0d395698119"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/codex-cache-advice.json",
+      "bytes": 2068,
+      "path": "codex-cache-advice.json",
+      "sha256": "d717851bc9a6578c50947a6dee7f128b37440b72bde644b44c569dd0a0c12a71"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/codex-cache-advice-status.json",
+      "bytes": 214,
+      "path": "codex-cache-advice-status.json",
+      "sha256": "de140e9955e988437113afd8c0cfbeea33bc16bb9cc2b3c97c2b536a4d3beb68"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/library-cache-advice.json",
+      "bytes": 46548,
+      "path": "library-cache-advice.json",
+      "sha256": "9173c1f9e10951736b1c56080c116375a10b181631a3dcf8d1457bdc8aff8215"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/library-cache-advice-status.json",
+      "bytes": 112,
+      "path": "library-cache-advice-status.json",
+      "sha256": "d58aef71dbac2b7068ae5ea25f4c710fc13d549d08f860ead5cbe6a1cc843297"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/cache_candidate.py",
+      "bytes": 8784,
+      "path": "cache_candidate.py",
+      "sha256": "26f4b2c9a87611102e98aff6d18e4a409b2796fab2a4e64e3ae41a392f8ed742"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/codex_cache_candidate.py",
+      "bytes": 12456,
+      "path": "codex_cache_candidate.py",
+      "sha256": "6f7b9b73e40ba6b089793deb97748be6dcc05ae002462ea0b73ea1a924ba7ee7"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/native_library_cache_candidate.py",
+      "bytes": 36821,
+      "path": "native_library_cache_candidate.py",
+      "sha256": "eb1d4e2200deb0a671bb43d67e9a072b1f9ee7824623372bf72db86fea05290c"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/pin_native_libraries.py",
+      "bytes": 2399,
+      "path": "pin_native_libraries.py",
+      "sha256": "02db37d7c1956ab2b89a901223e9e5879c8b1141a26b1365c63dc21a5a427c81"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/run_diagnostic.py",
+      "bytes": 21655,
+      "path": "run_diagnostic.py",
+      "sha256": "f2237e5429fd7dd395532e3fe502ac251c403e2928ae6bd7c621a3e4f7299218"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/resource_runtime.py",
+      "bytes": 4844,
+      "path": "resource_runtime.py",
+      "sha256": "1da7ae06e42fbb337d8c74861afc84b22798dbdb220903c7b11ab8d4fb61d125"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/test_codex_cache_candidate.py",
+      "bytes": 11513,
+      "path": "test_codex_cache_candidate.py",
+      "sha256": "11cf109376fc0ad2e530078acd32af0ce2c6a7a0c93400e15c2995d75543026e"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/test_native_library_cache_candidate.py",
+      "bytes": 6573,
+      "path": "test_native_library_cache_candidate.py",
+      "sha256": "1b3eaaff9a0ac66197311dfd08929b6d30c0a0d8d7a166346ab06ac25c7685a7"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/test_resource_runtime.py",
+      "bytes": 4810,
+      "path": "test_resource_runtime.py",
+      "sha256": "ef679a7e880ca1590a0612b7aec61585845ffd5477ee7c01507f1275cca9d775"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/docker-01/source384-context.json",
+      "bytes": 2315,
+      "path": "docker-01/source384-context.json",
+      "sha256": "6d3e7121715472153b07eb627a39209140b0b1976cf0b099fcd59d3ebf34c156"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/docker-01/source384-probe.stdout",
+      "bytes": 23335,
+      "path": "docker-01/source384-probe.stdout",
+      "sha256": "3b0b378d93d6115019390aa20e7a9890e6f86cb0d24420fe960201c92b92c249"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/docker-01/source384-probe.stderr",
+      "bytes": 0,
+      "path": "docker-01/source384-probe.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/docker-01/source384-probe-status.json",
+      "bytes": 19,
+      "path": "docker-01/source384-probe-status.json",
+      "sha256": "4df7e306bff9cf8b6546ba28ccb1707b05fcfbd81e618b394b02855490cbb4b1"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/docker-01/cache-resources-before.json",
+      "bytes": 2884,
+      "path": "docker-01/cache-resources-before.json",
+      "sha256": "827be5913c166fb353ab6b8037d51d78276caf6498a699cd5e59dddd6e9afe7a"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/docker-01/cache-resources-after.json",
+      "bytes": 2885,
+      "path": "docker-01/cache-resources-after.json",
+      "sha256": "9bbdbd0dbd72a1cb686c4f414b878b1705886ad9f372a78d8a6e7bff7e87f5ea"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/docker-01/codex-cache-resources-before.json",
+      "bytes": 2885,
+      "path": "docker-01/codex-cache-resources-before.json",
+      "sha256": "a6edd9acc4ff55dcee100c1ea07a73fb5682f4c358fcc5fb9c54d65f69f3d98b"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/docker-01/codex-cache-resources-after.json",
+      "bytes": 2886,
+      "path": "docker-01/codex-cache-resources-after.json",
+      "sha256": "0b3d71c3213056c0b810479aca9a2f31950054ff0c85b614d71df18e3e728f8d"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/docker-01/library-cache-resources-before.json",
+      "bytes": 2885,
+      "path": "docker-01/library-cache-resources-before.json",
+      "sha256": "0319ea737e8298a47521242c1c1e1742272e75d6ae4ce29e2a65dfef57986349"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/docker-01/library-cache-resources-after.json",
+      "bytes": 2886,
+      "path": "docker-01/library-cache-resources-after.json",
+      "sha256": "d5afa5e4ec97a471962a4a99e431bcedb89fc648521debae7e982f24b80ee442"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/docker-01/resources.json",
+      "bytes": 249,
+      "path": "docker-01/resources.json",
+      "sha256": "92c8e3a470786b4839ee1594f7c11a70aa2039a2e9e53677ba48b56a3f2c4001"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/docker-01/detailed-resources.json",
+      "bytes": 2886,
+      "path": "docker-01/detailed-resources.json",
+      "sha256": "0184569aeb9147c01c420b5f66fe43d41523807c5baf4db3277f1bdf1548a31b"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/docker-01/admission-estimate.json",
+      "bytes": 282,
+      "path": "docker-01/admission-estimate.json",
+      "sha256": "1c268e503e8f1ba33d9ccaeac0235e8803fc008c6dd2081d9bfeae4e0d0d4dfc"
+    },
+    {
+      "artifact": "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/package_evidence.py",
+      "bytes": 8035,
+      "path": "package_evidence.py",
+      "sha256": "fce538e7cc21d20160b3c998a08bb6a8e6b24762b06c96e6e4019d424e8699d9"
+    }
+  ],
+  "excluded": [
+    "authentication",
+    "benchmark source bodies",
+    "hidden verifier",
+    "model weights",
+    "native inference bodies",
+    "databases",
+    "wheels",
+    "binaries",
+    "runtime archive",
+    "full deployment inventories",
+    "earlier control generations"
+  ],
+  "inference_artifact_exported": false,
+  "production_qualification_claimed": false,
+  "schema": "explicit-whitelist-provenance@1"
+}

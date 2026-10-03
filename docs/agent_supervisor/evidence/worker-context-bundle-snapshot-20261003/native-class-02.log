@@ -1,0 +1,27 @@
+............................F.......                                     [100%]
+=================================== FAILURES ===================================
+_ test_initial_compilation_validates_bundle_once_and_preserves_artifact_order __
+
+context = namespace(daemon=<ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon.PortalImplementationDaemon obj...ext sha256': 'wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww', 'world context repository': 'repo:1'})
+
+    def test_initial_compilation_validates_bundle_once_and_preserves_artifact_order(context):
+     c=context;result=c.daemon._compile_implementation_context(c.task,attempt=1)
+     assert len(c.validations)==1
+     assert [name for name,_ in c.reads]==['semantic','retrieval','world']
+>    assert [item.kind for item in result.capsule.evidence if item.kind.endswith('context')]==[
+      'semantic-context','code-retrieval-context','intent-world-context']
+E    AssertionError: assert ['code-retrie...ntic-context'] == ['semantic-co...orld-context']
+E      
+E      At index 0 diff: 'code-retrieval-context' != 'semantic-context'
+E      Use -v to get more diff
+
+../../artifacts/worker-context-bundle-snapshot-20261003/test_worker_context_snapshot.py:48: AssertionError
+---------------------------- Captured stderr setup -----------------------------
+2026-10-03 14:51:50,473 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/54dd755a1b023d7060a8/agent-merge-trains/master-c66bc0027dfa6b9a0755/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-03 14:51:50,508 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/54dd755a1b023d7060a8/agent-merge-trains/master-c66bc0027dfa6b9a0755/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log setup ------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/54dd755a1b023d7060a8/agent-merge-trains/master-c66bc0027dfa6b9a0755/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/home/barberb/.ipfs_accelerate/agent_supervisor/orchestration/54dd755a1b023d7060a8/agent-merge-trains/master-c66bc0027dfa6b9a0755/merge_queue.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+=========================== short test summary info ============================
+FAILED ../../artifacts/worker-context-bundle-snapshot-20261003/test_worker_context_snapshot.py::test_initial_compilation_validates_bundle_once_and_preserves_artifact_order
+1 failed, 35 passed in 65.09s (0:01:05)

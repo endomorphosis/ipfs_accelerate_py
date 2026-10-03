@@ -1,0 +1,30 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/worker-context-bundle-snapshot-20261003/run_native_class_controls.py"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "datasets": "/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002",
+  "producer_files_modified": false,
+  "pytest_args": [
+    "test/api/semantic_state/test_source384_task_context_bundle.py",
+    "test/api/semantic_state/test_semantic_context_runtime.py",
+    "test/api/semantic_state/test_supervised_task_context.py",
+    "test/api/test_agent_supervisor_deterministic_provider_context.py",
+    "/home/barberb/lift_coding/artifacts/worker-context-bundle-snapshot-20261003/test_worker_context_snapshot.py",
+    "-q",
+    "--disable-warnings",
+    "--junitxml=/home/barberb/lift_coding/artifacts/worker-context-bundle-snapshot-20261003/native-class-02.xml"
+  ],
+  "scope": "Full imported native daemon class using exact candidate methods installed only in this test process; unchanged existing suites.",
+  "source_pins": {
+    "base_sha256": "bfbbdb6d827cbf9e6a8ff258d7e3f7bfcea259926591afe3cb910a337fe76fb8",
+    "candidate_sha256": "a576ea51549b4a83ec9f5a6cae132c3a1b2badb826c437295cd2f68cd7b0faf0",
+    "construction_order_preserved": true,
+    "off_tree_only": true,
+    "patch_sha256": "aadfea5871013d6d6b8d5244d802f255ab855ce26d20b65571cc57520df7debb",
+    "source": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+    "tested": false
+  }
+}

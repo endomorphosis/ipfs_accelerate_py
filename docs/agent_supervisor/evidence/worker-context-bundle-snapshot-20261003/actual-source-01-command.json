@@ -1,0 +1,23 @@
+{
+  "argv": [
+    "python",
+    "-B",
+    "-m",
+    "pytest",
+    "test/api/semantic_state/test_source384_task_context_bundle.py",
+    "test/api/semantic_state/test_semantic_context_runtime.py",
+    "test/api/semantic_state/test_supervised_task_context.py",
+    "test/api/test_agent_supervisor_deterministic_provider_context.py",
+    "test/api/semantic_state/test_worker_context_snapshot.py",
+    "-q",
+    "--disable-warnings",
+    "--junitxml=/home/barberb/lift_coding/artifacts/worker-context-bundle-snapshot-20261003/actual-source-01.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "environment_overrides": {
+    "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "/home/barberb/lift_coding/artifacts/worker-context-bundle-snapshot-20261003/actual-source-seal.db",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-release-datasets-20261002"
+  },
+  "scope": "Actual on-disk daemon and tests, no AST slicing or method injection."
+}

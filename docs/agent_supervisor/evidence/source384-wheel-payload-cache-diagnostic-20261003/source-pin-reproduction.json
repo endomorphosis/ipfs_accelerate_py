@@ -1,0 +1,16 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-I",
+    "-S",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/source384-docker-wheel-payload-cache-20261003/pin_native_libraries.py",
+    "/home/barberb/lift_coding/artifacts/source384-full-supervisor-preflight-20261003/bundle/manifest.json",
+    "/home/barberb/lift_coding/artifacts/source384-torch-wheel-20261003/torch-2.13.0+cpu-cp312-cp312-manylinux_2_28_aarch64.whl"
+  ],
+  "mode_policy_confirmation_pending": true,
+  "output_sha256": "2d0625a867bc45a9a695ae2f750a57d75179c6aa28ef31250bd478f86ec7846d",
+  "returncode": 0,
+  "script_sha256": "02db37d7c1956ab2b89a901223e9e5879c8b1141a26b1365c63dc21a5a427c81",
+  "seconds": 1.2299379410032998
+}

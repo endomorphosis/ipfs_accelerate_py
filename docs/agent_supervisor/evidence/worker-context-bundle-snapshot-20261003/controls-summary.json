@@ -1,0 +1,38 @@
+{
+  "candidate_pins": {
+    "base_sha256": "bfbbdb6d827cbf9e6a8ff258d7e3f7bfcea259926591afe3cb910a337fe76fb8",
+    "candidate_sha256": "a576ea51549b4a83ec9f5a6cae132c3a1b2badb826c437295cd2f68cd7b0faf0",
+    "construction_order_preserved": true,
+    "off_tree_only": true,
+    "patch_sha256": "aadfea5871013d6d6b8d5244d802f255ab855ce26d20b65571cc57520df7debb",
+    "source": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+    "tested": false
+  },
+  "distinct_existing_compatible_cases_passed": 28,
+  "distinct_final_new_cases_passed": 8,
+  "earlier_collection_failure": "native-class-01 failed before running because unrelated legacy test imports missing Copilot private constant; reproduced against unchanged runtime by baseline-collection-import.json, no stubs.",
+  "exact_candidate_method_boundary_controls": {
+    "log": "controls-03.log",
+    "native_model_validator_doubled": true,
+    "passed": 18
+  },
+  "native_class_existing_and_initial_new_suite": {
+    "failed": 1,
+    "failure": "New test assumed compiler preserved evidence insertion order; compiler canonicalizes evidence. Read order assertion passed; corrected membership assertion and tmp-isolated orchestration state in finaltest.",
+    "passed": 35,
+    "receipt": "native-class-02.xml",
+    "seconds": 65.09
+  },
+  "native_class_final_focused_suite": {
+    "failed": 0,
+    "passed": 8,
+    "receipt": "native-class-03.xml",
+    "seconds": 1.72,
+    "skipped": 0
+  },
+  "native_class_scope": "Exact candidate methods installed only in test process; actual on-disk qualification still required after root applies patch.",
+  "production_applied": false,
+  "schema": "off-tree-worker-context-snapshot-controls@1",
+  "test_path_for_application": "test/api/semantic_state/test_worker_context_snapshot.py",
+  "test_source_sha256": "cdd6b1962460af8366ab94c163218a44705b01abd1f1dd8e938f79a21222cf1b"
+}

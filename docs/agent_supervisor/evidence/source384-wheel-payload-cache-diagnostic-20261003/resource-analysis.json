@@ -1,0 +1,197 @@
+{
+  "event_count": 18,
+  "events_sha256": "e308c4fddc37a3ad3b84d2fc8f1c197a6ddb8ad314ee7f925ee380b0a08971bb",
+  "failed_replay_preceding_observation": {
+    "anon_delta_bytes": 76845056,
+    "available_memory_mb_after": 8560,
+    "available_memory_mb_before": 8635,
+    "end_event": 14,
+    "file_delta_bytes": 4096,
+    "kernel_delta_bytes": 98304,
+    "start_event": 13
+  },
+  "interpretation": "The preceding replay observation increased anonymous memory by73.3MiB while filecache was unchanged. Exact ownership/retention cause remains unmeasured; this does not prove an allocator defect or justify weaker admission.",
+  "observations": [
+    {
+      "anon_bytes": 64270336,
+      "available_memory_mb": 9342,
+      "event": "installed",
+      "file_bytes": 2646802432,
+      "kernel_bytes": 376733696,
+      "memory_stall_percent": 0.0,
+      "seconds": 0.0050472250004531816,
+      "stage": "context"
+    },
+    {
+      "anon_bytes": 157786112,
+      "available_memory_mb": 9134,
+      "event": "enter",
+      "file_bytes": 2768216064,
+      "kernel_bytes": 380211200,
+      "memory_stall_percent": 0.0,
+      "seconds": 19.221984112002247,
+      "stage": "initial_index"
+    },
+    {
+      "anon_bytes": 500588544,
+      "available_memory_mb": 8752,
+      "event": "return",
+      "file_bytes": 2822537216,
+      "kernel_bytes": 383561728,
+      "memory_stall_percent": 0.69,
+      "seconds": 63.947638295001525,
+      "stage": "initial_index"
+    },
+    {
+      "anon_bytes": 409899008,
+      "available_memory_mb": 8836,
+      "event": "enter",
+      "file_bytes": 2824531968,
+      "kernel_bytes": 383766528,
+      "memory_stall_percent": 0.69,
+      "seconds": 65.17488535199664,
+      "stage": "source_observation"
+    },
+    {
+      "anon_bytes": 439488512,
+      "available_memory_mb": 8807,
+      "event": "return",
+      "file_bytes": 2824531968,
+      "kernel_bytes": 383676416,
+      "memory_stall_percent": 0.37,
+      "seconds": 70.2889204489984,
+      "stage": "source_observation"
+    },
+    {
+      "anon_bytes": 439201792,
+      "available_memory_mb": 8808,
+      "event": "enter",
+      "file_bytes": 2824540160,
+      "kernel_bytes": 383655936,
+      "memory_stall_percent": 0.31,
+      "seconds": 71.91846228599752,
+      "stage": "numerical_worker"
+    },
+    {
+      "anon_bytes": 441819136,
+      "available_memory_mb": 8733,
+      "event": "return",
+      "file_bytes": 2904317952,
+      "kernel_bytes": 381030400,
+      "memory_stall_percent": 2.89,
+      "seconds": 84.598263494001,
+      "stage": "numerical_worker"
+    },
+    {
+      "anon_bytes": 441819136,
+      "available_memory_mb": 8733,
+      "event": "enter",
+      "file_bytes": 2904317952,
+      "kernel_bytes": 381030400,
+      "memory_stall_percent": 2.89,
+      "seconds": 84.6261164289972,
+      "stage": "source_observation"
+    },
+    {
+      "anon_bytes": 445816832,
+      "available_memory_mb": 8726,
+      "event": "return",
+      "file_bytes": 2904322048,
+      "kernel_bytes": 381095936,
+      "memory_stall_percent": 1.3,
+      "seconds": 93.45194716600236,
+      "stage": "source_observation"
+    },
+    {
+      "anon_bytes": 451350528,
+      "available_memory_mb": 8718,
+      "event": "enter",
+      "file_bytes": 2908831744,
+      "kernel_bytes": 381190144,
+      "memory_stall_percent": 1.06,
+      "seconds": 94.95833903199673,
+      "stage": "source_observation"
+    },
+    {
+      "anon_bytes": 462286848,
+      "available_memory_mb": 8708,
+      "event": "return",
+      "file_bytes": 2908831744,
+      "kernel_bytes": 381202432,
+      "memory_stall_percent": 0.71,
+      "seconds": 100.0302551670029,
+      "stage": "source_observation"
+    },
+    {
+      "anon_bytes": 452145152,
+      "available_memory_mb": 8718,
+      "event": "enter",
+      "file_bytes": 2908831744,
+      "kernel_bytes": 381165568,
+      "memory_stall_percent": 0.58,
+      "seconds": 101.7862050650001,
+      "stage": "source_observation"
+    },
+    {
+      "anon_bytes": 465051648,
+      "available_memory_mb": 8704,
+      "event": "return",
+      "file_bytes": 2908831744,
+      "kernel_bytes": 381300736,
+      "memory_stall_percent": 0.31,
+      "seconds": 107.06918703099655,
+      "stage": "source_observation"
+    },
+    {
+      "anon_bytes": 455806976,
+      "available_memory_mb": 8635,
+      "event": "enter",
+      "file_bytes": 2974806016,
+      "kernel_bytes": 398950400,
+      "memory_stall_percent": 0.0,
+      "seconds": 151.42247931600286,
+      "stage": "source_observation"
+    },
+    {
+      "anon_bytes": 532652032,
+      "available_memory_mb": 8560,
+      "event": "return",
+      "file_bytes": 2974810112,
+      "kernel_bytes": 399048704,
+      "memory_stall_percent": 0.0,
+      "seconds": 156.9148410810012,
+      "stage": "source_observation"
+    },
+    {
+      "anon_bytes": 532885504,
+      "available_memory_mb": 8561,
+      "event": "enter",
+      "file_bytes": 2974810112,
+      "kernel_bytes": 398999552,
+      "memory_stall_percent": 0.0,
+      "seconds": 158.55506645699643,
+      "stage": "source_observation"
+    },
+    {
+      "anon_bytes": 533184512,
+      "available_memory_mb": 8561,
+      "event": "error",
+      "file_bytes": 2974810112,
+      "kernel_bytes": 399011840,
+      "memory_stall_percent": 0.0,
+      "seconds": 188.56429661499715,
+      "stage": "source_observation"
+    },
+    {
+      "anon_bytes": 358387712,
+      "available_memory_mb": 8727,
+      "event": "finished",
+      "file_bytes": 2975330304,
+      "kernel_bytes": 398991360,
+      "memory_stall_percent": 0.0,
+      "seconds": 188.6356176729969,
+      "stage": "context"
+    }
+  ],
+  "schema": "native-resource-event-analysis@1"
+}
