@@ -20,13 +20,7 @@ import time
 import uuid
 
 from benchmarks.agent_supervisor.container_coding import terminal_indexed_preparation as preparation
-from benchmarks.agent_supervisor.container_coding.native_quack_qualification import open_existing_native_owner
-from benchmarks.agent_supervisor.container_coding.terminal_doctor_dispatch import (
-    implementation_argv, prepare_terminal_doctor_dispatch,
-)
-from ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime import AdmittedBenchmarkRuntime
 from ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission import verify_local_benchmark_admission
-from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import GROK_CODEX_EXECUTION_MODE
 
 ROOT = Path("/opt/ipfs-supervisor")
 ROUTER = ROOT / "bin/router-worker"
@@ -488,12 +482,17 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
             phase = "doctor"
             before = time.monotonic()
             try:
+                # Keep execution-only imports out of the numerical indexing
+                # lifetime. Their loading remains inside the work deadline and
+                # the phase that needs them, including on import failure.
+                from benchmarks.agent_supervisor.container_coding.terminal_doctor_dispatch import prepare_terminal_doctor_dispatch
                 doctor = prepare_terminal_doctor_dispatch(repository=Path("/app"), state=state,
                     admission=admission, task_cid=task.task_cid, contract_profile="wsgi-header-controls@1")
             finally:
                 report["phases"]["doctor_seconds"] = time.monotonic() - before
             report["doctor_dispatch"] = doctor
         phase = "implementation_setup"
+        from benchmarks.agent_supervisor.container_coding.terminal_doctor_dispatch import implementation_argv
         report["implementation_route"] = doctor["route"] if doctor is not None else "model_router"
         implementation = implementation_argv(router=ROUTER, model=preparation.MODEL,
             reasoning=preparation.REASONING, timeout=remaining(25),
@@ -509,6 +508,9 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
                 "--public-instruction-task-cid", task.task_cid]
         command = shlex.join(implementation)
         phase = "native_execution"
+        from benchmarks.agent_supervisor.container_coding.native_quack_qualification import open_existing_native_owner
+        from ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime import AdmittedBenchmarkRuntime
+        from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import GROK_CODEX_EXECUTION_MODE
         with open_existing_native_owner(
             database=state / "intent.duckdb", checkout=Path("/app"), state_dir=state / "owner",
             repository_id=verified["manifest"]["repository_cid"],
