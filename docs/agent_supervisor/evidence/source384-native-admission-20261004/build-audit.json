@@ -1,0 +1,35 @@
+{
+  "added": [
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/generated_field_training.py",
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/source_field_readout_probe.py"
+  ],
+  "archive_sha256": "2de360fd0065f91cae3782d59372074785c0ac865256b018aa1829a6107c8802",
+  "benchmark_executed": false,
+  "changed": [
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/long_span_source_value_training.py",
+    "datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_resource_diagnostics.py",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py"
+  ],
+  "checkpoint_and_embedding_assets_unchanged": true,
+  "compressed_bytes": 1338095988,
+  "logical_bytes": 3914733544,
+  "manifest_sha256": "4fb474f556eb3efbefb7f6bed3c5f11c9c6bd632563a8e877609e51672563e18",
+  "provider_calls": 0,
+  "removed": [],
+  "reviewed_header_profile_unchanged": true,
+  "setup_cache_selection": {
+    "manifest_sha256": "4fb474f556eb3efbefb7f6bed3c5f11c9c6bd632563a8e877609e51672563e18",
+    "policy": "source384-native-aarch64-dontneed@1",
+    "schema": "terminal-setup-cache-selection@1"
+  },
+  "source_revisions": {
+    "datasets": "c72e171361258893857719711235ecded65bb063",
+    "source": "89cce7c1bbe6759487cbb62b4fa113b26807806f"
+  },
+  "source_revisions_unchanged": true,
+  "tar_hash_mode_ownership_checked": true,
+  "torch_wheel_unchanged": true,
+  "verified_members": 26928
+}

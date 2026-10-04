@@ -1,0 +1,32 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/source384-construction-lifetime-20261004/dispatch-before.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "environment_overrides": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "NUMEXPR_MAX_THREADS": "1",
+    "CUDA_VISIBLE_DEVICES": "",
+    "TOKENIZERS_PARALLELISM": "false",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/source384-construction-lifetime-20261004/dispatch-before-seal.duckdb",
+    "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "/home/barberb/lift_coding/artifacts/source384-construction-lifetime-20261004/dispatch-before-keys.db"
+  },
+  "source_pins": {
+    "benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py": "6bb727c0ffc85e4d3d361eabdb270fe40acca111da31bc9004abd1ff283a1b59",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "c5c167a00a984156f5d9e392b852c49c1d270ddf571cf75604e7860fc14a8997",
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": "023d8e7ab240e7d9f1d4ff8080322173fe3842dedf9471a690d791253e6234a8"
+  }
+}

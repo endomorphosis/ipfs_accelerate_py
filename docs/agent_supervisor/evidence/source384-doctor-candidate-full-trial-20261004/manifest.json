@@ -1,0 +1,80 @@
+{
+  "files": [
+    {
+      "bytes": 2243,
+      "path": "README.md",
+      "sha256": "26e9f1dfdb96cc03f053801ed8f779acd40acd998dafe3e2332b3ca23714ecbb"
+    },
+    {
+      "bytes": 1051,
+      "path": "build-audit.json",
+      "sha256": "247d1bc60c140a4addf232615bafe68a0a802e9d5134ec783e4b8d98729c5213"
+    },
+    {
+      "bytes": 1580,
+      "path": "doctor-observation.json",
+      "sha256": "23a9e5595c3bbc590319b52810e16aeb2252ec5c0d28f2f147dd8c30685a5735"
+    },
+    {
+      "bytes": 2115,
+      "path": "execute-command.json",
+      "sha256": "bb5cc91a15e91f58ef8ff2d6d39982194888e18a0a1148a8633c74f3ce9efd72"
+    },
+    {
+      "bytes": 54,
+      "path": "execute-exit.json",
+      "sha256": "8f45b06b96d53c3f4f50229ce22e5606a9b9c6458e0e16e6465c904c49c9836c"
+    },
+    {
+      "bytes": 7693,
+      "path": "full-trial-after-pins.json",
+      "sha256": "09bb4f4d0983789957c23ad52a79bb1bfeda24a4687cf97e3f81c0fb9d08dbd5"
+    },
+    {
+      "bytes": 64,
+      "path": "full-trial-containers-after.json",
+      "sha256": "ba5b02de19c6a8bf581e0fdf3041d0101d06a0d1b3ae4a7c7acda74ce020a246"
+    },
+    {
+      "bytes": 1304,
+      "path": "index-observation.json",
+      "sha256": "525cb39ed1aca365bfaa762b7764f75509d2f43819b30ecf726d4edea85b2d00"
+    },
+    {
+      "bytes": 1105,
+      "path": "input-review.json",
+      "sha256": "d9ad19aa816667ed4e7fee73fd408144669a4c81e01a13f791fcdf759c7abded"
+    },
+    {
+      "bytes": 3922,
+      "path": "planning-observation.json",
+      "sha256": "27b944de22cc649edf3be13989b87a545c797f67983663a44403cb76e64e9243"
+    },
+    {
+      "bytes": 2732,
+      "path": "prepare-command.json",
+      "sha256": "49d6a03803e6d5e823b1ac9f041e2b08c5b7c8555dddf9f010d22b42f7fcbe55"
+    },
+    {
+      "bytes": 55,
+      "path": "prepare-exit.json",
+      "sha256": "f6d57b1f2bd2495af79619960302966aa527b1366030568bc9604d67c54f14d9"
+    },
+    {
+      "bytes": 1682,
+      "path": "public-output-receipt.json",
+      "sha256": "1512917cba298a19cb4791c404838f764dcb9684d9c28d0d94e6e07647c4453c"
+    },
+    {
+      "bytes": 935,
+      "path": "retained-records.json",
+      "sha256": "966b3b98132543681d4611bb7f304923534539c8f19e0e4ef07483a13c210301"
+    },
+    {
+      "bytes": 2563,
+      "path": "trial-observation.json",
+      "sha256": "4a25b6d38aaaeb6c699189e34910c208d6c0e391328f541f16637bae39a22cee"
+    }
+  ],
+  "schema": "source384-doctor-candidate-full-trial-evidence@1"
+}

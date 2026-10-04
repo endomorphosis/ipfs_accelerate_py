@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="6" time="1.246" timestamp="2026-10-04T01:09:36.594733+00:00" hostname="spark-b271"><testcase classname="benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget" name="test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[240-doctor_candidate]" time="0.003"><failure message="assert False == True&#10; +  where False = bool([])">tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-569/test_late_candidate_dispatch_r0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xe490efd3ba40&gt;
+route = 'doctor_candidate', used_work_seconds = 240
+
+    @pytest.mark.parametrize('route', ['doctor_candidate','doctor_contract_candidate','model_router'])
+    @pytest.mark.parametrize('used_work_seconds', [240,245])
+    def test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
+            tmp_path, monkeypatch, route, used_work_seconds):
+        now=[1000.];alarms=[];entered=[];cleanup=[]
+        monkeypatch.setattr(driver,'ROOT',tmp_path)
+        monkeypatch.setattr(driver.os,'geteuid',lambda:1000)
+        monkeypatch.setattr(driver.os,'umask',lambda *args:None)
+        monkeypatch.setattr(driver.time,'monotonic',lambda:now[0])
+        monkeypatch.setattr(driver.signal,'signal',lambda *args:None)
+        monkeypatch.setattr(driver.signal,'setitimer',lambda *args:alarms.append(args))
+        monkeypatch.setattr(driver,'_failure_diagnostics',lambda *args,**kwargs:{})
+        monkeypatch.setattr(driver,'_final_context_audit',lambda *args,**kwargs:None)
+        monkeypatch.setattr(driver.subprocess,'run',lambda argv,**kwargs:
+            cleanup.append(argv) or SimpleNamespace(returncode=0))
+        monkeypatch.setattr(driver.preparation,'prepare',lambda **kwargs:{'intent_preplanning':{}})
+        monkeypatch.setattr(driver.preparation,'initial_context',lambda **kwargs:{})
+        monkeypatch.setattr(driver.preparation,'plan',lambda **kwargs:{'qualified':True})
+        monkeypatch.setattr(driver.preparation,'context',lambda **kwargs:{'context_bundle':{}})
+        monkeypatch.setattr(driver,'verify_local_benchmark_admission',lambda *args,**kwargs:
+            {'graph':SimpleNamespace(tasks=[SimpleNamespace(task_cid='fixture-task',task_key='fixture-key')]),
+             'manifest':{'repository_cid':'fixture-repository'}})
+    
+        def candidate(**kwargs):
+            now[0]+=used_work_seconds
+            return dict(route=route,status='residual' if route=='model_router' else 'candidate_ready',
+                provider_calls=0,artifact='fixture-candidate.json',sha256='a'*64,task_cid='fixture-task')
+        monkeypatch.setattr(doctor,'prepare_terminal_doctor_dispatch',candidate)
+    
+        class NativeBoundaryReached(RuntimeError):pass
+        def native(**kwargs):
+            entered.append(kwargs)
+            raise NativeBoundaryReached('controlled native boundary')
+        for name,attrs in [
+            ('benchmarks.agent_supervisor.container_coding.native_quack_qualification',{'open_existing_native_owner':native}),
+            ('ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime',{'AdmittedBenchmarkRuntime':object}),
+            ('ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy',{'GROK_CODEX_EXECUTION_MODE':'fixture-route'}),
+        ]:
+            module=ModuleType(name);vars(module).update(attrs);monkeypatch.setitem(sys.modules,name,module)
+        state=tmp_path/'state/run';state.mkdir(parents=True);(state/'admission.json').write_text('{}')
+        report=driver.run(instruction=tmp_path/'instruction.md',state=state,arm='full',source384_config=tmp_path/'config.json')
+        admitted=route!='model_router' and used_work_seconds&lt;245
+&gt;       assert bool(entered)==admitted
+E       assert False == True
+E        +  where False = bool([])
+
+benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py:55: AssertionError</failure></testcase><testcase classname="benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget" name="test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[240-doctor_contract_candidate]" time="0.001"><failure message="assert False == True&#10; +  where False = bool([])">tmp_path = PosixPath('/tmp/pytest-of-barberb/pytest-569/test_late_candidate_dispatch_r1')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xe490e62ac9e0&gt;
+route = 'doctor_contract_candidate', used_work_seconds = 240
+
+    @pytest.mark.parametrize('route', ['doctor_candidate','doctor_contract_candidate','model_router'])
+    @pytest.mark.parametrize('used_work_seconds', [240,245])
+    def test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
+            tmp_path, monkeypatch, route, used_work_seconds):
+        now=[1000.];alarms=[];entered=[];cleanup=[]
+        monkeypatch.setattr(driver,'ROOT',tmp_path)
+        monkeypatch.setattr(driver.os,'geteuid',lambda:1000)
+        monkeypatch.setattr(driver.os,'umask',lambda *args:None)
+        monkeypatch.setattr(driver.time,'monotonic',lambda:now[0])
+        monkeypatch.setattr(driver.signal,'signal',lambda *args:None)
+        monkeypatch.setattr(driver.signal,'setitimer',lambda *args:alarms.append(args))
+        monkeypatch.setattr(driver,'_failure_diagnostics',lambda *args,**kwargs:{})
+        monkeypatch.setattr(driver,'_final_context_audit',lambda *args,**kwargs:None)
+        monkeypatch.setattr(driver.subprocess,'run',lambda argv,**kwargs:
+            cleanup.append(argv) or SimpleNamespace(returncode=0))
+        monkeypatch.setattr(driver.preparation,'prepare',lambda **kwargs:{'intent_preplanning':{}})
+        monkeypatch.setattr(driver.preparation,'initial_context',lambda **kwargs:{})
+        monkeypatch.setattr(driver.preparation,'plan',lambda **kwargs:{'qualified':True})
+        monkeypatch.setattr(driver.preparation,'context',lambda **kwargs:{'context_bundle':{}})
+        monkeypatch.setattr(driver,'verify_local_benchmark_admission',lambda *args,**kwargs:
+            {'graph':SimpleNamespace(tasks=[SimpleNamespace(task_cid='fixture-task',task_key='fixture-key')]),
+             'manifest':{'repository_cid':'fixture-repository'}})
+    
+        def candidate(**kwargs):
+            now[0]+=used_work_seconds
+            return dict(route=route,status='residual' if route=='model_router' else 'candidate_ready',
+                provider_calls=0,artifact='fixture-candidate.json',sha256='a'*64,task_cid='fixture-task')
+        monkeypatch.setattr(doctor,'prepare_terminal_doctor_dispatch',candidate)
+    
+        class NativeBoundaryReached(RuntimeError):pass
+        def native(**kwargs):
+            entered.append(kwargs)
+            raise NativeBoundaryReached('controlled native boundary')
+        for name,attrs in [
+            ('benchmarks.agent_supervisor.container_coding.native_quack_qualification',{'open_existing_native_owner':native}),
+            ('ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime',{'AdmittedBenchmarkRuntime':object}),
+            ('ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy',{'GROK_CODEX_EXECUTION_MODE':'fixture-route'}),
+        ]:
+            module=ModuleType(name);vars(module).update(attrs);monkeypatch.setitem(sys.modules,name,module)
+        state=tmp_path/'state/run';state.mkdir(parents=True);(state/'admission.json').write_text('{}')
+        report=driver.run(instruction=tmp_path/'instruction.md',state=state,arm='full',source384_config=tmp_path/'config.json')
+        admitted=route!='model_router' and used_work_seconds&lt;245
+&gt;       assert bool(entered)==admitted
+E       assert False == True
+E        +  where False = bool([])
+
+benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py:55: AssertionError</failure></testcase><testcase classname="benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget" name="test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[240-model_router]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget" name="test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[245-doctor_candidate]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget" name="test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[245-doctor_contract_candidate]" time="0.001" /><testcase classname="benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget" name="test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[245-model_router]" time="0.001" /></testsuite></testsuites>

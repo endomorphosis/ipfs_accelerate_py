@@ -1,0 +1,51 @@
+{
+  "after_receipt_sha256": "aaf6cd51e4d167cb11a72654a4297150b453af2f78314881b41de743dfa883b2",
+  "before_receipt_sha256": "87c64c8ab8db8c2725b37337933516d3f0157fc0d34be13dc0c521b93a37565b",
+  "candidate_code_executed": false,
+  "declared_files": [
+    "bottle.py",
+    "report.jsonl"
+  ],
+  "diffs": {
+    "bottle.py": {
+      "artifact": "diffs/bottle.py.diff",
+      "authoritative": false,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "status": "captured",
+      "text_encoding": "utf-8 presentation; source bytes retained separately",
+      "truncated": false
+    },
+    "report.jsonl": {
+      "artifact": "diffs/report.jsonl.diff",
+      "authoritative": false,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "status": "captured",
+      "text_encoding": "utf-8 presentation; source bytes retained separately",
+      "truncated": false
+    }
+  },
+  "files": {
+    "bottle.py": {
+      "bytes": 175565,
+      "sha256": "761756ce31753e526c48d28ccbca13a5d2493b16fe37aff3e1e4d2efaf3a2bba",
+      "status": "captured"
+    },
+    "report.jsonl": {
+      "status": "missing"
+    }
+  },
+  "implementation_sha256": "98d2350e9d38e59bd843a1c69e441a347c35d3e8c0cddb8f5535fb2b2f0675c3",
+  "private_state_accessed": false,
+  "public_instruction": {
+    "bytes": 3873,
+    "sha256": "89b1abdf0af19399f720233b5cdf6b2e8e0ff7b6e3fe3e2a3af0d4d298a8641a",
+    "signed": false
+  },
+  "quiescence": "caller_lifecycle_receipt_required",
+  "schema": "terminal-declared-public-output-evidence@1",
+  "signed": false,
+  "status": "captured",
+  "verifier_state_accessed": false
+}

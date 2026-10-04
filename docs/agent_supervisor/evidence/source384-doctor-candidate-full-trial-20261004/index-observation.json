@@ -1,0 +1,40 @@
+{
+  "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+  "coverage": {
+    "candidate_statuses": {
+      "fail_open_source_contract_unsupported": 127
+    },
+    "file_dispositions": {
+      "inventoried": 27,
+      "no_function_units": 4
+    },
+    "files": 31,
+    "functions": 944,
+    "selected_units": 128,
+    "unit_dispositions": {
+      "decoded_unverified_candidate": 127,
+      "deferred_gte_token_limit": 1,
+      "deferred_selection_budget": 737,
+      "unsupported_normalization": 79
+    }
+  },
+  "full_capsules": 531,
+  "indexed_symbols": 426,
+  "initial_context_seconds": 138.577513309996,
+  "initial_indexes_reused": true,
+  "native_fact_rows_replayed": 426,
+  "new_embedding_calls": 0,
+  "nonoverlapping_seconds": {
+    "empty_native_world_capture": 0.4266638350090943,
+    "final_evidence_verification": 12.26929480099352,
+    "persisted_snapshot_reopen": 0.33192143800260965,
+    "retrieval_persistence": 1.2123381959972903,
+    "semantic_build_reconstruction_and_hydration": 39.52733983300277,
+    "source384_capture_and_inference": 77.86676498800807,
+    "vector_qualification": 6.931691417004913
+  },
+  "source384_seconds": 77.78043490501295,
+  "source_qualified_proof_claimed": false,
+  "worker_capsules": 1,
+  "worker_semantic_bytes": 27276
+}

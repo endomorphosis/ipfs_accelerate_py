@@ -1,0 +1,77 @@
+{
+  "arm": "full",
+  "benchmark_advantage_claimed": false,
+  "durations_seconds": {
+    "agent_execution": 244.051539,
+    "agent_setup": 291.984995,
+    "environment_setup": 8.390529,
+    "verifier": 2.176254
+  },
+  "harbor_returncode": 0,
+  "intent_requirement_contract_cid": "baguqeeraf3jyjd5ovvjqawi3racqdnpt2q43m4q464hky6l7pnfrvr5bypna",
+  "intent_requirement_contract_sha256": "2ed3848faead5300591b880501b5f3d439b6721cf70eac797f7b4b1ac7a1c3da",
+  "invocation_seconds": 563.6247100759938,
+  "original_task_inputs_unchanged": true,
+  "parallel_workers": 1,
+  "planning_strategy": "intent_symbolic",
+  "resource_profile": "source384-5cpu-12gib@1",
+  "reward": {
+    "reward": 0.0
+  },
+  "schema": "terminal-full-supervisor-receipt@1",
+  "supervisor": {
+    "arm": "full",
+    "benchmark_advantage_claimed": false,
+    "error": {
+      "message": "the total benchmark agent budget is exhausted",
+      "type": "TimeoutError"
+    },
+    "error_phase": "implementation_setup",
+    "error_traceback": {
+      "frames": [
+        {
+          "file": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+          "function": "run",
+          "line": 503
+        },
+        {
+          "file": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+          "function": "remaining",
+          "line": 385
+        }
+      ],
+      "frames_omitted": 0,
+      "frames_walked": 2,
+      "walk_truncated": false
+    },
+    "failure_admission": {
+      "causal_proof": false,
+      "complete_admission_decision": false,
+      "observation_boundary": "request_primary_gate",
+      "reason": "no_native_admission_error",
+      "schema": "terminal-admission-failure-observation@1",
+      "status": "unavailable"
+    },
+    "max_total_agent_seconds": 285,
+    "official_reward": null,
+    "phases": {
+      "context_seconds": 20.91522981900198,
+      "doctor_seconds": 35.584585757998866,
+      "initial_context_seconds": 138.97137614800886,
+      "planning_seconds": 33.71187102299882,
+      "prepare_seconds": 11.00634214701131
+    },
+    "production_activation": false,
+    "provider_invocations": [],
+    "remaining_processes": null,
+    "reserved_cleanup_seconds": 40,
+    "schema": "terminal-admitted-supervisor-run@1",
+    "seconds": 242.32712827900832,
+    "task_completed": false,
+    "work_cutoff_seconds": 245,
+    "worker_cleanup_returncode": 0
+  },
+  "task": "fix-code-vulnerability",
+  "trial": "fix-code-vulnerability__WCih55g",
+  "trial_count": 1
+}

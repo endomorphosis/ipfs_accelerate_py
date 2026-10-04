@@ -1,0 +1,130 @@
+{
+  "files": [
+    {
+      "bytes": 1520,
+      "path": "README.md",
+      "sha256": "43413daf92db880419e8e52da38fa1cac1afd02c88c9f488d23b283e3868ff72"
+    },
+    {
+      "bytes": 3999,
+      "path": "dispatch-after-command.json",
+      "sha256": "f8eaa1a513f443d5471f18ea9cf1433427727c6d73d986aac826100d1972b91d"
+    },
+    {
+      "bytes": 88,
+      "path": "dispatch-after-exit.json",
+      "sha256": "daefd8f96947faa996f514f80c8f1ef04d23f37937c9432470cfa61af53c1548"
+    },
+    {
+      "bytes": 0,
+      "path": "dispatch-after.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 24443,
+      "path": "dispatch-after.stdout",
+      "sha256": "b3872aafb08f0d5c1f7957a8a46ab001f9443275ae1d70212cdc55aba18c991b"
+    },
+    {
+      "bytes": 21873,
+      "path": "dispatch-after.xml",
+      "sha256": "0a31bbf93e07d536be1610355484224f8a51df1d59efa95adfef375fce5e3f19"
+    },
+    {
+      "bytes": 1759,
+      "path": "dispatch-before-command.json",
+      "sha256": "f636ccdf48797e012caf1b7ffeb1c3aa3904fd83c4be461d03be5763ae382852"
+    },
+    {
+      "bytes": 88,
+      "path": "dispatch-before-exit.json",
+      "sha256": "49027ec9e9da51554464d26ff33f16e62fb2e5a5373e105e08ad715de94be128"
+    },
+    {
+      "bytes": 0,
+      "path": "dispatch-before.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 18450,
+      "path": "dispatch-before.stdout",
+      "sha256": "305f3a64da19d9396e868dce3de692f358381c071f72329b61df887dfd8c9681"
+    },
+    {
+      "bytes": 8805,
+      "path": "dispatch-before.xml",
+      "sha256": "f3ef594c17219f3912d46b8c4c7f1a37031f10d0c09d263d300af87ece9bff4e"
+    },
+    {
+      "bytes": 359,
+      "path": "qualification.json",
+      "sha256": "104b7c85c0160c3fdff40c444159c4df2838113769794dc2fde0e9fc35f32a28"
+    },
+    {
+      "bytes": 39241,
+      "path": "sources/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "83d535ee40f7ca9f787e076f6e401a8ce56ee89c79e21dc83f3c412e3a1fec34"
+    },
+    {
+      "bytes": 11226,
+      "path": "sources/benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+      "sha256": "023d8e7ab240e7d9f1d4ff8080322173fe3842dedf9471a690d791253e6234a8"
+    },
+    {
+      "bytes": 8970,
+      "path": "sources/benchmarks/agent_supervisor/container_coding/terminal_resource_diagnostics.py",
+      "sha256": "6a5769e1839cf239d1b03b3a3ec5189dd6b40e6fcb7c290758f98aa3381ad5f3"
+    },
+    {
+      "bytes": 15286,
+      "path": "sources/benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py",
+      "sha256": "2d453a435a5bdaf5da12324df0ff68b134e37c3439b47338c5237fe445c6fab7"
+    },
+    {
+      "bytes": 2325,
+      "path": "sources/benchmarks/agent_supervisor/container_coding/test_cleanup_deadline.py",
+      "sha256": "290cfc975c23a1c47a65df7e374386dcb35de983f816e780b77d533fa23b8ad6"
+    },
+    {
+      "bytes": 3970,
+      "path": "sources/benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py",
+      "sha256": "6bb727c0ffc85e4d3d361eabdb270fe40acca111da31bc9004abd1ff283a1b59"
+    },
+    {
+      "bytes": 5226,
+      "path": "sources/benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py",
+      "sha256": "27103c9b591e4c22a556739c5f1fa67aa95acc24e24c7c1442d8820c1bbd9195"
+    },
+    {
+      "bytes": 5091,
+      "path": "sources/benchmarks/agent_supervisor/container_coding/test_source384_probe_lifetime.py",
+      "sha256": "c57f9d8024fab08234a75ded75a7df94ac5a60dab922a88a772a584356939d19"
+    },
+    {
+      "bytes": 5790,
+      "path": "sources/benchmarks/agent_supervisor/container_coding/test_terminal_admission_observation.py",
+      "sha256": "fb05d95bb585111bbfcdfe1580e5a503c97d3453666833300e42d6959f9142ef"
+    },
+    {
+      "bytes": 8179,
+      "path": "sources/benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py",
+      "sha256": "556b0c27e09374c68341f38c4051d1e48a3545310a9c2d23eb986c9d2cdc2724"
+    },
+    {
+      "bytes": 5142,
+      "path": "sources/benchmarks/agent_supervisor/container_coding/test_terminal_import_lifetime.py",
+      "sha256": "d4cdb2baa3d7efc7d807b4efc48bdb9d4abaacce57d25b4cbb42f25f0b02da35"
+    },
+    {
+      "bytes": 9096,
+      "path": "sources/benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py",
+      "sha256": "38c9b5c7997488e35bc03f8f039278a68085b5cab9a97ee31e04a404ce4b7e01"
+    },
+    {
+      "bytes": 10340,
+      "path": "sources/benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py",
+      "sha256": "ce0e2bbec41412fee5dc00a2c7dcddce648bc6f8e5e54b0ea268131be5b66327"
+    }
+  ],
+  "schema": "doctor-candidate-budget-evidence@1"
+}

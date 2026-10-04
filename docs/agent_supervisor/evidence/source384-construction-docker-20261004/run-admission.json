@@ -1,0 +1,19 @@
+{
+  "schema": "bounded-docker-run-admission@1",
+  "root_go_received": true,
+  "current_producer_component_review_complete": true,
+  "fresh_archive_audited": true,
+  "build_audit_sha256": "247d1bc60c140a4addf232615bafe68a0a802e9d5134ec783e4b8d98729c5213",
+  "component_review": {
+    "passed_scopes": [
+      "121 actual shared scheduler controls, including root/child accounting, pressure, recovery, cancellation and request-local diagnostics",
+      "104 actual supervisor controls, including native timeout projection through the embedded qualifier, driver failures, cleanup, import lifetime and cold/warm guards",
+      "Prior 354 captured-header integration controls retained; current inference/index/checker owners and checkpoint unchanged apart from the separately tested scheduler",
+      "17 construction/replay lifetime controls and 7 actual checkpoint/source-unit tests; all fences, independent replay and no-provider assertions retained"
+    ],
+    "resource_blocked_scopes": [],
+    "unresolved_code_or_test_packaging_failures": []
+  },
+  "new_profile_previously_docker_qualified": false,
+  "full_task_score_claimed": false
+}

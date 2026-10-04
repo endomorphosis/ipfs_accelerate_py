@@ -689,3 +689,53 @@ supervisor tests. Resource formulas, thresholds, sampler calls and deadlines
 are unchanged. This diagnostic was not in the frozen retry; its new combined
 runtime requires a fresh archive and ordinary Docker qualification. RPI-019
 and RPI-020 remain open, and the backlog stays **18/32 closed**.
+
+
+## Native diagnosis, qualified lifetime fix and checked Doctor candidate
+
+The [native request-local observation](../../../docs/agent_supervisor/evidence/source384-native-admission-20261004/README.md)
+captures a post-worker source-fence refusal at 8601 MiB available, one MiB below
+6144 MiB of root reservations plus 2458 MiB headroom. All sampled stall metrics
+are below their thresholds. The final gate is the resulting cooldown; this
+record identifies that refusal without identifying the source of memory charge.
+
+The [construction lifetime fix](../../../docs/agent_supervisor/evidence/source384-construction-lifetime-20261004/README.md)
+releases completed checkpoint/input objects before the next source fence and
+construction graphs before independent replay. Three pre-fix failures become
+17 passing lifetime controls; seven actual checkpoint tests pass after correcting
+a host runner package-path mismatch, whose refusal is retained separately.
+
+The [fresh ordinary qualification](../../../docs/agent_supervisor/evidence/source384-construction-docker-20261004/README.md)
+passes. Source384 takes 88.944s within its 90s deadline, initial context 150.983s,
+warm observation 10.329s and the native probe 173.323s. The margin is narrow,
+and one run does not establish a causal or general performance improvement.
+
+The [full task](../../../docs/agent_supervisor/evidence/source384-doctor-candidate-full-trial-20261004/README.md)
+reaches two goals, one task and a checked Doctor candidate with zero provider
+calls. Z3/Lean validate the reviewed local header-control contract; whole-program
+security and natural-language semantic alignment remain unproved. The initial
+index is reused, with 426 fact rows and 531 full semantic capsules reduced to
+one worker capsule of 27276 bytes. No candidate is dispatched or published.
+
+| Full-task phase | Seconds |
+| --- | ---: |
+| Preparation | 11.006 |
+| Initial context | 138.971 |
+| Symbolic planning | 33.712 |
+| Context preparation | 20.915 |
+| Doctor candidate/proof | 35.585 |
+
+Official reward is **0**. At implementation setup, remaining(25) rejects the
+remaining work budget while calculating a model timeout that the candidate
+route does not use. The [route-aware correction](../../../docs/agent_supervisor/evidence/doctor-candidate-budget-20261004/README.md)
+passes 110 supervisor controls, preserving the 245-second work cutoff and
+40-second cleanup reserve. That later driver change is not part of the native
+runs above and still requires a fresh Docker generation.
+
+Preparation time must fall enough to leave useful native execution time.
+The next measured targets are semantic reconstruction (39.527s within initial
+context), planning/context replay and Doctor proof construction. Any immutable
+reuse or parallel construction must retain exact input/producer bindings,
+bounded shared leases and fresh source/proof gates. Native dispatch, accepted
+publication and successor validation remain unqualified. No completed token
+score or matched-arm advantage is claimed; the backlog remains **18/32 closed**.

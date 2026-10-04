@@ -1,0 +1,92 @@
+{
+  "assumptions": [
+    "reviewed_wsgi_callback_identity",
+    "reviewed_unique_property_receiver_binding",
+    "ordinary_unmodified_python_builtins_and_helper_bindings",
+    "recognized_conversion_returns_an_ordinary_string",
+    "model_starts_after_successful_conversion_and_ignores_conversion_exceptions",
+    "normalization_terminates_and_preserves_NUL_LF_CR_membership"
+  ],
+  "checked_obligations": [
+    {
+      "compilation_id": "bafkreif5eu4gso7uxuprykpielmfnmg2iojfr5omjo5bu4sijjv3tt6j6m",
+      "expected_model_answer": "sat",
+      "kind": "unsafe_converted_input_accepted",
+      "query_mode": "satisfiability",
+      "script_digest": "63b967e9857b0403bd552cbd6d6699204266ae62211de928c4db1055b2e67604",
+      "script_sha256": "643cce28e0ccc735d90a9e6a91f7bd91cb7d11e3de17ee55aa1c9fa839ba6e94",
+      "solver_answer": "sat",
+      "solver_version": "Z3 version 4.13.3 - 64 bit",
+      "symbol": "_hkey"
+    },
+    {
+      "compilation_id": "bafkreiav4p6wyktd2canq56tr2s2jbhawozpbipa4jmkwaceufi3ccge3i",
+      "expected_model_answer": "unsat",
+      "kind": "safe_normalization_preserved",
+      "query_mode": "theorem_by_negation",
+      "script_digest": "0a7903b518ae30d9cfe2f8cad37379749a333ef5a3d156dfbaf76569b3b5e960",
+      "script_sha256": "ffea33ea645b7cecb4f3c592eadecff8d14fe8d2d3b9c66f3c2818d8e95ee51d",
+      "solver_answer": "unsat",
+      "solver_version": "Z3 version 4.13.3 - 64 bit",
+      "symbol": "_hkey"
+    },
+    {
+      "compilation_id": "bafkreieuhmddi7ysfod3fwvpxwz5bybbaxxl7fr3fivodzdnd5bwov3eky",
+      "expected_model_answer": "sat",
+      "kind": "forbidden_output_accepted",
+      "query_mode": "satisfiability",
+      "script_digest": "4860c058ead84d8df0740507b765440e4eee81d04988aebaf498e44f33d010f9",
+      "script_sha256": "e27924d13c3ca6ec9814c05ad4b3b69844b3c2e0570cdb1f40e1e100c43f32a3",
+      "solver_answer": "sat",
+      "solver_version": "Z3 version 4.13.3 - 64 bit",
+      "symbol": "_hkey"
+    },
+    {
+      "compilation_id": "bafkreiduwkayfmdqc3abldekxl4ehder242p3rhcx36ycf6e76oko36ua4",
+      "expected_model_answer": "sat",
+      "kind": "unsafe_converted_input_accepted",
+      "query_mode": "satisfiability",
+      "script_digest": "06f86b1989207983b7cbbd23b76010fadda37b8c3b266de1b0948fec7b98dc45",
+      "script_sha256": "c3a078d22c0815ce5a1c06c941443d64635f19d05b3e042db9bd84d0feacfad9",
+      "solver_answer": "sat",
+      "solver_version": "Z3 version 4.13.3 - 64 bit",
+      "symbol": "_hval"
+    },
+    {
+      "compilation_id": "bafkreigpmf2s7xdbor5ygqmblpizrnlqd22dtlesxc5trvs3jip544bh34",
+      "expected_model_answer": "unsat",
+      "kind": "safe_normalization_preserved",
+      "query_mode": "theorem_by_negation",
+      "script_digest": "068150e044316883ec653f4a5d1ae6e09184e8ce843ea13be4a216e649992222",
+      "script_sha256": "b7d3973e8299be24dbc215e6e2be31507a903ddb79c115a68e92289ec7666589",
+      "solver_answer": "unsat",
+      "solver_version": "Z3 version 4.13.3 - 64 bit",
+      "symbol": "_hval"
+    },
+    {
+      "compilation_id": "bafkreiadmblf5h7yqevsolfqqysiqdguqxkkgbh4cjj3j7qv6przyhfoti",
+      "expected_model_answer": "sat",
+      "kind": "forbidden_output_accepted",
+      "query_mode": "satisfiability",
+      "script_digest": "84edfb8cac6336d2cbf9e42e07d3497e0dba334cbbe6a341d8e27d316c7b2eef",
+      "script_sha256": "6956877bb28832897756569d0fd97336ef6de74199ccc91fbb6b0681ab1e66c0",
+      "solver_answer": "sat",
+      "solver_version": "Z3 version 4.13.3 - 64 bit",
+      "symbol": "_hval"
+    }
+  ],
+  "elapsed_seconds": 33.711085413000546,
+  "goals": 2,
+  "interpretation_scope": "administrative_requirement_task_coverage",
+  "observed_facts_supplied": 1,
+  "proof_authority": false,
+  "provider_calls": 0,
+  "qualified": true,
+  "selected_operation_ids": [
+    "operation:repair-bottle"
+  ],
+  "semantic_alignment_verified": false,
+  "source_semantics_verified": false,
+  "strategy": "intent_symbolic",
+  "tasks": 1
+}

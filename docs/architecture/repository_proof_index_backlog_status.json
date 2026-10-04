@@ -1,6 +1,6 @@
 {
   "schema": "repository-proof-index-backlog-status/v1",
-  "updated_at_utc": "2026-10-04T00:19:10.058217+00:00",
+  "updated_at_utc": "2026-10-04T01:14:54.630814+00:00",
   "scope": "Frozen 32-task acceptance ledger. Declared-profile criterion qualification and production closure with all prerequisites are tracked separately.",
   "source": {
     "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
@@ -640,6 +640,31 @@
       "path": "docs/agent_supervisor/evidence/source384-admission-observation-20261004/manifest.json",
       "sha256": "7e4c9250c08ad23072323e289c054beb91b64b469038c3c667ee35890ccfcb63",
       "retention": "repository_evidence"
+    },
+    "source384-native-admission": {
+      "path": "docs/agent_supervisor/evidence/source384-native-admission-20261004/manifest.json",
+      "sha256": "cc91a39410fc4d48ca1d29f98568a98bede322a2a7c4001fc7a2b4d59ddcf21b",
+      "retention": "repository_evidence"
+    },
+    "source384-construction-lifetime": {
+      "path": "docs/agent_supervisor/evidence/source384-construction-lifetime-20261004/manifest.json",
+      "sha256": "fb4b6dccf0b9bd755b6ea95ee302213b373ff77428e366bed237a51752c98b5e",
+      "retention": "repository_evidence"
+    },
+    "source384-construction-docker": {
+      "path": "docs/agent_supervisor/evidence/source384-construction-docker-20261004/manifest.json",
+      "sha256": "b94e32adc4ef87d4e3c7e85fec259ff0cdaa8aa6fc122985fa302273ad8bd79b",
+      "retention": "repository_evidence"
+    },
+    "source384-doctor-candidate-full-trial": {
+      "path": "docs/agent_supervisor/evidence/source384-doctor-candidate-full-trial-20261004/manifest.json",
+      "sha256": "a3c09ed954ef04e7f9b7255134c187c98b848c6c4f2d588eeff3282b480b5ad5",
+      "retention": "repository_evidence"
+    },
+    "doctor-candidate-budget": {
+      "path": "docs/agent_supervisor/evidence/doctor-candidate-budget-20261004/manifest.json",
+      "sha256": "bbb04faa8c22cd4fd5d961c38f98fe3387d2dcf7998200745e11416109105d4e",
+      "retention": "repository_evidence"
     }
   },
   "criteria": [
@@ -1160,13 +1185,15 @@
         "Execution-only imports now occur after indexing/planning, under the existing work deadline. All 56 fresh-store controls pass. Single-process host RSS is 44916 KiB at driver import and 246880 KiB after common imports/indexing, versus 189280 and 297432 KiB before. The new ordinary Docker prerequisite fails at the bounded numerical worker timeout; no full task retry is launched. Separate host and container timing diagnostics grant no production qualification. No admission rule, source-currentness check, numerical selection or deadline is weakened.",
         "The subsequent ordinary retry returned initial context but refused warm replay; a separate reclamation diagnostic released only 8756 KiB with malloc_trim and did not reproduce the low-headroom condition, so no allocator trim was added. The qualifier now releases its bulk inference copies before warm replay while preserving export bindings; 37 actual tests pass. The fresh final archive refuses an initial-context replay lease with proof_io_stall retained; after-unwind I/O stall is 43.9 percent and available memory 11491 MiB. The new release boundary is not reached in that run. All exact generations, failures and read-only external cache observations are retained separately; the charged cache population and admission-time cause remain unresolved.",
         "The user-requested frozen archive retry passes deployment (258.012s) but fails at the final source-currentness observation after inference has been saved and reloaded. Initial context takes 99.094s, native probe 111.573s and controller 449.676s. The after-unwind scheduler retains proof_memory_stall; a later sample reports 14.59 percent memory stall and 11320 MiB available, without admission-time causality. Source/task pins and container cleanup pass. No full task, official reward or completed token score follows this failed prerequisite.",
-        "The shared scheduler now attaches its existing request-local primary proof-gate sample and cooldown status to timeout/cancellation exceptions, without additional sampling or ledger fields. Supervisor/qualifier failure handlers project bounded metadata separately from post-unwind observations. The 121 shared scheduler and 104 supervisor controls all execute and pass. This does not capture every admission gate or identify pressure causality; it was not present in the preceding Docker retry and still requires a fresh archive/native qualification."
+        "The shared scheduler now attaches its existing request-local primary proof-gate sample and cooldown status to timeout/cancellation exceptions, without additional sampling or ledger fields. Supervisor/qualifier failure handlers project bounded metadata separately from post-unwind observations. The 121 shared scheduler and 104 supervisor controls all execute and pass. This does not capture every admission gate or identify pressure causality; it was not present in the preceding Docker retry and still requires a fresh archive/native qualification.",
+        "Request-local admission diagnostics execute in an actual container and capture a post-worker refusal at 8601 MiB available against 6144 MiB root reservations plus 2458 MiB headroom; stall thresholds pass. Completed input/checkpoint/construction objects are now released before later source fences and independent replay. Three pre-fix lifetime failures become 17 passing unit controls; seven actual checkpoint/source-unit tests also pass. The initial host package-path mismatch refusal is retained separately from the corrected native run.",
+        "The new one-file runtime delta passes ordinary Docker qualification: Source384 88.944s within 90s, initial context 150.983s, warm observation 10.329s, probe 173.323s. The subsequent full trial reaches symbolic planning (2 goals, 1 task, 0 provider calls), context reuse and a Z3/Lean-checked Doctor header-contract candidate. Initial context is 138.971s, planning 33.712s, context 20.915s and Doctor 35.585s. It receives official reward 0 after implementation setup rejects the remaining budget; native dispatch/publication is not reached. Learned source candidates remain unverified; the reviewed local proof is not whole-program or natural-language semantic verification.",
+        "The driver now applies its 25-second provider-timeout reserve only to the model route; Doctor candidate commands do not consume that argument. Two pre-fix late-candidate failures become 110 passing supervisor controls. The 245-second work cutoff, 40-second cleanup reserve and all admission/source/proof checks remain unchanged. This later driver change is component-qualified and requires a new Docker generation; the successful qualification/full trial precede it."
       ],
       "remaining_work": [
         "The complete criterion above has not been qualified in the released integration.",
         "The equipped ordinary original-container profile now qualifies initial source/index/inference preparation, cold replay and warm observation with current frozen producers. Qualify a passing full task trial under unchanged declared limits before claiming benchmark acceptance or efficiency. Automatic Source384 successor inference after accepted publication remains unavailable: preserve the exact historical v2 selection as successor_unavailable and require a newly prepared current selection before another dispatch.",
-        "Rerun the complete full-task path after the selected receipt transport correction; retain this reward-0 generation and qualify actual coding dispatch, task completion, publication and successor behavior separately.",
-        "Qualify the complete frozen runtime during acceptable resource conditions and identify the remaining charged file-cache/I/O variation with request-time observations, preserving admission and currentness checks. No failed prefix or instrumented diagnostic substitutes for a successful full-task and matched-arm campaign."
+        "Reduce measured preparation overhead enough to leave useful native dispatch/execution time under the unchanged 245-second work cutoff. Profile semantic reconstruction (39.527s inside initial context), symbolic planning, context replay and Doctor proof construction; qualify any immutable reuse or bounded parallelism without skipping source-currentness or independent proof checks. Then qualify the route-aware driver in a fresh archive and complete actual dispatch, publication and successor validation before a matched-arm efficiency campaign."
       ],
       "evidence": [
         "benchmark-formula-initialization",
@@ -1207,7 +1234,12 @@
         "source384-probe-bulk-lifetime",
         "source384-bulk-lifetime-io-refusal",
         "source384-frozen-retry",
-        "source384-admission-observation"
+        "source384-admission-observation",
+        "source384-native-admission",
+        "source384-construction-lifetime",
+        "source384-construction-docker",
+        "source384-doctor-candidate-full-trial",
+        "doctor-candidate-budget"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },
@@ -1234,14 +1266,17 @@
         "Execution-only imports now occur after indexing/planning, under the existing work deadline. All 56 fresh-store controls pass. Single-process host RSS is 44916 KiB at driver import and 246880 KiB after common imports/indexing, versus 189280 and 297432 KiB before. The new ordinary Docker prerequisite fails at the bounded numerical worker timeout; no full task retry is launched. Separate host and container timing diagnostics grant no production qualification. No admission rule, source-currentness check, numerical selection or deadline is weakened.",
         "The subsequent ordinary retry returned initial context but refused warm replay; a separate reclamation diagnostic released only 8756 KiB with malloc_trim and did not reproduce the low-headroom condition, so no allocator trim was added. The qualifier now releases its bulk inference copies before warm replay while preserving export bindings; 37 actual tests pass. The fresh final archive refuses an initial-context replay lease with proof_io_stall retained; after-unwind I/O stall is 43.9 percent and available memory 11491 MiB. The new release boundary is not reached in that run. All exact generations, failures and read-only external cache observations are retained separately; the charged cache population and admission-time cause remain unresolved.",
         "The user-requested frozen archive retry passes deployment (258.012s) but fails at the final source-currentness observation after inference has been saved and reloaded. Initial context takes 99.094s, native probe 111.573s and controller 449.676s. The after-unwind scheduler retains proof_memory_stall; a later sample reports 14.59 percent memory stall and 11320 MiB available, without admission-time causality. Source/task pins and container cleanup pass. No full task, official reward or completed token score follows this failed prerequisite.",
-        "The shared scheduler now attaches its existing request-local primary proof-gate sample and cooldown status to timeout/cancellation exceptions, without additional sampling or ledger fields. Supervisor/qualifier failure handlers project bounded metadata separately from post-unwind observations. The 121 shared scheduler and 104 supervisor controls all execute and pass. This does not capture every admission gate or identify pressure causality; it was not present in the preceding Docker retry and still requires a fresh archive/native qualification."
+        "The shared scheduler now attaches its existing request-local primary proof-gate sample and cooldown status to timeout/cancellation exceptions, without additional sampling or ledger fields. Supervisor/qualifier failure handlers project bounded metadata separately from post-unwind observations. The 121 shared scheduler and 104 supervisor controls all execute and pass. This does not capture every admission gate or identify pressure causality; it was not present in the preceding Docker retry and still requires a fresh archive/native qualification.",
+        "Request-local admission diagnostics execute in an actual container and capture a post-worker refusal at 8601 MiB available against 6144 MiB root reservations plus 2458 MiB headroom; stall thresholds pass. Completed input/checkpoint/construction objects are now released before later source fences and independent replay. Three pre-fix lifetime failures become 17 passing unit controls; seven actual checkpoint/source-unit tests also pass. The initial host package-path mismatch refusal is retained separately from the corrected native run.",
+        "The new one-file runtime delta passes ordinary Docker qualification: Source384 88.944s within 90s, initial context 150.983s, warm observation 10.329s, probe 173.323s. The subsequent full trial reaches symbolic planning (2 goals, 1 task, 0 provider calls), context reuse and a Z3/Lean-checked Doctor header-contract candidate. Initial context is 138.971s, planning 33.712s, context 20.915s and Doctor 35.585s. It receives official reward 0 after implementation setup rejects the remaining budget; native dispatch/publication is not reached. Learned source candidates remain unverified; the reviewed local proof is not whole-program or natural-language semantic verification.",
+        "The driver now applies its 25-second provider-timeout reserve only to the model route; Doctor candidate commands do not consume that argument. Two pre-fix late-candidate failures become 110 passing supervisor controls. The 245-second work cutoff, 40-second cleanup reserve and all admission/source/proof checks remain unchanged. This later driver change is component-qualified and requires a new Docker generation; the successful qualification/full trial precede it."
       ],
       "remaining_work": [
         "Execute the complete matched multi-arm campaign and frozen correctness/cost gates, including runtime enforcement, decoder/mask ablations, shared/repository children, cold/warm eligibility, independent review costs and official outcomes. Configuration-control qualification does not establish benchmark advantage.",
         "Join Source384 preparation selection and portable assets, native registry, exact model/index observer and proof/planning consumers through the actual Harbor container route. Qualify the original task resource envelope or disclose a common larger-resource experiment across every arm before a learned-repository comparison.",
         "Run the actual matched Harbor campaign after qualifying the complete Source384 consumer within the unchanged declared deadlines. Retain the current real-canary deadline failures and charge successor preparation when implemented; successor_unavailable is not a successful learned-repository arm or efficiency advantage.",
         "Obtain a successful full-task result and matched baseline/ablation outcomes before claiming token or throughput gains; the 22,587-token failed planning prefix cannot establish savings.",
-        "Qualify the complete frozen runtime during acceptable resource conditions and identify the remaining charged file-cache/I/O variation with request-time observations, preserving admission and currentness checks. No failed prefix or instrumented diagnostic substitutes for a successful full-task and matched-arm campaign."
+        "Reduce measured preparation overhead enough to leave useful native dispatch/execution time under the unchanged 245-second work cutoff. Profile semantic reconstruction (39.527s inside initial context), symbolic planning, context replay and Doctor proof construction; qualify any immutable reuse or bounded parallelism without skipping source-currentness or independent proof checks. Then qualify the route-aware driver in a fresh archive and complete actual dispatch, publication and successor validation before a matched-arm efficiency campaign."
       ],
       "evidence": [
         "benchmark-declared-controls",
@@ -1265,7 +1300,12 @@
         "source384-probe-bulk-lifetime",
         "source384-bulk-lifetime-io-refusal",
         "source384-frozen-retry",
-        "source384-admission-observation"
+        "source384-admission-observation",
+        "source384-native-admission",
+        "source384-construction-lifetime",
+        "source384-construction-docker",
+        "source384-doctor-candidate-full-trial",
+        "doctor-candidate-budget"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },

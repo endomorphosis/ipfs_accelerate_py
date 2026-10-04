@@ -1,0 +1,13 @@
+{
+  "benchmark_result": false,
+  "cleanup_reserve_seconds": 40,
+  "docker_qualified": false,
+  "expected_pre_fix_failures": 2,
+  "failed": 0,
+  "model_timeout_reserve_seconds": 25,
+  "passed": 110,
+  "provider_free_candidate_uses_model_timeout": false,
+  "schema": "doctor-candidate-dispatch-budget-controls@1",
+  "skipped": 0,
+  "work_cutoff_seconds": 245
+}

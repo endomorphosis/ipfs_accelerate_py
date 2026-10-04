@@ -1,0 +1,28 @@
+{
+  "benchmark_informed_development": true,
+  "candidate_cid": "baguqeeraptpmhheearx6avklae7wxeanbdtmlu4ci2uvw2alrqf2qvdns6ma",
+  "candidate_sha256": "c6e9425654575ee9a0f2c69aff86e3dd2ed58266b0b4ab37c70e4d4a5b080dd3",
+  "canonical_source_edits": 0,
+  "completion_authority": false,
+  "proof": {
+    "contract_version": 1,
+    "disposition": "verified",
+    "interface": "DoctorAuthoritativeProofReceipt@1",
+    "policy_id": "baguqeera5yldtnouaybkq3wwjmiyvlcy2yt6it4vwtevj4megvf3hzgzkthq",
+    "producer_id": "deterministic-doctor-hammer@1",
+    "property_id": "property:reject-control-preserve-safe",
+    "receipt_id": "doctor-authoritative-proof:baguqeera6gw4tqb44wi52wj7bhco76kugruywxe4xvv7us54enbcpjwo3maa",
+    "schema": "ipfs_accelerate_py/agent-supervisor/doctor-authoritative-proof-receipt@1",
+    "selected_consequence_ref": "baguqeerazs3adq27prbaxya5ra4owtcw3zhudculwboxe6tenvkahmwrjieq",
+    "toolchain_id": "baguqeerahimxpzox2zvhygsud73x7ipuji7raci5w6ok63vc55aspz52oeja",
+    "uniqueness_satisfied": true,
+    "write_authority": false
+  },
+  "proof_object_and_tool_argv_exported": false,
+  "proof_scope": "For converted character sequences, the CR/LF/NUL guard rejects unsafe input and returns the original normalization on accepted input. Exact AST replay binds candidate bytes under the reviewed Python/WSGI protocol assumptions. This is not whole-program verification or full HTTP grammar conformance.",
+  "provider_calls": 0,
+  "publication_authority": false,
+  "route": "doctor_contract_candidate",
+  "status": "candidate_ready",
+  "whole_program_proved": false
+}
