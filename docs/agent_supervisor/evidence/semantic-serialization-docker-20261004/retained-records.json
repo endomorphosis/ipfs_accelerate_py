@@ -1,0 +1,42 @@
+{
+  "intent-requirements.json": {
+    "bytes": 13832,
+    "raw_body_exported": false,
+    "sha256": "2ed3848faead5300591b880501b5f3d439b6721cf70eac797f7b4b1ac7a1c3da"
+  },
+  "qualification-01/native-inference.json": {
+    "bytes": 4505885,
+    "raw_body_exported": false,
+    "sha256": "9db57b47b78446a3bed52a1f9287d61ee18eb47cba2d7d19cfb4d2b2d46950a3"
+  },
+  "qualification-01/qualification.json": {
+    "bytes": 180159,
+    "raw_body_exported": false,
+    "sha256": "fae30ecb57055650731e12595460a544f0cb2236dc0316c3a3ce813ef2b29ddf"
+  },
+  "qualification-01/source384-context.json": {
+    "bytes": 44996,
+    "raw_body_exported": false,
+    "sha256": "b7dba7a7344ef15c125c1f763be0c70552d7049987301b7ed4b4a0b96603cf2e"
+  },
+  "qualification-01/source384-probe.stderr": {
+    "bytes": 0,
+    "raw_body_exported": false,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "qualification-01/source384-probe.stdout": {
+    "bytes": 65967,
+    "raw_body_exported": false,
+    "sha256": "a164acf624580ec46b5328e8de0cb1963e0ea6cd1837d07d185d0e57c88843f3"
+  },
+  "qualification-01/source384-result.json": {
+    "bytes": 41315,
+    "raw_body_exported": false,
+    "sha256": "220809fc506279f957008a9cc99fca0c5c1c0ba1a6024c3e4556cdda0d384b6f"
+  },
+  "source384-config.json": {
+    "bytes": 1963,
+    "raw_body_exported": false,
+    "sha256": "484ea034486a13c2204e9e21a1409919bd8986057c0c9facfc7de34df6218b08"
+  }
+}

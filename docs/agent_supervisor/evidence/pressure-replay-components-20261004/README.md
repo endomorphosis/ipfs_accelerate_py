@@ -1,9 +1,13 @@
 # Pressure attribution and fresh AST validation
 
 All final controls execute against unchanged recorded producers: 212 supervisor
-controls, 207 datasets integration controls, seven actual checkpoint/GTE
-inference and replay controls, 76 scheduler/pressure controls, and 18 native
-AST reconstruction controls. There are 308 unique datasets identities and
+controls, 207 datasets integration controls, seven source-unit controls,
+76 scheduler/pressure controls, and 18 native AST reconstruction controls.
+The seven source-unit cases comprise one bounded-preparation case, five
+parameterized source-map tamper cases, and one actual pinned-checkpoint/GTE
+inference case with warm and reopened-registry replay. Replay occurs in the
+same host process after the fresh numerical-worker subprocess; it does not
+represent seven independent model inference runs. There are 308 unique datasets identities and
 212 supervisor identities; zero failures, errors or skips in the selected runs.
 Earlier supervisor import-contract failure and source-drift runs remain
 nonqualifying records, as does the AST test fixture's first failed run.
@@ -41,3 +45,8 @@ are excluded. Local record hashes are references, not additional proof authority
 Retained-record entries identify exact nested paths when their bodies are also
 exported. Version 2 corrects three export-status labels; runtime/test evidence
 and observations are unchanged. The original package remains retained locally.
+
+Version 3 clarifies only the seven-case source-unit scope. Test reports,
+commands, execution records, 520 unique identities and producer snapshots are
+unchanged; the prior packages remain retained locally. Recorded run-admission,
+build and command metadata retain their historical wording.

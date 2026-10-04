@@ -1,0 +1,1 @@
+{"started_at": "2026-10-04T06:11:49.753691+00:00", "command": ["/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/harbor", "run", "--config", "/home/barberb/lift_coding/artifacts/semantic-identity-reuse-native-20261004/full-retry-02/trial-01/config.json", "--yes"]}

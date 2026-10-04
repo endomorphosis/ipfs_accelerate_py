@@ -1,0 +1,13 @@
+{
+  "schema": "declared-full-trial-retry@1",
+  "prior_trial": "fix-code-vulnerability__iRSHBCs",
+  "prior_official_reward": 0.0,
+  "prior_trial_retained": true,
+  "reason": "host memory PSI recovered; one additional trial using the exact qualified archive",
+  "changes_to_source_archive_or_limits": false,
+  "additional_declared_trials": 1,
+  "harbor_automatic_retries": 0,
+  "host_sample_sha256": "75dd7a7bc24018f0a00de28fd96279903b8091c450aa22ae205ae3e39d5656ce",
+  "prior_trial_metadata_sha256": "5e5562f54af13e2c5baacdfb5d6ac37f7c967769a47f69025c2631601ca2035c",
+  "runner_sha256": "33366fcdaf3ca47530e3a261a3c78f5fb91c4a581d210fd0e15aff821f80e24a"
+}

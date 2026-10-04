@@ -837,7 +837,11 @@ reservations or raising pressure thresholds. The backlog stays **18/32 closed**.
 
 The [current component generation](../../../docs/agent_supervisor/evidence/pressure-replay-components-20261004/README.md)
 passes **212 supervisor controls and 308 unique datasets controls**, including
-seven actual checkpoint/GTE inference/replay cases. Every selected run has zero
+seven source-unit cases: one bounded-preparation case, five source-map tamper
+cases, and one actual pinned-checkpoint/GTE inference case with warm and
+reopened-registry replay in the same host process. The numerical worker uses
+a fresh subprocess; these are not seven independent inference runs.
+Every selected run has zero
 failures/errors/skips and unchanged producer pins. Earlier failed or source-drift
 runs remain separate, nonqualifying evidence.
 
@@ -888,6 +892,60 @@ The datasets package `semantic-state-serialization-20261004` retains two fresh
 public Bottle samples per mode: median local CPU 15.621 to 14.653 seconds and
 wall 15.721 to 14.738 seconds, with identical manifest/AST bodies. This small
 component observation does not establish a general speedup, RSS reduction,
-admission recovery or completed task. The new generation still requires ordinary
-Docker qualification under the same limits. No new token score or matched-arm
-advantage is claimed; the backlog remains **18/32 closed**.
+admission recovery or completed task. The corrected joined-component package
+clarifies its seven source-unit cases as one actual checkpoint/GTE inference
+case, one bounded-preparation case and five tamper cases. Exact commands, exits,
+test identities and producer pins are unchanged; earlier command/admission
+wording remains historical evidence. The corresponding pressure-component
+package has the same scope clarification.
+
+The [ordinary Docker qualification](../../../docs/agent_supervisor/evidence/semantic-serialization-docker-20261004/README.md)
+passes on archive `f8cd6fe9a3283a8df668394370b122743d77bc5ffa4ffcbd5b3ddf6f421d166c`,
+with accelerate `e80fe6a59cacf4bb61386f0823cbd8545274173b` and datasets
+`28b4a43c04e89c889b8fce7910e54fb8f67b05ff`. Source384 takes **69.851s / 90s**,
+initial context **125.658s**, warm observation **9.320s** and the probe
+**146.743s**. The checkpoint, GTE assets, solver, source population and
+five-CPU/12-GiB profile are unchanged. This single run qualifies preparation
+and replay for that archive; it does not isolate a causal speedup or establish
+reliable admission recovery. All 127 decoded candidates remain unsupported
+and unverified, with one token deferral among 128 selected function units.
+No learned proof authority is granted.
+
+The [first full trial](../../../docs/agent_supervisor/evidence/semantic-serialization-full-trial-host-pressure-20261004/README.md)
+of the same archive, `fix-code-vulnerability__iRSHBCs`, receives official
+reward **0**. Source384 passes in **83.119s** and symbolic planning produces
+two goals and one task without provider calls. Context then refuses a
+source-currentness lease before Doctor or implementation: the request-local
+sample attributes **12.11% memory full avg10 to host PSI**, against the
+unchanged **2%** threshold; the visible cgroup sample is 0%. This identifies
+the rejecting scope, not which process caused host pressure. The separate
+post-unwind sample is not substituted for that decision. Source/task pins
+and exact-container cleanup pass. Zero provider calls describe a failed
+prefix, not completed-task token savings.
+
+The separate [frozen retry](../../../docs/agent_supervisor/evidence/semantic-serialization-full-trial-native-timeout-20261004/README.md),
+`fix-code-vulnerability__rY4WVqt`, also receives official reward **0**.
+Source384 takes **72.675s**, initial context **128.474s**, symbolic planning
+**31.133s**, context **19.788s** and Doctor **34.219s**. The deterministic
+Doctor proves the scoped local header contract and returns a
+`candidate_ready` / `doctor_contract_candidate` dispatch with zero provider
+calls. The receipt grants neither whole-program correctness nor discharge
+of SecurityIR obligations or learned proof authority. The driver fails in
+`native_execution` at **245.743s**, at the unchanged **245s** work cutoff;
+the task does not complete. That phase label alone does not establish
+successful START, candidate materialization or accepted publication. No
+START receipt is present. The bounded traceback reaches source-currentness
+validation during task-context nomination, ending in DuckDB AST record
+reconstruction and its text validator when the work alarm fires. This
+locates the interrupted call but does not profile its cumulative cost. No
+request-local admission refusal is attached, and the post-unwind resource
+sample does not establish a timeout cause. The Doctor dispatch evidence
+must be read separately from the optional worker-materialization receipt
+list; an absent list does not mean that Doctor did not run.
+
+Accepted publication and current successor preparation remain unqualified.
+The Source384 profile explicitly reports its original learned selection as
+`successor_unavailable` after publication until a fresh successor is prepared;
+post-STOP refresh budget alone cannot make that historical selection current.
+No completed token score or matched-arm advantage is claimed; the backlog
+remains **18/32 closed**.

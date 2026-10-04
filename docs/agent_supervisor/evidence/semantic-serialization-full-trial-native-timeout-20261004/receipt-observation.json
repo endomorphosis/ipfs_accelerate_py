@@ -1,0 +1,36 @@
+{
+  "benchmark_advantage_claimed": false,
+  "completed_token_score": null,
+  "configuration_unchanged": true,
+  "doctor_dispatch_present": true,
+  "doctor_invocation_count": null,
+  "doctor_invocation_count_reason": "No invocation list was recorded; the explicit Doctor dispatch and local proof are retained separately.",
+  "harbor_returncode": 0,
+  "model": "gpt-5.6-sol",
+  "native_job_result_present": true,
+  "native_result_sha256_reported": "87681cb478a5b30a6433b1bc4ab29d6b22ce1b32b069f78e379e6a587bf8b41e",
+  "official_reward": {
+    "reward": 0.0
+  },
+  "original_task_inputs_unchanged": true,
+  "planning_and_cold_index_charged_to_agent_time": true,
+  "planning_strategy": "intent_symbolic",
+  "provider_invocations": 0,
+  "raw_exception_message_and_verifier_bodies_exported": false,
+  "reasoning_effort": "high",
+  "remaining_processes_reported": null,
+  "reported_agent_usage": {
+    "cost_usd": null,
+    "n_cache_tokens": null,
+    "n_input_tokens": null,
+    "n_output_tokens": null
+  },
+  "resource_profile": "source384-5cpu-12gib@1",
+  "schema": "full-trial-receipt-summary@2",
+  "source384_enabled": true,
+  "task": "fix-code-vulnerability",
+  "task_completed": false,
+  "traceback_scope": "Only the already-sanitized 20 production file/function/line frames are exported.",
+  "trial": "fix-code-vulnerability__rY4WVqt",
+  "worker_cleanup_returncode": 0
+}

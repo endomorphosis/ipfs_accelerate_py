@@ -1,0 +1,11 @@
+{
+  "schema": "full-trial-after-pins@1",
+  "trial": "fix-code-vulnerability__rY4WVqt",
+  "source_pin_count": 61,
+  "source_pins_unchanged": true,
+  "public_task_input_count": 3,
+  "public_task_inputs_unchanged": true,
+  "exact_trial_container_absent": true,
+  "docker_name_filter": "ry4wvqt",
+  "observed_at": "2026-10-04T06:22:24.607806+00:00"
+}

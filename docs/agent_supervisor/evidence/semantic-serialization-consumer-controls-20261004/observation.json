@@ -95,7 +95,7 @@
   "passed_scopes": [
     "Current native semantic state serialization, exact canonical output and CID parity, detached/fresh outputs, corrupt/duplicate record rejection, custom serializer fallback and manifest memo compatibility.",
     "Current durable repository index, fresh SQL/CAS observation, corruption, source/head fence and native AST reconstruction controls.",
-    "Seven actual local checkpoint/GTE source-unit inference and replay controls, with no provider call or training.",
+    "Seven source-unit controls: one actual pinned-checkpoint/GTE inference and warm/reopened-registry replay case, plus six preparation/tamper cases. Replay runs in the same host process after a fresh numerical-worker subprocess; the inference case asserts one model load and zero provider calls, with no training.",
     "Current supervisor initialization, indexed planning/context, admission diagnostics, semantic capsules, refresh and cleanup controls."
   ],
   "passing_executions": 558,
@@ -103,6 +103,16 @@
   "source_revisions": {
     "datasets": "28b4a43c04e89c889b8fce7910e54fb8f67b05ff",
     "source": "dbff08c67bde6e3154454c6a80390b806e559d4d"
+  },
+  "source_unit_control_breakdown": {
+    "actual_pinned_checkpoint_gte_inference_test_cases": 1,
+    "bounded_preparation_test_cases": 1,
+    "model_loads_asserted_in_actual_case": 1,
+    "numerical_worker_process": "fresh subprocess",
+    "parameterized_source_map_tamper_test_cases": 5,
+    "provider_calls_asserted_in_actual_case": 0,
+    "replay_host_process": "same host process, warm then reopened registry",
+    "total_test_cases": 7
   },
   "token_efficiency_advantage_established_by_this_review": false,
   "unique_test_identities_by_repository": {

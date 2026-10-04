@@ -1,0 +1,14 @@
+{
+  "absent_doctor_list_not_treated_as_zero": true,
+  "doctor_dispatch_present": true,
+  "doctor_invocation_count": null,
+  "exact_whitelisted_projection_equal": true,
+  "frame_count": 20,
+  "no_verifier_auth_model_or_source_body_paths_followed": true,
+  "original_inspector": "Historical v1 producer; not authoritative for the corrected v2 projection.",
+  "projection_sha256": "b433182fa47cad87af89f76dc81c721cf7da7d8129edeabc95e8129d656954e5",
+  "receipt_sha256": "f4173958ac93349584ab0d4ee4ac2f30c20c6c310042ff6a912f05d485d2c4a0",
+  "schema": "bounded-full-trial-v2-verification@1",
+  "valid": true,
+  "verifier_sha256": "7e2763f173ca4a2d24a61f9a56adec15aa205dacbee1ca20a5bcd3d39692990a"
+}

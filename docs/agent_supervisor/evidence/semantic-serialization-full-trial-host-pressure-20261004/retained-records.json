@@ -1,0 +1,68 @@
+{
+  "build_full_trial_01_evidence.py": {
+    "bytes": 12758,
+    "path": "build_full_trial_01_evidence.py",
+    "raw_body_exported": false,
+    "sha256": "29031a9b22e6cc437c740f7092b898fc093a7de01d753f7f22c2a80523e77e10"
+  },
+  "execute.stderr": {
+    "bytes": 0,
+    "path": "execute.stderr",
+    "raw_body_exported": false,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "execute.stdout": {
+    "bytes": 226829,
+    "path": "execute.stdout",
+    "raw_body_exported": false,
+    "sha256": "4c807b2870a9ba8f6da9ff08720127eceee6f8343df7affa42a20afadc933ad5"
+  },
+  "full_trial.py": {
+    "bytes": 4229,
+    "path": "full_trial.py",
+    "raw_body_exported": false,
+    "sha256": "7a288e60beb43bde3a16a1a742a65c4e07089675541938f852fbef3cdb2cde4f"
+  },
+  "prepare.stderr": {
+    "bytes": 0,
+    "path": "prepare.stderr",
+    "raw_body_exported": false,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "prepare.stdout": {
+    "bytes": 38645,
+    "path": "prepare.stdout",
+    "raw_body_exported": false,
+    "sha256": "af4d46f12504200d2cd2e1474a448c0423dfdca4bbe6c7cb88cd3912ddb20409"
+  },
+  "trial-01/config.json": {
+    "bytes": 21546,
+    "path": "trial-01/config.json",
+    "raw_body_exported": false,
+    "sha256": "0494df6882fb2e46b9073750cbdf88ef61f8523c5fac2871568ef2126827e58d"
+  },
+  "trial-01/harbor.stderr": {
+    "bytes": 0,
+    "path": "trial-01/harbor.stderr",
+    "raw_body_exported": false,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "trial-01/harbor.stdout": {
+    "bytes": 2172,
+    "path": "trial-01/harbor.stdout",
+    "raw_body_exported": false,
+    "sha256": "918f97660c6da7652ad1ba46c28f741ac4fb0396e96d0b25d0a71ad53637c149"
+  },
+  "trial-01/preparation.json": {
+    "bytes": 34205,
+    "path": "trial-01/preparation.json",
+    "raw_body_exported": false,
+    "sha256": "2d688f84873b18210bd7cae44372d9f7f69e7e1fc41ba9ef6e8740e293a49b03"
+  },
+  "trial-01/receipt.json": {
+    "bytes": 226829,
+    "path": "trial-01/receipt.json",
+    "raw_body_exported": false,
+    "sha256": "4c807b2870a9ba8f6da9ff08720127eceee6f8343df7affa42a20afadc933ad5"
+  }
+}

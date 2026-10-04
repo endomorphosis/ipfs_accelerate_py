@@ -1,0 +1,17 @@
+{
+  "docker_commands_run_by_packager": false,
+  "frozen_source_pin_count": 61,
+  "frozen_source_pins_match_current": true,
+  "hidden_verifier_bodies_or_files_read_for_audit": false,
+  "observed_at": "2026-10-04T06:15:41.887093+00:00",
+  "post_trial_record": {
+    "path": "full-trial-after-pins.json",
+    "sha256": "325dc0387e59508d0b05967d87d399eb8307c208a864bcf8d21b49d3a559b087"
+  },
+  "prepared_host_source_pin_count": 119,
+  "prepared_host_source_pins_match_current": true,
+  "public_task_input_count": 3,
+  "public_task_inputs_match_current": true,
+  "schema": "full-trial-source-pin-audit@1",
+  "scope": "Read-only audit after completed first trial while a separately declared retry may run; not a time-local admission sample."
+}

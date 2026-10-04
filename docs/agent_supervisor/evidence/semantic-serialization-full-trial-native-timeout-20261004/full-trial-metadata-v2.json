@@ -1,0 +1,238 @@
+{
+  "exported_credentials": false,
+  "exported_model_bodies": false,
+  "exported_verifier_bodies": false,
+  "receipt": {
+    "arm": "full",
+    "benchmark_advantage_claimed": false,
+    "harbor_returncode": 0,
+    "invocation_seconds": 489.9302118189953,
+    "original_task_inputs_unchanged": true,
+    "parallel_workers": 1,
+    "planning_strategy": "intent_symbolic",
+    "schema": "terminal-full-supervisor-receipt@1",
+    "task": "fix-code-vulnerability",
+    "trial_count": 1
+  },
+  "schema": "bounded-full-trial-metadata-inspection@1",
+  "trials": [
+    {
+      "coding_dispatch_possible": null,
+      "context_refresh": null,
+      "contract": {
+        "canonical_source_edits": 0,
+        "completion_authority": false,
+        "publication_authority": false,
+        "status": "candidate_ready",
+        "whole_program_proved": false
+      },
+      "doctor": {
+        "provider_calls": 0,
+        "route": "doctor_contract_candidate",
+        "status": "candidate_ready",
+        "task_cid": "baguqeeraldgveepwvbbemxz4yftivbkyb57qdbhehii4evsksteotsi4es3a"
+      },
+      "doctor_dispatch_present": true,
+      "doctor_invocation_count": null,
+      "durations_seconds": {
+        "agent_execution": 247.599156,
+        "agent_setup": 212.989295,
+        "environment_setup": 6.955074,
+        "verifier": 2.539223
+      },
+      "failure_admission": {
+        "causal_proof": false,
+        "observation_boundary": "request_primary_gate",
+        "reason": "no_native_admission_error",
+        "status": "unavailable"
+      },
+      "failure_admission_observation": {
+        "causal_proof": false,
+        "complete_admission_decision": false,
+        "observation_boundary": "request_primary_gate",
+        "reason": "no_native_admission_error",
+        "schema": "terminal-admission-failure-observation@1",
+        "status": "unavailable"
+      },
+      "failure_resources": {
+        "available_memory_mb": 10700,
+        "cpu_slots": 5,
+        "cpu_stall_percent": 17.63,
+        "io_stall_percent": 3.18,
+        "memory_stall_percent": 1.41,
+        "total_memory_mb": 12288
+      },
+      "implementation_route": "doctor_contract_candidate",
+      "initial_context": {
+        "full_capsules": 531,
+        "indexed_symbols": 426,
+        "seconds": 128.0281894439977
+      },
+      "initial_context_phases": {
+        "empty_native_world_capture": 0.3904631579935085,
+        "final_evidence_verification": 10.795601365010953,
+        "persisted_snapshot_reopen": 0.3375073880015407,
+        "retrieval_persistence": 1.5459478069969919,
+        "semantic_build_reconstruction_and_hydration": 35.78896681200422,
+        "source384_capture_and_inference": 72.76668840399361,
+        "vector_qualification": 6.391246161001618
+      },
+      "phases": {
+        "context_seconds": 19.78795461599657,
+        "doctor_seconds": 34.21938672500255,
+        "initial_context_seconds": 128.47412340300798,
+        "planning_seconds": 31.132925322992378,
+        "prepare_seconds": 10.99482144000649
+      },
+      "planning": {
+        "elapsed_seconds": 31.132303297999897,
+        "goals": 2,
+        "planning_strategy": "intent_symbolic",
+        "provider_calls": 0,
+        "qualified": true,
+        "tasks": 1
+      },
+      "proof": {
+        "provider_calls": 0,
+        "security_ir_obligations_discharged": false,
+        "status": "proved_local_contract",
+        "whole_program_proved": false
+      },
+      "proof_receipt": {
+        "disposition": "verified",
+        "property_id": "property:reject-control-preserve-safe",
+        "receipt_id": "doctor-authoritative-proof:baguqeera74bdfc3gff2oz6vxy3gpgwj2la5umxnrux3d3loec2vslibd5ixq",
+        "uniqueness_satisfied": true,
+        "write_authority": false
+      },
+      "provider_invocation_count": 0,
+      "remaining_processes": null,
+      "reward": {
+        "reward": 0.0
+      },
+      "source384": {
+        "seconds": 72.67489153600764
+      },
+      "start": null,
+      "stop": null,
+      "supervisor": {
+        "arm": "full",
+        "benchmark_advantage_claimed": false,
+        "error_phase": "native_execution",
+        "error_type": "TimeoutError",
+        "max_total_agent_seconds": 285,
+        "production_activation": false,
+        "reserved_cleanup_seconds": 40,
+        "schema": "terminal-admitted-supervisor-run@1",
+        "seconds": 245.74269127799198,
+        "task_completed": false,
+        "work_cutoff_seconds": 245,
+        "worker_cleanup_returncode": 0
+      },
+      "task_state": null,
+      "traceback_frames": [
+        {
+          "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py",
+          "function": "load_task_context_nomination",
+          "line": 152
+        },
+        {
+          "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py",
+          "function": "load_task_context_selection",
+          "line": 164
+        },
+        {
+          "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
+          "function": "validate_source384_context",
+          "line": 284
+        },
+        {
+          "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
+          "function": "_validate_source384_context",
+          "line": 326
+        },
+        {
+          "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py",
+          "function": "validate_shared_parent_units",
+          "line": 306
+        },
+        {
+          "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py",
+          "function": "observe",
+          "line": 295
+        },
+        {
+          "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+          "function": "observe_current",
+          "line": 1059
+        },
+        {
+          "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+          "function": "observe_entries",
+          "line": 1028
+        },
+        {
+          "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py",
+          "function": "get_many_by_ast_cid",
+          "line": 2266
+        },
+        {
+          "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py",
+          "function": "_load_many",
+          "line": 2232
+        },
+        {
+          "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py",
+          "function": "_verify_loaded_rows",
+          "line": 1919
+        },
+        {
+          "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py",
+          "function": "_rebuild",
+          "line": 1845
+        },
+        {
+          "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/ast_ir.py",
+          "function": "from_json",
+          "line": 1519
+        },
+        {
+          "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/ast_ir.py",
+          "function": "from_dict",
+          "line": 1480
+        },
+        {
+          "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/ast_ir.py",
+          "function": "from_dict",
+          "line": 1024
+        },
+        {
+          "file": "<string>",
+          "function": "__init__",
+          "line": 9
+        },
+        {
+          "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/ast_ir.py",
+          "function": "__post_init__",
+          "line": 998
+        },
+        {
+          "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/ast_ir.py",
+          "function": "_text",
+          "line": 180
+        },
+        {
+          "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/ast_ir.py",
+          "function": "<genexpr>",
+          "line": 180
+        },
+        {
+          "file": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+          "function": "budget_expired",
+          "line": 374
+        }
+      ],
+      "trial": "fix-code-vulnerability__rY4WVqt"
+    }
+  ]
+}

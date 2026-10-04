@@ -1,0 +1,11 @@
+{
+  "schema": "full-trial-after-pins@1",
+  "trial": "fix-code-vulnerability__iRSHBCs",
+  "source_pin_count": 61,
+  "source_pins_unchanged": true,
+  "public_task_input_count": 3,
+  "public_task_inputs_unchanged": true,
+  "exact_trial_container_absent": true,
+  "docker_name_filter": "irshbcs",
+  "observed_at": "2026-10-04T06:11:16.001819+00:00"
+}

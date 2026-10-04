@@ -1,0 +1,17 @@
+{
+  "schema": "read-only-host-retry-observation@1",
+  "observed_at": "2026-10-04T06:11:16.001819+00:00",
+  "pressure": {
+    "cpu": "some avg10=40.39 avg60=35.41 avg300=29.41 total=30675875093\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n",
+    "memory": "some avg10=0.00 avg60=0.49 avg300=3.79 total=789964716\nfull avg10=0.00 avg60=0.44 avg300=3.38 total=665014854\n",
+    "io": "some avg10=0.30 avg60=0.45 avg300=0.59 total=2248810106\nfull avg10=0.30 avg60=0.44 avg300=0.56 total=2062712718\n"
+  },
+  "memory": {
+    "MemTotal": 127601388,
+    "MemAvailable": 44845668,
+    "SwapTotal": 16777212,
+    "SwapFree": 60448
+  },
+  "disk_free_bytes": 63982899200,
+  "scope": "later host observation; does not identify the workload causing the failed admission sample"
+}

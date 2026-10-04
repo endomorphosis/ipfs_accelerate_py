@@ -1,0 +1,88 @@
+{
+  "build_full_retry_02_evidence.py": {
+    "bytes": 15351,
+    "path": "build_full_retry_02_evidence.py",
+    "raw_body_exported": false,
+    "sha256": "f1709e79f847ebf80898e69a3c52a119df919fb11486b4c2b5179017477c66ed"
+  },
+  "full-retry-02/execute.stderr": {
+    "bytes": 0,
+    "path": "full-retry-02/execute.stderr",
+    "raw_body_exported": false,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "full-retry-02/execute.stdout": {
+    "bytes": 330548,
+    "path": "full-retry-02/execute.stdout",
+    "raw_body_exported": false,
+    "sha256": "f4173958ac93349584ab0d4ee4ac2f30c20c6c310042ff6a912f05d485d2c4a0"
+  },
+  "full-retry-02/full-trial-metadata.json": {
+    "bytes": 4254,
+    "limitation": "Superseded v1 incorrectly inferred zero Doctor invocations from an absent list; excluded from public exports.",
+    "path": "full-retry-02/full-trial-metadata.json",
+    "raw_body_exported": false,
+    "sha256": "e4b3f926ffde136594ab2383981d594ec91a0d301ea26ebed8d8bec06c2fc6a4"
+  },
+  "full-retry-02/inspect_full_receipt.py": {
+    "bytes": 4555,
+    "limitation": "Historical v1 producer; not authoritative for the corrected v2 projection, which has an independent bounded verifier.",
+    "path": "full-retry-02/inspect_full_receipt.py",
+    "raw_body_exported": false,
+    "sha256": "1eda0840a451cc2f3fd197335a84379dd8943b6879325f85ddff1d02ffc493e2"
+  },
+  "full-retry-02/prepare.stderr": {
+    "bytes": 0,
+    "path": "full-retry-02/prepare.stderr",
+    "raw_body_exported": false,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "full-retry-02/prepare.stdout": {
+    "bytes": 38659,
+    "path": "full-retry-02/prepare.stdout",
+    "raw_body_exported": false,
+    "sha256": "2660c9e4d1167bdbd64a4cef9a6fce5b73d98f857645e24a9251438ea6770f9f"
+  },
+  "full-retry-02/trial-01/config.json": {
+    "bytes": 21560,
+    "path": "full-retry-02/trial-01/config.json",
+    "raw_body_exported": false,
+    "sha256": "49edefe0f4fd7d8a4f168f6ebbb2f159cddcceb33d4a4169719b949f6ba3f325"
+  },
+  "full-retry-02/trial-01/harbor.stderr": {
+    "bytes": 0,
+    "path": "full-retry-02/trial-01/harbor.stderr",
+    "raw_body_exported": false,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "full-retry-02/trial-01/harbor.stdout": {
+    "bytes": 2213,
+    "path": "full-retry-02/trial-01/harbor.stdout",
+    "raw_body_exported": false,
+    "sha256": "1c7324b5e93fc7acc014b6c8b0a86a9273d3fa6eaee3351cb42723f39c6a5862"
+  },
+  "full-retry-02/trial-01/preparation.json": {
+    "bytes": 34219,
+    "path": "full-retry-02/trial-01/preparation.json",
+    "raw_body_exported": false,
+    "sha256": "421f05562fe69798a37605103626a7ec2f34dfaf6b98ce40c35000565be24e2d"
+  },
+  "full-retry-02/trial-01/receipt.json": {
+    "bytes": 330548,
+    "path": "full-retry-02/trial-01/receipt.json",
+    "raw_body_exported": false,
+    "sha256": "f4173958ac93349584ab0d4ee4ac2f30c20c6c310042ff6a912f05d485d2c4a0"
+  },
+  "full_trial.py": {
+    "bytes": 4229,
+    "path": "full_trial.py",
+    "raw_body_exported": false,
+    "sha256": "7a288e60beb43bde3a16a1a742a65c4e07089675541938f852fbef3cdb2cde4f"
+  },
+  "full_trial_retry.py": {
+    "bytes": 4249,
+    "path": "full_trial_retry.py",
+    "raw_body_exported": false,
+    "sha256": "33366fcdaf3ca47530e3a261a3c78f5fb91c4a581d210fd0e15aff821f80e24a"
+  }
+}

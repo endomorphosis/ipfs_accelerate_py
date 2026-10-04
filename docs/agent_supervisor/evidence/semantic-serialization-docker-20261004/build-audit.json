@@ -1,0 +1,28 @@
+{
+  "added": [],
+  "archive_sha256": "f8cd6fe9a3283a8df668394370b122743d77bc5ffa4ffcbd5b3ddf6f421d166c",
+  "benchmark_executed": false,
+  "changed": [
+    "datasets/ipfs_datasets_py/logic/software_contracts/semantic_index/models.py"
+  ],
+  "checkpoint_and_embedding_assets_unchanged": true,
+  "compressed_bytes": 1338100094,
+  "logical_bytes": 3914883914,
+  "manifest_sha256": "25cb81717d0a59290243987bbf997fdcf00c5e24b5d1addef5d0c731365a8297",
+  "provider_calls": 0,
+  "removed": [],
+  "reviewed_header_profile_unchanged": true,
+  "setup_cache_selection": {
+    "manifest_sha256": "25cb81717d0a59290243987bbf997fdcf00c5e24b5d1addef5d0c731365a8297",
+    "policy": "source384-native-aarch64-dontneed@1",
+    "schema": "terminal-setup-cache-selection@1"
+  },
+  "source_revisions": {
+    "datasets": "28b4a43c04e89c889b8fce7910e54fb8f67b05ff",
+    "source": "e80fe6a59cacf4bb61386f0823cbd8545274173b"
+  },
+  "source_revisions_unchanged": true,
+  "tar_hash_mode_ownership_checked": true,
+  "torch_wheel_unchanged": true,
+  "verified_members": 26932
+}

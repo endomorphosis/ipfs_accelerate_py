@@ -1,0 +1,17 @@
+{
+  "observed_at": "2026-10-04T06:02:52.060921+00:00",
+  "scope": "host read-only after completed full trial; not the failed admission sample",
+  "pressure": {
+    "memory": "some avg10=0.00 avg60=1.61 avg300=4.17 total=767423259\nfull avg10=0.00 avg60=1.38 avg300=3.52 total=644713224\n",
+    "cpu": "some avg10=26.39 avg60=24.51 avg300=21.59 total=30519836614\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n",
+    "io": "some avg10=0.00 avg60=1.28 avg300=1.85 total=2245857623\nfull avg10=0.00 avg60=1.24 avg300=1.73 total=2060200381\n"
+  },
+  "disk_free_bytes": 64096006144,
+  "memory": {
+    "MemTotal": "127601388 kB",
+    "MemAvailable": "44491468 kB",
+    "Cached": "19960408 kB",
+    "SwapTotal": "16777212 kB",
+    "SwapFree": "32132 kB"
+  }
+}

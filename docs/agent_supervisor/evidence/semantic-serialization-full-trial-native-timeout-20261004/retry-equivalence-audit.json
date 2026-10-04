@@ -1,0 +1,57 @@
+{
+  "audit_script_sha256": "2c02079fee314872c9412c627dc02492d969323c7b7f4a680ad73a1e4b1d5a70",
+  "benchmark_or_docker_work_executed": false,
+  "commands": {
+    "execute": {
+      "archive_manifest_qualification_input_review_and_intent_digests_equal": true,
+      "cwd_equal": true,
+      "declared_environment_equal": true,
+      "normalized_records_equal": true,
+      "only_changed_field": "argv[--output value]",
+      "original_command_sha256": "b70df93dd448a4c0cc7a3854e136ab1cd69441202fc32bdb0d38ed7f9a815b6f",
+      "provider_model_reasoning_and_planning_equal": true,
+      "resource_deadline_attempt_worker_and_retry_settings_equal": true,
+      "retry_command_sha256": "a7d576743a3084cc2e48242adf4e4175058056999acf831523c041e6bc11ad65"
+    },
+    "prepare": {
+      "archive_manifest_qualification_input_review_and_intent_digests_equal": true,
+      "cwd_equal": true,
+      "declared_environment_equal": true,
+      "normalized_records_equal": true,
+      "only_changed_field": "argv[--output value]",
+      "original_command_sha256": "ea5ee0b03cadff6dbb46ebd022aa30422707b56172b05c9de6d55f3ad91196c5",
+      "provider_model_reasoning_and_planning_equal": true,
+      "resource_deadline_attempt_worker_and_retry_settings_equal": true,
+      "retry_command_sha256": "c0f1ee50a928d6515577b3e3f08201e25adbc78997ce7e3d700bdb4713ccf59b"
+    }
+  },
+  "declaration_runner_prior_receipt_and_later_host_sample_bindings_valid": true,
+  "declaration_sha256": "c16884927f1fed4c64f0409620a688b472ddb458fde1e5c3fc35cd3444869f25",
+  "first_trial_package": {
+    "exact_closure_and_all_member_digests_valid": true,
+    "manifest_sha256": "ef1cc6b47a0c5e5a1d304af2bf970b42a5de1deb41c1896fc51630145157724e",
+    "member_count": 19
+  },
+  "limitations": [
+    "Equality of declared environment overrides does not prove equality of all inherited ambient environment variables or live host pressure.",
+    "No full archive rescan or independent re-execution of source/task admission checks was performed by this audit.",
+    "The later pre-retry host sample does not establish causation for the first trial failure.",
+    "Command equivalence is not evidence of retry task success; retry runtime and cleanup evidence require a separate receipt."
+  ],
+  "observed_at": "2026-10-04T06:22:26.732964+00:00",
+  "private_auth_verifier_or_model_bodies_read": false,
+  "qualification_sha256": "fae30ecb57055650731e12595460a544f0cb2236dc0316c3a3ce813ef2b29ddf",
+  "qualified_archive_sha256": "f8cd6fe9a3283a8df668394370b122743d77bc5ffa4ffcbd5b3ddf6f421d166c",
+  "qualified_manifest_sha256": "25cb81717d0a59290243987bbf997fdcf00c5e24b5d1addef5d0c731365a8297",
+  "repository_or_runtime_input_mutations": false,
+  "reviewer_scope": "Read-only original/retry runner and command metadata; local audit output only.",
+  "runner": {
+    "normalized_source_exactly_equal": true,
+    "original_sha256": "7a288e60beb43bde3a16a1a742a65c4e07089675541938f852fbef3cdb2cde4f",
+    "permitted_change": "Introduce the full-retry-02 destination root and relocate prepared trial/config and command/stdout/stderr/exit artifacts beneath it.",
+    "qualification_and_fresh_source_task_checks_preserved": true,
+    "retry_sha256": "33366fcdaf3ca47530e3a261a3c78f5fb91c4a581d210fd0e15aff821f80e24a"
+  },
+  "schema": "full-trial-retry-equivalence-audit@1",
+  "valid": true
+}

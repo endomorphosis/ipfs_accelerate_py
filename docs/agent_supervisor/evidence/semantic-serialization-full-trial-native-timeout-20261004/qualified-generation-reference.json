@@ -1,0 +1,22 @@
+{
+  "archive_manifest_sha256": "25cb81717d0a59290243987bbf997fdcf00c5e24b5d1addef5d0c731365a8297",
+  "archive_sha256": "f8cd6fe9a3283a8df668394370b122743d77bc5ffa4ffcbd5b3ddf6f421d166c",
+  "archive_stream_not_reread_by_packager": true,
+  "first_trial_preserved_separately": true,
+  "first_trial_public_package": {
+    "external_path": "artifacts/semantic-identity-reuse-native-20261004/public-full-trial-01-evidence/manifest.json",
+    "sha256": "ef1cc6b47a0c5e5a1d304af2bf970b42a5de1deb41c1896fc51630145157724e"
+  },
+  "full_trial_success_follows_from_qualification": false,
+  "qualification_exit_sha256": "c394b644a8cc94364315c5e2bd7e1a9174963e75b4fd1503c76fd0b5474f6c06",
+  "qualification_public_package": {
+    "external_path": "artifacts/semantic-identity-reuse-native-20261004/public-qualification-evidence/manifest.json",
+    "sha256": "2a153e8286c8ac0ad2dcde18b3a424eb0b2cce6ab90a58688f6d360232ca9d9f"
+  },
+  "qualification_succeeded": true,
+  "schema": "full-trial-qualified-generation-link@1",
+  "source_revisions": {
+    "datasets": "28b4a43c04e89c889b8fce7910e54fb8f67b05ff",
+    "source": "e80fe6a59cacf4bb61386f0823cbd8545274173b"
+  }
+}

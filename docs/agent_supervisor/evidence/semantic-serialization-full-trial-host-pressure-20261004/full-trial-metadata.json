@@ -1,0 +1,170 @@
+{
+  "exported_credentials": false,
+  "exported_model_bodies": false,
+  "exported_verifier_bodies": false,
+  "receipt": {
+    "arm": "full",
+    "benchmark_advantage_claimed": false,
+    "harbor_returncode": 0,
+    "invocation_seconds": 453.71516825500294,
+    "original_task_inputs_unchanged": true,
+    "parallel_workers": 1,
+    "planning_strategy": "intent_symbolic",
+    "schema": "terminal-full-supervisor-receipt@1",
+    "task": "fix-code-vulnerability",
+    "trial_count": 1
+  },
+  "schema": "bounded-full-trial-metadata-inspection@1",
+  "trials": [
+    {
+      "contract": {},
+      "doctor": {},
+      "doctor_invocation_count": 0,
+      "durations_seconds": {
+        "agent_execution": 220.350976,
+        "agent_setup": 204.704439,
+        "environment_setup": 7.240668,
+        "verifier": 2.404398
+      },
+      "failure_admission": {
+        "causal_proof": false,
+        "observation_boundary": "request_primary_gate",
+        "status": "observed"
+      },
+      "failure_admission_observation": {
+        "causal_proof": false,
+        "complete_admission_decision": false,
+        "last_sample": {
+          "additional_request_memory_mb": 1024,
+          "host": {
+            "available_memory_mb": 10230,
+            "cpu_stall_percent": 17.42,
+            "io_stall_percent": 3.89,
+            "memory_stall_percent": 12.11
+          },
+          "observed_at": 1791093566.6157055,
+          "pressure_sources": {
+            "omitted_cgroup_scopes": 0,
+            "omitted_maxima": {
+              "cpu": null,
+              "io": null,
+              "memory": null
+            },
+            "samples": [
+              {
+                "cpu": {
+                  "avg10": 17.42,
+                  "status": "observed"
+                },
+                "depth": null,
+                "io": {
+                  "avg10": 3.89,
+                  "status": "observed"
+                },
+                "memory": {
+                  "avg10": 12.11,
+                  "status": "observed"
+                },
+                "scope": "host"
+              },
+              {
+                "cpu": {
+                  "avg10": 0.0,
+                  "status": "observed"
+                },
+                "depth": 0,
+                "io": {
+                  "avg10": 0.0,
+                  "status": "observed"
+                },
+                "memory": {
+                  "avg10": 0.0,
+                  "status": "observed"
+                },
+                "scope": "cgroup"
+              }
+            ],
+            "schema": "proof-pressure-sources@1"
+          },
+          "reason": "proof_memory_stall",
+          "reserved_root_memory_mb": 0,
+          "thresholds": {
+            "cpu_stall_percent": 50.0,
+            "io_stall_percent": 10.0,
+            "memory_headroom_mb": 2458,
+            "memory_stall_percent": 2.0
+          }
+        },
+        "observation_boundary": "request_primary_gate",
+        "primary_gate": {
+          "backoff_until": 1791093568.6157055,
+          "observed_at": 1791093568.6086667,
+          "reason": "proof_memory_stall",
+          "status": "backoff"
+        },
+        "schema": "terminal-admission-failure-observation@1",
+        "status": "observed",
+        "terminal": "timeout"
+      },
+      "failure_resources": {
+        "available_memory_mb": 10230,
+        "cpu_slots": 5,
+        "cpu_stall_percent": 17.34,
+        "io_stall_percent": 3.91,
+        "memory_stall_percent": 13.18,
+        "total_memory_mb": 12288
+      },
+      "initial_context": {
+        "full_capsules": 531,
+        "indexed_symbols": 426,
+        "seconds": 140.99912730700453
+      },
+      "initial_context_phases": {
+        "empty_native_world_capture": 0.4401518520026002,
+        "final_evidence_verification": 11.365926882004715,
+        "persisted_snapshot_reopen": 0.34337865900306497,
+        "retrieval_persistence": 1.7934544739982812,
+        "semantic_build_reconstruction_and_hydration": 36.72512578200258,
+        "source384_capture_and_inference": 83.21428259299137,
+        "vector_qualification": 7.105590273000416
+      },
+      "phases": {
+        "context_seconds": 33.59362245799275,
+        "initial_context_seconds": 141.49761352599307,
+        "planning_seconds": 31.976432827010285,
+        "prepare_seconds": 10.912792816001456
+      },
+      "planning": {
+        "elapsed_seconds": 31.975766001996817,
+        "goals": 2,
+        "planning_strategy": "intent_symbolic",
+        "provider_calls": 0,
+        "qualified": true,
+        "tasks": 1
+      },
+      "proof": {},
+      "proof_receipt": {},
+      "provider_invocation_count": 0,
+      "reward": {
+        "reward": 0.0
+      },
+      "source384": {
+        "seconds": 83.11872433699318
+      },
+      "supervisor": {
+        "arm": "full",
+        "benchmark_advantage_claimed": false,
+        "error_phase": "context",
+        "max_total_agent_seconds": 285,
+        "production_activation": false,
+        "reserved_cleanup_seconds": 40,
+        "schema": "terminal-admitted-supervisor-run@1",
+        "seconds": 218.5913238550129,
+        "task_completed": false,
+        "work_cutoff_seconds": 245,
+        "worker_cleanup_returncode": 0
+      },
+      "trial": "fix-code-vulnerability__iRSHBCs"
+    }
+  ]
+}

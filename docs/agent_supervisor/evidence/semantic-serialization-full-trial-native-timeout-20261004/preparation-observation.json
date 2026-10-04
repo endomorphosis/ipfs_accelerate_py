@@ -1,0 +1,29 @@
+{
+  "agent_timeout_seconds": 300,
+  "archive_sha256": "f8cd6fe9a3283a8df668394370b122743d77bc5ffa4ffcbd5b3ddf6f421d166c",
+  "arm": "full",
+  "config_sha256": "49edefe0f4fd7d8a4f168f6ebbb2f159cddcceb33d4a4169719b949f6ba3f325",
+  "host_source_pin_count": 119,
+  "host_source_pins_reference": "prepared-host-source-audit.json",
+  "intent_requirement_contract_cid": "baguqeeraf3jyjd5ovvjqawi3racqdnpt2q43m4q464hky6l7pnfrvr5bypna",
+  "intent_requirement_contract_sha256": "2ed3848faead5300591b880501b5f3d439b6721cf70eac797f7b4b1ac7a1c3da",
+  "manifest_sha256": "25cb81717d0a59290243987bbf997fdcf00c5e24b5d1addef5d0c731365a8297",
+  "planning_strategy": "intent_symbolic",
+  "prepared": true,
+  "provider_calls": 0,
+  "public_task_input_sha256": {
+    "environment/Dockerfile": "0917470986224df4daf4854a71302ae81c73ba5dd6e25be1232d29b758a5b3ab",
+    "instruction.md": "89b1abdf0af19399f720233b5cdf6b2e8e0ff7b6e3fe3e2a3af0d4d298a8641a",
+    "task.toml": "9aa2bd14ce9408289d199d0608bc3fa65b8b5e23374c9641020de62197dbf1e2"
+  },
+  "raw_preparation_body_exported": false,
+  "resource_profile": "source384-5cpu-12gib@1",
+  "schema": "terminal-full-supervisor-preparation@1",
+  "setup_cache_selection": {
+    "manifest_sha256": "25cb81717d0a59290243987bbf997fdcf00c5e24b5d1addef5d0c731365a8297",
+    "policy": "source384-native-aarch64-dontneed@1",
+    "schema": "terminal-setup-cache-selection@1"
+  },
+  "source384_enabled": true,
+  "task": "fix-code-vulnerability"
+}

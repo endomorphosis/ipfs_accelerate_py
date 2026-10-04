@@ -1,0 +1,46 @@
+{
+  "agents": [
+    {
+      "max_timeout_sec": 300.0,
+      "model_name": "gpt-5.6-sol",
+      "n_concurrent": null,
+      "name": null,
+      "override_setup_timeout_sec": 1800.0,
+      "override_timeout_sec": 300.0
+    }
+  ],
+  "cleanup_reserve_seconds": 40,
+  "config": {
+    "bytes": 21560,
+    "path": "full-retry-02/trial-01/config.json",
+    "raw_body_exported": false,
+    "sha256": "49edefe0f4fd7d8a4f168f6ebbb2f159cddcceb33d4a4169719b949f6ba3f325"
+  },
+  "config_sha_matches_preparation": true,
+  "controls": {
+    "agent_setup_timeout_multiplier": null,
+    "agent_timeout_multiplier": null,
+    "environment_build_timeout_multiplier": null,
+    "install_only": false,
+    "n_attempts": 1,
+    "n_concurrent_trials": 1,
+    "timeout_multiplier": 1.0,
+    "verifier_timeout_multiplier": null
+  },
+  "driver_seconds": 285,
+  "environment": {
+    "cpu_enforcement_policy": "limit",
+    "delete": true,
+    "force_build": true,
+    "memory_enforcement_policy": "limit",
+    "override_cpus": 5,
+    "override_memory_mb": 12288,
+    "type": "docker"
+  },
+  "raw_config_kwargs_and_contract_bodies_exported": false,
+  "retry_max_retries": 0,
+  "reviewed_configuration_unchanged": true,
+  "schema": "full-trial-config-reference@1",
+  "source384_seconds": 90,
+  "work_cutoff_seconds": 245
+}

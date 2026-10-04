@@ -1,0 +1,34 @@
+{
+  "benchmark_advantage_claimed": false,
+  "completed_token_score": null,
+  "configuration_unchanged": true,
+  "doctor_invocations": 0,
+  "harbor_returncode": 0,
+  "model": "gpt-5.6-sol",
+  "native_job_result_present": true,
+  "native_result_sha256_reported": "e71a6c647ffe2d21983eab268277e3ef58d2f877e210ad7d8fb47e8b7fa0b8d2",
+  "official_reward": {
+    "reward": 0.0
+  },
+  "original_task_inputs_unchanged": true,
+  "planning_and_cold_index_charged_to_agent_time": true,
+  "planning_strategy": "intent_symbolic",
+  "provider_invocations": 0,
+  "raw_exception_and_traceback_exported": false,
+  "raw_verifier_exported": false,
+  "reasoning_effort": "high",
+  "remaining_processes_reported": null,
+  "reported_agent_usage": {
+    "cost_usd": null,
+    "n_cache_tokens": null,
+    "n_input_tokens": null,
+    "n_output_tokens": null
+  },
+  "resource_profile": "source384-5cpu-12gib@1",
+  "schema": "full-trial-receipt-summary@1",
+  "source384_enabled": true,
+  "task": "fix-code-vulnerability",
+  "task_completed": false,
+  "trial": "fix-code-vulnerability__iRSHBCs",
+  "worker_cleanup_returncode": 0
+}
