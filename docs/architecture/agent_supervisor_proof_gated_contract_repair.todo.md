@@ -44,7 +44,7 @@ consumer or frontier is unresolved.
 
 ## RPR-000 Seal proof-gated contract-repair control plane
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -75,7 +75,7 @@ consumer or frontier is unresolved.
 
 ## RPR-001 Define bounded contract-repair records
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -106,7 +106,7 @@ consumer or frontier is unresolved.
 
 ## RPR-002 Bind exact datasets-logic and VFS capabilities
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -137,7 +137,7 @@ consumer or frontier is unresolved.
 
 ## RPR-003 Implement a snapshot-bound code-symbol vector index
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -168,7 +168,7 @@ consumer or frontier is unresolved.
 
 ## RPR-004 Build the adversarial broken-contract fixture corpus
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -199,7 +199,7 @@ consumer or frontier is unresolved.
 
 ## RPR-005 Classify a broken call into a bounded trace
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -230,7 +230,7 @@ consumer or frontier is unresolved.
 
 ## RPR-006 Synthesize sender requirements and receiver guarantees
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -261,7 +261,7 @@ consumer or frontier is unresolved.
 
 ## RPR-007 Capture memory-safety and native-boundary evidence
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -292,7 +292,7 @@ consumer or frontier is unresolved.
 
 ## RPR-008 Nominate refactored receivers and implementation sites
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -323,7 +323,7 @@ consumer or frontier is unresolved.
 
 ## RPR-009 Compile substitution, equivalence, adapter, and placement obligations
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -354,7 +354,7 @@ consumer or frontier is unresolved.
 
 ## RPR-010 Prove, refute, and reconstruct candidate obligations
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -385,7 +385,7 @@ consumer or frontier is unresolved.
 
 ## RPR-011 Prove implementation-site admissibility
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -416,7 +416,7 @@ consumer or frontier is unresolved.
 
 ## RPR-012 Hard-gate and rerank eligible candidates
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -447,7 +447,7 @@ consumer or frontier is unresolved.
 
 ## RPR-013 Admit one exact repair target or abstain
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -478,7 +478,7 @@ consumer or frontier is unresolved.
 
 ## RPR-014 Materialize a target-decision-bound edit packet
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -509,7 +509,7 @@ consumer or frontier is unresolved.
 
 ## RPR-015 Project admitted packets into precise supervisor tasks
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -540,7 +540,7 @@ consumer or frontier is unresolved.
 
 ## RPR-016 Reject stale or unproved targets before provider invocation
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -571,7 +571,7 @@ consumer or frontier is unresolved.
 
 ## RPR-017 Integrate the @2 decision path into the existing repair flow
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -602,7 +602,7 @@ consumer or frontier is unresolved.
 
 ## RPR-018 Re-index, re-resolve, and re-prove candidate patches
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -633,7 +633,7 @@ consumer or frontier is unresolved.
 
 ## RPR-019 Measure proof-gated retrieval and repair safety
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -664,7 +664,7 @@ consumer or frontier is unresolved.
 
 ## RPR-020 Add operations, metrics, feature flags, and rollback
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -695,7 +695,7 @@ consumer or frontier is unresolved.
 
 ## RPR-021 Seal the transitive change-propagation control plane
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -726,7 +726,7 @@ consumer or frontier is unresolved.
 
 ## RPR-022 Define bounded change-propagation records
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -757,7 +757,7 @@ consumer or frontier is unresolved.
 
 ## RPR-023 Bind exact graph, dataflow, logic, vector, and llm_router capabilities
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -788,7 +788,7 @@ consumer or frontier is unresolved.
 
 ## RPR-024 Build the adversarial transitive-change fixture corpus
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -819,7 +819,7 @@ consumer or frontier is unresolved.
 
 ## RPR-025 Implement a snapshot-bound typed program dependency graph
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -850,7 +850,7 @@ consumer or frontier is unresolved.
 
 ## RPR-026 Compute exact before-and-after semantic contract deltas
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -881,7 +881,7 @@ consumer or frontier is unresolved.
 
 ## RPR-027 Index value and behavior candidates without granting authority
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -912,7 +912,7 @@ consumer or frontier is unresolved.
 
 ## RPR-028 Compute reverse transitive impact closure and SCCs
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -943,7 +943,7 @@ consumer or frontier is unresolved.
 
 ## RPR-029 Inventory compatibility at every affected call site
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -974,7 +974,7 @@ consumer or frontier is unresolved.
 
 ## RPR-030 Analyze schema, constructor, serialization, and protocol impacts
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1005,7 +1005,7 @@ consumer or frontier is unresolved.
 
 ## RPR-031 Preserve dynamic, reflection, registry, generated, and FFI frontiers
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1036,7 +1036,7 @@ consumer or frontier is unresolved.
 
 ## RPR-032 Nominate missing-input and construction routes
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1067,7 +1067,7 @@ consumer or frontier is unresolved.
 
 ## RPR-033 Compile reaching definitions, dominance, path conditions, and value provenance
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1098,7 +1098,7 @@ consumer or frontier is unresolved.
 
 ## RPR-034 Synthesize required behavior for new support types
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1129,7 +1129,7 @@ consumer or frontier is unresolved.
 
 ## RPR-035 Compile change-propagation LogicIR obligations
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1160,7 +1160,7 @@ consumer or frontier is unresolved.
 
 ## RPR-036 Prove, refute, and reconstruct missing-value and behavior mappings
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1191,7 +1191,7 @@ consumer or frontier is unresolved.
 
 ## RPR-037 Implement deterministic analytical change transforms
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1222,7 +1222,7 @@ consumer or frontier is unresolved.
 
 ## RPR-038 Prove placement for new classes, methods, and data structures
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1253,7 +1253,7 @@ consumer or frontier is unresolved.
 
 ## RPR-039 Admit one complete atomic transitive repair plan
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1284,7 +1284,7 @@ consumer or frontier is unresolved.
 
 ## RPR-040 Materialize plan-bound multi-edit packets
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1315,7 +1315,7 @@ consumer or frontier is unresolved.
 
 ## RPR-041 Route only admitted unresolved steps through llm_router
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1346,7 +1346,7 @@ consumer or frontier is unresolved.
 
 ## RPR-042 Project propagation tasks and gate immediately before providers
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1377,7 +1377,7 @@ consumer or frontier is unresolved.
 
 ## RPR-043 Implement checkpointed transactions and fixed-point validation primitives
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1408,7 +1408,7 @@ consumer or frontier is unresolved.
 
 ## RPR-044 Integrate transactional propagation and require fixed-point completion
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1439,7 +1439,7 @@ consumer or frontier is unresolved.
 
 ## RPR-045 Benchmark adversarial transitive-change safety
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1470,7 +1470,7 @@ consumer or frontier is unresolved.
 
 ## RPR-046 Add propagation metrics, rollout flags, CLI, guide, and rollback
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -1501,7 +1501,7 @@ consumer or frontier is unresolved.
 
 ## RPR-047 Extend end-to-end operations validation for propagation
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
