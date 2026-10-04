@@ -1,0 +1,69 @@
+{
+  "errors": 0,
+  "failures": 0,
+  "full_task_completion": false,
+  "groups": {
+    "batch-memory-review/test-after.xml": {
+      "executions": 26,
+      "new_cases": 0,
+      "unique_cases": 26
+    },
+    "current-controls/integration.xml": {
+      "executions": 207,
+      "new_cases": 207,
+      "unique_cases": 207
+    },
+    "current-controls/native.xml": {
+      "executions": 7,
+      "new_cases": 7,
+      "unique_cases": 7
+    },
+    "source-unit-extraction/test-after.xml": {
+      "executions": 49,
+      "new_cases": 41,
+      "unique_cases": 49
+    },
+    "source-unit-extraction/test-shared-callers.xml": {
+      "executions": 30,
+      "new_cases": 30,
+      "unique_cases": 30
+    }
+  },
+  "prior_generation": {
+    "description": "Pre-review batch owner allowed oversized scalar tuple fallback; these controls do not qualify the memory correction.",
+    "included_in_current_unique_count": false,
+    "tests": 67
+  },
+  "production_qualification": false,
+  "review": {
+    "cancellation": "Caller checkpoints run before/between SQL queries, projections and return; BaseException rolls back owned read transaction. Nested BEGIN rejection does not rollback caller transaction.",
+    "canonical_integrity": "Every full read reconstructs canonical AST and compares every relation; identity fence rereads live blob/file/revision.",
+    "concurrent_changes": "Owner invalidation/replacement between batch read and CAS fence detected. Relation-only raw SQL tampering after full read is outside identity-fence claim and will be rejected by next full reconstruction.",
+    "memory": "At most32 requested keys; aggregate encoded payload threshold64MiB and per-query100000 rows. Oversized multi-CID work is refused, never scalar-loaded into a retained oversized tuple. These are encoded-input/row bounds, not a hard Python/SQL RSS limit."
+  },
+  "schema": "source-observation-component-evidence@1",
+  "selected_passing_executions": 319,
+  "skips": 0,
+  "source_pins": {
+    "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formalization_evaluation.py": "ced8f0caadf26e81d3079305d93c8309d9fe7751a280709553d6017fc53104a9",
+    "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/formalization/autoencoder/source_function_units.py": "01dd6ecf58e9e5956a4b1b6a3cdff8835bcd1db1c469c1361d24b2088470d86e",
+    "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/software_contracts/codebase_ir.py": "3b7a08d637943b3b6e882f66e80e1378f5e423b0d85fcae17dcef118ea803bbc",
+    "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py": "32705fefacab10f47fa25da723d7a8ee383f10a484dbbc9e0e6fbdf850d090dd",
+    "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py": "2432a160769b9beba678ea646f0204a29229bb9d4ec8111dc0ac23f8fd8da51e",
+    "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/tests/integration/logic/software_contracts/test_codebase_current.py": "e2be8ff62c476d1b3a6d4b6cac4b4eb3c1914b1cefb473d923f585f8f25101c1",
+    "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/tests/integration/logic/software_contracts/test_codebase_header_context.py": "5fbf21890e80c0f24ec68223f8e03ecdfbe8532c65a57e660cacc12be3fd08de",
+    "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/tests/integration/logic/software_contracts/test_codebase_ir.py": "9ee6adceb92f2bfe8686f2f25a255a767166cb620bacd012fbbe16a1f863b081",
+    "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/tests/integration/logic/software_contracts/test_codebase_source_units_384.py": "c506e9186640d2f78c192ecfc37125f7080b027ec3705deb29b09a49d2b88cbd",
+    "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/tests/integration/logic/software_contracts/test_duckdb_ast_authority.py": "0178e4c087c072719f1b67deacb5f38559abf6e9c42ca291bf9ae205d956c7ca",
+    "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/tests/integration/logic/software_contracts/test_duckdb_ast_shadow.py": "8de87424e1bfd7ab9ce81ce00fdb28a0621ed8d76eb3d3f4da73398ee73cf0e7",
+    "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/tests/unit/logic/formalization/autoencoder/test_function_span_line_index.py": "2b793364604b3eb728fc72b4f9304e6e54cb63ba85fe7a3fc2f7a6a5381be295",
+    "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/tests/unit/logic/software_contracts/test_codebase_ir_untrusted_previous.py": "d154762ee1e681b8329805ad8d3d8dbf2e226cb2a9033a0571833a9008f5a07c",
+    "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/tests/unit/logic/software_contracts/test_codebase_manifest_memo.py": "c654f9abb7d793afed03084b214cec299aa6999cc7aa7b6b26d290aac988033b",
+    "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/tests/unit/logic/software_contracts/test_duckdb_ast_batch_reads.py": "a676508c41cfd79fb830b148ed34e3e07bccb3f3bb9d2cd5d6ab1d6805891d36",
+    "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/tests/unit/logic/software_contracts/test_duckdb_ast_store.py": "dd2d5044f1d897c18a19309bc3a8cdb993d1c702f42c7a98435017a8fe9dee50",
+    "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/tests/unit/logic/software_contracts/test_duckdb_ast_store_persistence.py": "9bcc781834d477ed4951f8e4483bc36ee5fff99308a810e3b1adac9c9cd1b28d"
+  },
+  "source_pins_match_at_packaging": true,
+  "token_efficiency_advantage": false,
+  "unique_passing_test_identities": 285
+}

@@ -1,0 +1,75 @@
+{
+  "files": [
+    {
+      "bytes": 2474,
+      "path": "README.md",
+      "sha256": "19d8ee6672be0c0463d848a6af869d87176e228b34bae24652815ffbeec462f8"
+    },
+    {
+      "bytes": 1415,
+      "path": "build-audit.json",
+      "sha256": "7a0cf89d37afda8be59ddd4de9f777ec9b56dd35e83679b09f83e03231aaa01e"
+    },
+    {
+      "bytes": 2109,
+      "path": "execute-command.json",
+      "sha256": "ef9e20d6c154519487ce0e39d563271eea45b24a3df2b38ff5bbc38ebe88e4fa"
+    },
+    {
+      "bytes": 54,
+      "path": "execute-exit.json",
+      "sha256": "9071f8cb403d0672e0753555eae93257ddab0e19415ed6dc0844f2b45bb3953d"
+    },
+    {
+      "bytes": 5182,
+      "path": "failure-observation.json",
+      "sha256": "83e76e0fa9a0f99f6c29bb722532bd1978fe18088fc77bd338d762ab1c4642d0"
+    },
+    {
+      "bytes": 8759,
+      "path": "full-trial-after-pins.json",
+      "sha256": "245a779023cfccca6be888ef078353d9235fddb3ceb7b620beceb55cc786eda5"
+    },
+    {
+      "bytes": 197,
+      "path": "full-trial-containers-after-expanded.json",
+      "sha256": "a4d6efc15ee39908856df45921833073b837750ae0589be4ae3e1ad8b64d38ee"
+    },
+    {
+      "bytes": 123,
+      "path": "full-trial-containers-after.json",
+      "sha256": "c97efb78e063050ca4f7f83ebb9f9989d0f8e015d2cc5605b6c9f2e81a485f6e"
+    },
+    {
+      "bytes": 1105,
+      "path": "input-review.json",
+      "sha256": "d9ad19aa816667ed4e7fee73fd408144669a4c81e01a13f791fcdf759c7abded"
+    },
+    {
+      "bytes": 2708,
+      "path": "prepare-command.json",
+      "sha256": "5bb961eb70b94507d946b270289f40c241754abb65b896a6d4aa40e4c9d294df"
+    },
+    {
+      "bytes": 54,
+      "path": "prepare-exit.json",
+      "sha256": "a6e1f649f3ddb25002044d79eb84f0483e82c1a25881fb0ae16f2dccd1ef6dd9"
+    },
+    {
+      "bytes": 1682,
+      "path": "public-output-receipt.json",
+      "sha256": "1512917cba298a19cb4791c404838f764dcb9684d9c28d0d94e6e07647c4453c"
+    },
+    {
+      "bytes": 935,
+      "path": "retained-records.json",
+      "sha256": "710fb1d29f0a33b73c2a07a374750c1c3236c75d28f33f8f2c9fb1447f2a1b97"
+    },
+    {
+      "bytes": 2719,
+      "path": "trial-observation.json",
+      "sha256": "7bc511df053152b7002bd4a694d54f4a9e498f05d645c0f894cafe8d6d6761d8"
+    }
+  ],
+  "schema": "source384-context-refusal-full-trial-evidence@1"
+}

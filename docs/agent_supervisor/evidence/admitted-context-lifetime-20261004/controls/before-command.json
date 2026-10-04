@@ -1,0 +1,25 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "-o",
+    "cache_dir=/home/barberb/lift_coding/artifacts/admitted-context-lifetime-20261004/pytest-cache",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py::test_admitted_construction_releases_native_view_before_fresh_gate",
+    "--junitxml=/home/barberb/lift_coding/artifacts/admitted-context-lifetime-20261004/before.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "environment_overrides": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004",
+    "PYTHONDONTWRITEBYTECODE": "1"
+  },
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py": "040d4d54e0d3ed0956b2d92b389aa7b8df85e653aa23b648bc4b6daf6a2cfe35",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py": "c53f91418aaf245783b0981cb51c208f74e550fed8ca097dc4f9de9ca4dd59fa"
+  },
+  "production_scheduler_ledger_mutated": false,
+  "provider_calls": 0,
+  "hidden_verifier_used": false
+}

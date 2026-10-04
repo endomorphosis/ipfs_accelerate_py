@@ -1,0 +1,14 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collected 54 items
+
+tests/unit/logic/ir_core/test_canonical_pointer_reuse.py ............    [ 22%]
+tests/unit/logic/ir_core/test_identity.py ...................            [ 57%]
+tests/unit/logic/security_ir/test_code_header_derivation.py ............ [ 79%]
+..........s                                                              [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/doctor-pure-derivation-profile-20261004-01/test-after.xml -
+======================== 53 passed, 1 skipped in 1.62s =========================

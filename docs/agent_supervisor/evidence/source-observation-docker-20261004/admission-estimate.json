@@ -1,0 +1,9 @@
+{
+  "schema": "source384-admission-estimate@1",
+  "live_available_memory_mb": 9279,
+  "derived_default_headroom_mb": 2458,
+  "requested_parent_memory_mb": 6144,
+  "minimum_available_memory_mb": 8602,
+  "exact_admission_decision": false,
+  "actual_native_admission_required": true
+}

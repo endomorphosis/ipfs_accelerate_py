@@ -1,0 +1,16 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collected 49 items
+
+tests/unit/logic/formalization/autoencoder/test_function_span_line_index.py . [  2%]
+.......                                                                  [ 16%]
+tests/unit/logic/formalization/autoencoder/test_source_function_units.py . [ 18%]
+.................                                                        [ 53%]
+tests/unit/logic/formalization/autoencoder/test_security_formula_source_units.py . [ 55%]
+......................                                                   [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/source-unit-extraction-profile-20261004-01/test-after.xml -
+============================== 49 passed in 2.78s ==============================

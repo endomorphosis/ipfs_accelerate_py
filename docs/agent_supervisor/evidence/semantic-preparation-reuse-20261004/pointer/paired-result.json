@@ -1,0 +1,151 @@
+{
+  "alternating_order": true,
+  "derivation_json_sha256": "0cd9fcee5c81b1b98dbf5bcaaa6ef3e0f103dc161bc6d0d6d5bec3228dfe320a",
+  "medians": {
+    "cached": {
+      "cpu_seconds": 0.17661015999999985,
+      "wall_seconds": 0.1882677839967073
+    },
+    "uncached": {
+      "cpu_seconds": 0.21995359999999975,
+      "wall_seconds": 0.2575368109974079
+    }
+  },
+  "output_equality_all_samples": true,
+  "producer_pins": {
+    "ipfs_datasets_py.logic.ir_core.canonical": "fada8006144d36d28a9820c17340b7ca67c81bfadd61871ec2600e56224edf81",
+    "ipfs_datasets_py.logic.security_ir.code_header_derivation": "143ba1f57ade2a6bc588f868ffe4b1e0f05a91701dd1a7a076cb37b6928d6429",
+    "ipfs_datasets_py.logic.security_ir.doctor_header_contracts": "e11776174de1db224a09f6cd1e7d4fdac8766ce349e3ec0615972f80a3ba6cde"
+  },
+  "production_qualification": false,
+  "provider_calls": 0,
+  "samples": [
+    {
+      "cpu_seconds": 0.23485795200000004,
+      "iteration": 0,
+      "mode": "uncached",
+      "wall_seconds": 7.400739903998328
+    },
+    {
+      "cpu_seconds": 0.17279751999999993,
+      "iteration": 0,
+      "mode": "cached",
+      "wall_seconds": 0.4708994359971257
+    },
+    {
+      "cpu_seconds": 0.182773584,
+      "iteration": 1,
+      "mode": "cached",
+      "wall_seconds": 0.18530458099849056
+    },
+    {
+      "cpu_seconds": 0.2508628319999999,
+      "iteration": 1,
+      "mode": "uncached",
+      "wall_seconds": 0.30203519300266635
+    },
+    {
+      "cpu_seconds": 0.22426163199999993,
+      "iteration": 2,
+      "mode": "uncached",
+      "wall_seconds": 0.24855477499659173
+    },
+    {
+      "cpu_seconds": 0.16704337600000008,
+      "iteration": 2,
+      "mode": "cached",
+      "wall_seconds": 0.16716199400252663
+    },
+    {
+      "cpu_seconds": 0.16855470399999972,
+      "iteration": 3,
+      "mode": "cached",
+      "wall_seconds": 0.19043715199222788
+    },
+    {
+      "cpu_seconds": 0.21695524799999966,
+      "iteration": 3,
+      "mode": "uncached",
+      "wall_seconds": 0.21710130499559455
+    },
+    {
+      "cpu_seconds": 0.20918972800000013,
+      "iteration": 4,
+      "mode": "uncached",
+      "wall_seconds": 0.2532288759975927
+    },
+    {
+      "cpu_seconds": 0.19067232,
+      "iteration": 4,
+      "mode": "cached",
+      "wall_seconds": 0.2242394890054129
+    },
+    {
+      "cpu_seconds": 0.18004107199999986,
+      "iteration": 5,
+      "mode": "cached",
+      "wall_seconds": 0.18018599299830385
+    },
+    {
+      "cpu_seconds": 0.21182791999999973,
+      "iteration": 5,
+      "mode": "uncached",
+      "wall_seconds": 0.23591620499792043
+    },
+    {
+      "cpu_seconds": 0.2288131360000003,
+      "iteration": 6,
+      "mode": "uncached",
+      "wall_seconds": 0.26184474599722307
+    },
+    {
+      "cpu_seconds": 0.17317924799999984,
+      "iteration": 6,
+      "mode": "cached",
+      "wall_seconds": 8.84074786498968
+    },
+    {
+      "cpu_seconds": 0.1695548480000002,
+      "iteration": 7,
+      "mode": "cached",
+      "wall_seconds": 1.0651949900056934
+    },
+    {
+      "cpu_seconds": 0.22295195199999984,
+      "iteration": 7,
+      "mode": "uncached",
+      "wall_seconds": 0.3620815159956692
+    },
+    {
+      "cpu_seconds": 0.21302144000000034,
+      "iteration": 8,
+      "mode": "uncached",
+      "wall_seconds": 0.35906996800622437
+    },
+    {
+      "cpu_seconds": 0.18465622399999937,
+      "iteration": 8,
+      "mode": "cached",
+      "wall_seconds": 0.1860984160011867
+    },
+    {
+      "cpu_seconds": 0.18067174400000052,
+      "iteration": 9,
+      "mode": "cached",
+      "wall_seconds": 0.18222450399480294
+    },
+    {
+      "cpu_seconds": 0.212499856,
+      "iteration": 9,
+      "mode": "uncached",
+      "wall_seconds": 0.2141965899936622
+    }
+  ],
+  "schema": "paired-pure-header-lowering-profile@1",
+  "scope": "one pinned CPU; same-process alternate pure parser only; concurrent host activity uncontrolled",
+  "shared_scheduler_access": false,
+  "solver_calls": 0,
+  "source_and_producer_pins_unchanged": true,
+  "source_executed": false,
+  "source_sha256": "761756ce31753e526c48d28ccbca13a5d2493b16fe37aff3e1e4d2efaf3a2bba"
+}

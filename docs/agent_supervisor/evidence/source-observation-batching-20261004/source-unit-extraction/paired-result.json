@@ -1,0 +1,155 @@
+{
+  "alternating_order": true,
+  "complete_instrumented_output_equality_all_samples": true,
+  "functions": 358,
+  "medians": {
+    "legacy": {
+      "cpu_seconds": 0.400086768,
+      "wall_seconds": 0.41330395950353704
+    },
+    "reused": {
+      "cpu_seconds": 0.20118502400000005,
+      "wall_seconds": 0.21552319749753224
+    }
+  },
+  "original_span_file_sha256": "fa094ce4beb8d356b1c219d5c1903d98809b4e874fb6e5be32ad26d53913fd72",
+  "producer_pins": {
+    "security_formalization_evaluation.py": "ced8f0caadf26e81d3079305d93c8309d9fe7751a280709553d6017fc53104a9",
+    "security_formula_corpus.py": "3f7f9443be1cf122d019f5936f0650b13da185686cbbc205d98e61098f9fca1c",
+    "source_function_units.py": "01dd6ecf58e9e5956a4b1b6a3cdff8835bcd1db1c469c1361d24b2088470d86e",
+    "source_screening.py": "f53a59b989274d7944628017a3baae2ebd66dc432855a7aa92033774d7c41eab"
+  },
+  "production_output_sha256": "de87a916ff5b1c97cb18750cf7e0e17aa9953e1212c2e654ffe76c9a2a3a3d45",
+  "production_qualification": false,
+  "provider_calls": 0,
+  "samples": [
+    {
+      "cpu_seconds": 0.44313140799999995,
+      "iteration": 0,
+      "mode": "legacy",
+      "wall_seconds": 0.46851946800597943
+    },
+    {
+      "cpu_seconds": 0.20352072,
+      "iteration": 0,
+      "mode": "reused",
+      "wall_seconds": 0.2044338989944663
+    },
+    {
+      "cpu_seconds": 0.20340000000000003,
+      "iteration": 1,
+      "mode": "reused",
+      "wall_seconds": 0.2041876560106175
+    },
+    {
+      "cpu_seconds": 0.4171973119999999,
+      "iteration": 1,
+      "mode": "legacy",
+      "wall_seconds": 0.4188311840116512
+    },
+    {
+      "cpu_seconds": 0.4218089439999999,
+      "iteration": 2,
+      "mode": "legacy",
+      "wall_seconds": 0.44593072999850847
+    },
+    {
+      "cpu_seconds": 0.22614720000000021,
+      "iteration": 2,
+      "mode": "reused",
+      "wall_seconds": 0.9158563139935723
+    },
+    {
+      "cpu_seconds": 0.20798750399999966,
+      "iteration": 3,
+      "mode": "reused",
+      "wall_seconds": 10.229580760002136
+    },
+    {
+      "cpu_seconds": 0.44746203200000023,
+      "iteration": 3,
+      "mode": "legacy",
+      "wall_seconds": 0.6709269920102088
+    },
+    {
+      "cpu_seconds": 0.3941553280000001,
+      "iteration": 4,
+      "mode": "legacy",
+      "wall_seconds": 0.39714776200708
+    },
+    {
+      "cpu_seconds": 0.19897004800000007,
+      "iteration": 4,
+      "mode": "reused",
+      "wall_seconds": 0.20155689399689436
+    },
+    {
+      "cpu_seconds": 0.1937253279999993,
+      "iteration": 5,
+      "mode": "reused",
+      "wall_seconds": 0.19529027299722657
+    },
+    {
+      "cpu_seconds": 0.4000303519999999,
+      "iteration": 5,
+      "mode": "legacy",
+      "wall_seconds": 0.41786174300068524
+    },
+    {
+      "cpu_seconds": 0.40014318400000004,
+      "iteration": 6,
+      "mode": "legacy",
+      "wall_seconds": 0.40874617600638885
+    },
+    {
+      "cpu_seconds": 0.18879012799999995,
+      "iteration": 6,
+      "mode": "reused",
+      "wall_seconds": 0.19021960299869534
+    },
+    {
+      "cpu_seconds": 0.2251853920000002,
+      "iteration": 7,
+      "mode": "reused",
+      "wall_seconds": 0.22661249600059818
+    },
+    {
+      "cpu_seconds": 0.3956159039999996,
+      "iteration": 7,
+      "mode": "legacy",
+      "wall_seconds": 0.39802233398950193
+    },
+    {
+      "cpu_seconds": 0.39689648000000055,
+      "iteration": 8,
+      "mode": "legacy",
+      "wall_seconds": 0.3997944680013461
+    },
+    {
+      "cpu_seconds": 0.19348155199999972,
+      "iteration": 8,
+      "mode": "reused",
+      "wall_seconds": 0.49638774400227703
+    },
+    {
+      "cpu_seconds": 0.19312955199999937,
+      "iteration": 9,
+      "mode": "reused",
+      "wall_seconds": 0.2289755329984473
+    },
+    {
+      "cpu_seconds": 0.3922135200000003,
+      "iteration": 9,
+      "mode": "legacy",
+      "wall_seconds": 0.3923130010080058
+    }
+  ],
+  "schema": "source-local-line-index-paired-profile@1",
+  "scope": "same-process pure extraction; legacy arm rebuilds each span line table using archived implementation; both arms also build one unused table in the new extraction frame; host activity uncontrolled",
+  "shared_scheduler_access": false,
+  "solver_calls": 0,
+  "source_and_producer_pins_unchanged": true,
+  "source_executed": false,
+  "source_sha256": "761756ce31753e526c48d28ccbca13a5d2493b16fe37aff3e1e4d2efaf3a2bba",
+  "uninstrumented_output_equal_except_instrumentation_producer": true
+}

@@ -1,0 +1,53 @@
+{
+  "authority_granted": false,
+  "change": "Explicit public batch-limit refusal for aggregate multi-CID input overflow; consumer must split outside exception frame. Singleton scalar validation and existing source/proof gates preserved.",
+  "production_qualification": false,
+  "review": {
+    "cancellation": "Caller checkpoints run before/between SQL queries, projections and return; BaseException rolls back owned read transaction. Nested BEGIN rejection does not rollback caller transaction.",
+    "canonical_integrity": "Every full read reconstructs canonical AST and compares every relation; identity fence rereads live blob/file/revision.",
+    "concurrent_changes": "Owner invalidation/replacement between batch read and CAS fence detected. Relation-only raw SQL tampering after full read is outside identity-fence claim and will be rejected by next full reconstruction.",
+    "memory": "At most32 requested keys; aggregate encoded payload threshold64MiB and per-query100000 rows. Oversized multi-CID work is refused, never scalar-loaded into a retained oversized tuple. These are encoded-input/row bounds, not a hard Python/SQL RSS limit."
+  },
+  "schema": "active-ast-batch-memory-review@1",
+  "tests": {
+    "test-after": {
+      "command_sha256": "0fee64487a156cd06ad1e99834550bc183255b10395968034381ada9c27f7655",
+      "counts": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 26
+      },
+      "returncode": 0,
+      "xml_sha256": "f233e43211be1fe34dea204646b891414aa4debdacbb0a0e5d7257049ae92a4c"
+    },
+    "test-before": {
+      "command_sha256": "4804ead5b02cbe1b187e302a129351db8edca5e7eb1b869b205f28bbfb30889e",
+      "counts": {
+        "errors": 0,
+        "failures": 4,
+        "skipped": 0,
+        "tests": 26
+      },
+      "returncode": 1,
+      "xml_sha256": "ba5563e4c52b3ac77e5dfd553f4f37ca8d9ec53323b98b368e9e6e046ba49fe0"
+    }
+  },
+  "upstream": {
+    "files": [
+      "docs/autoencoders/contextual_scalar_diagnostics.md",
+      "docs/implementation/reports/evidence/decoder-contextual-margins-20261004/README.md",
+      "docs/implementation/reports/evidence/decoder-contextual-margins-20261004/evidence.tar.xz.part-001",
+      "docs/implementation/reports/evidence/decoder-contextual-margins-20261004/manifest.json",
+      "docs/implementation/reports/evidence/decoder-contextual-margins-20261004/results.json",
+      "ipfs_datasets_py/logic/formalization/autoencoder/generated_scalar_observation.py",
+      "scripts/ops/autoencoder/diagnose_contextual_scalar_margins.py",
+      "tests/unit/logic/formalization/autoencoder/test_contextual_scalar_margins_runner.py",
+      "tests/unit/logic/formalization/autoencoder/test_generated_scalar_observation.py"
+    ],
+    "merge_base": "8d764070311d6de25cb77ad0f5a436ef27069743",
+    "network_fetch_performed": false,
+    "observed_ref": "7960dbe40ca3ca9d03eee96a162df832544bb748",
+    "overlap_with_current_owners": false
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "command_sha256": "0db83d2991e3ca6034c55e3163b83e2d7f6ff463b60198e492fb7b55e245810d",
+  "counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 30
+  },
+  "returncode": 0,
+  "xml_sha256": "57461bdbbecf8bb973704b2dc555efa6c2d357498508daa127f3bbc519f23b5d"
+}

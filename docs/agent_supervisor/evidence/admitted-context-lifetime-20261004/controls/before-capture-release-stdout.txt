@@ -1,0 +1,280 @@
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+cachedir: /home/barberb/lift_coding/artifacts/admitted-context-lifetime-20261004/pytest-cache
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: /home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002
+configfile: pytest.ini
+plugins: mock-3.15.1, xdist-3.8.0, benchmark-5.2.3, cov-7.1.0, base-url-2.1.0, asyncio-1.3.0, trio-0.8.0, typeguard-4.5.2, env-1.7.0, hypothesis-6.152.1, playwright-0.8.0, timeout-2.4.0, anyio-4.14.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+
+[1m----------------------------- live log collection ------------------------------[0m
+2026-10-04 03:09:31 [[32m    INFO[0m] Registered service: ipfs (service_manager.py:93)
+2026-10-04 03:09:31 [[32m    INFO[0m] Registered test suite: core_infrastructure (test_framework.py:82)
+2026-10-04 03:09:31 [[32m    INFO[0m] Registered test suite: performance (test_framework.py:82)
+2026-10-04 03:09:31 [[32m    INFO[0m] Registered test suite: integration (test_framework.py:82)
+2026-10-04 03:09:31 [[32m    INFO[0m] Successfully imported ipfs_kit_py modules from /home/barberb/HACC/complaint-generator/ipfs_datasets_py/ipfs_kit_py/ipfs_kit_py/__init__.py (ipfs_kit_integration.py:327)
+2026-10-04 03:09:31 [[32m    INFO[0m] IPFS Kit integration enabled successfully (ipfs_kit_integration.py:344)
+2026-10-04 03:09:31 [[32m    INFO[0m] Storage initialized with distributed backend (storage_wrapper.py:92)
+collected 2 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py::test_admitted_construction_releases_native_view_before_fresh_gate[False] 
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-04 03:09:41 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 03:09:41 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 03:09:42 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 03:09:42 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 03:09:42 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 03:09:42 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 03:09:43 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 03:09:43 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[31mFAILED[0m[31m                                                                   [ 50%][0m
+benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py::test_admitted_construction_releases_native_view_before_fresh_gate[True] 
+[1m-------------------------------- live log call ---------------------------------[0m
+2026-10-04 03:09:44 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 03:09:45 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 03:09:45 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 03:09:45 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 03:09:45 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 03:09:45 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 03:09:46 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 03:09:46 [[32m    INFO[0m] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+[31mFAILED[0m[31m                                                                   [100%][0m
+
+=================================== FAILURES ===================================
+[31m[1m___ test_admitted_construction_releases_native_view_before_fresh_gate[False] ___[0m
+
+original = (PosixPath('/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel0/app'), PosixPath('/tmp/pytest-of-barberb...nstruction_rel0/instruction.md'), PosixPath('/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel0/state'))
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xfbdb2c578bc0>
+refuse_gate = False
+
+    [0m[37m@pytest[39;49;00m.mark.parametrize([33m"[39;49;00m[33mrefuse_gate[39;49;00m[33m"[39;49;00m, [[94mFalse[39;49;00m, [94mTrue[39;49;00m])[90m[39;49;00m
+    [94mdef[39;49;00m [92mtest_admitted_construction_releases_native_view_before_fresh_gate[39;49;00m(original, monkeypatch, refuse_gate):[90m[39;49;00m
+    [90m    [39;49;00m[33m"""Native persisted world and semantic payload; only the refusal is authored."""[39;49;00m[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_accelerate_py[39;49;00m[04m[96m.[39;49;00m[04m[96magent_supervisor[39;49;00m[04m[96m.[39;49;00m[04m[96mruntime[39;49;00m [94mimport[39;49;00m local_planning_admission [94mas[39;49;00m local[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_accelerate_py[39;49;00m[04m[96m.[39;49;00m[04m[96magent_supervisor[39;49;00m[04m[96m.[39;49;00m[04m[96mtask_sources[39;49;00m[04m[96m.[39;49;00m[04m[96mintent_repository[39;49;00m [94mimport[39;49;00m IntentRepository[90m[39;49;00m
+    [90m[39;49;00m
+        root, instruction, state = original[90m[39;49;00m
+        prepared = prep.prepare(repository=root, instruction=instruction, state=state)[90m[39;49;00m
+        initial_receipt = prep.initial_context(state=state)[90m[39;49;00m
+        admission = local.admit_local_benchmark_plan(graph=_proposal_graph(prepared), manifest=prepared[[33m"[39;49;00m[33mmanifest[39;49;00m[33m"[39;49;00m])[90m[39;49;00m
+        prep._write(state / [33m"[39;49;00m[33madmission.json[39;49;00m[33m"[39;49;00m, admission)[90m[39;49;00m
+        [94mwith[39;49;00m IntentRepository(state / [33m"[39;49;00m[33mintent.duckdb[39;49;00m[33m"[39;49;00m) [94mas[39;49;00m intent:[90m[39;49;00m
+            local.materialize_local_benchmark_plan(admission=admission, intent=intent)[90m[39;49;00m
+    [90m[39;49;00m
+        refs, capture_refs, contract_refs = [], {}, [][90m[39;49;00m
+        native_view = initial._semantic_view[90m[39;49;00m
+    [90m[39;49;00m
+        [94mdef[39;49;00m [92mview[39;49;00m(*args, **kwargs):[90m[39;49;00m
+            payload, verified, reader = native_view(*args, **kwargs)[90m[39;49;00m
+            payload, verified = _WeakDict(payload), _ViewWitness(verified)[90m[39;49;00m
+            refs.append({[33m"[39;49;00m[33mpayload[39;49;00m[33m"[39;49;00m: weakref.ref(payload), [33m"[39;49;00m[33mview[39;49;00m[33m"[39;49;00m: weakref.ref(verified)})[90m[39;49;00m
+            [94mreturn[39;49;00m payload, verified, reader[90m[39;49;00m
+    [90m[39;49;00m
+        monkeypatch.setattr(initial, [33m"[39;49;00m[33m_semantic_view[39;49;00m[33m"[39;49;00m, view)[90m[39;49;00m
+        native_capture = initial.capture_intent_world_snapshot[90m[39;49;00m
+    [90m[39;49;00m
+        [94mdef[39;49;00m [92mcapture[39;49;00m(*args, **kwargs):[90m[39;49;00m
+            payload = _WeakDict(native_capture(*args, **kwargs))[90m[39;49;00m
+            [94massert[39;49;00m kwargs[[33m"[39;49;00m[33mtask_cids[39;49;00m[33m"[39;49;00m][90m[39;49;00m
+            records = _WeakList(payload[[33m"[39;49;00m[33mplan_projection[39;49;00m[33m"[39;49;00m][[33m"[39;49;00m[33mtasks[39;49;00m[33m"[39;49;00m])[90m[39;49;00m
+            records[[94m0[39;49;00m] = _WeakDict(records[[94m0[39;49;00m])[90m[39;49;00m
+            payload[[33m"[39;49;00m[33mplan_projection[39;49;00m[33m"[39;49;00m][[33m"[39;49;00m[33mtasks[39;49;00m[33m"[39;49;00m] = records[90m[39;49;00m
+            capture_refs.update(capture=weakref.ref(payload), records=weakref.ref(records),[90m[39;49;00m
+                                record=weakref.ref(records[[94m0[39;49;00m]))[90m[39;49;00m
+            [94mreturn[39;49;00m payload[90m[39;49;00m
+    [90m[39;49;00m
+        monkeypatch.setattr(initial, [33m"[39;49;00m[33mcapture_intent_world_snapshot[39;49;00m[33m"[39;49;00m, capture)[90m[39;49;00m
+        native_contract = local._contract[90m[39;49;00m
+    [90m[39;49;00m
+        [94mdef[39;49;00m [92mcontract[39;49;00m(*args, **kwargs):[90m[39;49;00m
+            payload, manifest, profile, current = native_contract(*args, **kwargs)[90m[39;49;00m
+            payload = _WeakDict(payload)[90m[39;49;00m
+            contract_refs.append(weakref.ref(payload))[90m[39;49;00m
+            [94mreturn[39;49;00m payload, manifest, profile, current[90m[39;49;00m
+    [90m[39;49;00m
+        monkeypatch.setattr(local, [33m"[39;49;00m[33m_contract[39;49;00m[33m"[39;49;00m, contract)[90m[39;49;00m
+        native_load = initial.load_initial_context[90m[39;49;00m
+        observed = [][90m[39;49;00m
+    [90m[39;49;00m
+        [94mdef[39;49;00m [92mfresh_gate[39;49;00m(**kwargs):[90m[39;49;00m
+            [90m# One view came from nomination staging, the second from admitted[39;49;00m[90m[39;49;00m
+            [90m# world construction. Assert this caller's completed construction;[39;49;00m[90m[39;49;00m
+            [90m# downstream owner cycles are not a global destruction guarantee.[39;49;00m[90m[39;49;00m
+            [94massert[39;49;00m [96mlen[39;49;00m(refs) == [94m2[39;49;00m[90m[39;49;00m
+            [94massert[39;49;00m refs[[94m1[39;49;00m][[33m"[39;49;00m[33mpayload[39;49;00m[33m"[39;49;00m]() [95mis[39;49;00m [94mNone[39;49;00m[90m[39;49;00m
+            [94massert[39;49;00m refs[[94m1[39;49;00m][[33m"[39;49;00m[33mview[39;49;00m[33m"[39;49;00m]() [95mis[39;49;00m [94mNone[39;49;00m[90m[39;49;00m
+            [94massert[39;49;00m [96mset[39;49;00m(capture_refs) == {[33m"[39;49;00m[33mcapture[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mrecords[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mrecord[39;49;00m[33m"[39;49;00m}[90m[39;49;00m
+            [94massert[39;49;00m [96mall[39;49;00m(ref() [95mis[39;49;00m [94mNone[39;49;00m [94mfor[39;49;00m ref [95min[39;49;00m capture_refs.values())[90m[39;49;00m
+            [94massert[39;49;00m contract_refs [95mand[39;49;00m [96mall[39;49;00m(ref() [95mis[39;49;00m [94mNone[39;49;00m [94mfor[39;49;00m ref [95min[39;49;00m contract_refs)[90m[39;49;00m
+            [94massert[39;49;00m kwargs[[33m"[39;49;00m[33mrequire_empty_owner[39;49;00m[33m"[39;49;00m] [95mis[39;49;00m [94mFalse[39;49;00m[90m[39;49;00m
+            observed.append([94mTrue[39;49;00m)[90m[39;49;00m
+            [94mif[39;49;00m refuse_gate:[90m[39;49;00m
+                [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33mauthored fresh admission refusal[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+            [94mreturn[39;49;00m native_load(**kwargs)[90m[39;49;00m
+    [90m[39;49;00m
+        monkeypatch.setattr(initial, [33m"[39;49;00m[33mload_initial_context[39;49;00m[33m"[39;49;00m, fresh_gate)[90m[39;49;00m
+        [94mif[39;49;00m refuse_gate:[90m[39;49;00m
+            [94mwith[39;49;00m pytest.raises([96mValueError[39;49;00m, match=[33m"[39;49;00m[33mauthored fresh admission refusal[39;49;00m[33m"[39;49;00m):[90m[39;49;00m
+                prep.context(state=state)[90m[39;49;00m
+            [94massert[39;49;00m [95mnot[39;49;00m (root / [33m"[39;49;00m[33m.runtime/terminal-context/result.json[39;49;00m[33m"[39;49;00m).exists()[90m[39;49;00m
+            [94massert[39;49;00m [95mnot[39;49;00m (root / [33m"[39;49;00m[33m.runtime/terminal-context-bundle.json[39;49;00m[33m"[39;49;00m).exists()[90m[39;49;00m
+            [94massert[39;49;00m [95mnot[39;49;00m (state / [33m"[39;49;00m[33mcontext-result.json[39;49;00m[33m"[39;49;00m).exists()[90m[39;49;00m
+            [94massert[39;49;00m [95mnot[39;49;00m (state / [33m"[39;49;00m[33mdoctor-repair-eligibility.json[39;49;00m[33m"[39;49;00m).exists()[90m[39;49;00m
+        [94melse[39;49;00m:[90m[39;49;00m
+>           result = prep.context(state=state)[90m[39;49;00m
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+
+[1m[31mbenchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py[0m:267: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+[1m[31mbenchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py[0m:761: in context
+    [0mhydrated = bind_admitted_context(state=state, prepared=prepared, admission=admission,[90m[39;49;00m
+[1m[31mbenchmarks/agent_supervisor/container_coding/terminal_initial_context.py[0m:541: in bind_admitted_context
+    [0mcurrent = load_initial_context(state=state, prepared=prepared, require_empty_owner=[94mFalse[39;49;00m)[90m[39;49;00m
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+kwargs = {'state': PosixPath('/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel0/state'), 'prepared': {'benchmar......}, 'selected_evidence': [{...}, {...}, {...}, {...}, {...}, {...}, ...]}, ...}}, ...}, 'require_empty_owner': False}
+
+    [0m[94mdef[39;49;00m [92mfresh_gate[39;49;00m(**kwargs):[90m[39;49;00m
+        [90m# One view came from nomination staging, the second from admitted[39;49;00m[90m[39;49;00m
+        [90m# world construction. Assert this caller's completed construction;[39;49;00m[90m[39;49;00m
+        [90m# downstream owner cycles are not a global destruction guarantee.[39;49;00m[90m[39;49;00m
+        [94massert[39;49;00m [96mlen[39;49;00m(refs) == [94m2[39;49;00m[90m[39;49;00m
+        [94massert[39;49;00m refs[[94m1[39;49;00m][[33m"[39;49;00m[33mpayload[39;49;00m[33m"[39;49;00m]() [95mis[39;49;00m [94mNone[39;49;00m[90m[39;49;00m
+        [94massert[39;49;00m refs[[94m1[39;49;00m][[33m"[39;49;00m[33mview[39;49;00m[33m"[39;49;00m]() [95mis[39;49;00m [94mNone[39;49;00m[90m[39;49;00m
+        [94massert[39;49;00m [96mset[39;49;00m(capture_refs) == {[33m"[39;49;00m[33mcapture[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mrecords[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mrecord[39;49;00m[33m"[39;49;00m}[90m[39;49;00m
+>       [94massert[39;49;00m [96mall[39;49;00m(ref() [95mis[39;49;00m [94mNone[39;49;00m [94mfor[39;49;00m ref [95min[39;49;00m capture_refs.values())[90m[39;49;00m
+[1m[31mE       assert False[0m
+[1m[31mE        +  where False = all(<generator object test_admitted_construction_releases_native_view_before_fresh_gate.<locals>.fresh_gate.<locals>.<genexpr> at 0xfbda9ce10520>)[0m
+
+[1m[31mbenchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py[0m:250: AssertionError
+------------------------------ Captured log call -------------------------------
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel0/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[31m[1m___ test_admitted_construction_releases_native_view_before_fresh_gate[True] ____[0m
+
+original = (PosixPath('/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel1/app'), PosixPath('/tmp/pytest-of-barberb...nstruction_rel1/instruction.md'), PosixPath('/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel1/state'))
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xfbda9cebc620>
+refuse_gate = True
+
+    [0m[37m@pytest[39;49;00m.mark.parametrize([33m"[39;49;00m[33mrefuse_gate[39;49;00m[33m"[39;49;00m, [[94mFalse[39;49;00m, [94mTrue[39;49;00m])[90m[39;49;00m
+    [94mdef[39;49;00m [92mtest_admitted_construction_releases_native_view_before_fresh_gate[39;49;00m(original, monkeypatch, refuse_gate):[90m[39;49;00m
+    [90m    [39;49;00m[33m"""Native persisted world and semantic payload; only the refusal is authored."""[39;49;00m[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_accelerate_py[39;49;00m[04m[96m.[39;49;00m[04m[96magent_supervisor[39;49;00m[04m[96m.[39;49;00m[04m[96mruntime[39;49;00m [94mimport[39;49;00m local_planning_admission [94mas[39;49;00m local[90m[39;49;00m
+        [94mfrom[39;49;00m [04m[96mipfs_accelerate_py[39;49;00m[04m[96m.[39;49;00m[04m[96magent_supervisor[39;49;00m[04m[96m.[39;49;00m[04m[96mtask_sources[39;49;00m[04m[96m.[39;49;00m[04m[96mintent_repository[39;49;00m [94mimport[39;49;00m IntentRepository[90m[39;49;00m
+    [90m[39;49;00m
+        root, instruction, state = original[90m[39;49;00m
+        prepared = prep.prepare(repository=root, instruction=instruction, state=state)[90m[39;49;00m
+        initial_receipt = prep.initial_context(state=state)[90m[39;49;00m
+        admission = local.admit_local_benchmark_plan(graph=_proposal_graph(prepared), manifest=prepared[[33m"[39;49;00m[33mmanifest[39;49;00m[33m"[39;49;00m])[90m[39;49;00m
+        prep._write(state / [33m"[39;49;00m[33madmission.json[39;49;00m[33m"[39;49;00m, admission)[90m[39;49;00m
+        [94mwith[39;49;00m IntentRepository(state / [33m"[39;49;00m[33mintent.duckdb[39;49;00m[33m"[39;49;00m) [94mas[39;49;00m intent:[90m[39;49;00m
+            local.materialize_local_benchmark_plan(admission=admission, intent=intent)[90m[39;49;00m
+    [90m[39;49;00m
+        refs, capture_refs, contract_refs = [], {}, [][90m[39;49;00m
+        native_view = initial._semantic_view[90m[39;49;00m
+    [90m[39;49;00m
+        [94mdef[39;49;00m [92mview[39;49;00m(*args, **kwargs):[90m[39;49;00m
+            payload, verified, reader = native_view(*args, **kwargs)[90m[39;49;00m
+            payload, verified = _WeakDict(payload), _ViewWitness(verified)[90m[39;49;00m
+            refs.append({[33m"[39;49;00m[33mpayload[39;49;00m[33m"[39;49;00m: weakref.ref(payload), [33m"[39;49;00m[33mview[39;49;00m[33m"[39;49;00m: weakref.ref(verified)})[90m[39;49;00m
+            [94mreturn[39;49;00m payload, verified, reader[90m[39;49;00m
+    [90m[39;49;00m
+        monkeypatch.setattr(initial, [33m"[39;49;00m[33m_semantic_view[39;49;00m[33m"[39;49;00m, view)[90m[39;49;00m
+        native_capture = initial.capture_intent_world_snapshot[90m[39;49;00m
+    [90m[39;49;00m
+        [94mdef[39;49;00m [92mcapture[39;49;00m(*args, **kwargs):[90m[39;49;00m
+            payload = _WeakDict(native_capture(*args, **kwargs))[90m[39;49;00m
+            [94massert[39;49;00m kwargs[[33m"[39;49;00m[33mtask_cids[39;49;00m[33m"[39;49;00m][90m[39;49;00m
+            records = _WeakList(payload[[33m"[39;49;00m[33mplan_projection[39;49;00m[33m"[39;49;00m][[33m"[39;49;00m[33mtasks[39;49;00m[33m"[39;49;00m])[90m[39;49;00m
+            records[[94m0[39;49;00m] = _WeakDict(records[[94m0[39;49;00m])[90m[39;49;00m
+            payload[[33m"[39;49;00m[33mplan_projection[39;49;00m[33m"[39;49;00m][[33m"[39;49;00m[33mtasks[39;49;00m[33m"[39;49;00m] = records[90m[39;49;00m
+            capture_refs.update(capture=weakref.ref(payload), records=weakref.ref(records),[90m[39;49;00m
+                                record=weakref.ref(records[[94m0[39;49;00m]))[90m[39;49;00m
+            [94mreturn[39;49;00m payload[90m[39;49;00m
+    [90m[39;49;00m
+        monkeypatch.setattr(initial, [33m"[39;49;00m[33mcapture_intent_world_snapshot[39;49;00m[33m"[39;49;00m, capture)[90m[39;49;00m
+        native_contract = local._contract[90m[39;49;00m
+    [90m[39;49;00m
+        [94mdef[39;49;00m [92mcontract[39;49;00m(*args, **kwargs):[90m[39;49;00m
+            payload, manifest, profile, current = native_contract(*args, **kwargs)[90m[39;49;00m
+            payload = _WeakDict(payload)[90m[39;49;00m
+            contract_refs.append(weakref.ref(payload))[90m[39;49;00m
+            [94mreturn[39;49;00m payload, manifest, profile, current[90m[39;49;00m
+    [90m[39;49;00m
+        monkeypatch.setattr(local, [33m"[39;49;00m[33m_contract[39;49;00m[33m"[39;49;00m, contract)[90m[39;49;00m
+        native_load = initial.load_initial_context[90m[39;49;00m
+        observed = [][90m[39;49;00m
+    [90m[39;49;00m
+        [94mdef[39;49;00m [92mfresh_gate[39;49;00m(**kwargs):[90m[39;49;00m
+            [90m# One view came from nomination staging, the second from admitted[39;49;00m[90m[39;49;00m
+            [90m# world construction. Assert this caller's completed construction;[39;49;00m[90m[39;49;00m
+            [90m# downstream owner cycles are not a global destruction guarantee.[39;49;00m[90m[39;49;00m
+            [94massert[39;49;00m [96mlen[39;49;00m(refs) == [94m2[39;49;00m[90m[39;49;00m
+            [94massert[39;49;00m refs[[94m1[39;49;00m][[33m"[39;49;00m[33mpayload[39;49;00m[33m"[39;49;00m]() [95mis[39;49;00m [94mNone[39;49;00m[90m[39;49;00m
+            [94massert[39;49;00m refs[[94m1[39;49;00m][[33m"[39;49;00m[33mview[39;49;00m[33m"[39;49;00m]() [95mis[39;49;00m [94mNone[39;49;00m[90m[39;49;00m
+            [94massert[39;49;00m [96mset[39;49;00m(capture_refs) == {[33m"[39;49;00m[33mcapture[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mrecords[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mrecord[39;49;00m[33m"[39;49;00m}[90m[39;49;00m
+            [94massert[39;49;00m [96mall[39;49;00m(ref() [95mis[39;49;00m [94mNone[39;49;00m [94mfor[39;49;00m ref [95min[39;49;00m capture_refs.values())[90m[39;49;00m
+            [94massert[39;49;00m contract_refs [95mand[39;49;00m [96mall[39;49;00m(ref() [95mis[39;49;00m [94mNone[39;49;00m [94mfor[39;49;00m ref [95min[39;49;00m contract_refs)[90m[39;49;00m
+            [94massert[39;49;00m kwargs[[33m"[39;49;00m[33mrequire_empty_owner[39;49;00m[33m"[39;49;00m] [95mis[39;49;00m [94mFalse[39;49;00m[90m[39;49;00m
+            observed.append([94mTrue[39;49;00m)[90m[39;49;00m
+            [94mif[39;49;00m refuse_gate:[90m[39;49;00m
+                [94mraise[39;49;00m [96mValueError[39;49;00m([33m"[39;49;00m[33mauthored fresh admission refusal[39;49;00m[33m"[39;49;00m)[90m[39;49;00m
+            [94mreturn[39;49;00m native_load(**kwargs)[90m[39;49;00m
+    [90m[39;49;00m
+        monkeypatch.setattr(initial, [33m"[39;49;00m[33mload_initial_context[39;49;00m[33m"[39;49;00m, fresh_gate)[90m[39;49;00m
+        [94mif[39;49;00m refuse_gate:[90m[39;49;00m
+            [94mwith[39;49;00m pytest.raises([96mValueError[39;49;00m, match=[33m"[39;49;00m[33mauthored fresh admission refusal[39;49;00m[33m"[39;49;00m):[90m[39;49;00m
+>               prep.context(state=state)[90m[39;49;00m
+
+[1m[31mbenchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py[0m:261: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+[1m[31mbenchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py[0m:761: in context
+    [0mhydrated = bind_admitted_context(state=state, prepared=prepared, admission=admission,[90m[39;49;00m
+[1m[31mbenchmarks/agent_supervisor/container_coding/terminal_initial_context.py[0m:541: in bind_admitted_context
+    [0mcurrent = load_initial_context(state=state, prepared=prepared, require_empty_owner=[94mFalse[39;49;00m)[90m[39;49;00m
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[90m[39;49;00m
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+kwargs = {'state': PosixPath('/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel1/state'), 'prepared': {'benchmar......}, 'selected_evidence': [{...}, {...}, {...}, {...}, {...}, {...}, ...]}, ...}}, ...}, 'require_empty_owner': False}
+
+    [0m[94mdef[39;49;00m [92mfresh_gate[39;49;00m(**kwargs):[90m[39;49;00m
+        [90m# One view came from nomination staging, the second from admitted[39;49;00m[90m[39;49;00m
+        [90m# world construction. Assert this caller's completed construction;[39;49;00m[90m[39;49;00m
+        [90m# downstream owner cycles are not a global destruction guarantee.[39;49;00m[90m[39;49;00m
+        [94massert[39;49;00m [96mlen[39;49;00m(refs) == [94m2[39;49;00m[90m[39;49;00m
+        [94massert[39;49;00m refs[[94m1[39;49;00m][[33m"[39;49;00m[33mpayload[39;49;00m[33m"[39;49;00m]() [95mis[39;49;00m [94mNone[39;49;00m[90m[39;49;00m
+        [94massert[39;49;00m refs[[94m1[39;49;00m][[33m"[39;49;00m[33mview[39;49;00m[33m"[39;49;00m]() [95mis[39;49;00m [94mNone[39;49;00m[90m[39;49;00m
+        [94massert[39;49;00m [96mset[39;49;00m(capture_refs) == {[33m"[39;49;00m[33mcapture[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mrecords[39;49;00m[33m"[39;49;00m, [33m"[39;49;00m[33mrecord[39;49;00m[33m"[39;49;00m}[90m[39;49;00m
+>       [94massert[39;49;00m [96mall[39;49;00m(ref() [95mis[39;49;00m [94mNone[39;49;00m [94mfor[39;49;00m ref [95min[39;49;00m capture_refs.values())[90m[39;49;00m
+[1m[31mE       assert False[0m
+[1m[31mE        +  where False = all(<generator object test_admitted_construction_releases_native_view_before_fresh_gate.<locals>.fresh_gate.<locals>.<genexpr> at 0xfbdb1a019a40>)[0m
+
+[1m[31mbenchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py[0m:250: AssertionError
+------------------------------ Captured log call -------------------------------
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+[32mINFO    [0m ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-641/test_admitted_construction_rel1/state/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+- generated xml file: /home/barberb/lift_coding/artifacts/admitted-context-lifetime-20261004/before-capture-release.xml -
+============================= slowest 10 durations =============================
+3.71s call     benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py::test_admitted_construction_releases_native_view_before_fresh_gate[False]
+3.14s call     benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py::test_admitted_construction_releases_native_view_before_fresh_gate[True]
+0.01s setup    benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py::test_admitted_construction_releases_native_view_before_fresh_gate[False]
+0.01s setup    benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py::test_admitted_construction_releases_native_view_before_fresh_gate[True]
+
+(2 durations < 0.005s hidden.  Use -vv to show these durations.)
+[36m[1m=========================== short test summary info ============================[0m
+[31mFAILED[0m benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py::[1mtest_admitted_construction_releases_native_view_before_fresh_gate[False][0m - assert False
+[31mFAILED[0m benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py::[1mtest_admitted_construction_releases_native_view_before_fresh_gate[True][0m - assert False
+[31m============================== [31m[1m2 failed[0m[31m in 15.63s[0m[31m ==============================[0m

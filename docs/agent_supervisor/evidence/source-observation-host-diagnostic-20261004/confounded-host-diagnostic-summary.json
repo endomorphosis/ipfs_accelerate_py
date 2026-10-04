@@ -1,0 +1,138 @@
+{
+  "cleanup": {
+    "active_leases": 0,
+    "foreign_processes_signalled": false,
+    "ledger_counters": {
+      "acquisitions_total": 1,
+      "cancellations_total": 0,
+      "recovered_leases_total": 0,
+      "recoveries_total": 0,
+      "releases_total": 1,
+      "saturation_events_total": 0,
+      "timeouts_total": 0
+    },
+    "original_database_unchanged": true,
+    "producer_pins_unchanged": true,
+    "production_files_changed_by_this_diagnostic": false,
+    "retained_artifacts_unchanged": true,
+    "shared_scheduler_state_mutated": false,
+    "source_pins_unchanged": true,
+    "waiting_requests": 0
+  },
+  "conclusions": {
+    "after_observation_attempted": false,
+    "completed_before_observation": false,
+    "diagnostic_lease_renewal_configuration_corrected": true,
+    "native_benchmark_result": false,
+    "next_action": "No more host runs; parent proceeds with native qualification and independent contract controls.",
+    "normal_renewal_observed": true,
+    "paired_performance_result": false,
+    "provider_calls": 0,
+    "speedup_claim_supported": false,
+    "training_steps": 0
+  },
+  "corrected_attempt": {
+    "automatic_lease_renewal": true,
+    "command_evidence": "renewed-before-01-controller-command.json",
+    "controller_timeout_seconds": 180.0,
+    "cpu_affinity": [
+      0
+    ],
+    "inner_cpu_to_wall_ratio": 0.12185491030738366,
+    "inner_failure": {
+      "message": "",
+      "type": "KeyboardInterrupt"
+    },
+    "inner_observation_cpu_seconds": 12.767875456,
+    "inner_observation_wall_seconds": 104.77932669100119,
+    "inner_result_controller_seconds": 111.49295723800606,
+    "inner_result_evidence": "renewed-before-01-result.json",
+    "inner_returncode": 1,
+    "instrumentation_limit": "No calls to the instrumented DuckDBASTStore._rows method were recorded before interruption. This does not assert that no other SQL ran. The batched store path was not measured.",
+    "instrumented_ast_rows_calls": {},
+    "instrumented_ast_rows_timing_seconds": {},
+    "label": "renewed-before-01",
+    "lease_ttl_seconds": 120.0,
+    "memory_reservation_mb": 4096,
+    "mode": "before",
+    "observation_timeout_seconds": 120.0,
+    "outer_exit": {
+      "controller_timed_out": true,
+      "returncode": 124,
+      "seconds": 189.44868467799097
+    },
+    "outer_exit_evidence": "renewed-before-01-exit.json",
+    "owned_child_absent_after_attempt": true,
+    "owned_child_pid": 135550,
+    "reference_owner_imports": "Archived scalar codebase_ir and DuckDBASTStore; other modules recorded by hashes in command metadata.",
+    "renewal_observed": [
+      {
+        "at": 1791081639.276869,
+        "leases": [
+          {
+            "acquired_at": 1791081610.5671673,
+            "cancelled": false,
+            "expires_at": 1791081730.5671673,
+            "heartbeat_at": 1791081610.5671673,
+            "owner_pid": 135550
+          }
+        ]
+      },
+      {
+        "at": 1791081688.699765,
+        "leases": [
+          {
+            "acquired_at": 1791081610.5671673,
+            "cancelled": false,
+            "expires_at": 1791081793.4459512,
+            "heartbeat_at": 1791081673.4459512,
+            "owner_pid": 135550
+          }
+        ]
+      }
+    ],
+    "runtime_pins_evidence": "renewed-before-01-command.json",
+    "scheduling_confound": "Only 12.77 seconds of process CPU time accrued over 104.78 seconds in observation under CPU 0 affinity. This is consistent with severely constrained CPU service; there is no completed comparable observation from which to attribute elapsed time to the implementation.",
+    "stop": "Parent requested stop after observed low CPU service under fixed CPU affinity. SIGINT sent only to the verified owned child PID; inner finally wrote failure and cleanup receipts. The outer controller subsequently recorded its own timeout.",
+    "stop_evidence": "renewed-before-01-stop-request.json"
+  },
+  "created_at_utc": "2026-10-04T02:48:02.174719+00:00",
+  "export_scope": {
+    "excluded": [
+      "CAS blobs",
+      "source file bodies",
+      "database files",
+      "raw scheduler ledgers",
+      "credentials",
+      "hidden verifier material"
+    ],
+    "execution_dependencies": "Archived runners are retained verbatim for audit. Their recorded commands depend on retained workspace paths and pinned source modules; the bounded metadata bundle alone is not executable.",
+    "included": "Bounded diagnostic scripts, recorded commands and public-source hash metadata, exit/failure receipts, filtered lease timestamps, inventory totals and this review."
+  },
+  "original_failure": {
+    "auto_renew_leases": false,
+    "evidence": "before-03.stderr",
+    "exact_cancellation_cause_retained": false,
+    "failure_type": "LeaseCancelledError",
+    "historic_review_note": "The held status in lease-diagnostic-review.json records the earlier review time; this summary supersedes that status only.",
+    "inference": "The explicitly disabled heartbeat and >120-second ledger lifetime are consistent with lease expiry; no explicit cancellation was recorded. The record cannot distinguish TTL expiry from another owner-liveness failure.",
+    "lease_ttl_seconds": 120.0,
+    "lock_creation_to_final_ledger_write_seconds": 128.53163886070251,
+    "normal_auto_renew_leases": true,
+    "observation_timeout_seconds": 120.0,
+    "original_script": "profile_observation.no-renew.before.py",
+    "original_script_sha256": "e0385a3008846c358ada555e439ba68d92d266bb8610183a0da59da9f26c4981"
+  },
+  "retained_inventory": {
+    "active_ast_rows": 31,
+    "ast_payload_total_bytes": 8045786,
+    "database_sha256": "3a9a448083c12693e595ec17b93ca60492650a12688aea8ff3176e7e5ae45c9e",
+    "distinct_active_ast_cids": 31,
+    "evidence": "retained-inventory-review.json",
+    "public_files": 220,
+    "receipt_sha256": "51ae5cc641cbe5405fda831f73fefd2a1268b9c38175aaa530f2ed2f743eaaf4"
+  },
+  "schema": "confounded-host-observation-diagnostic-summary@1",
+  "scope": "Host-only diagnostic of retained public source observation; not native qualification, a benchmark score, or proof authority.",
+  "status": "stopped; no completed before/after performance comparison"
+}

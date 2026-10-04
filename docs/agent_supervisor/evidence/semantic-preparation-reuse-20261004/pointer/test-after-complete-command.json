@@ -1,0 +1,43 @@
+{
+  "argv": [
+    "timeout",
+    "120s",
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "tests/unit/logic/ir_core/test_canonical_pointer_reuse.py",
+    "tests/unit/logic/ir_core/test_identity.py",
+    "tests/unit/logic/security_ir/test_code_header_derivation.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/doctor-pure-derivation-profile-20261004-01/test-after-complete.xml"
+  ],
+  "counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 54
+  },
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004",
+  "environment_overrides": {
+    "IPFS_DATASETS_PUBLIC_BOTTLE_FIXTURE": "/home/barberb/lift_coding/artifacts/source384-construction-lifetime-20261004/trial-01/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__WCih55g/agent/public-output-evidence/before/bottle.py",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004"
+  },
+  "exit_code": 0,
+  "public_source_sha256": "761756ce31753e526c48d28ccbca13a5d2493b16fe37aff3e1e4d2efaf3a2bba",
+  "solver_selection_observed_after_controls": {
+    "executable": "/home/barberb/.local/bin/z3",
+    "sha256": "bbea82f99718e57d939db27db7a6e3afb2dfdee4bd11dd0858e5cfefbdf80fa1",
+    "version": "Z3 version 4.15.4 - 64 bit"
+  },
+  "source_pins": {
+    "ipfs_datasets_py/logic/ir_core/canonical.py": "fada8006144d36d28a9820c17340b7ca67c81bfadd61871ec2600e56224edf81",
+    "tests/unit/logic/ir_core/test_canonical_pointer_reuse.py": "777ad203c2d89431b14f99e31b916bec09eb5989bd370f31cba02c13020a8255",
+    "tests/unit/logic/ir_core/test_identity.py": "d5a343866ae85a42dd01dd10181120964c05828cd029ef649996408be2382f7a",
+    "tests/unit/logic/security_ir/test_code_header_derivation.py": "9c4defc239507d06148325bcee4933481919e552d85de42e4f808ca6ccad4616"
+  }
+}

@@ -1,0 +1,158 @@
+{
+  "error": {
+    "message": "timed out waiting for a resource lease",
+    "type": "LeaseTimeoutError"
+  },
+  "error_phase": "context",
+  "error_traceback": {
+    "frames": [
+      {
+        "file": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+        "function": "run",
+        "line": 475
+      },
+      {
+        "file": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+        "function": "context",
+        "line": 761
+      },
+      {
+        "file": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+        "function": "bind_admitted_context",
+        "line": 537
+      },
+      {
+        "file": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+        "function": "load_initial_context",
+        "line": 367
+      },
+      {
+        "file": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+        "function": "_load_initial_context",
+        "line": 428
+      },
+      {
+        "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
+        "function": "validate_source384_context",
+        "line": 284
+      },
+      {
+        "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
+        "function": "_validate_source384_context",
+        "line": 326
+      },
+      {
+        "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py",
+        "function": "validate_shared_parent_units",
+        "line": 306
+      },
+      {
+        "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py",
+        "function": "observe",
+        "line": 295
+      },
+      {
+        "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+        "function": "observe_current",
+        "line": 879
+      },
+      {
+        "file": "/opt/ipfs-supervisor/python-runtime/python/cpython-3.12.12-linux-aarch64-gnu/lib/python3.12/contextlib.py",
+        "function": "__enter__",
+        "line": 137
+      },
+      {
+        "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/codebase_resources.py",
+        "function": "acquire_codebase_resources",
+        "line": 75
+      },
+      {
+        "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+        "function": "acquire_child",
+        "line": 741
+      },
+      {
+        "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+        "function": "acquire",
+        "line": 1650
+      }
+    ],
+    "frames_omitted": 0,
+    "frames_walked": 14,
+    "walk_truncated": false
+  },
+  "failure_admission": {
+    "causal_proof": false,
+    "complete_admission_decision": false,
+    "last_sample": {
+      "additional_request_memory_mb": 0,
+      "host": {
+        "available_memory_mb": 8593,
+        "cpu_stall_percent": 26.05,
+        "io_stall_percent": 0.73,
+        "memory_stall_percent": 0.0
+      },
+      "observed_at": 1791082834.1057348,
+      "reason": "proof_memory_headroom",
+      "reserved_root_memory_mb": 6144,
+      "thresholds": {
+        "cpu_stall_percent": 50.0,
+        "io_stall_percent": 10.0,
+        "memory_headroom_mb": 2458,
+        "memory_stall_percent": 2.0
+      }
+    },
+    "observation_boundary": "request_primary_gate",
+    "primary_gate": {
+      "backoff_until": 1791082836.1057348,
+      "observed_at": 1791082836.0983343,
+      "reason": "proof_memory_headroom",
+      "status": "backoff"
+    },
+    "schema": "terminal-admission-failure-observation@1",
+    "status": "observed",
+    "terminal": "timeout"
+  },
+  "failure_resources": {
+    "available_memory_mb": 8693,
+    "cpu_slots": 5,
+    "cpu_stall_percent": 27.85,
+    "io_stall_percent": 0.6,
+    "memory_stall_percent": 0.0,
+    "total_memory_mb": 12288
+  },
+  "failure_scheduler": {
+    "active_child_lease_count": 0,
+    "active_lease_count": 0,
+    "active_root_lease_count": 0,
+    "allocated": {
+      "cpu_slots": 0,
+      "memory_mb": 0
+    },
+    "capacity": {
+      "child_process_slots": 4,
+      "cpu_slots": 4,
+      "gpu_memory_mb": null,
+      "memory_mb": 9830,
+      "reserved_gpu_memory_mb": 0,
+      "reserved_memory_mb": 0,
+      "unified_memory_mb": null,
+      "usable_gpu_memory_mb": null,
+      "usable_memory_mb": 9830
+    },
+    "causal_proof": false,
+    "exact_admission_decision": false,
+    "native_snapshot_may_recover_stale_owners": true,
+    "observation_boundary": "after_unwind",
+    "proof_backoff": {
+      "reason": "proof_memory_headroom",
+      "until": 1791082836.1057348
+    },
+    "proof_recovery": {},
+    "schema": "terminal-scheduler-failure-observation@1",
+    "status": "observed",
+    "waiting_request_count": 0
+  },
+  "remaining_processes": null,
+  "worker_cleanup_returncode": 0
+}
