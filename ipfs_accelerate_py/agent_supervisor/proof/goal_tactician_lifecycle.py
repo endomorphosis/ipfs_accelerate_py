@@ -1686,6 +1686,94 @@ class GoalTacticianSupervisorLifecycle:
             )
         return _mirror_curriculum_projection(recorded, projection_id)
 
+    def record_curriculum_projection(
+        self,
+        projection: CurriculumProjection | Mapping[str, Any],
+        lease: WorkerLease | Mapping[str, Any],
+        *,
+        reason_code: str = "",
+        ranked_candidates: Sequence[Mapping[str, Any]] = (),
+    ) -> LifecycleAuthoritativeState:
+        """Record a curriculum projection under the active lease.
+
+        High authority is admitted only for independently validated
+        ``verified_success`` and checked ``counterexample`` traces.
+        Timeout and parse_type never upgrade curriculum authority.
+        Ranked candidates are immutable once recorded.
+        """
+
+        with self._lock:
+            state = self._require_open_state()
+            held = self._coerce_lease(lease)
+            self._assert_lease_authoritative(state, held)
+            self._reject_if_control_blocks_mutation(state)
+            if state.status is LifecyclePlanStatus.INVALIDATED:
+                raise GoalTacticianLifecycleError("cannot mutate an invalidated plan")
+            if state.status is LifecyclePlanStatus.COMPLETED:
+                raise GoalTacticianLifecycleError("cannot mutate a completed plan")
+
+            try:
+                if isinstance(projection, CurriculumProjection):
+                    projected = projection
+                else:
+                    projected = CurriculumProjection.from_dict(
+                        _mapping(projection, field_name="curriculum")
+                    )
+            except GoalDirectedTacticianError as exc:
+                raise GoalTacticianLifecycleError(str(exc)) from exc
+            if projected.authority is CurriculumAuthority.HIGH:
+                if not projected.independently_validated:
+                    raise GoalTacticianLifecycleError(
+                        "high curriculum authority requires independently validated traces"
+                    )
+                if projected.curriculum_class not in {
+                    CurriculumClass.VERIFIED_SUCCESS,
+                    CurriculumClass.COUNTEREXAMPLE,
+                }:
+                    raise GoalTacticianLifecycleError(
+                        "timeout and parse_type cannot upgrade curriculum authority"
+                    )
+            elif projected.curriculum_class in {
+                CurriculumClass.TIMEOUT,
+                CurriculumClass.PARSE_TYPE,
+            } and projected.authority is CurriculumAuthority.HIGH:
+                raise GoalTacticianLifecycleError(
+                    "timeout and parse_type cannot upgrade curriculum authority"
+                )
+
+            ranked_next = [dict(item) for item in state.ranked_candidates]
+            for item in ranked_candidates or ():
+                body = _public_mapping(_mapping(item, field_name="ranked_candidate"))
+                self._assert_ranked_candidate_immutable(state, body)
+                ranked_id = str(body.get("candidate_id") or body.get("item_id") or "").strip()
+                if not ranked_id:
+                    raise GoalTacticianLifecycleError("ranked candidate requires candidate_id")
+                ranked_next.append(body)
+
+            payload = projected.to_dict()
+            now = _now_ms(self._clock)
+            state = LifecycleAuthoritativeState.from_dict(
+                {
+                    **state.to_dict(include_identity=False),
+                    "curriculum_projections": [
+                        dict(item) for item in state.curriculum_projections
+                    ]
+                    + [payload],
+                    "ranked_candidates": ranked_next,
+                    "updated_at_ms": now,
+                }
+            )
+            state = self._append_transition(
+                state,
+                kind=LifecycleTransitionKind.CURRICULUM,
+                worker_id=held.worker_id,
+                fencing_token=held.fencing_token,
+                payload=payload,
+                reason_code=reason_code or projected.reason_code or "curriculum_recorded",
+            )
+            self._commit(state)
+            return state
+
     def signal_control(
         self,
         signal: LifecycleControlSignal | str,
