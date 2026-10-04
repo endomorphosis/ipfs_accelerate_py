@@ -6370,6 +6370,39 @@ def _nested_submodule_guard_events(daemon: TodoImplementationDaemon) -> list[dic
     ]
 
 
+def test_callback_validation_event_sink_preserves_source_stream(
+    tmp_path: Path,
+) -> None:
+    daemon, nested = _nested_submodule_guard_daemon(tmp_path)
+    source_path = daemon.events_path
+    sink_path = tmp_path / "requalification" / "validation-events.jsonl"
+
+    with daemon._scoped_validation_event_sink(sink_path):
+        daemon._record_offline_nested_submodule_skip(
+            nested,
+            parent_relative="external/ipfs_datasets",
+        )
+
+    assert daemon.events_path == source_path
+    assert not source_path.exists()
+    [audit] = [
+        json.loads(line)
+        for line in sink_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert audit["type"] == (
+        "offline_nested_submodule_initialization_skipped"
+    )
+    assert audit["offline_local_only"] is True
+    assert audit["fetch_attempted"] is False
+
+    daemon._record_event("validation_event_sink_restored", {"restored": True})
+    [source] = [
+        json.loads(line)
+        for line in source_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert source["type"] == "validation_event_sink_restored"
+
+
 def test_implementation_daemon_guards_nested_repository_cycle_before_worktree_creation(
     tmp_path: Path,
     monkeypatch,
@@ -9636,6 +9669,65 @@ def test_implementation_daemon_records_merged_root_submodule_gitlink(tmp_path):
     assert result["committed"] is True
     assert _git(repo, "rev-parse", "HEAD:libs/child") == merged_commit
     assert _git(repo, "status", "--porcelain") == ""
+
+
+def test_implementation_daemon_types_partial_gitlink_recording_without_crash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "checkout", "-b", "implementation/auto-partial-gitlink")
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "AUTO-PARTIAL: feature")
+    _git(repo, "checkout", "main")
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_merged_submodule_gitlinks",
+        lambda *_args, **_kwargs: {
+            "attempted": True,
+            "ok": False,
+            "committed": True,
+            "failures": [{"reason": "checkout_alignment_failed"}],
+        },
+    )
+
+    result = daemon._merge_branch_to_main(
+        "implementation/auto-partial-gitlink",
+        PortalTask(
+            task_id="AUTO-PARTIAL",
+            title="Type partial gitlink publication",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        1,
+    )
+
+    assert result["merged"] is False
+    assert result["returncode"] == 2
+    assert result["reason"] == "submodule_gitlink_recording_failed"
+    assert result["merged_gitlink_recording"]["reason"] == (
+        "merged_gitlink_recording_commit_missing"
+    )
 
 
 def test_implementation_daemon_records_nested_gitlink_chain_and_preserves_local_dirt(
@@ -30408,6 +30500,72 @@ def test_reconciled_candidate_restores_tracked_validation_screenshot(
         b"baseline screenshot"
     )
     assert _git(repo, "status", "--short") == ""
+
+
+def test_reconciled_candidate_fences_protected_submodule_after_trusted_setup(
+    tmp_path: Path,
+):
+    repo, _submodule = _seed_parent_with_submodule(tmp_path)
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        _reconciled_candidate_task_board(
+            task_id="ACCEL-010M",
+            validation="python -m py_compile feature.py",
+        ),
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "add reconciliation task")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    branch_name = "implementation/accel-010m-submodule-setup"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", "feature.py")
+    _git(repo, "commit", "-m", "feature")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    worktree_path = tmp_path / "candidate-with-uninitialized-submodule"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    protected_relative = "libs/child/child.txt"
+    assert not (worktree_path / protected_relative).exists()
+
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        worktree_root=tmp_path / "worktrees",
+        merge_target_branch="main",
+        worktree_submodule_paths=["libs/child"],
+        implementation_protected_paths=[protected_relative],
+    )
+    task = daemon._load_tasks()[0]
+
+    result = daemon.reconcile_validated_worktree_candidate(
+        worktree_path=worktree_path,
+        branch_name=branch_name,
+        task=task,
+        baseline_ref=baseline,
+        candidate_commit=candidate,
+        recovery_key="protected-submodule-setup-recovery",
+    )
+
+    assert result["returncode"] == 0
+    assert result["validation_result"]["passed"] is True
+    assert result["protected_path_violation"] == {}
+    assert result["provider_dispatched"] is False
+    assert result["attempt_consumed"] is False
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert not any(
+        event.get("type") == "implementation_protected_path_mutated"
+        for event in events
+    )
 
 
 def test_reconciled_candidate_records_protected_generated_artifact_mutation(

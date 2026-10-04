@@ -36,6 +36,9 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts im
     is_secret_handle,
     redact_mapping,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+    TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_COMMAND,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 _DIGEST = "sha256:" + ("ab" * 32)
@@ -210,6 +213,30 @@ def test_only_closed_command_json_fields_receive_the_command_byte_bound() -> Non
         _command(
             parameters={
                 "operation": "task.status.cas.receipt",
+                "body_json": "x" * (MAX_COMMAND_BYTES + 1),
+            }
+        )
+
+
+def test_route_lineage_recovery_json_fields_receive_command_byte_bound() -> None:
+    large_json = '{"payload":"' + ("x" * MAX_TEXT_BYTES) + '"}'
+    parameters = {
+        "operation": TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_COMMAND,
+        "body_json": large_json,
+        "route_binding_json": large_json,
+        "expected_queue_extension_json": large_json,
+        "new_queue_extension_json": large_json,
+    }
+
+    command = _command(parameters=parameters)
+
+    for field_name in parameters.keys() - {"operation"}:
+        assert command.parameters[field_name] == large_json
+
+    with pytest.raises(ControlPlaneBoundsError, match="byte bound"):
+        _command(
+            parameters={
+                "operation": TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_COMMAND,
                 "body_json": "x" * (MAX_COMMAND_BYTES + 1),
             }
         )

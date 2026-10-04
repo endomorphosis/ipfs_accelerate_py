@@ -59,6 +59,11 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_transactions
     result_digest,
     run_with_retry,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+    TaskRecord,
+    TaskSourceConflictError,
+    TaskSourceIntegrityError,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     open_duckdb_connection,
 )
@@ -74,7 +79,11 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client import 
     open_embedded_client,
     resolve_endpoint,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
+    TypedDatabaseTaskSource,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+    _DATABASE_POST_MERGE_CLAIM_VERIFICATION_RECOVERY_OPERATION,
     COMPLETION_PROGRESS_SNAPSHOT_OPERATION,
     TYPED_COMPLETION_PROGRESS_SNAPSHOT_SCHEMA,
     TypedOwnerResult,
@@ -736,6 +745,121 @@ def test_idempotent_replay_after_response_loss(tmp_path: Path) -> None:
         rows = client.execute("select_task_by_cid", {"task_cid": task_cid})
         assert rows[0]["status"] == "claimed"
         assert int(rows[0]["revision"]) == 1
+
+
+def test_ordinary_receipt_cas_result_shape_excludes_recovery_fields(
+    tmp_path: Path,
+) -> None:
+    """Atomic recovery evidence must not change ordinary CAS identities."""
+
+    db = tmp_path / "control.duckdb"
+    _install(db)
+    _seed_generation(db)
+    task_cid = _seed_goal_and_tasks(db, count=1)[0]
+
+    with _client(db) as client:
+        result = client.cas_task_status(
+            task_cid=task_cid,
+            expected_task_revision=0,
+            new_status="claimed",
+            idempotency_key="idem:ordinary-receipt-shape",
+            command_id="cmd:ordinary-receipt-shape",
+            body={"completion_receipt": {"operation": "ordinary_test_claim"}},
+        )
+
+    assert result.accepted
+    assert set(result.result) == {
+        "task_cid",
+        "status",
+        "task_revision",
+        "store_revision_before",
+        "command_id",
+        "receipt_persisted",
+        "completion_receipt_cid",
+        "completion_evidence_digest",
+    }
+
+
+def test_typed_adapter_ordinary_stale_cas_never_reaches_owner() -> None:
+    """The special replay seam must not weaken ordinary CAS admission."""
+
+    calls: list[dict[str, Any]] = []
+
+    class UnexpectedOwnerCall:
+        def cas_task_status(self, **kwargs: Any) -> None:
+            calls.append(dict(kwargs))
+            raise AssertionError("ordinary stale CAS reached the owner")
+
+    source = object.__new__(TypedDatabaseTaskSource)
+    source._client = UnexpectedOwnerCall()
+    source.get_task = lambda _identity: TaskRecord(
+        task_cid="task:ordinary-stale",
+        task_alias="T-ORDINARY-STALE",
+        goal_cid="goal:ordinary-stale",
+        ordinal=1,
+        status="claimed",
+        revision=2,
+        body={"completion_receipt": {"operation": "ordinary_claim"}},
+    )
+
+    with pytest.raises(TaskSourceConflictError, match="revision CAS failed"):
+        source.compare_and_set_status(
+            "task:ordinary-stale",
+            1,
+            "running",
+            {"operation": "ordinary_run"},
+        )
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    ("override", "value"),
+    [
+        ("status", "in_progress"),
+        ("delay_ms", 1),
+        ("exact_retry_not_before_ms", 1),
+        ("reason", "database_portal_retry:forged"),
+    ],
+)
+def test_atomic_post_merge_recovery_rejects_noncanonical_queue_contract(
+    override: str,
+    value: Any,
+) -> None:
+    """The narrow atomic reopen cannot mint misleading or stalled evidence."""
+
+    calls: list[dict[str, Any]] = []
+
+    def unexpected_owner_call(*_args: Any, **kwargs: Any) -> None:
+        calls.append(dict(kwargs))
+        raise AssertionError("noncanonical atomic recovery reached the owner")
+
+    source = object.__new__(TypedDatabaseTaskSource)
+    source._compare_and_set_status_with_owner_result = unexpected_owner_call
+    queue_reason = "database_portal_retry:attempt:1:claim verification failed"
+    arguments: dict[str, Any] = {
+        "task_cid": "task:atomic-contract",
+        "expected_revision": 24,
+        "expected_control_receipt": {"operation": "terminal"},
+        "status": "retrying",
+        "receipt": {
+            "operation": (
+                _DATABASE_POST_MERGE_CLAIM_VERIFICATION_RECOVERY_OPERATION
+            ),
+            "backoff_ms": 0,
+            "retry_not_before_ms": 0,
+            "queue_reason": queue_reason,
+        },
+        "delay_ms": 0,
+        "reason": queue_reason,
+    }
+    arguments[override] = value
+
+    with pytest.raises(
+        TaskSourceIntegrityError,
+        match="exact immediate retrying queue contract",
+    ):
+        source.record_queue_backoff_and_cas_status(**arguments)
+    assert calls == []
 
 
 def test_duplicate_command_different_payload_conflicts(tmp_path: Path) -> None:
