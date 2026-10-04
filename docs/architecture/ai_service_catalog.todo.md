@@ -33,7 +33,7 @@ Program invariants:
 
 ## AICAT-001 Define versioned catalog schemas and stable identities
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -58,7 +58,7 @@ Program invariants:
 
 ## AICAT-002 Implement the catalog registry, resolver, and snapshots
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -83,7 +83,7 @@ Program invariants:
 
 ## AICAT-003 Publish LLM router provider and model descriptors
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -108,7 +108,7 @@ Program invariants:
 
 ## AICAT-004 Publish embeddings router provider and model descriptors
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -133,7 +133,7 @@ Program invariants:
 
 ## AICAT-005 Publish multimodal router provider and model descriptors
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -158,7 +158,7 @@ Program invariants:
 
 ## AICAT-006 Publish voice router provider and model descriptors
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -183,7 +183,7 @@ Program invariants:
 
 ## AICAT-007 Add persistent and static catalog source adapters
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -208,7 +208,7 @@ Program invariants:
 
 ## AICAT-008 Assemble router and metadata sources into AIServiceCatalog
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -233,7 +233,7 @@ Program invariants:
 
 ## AICAT-009 Expose the canonical catalog through ModelManager
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -258,7 +258,7 @@ Program invariants:
 
 ## AICAT-010 Represent served endpoints and backends as deployments
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -283,7 +283,7 @@ Program invariants:
 
 ## AICAT-011 Converge InferenceBackendManager on typed catalog records
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -308,7 +308,7 @@ Program invariants:
 
 ## AICAT-012 Replace duplicate API model registries with compatibility projections
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -333,7 +333,7 @@ Program invariants:
 
 ## AICAT-013 Add MCP catalog query and resolution tools
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -358,7 +358,7 @@ Program invariants:
 
 ## AICAT-014 Route MCP text and embeddings through canonical routers
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -383,7 +383,7 @@ Program invariants:
 
 ## AICAT-015 Route MCP multimodal and voice operations through canonical routers
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -408,7 +408,7 @@ Program invariants:
 
 ## AICAT-016 Define the ai.catalog.v1 MCP++ interface
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -433,7 +433,7 @@ Program invariants:
 
 ## AICAT-017 Advertise and federate compact MCP++ catalog snapshots
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -458,7 +458,7 @@ Program invariants:
 
 ## AICAT-018 Harden federated catalog signatures, authorization, and input policy
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -483,7 +483,7 @@ Program invariants:
 
 ## AICAT-019 Add cache invalidation, selection receipts, and observability
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -508,7 +508,7 @@ Program invariants:
 
 ## AICAT-020 Prove conformance, preserve compatibility, and document rollout
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -533,7 +533,7 @@ Program invariants:
 
 ## AICAT-021 Resolve validation retry-budget failure for AICAT-005
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -544,7 +544,7 @@ Program invariants:
 
 ## AICAT-022 Resolve dirty main checkout blocking 1 worktree merges
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Resolution: Removed only the clean registered AICAT-005 worktree after confirming its branch and commits remain preserved. A fresh reconciliation pass no longer lists that historical candidate; unrelated dirty main-checkout work was left untouched.
 - Is schedulable: false
@@ -560,7 +560,7 @@ Program invariants:
 
 ## AICAT-023 Resolve validation retry-budget failure for AICAT-016
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Resolution: Replaced the nonexistent test/test_mcplusplus_idl_registry.py validation target with the existing ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py regression suite. The completed repair receipt releases the strategy block, and each daemon lane consumes that receipt once to reset AICAT-016's durable attempt budget and queue backpressure.
 - Priority: P1
@@ -572,7 +572,7 @@ Program invariants:
 
 ## AICAT-024 Resolve 1 dirty backlogged worktrees blocked by unsupported_status
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Resolution: Preserved the quarantined all-deletions rescue commit and branch, then removed only its clean worktree registration. A fresh reconciliation pass reports no dirty worktree groups and the candidate population decreased from four registered worktrees to two unrelated preserved rescues.
 - Is schedulable: false
@@ -588,7 +588,7 @@ Program invariants:
 
 ## AICAT-025 Define endpoint-scoped usage, limit, event, and receipt contracts
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -613,7 +613,7 @@ Program invariants:
 
 ## AICAT-026 Normalize configured and provider-observed usage metadata
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -638,7 +638,7 @@ Program invariants:
 
 ## AICAT-027 Build an atomic durable usage ledger and reservation coordinator
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -663,7 +663,7 @@ Program invariants:
 
 ## AICAT-028 Add usage snapshots and usage-aware resolution to ModelManager
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -688,7 +688,7 @@ Program invariants:
 
 ## AICAT-029 Implement shared route admission, ranking, fallback, and receipts
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -713,7 +713,7 @@ Program invariants:
 
 ## AICAT-030 Integrate usage-aware admission into llm_router
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -738,7 +738,7 @@ Program invariants:
 
 ## AICAT-031 Integrate usage-aware admission into embeddings_router
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -763,7 +763,7 @@ Program invariants:
 
 ## AICAT-032 Integrate usage-aware admission into multimodal_router
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -788,7 +788,7 @@ Program invariants:
 
 ## AICAT-033 Integrate usage-aware admission into voice_router
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -813,7 +813,7 @@ Program invariants:
 
 ## AICAT-034 Expose authorized usage controls, receipts, and observability
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -838,7 +838,7 @@ Program invariants:
 
 ## AICAT-035 Prove usage-routing conformance, faults, security, and staged rollout
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
