@@ -1,6 +1,6 @@
 {
   "schema": "repository-proof-index-backlog-status/v1",
-  "updated_at_utc": "2026-10-04T01:14:54.630814+00:00",
+  "updated_at_utc": "2026-10-04T02:47:28.452717+00:00",
   "scope": "Frozen 32-task acceptance ledger. Declared-profile criterion qualification and production closure with all prerequisites are tracked separately.",
   "source": {
     "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
@@ -665,6 +665,26 @@
       "path": "docs/agent_supervisor/evidence/doctor-candidate-budget-20261004/manifest.json",
       "sha256": "bbb04faa8c22cd4fd5d961c38f98fe3387d2dcf7998200745e11416109105d4e",
       "retention": "repository_evidence"
+    },
+    "semantic-preparation-reuse": {
+      "path": "docs/agent_supervisor/evidence/semantic-preparation-reuse-20261004/manifest.json",
+      "sha256": "040663c58007431c232bdb28238b9aa651d4b784308df06fd0fd5537249089d4",
+      "retention": "repository_evidence"
+    },
+    "semantic-preparation-source-timeout": {
+      "path": "docs/agent_supervisor/evidence/semantic-preparation-source-timeout-20261004/manifest.json",
+      "sha256": "8cfddb87662574a1627068238f373f27ac041f994bdf2aa67faecc5d38f7d3a3",
+      "retention": "repository_evidence"
+    },
+    "source-observation-batching": {
+      "path": "docs/agent_supervisor/evidence/source-observation-batching-20261004/manifest.json",
+      "sha256": "6648e43a9b0290bbd22a201ccaeb6fa51b03005ada6bc8448e613858482397f7",
+      "retention": "repository_evidence"
+    },
+    "source-observation-host-diagnostic": {
+      "path": "docs/agent_supervisor/evidence/source-observation-host-diagnostic-20261004/manifest.json",
+      "sha256": "c58458a1ead8b13ae7403da7db95476c7d90254c9ed095f197d61ffbdc9464a5",
+      "retention": "repository_evidence"
     }
   },
   "criteria": [
@@ -1188,7 +1208,9 @@
         "The shared scheduler now attaches its existing request-local primary proof-gate sample and cooldown status to timeout/cancellation exceptions, without additional sampling or ledger fields. Supervisor/qualifier failure handlers project bounded metadata separately from post-unwind observations. The 121 shared scheduler and 104 supervisor controls all execute and pass. This does not capture every admission gate or identify pressure causality; it was not present in the preceding Docker retry and still requires a fresh archive/native qualification.",
         "Request-local admission diagnostics execute in an actual container and capture a post-worker refusal at 8601 MiB available against 6144 MiB root reservations plus 2458 MiB headroom; stall thresholds pass. Completed input/checkpoint/construction objects are now released before later source fences and independent replay. Three pre-fix lifetime failures become 17 passing unit controls; seven actual checkpoint/source-unit tests also pass. The initial host package-path mismatch refusal is retained separately from the corrected native run.",
         "The new one-file runtime delta passes ordinary Docker qualification: Source384 88.944s within 90s, initial context 150.983s, warm observation 10.329s, probe 173.323s. The subsequent full trial reaches symbolic planning (2 goals, 1 task, 0 provider calls), context reuse and a Z3/Lean-checked Doctor header-contract candidate. Initial context is 138.971s, planning 33.712s, context 20.915s and Doctor 35.585s. It receives official reward 0 after implementation setup rejects the remaining budget; native dispatch/publication is not reached. Learned source candidates remain unverified; the reviewed local proof is not whole-program or natural-language semantic verification.",
-        "The driver now applies its 25-second provider-timeout reserve only to the model route; Doctor candidate commands do not consume that argument. Two pre-fix late-candidate failures become 110 passing supervisor controls. The 245-second work cutoff, 40-second cleanup reserve and all admission/source/proof checks remain unchanged. This later driver change is component-qualified and requires a new Docker generation; the successful qualification/full trial precede it."
+        "The driver now applies its 25-second provider-timeout reserve only to the model route; Doctor candidate commands do not consume that argument. Two pre-fix late-candidate failures become 110 passing supervisor controls. The 245-second work cutoff, 40-second cleanup reserve and all admission/source/proof checks remain unchanged. This later driver change is component-qualified and requires a new Docker generation; the successful qualification/full trial precede it.",
+        "Immutable graph identity and canonical-pointer syntax reuse passes 494 selected component controls. All 6261 public-source semantic blocks, worker payload and Doctor diagnostic bytes remain identical; the graph timing pair lacks contemporaneous producer pins and is diagnostic only. The subsequent ordinary Docker archive passes deployment but times out in the post-worker Source384 source-currentness observation: initial context 98.027s, probe 110.208s. Semantic context is not reached, no admission-time refusal is attached, source/task pins and cleanup pass, and no full task or score is produced.",
+        "Bounded active AST batch reconstruction and source-local function line indexing pass 207 combined integration and seven actual checkpoint/GTE inference/replay controls; the retained span/batch package contains 285 unique passing test identities across 319 executions. The 31-AST control reduces 403 SELECTs to 13. Oversized multi-AST reads require sequential splitting after releasing failed batch frames; scalar bounds, full canonical reconstruction, CAS verification, fresh identity/source/head fences and cancellation remain. Encoded input limits are not hard RSS limits; the identity fence does not re-audit relation tables after the full read. Public Bottle extraction output is unchanged over 20 alternating runs, with median host CPU falling from 0.400s to 0.201s; no Docker or completed-task speedup follows from this component result."
       ],
       "remaining_work": [
         "The complete criterion above has not been qualified in the released integration.",
@@ -1239,7 +1261,11 @@
         "source384-construction-lifetime",
         "source384-construction-docker",
         "source384-doctor-candidate-full-trial",
-        "doctor-candidate-budget"
+        "doctor-candidate-budget",
+        "semantic-preparation-reuse",
+        "semantic-preparation-source-timeout",
+        "source-observation-batching",
+        "source-observation-host-diagnostic"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },
@@ -1269,7 +1295,9 @@
         "The shared scheduler now attaches its existing request-local primary proof-gate sample and cooldown status to timeout/cancellation exceptions, without additional sampling or ledger fields. Supervisor/qualifier failure handlers project bounded metadata separately from post-unwind observations. The 121 shared scheduler and 104 supervisor controls all execute and pass. This does not capture every admission gate or identify pressure causality; it was not present in the preceding Docker retry and still requires a fresh archive/native qualification.",
         "Request-local admission diagnostics execute in an actual container and capture a post-worker refusal at 8601 MiB available against 6144 MiB root reservations plus 2458 MiB headroom; stall thresholds pass. Completed input/checkpoint/construction objects are now released before later source fences and independent replay. Three pre-fix lifetime failures become 17 passing unit controls; seven actual checkpoint/source-unit tests also pass. The initial host package-path mismatch refusal is retained separately from the corrected native run.",
         "The new one-file runtime delta passes ordinary Docker qualification: Source384 88.944s within 90s, initial context 150.983s, warm observation 10.329s, probe 173.323s. The subsequent full trial reaches symbolic planning (2 goals, 1 task, 0 provider calls), context reuse and a Z3/Lean-checked Doctor header-contract candidate. Initial context is 138.971s, planning 33.712s, context 20.915s and Doctor 35.585s. It receives official reward 0 after implementation setup rejects the remaining budget; native dispatch/publication is not reached. Learned source candidates remain unverified; the reviewed local proof is not whole-program or natural-language semantic verification.",
-        "The driver now applies its 25-second provider-timeout reserve only to the model route; Doctor candidate commands do not consume that argument. Two pre-fix late-candidate failures become 110 passing supervisor controls. The 245-second work cutoff, 40-second cleanup reserve and all admission/source/proof checks remain unchanged. This later driver change is component-qualified and requires a new Docker generation; the successful qualification/full trial precede it."
+        "The driver now applies its 25-second provider-timeout reserve only to the model route; Doctor candidate commands do not consume that argument. Two pre-fix late-candidate failures become 110 passing supervisor controls. The 245-second work cutoff, 40-second cleanup reserve and all admission/source/proof checks remain unchanged. This later driver change is component-qualified and requires a new Docker generation; the successful qualification/full trial precede it.",
+        "Immutable graph identity and canonical-pointer syntax reuse passes 494 selected component controls. All 6261 public-source semantic blocks, worker payload and Doctor diagnostic bytes remain identical; the graph timing pair lacks contemporaneous producer pins and is diagnostic only. The subsequent ordinary Docker archive passes deployment but times out in the post-worker Source384 source-currentness observation: initial context 98.027s, probe 110.208s. Semantic context is not reached, no admission-time refusal is attached, source/task pins and cleanup pass, and no full task or score is produced.",
+        "Bounded active AST batch reconstruction and source-local function line indexing pass 207 combined integration and seven actual checkpoint/GTE inference/replay controls; the retained span/batch package contains 285 unique passing test identities across 319 executions. The 31-AST control reduces 403 SELECTs to 13. Oversized multi-AST reads require sequential splitting after releasing failed batch frames; scalar bounds, full canonical reconstruction, CAS verification, fresh identity/source/head fences and cancellation remain. Encoded input limits are not hard RSS limits; the identity fence does not re-audit relation tables after the full read. Public Bottle extraction output is unchanged over 20 alternating runs, with median host CPU falling from 0.400s to 0.201s; no Docker or completed-task speedup follows from this component result."
       ],
       "remaining_work": [
         "Execute the complete matched multi-arm campaign and frozen correctness/cost gates, including runtime enforcement, decoder/mask ablations, shared/repository children, cold/warm eligibility, independent review costs and official outcomes. Configuration-control qualification does not establish benchmark advantage.",
@@ -1305,7 +1333,11 @@
         "source384-construction-lifetime",
         "source384-construction-docker",
         "source384-doctor-candidate-full-trial",
-        "doctor-candidate-budget"
+        "doctor-candidate-budget",
+        "semantic-preparation-reuse",
+        "semantic-preparation-source-timeout",
+        "source-observation-batching",
+        "source-observation-host-diagnostic"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },

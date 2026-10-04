@@ -739,3 +739,46 @@ reuse or parallel construction must retain exact input/producer bindings,
 bounded shared leases and fresh source/proof gates. Native dispatch, accepted
 publication and successor validation remain unqualified. No completed token
 score or matched-arm advantage is claimed; the backlog remains **18/32 closed**.
+
+## Immutable preparation reuse and bounded AST observation
+
+The [preparation reuse controls](../../../docs/agent_supervisor/evidence/semantic-preparation-reuse-20261004/README.md)
+cover call-local immutable graph identities and bounded canonical-pointer syntax
+reuse. All 494 selected controls pass. On the public source input, all 6261
+semantic blocks, worker payload and Doctor diagnostic bytes remain identical.
+The graph timing pair lacks contemporaneous producer pins and is only a host
+diagnostic; the separately pinned pointer profile is also a component measurement.
+Neither establishes a Docker or completed-task speedup.
+
+The [first fresh Docker archive](../../../docs/agent_supervisor/evidence/semantic-preparation-source-timeout-20261004/README.md)
+passes deployment but exceeds the unchanged Source384 deadline during its
+post-worker source-currentness observation. Initial context fails after 98.027s;
+the native probe takes 110.208s. Semantic context construction is not reached,
+so the run does not measure graph reuse. No admission-time refusal is attached,
+and later resource samples do not establish the cause. Source/task pins and
+container cleanup pass; no full task is launched.
+
+The [subsequent observation controls](../../../docs/agent_supervisor/evidence/source-observation-batching-20261004/README.md)
+pass 207 combined integration tests and seven actual checkpoint/GTE inference
+and replay tests. Including the separately retained span and batch controls,
+the package contains 285 unique passing test identities, with repeated
+executions counted separately. Active AST reconstruction uses fresh bounded
+SQL snapshots: the 31-AST control falls from 403 SELECTs to 13. Oversized
+multi-AST reads raise an explicit limit error and are split before the next
+part is loaded. Single-AST limits, canonical relational reconstruction, CAS
+verification, cancellation, source recapture and final head checks remain.
+A fresh blob/file/revision fence catches invalidation during artifact reads;
+it is not a second relation-table audit or a transaction across source files
+and SQL. Encoded-input and row limits are not hard RSS limits.
+
+Function extraction now builds one source-local line index while retaining
+per-function byte-map and isolated AST checks. Twenty alternating public Bottle
+extractions preserve all outputs; median host CPU falls from 0.400s to 0.201s.
+These component results do not establish completed-work efficiency.
+
+The separate [host observation diagnostic](../../../docs/agent_supervisor/evidence/source-observation-host-diagnostic-20261004/confounded-host-diagnostic-summary.json)
+was interrupted under observed CPU starvation and its outer controller later
+timed out. Normal lease renewal was verified, but no AST-query timing pair
+completed. The retained database, source and CAS hashes are unchanged; the
+owned process is absent and its isolated ledger has no leases or waiters.
+This diagnostic supplies no performance comparison.

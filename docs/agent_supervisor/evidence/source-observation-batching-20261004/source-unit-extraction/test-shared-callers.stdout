@@ -1,0 +1,14 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collected 30 items
+
+tests/unit/logic/formalization/autoencoder/test_security_formalization_evaluation.py . [  3%]
+..................                                                       [ 63%]
+tests/unit/logic/formalization/autoencoder/test_security_formula_corpus.py . [ 66%]
+..........                                                               [100%]
+
+- generated xml file: /home/barberb/lift_coding/artifacts/source-unit-extraction-profile-20261004-01/test-shared-callers.xml -
+============================== 30 passed in 7.18s ==============================
