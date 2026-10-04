@@ -859,6 +859,17 @@ reconstruction from two to one. Two alternating untraced samples per mode show
 17.7 percent lower local component CPU; the small host diagnostic establishes
 neither RSS reduction nor admission recovery or a general speedup.
 
-These changes still require fresh ordinary Docker qualification. Checkpoint
-weights and proof authority are unchanged, and no completed token score or
-matched-arm advantage is claimed. The backlog remains **18/32 closed**.
+The [fresh ordinary Docker attempt](../../../docs/agent_supervisor/evidence/pressure-replay-source-timeout-20261004/README.md)
+passes deployment in 285.209s but fails the final Source384 currentness checkpoint
+after inference/save/reload. Initial context takes 98.113s under the unchanged
+cooperative 90-second Source384 deadline, the probe 110.534s and the controller
+466.765s. No request-local admission observation is attached. Later post-unwind
+resource values do not establish the timeout cause. Source/task pins and cleanup
+pass; no full task or official verifier follows the failed prerequisite.
+
+The earlier stage diagnostic measured cold index publication at 43.570s; it
+motivates further profiling but does not isolate this run's cause. The component
+evidence manifest also corrects three export labels for bounded logs already
+present in nested packages, with no runtime/test change. Checkpoint weights,
+proof authority and resource limits remain unchanged. There is no new reward,
+completed token score or matched-arm advantage; the backlog stays **18/32 closed**.

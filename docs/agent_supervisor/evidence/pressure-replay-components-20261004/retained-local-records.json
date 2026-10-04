@@ -1,17 +1,26 @@
 {
   "artifacts/ast-observation-reconstruction-20261004/focused-02-stderr.txt": {
     "bytes": 0,
-    "raw_body_exported": false,
+    "exported_paths": [
+      "reconstruction/focused-02-stderr.txt"
+    ],
+    "raw_body_exported": true,
     "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   },
   "artifacts/ast-observation-reconstruction-20261004/focused-02-stdout.txt": {
     "bytes": 1172,
-    "raw_body_exported": false,
+    "exported_paths": [
+      "reconstruction/focused-02-stdout.txt"
+    ],
+    "raw_body_exported": true,
     "sha256": "7221cf448f95bd65c4e04b271c7ca40d9e970610c12fe1ea980adad3cc25d409"
   },
   "artifacts/pressure-attribution-controls-20261004/focused-01.log": {
     "bytes": 1665,
-    "raw_body_exported": false,
+    "exported_paths": [
+      "pressure/focused-01.log"
+    ],
+    "raw_body_exported": true,
     "sha256": "27754ba8a70868123144149f63953e31a2a41859c6aee5b09c1cfa67ed0f3e3a"
   },
   "artifacts/pressure-replay-native-20261004/controls-03-stderr.txt": {

@@ -1,9 +1,9 @@
 {
   "files": [
     {
-      "bytes": 2607,
+      "bytes": 2845,
       "path": "README.md",
-      "sha256": "e6bf1ec9e3acad791bbcc89b654cb3b5a956f2e5e1084c2e5c4f75d0fb3e6045"
+      "sha256": "55a764b2f47c81b976ac403d4d9264903da73f7df442c9cb56eb790ccc526fab"
     },
     {
       "bytes": 1902,
@@ -391,9 +391,9 @@
       "sha256": "8c824e27c3a692c08468ac9cb3d0625723cdec2ff8fca1bc4ebcc0d1fb182d04"
     },
     {
-      "bytes": 1860,
+      "bytes": 2072,
       "path": "retained-local-records.json",
-      "sha256": "d2d5e7d8e4bb023ac952bd2b6f23b0eae4e7483b6417c3443ac23603b131aa47"
+      "sha256": "bfc07c1b5c154dddb25a0b2d18985fc47b88887202b4599b51405346b9bb45a8"
     }
   ],
   "schema": "pressure-replay-component-evidence@1"
