@@ -29,7 +29,6 @@ import threading
 import time
 import uuid
 from collections.abc import Mapping, Sequence
-from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -85,9 +84,6 @@ TYPED_STATE_OWNER_SCHEMA: Final = (
 )
 TYPED_STATE_OWNER_SOCKET_ENV: Final = "IPFS_ACCELERATE_AGENT_STATE_OWNER_SOCKET"
 TYPED_STATE_OWNER_TOKEN_ENV: Final = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
-LOCAL_COMPLETION_RPC_TIMEOUT_ENV: Final = "IPFS_ACCELERATE_LOCAL_COMPLETION_RPC_TIMEOUT_SECONDS"
-LOCAL_COMPLETION_RPC_TIMEOUT_SECONDS: Final = 125.0
-_LOCAL_COMPLETION_REQUEST_DEADLINE = ContextVar("local_completion_request_deadline", default=None)
 TYPED_STATE_OWNER_SOCKET_FILENAME: Final = "typed-state-owner.sock"
 TYPED_STATE_OWNER_TOKEN_FILENAME: Final = "typed-state-owner.token"
 TYPED_RETRY_COOLDOWN_SCHEMA: Final = (
@@ -298,7 +294,6 @@ TYPED_RETRYING_RECEIPT_OPERATIONS: Final[frozenset[str]] = frozenset(
         "database_portal_pooled_worktree_create_retry_recovery",
         "database_portal_superseded_consumed_attempt_recovery",
         "database_portal_post_commit_candidate_recovery",
-        "database_portal_callback_no_effect_recovery",
         "database_portal_post_merge_declared_output_recovery",
         "database_post_merge_declared_outputs_repair_recovery",
         "database_post_merge_declared_outputs_requalification_recovery",
@@ -310,7 +305,6 @@ TYPED_RETRYING_RECEIPT_OPERATIONS: Final[frozenset[str]] = frozenset(
         "database_portal_inflight_deferral_unstall",
         TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
         TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_OPERATION,
-        "database_unknown_callback_quarantine_continuation",
     }
 )
 _PROTECTED_REOPENED_TASK_STATUSES: Final[frozenset[str]] = frozenset(
@@ -5258,15 +5252,10 @@ def _send_frame(channel: socket.socket, payload: Mapping[str, Any]) -> None:
     channel.sendall(len(body).to_bytes(4, "big") + body)
 
 
-def _receive_exact(channel: socket.socket, length: int, *, deadline_monotonic=None) -> bytes:
+def _receive_exact(channel: socket.socket, length: int) -> bytes:
     chunks: list[bytes] = []
     remaining = length
     while remaining:
-        if deadline_monotonic is not None:
-            left = deadline_monotonic - time.monotonic()
-            if left <= 0:
-                raise TimeoutError("typed owner completion response deadline expired")
-            channel.settimeout(left)
         part = channel.recv(remaining)
         if not part:
             raise TypedStateOwnerProtocolError("typed state-owner channel closed")
@@ -5275,12 +5264,12 @@ def _receive_exact(channel: socket.socket, length: int, *, deadline_monotonic=No
     return b"".join(chunks)
 
 
-def _receive_frame(channel: socket.socket, *, deadline_monotonic=None) -> dict[str, Any]:
-    size = int.from_bytes(_receive_exact(channel, 4, deadline_monotonic=deadline_monotonic), "big")
+def _receive_frame(channel: socket.socket) -> dict[str, Any]:
+    size = int.from_bytes(_receive_exact(channel, 4), "big")
     if size < 2 or size > MAX_FRAME_BYTES:
         raise TypedStateOwnerProtocolError("typed state-owner frame size is invalid")
     try:
-        value = json.loads(_receive_exact(channel, size, deadline_monotonic=deadline_monotonic).decode("utf-8"))
+        value = json.loads(_receive_exact(channel, size).decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise TypedStateOwnerProtocolError("typed state-owner frame is not JSON") from exc
     if not isinstance(value, dict):
@@ -5486,7 +5475,6 @@ class TypedStateOwnerGateway:
         self._local_task_validation_handler: Any | None = None
         self._local_task_validation_binding: object | None = None
         self._local_task_validation_active = 0
-        self._local_task_validation_active_thread: int | None = None
         self._commit_observer: Any | None = None
         self._last_observer_error_type = ""
         self._eaaef_service_bind_lock = threading.Lock()
@@ -7332,10 +7320,6 @@ class TypedStateOwnerGateway:
                             )
                         response = {"ok": True, "result": dict(command_result)}
                     elif action == "local.task.validation.run":
-                        # Server-owned receipt time, never a worker deadline.
-                        # The opt-in completion service charges lock wait to
-                        # the same callback ceiling; ordinary services ignore it.
-                        received_deadline = time.monotonic() + 120.
                         self._reject_unknown(
                             request, {"schema", "action", "request_id", "task_cid", "attempt_id", "expected_revision"},
                             "local task validation request",
@@ -7347,15 +7331,9 @@ class TypedStateOwnerGateway:
                         revision = request.get("expected_revision")
                         if type(revision) is not int or revision < 1:
                             raise TypedStateOwnerProtocolError("local validation revision is invalid")
-                        token = _LOCAL_COMPLETION_REQUEST_DEADLINE.set(received_deadline)
-                        try:
-                            with self._transaction_lock:
-                                grant = self._require_active_grant(grant, peer_identity=peer_identity, session_id=session_id)
-                                result = self._invoke_local_task_validation_handler_locked(
-                                    task_cid, attempt_id, revision, grant,
-                                )
-                        finally:
-                            _LOCAL_COMPLETION_REQUEST_DEADLINE.reset(token)
+                        with self._transaction_lock:
+                            grant = self._require_active_grant(grant, peer_identity=peer_identity, session_id=session_id)
+                            result = self._invoke_local_task_validation_handler_locked(task_cid, attempt_id, revision, grant)
                         response = {"ok": True, "result": dict(result)}
                     elif action == "wait_events":
                         self._reject_unknown(
@@ -13228,82 +13206,55 @@ class TypedStateOwnerGateway:
                 self._database_task_command_handler = handler
         _mirror_owner_binding("database_task_command_handler_binding")
 
-    def bind_local_task_validation_handler(
-        self, handler: Any, *, retirable: bool = False,
-    ) -> object | None:
-        """Bind one trusted callback; opt-in retirement gets an opaque capability.
-
-        Ordinary bindings keep their original lifetime and return ``None``.
-        A retirement capability is process-local identity, never serialized or
-        exposed through the worker RPC. A fresh binding gets a fresh identity.
-        """
-        if type(retirable) is not bool:
-            raise TypedStateOwnerProtocolError("retirable must be an exact boolean")
+    def bind_local_task_validation_handler(self, handler: Any, *, retirable: bool = False) -> object | None:
+        """Bind one trusted fixed-scope owner validation service exactly once."""
         if not callable(handler):
             raise TypedStateOwnerProtocolError("local validation handler must be callable")
+        if type(retirable) is not bool:
+            raise TypedStateOwnerProtocolError("local validation retirement opt-in must be boolean")
         with self._grants_lock:
             if self._local_task_validation_handler is not None:
                 raise TypedStateOwnerProtocolError("local validation handler is already bound")
-            binding = object() if retirable else None
             self._local_task_validation_handler = handler
-            self._local_task_validation_binding = binding
-            self._local_task_validation_active = 0
-            self._local_task_validation_active_thread = None
-            return binding
+            self._local_task_validation_binding = object() if retirable else None
+            return self._local_task_validation_binding
 
-    def unbind_local_task_validation_handler(self, handler: Any, binding: object) -> bool:
-        """Retire only the exact idle callback whose capability the caller owns.
-
-        Never wait for transaction custody while holding the grants lock. A
-        nonblocking custody check refuses concurrent owner work; the second
-        identity check closes the race with another retirement and rebind.
-        """
-        with self._grants_lock:
-            if (binding is None or self._local_task_validation_binding is not binding
-                    or self._local_task_validation_handler is not handler):
-                return False
-            if (self._local_task_validation_active
-                    and self._local_task_validation_active_thread == threading.get_ident()):
-                raise TypedStateOwnerProtocolError("owner local validation callback is active")
-        if not self._transaction_lock.acquire(blocking=False):
-            raise TypedStateOwnerProtocolError("owner local validation custody is active")
-        try:
-            with self._grants_lock:
-                if (self._local_task_validation_binding is not binding
-                        or self._local_task_validation_handler is not handler):
-                    return False
-                if self._local_task_validation_active:
-                    raise TypedStateOwnerProtocolError("owner local validation callback is active")
-                self._local_task_validation_handler = None
-                self._local_task_validation_binding = None
-                return True
-        finally:
-            self._transaction_lock.release()
-
-    def _invoke_local_task_validation_handler(self, *args: Any, **kwargs: Any) -> Any:
-        """Invoke with exclusive owner custody, including callback selection."""
+    def _invoke_local_task_validation_handler(self, *args: Any) -> Any:
+        """Select and execute under owner custody, with explicit callback lifetime."""
         with self._transaction_lock:
-            return self._invoke_local_task_validation_handler_locked(*args, **kwargs)
+            return self._invoke_local_task_validation_handler_locked(*args)
 
-    def _invoke_local_task_validation_handler_locked(self, *args: Any, **kwargs: Any) -> Any:
-        """Caller holds transaction custody; do not reacquire a plain Lock.
-
-        The active count also prevents same-thread retirement through an RLock
-        while a callback is on the stack. Failure always releases this count.
-        """
+    def _invoke_local_task_validation_handler_locked(self, *args: Any) -> Any:
+        """The native RPC already owns its transaction lock when selecting."""
         with self._grants_lock:
             handler = self._local_task_validation_handler
             if not callable(handler):
                 raise TypedStateOwnerProtocolError("owner local validation service is unavailable")
             self._local_task_validation_active += 1
-            self._local_task_validation_active_thread = threading.get_ident()
         try:
-            return handler(*args, **kwargs)
+            return handler(*args)
         finally:
             with self._grants_lock:
                 self._local_task_validation_active -= 1
-                if not self._local_task_validation_active:
-                    self._local_task_validation_active_thread = None
+
+    def unbind_local_task_validation_handler(self, handler: Any, binding: object) -> bool:
+        """Retire only the exact live binding; never detach an active or foreign handler."""
+        if not callable(handler) or binding is None:
+            return False
+        if not self._transaction_lock.acquire(blocking=False):
+            raise TypedStateOwnerProtocolError("owner validation callback custody is active")
+        try:
+            with self._grants_lock:
+                if self._local_task_validation_active:
+                    raise TypedStateOwnerProtocolError("owner validation callback is active")
+                if (self._local_task_validation_handler is not handler
+                        or self._local_task_validation_binding is not binding):
+                    return False
+                self._local_task_validation_handler = None
+                self._local_task_validation_binding = None
+                return True
+        finally:
+            self._transaction_lock.release()
 
     def _admit_open_grant(
         self,
@@ -13412,8 +13363,6 @@ class TypedStateOwnerConnection:
         self._active = False
         self._prepared_command: StateCommand | None = None
         self._request_index = 0
-        self._local_completion_timeout = None
-        self._local_completion_deadline = None
         try:
             opened = self._request(
                 "open_fleet" if fleet_observation_read else (
@@ -13434,43 +13383,10 @@ class TypedStateOwnerConnection:
         self.catalog_id = str(opened.get("catalog_id") or "")
         self.session_id = str(opened.get("session_id") or "")
         self.grant = MappingProxyType(dict(opened.get("grant") or {}))
-        expiry = self.grant.get("expires_at")
-        self._initial_grant_deadline = (time.monotonic() + (expiry / 1000 - time.time())
-            if type(expiry) is int and expiry > 0 else None)
         if not self.session_id:
             raise TypedStateOwnerProtocolError(
                 "typed owner handshake returned no admitted session"
             )
-
-    def run_local_task_validation(self, *, task_cid, attempt_id, expected_revision):
-        """One closed completion RPC; longer receive time is never authority.
-
-        The allowance is installed only after process-bound bootstrap checks.
-        Other operations retain the ordinary socket timeout. A failed exchange
-        remains poisoned, and this method never retries an ambiguous callback.
-        """
-        with self._request_lock:
-            if self._local_completion_timeout is None:
-                return self._request("local.task.validation.run", task_cid=task_cid,
-                    attempt_id=attempt_id, expected_revision=expected_revision)
-            if self._closed:
-                raise TypedStateOwnerProtocolError("typed owner connection is closed")
-            if self._initial_grant_deadline is None:
-                raise TypedStateOwnerAuthorizationError("completion transport lacks its original grant expiry")
-            deadline = min(time.monotonic() + self._local_completion_timeout,
-                           self._initial_grant_deadline)
-            if deadline <= time.monotonic():
-                raise TimeoutError("completion transport grant deadline expired before dispatch")
-            previous = self._socket.gettimeout()
-            self._local_completion_deadline = deadline
-            try:
-                self._socket.settimeout(deadline - time.monotonic())
-                return self._request("local.task.validation.run", task_cid=task_cid,
-                    attempt_id=attempt_id, expected_revision=expected_revision)
-            finally:
-                self._local_completion_deadline = None
-                if not self._closed:
-                    self._socket.settimeout(previous)
 
     def legacy_merge_queue(self, payload: Mapping[str, Any]) -> Mapping[str, Any]:
         """Invoke a closed legacy queue operation using this exact existing grant."""
@@ -13797,11 +13713,7 @@ class TypedStateOwnerConnection:
                         **fields,
                     },
                 )
-                deadline = self._local_completion_deadline if action == "local.task.validation.run" else None
-                response = (_receive_frame(self._socket) if deadline is None
-                    else _receive_frame(self._socket, deadline_monotonic=deadline))
-                if deadline is not None and time.monotonic() >= deadline:
-                    raise TimeoutError("typed owner completion response exceeded its deadline")
+                response = _receive_frame(self._socket)
             except (OSError, TypedStateOwnerProtocolError):
                 # A timeout or partial frame destroys request/response
                 # alignment.  Never let a retry consume the late tail of the
@@ -13976,8 +13888,6 @@ def open_typed_state_owner_connection(
 
 
 __all__ = [
-    "LOCAL_COMPLETION_RPC_TIMEOUT_ENV",
-    "LOCAL_COMPLETION_RPC_TIMEOUT_SECONDS",
     "COMPLETION_PROGRESS_SNAPSHOT_OPERATION",
     "MAX_COMPLETION_PROGRESS_SNAPSHOT_BYTES",
     "MAX_COMPLETION_PROGRESS_TASKS",

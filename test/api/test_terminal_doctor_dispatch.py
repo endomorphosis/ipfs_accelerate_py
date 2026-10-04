@@ -14,8 +14,6 @@ from test.api.test_agent_supervisor_local_planning_admission import scenario  # 
 from test.api.test_doctor_task_workflow import _prepare, _prepare_analysis_guard_fixture, _provers, SOURCE
 from benchmarks.agent_supervisor.container_coding import terminal_doctor_dispatch as dispatch
 from benchmarks.agent_supervisor.container_coding import terminal_container_supervisor as driver
-from benchmarks.agent_supervisor.container_coding import native_quack_qualification as native_owner
-from ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime import AdmittedBenchmarkRuntime
 
 
 def test_real_automatic_dispatch_publishes_only_candidate_handoff(scenario, tmp_path, monkeypatch):
@@ -135,7 +133,6 @@ def test_driver_selects_before_owner_and_preserves_provider_accounting(tmp_path,
         state.mkdir(parents=True)
         (state / 'admission.json').write_text('{}')
         events.append('prepare')
-        return {'intent_preplanning': {}}
     monkeypatch.setattr(driver.preparation, 'prepare', prepare)
     def initial_context(**_):
         events.append('initial_context')
@@ -158,12 +155,12 @@ def test_driver_selects_before_owner_and_preserves_provider_accounting(tmp_path,
         return {'route': route, 'status': 'candidate_ready' if route == 'doctor_candidate' else 'residual',
             'provider_calls': 0, 'artifact': '/app/.runtime/doctor-handoffs/candidate.json',
             'sha256': 'a' * 64, 'task_cid': task.task_cid}
-    monkeypatch.setattr(dispatch, 'prepare_terminal_doctor_dispatch', doctor)
+    monkeypatch.setattr(driver, 'prepare_terminal_doctor_dispatch', doctor)
     @contextmanager
     def owner(**_):
         events.append('owner')
         yield SimpleNamespace(server=object(), source=SimpleNamespace(get_task=lambda _: task))
-    monkeypatch.setattr(native_owner, 'open_existing_native_owner', owner)
+    monkeypatch.setattr(driver, 'open_existing_native_owner', owner)
     response = SimpleNamespace(to_dict=lambda: {'status': 'succeeded'})
     def runtime(_state, **kwargs):
         events.append('runtime')
@@ -178,7 +175,7 @@ def test_driver_selects_before_owner_and_preserves_provider_accounting(tmp_path,
         return SimpleNamespace(state=state, start=lambda: response, stop=lambda: response,
             observe=lambda: {}, close=lambda: None, profile=object(),
             process=SimpleNamespace(snapshot=lambda _: SimpleNamespace(members=[])))
-    monkeypatch.setattr(AdmittedBenchmarkRuntime, 'create', runtime)
+    monkeypatch.setattr(driver.AdmittedBenchmarkRuntime, 'create', runtime)
     monkeypatch.setattr(driver, '_native_diagnostics', lambda _: {})
     monkeypatch.setattr(driver, '_final_context_audit', lambda *_args, **_kwargs: None)
     result = driver.run(instruction=tmp_path / 'instruction', state=state, arm=arm,

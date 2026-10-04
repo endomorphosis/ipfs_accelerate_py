@@ -539,8 +539,19 @@ def _checked(output):
 
 
 def _fresh(output, expected):
+    # Optional integrations can prepend unrelated clones to the parent's path.
+    # Restart from the package that actually supplied this native readback.
+    package_file = getattr(sys.modules.get("ipfs_datasets_py"), "__file__", None)
+    _require(type(package_file) is str, "loaded datasets package file required for restart")
+    package_path = Path(package_file)
+    _require(package_path.is_absolute() and package_path.resolve(strict=True) == package_path
+             and stat.S_ISREG(package_path.stat().st_mode)
+             and package_path.name == "__init__.py" and package_path.parent.name == "ipfs_datasets_py",
+             "canonical regular loaded datasets package required for restart")
+    roots = [package_path.parent.parent, Path(__file__).resolve().parents[3]]
+    inherited = [Path(value or os.getcwd()).resolve() for value in sys.path]
     env = dict(os.environ)
-    env["PYTHONPATH"] = os.pathsep.join(str(Path(value or os.getcwd()).resolve()) for value in sys.path)
+    env["PYTHONPATH"] = os.pathsep.join(str(value) for value in [*roots, *inherited])
     completed = subprocess.run([sys.executable, "-B", str(Path(__file__).resolve()), "--validate", str(output),
                                 "--manifest-sha256", expected["manifest_sha256"]], env=env,
                                capture_output=True, text=True, timeout=LIMITS["restart_seconds"])

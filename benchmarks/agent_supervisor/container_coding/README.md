@@ -7,19 +7,6 @@ actual Doctor transactions. `run_supervision_docker.py` runs its offline native
 qualification. The original scripted and live component pilots below remain
 separate experiments; none establishes a Terminal-Bench/native Codex advantage.
 
-Other public Terminal-Bench tasks can use the source-bound task profiles in
-[TERMINAL_SUITE_PROFILES.md](TERMINAL_SUITE_PROFILES.md). The first broader full
-supervisor pilot records two official passes and one native-execution timeout,
-with source/checkpoint pins, token accounting, and readiness gaps for the rest
-of the suite. It is a selected-task pilot with a distinct resource/time profile.
-
-The [symbolic capability assessment](../../../docs/agent_supervisor/terminal_symbolic_capabilities.md)
-documents the full arm's per-task gap report, signed separation of generated
-harness support from program inputs, and bounded native progress diagnostics.
-Re-prepare trials to use the isolated Python structural validator. These changes
-are qualified with authored native repair cases; they do not supply new official
-Terminal-Bench scores or establish a baseline advantage.
-
 The [IntentIR planning improvement plan](../../../docs/architecture/TERMINAL_BENCH_INTENT_PLANNING_PLAN.md)
 traces the current public instruction entry point and defines requirements,
 symbolic planning, and admission milestones. The first local coverage milestone
@@ -30,6 +17,42 @@ symbolic route now joins the existing obligation compiler, candidate planner,
 critic and formal compiler. Task-specific worker requirements and read-only
 public-check progress with bounded repair nominations are also implemented.
 General prompt interpretation and live benchmark evaluation remain in the backlog.
+
+The proposed [repository proof index and codebase IR plan](../../../docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md)
+adds current-code matching, bounded per-repository autoencoder training, checked
+formal properties and DuckDB/DuckLake evidence storage. Its separate backlog
+defines the path from IntentIR and source evidence into symbolic planning and
+signed admission; this repository-proof pipeline remains proposed.
+
+The first [codebase IR qualification experiment](../../../docs/agent_supervisor/terminal_codebase_ir_qualification.md)
+now joins real supervisor preplanning, 358-function public Bottle autoencoder
+training, source-bound Z3/Lean model checks and exact native DuckDB/DuckLake
+metadata replay. The completed run retains 8,723 records across 28 families.
+Finite loss reduction is measured; the declared stability criterion is unmet.
+Learned semantic decoding, the complete logic-family matrix and authoritative
+IntentIR-to-code planning remain open.
+
+The subsequent [learned candidate experiment](../../../docs/agent_supervisor/terminal_codebase_decoder_qualification.md)
+trains a fresh native production head on exact public source, reconstructs three
+function ASTs and checks both header candidates through the reviewed native
+model route. Its recorded cross-entropy and fixed finite tail criterion compile
+in Lean; this is numerical/model evidence, with broader typed semantics and
+optimizer convergence still unproved. Source, weights and complete producer
+records replay through a separate native catalog referencing the initial run.
+
+The [conditional evidence and IntentIR control experiment](../../../docs/agent_supervisor/terminal_codebase_intent_qualification.md)
+adds exact native proof-key lookup, reviewed model nominations with all behavior
+still residual, and frozen materials for a separate authored symbolic control.
+The full public instruction stays unresolved and is refused by planning;
+repository proof facts are not admitted through the administrative profile.
+
+The [current repository catalog lane](../../../docs/agent_supervisor/terminal_codebase_repository_qualification.md)
+rebuilds actual AST/KG/contracts and lexical vectors for the signed source forest,
+replays complete frozen learned inventories, and consumes the byte-bound indexed
+context in a fresh native symbolic selection. A private same-HEAD dirty edit
+refuses the old index, evidence and model; a source-only successor agrees with a
+cold rebuild. Behavioral requirements remain residual and successor admission
+is not qualified.
 
 Pass `--intent-requirement-contract /path/to/requirements.json` to
 `full_supervisor_benchmark prepare`, the container supervisor, or its preparation

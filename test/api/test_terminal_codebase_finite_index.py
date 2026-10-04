@@ -7,6 +7,7 @@ import duckdb
 import pytest
 
 from benchmarks.agent_supervisor.container_coding import terminal_codebase_finite_index as cache
+from benchmarks.agent_supervisor.container_coding.terminal_codebase_finite_experiment import _native_plan
 from ipfs_datasets_py.logic.software_contracts.cache import CacheIntegrityError
 from ipfs_datasets_py.logic.software_contracts.codebase_ir import StaleCodebaseError
 from ipfs_datasets_py.logic.software_contracts.content import cid_for_structured
@@ -145,3 +146,39 @@ def test_typed_output_preserves_exact_integer_beyond_signed_64_bits(finite_prepa
     result = query(finite_prepared, manifest)
     assert len(result["historical_fact_ids"]) == 2
     assert result["current_facts"] == []
+
+
+@pytest.mark.parametrize("offset", [1, 2])
+def test_real_native_symbolic_plan_preserves_both_roots_and_task_candidates(finite_prepared, finite_tools, offset):
+    if offset == 2:
+        (finite_prepared["repository"] / "calc.py").write_bytes(finite_source(2))
+        finite_prepared["expected_head"] = finite_prepared["index"].prepare_current(
+            finite_prepared["repository"], repository_id=VIEW, operation_id="successor",
+            expected_head=finite_prepared["expected_head"], scheduler=finite_prepared["scheduler"]).head
+    match = finite_match(finite_prepared, finite_tools)
+    plan = _native_plan(match)
+    assert plan["both_declared_clause_roots_preserved"] is True
+    assert len(plan["declared_task_candidate_ids"]) == 2
+    assert plan["declared_task_requirement_ids"] == {
+        "finite-fixture-task:0": "finite-integer-offset-goal",
+        "finite-fixture-task:1": "finite-integer-type-goal",
+    }
+    assert len(plan["obligation_graph"]["root_obligation_ids"]) == 2
+    assert sorted(task["candidate_id"] for task in plan["obligation_graph"]["task_candidates"]) == sorted(plan["declared_task_candidate_ids"])
+    roots = set(plan["obligation_graph"]["root_obligation_ids"])
+    discharged = [node for node in plan["obligation_graph"]["nodes"]
+                  if node["obligation_id"] in roots and node["status"] == "discharged"]
+    assert len(discharged) == offset
+    assert plan["critic"]["accepted"] is True
+    assert plan["provider_calls"] == 0
+    assert all(plan[name] is False for name in ("worker_launched", "production_admitted", "omission_authority", "completion_authority"))
+    if offset == 1:
+        assert plan["planner_status"] == "selected"
+        assert len(plan["selected_task_ids"]) == 1
+        assert plan["selected_task_ids"] == ["finite-fixture-task:0"]
+        assert len(match["residual_clause_ids"]) == 1
+    else:
+        assert plan["planner_status"] == "already_complete_in_finite_domain"
+        assert plan["selected_task_ids"] == []
+        assert plan["portfolio"] is None
+        assert match["residual_clause_ids"] == []

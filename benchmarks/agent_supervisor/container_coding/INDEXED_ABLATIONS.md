@@ -3,11 +3,6 @@
 Status: the isolated native supervisor now runs the original task through
 Harbor in `full` and `no-index` arms, alongside a retained native Codex baseline.
 This is a one-task qualification pilot; no performance advantage is established.
-The later opt-in [Source384 repository context](SOURCE384_HARBOR_CONTEXT.md)
-adds pinned checkpoint/function-span inference and current source/model fences
-to the Harbor route. It has a separate common 5-CPU/12-GiB resource profile and
-does not revise the historical scores below. Its fresh matched Harbor campaign
-and automatic successor preparation remain unqualified.
 The full arm builds and hydrates the permitted-input indexes. An exact input
 audit verified semantic, retrieval, and world context in the trial 04 coding
 invocation; trial 06 lost its capsule audit during teardown and retains that
@@ -16,7 +11,7 @@ eligibility check currently abstains on this task, so no automatic proof-backed
 repair should be inferred from the arm's name. Build-only, warm-index, separate
 proof-coordination, and cooperative multi-worker comparisons remain unmeasured.
 
-The retained v8 pilot on `fix-code-vulnerability` measured:
+The latest matched-source v8 pilot on `fix-code-vulnerability` measured:
 
 | Arm | Official reward | Native completion | Agent seconds | Observed total tokens |
 | --- | ---: | --- | ---: | ---: |
@@ -34,10 +29,6 @@ its coding call timed out at its remaining 56-second allowance. The full token
 count includes observed interrupted-session usage, not verified final billing.
 Both planner and coding calls are included. Setup is measured separately.
 
-Those legacy runs have no pre-execution frozen comparison controls, so their
-control match remains unknown. The collector preserves their measured results
-without retrospectively certifying equivalent configurations.
-
 The two trial 06 task containers overlapped during setup, as recorded in the
 schedule receipt; this is independent task concurrency, not cooperative agent
 parallelism. The workspace artifact
@@ -49,20 +40,6 @@ The older two-task Grok pilot is a legacy Markdown worker pilot. Its results
 must remain separate from the indexed native-supervisor comparison.
 
 ## Planned comparison matrix
-
-New preparations freeze hashes of the validated Harbor configuration, common
-resource/time/retry/concurrency settings, model identity, and complete task
-inputs. Collection rechecks the original declaration. Changed or malformed
-controls fail comparison; missing legacy declarations remain unknown. Task
-inventories reject linked directories, broken links, and special files. Verifier
-bytes are hashed only for integrity and are never supplied to the model.
-
-Native and supervisor setup allowances are explicitly 1,800 seconds; the agent
-execution limit remains 300 seconds. Arm-specific configuration and paths are
-bound within each preparation, while only common controls are compared across
-arms. A configuration match does not establish runtime enforcement or benchmark
-advantage. The recovered implementation passed 92 controls after the restart;
-the new native preflight is a dry run with no model calls.
 
 Use identical pinned task versions, initial container files, model, reasoning
 effort, available implementation tools, concurrency, attempt count, and total
@@ -95,25 +72,6 @@ failures. One repetition is a qualification pilot, not a statistical advantage
 claim. Compare official reward first, then total tokens, elapsed time, and cost.
 Use serial task trials initially to avoid confusing inter-task concurrency with
 parallel supervisor workers. A later matched concurrency sweep can measure both.
-
-## Frozen formula initialization repair
-
-The indexed preparation wrapper now forwards the selected frozen formula decoder
-and reviewed header protocol to the existing initial-context builder. Previously,
-the container supplied these fields and the wrapper rejected them as unexpected
-keywords before inference. The [boundary qualification](../../../docs/agent_supervisor/evidence/benchmark-initial-context-20261003/README.md)
-retains the three failing regressions and the subsequent **39 passing cases** in
-90.62 seconds. The tests execute authored frozen formula inference, native
-DuckLake hydration and replay, and reject incomplete selections before index
-writes. They make no provider calls and establish no new official benchmark score.
-
-The separate finite source384 supervisor qualification reserves three CPU/process
-slots and a 6-GiB parent envelope, including 4-GiB numerical phases. Harbor still
-runs the older Terminal-Bench composition in the task's original 1-CPU/2-GiB
-container. That composition has no source384 preparation-profile transport or
-frozen repository model/index observer binding. This forwarding repair does not
-join those two paths. A learned-repository benchmark still needs that integration
-and an explicitly qualified, matched resource profile for every compared arm.
 
 ## Required evidence before a full-system run qualifies
 

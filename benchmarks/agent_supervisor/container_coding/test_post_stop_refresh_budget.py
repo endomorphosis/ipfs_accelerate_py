@@ -56,28 +56,6 @@ def test_finalization_reserve_and_current_retrieval_are_required(monkeypatch):
     assert value['post_publication_context']['status'] == 'incomplete'
 
 
-def test_original_work_cutoff_bounds_refresh_without_shortening_cleanup(monkeypatch):
-    monkeypatch.setattr(time, 'monotonic', lambda: 100.)
-    timers = []
-    monkeypatch.setattr(signal, 'setitimer', lambda kind, seconds: timers.append(seconds))
-    value = report()
-    driver._refresh_completed_context(SimpleNamespace(refresh_after_stop=lambda: []), value,
-                                     deadline=200., work_deadline=120.)
-    assert value['post_publication_context']['budget_seconds'] == 20.
-    assert timers == [20., 0, 98.]
-    assert value['task_state']['status'] == 'completed'
-
-
-def test_expired_work_does_not_borrow_available_cleanup_time(monkeypatch):
-    monkeypatch.setattr(time, 'monotonic', lambda: 100.)
-    value = report()
-    driver._refresh_completed_context(
-        SimpleNamespace(refresh_after_stop=lambda: pytest.fail('cleanup time is not work')),
-        value, deadline=160., work_deadline=99.)
-    assert value['post_publication_context']['status'] == 'deferred'
-    assert value['post_publication_context']['budget_seconds'] == 0.
-
-
 @pytest.mark.skipif(not hasattr(signal, 'setitimer'), reason='requires POSIX alarms')
 def test_real_refresh_alarm_interrupts_component_without_consuming_cleanup_reserve():
     prior = signal.getsignal(signal.SIGALRM)

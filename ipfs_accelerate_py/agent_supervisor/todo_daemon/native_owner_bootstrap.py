@@ -15,18 +15,6 @@ from ..task_sources.state_owner_bootstrap import request_state_owner_bootstrap
 from ..task_sources.quack_state_client import QuackStateClient
 from ..task_sources.typed_database_task_source import TypedDatabaseTaskSource
 
-STARTUP_WAIT_ENV = "IPFS_ACCELERATE_STATE_OWNER_BOOTSTRAP_TIMEOUT_MS"
-
-
-def _startup_wait_seconds():
-    value = os.environ.get(STARTUP_WAIT_ENV)
-    if value is None:
-        return 30.0
-    if (not re.fullmatch(r"[0-9]{1,6}", value)
-            or not 2_000 <= int(value) <= 120_000):
-        raise ValueError("native bootstrap wait must be in 2000..120000 milliseconds")
-    return int(value) / 1000
-
 
 class NativeOwnerHeartbeat:
     """Live owner read evidence, independent of completed daemon passes.
@@ -116,7 +104,6 @@ def database_owner_bootstrap_kwargs(args, program) -> dict:
         raise ValueError("native owner bootstrap requires its descriptor, client and Quack program")
     credentials = request_state_owner_bootstrap(
         descriptor, client_id=client_id, store_id=program.store_id,
-        timeout_seconds=_startup_wait_seconds(),
     )
     if credentials.endpoint != program.quack_endpoint:
         raise ValueError("bootstrap owner endpoint differs from the launch program")

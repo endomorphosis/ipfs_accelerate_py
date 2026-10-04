@@ -457,7 +457,6 @@ def _scope_case(case, *, advisory=True):
     envelope = local._signed(payload, case["signature_profiles"][0]["manifest"])
     scope._material = canonical_dag_json_bytes(envelope)
     scope._advisory_closure = value
-    scope._proof_query_closure = None
     scope._owner = SimpleNamespace(expected_head=CodebaseHead.from_dict(case["expected"]["head"]))
     scope._semantic = {"administrator_task_cids": deepcopy(case["expected"]["administrator_task_cids"])}
     scope._spawned = False

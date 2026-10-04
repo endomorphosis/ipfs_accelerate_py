@@ -231,3 +231,66 @@ def test_prohibition_is_preserved_without_inventing_a_satisfaction_measure(scena
     assert prohibition["public_checks_passed"] is False
     assert prohibited in observed["unmeasured_requirement_ids"]
     assert prohibited not in build_intent_requirement_repair_proposal(observed)["residual_requirement_ids"]
+
+
+@pytest.mark.parametrize("mutation", ["run_status", "run_command", "run_body", "drop_run",
+    "drop_event", "event_body", "malformed_event", "duplicate_event", "drop_result",
+    "malformed_result", "result_outcome", "result_digest"])
+def test_damaged_latest_owner_check_never_resurrects_an_older_pass(scenario, mutation):
+    import json
+    admission, tasks = _admit(scenario)
+    cid = tasks["LOCAL-TASK"]
+    _start(scenario, cid)
+    root = scenario["repository"]
+    (root / "answer.py").write_text("from pathlib import Path\ndef answer():\n"
+        "    return 1 if Path('.runtime/fail').exists() else 2\n")
+    runtime = root / ".runtime"
+    runtime.mkdir()
+    passed = local.run_local_task_validations(intent=scenario["intent"], task_cid=cid, attempt_id="same-attempt")
+    assert passed["passed"]
+    (runtime / "fail").touch()
+    failed = local.run_local_task_validations(intent=scenario["intent"], task_cid=cid, attempt_id="same-attempt")
+    assert not failed["passed"] and failed["source_tree_id"] == passed["source_tree_id"]
+    with scenario["intent"]._connection(write=True) as connection:
+        result = connection.execute("SELECT result_id,run_id FROM validation_results WHERE evidence_digest=?",
+            [failed["results"][0]["evidence_digest"]]).fetchone()
+        result_id, run_id = result[0], result[1]
+        if mutation == "run_status":
+            connection.execute("UPDATE validation_runs SET status='passed' WHERE run_id=?", [run_id])
+        elif mutation == "run_command":
+            connection.execute("UPDATE validation_runs SET command_digest='other-command' WHERE run_id=?", [run_id])
+        elif mutation == "run_body":
+            connection.execute("UPDATE validation_runs SET body_json='{}' WHERE run_id=?", [run_id])
+        elif mutation == "drop_run":
+            connection.execute("DELETE FROM validation_runs WHERE run_id=?", [run_id])
+        elif mutation in {"drop_event", "event_body", "malformed_event", "duplicate_event"}:
+            event = connection.execute("SELECT event_id,body_json FROM domain_events "
+                "WHERE event_type='intent.validation_recorded' AND json_extract_string(body_json,'$.subject_id')=?",
+                [result_id]).fetchone()
+            if mutation == "drop_event":
+                connection.execute("DELETE FROM domain_events WHERE event_id=?", [event[0]])
+            elif mutation == "event_body":
+                body = json.loads(event[1])
+                body["body"]["outcome"] = "passed"
+                connection.execute("UPDATE domain_events SET body_json=? WHERE event_id=?",
+                    [json.dumps(body), event[0]])
+            elif mutation == "malformed_event":
+                connection.execute("UPDATE domain_events SET body_json='{' WHERE event_id=?", [event[0]])
+            else:
+                connection.execute("INSERT INTO domain_events (event_id,stream_id,sequence,global_sequence,"
+                    "event_type,task_cid,attempt_id,session_id,recorded_at,body_json) "
+                    "SELECT 'duplicate-check-event',stream_id,"
+                    "sequence+100,global_sequence+100,event_type,task_cid,attempt_id,session_id,recorded_at,body_json "
+                    "FROM domain_events WHERE event_id=?", [event[0]])
+        elif mutation == "drop_result":
+            connection.execute("DELETE FROM validation_results WHERE result_id=?", [result_id])
+        elif mutation == "malformed_result":
+            connection.execute("UPDATE validation_results SET body_json='{' WHERE result_id=?", [result_id])
+        elif mutation == "result_outcome":
+            connection.execute("UPDATE validation_results SET outcome='passed' WHERE result_id=?", [result_id])
+        else:
+            connection.execute("UPDATE validation_results SET evidence_digest='another-digest' WHERE result_id=?", [result_id])
+    before = scenario["intent"].event_watermark()
+    with pytest.raises(local.LocalPlanningError, match="inconsistent native evidence links"):
+        observe_local_intent_requirements(admission=admission, intent=scenario["intent"])
+    assert scenario["intent"].event_watermark() == before

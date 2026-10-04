@@ -303,7 +303,6 @@ class IntentPlanningMaterials:
     contract_cid: str
     manifest_cid: str
     current_root_id: str
-    source_applicability: Mapping[str, Any] | None = None
 
     def to_dict(self):
         value = {"schema": INTENT_PLANNING_MATERIALS_SCHEMA,
@@ -312,8 +311,7 @@ class IntentPlanningMaterials:
             "operation_contract_cid": cid_for_dag_json(_plain(self.operation_contract)),
             "intent": self.intent.to_dict(), "predicates": [item.to_dict() for item in self.predicates],
             "producers": [item.to_dict() for item in self.producers],
-            "task_candidates": [item.to_dict() for item in self.task_candidates],
-            "current_facts": [item.to_dict() for item in self.current_facts],
+            "task_candidates": [item.to_dict() for item in self.task_candidates], "current_facts": [],
             "frozen_goal": self.frozen_goal.to_dict(), "candidate_context": _plain(self.candidate_context),
             "operation_candidate_ids": _plain(self.operation_candidate_ids),
             "candidate_task_keys": _plain(self.candidate_task_keys),
@@ -321,27 +319,20 @@ class IntentPlanningMaterials:
             "requirement_ids": [row["requirement_id"] for row in self.requirements],
             "interpretation_scope": INTERPRETATION_SCOPE, "source_semantics_verified": False,
             "observed_source_facts": False, **_AUTHORITY}
-        if self.source_applicability is not None:
-            value["source_applicability"] = _plain(self.source_applicability)
-            value["observed_source_facts"] = True
         value["materials_cid"] = cid_for_dag_json(value)
         return value
 
 
-def build_intent_planning_materials(contract, *, manifest, applicability_timeout_seconds=None,
-                                    source_applicability_nomination=None):
+def build_intent_planning_materials(contract, *, manifest):
     """Build pure proposal-tier compiler inputs from a supplied manifest envelope.
 
     The caller verifies the manifest's signature, source observations, profile,
     and any publication transition. This adapter binds the declared baseline
-    and inert contract. The explicit v3 profile independently replays captured
-    source and native bounded checking before producing an applicability fact.
+    and inert contract; it never observes the filesystem or creates facts.
     """
     from ..prompt.intent_plan_coverage import validate_intent_requirement_contract
 
     canonical = validate_intent_requirement_contract(contract)
-    if canonical["schema"] != "intent-plan-requirement-contract@3" and source_applicability_nomination is not None:
-        raise IntentRequirementAdapterError("runtime applicability nomination requires explicit v3")
     if "symbolic_operations" not in canonical:
         raise IntentRequirementAdapterError("symbolic planning requires an explicit v2 operation contract")
     if not isinstance(manifest, Mapping):
@@ -445,18 +436,13 @@ def build_intent_planning_materials(contract, *, manifest, applicability_timeout
             require_validation=True, require_proof=False))
     context = {"domain": INTERPRETATION_SCOPE, "repository_paths": sorted({row["path"]
         for operation in operations for row in operation["outputs"]}), "task_metadata": task_metadata}
-    materials = IntentPlanningMaterials(intent=intent, producers=tuple(producers), task_candidates=tuple(candidates),
+    return IntentPlanningMaterials(intent=intent, producers=tuple(producers), task_candidates=tuple(candidates),
         predicates=predicates, current_facts=(), frozen_goal=frozen_goal, candidate_context=_freeze(context),
         requirements=tuple(_freeze(row) for row in canonical["requirements"]),
         operations=tuple(_freeze(item) for item in operations), operation_contract=_freeze(symbolic),
         operation_candidate_ids=_freeze(candidate_ids), candidate_task_keys=_freeze(task_keys),
         candidate_requirement_ids=_freeze(candidate_reqs), contract_cid=contract_cid,
         manifest_cid=manifest_cid, current_root_id=current_root_id)
-    if canonical["schema"] == "intent-plan-requirement-contract@3":
-        from ..runtime.header_intent_applicability import ground_materials
-        materials = ground_materials(materials, selection=canonical["source_applicability"],
-            manifest=manifest, nomination=source_applicability_nomination, timeout_seconds=applicability_timeout_seconds)
-    return materials
 
 
 __all__ = ["SYMBOLIC_OPERATION_SCHEMA", "INTENT_PLANNING_MATERIALS_SCHEMA", "INTERPRETATION_SCOPE",

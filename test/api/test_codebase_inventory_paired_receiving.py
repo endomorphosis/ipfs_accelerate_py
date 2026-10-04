@@ -36,8 +36,12 @@ def retained_typed_admission():
     This host qualification fixture reads retained files only. It opens no
     source/model owner and verifies public signatures without metadata writes.
     """
-    fixture = Path(__file__).resolve().parents[1] / "fixtures" / "closed10-admission.json"
-    raw = fixture.read_bytes()
+    locator = Path("artifacts/codebase_ir_terminal_bench/") / (
+        "inventory-resume-worker-qualification-20261003-10/native/admission.json")
+    matches = [parent / locator for parent in Path(__file__).resolve().parents
+               if (parent / locator).is_file()]
+    assert len(matches) == 1, "the closed10 admission fixture must be retained for this qualification"
+    raw = matches[0].read_bytes()
     assert len(raw) <= 4 * 1024 * 1024
     assert hashlib.sha256(raw).hexdigest() == "f6f641aea1b89fdbbe8fcf2ce0f025140b6a0236d3ac071828494839a48d1176"
     native = json.loads(raw)

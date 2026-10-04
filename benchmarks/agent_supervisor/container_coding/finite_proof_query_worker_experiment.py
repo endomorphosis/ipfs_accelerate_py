@@ -19,6 +19,7 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 
 from .finite_repository_admission_experiment import (
     _git, _pin, _sources, _write,
@@ -918,7 +919,267 @@ def replay(output):
         "observed_current": historical["observed_current"], "training_steps": 0}
 
 
+FAILURE_CUSTODY_SCHEMA = "finite-proof-query-native-failure-custody@1"
+_FAILURE_FILE_LIMIT = 4 * 1024 * 1024
+_FAILURE_TRACE_LIMIT = 262144
+
+
+def _failure_identity(value, *, directory=False):
+    base = [value.st_dev, value.st_ino, value.st_mode, value.st_uid, value.st_gid]
+    return base if directory else [*base, value.st_size, value.st_mtime_ns, value.st_ctime_ns]
+
+
+def _failure_write(directory_fd, name, raw):
+    if Path(name).name != name or name in ("", ".", ".."):
+        raise ValueError("literal failure-custody basename required")
+    descriptor = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+        0o600, dir_fd=directory_fd)
+    try:
+        position = 0
+        while position < len(raw):
+            written = os.write(descriptor, raw[position:])
+            if written <= 0:
+                raise OSError("failure-custody write made no progress")
+            position += written
+        os.fsync(descriptor)
+        observed = os.fstat(descriptor)
+        if not stat.S_ISREG(observed.st_mode) or observed.st_size != len(raw):
+            raise ValueError("failure-custody output descriptor differs")
+        return {"name": name, "sha256": hashlib.sha256(raw).hexdigest(),
+            "bytes": len(raw), "stat": _failure_identity(observed)}
+    finally:
+        os.close(descriptor)
+
+
+def _failure_attribute(error, name):
+    attributes = vars(error)
+    if name not in attributes:
+        return {"present": False, "value": None, "access": "exception_instance_dict"}
+    value = attributes[name]
+    try:
+        raw = json.dumps(value, sort_keys=True, allow_nan=False).encode()
+        if len(raw) > _FAILURE_FILE_LIMIT:
+            raise ValueError("exception attribute exceeded explicit custody bound")
+        return {"present": True, "value": json.loads(raw),
+            "value_type": type(value).__name__, "access": "exception_instance_dict"}
+    except BaseException as serialization_error:
+        return {"present": True, "value": None, "value_type": type(value).__name__,
+            "access": "exception_instance_dict", "serialization_error": {
+                "type": type(serialization_error).__name__, "message": str(serialization_error)[:4096]}}
+
+
+def _failure_exception(error, directory_fd, name):
+    raw = "".join(traceback.format_exception(type(error), error, error.__traceback__)).encode()
+    retained = raw[:_FAILURE_TRACE_LIMIT]
+    trace = _failure_write(directory_fd, name, retained)
+    trace.update(original_trace_bytes=len(raw), original_trace_sha256=hashlib.sha256(raw).hexdigest(),
+        truncated=len(raw) > len(retained))
+    message = str(error)
+    return {"type": type(error).__name__, "module": type(error).__module__,
+        "message": message[:4096], "message_truncated": len(message) > 4096,
+        "traceback": trace, "exception_attributes": {
+            name: _failure_attribute(error, name) for name in ("admission_observation", "timeout_decision")}}
+
+
+def _failure_read(path):
+    try:
+        before = path.lstat()
+        if path.resolve(strict=True) != path or not stat.S_ISREG(before.st_mode):
+            raise ValueError("failure snapshot input is redirected or not regular")
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        try:
+            first = os.fstat(descriptor)
+            if _failure_identity(first) != _failure_identity(before):
+                raise ValueError("failure snapshot descriptor changed before read")
+            chunks, total = [], 0
+            while total <= _FAILURE_FILE_LIMIT:
+                body = os.read(descriptor, min(65536, _FAILURE_FILE_LIMIT + 1 - total))
+                if not body:
+                    break
+                chunks.append(body)
+                total += len(body)
+            raw = b"".join(chunks)
+            after = os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+        stable = _failure_identity(before) == _failure_identity(after) == _failure_identity(path.lstat())
+        truncated = len(raw) > _FAILURE_FILE_LIMIT
+        raw = raw[:_FAILURE_FILE_LIMIT]
+        result = {"path": str(path), "status": "observed_stable" if stable else "changed_during_read",
+            "before_stat": _failure_identity(before), "after_stat": _failure_identity(after),
+            "truncated": truncated, "declared_file_bytes": before.st_size}
+        try:
+            result["value"] = json.loads(raw) if not truncated else None
+        except (ValueError, UnicodeError) as error:
+            result["value"] = None
+            result["JSON_error"] = {"type": type(error).__name__, "message": str(error)[:4096]}
+        return result, raw
+    except FileNotFoundError:
+        return {"path": str(path), "status": "missing", "value": None}, None
+    except BaseException as error:
+        return {"path": str(path), "status": "unavailable", "value": None,
+            "error": {"type": type(error).__name__, "message": str(error)[:4096]}}, None
+
+
+class _FailureRetentionContext:
+    """Custody of this fresh fixture output and its original connection only."""
+    def __init__(self):
+        self.output = None
+        self.output_identity = None
+        self.primary_error = None
+        self.connection = None
+        self.connection_close_attempted = False
+        self.connection_close_returned = None
+        self.cleanup_errors = []
+
+    def attach_owned_output(self, output):
+        output = Path(output).absolute()
+        observed = output.lstat()
+        if self.output is not None or output.resolve(strict=True) != output or not stat.S_ISDIR(observed.st_mode):
+            raise ValueError("fresh owned fixture output identity required")
+        self.output, self.output_identity = output, _failure_identity(observed, directory=True)
+
+    def attach_connection(self, connection):
+        if self.connection is not None:
+            raise ValueError("one original fixture connection required")
+        self.connection = connection
+
+    def latch_primary(self, error):
+        if self.primary_error is None:
+            self.primary_error = error
+
+    def close_connection(self):
+        if self.connection is None or self.connection_close_attempted:
+            return
+        self.connection_close_attempted = True
+        try:
+            self.connection.close()
+        except BaseException as error:
+            self.connection_close_returned = False
+            self.cleanup_errors.append(error)
+            if self.primary_error is None:
+                raise
+        else:
+            self.connection_close_returned = True
+
+
+def _failure_annotate(error, message):
+    try:
+        error.add_note(message)
+    except BaseException:
+        pass
+    try:
+        print(json.dumps({"schema": FAILURE_CUSTODY_SCHEMA, "diagnostic": message}, sort_keys=True), file=sys.stderr)
+    except BaseException:
+        pass
+
+
+def _retain_fixture_failure(context, error):
+    """Metadata only: no native SQL, scheduler snapshot, sampling or retry."""
+    if context.output is None:
+        _failure_annotate(error, "failure custody unavailable: this invocation did not acquire a fresh output")
+        return
+    output = context.output
+    if output.resolve(strict=True) != output or _failure_identity(output.lstat(), directory=True) != context.output_identity:
+        raise ValueError("owned fixture output was replaced before failure custody")
+    output_fd = os.open(output, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    custody_fd = None
+    started = time.monotonic()
+    try:
+        if _failure_identity(os.fstat(output_fd), directory=True) != context.output_identity:
+            raise ValueError("owned fixture directory descriptor differs")
+        os.mkdir("failure-custody", mode=0o700, dir_fd=output_fd)
+        custody_fd = os.open("failure-custody", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=output_fd)
+        custody_identity = _failure_identity(os.fstat(custody_fd), directory=True)
+        primary = _failure_exception(error, custody_fd, "primary.traceback.txt")
+        chain, seen, current = [], {id(error)}, error
+        for number in range(16):
+            next_error = current.__cause__ if current.__cause__ is not None else current.__context__
+            if next_error is None or id(next_error) in seen:
+                break
+            relation = "cause" if current.__cause__ is not None else "context"
+            seen.add(id(next_error))
+            chain.append({"relation": relation, "context_suppressed": current.__suppress_context__,
+                **_failure_exception(next_error, custody_fd, f"chain-{number}.traceback.txt")})
+            current = next_error
+        chain_remaining = current.__cause__ if current.__cause__ is not None else current.__context__
+        cleanup = [_failure_exception(item, custody_fd, f"cleanup-{number}.traceback.txt")
+            for number, item in enumerate(context.cleanup_errors)]
+        snapshots = {}
+        for label, relative in (("stages", "stage-timings.json"), ("stage_journal", "stage-timings.jsonl"),
+                ("persisted_resources", "private/resource-admission.json"), ("existing_result", "result.json")):
+            observation, raw = _failure_read(output / relative)
+            if raw is not None:
+                observation["retained_raw"] = _failure_write(custody_fd, label + ".raw", raw)
+            snapshots[label] = observation
+        resources = snapshots["persisted_resources"].get("value")
+        diagnostics = [label for label, row in snapshots.items() if row["status"] in ("unavailable", "changed_during_read")
+            or row.get("truncated") or (label != "stage_journal" and "JSON_error" in row)]
+        if any(row["traceback"]["truncated"] or any("serialization_error" in item for item in row["exception_attributes"].values())
+                for row in [primary, *chain, *cleanup]):
+            diagnostics.append("exception_serialization_or_trace_bound")
+        if chain_remaining is not None:
+            diagnostics.append("exception_chain_bound_or_cycle")
+        record = {"schema": FAILURE_CUSTODY_SCHEMA, "status": "failure_observed", "primary_exception": primary,
+            "same_escaping_exception_preserved": True, "exception_chain": chain,
+            "exception_chain_more_or_cycle": chain_remaining is not None, "connection_cleanup_errors": cleanup,
+            "owned_output": {"path": str(output), "identity": context.output_identity},
+            "owned_connection_cleanup": {"attached": context.connection is not None,
+                "close_attempted": context.connection_close_attempted, "close_returned": context.connection_close_returned},
+            "snapshots": snapshots, "persisted_global_last_proof_refusal":
+                resources.get("last_proof_refusal") if type(resources) is dict else None,
+            "exception_admission_observation_may_be_historical": True,
+            "persisted_global_history_may_describe_another_request": True,
+            "terminal_timeout_cause_inferred": None, "runtime_STOP_cleanup": None, "kernel_process_cleanup": None,
+            "diagnostic_errors": diagnostics, "retention_complete": not diagnostics,
+            "observed_stage_prefix": snapshots["stages"].get("value"),
+            "new_SQL_sampling_scheduler_or_prover_operations": 0,
+            "global_training_or_process_counts": None, "native_positive_or_post_birth_qualification": False,
+            "custody_elapsed_seconds": time.monotonic() - started}
+        if _failure_identity(output.lstat(), directory=True) != context.output_identity or output.resolve(strict=True) != output:
+            raise ValueError("owned fixture output changed during failure custody")
+        if _failure_identity((output / "failure-custody").lstat(), directory=True) != custody_identity:
+            raise ValueError("failure custody directory was replaced")
+        _failure_write(custody_fd, "failure-receipt.json", json.dumps(record, sort_keys=True, indent=2, allow_nan=False).encode() + b"\n")
+        os.fsync(custody_fd)
+        os.fsync(output_fd)
+        if output.resolve(strict=True) != output or _failure_identity(output.lstat(), directory=True) != context.output_identity:
+            raise ValueError("owned fixture output changed after failure custody write")
+        if _failure_identity((output / "failure-custody").lstat(), directory=True) != custody_identity:
+            raise ValueError("failure custody directory changed after write")
+        if diagnostics or cleanup:
+            _failure_annotate(error, "fixture failure custody retained diagnostic or owned-connection cleanup errors")
+    finally:
+        if custody_fd is not None:
+            os.close(custody_fd)
+        os.close(output_fd)
+
+
 def run(output, *, python_executable, lean_executable, handoff_root, worktree_root, child_control=None, post_birth_control=None):
+    """Preserve actual failures after acquiring this invocation's fresh output."""
+    context = _FailureRetentionContext()
+    try:
+        return _run(output, python_executable=python_executable, lean_executable=lean_executable,
+            handoff_root=handoff_root, worktree_root=worktree_root, child_control=child_control,
+            post_birth_control=post_birth_control, _failure_context=context)
+    except BaseException as error:
+        context.latch_primary(error)
+        try:
+            context.close_connection()
+        except BaseException as cleanup_error:
+            _failure_annotate(error, "fixture connection cleanup diagnostic failed: " + type(cleanup_error).__name__)
+        try:
+            _retain_fixture_failure(context, error)
+        except BaseException as retention_error:
+            try:
+                message = str(retention_error)[:4096]
+            except BaseException:
+                message = "diagnostic error message unavailable"
+            _failure_annotate(error, "fixture failure custody failed: " + type(retention_error).__name__ + ": " + message)
+        raise
+
+
+def _run(output, *, python_executable, lean_executable, handoff_root, worktree_root, child_control=None, post_birth_control=None, _failure_context):
     from .native_quack_qualification import open_existing_native_owner
     from .terminal_container_supervisor import _native_diagnostics
     from ipfs_accelerate_py.agent_supervisor.entrypoints.facade import Supervisor
@@ -954,6 +1215,7 @@ def run(output, *, python_executable, lean_executable, handoff_root, worktree_ro
     if output.exists() or output.parent.resolve() != output.parent:
         raise ValueError("fresh exact qualification output required")
     output.mkdir(mode=0o755)
+    _failure_context.attach_owned_output(output)
     private = output / "private"
     private.mkdir(mode=0o700)
     started = time.monotonic()
@@ -979,6 +1241,7 @@ def run(output, *, python_executable, lean_executable, handoff_root, worktree_ro
         lean_executable=Path(lean_executable).resolve(strict=True))
     scheduler = _scheduler(private / "resource-admission.json")
     connection, index = _open(output)
+    _failure_context.attach_connection(connection)
     report = {"schema": SCHEMA, "status": "incomplete", "worker_launched": False,
         "training_steps": 0, "provider_calls": 0, "production_activated": False,
         "task_omission_authority": False, "universal_python_semantics_proved": False,
@@ -1421,8 +1684,11 @@ def run(output, *, python_executable, lean_executable, handoff_root, worktree_ro
             qualification_scope="one authored two-task five-input model-off native isolated worker; no convergence claim")
         _write(output / "result.json", report)
         return report
+    except BaseException as error:
+        _failure_context.latch_primary(error)
+        raise
     finally:
-        connection.close()
+        _failure_context.close_connection()
 
 
 def run_all(output, *, python_executable, lean_executable, handoff_root, worktree_root):
