@@ -38,7 +38,9 @@ if is_torch_available():
 class CamembertModelIntegrationTest(unittest.TestCase):
     @slow
     def test_output_embeds_base_model(self):
-        model = CamembertModel.from_pretrained("almanach/camembert-base", attn_implementation="eager")
+        model = CamembertModel.from_pretrained(
+            "almanach/camembert-base", attn_implementation="eager"
+        )
         model.to(torch_device)
 
         input_ids = torch.tensor(
@@ -77,7 +79,9 @@ class CamembertModelIntegrationTest(unittest.TestCase):
             dtype=torch.float,
         )
 
-        model = CamembertModel.from_pretrained("almanach/camembert-base", attn_implementation="sdpa").to(torch_device)
+        model = CamembertModel.from_pretrained(
+            "almanach/camembert-base", attn_implementation="sdpa"
+        ).to(torch_device)
         with torch.no_grad():
             output = model(input_ids)["last_hidden_state"].detach()
 

@@ -77,7 +77,7 @@ config = {
     "device": "CPU",
     "model_type": "audio",
     "model_path": "path/to/audio_model.xml",
-    "precision": "FP16"
+    "precision": "FP16",
 }
 load_result = backend.load_model("audio_model", config)
 
@@ -89,7 +89,7 @@ inference_config = {
     "feature_size": 80,
     "normalize": True,
     "n_fft": 1024,
-    "hop_length": 512
+    "hop_length": 512,
 }
 result = backend.run_inference("audio_model", audio_file, inference_config)
 
@@ -121,9 +121,9 @@ mixed_config = {
             # Matrix multiplication operations
             "matmul": "INT8",
             # Default precision for other layers
-            "default": "INT8"
+            "default": "INT8",
         }
-    }
+    },
 }
 
 # Load the model with mixed precision
@@ -159,7 +159,7 @@ multi_device_config = {
     "device_priorities": ["GPU(1.5)", "CPU(1.0)"],  # Higher values = higher priority
     "model_type": "vision",
     "model_path": "path/to/vision_model.xml",
-    "precision": "FP16"
+    "precision": "FP16",
 }
 
 # Load model with multi-device configuration
@@ -190,7 +190,7 @@ for i in range(10):
     # Example calibration data for a text model
     calibration_sample = {
         "input_ids": np.random.randint(0, 30000, size=(1, 128)).astype(np.int32),
-        "attention_mask": np.ones((1, 128), dtype=np.int32)
+        "attention_mask": np.ones((1, 128), dtype=np.int32),
     }
     calibration_samples.append(calibration_sample)
 
@@ -201,7 +201,7 @@ int8_config = {
     "model_path": "path/to/text_model.onnx",
     "precision": "INT8",
     "model_format": "ONNX",
-    "calibration_data": calibration_samples
+    "calibration_data": calibration_samples,
 }
 
 # Load model with INT8 quantization
@@ -237,7 +237,7 @@ gpu_config = {
     "precompile_shapes": True,  # Precompile for specific input shapes
     "input_shapes": {
         "input_ids": [1, 3, 224, 224]  # Batch, Channels, Height, Width
-    }
+    },
 }
 
 # Load model with GPU optimizations
@@ -325,14 +325,14 @@ For integrating with legacy systems that might have specific requirements:
 ```python
 # Integration with legacy logging systems
 import legacy_logger
+
 logger = legacy_logger.get_logger()
 backend = OpenVINOBackend({"logger": logger})
 
 # Integration with legacy model formats
-backend.load_model("legacy_model", {
-    "model_format": "legacy",  
-    "legacy_converter": custom_converter_function
-})
+backend.load_model(
+    "legacy_model", {"model_format": "legacy", "legacy_converter": custom_converter_function}
+)
 ```
 
 ## Requirements and Dependencies
@@ -426,6 +426,7 @@ Enable debug logging for more detailed information:
 
 ```python
 import logging
+
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("ipfs_accelerate.hardware.openvino")
 ```

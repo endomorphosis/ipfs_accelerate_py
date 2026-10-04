@@ -312,10 +312,12 @@ pip3 install ipfs-accelerate-py[full] --user
 ```python
 # In Azure ML environment
 import subprocess
+
 subprocess.run(["pip", "install", "ipfs-accelerate-py[full]"])
 
 # Verify installation
 from ipfs_accelerate_py import HardwareDetector
+
 detector = HardwareDetector()
 ```
 
@@ -481,10 +483,12 @@ pip install ipfs-accelerate-py[full]
 ```python
 # Use CPU fallback
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = ''
+
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 # Or limit GPU memory
 import torch
+
 if torch.cuda.is_available():
     torch.cuda.set_per_process_memory_fraction(0.5)
 ```
@@ -514,7 +518,8 @@ python -c "import torch; print(f'GPU Memory: {torch.cuda.get_device_properties(0
 ```python
 # Configure for low-memory systems
 import os
-os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:128'
+
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
 ```
 
 ## 📊 Monitoring Installation Health
@@ -600,18 +605,14 @@ IPFS_ACCELERATE_CONFIG = {
     "hardware": {
         "preferred_order": ["cuda", "mps", "cpu"],
         "memory_limit_gb": 8,
-        "enable_quantization": True
+        "enable_quantization": True,
     },
-    "performance": {
-        "max_workers": 4,
-        "cache_size": 1000,
-        "enable_profiling": False
-    },
+    "performance": {"max_workers": 4, "cache_size": 1000, "enable_profiling": False},
     "logging": {
         "level": "INFO",
         "enable_file_logging": True,
-        "log_file": "/var/log/ipfs_accelerate.log"
-    }
+        "log_file": "/var/log/ipfs_accelerate.log",
+    },
 }
 ```
 

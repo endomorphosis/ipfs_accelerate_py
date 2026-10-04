@@ -29,16 +29,18 @@ from duckdb_api.distributed_testing.load_balancer import (
     LoadBalancerService,
     WorkerCapabilities,
     WorkerLoad,
-    TestRequirements
+    TestRequirements,
 )
 
 # Create load balancer
 load_balancer = LoadBalancerService()
 
+
 # Register callback for test status changes
 def status_callback(assignment):
     print(f"Test {assignment.test_id} status: {assignment.status}")
-    
+
+
 load_balancer.register_assignment_callback(status_callback)
 
 # Start load balancer
@@ -52,7 +54,7 @@ worker_capabilities = WorkerCapabilities(
     available_accelerators={"cuda": 2},
     available_memory=16.0,
     cpu_cores=8,
-    cpu_threads=16
+    cpu_threads=16,
 )
 load_balancer.register_worker("worker1", worker_capabilities)
 load_balancer.update_worker_load("worker1", WorkerLoad(worker_id="worker1"))
@@ -67,7 +69,7 @@ test_requirements = TestRequirements(
     required_backend="cuda",
     expected_duration=60.0,
     priority=1,
-    required_accelerators={"cuda": 1}
+    required_accelerators={"cuda": 1},
 )
 load_balancer.submit_test(test_requirements)
 
@@ -116,10 +118,7 @@ def worker_loop(worker_id, load_balancer):
 The load balancer supports different scheduling algorithms for different test types:
 
 ```python
-from duckdb_api.distributed_testing.load_balancer import (
-    create_scheduler,
-    LoadBalancerService
-)
+from duckdb_api.distributed_testing.load_balancer import create_scheduler, LoadBalancerService
 
 # Create load balancer
 load_balancer = LoadBalancerService()
@@ -146,8 +145,8 @@ config = {
     "algorithms": [
         {"type": "performance_based", "weight": 0.6},
         {"type": "priority_based", "weight": 0.3},
-        {"type": "affinity_based", "weight": 0.1}
-    ]
+        {"type": "affinity_based", "weight": 0.1},
+    ],
 }
 scheduler = create_scheduler(**config)
 ```

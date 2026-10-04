@@ -99,7 +99,9 @@ HTML reports include detailed test results with pass/fail status and execution t
 ### Basic Usage with Database Connector
 
 ```python
-from duckdb_api.simulation_validation.visualization.validation_visualizer_db_connector import ValidationVisualizerDBConnector
+from duckdb_api.simulation_validation.visualization.validation_visualizer_db_connector import (
+    ValidationVisualizerDBConnector,
+)
 
 # Create the connector
 connector = ValidationVisualizerDBConnector(db_path="./simulation_db.duckdb")
@@ -109,14 +111,14 @@ connector.create_mape_comparison_chart_from_db(
     hardware_ids=["gpu_rtx3080", "cpu_intel_xeon"],
     model_ids=["bert-base-uncased"],
     metric_name="throughput_items_per_second",
-    output_path="./mape_comparison.html"
+    output_path="./mape_comparison.html",
 )
 
 # Create a hardware comparison heatmap
 connector.create_hardware_comparison_heatmap_from_db(
     metric_name="average_latency_ms",
     model_ids=["bert-base-uncased", "vit-base-patch16-224"],
-    output_path="./hardware_heatmap.html"
+    output_path="./hardware_heatmap.html",
 )
 
 # Create a time series chart
@@ -124,22 +126,26 @@ connector.create_time_series_chart_from_db(
     metric_name="throughput_items_per_second",
     hardware_id="gpu_rtx3080",
     model_id="bert-base-uncased",
-    output_path="./time_series.html"
+    output_path="./time_series.html",
 )
 
 # Create a comprehensive dashboard
 connector.create_comprehensive_dashboard_from_db(
-    hardware_id="gpu_rtx3080",
-    model_id="bert-base-uncased",
-    output_path="./dashboard.html"
+    hardware_id="gpu_rtx3080", model_id="bert-base-uncased", output_path="./dashboard.html"
 )
 ```
 
 ### Direct Visualization without Database
 
 ```python
-from duckdb_api.simulation_validation.visualization.validation_visualizer import ValidationVisualizer
-from duckdb_api.simulation_validation.core.base import SimulationResult, HardwareResult, ValidationResult
+from duckdb_api.simulation_validation.visualization.validation_visualizer import (
+    ValidationVisualizer,
+)
+from duckdb_api.simulation_validation.core.base import (
+    SimulationResult,
+    HardwareResult,
+    ValidationResult,
+)
 
 # Create the visualizer
 visualizer = ValidationVisualizer()
@@ -152,7 +158,7 @@ visualizer.create_mape_comparison_chart(
     validation_results=validation_results,
     metric_name="throughput_items_per_second",
     hardware_ids=["gpu_rtx3080", "cpu_intel_xeon"],
-    output_path="./mape_comparison.html"
+    output_path="./mape_comparison.html",
 )
 ```
 
@@ -169,7 +175,7 @@ reporter.generate_validation_report(
     validation_results=validation_results,
     hardware_id="gpu_rtx3080",
     model_id="bert-base-uncased",
-    output_path="./validation_report.html"
+    output_path="./validation_report.html",
 )
 ```
 
@@ -186,7 +192,9 @@ The visualization components require the following dependencies:
 The visualization components can be integrated with the Monitoring Dashboard for centralized visualization:
 
 ```python
-from duckdb_api.simulation_validation.visualization.validation_visualizer_db_connector import ValidationVisualizerDBConnector
+from duckdb_api.simulation_validation.visualization.validation_visualizer_db_connector import (
+    ValidationVisualizerDBConnector,
+)
 from duckdb_api.distributed_testing.run_monitoring_dashboard import dashboard_client
 
 # Create the connector
@@ -197,14 +205,11 @@ vis_html = connector.create_mape_comparison_chart_from_db(
     hardware_ids=["gpu_rtx3080", "cpu_intel_xeon"],
     model_ids=["bert-base-uncased"],
     metric_name="throughput_items_per_second",
-    interactive=True
+    interactive=True,
 )
 
 # Add to dashboard
 dashboard_client.add_panel(
-    title="MAPE Comparison",
-    panel_type="html",
-    content=vis_html,
-    group="Simulation Validation"
+    title="MAPE Comparison", panel_type="html", content=vis_html, group="Simulation Validation"
 )
 ```

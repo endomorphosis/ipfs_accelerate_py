@@ -93,25 +93,21 @@ from power_efficient_deployment import PowerEfficientDeployment, PowerProfile, D
 
 # Initialize deployment with balanced power profile for Android
 deployment = PowerEfficientDeployment(
-    power_profile=PowerProfile.BALANCED,
-    deployment_target=DeploymentTarget.ANDROID
+    power_profile=PowerProfile.BALANCED, deployment_target=DeploymentTarget.ANDROID
 )
 
 # Prepare model for deployment
 result = deployment.prepare_model_for_deployment(
     model_path="/path/to/model.onnx",
-    model_type="text"  # Optional, can be inferred
+    model_type="text",  # Optional, can be inferred
 )
 
 # Load model for inference
-model_info = deployment.load_model(
-    model_path=result["output_model_path"]
-)
+model_info = deployment.load_model(model_path=result["output_model_path"])
 
 # Run inference
 inference_result = deployment.run_inference(
-    model_path=result["output_model_path"],
-    inputs="Sample input text"
+    model_path=result["output_model_path"], inputs="Sample input text"
 )
 
 # Print results
@@ -131,25 +127,20 @@ You can customize the power configuration for specific deployment scenarios:
 ```python
 # Start with a predefined profile
 deployment = PowerEfficientDeployment(
-    power_profile=PowerProfile.BALANCED,
-    deployment_target=DeploymentTarget.ANDROID
+    power_profile=PowerProfile.BALANCED, deployment_target=DeploymentTarget.ANDROID
 )
 
 # Update configuration with custom settings
-deployment.update_config({
-    "quantization": {
-        "preferred_method": "int4",
-        "fallback_method": "int8"
-    },
-    "thermal_management": {
-        "proactive_throttling": True,
-        "temperature_check_interval_seconds": 2
-    },
-    "inference_optimization": {
-        "batch_inference_when_possible": True,
-        "optimal_batch_size": 8
+deployment.update_config(
+    {
+        "quantization": {"preferred_method": "int4", "fallback_method": "int8"},
+        "thermal_management": {
+            "proactive_throttling": True,
+            "temperature_check_interval_seconds": 2,
+        },
+        "inference_optimization": {"batch_inference_when_possible": True, "optimal_batch_size": 8},
     }
-})
+)
 ```
 
 ### Deployment with Specific Quantization Method
@@ -161,7 +152,7 @@ You can specify a particular quantization method for model deployment:
 result = deployment.prepare_model_for_deployment(
     model_path="/path/to/model.onnx",
     model_type="vision",
-    quantization_method="int8"  # Specify quantization method
+    quantization_method="int8",  # Specify quantization method
 )
 
 # Check power efficiency metrics
@@ -178,7 +169,9 @@ You can provide custom model loading and inference handlers:
 def custom_model_loader(model_path, **kwargs):
     # Custom model loading logic
     import onnxruntime as ort
+
     return ort.InferenceSession(model_path)
+
 
 def custom_inference_handler(model, inputs, **kwargs):
     # Custom inference logic
@@ -186,17 +179,17 @@ def custom_inference_handler(model, inputs, **kwargs):
     output_name = model.get_outputs()[0].name
     return model.run([output_name], {input_name: inputs})[0]
 
+
 # Load model with custom loader
 model_info = deployment.load_model(
-    model_path=result["output_model_path"],
-    model_loader=custom_model_loader
+    model_path=result["output_model_path"], model_loader=custom_model_loader
 )
 
 # Run inference with custom handler
 inference_result = deployment.run_inference(
     model_path=result["output_model_path"],
     inputs=my_input_data,
-    inference_handler=custom_inference_handler
+    inference_handler=custom_inference_handler,
 )
 ```
 
@@ -207,8 +200,7 @@ The power-efficient deployment pipeline integrates with the thermal monitoring s
 ```python
 # Initialize deployment with thermal-aware profile
 deployment = PowerEfficientDeployment(
-    power_profile=PowerProfile.THERMAL_AWARE,
-    deployment_target=DeploymentTarget.ANDROID
+    power_profile=PowerProfile.THERMAL_AWARE, deployment_target=DeploymentTarget.ANDROID
 )
 
 # Thermal monitoring will automatically start when a model is loaded
@@ -219,9 +211,9 @@ thermal_status = deployment._check_thermal_status()
 print(f"Thermal status: {thermal_status['thermal_status']}")
 print(f"Thermal throttling: {thermal_status['thermal_throttling']}")
 
-if thermal_status['thermal_throttling']:
+if thermal_status["thermal_throttling"]:
     print(f"Throttling level: {thermal_status['throttling_level']}")
-    
+
 # Inference will automatically adapt to thermal conditions
 inference_result = deployment.run_inference(model_path, inputs)
 ```
@@ -233,14 +225,12 @@ For Qualcomm devices, the pipeline integrates with the Qualcomm AI Engine for op
 ```python
 # Initialize deployment with Qualcomm target
 deployment = PowerEfficientDeployment(
-    power_profile=PowerProfile.BALANCED,
-    deployment_target=DeploymentTarget.QUALCOMM
+    power_profile=PowerProfile.BALANCED, deployment_target=DeploymentTarget.QUALCOMM
 )
 
 # Prepare model for Qualcomm deployment
 result = deployment.prepare_model_for_deployment(
-    model_path="/path/to/model.onnx",
-    model_type="text"
+    model_path="/path/to/model.onnx", model_type="text"
 )
 
 # Qualcomm-specific optimizations will be automatically applied
@@ -256,16 +246,12 @@ The pipeline provides comprehensive power efficiency reporting:
 # Generate power efficiency report in different formats
 json_report = deployment.get_power_efficiency_report(
     model_path=model_path,  # Optional, if None reports on all models
-    report_format="json"
+    report_format="json",
 )
 
-markdown_report = deployment.get_power_efficiency_report(
-    report_format="markdown"
-)
+markdown_report = deployment.get_power_efficiency_report(report_format="markdown")
 
-html_report = deployment.get_power_efficiency_report(
-    report_format="html"
-)
+html_report = deployment.get_power_efficiency_report(report_format="html")
 
 # Save report to file
 with open("power_efficiency_report.md", "w") as f:
@@ -316,31 +302,26 @@ python power_efficient_deployment.py report \
 ```python
 # Initialize for mobile deployment
 deployment = PowerEfficientDeployment(
-    power_profile=PowerProfile.BALANCED,
-    deployment_target=DeploymentTarget.ANDROID
+    power_profile=PowerProfile.BALANCED, deployment_target=DeploymentTarget.ANDROID
 )
 
 # Prepare model
 result = deployment.prepare_model_for_deployment(
-    model_path="/path/to/model.onnx",
-    model_type="vision"
+    model_path="/path/to/model.onnx", model_type="vision"
 )
 
 # Load model
-model_info = deployment.load_model(
-    model_path=result["output_model_path"]
-)
+model_info = deployment.load_model(model_path=result["output_model_path"])
 
 # Process camera frames
 for frame in camera_frames:
     inference_result = deployment.run_inference(
-        model_path=result["output_model_path"],
-        inputs={"image": frame}
+        model_path=result["output_model_path"], inputs={"image": frame}
     )
-    
+
     # Process results
     process_detection_results(inference_result["outputs"])
-    
+
     # Check thermal status occasionally
     if frame_count % 100 == 0:
         thermal_status = deployment._check_thermal_status()
@@ -354,34 +335,30 @@ for frame in camera_frames:
 ```python
 # Initialize for ultra-efficient deployment
 deployment = PowerEfficientDeployment(
-    power_profile=PowerProfile.ULTRA_EFFICIENT,
-    deployment_target=DeploymentTarget.EMBEDDED
+    power_profile=PowerProfile.ULTRA_EFFICIENT, deployment_target=DeploymentTarget.EMBEDDED
 )
 
 # Prepare model with aggressive quantization
 result = deployment.prepare_model_for_deployment(
     model_path="/path/to/model.onnx",
     model_type="text",
-    quantization_method="int4"  # Most aggressive quantization
+    quantization_method="int4",  # Most aggressive quantization
 )
 
 # Load model
-model_info = deployment.load_model(
-    model_path=result["output_model_path"]
-)
+model_info = deployment.load_model(model_path=result["output_model_path"])
 
 # Run inference only when needed
 while True:
     if sensor_data_available():
         data = read_sensor_data()
-        
+
         inference_result = deployment.run_inference(
-            model_path=result["output_model_path"],
-            inputs=data
+            model_path=result["output_model_path"], inputs=data
         )
-        
+
         process_results(inference_result["outputs"])
-    
+
     # Sleep to save power
     time.sleep(60)  # Check every minute
 ```
@@ -391,25 +368,21 @@ while True:
 ```python
 # Initialize for browser deployment
 deployment = PowerEfficientDeployment(
-    power_profile=PowerProfile.BALANCED,
-    deployment_target=DeploymentTarget.BROWSER
+    power_profile=PowerProfile.BALANCED, deployment_target=DeploymentTarget.BROWSER
 )
 
 # Prepare model for browser
 result = deployment.prepare_model_for_deployment(
     model_path="/path/to/model.onnx",
     model_type="text",
-    quantization_method="int8"  # Good balance for browsers
+    quantization_method="int8",  # Good balance for browsers
 )
 
 # The rest of the API works the same way
-model_info = deployment.load_model(
-    model_path=result["output_model_path"]
-)
+model_info = deployment.load_model(model_path=result["output_model_path"])
 
 inference_result = deployment.run_inference(
-    model_path=result["output_model_path"],
-    inputs="Sample input"
+    model_path=result["output_model_path"], inputs="Sample input"
 )
 ```
 
@@ -446,8 +419,7 @@ import logging
 
 # Enable debug logging
 logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
 # Initialize deployment

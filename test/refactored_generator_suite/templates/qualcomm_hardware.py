@@ -11,7 +11,7 @@ from templates.base_hardware import BaseHardwareTemplate
 
 class QualcommHardwareTemplate(BaseHardwareTemplate):
     """Qualcomm hardware template implementation for Qualcomm NPUs."""
-    
+
     def __init__(self):
         """Initialize the Qualcomm hardware template."""
         super().__init__()
@@ -22,11 +22,11 @@ class QualcommHardwareTemplate(BaseHardwareTemplate):
         self.supports_dynamic_shapes = False  # QNN often prefers fixed shapes
         self.resource_requirements = {
             "quantization_aware": True,  # Qualcomm devices benefit significantly from quantization
-            "fixed_batch_size": True,    # QNN works best with fixed batch sizes
-            "fixed_shapes": True,        # QNN works best with fixed input shapes
-            "memory_efficient": True     # QNN is optimized for memory efficiency
+            "fixed_batch_size": True,  # QNN works best with fixed batch sizes
+            "fixed_shapes": True,  # QNN works best with fixed input shapes
+            "memory_efficient": True,  # QNN is optimized for memory efficiency
         }
-    
+
     def get_import_statements(self) -> str:
         """Get Qualcomm-specific import statements."""
         return """
@@ -48,7 +48,7 @@ except ImportError:
     HAS_QNN = False
     print("Qualcomm QNN imports failed, falling back to PyTorch")
 """
-    
+
     def get_hardware_init_code(self, model_class_name: str, task_type: str) -> str:
         """Get Qualcomm-specific initialization code."""
         return f"""
@@ -154,7 +154,7 @@ except Exception as e:
     print("Falling back to CPU")
     return self.init_cpu(model_name, "cpu", qualcomm_label.replace("qualcomm", "cpu"))
 """
-    
+
     def get_handler_creation_code(self, model_class_name: str, task_type: str) -> str:
         """Get Qualcomm-specific handler creation code."""
         return f"""
@@ -168,7 +168,7 @@ handler = self.create_qualcomm_{task_type}_endpoint_handler(
     model_metadata=model_metadata
 )
 """
-    
+
     def get_inference_code(self, task_type: str) -> str:
         """Get Qualcomm-specific inference code."""
         if task_type == "text_embedding":
@@ -446,7 +446,7 @@ except Exception as e:
         # Unknown output type
         result = {{"raw_output": str(outputs)}}
 """
-    
+
     def get_cleanup_code(self) -> str:
         """Get Qualcomm-specific cleanup code."""
         return """
@@ -479,7 +479,7 @@ if 'torch' in globals() or 'torch' in locals():
     except:
         pass
 """
-    
+
     def get_mock_code(self, model_class_name: str, task_type: str) -> str:
         """Get Qualcomm-specific mock implementation code."""
         return """
@@ -545,7 +545,7 @@ if task_type == "image_classification":
             
     mock_model.config = MockConfig()
 """
-    
+
     def get_hardware_detection_code(self) -> str:
         """Get Qualcomm-specific hardware detection code."""
         return """
@@ -583,7 +583,7 @@ def is_available():
         print(f"Error checking Qualcomm NPU availability: {e}")
         return False
 """
-    
+
     def get_utility_methods(self) -> str:
         """Get Qualcomm-specific utility methods."""
         return """
@@ -676,18 +676,13 @@ def _create_pytorch_to_qnn_wrapper(self, pt_model, task_type):
     
     return pt_model
 """
-    
+
     def is_compatible_with_architecture(self, arch_type: str) -> bool:
         """Check Qualcomm compatibility with architecture type."""
         # Qualcomm NPUs have limitations with some architectures
-        compatible_archs = [
-            "encoder-only", 
-            "vision", 
-            "vision-encoder-text-decoder",
-            "speech"
-        ]
+        compatible_archs = ["encoder-only", "vision", "vision-encoder-text-decoder", "speech"]
         return arch_type in compatible_archs
-    
+
     def get_fallback_hardware(self) -> str:
         """Get the fallback hardware type if Qualcomm is not available."""
         return "cpu"

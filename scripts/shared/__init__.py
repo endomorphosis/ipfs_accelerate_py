@@ -6,11 +6,21 @@ the CLI interface and the MCP server to ensure consistency.
 """
 
 from .core import SharedCore
-from .operations import InferenceOperations, FileOperations, ModelOperations, NetworkOperations, QueueOperations, TestOperations, GitHubOperations, CopilotOperations, CopilotSDKOperations
+from .operations import (
+    InferenceOperations,
+    FileOperations,
+    ModelOperations,
+    NetworkOperations,
+    QueueOperations,
+    TestOperations,
+    GitHubOperations,
+    CopilotOperations,
+    CopilotSDKOperations,
+)
 
 __all__ = [
     "SharedCore",
-    "InferenceOperations", 
+    "InferenceOperations",
     "FileOperations",
     "ModelOperations",
     "NetworkOperations",
@@ -18,5 +28,5 @@ __all__ = [
     "TestOperations",
     "GitHubOperations",
     "CopilotOperations",
-    "CopilotSDKOperations"
+    "CopilotSDKOperations",
 ]

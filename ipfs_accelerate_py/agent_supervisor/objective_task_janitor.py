@@ -155,7 +155,10 @@ def _matches_any_term(text: str, terms: Sequence[str]) -> bool:
 
 
 def _is_generated_objective_task(task: PortalTask) -> bool:
-    if any(task.metadata.get(key) for key in ("goal id", "missing evidence", "goal packet", "bundle shard")):
+    if any(
+        task.metadata.get(key)
+        for key in ("goal id", "missing evidence", "goal packet", "bundle shard")
+    ):
         return True
     return "objective scan" in task.title.lower() or "objective gap" in task.acceptance.lower()
 
@@ -257,7 +260,9 @@ def reconcile_objective_task_strategy(
         codebase_scan_task = _is_codebase_scan_backlog_task(task)
         if goal_known or goal_missing:
             reason = "goal_not_active"
-            if goal_known and all(goals_by_id[goal_id].status == "completed" for goal_id in goal_known):
+            if goal_known and all(
+                goals_by_id[goal_id].status == "completed" for goal_id in goal_known
+            ):
                 reason = "goal_completed"
             elif goal_missing and not goal_known:
                 reason = "orphaned_goal_reference"
@@ -336,11 +341,15 @@ def reconcile_objective_task_strategy(
         and _goal_requires_launch_playwright_gate(goals_by_id[goal_id])
     ]
 
-    previous_receipts = [
-        receipt
-        for receipt in strategy.get("objective_task_janitor_receipts", [])
-        if isinstance(receipt, Mapping)
-    ] if isinstance(strategy.get("objective_task_janitor_receipts"), list) else []
+    previous_receipts = (
+        [
+            receipt
+            for receipt in strategy.get("objective_task_janitor_receipts", [])
+            if isinstance(receipt, Mapping)
+        ]
+        if isinstance(strategy.get("objective_task_janitor_receipts"), list)
+        else []
+    )
     previously_blocked = _janitor_owned_task_ids(previous_receipts, "block")
     previously_deprioritized = _janitor_owned_task_ids(previous_receipts, "deprioritize")
 
@@ -355,7 +364,8 @@ def reconcile_objective_task_strategy(
         else []
     )
     next_blocked = _unique(
-        [task_id for task_id in existing_blocked if task_id not in previously_blocked] + blocked_task_ids
+        [task_id for task_id in existing_blocked if task_id not in previously_blocked]
+        + blocked_task_ids
     )
     next_deprioritized = _unique(
         [task_id for task_id in existing_deprioritized if task_id not in previously_deprioritized]

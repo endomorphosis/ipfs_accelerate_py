@@ -466,11 +466,11 @@ The `MockHandler` class in hardware templates provides consistent implementation
 ```python
 class MockHandler:
     """Mock handler for platforms that don't have real implementations."""
-    
+
     def __init__(self, model_path, platform="cpu"):
         self.model_path = model_path
         self.platform = platform
-        
+
     def __call__(self, *args, **kwargs):
         # Use the correct implementation type based on platform
         impl_type = "MOCK"
@@ -480,12 +480,12 @@ class MockHandler:
             impl_type = "REAL_WEBGPU"  # Use REAL for validation
         else:
             impl_type = f"REAL_{self.platform.upper()}"
-            
+
         return {
             "logits": np.random.rand(1, 1000),
             "implementation_type": impl_type,
             "model_type": "detection",
-            "success": True
+            "success": True,
         }
 ```
 
@@ -494,11 +494,15 @@ class MockHandler:
 The enhanced WebGPU handler with memory optimizations for large models:
 
 ```python
-from fixed_web_platform.webgpu_memory_optimization import WebGPUMemoryOptimizer, ProgressiveTensorLoader
+from fixed_web_platform.webgpu_memory_optimization import (
+    WebGPUMemoryOptimizer,
+    ProgressiveTensorLoader,
+)
+
 
 class WebGPUMemoryOptimizedHandler:
     """WebGPU handler with memory optimization for large models."""
-    
+
     def __init__(self, model_path, model_type="llm", config=None):
         self.model_path = model_path
         self.model_type = model_type
@@ -507,52 +511,57 @@ class WebGPUMemoryOptimizedHandler:
             "enable_streaming": True,
             "max_chunk_size_mb": 100,
             "enable_cpu_offload": True,
-            "enable_flash_attention": True
+            "enable_flash_attention": True,
         }
         self._initialize_memory_optimizer()
-        
+
     def _initialize_memory_optimizer(self):
         # Initialize memory optimizer
         self.memory_optimizer = WebGPUMemoryOptimizer(
             total_memory_mb=self.config["memory_limit_mb"],
-            offload_cpu=self.config["enable_cpu_offload"]
+            offload_cpu=self.config["enable_cpu_offload"],
         )
-        
+
         # Set up progressive loader
         self.progressive_loader = ProgressiveTensorLoader(
             memory_optimizer=self.memory_optimizer,
             max_chunk_size_mb=self.config["max_chunk_size_mb"],
-            enable_streaming=self.config["enable_streaming"]
+            enable_streaming=self.config["enable_streaming"],
         )
-        
+
         # Create model optimization result
-        from fixed_web_platform.webgpu_transformer_compute_shaders import setup_transformer_compute_shaders
+        from fixed_web_platform.webgpu_transformer_compute_shaders import (
+            setup_transformer_compute_shaders,
+        )
+
         self.compute_shaders = setup_transformer_compute_shaders(
             model_name=self.model_path,
             model_type=self.model_type,
-            config={"enable_flash_attention": self.config.get("enable_flash_attention", True)}
+            config={"enable_flash_attention": self.config.get("enable_flash_attention", True)},
         )
-        
+
     def get_memory_stats(self):
         """Get memory usage statistics."""
         return self.memory_optimizer.get_memory_stats()
-        
+
     def __call__(self, inputs):
         # Process with memory optimizations
         self.compute_shaders.process_transformer_layer()
-        
+
         return {
             "text": "Memory-optimized model processing result",
             "implementation_type": "REAL_WEBGPU",
             "performance_metrics": {
                 "peak_memory_mb": self.memory_optimizer.get_memory_stats()["peak_memory_mb"],
                 "attention_time_ms": self.compute_shaders.performance_metrics["attention_time_ms"],
-                "estimated_memory_reduction": self.compute_shaders.performance_metrics["memory_reduction_percent"],
+                "estimated_memory_reduction": self.compute_shaders.performance_metrics[
+                    "memory_reduction_percent"
+                ],
                 "flash_attention_used": self.config.get("enable_flash_attention", False),
                 "progressive_loading_enabled": True,
-                "streaming_enabled": self.config["enable_streaming"]
+                "streaming_enabled": self.config["enable_streaming"],
             },
-            "success": True
+            "success": True,
         }
 ```
 
@@ -563,53 +572,54 @@ The parallel loading handler improves initialization time for multimodal models:
 ```python
 class ParallelLoadingHandler:
     """Handler with parallel model component loading support."""
-    
+
     def __init__(self, model_path, platform="webgpu", components=None):
         self.model_path = model_path
         self.platform = platform
         self.components = components or ["vision_encoder", "text_encoder", "fusion_model"]
         self.parallel_load_time = self._load_components_in_parallel()
-        
+
     def _load_components_in_parallel(self):
         """Load model components in parallel for faster initialization."""
         import time, threading
-        
+
         start_time = time.time()
         threads = []
-        
+
         # Create a thread for each component
         for component in self.components:
             thread = threading.Thread(target=self._load_component, args=(component,))
             threads.append(thread)
             thread.start()
-            
+
         # Wait for all components to load
         for thread in threads:
             thread.join()
-            
+
         return (time.time() - start_time) * 1000  # ms
-        
+
     def _load_component(self, component_name):
         """Simulate loading a single model component."""
         import time
+
         time.sleep(0.1)  # Simulate component loading
-        
+
     def test_parallel_load(self, platform=None):
         """Test parallel loading and return the time saved."""
         return self.parallel_load_time
-        
+
     def __call__(self, inputs):
         # Use the correct implementation type based on platform
         impl_type = f"REAL_{self.platform.upper()}"
-        
+
         return {
             "text": "Parallel loading optimized response",
             "implementation_type": impl_type,
             "performance_metrics": {
                 "parallel_load_time_ms": self.parallel_load_time,
-                "parallel_components_loaded": len(self.components)
+                "parallel_components_loaded": len(self.components),
             },
-            "success": True
+            "success": True,
         }
 ```
 

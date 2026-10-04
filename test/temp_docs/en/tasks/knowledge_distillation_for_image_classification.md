@@ -41,11 +41,14 @@ We can use an image processor from either of the models, as in this case they re
 
 ```python
 from transformers import AutoImageProcessor
+
 teacher_processor = AutoImageProcessor.from_pretrained("merve/beans-vit-224")
+
 
 def process(examples):
     processed_inputs = teacher_processor(examples["image"])
     return processed_inputs
+
 
 processed_datasets = dataset.map(process, batched=True)
 ```
@@ -60,13 +63,24 @@ import torch.nn as nn
 import torch.nn.functional as F
 from accelerate.test_utils.testing import get_backend
 
+
 class ImageDistilTrainer(Trainer):
-    def __init__(self, teacher_model=None, student_model=None, temperature=None, lambda_param=None,  *args, **kwargs):
+    def __init__(
+        self,
+        teacher_model=None,
+        student_model=None,
+        temperature=None,
+        lambda_param=None,
+        *args,
+        **kwargs,
+    ):
         super().__init__(model=student_model, *args, **kwargs)
         self.teacher = teacher_model
         self.student = student_model
         self.loss_function = nn.KLDivLoss(reduction="batchmean")
-        device, _, _ = get_backend() # automatically detects the underlying device type (CUDA, CPU, XPU, MPS, etc.)
+        device, _, _ = (
+            get_backend()
+        )  # automatically detects the underlying device type (CUDA, CPU, XPU, MPS, etc.)
         self.teacher.to(device)
         self.teacher.eval()
         self.temperature = temperature
@@ -76,20 +90,22 @@ class ImageDistilTrainer(Trainer):
         student_output = self.student(**inputs)
 
         with torch.no_grad():
-          teacher_output = self.teacher(**inputs)
+            teacher_output = self.teacher(**inputs)
 
         # Compute soft targets for teacher and student
         soft_teacher = F.softmax(teacher_output.logits / self.temperature, dim=-1)
         soft_student = F.log_softmax(student_output.logits / self.temperature, dim=-1)
 
         # Compute the loss
-        distillation_loss = self.loss_function(soft_student, soft_teacher) * (self.temperature ** 2)
+        distillation_loss = self.loss_function(soft_student, soft_teacher) * (self.temperature**2)
 
         # Compute the true label loss
         student_target_loss = student_output.loss
 
         # Calculate final loss
-        loss = (1. - self.lambda_param) * student_target_loss + self.lambda_param * distillation_loss
+        loss = (
+            1.0 - self.lambda_param
+        ) * student_target_loss + self.lambda_param * distillation_loss
         return (loss, student_output) if return_outputs else loss
 ```
 
@@ -104,7 +120,11 @@ notebook_login()
 Let's set the `TrainingArguments`, the teacher model and the student model.
 
 ```python
-from transformers import AutoModelForImageClassification, MobileNetV2Config, MobileNetV2ForImageClassification
+from transformers import (
+    AutoModelForImageClassification,
+    MobileNetV2Config,
+    MobileNetV2ForImageClassification,
+)
 
 training_args = TrainingArguments(
     output_dir="my-awesome-model",
@@ -120,15 +140,13 @@ training_args = TrainingArguments(
     push_to_hub=True,
     hub_strategy="every_save",
     hub_model_id=repo_name,
-    )
+)
 
 num_labels = len(processed_datasets["train"].features["labels"].names)
 
 # initialize models
 teacher_model = AutoModelForImageClassification.from_pretrained(
-    "merve/beans-vit-224",
-    num_labels=num_labels,
-    ignore_mismatched_sizes=True
+    "merve/beans-vit-224", num_labels=num_labels, ignore_mismatched_sizes=True
 )
 
 # training MobileNetV2 from scratch
@@ -144,6 +162,7 @@ import evaluate
 import numpy as np
 
 accuracy = evaluate.load("accuracy")
+
 
 def compute_metrics(eval_pred):
     predictions, labels = eval_pred
@@ -167,7 +186,7 @@ trainer = ImageDistilTrainer(
     processing_class=teacher_processor,
     compute_metrics=compute_metrics,
     temperature=5,
-    lambda_param=0.5
+    lambda_param=0.5,
 )
 ```
 

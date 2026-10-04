@@ -86,7 +86,9 @@ class TestMCPTransportTrioMCPP2PNetworked(unittest.TestCase):
                 self.assertIn("/p2p/", multiaddr)
 
                 async def _run_client() -> dict:
-                    async with trio_libp2p_host_listen(listen_multiaddr="/ip4/127.0.0.1/tcp/0") as host:
+                    async with trio_libp2p_host_listen(
+                        listen_multiaddr="/ip4/127.0.0.1/tcp/0"
+                    ) as host:
                         stream = await open_libp2p_stream_by_multiaddr(
                             host,
                             peer_multiaddr=multiaddr,
@@ -178,7 +180,9 @@ class TestMCPTransportTrioMCPP2PNetworked(unittest.TestCase):
                 self.assertIn("/p2p/", multiaddr)
 
                 async def _run_client() -> dict:
-                    async with trio_libp2p_host_listen(listen_multiaddr="/ip4/127.0.0.1/tcp/0") as host:
+                    async with trio_libp2p_host_listen(
+                        listen_multiaddr="/ip4/127.0.0.1/tcp/0"
+                    ) as host:
                         stream = await open_libp2p_stream_by_multiaddr(
                             host,
                             peer_multiaddr=multiaddr,
@@ -223,7 +227,9 @@ class TestMCPTransportTrioMCPP2PNetworked(unittest.TestCase):
                     except Exception:
                         pass
 
-    def test_mixed_version_unknown_profile_and_alias_tools_list_remain_deterministic_over_network(self) -> None:
+    def test_mixed_version_unknown_profile_and_alias_tools_list_remain_deterministic_over_network(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory(prefix="mcp_transport_mcp_p2p_networked_alias_") as td:
             queue_path = os.path.join(td, "queue.json")
             announce_file = os.path.join(td, "task_p2p_announce.json")
@@ -272,7 +278,9 @@ class TestMCPTransportTrioMCPP2PNetworked(unittest.TestCase):
                 self.assertIn("/p2p/", multiaddr)
 
                 async def _run_client() -> tuple[dict, dict, dict]:
-                    async with trio_libp2p_host_listen(listen_multiaddr="/ip4/127.0.0.1/tcp/0") as host:
+                    async with trio_libp2p_host_listen(
+                        listen_multiaddr="/ip4/127.0.0.1/tcp/0"
+                    ) as host:
                         stream = await open_libp2p_stream_by_multiaddr(
                             host,
                             peer_multiaddr=multiaddr,

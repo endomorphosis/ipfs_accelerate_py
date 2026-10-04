@@ -112,9 +112,7 @@ from test_utils import generate_test_data
 
 # Generate synthetic benchmark data
 benchmark_data = generate_test_data(
-    model_types=["text_embedding", "vision"],
-    hardware_platforms=["cpu", "cuda"],
-    num_records=100
+    model_types=["text_embedding", "vision"], hardware_platforms=["cpu", "cuda"], num_records=100
 )
 ```
 
@@ -144,19 +142,19 @@ def test_uncertainty_estimation():
     """Test uncertainty estimation for active learning."""
     # Initialize active learning system with synthetic data
     active_learner = ActiveLearningSystem(data_file=None)
-    
+
     # Get recommendations
     recommendations = active_learner.recommend_configurations(budget=5)
-    
+
     # Check that uncertainty values are reasonable
     for config in recommendations:
-        assert 'uncertainty' in config
-        assert 0 <= config['uncertainty'] <= 1
-        
+        assert "uncertainty" in config
+        assert 0 <= config["uncertainty"] <= 1
+
     # Check that higher uncertainty leads to higher information gain
-    uncertainties = [config['uncertainty'] for config in recommendations]
-    info_gains = [config['expected_information_gain'] for config in recommendations]
-    
+    uncertainties = [config["uncertainty"] for config in recommendations]
+    info_gains = [config["expected_information_gain"] for config in recommendations]
+
     # Calculate correlation
     correlation = numpy.corrcoef(uncertainties, info_gains)[0, 1]
     assert correlation > 0.5  # Strong positive correlation expected
@@ -180,36 +178,34 @@ def test_integrated_recommendations():
     active_learner = ActiveLearningSystem()
     predictor = PerformancePredictor()
     hw_recommender = HardwareRecommender(predictor=predictor)
-    
+
     # Get integrated recommendations
     results = active_learner.integrate_with_hardware_recommender(
-        hardware_recommender=hw_recommender,
-        test_budget=5,
-        optimize_for="throughput"
+        hardware_recommender=hw_recommender, test_budget=5, optimize_for="throughput"
     )
-    
+
     # Verify structure of results
-    assert 'recommendations' in results
-    assert 'total_candidates' in results
-    assert 'enhanced_candidates' in results
-    assert 'final_recommendations' in results
-    
+    assert "recommendations" in results
+    assert "total_candidates" in results
+    assert "enhanced_candidates" in results
+    assert "final_recommendations" in results
+
     # Verify recommendations
-    for config in results['recommendations']:
-        assert 'model_name' in config
-        assert 'hardware' in config
-        assert 'batch_size' in config
-        assert 'recommended_hardware' in config
-        assert 'hardware_match' in config
-        assert 'combined_score' in config
-        
+    for config in results["recommendations"]:
+        assert "model_name" in config
+        assert "hardware" in config
+        assert "batch_size" in config
+        assert "recommended_hardware" in config
+        assert "hardware_match" in config
+        assert "combined_score" in config
+
         # Verify scoring
-        if config['hardware_match']:
+        if config["hardware_match"]:
             # If hardware matches recommendation, combined score should equal info gain
-            assert abs(config['combined_score'] - config['expected_information_gain']) < 0.01
+            assert abs(config["combined_score"] - config["expected_information_gain"]) < 0.01
         else:
             # If hardware doesn't match, combined score should include hardware factor
-            assert config['combined_score'] != config['expected_information_gain']
+            assert config["combined_score"] != config["expected_information_gain"]
 ```
 
 ## Profiling and Performance Testing
@@ -353,26 +349,31 @@ def test_prediction_accuracy():
     """Validate that predictions meet accuracy requirements."""
     # Load test data with known values
     test_data = load_test_data("known_values.csv")
-    
+
     # Make predictions
     predictor = PerformancePredictor()
     predictions = []
     actuals = []
-    
+
     for config in test_data:
         prediction = predictor.predict(
-            model_name=config['model_name'],
-            model_type=config['model_type'],
-            hardware_platform=config['hardware'],
-            batch_size=config['batch_size']
+            model_name=config["model_name"],
+            model_type=config["model_type"],
+            hardware_platform=config["hardware"],
+            batch_size=config["batch_size"],
         )
-        
-        predictions.append(prediction['throughput'])
-        actuals.append(config['actual_throughput'])
-    
+
+        predictions.append(prediction["throughput"])
+        actuals.append(config["actual_throughput"])
+
     # Calculate mean absolute percentage error
-    mape = numpy.mean(numpy.abs((numpy.array(actuals) - numpy.array(predictions)) / numpy.array(actuals))) * 100
-    
+    mape = (
+        numpy.mean(
+            numpy.abs((numpy.array(actuals) - numpy.array(predictions)) / numpy.array(actuals))
+        )
+        * 100
+    )
+
     # Validate accuracy requirement
     assert mape < 15, f"Prediction MAPE of {mape:.2f}% exceeds maximum allowed (15%)"
 ```

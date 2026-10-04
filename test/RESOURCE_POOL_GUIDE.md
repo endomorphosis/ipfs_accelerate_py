@@ -60,23 +60,23 @@ from resource_pool import get_global_resource_pool
 # Get the global resource pool instance
 pool = get_global_resource_pool()
 
-# Get or create a resource 
+# Get or create a resource
 torch = pool.get_resource("torch", constructor=lambda: __import__("torch"))
 transformers = pool.get_resource("transformers", constructor=lambda: __import__("transformers"))
 
 # Get or create a model with hardware awareness
 model = pool.get_model(
-    "embedding", 
-    "bert-base-uncased", 
+    "embedding",
+    "bert-base-uncased",
     constructor=lambda: transformers.AutoModel.from_pretrained("bert-base-uncased"),
-    hardware_preferences={"device": "auto"}  # Automatically select optimal device
+    hardware_preferences={"device": "auto"},  # Automatically select optimal device
 )
 
 # Get or create a tokenizer
 tokenizer = pool.get_tokenizer(
-    "embedding", 
+    "embedding",
     "bert-base-uncased",
-    constructor=lambda: transformers.AutoTokenizer.from_pretrained("bert-base-uncased")
+    constructor=lambda: transformers.AutoTokenizer.from_pretrained("bert-base-uncased"),
 )
 
 # Get resource pool usage statistics
@@ -182,29 +182,31 @@ When calling `get_model()`, you can pass a hardware_preferences dictionary with 
 hardware_preferences = {
     # Basic device selection
     "device": "auto",  # or "cuda", "cpu", "mps", "cuda:1", "webnn", "webgpu", etc.
-    
     # Advanced hardware selection
-    "priority_list": ["cuda", "mps", "webnn", "webgpu", "cpu"],  # Hardware types in order of preference
+    "priority_list": [
+        "cuda",
+        "mps",
+        "webnn",
+        "webgpu",
+        "cpu",
+    ],  # Hardware types in order of preference
     "preferred_index": 0,  # For multi-GPU systems, which GPU to prefer
-    
     # Hardware compatibility information
     "hw_compatibility": {
         "cuda": {"compatible": True, "memory_usage": {"peak": 1200}},
         "mps": {"compatible": True},
         "openvino": {"compatible": True},
         "webnn": {"compatible": True},
-        "webgpu": {"compatible": True}
+        "webgpu": {"compatible": True},
     },
-    
     # Memory management
     "force_low_memory": False,  # Force low-memory optimizations
     "precision": "fp16",  # Request mixed precision if available
-    
     # Web deployment specific options
     "model_family": "embedding",  # Used for web platform optimization
     "subfamily": "web_deployment",  # Special handling for web deployment
     "fallback_to_simulation": True,  # Allow fallback to simulation mode for web platforms
-    "browser_optimized": True  # Enable browser-specific optimizations
+    "browser_optimized": True,  # Enable browser-specific optimizations
 }
 ```
 
@@ -216,7 +218,7 @@ webnn_preferences = {
     "priority_list": ["webnn", "webgpu", "cpu"],
     "model_family": "embedding",
     "subfamily": "web_deployment",
-    "description": "Web deployment optimized for embedding models"
+    "description": "Web deployment optimized for embedding models",
 }
 
 # Vision model optimized for WebGPU
@@ -224,7 +226,7 @@ webgpu_preferences = {
     "priority_list": ["webgpu", "webnn", "cpu"],
     "model_family": "vision",
     "subfamily": "web_deployment",
-    "description": "Web deployment optimized for vision models"
+    "description": "Web deployment optimized for vision models",
 }
 ```
 
@@ -281,16 +283,18 @@ from transformers import AutoModel
 # Get resource pool - hardware detection happens automatically
 pool = get_global_resource_pool()
 
+
 # Define model constructor - the pool will decide optimal device
 def create_model():
     return AutoModel.from_pretrained("bert-base-uncased")
+
 
 # The ResourcePool automatically detects hardware capabilities,
 # classifies the model family, and chooses the optimal device
 model = pool.get_model(
     "embedding",  # Model family helps optimize hardware selection
-    "bert-base-uncased", 
-    constructor=create_model
+    "bert-base-uncased",
+    constructor=create_model,
 )
 
 # The selected device is logged during model loading:
@@ -309,13 +313,13 @@ hardware_info = detect_available_hardware()
 # Create hardware-aware preferences with specific needs
 hardware_preferences = {
     "priority_list": ["cuda", "mps", "cpu"],  # Hardware priority order
-    "preferred_index": 0,                     # Use primary GPU
-    "precision": "fp16",                     # Use mixed precision when available
+    "preferred_index": 0,  # Use primary GPU
+    "precision": "fp16",  # Use mixed precision when available
     "hw_compatibility": {
         "cuda": {"compatible": True, "memory_usage": {"peak": 500}},
         "mps": {"compatible": True},
-        "openvino": {"compatible": True}
-    }
+        "openvino": {"compatible": True},
+    },
 }
 
 # Load model with these specific hardware preferences
@@ -324,7 +328,7 @@ model = pool.get_model(
     "embedding",
     "bert-base-uncased",
     constructor=lambda: AutoModel.from_pretrained("bert-base-uncased"),
-    hardware_preferences=hardware_preferences
+    hardware_preferences=hardware_preferences,
 )
 ```
 
@@ -346,31 +350,31 @@ pool = get_global_resource_pool()
 hardware_preferences = {
     "device": best_device,
     "force_device": True,  # Skip compatibility checks
-    "precision": "fp16"    # Request mixed precision if available
+    "precision": "fp16",  # Request mixed precision if available
 }
 
 # Pass hardware preferences to override automatic device selection
 model = pool.get_model(
-    "embedding", 
-    "bert-base-uncased", 
+    "embedding",
+    "bert-base-uncased",
     constructor=lambda: AutoModel.from_pretrained("bert-base-uncased"),
-    hardware_preferences=hardware_preferences
+    hardware_preferences=hardware_preferences,
 )
 
 # You can also request device-specific versions:
 cpu_model = pool.get_model(
-    "embedding", 
-    "bert-base-uncased", 
+    "embedding",
+    "bert-base-uncased",
     constructor=lambda: AutoModel.from_pretrained("bert-base-uncased"),
-    hardware_preferences={"device": "cpu"}
+    hardware_preferences={"device": "cpu"},
 )
 
 # Or use the hardware constants for more reliable selection:
 cuda_model = pool.get_model(
-    "embedding", 
-    "bert-base-uncased", 
+    "embedding",
+    "bert-base-uncased",
     constructor=lambda: AutoModel.from_pretrained("bert-base-uncased"),
-    hardware_preferences={"priority_list": [CUDA, CPU]}
+    hardware_preferences={"priority_list": [CUDA, CPU]},
 )
 
 # The pool maintains separate instances for each unique hardware configuration
@@ -436,7 +440,7 @@ if system_memory:
     available_mb = system_memory.get("available_mb", 0)
     percent_used = system_memory.get("percent_used", 0)
     print(f"System memory: {available_mb:.2f} MB available, {percent_used}% used")
-    
+
     # Check for memory pressure
     under_pressure = system_memory.get("under_pressure", False)
     if under_pressure:
@@ -447,14 +451,16 @@ cuda_memory = stats.get("cuda_memory", {})
 if cuda_memory and cuda_memory.get("device_count", 0) > 0:
     print("CUDA memory stats:")
     for device in cuda_memory.get("devices", []):
-        print(f"  Device {device['id']} ({device['name']}): {device['free_mb']:.2f} MB free, {device['percent_used']:.1f}% used")
+        print(
+            f"  Device {device['id']} ({device['name']}): {device['free_mb']:.2f} MB free, {device['percent_used']:.1f}% used"
+        )
 
 # Get detailed per-model memory information
 for key in pool.models:
     if key in pool._stats:
-        memory_mb = pool._stats[key].get('memory_usage', 0) / (1024 * 1024)
-        method = pool._stats[key].get('memory_estimation_method', 'unknown')
-        device = pool._stats[key].get('device', 'unknown')
+        memory_mb = pool._stats[key].get("memory_usage", 0) / (1024 * 1024)
+        method = pool._stats[key].get("memory_estimation_method", "unknown")
+        device = pool._stats[key].get("device", "unknown")
         print(f"Model {key}: {memory_mb:.2f} MB (method: {method}, device: {device})")
 ```
 
@@ -474,55 +480,59 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from resource_pool import get_global_resource_pool
 
 # Setup logging
-logging.basicConfig(level=logging.INFO, 
-                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
+
 
 class TestBertEmbedding(unittest.TestCase):
     """Test case for BERT embedding model with hardware-aware resource management"""
-    
+
     @classmethod
     def setUpClass(cls):
         """Set up the test class - load model once for all tests"""
         # Use resource pool for efficient resource sharing
         pool = get_global_resource_pool()
-        
+
         # Load dependencies
         cls.torch = pool.get_resource("torch", constructor=lambda: __import__("torch"))
-        cls.transformers = pool.get_resource("transformers", constructor=lambda: __import__("transformers"))
-        
+        cls.transformers = pool.get_resource(
+            "transformers", constructor=lambda: __import__("transformers")
+        )
+
         # Define model constructor with hardware awareness
         def create_model():
             from transformers import AutoModel
+
             return AutoModel.from_pretrained("bert-base-uncased")
-        
+
         # Set hardware preferences based on model family
         hardware_preferences = {
             "priority_list": ["cuda", "mps", "openvino", "cpu"],
             "preferred_index": 0,
-            "precision": "fp16" if cls.torch.cuda.is_available() else None
+            "precision": "fp16" if cls.torch.cuda.is_available() else None,
         }
-        
+
         # Get or create model with hardware awareness
         cls.model = pool.get_model(
             "embedding",  # Model family helps with hardware selection
-            "bert-base-uncased", 
+            "bert-base-uncased",
             constructor=create_model,
-            hardware_preferences=hardware_preferences
+            hardware_preferences=hardware_preferences,
         )
-        
+
         # Define tokenizer constructor
         def create_tokenizer():
             from transformers import AutoTokenizer
+
             return AutoTokenizer.from_pretrained("bert-base-uncased")
-        
+
         # Get or create tokenizer
         cls.tokenizer = pool.get_tokenizer(
-            "embedding", 
-            "bert-base-uncased",
-            constructor=create_tokenizer
+            "embedding", "bert-base-uncased", constructor=create_tokenizer
         )
-        
+
         # Get device from model (ResourcePool already placed it on optimal device)
         if hasattr(cls.model, "device"):
             cls.device = cls.model.device
@@ -533,40 +543,46 @@ class TestBertEmbedding(unittest.TestCase):
             except (StopIteration, AttributeError):
                 # Final fallback
                 cls.device = cls.torch.device("cpu")
-        
+
         logger.info(f"Model loaded and ready on device: {cls.device}")
-    
+
     def test_model_embedding(self):
         """Test the model embedding functionality"""
         # Run inference with proper device handling
         inputs = self.tokenizer("Hello, world!", return_tensors="pt")
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
-        
+
         with self.torch.no_grad():
             outputs = self.model(**inputs)
-        
+
         # Validate outputs with proper assertions
         self.assertIsNotNone(outputs, "Model outputs should not be None")
-        self.assertTrue(hasattr(outputs, "last_hidden_state"), 
-                       "Output should have last_hidden_state attribute")
-        self.assertEqual(outputs.last_hidden_state.shape[0], 1, 
-                        "Batch size should be 1")
-    
+        self.assertTrue(
+            hasattr(outputs, "last_hidden_state"), "Output should have last_hidden_state attribute"
+        )
+        self.assertEqual(outputs.last_hidden_state.shape[0], 1, "Batch size should be 1")
+
     def test_device_compatibility(self):
         """Test that the model is on the correct device"""
         # Check model device matches expected device
         if hasattr(self.model, "device"):
             model_device = str(self.model.device)
             device_str = str(self.device)
-            self.assertEqual(model_device, device_str, 
-                          f"Model should be on {device_str}, but is on {model_device}")
-        
+            self.assertEqual(
+                model_device,
+                device_str,
+                f"Model should be on {device_str}, but is on {model_device}",
+            )
+
         # Check parameter device
         param_device = str(next(self.model.parameters()).device)
         device_str = str(self.device)
-        self.assertEqual(param_device, device_str,
-                       f"Parameters should be on {device_str}, but are on {param_device}")
-    
+        self.assertEqual(
+            param_device,
+            device_str,
+            f"Parameters should be on {device_str}, but are on {param_device}",
+        )
+
     @classmethod
     def tearDownClass(cls):
         """Clean up resources"""
@@ -574,10 +590,11 @@ class TestBertEmbedding(unittest.TestCase):
         pool = get_global_resource_pool()
         stats = pool.get_stats()
         logger.info(f"Resource pool stats: {stats}")
-        
+
         # Clean up unused resources to prevent memory leaks
         # Short timeout for cleanup in test environment
         pool.cleanup_unused_resources(max_age_minutes=0.1)  # 6 seconds
+
 
 if __name__ == "__main__":
     unittest.main()
@@ -653,7 +670,7 @@ The comprehensive stats include:
        "priority_list": ["webnn", "webgpu", "cpu"],
        "model_family": "embedding",
        "subfamily": "web_deployment",
-       "fallback_to_simulation": True
+       "fallback_to_simulation": True,
    }
    ```
 20. **Memory Pressure Monitoring**: Check for system memory pressure and trigger cleanup when needed

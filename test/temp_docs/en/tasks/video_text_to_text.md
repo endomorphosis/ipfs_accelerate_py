@@ -42,12 +42,13 @@ Let's initialize the model and the processor.
 ```python
 from transformers import LlavaProcessor, LlavaForConditionalGeneration
 import torch
+
 model_id = "llava-hf/llava-interleave-qwen-0.5b-hf"
 
 processor = LlavaProcessor.from_pretrained(model_id)
 
 model = LlavaForConditionalGeneration.from_pretrained(model_id, torch_dtype=torch.float16)
-model.to("cuda") # can also be xpu, mps, npu etc. depending on your hardware accelerator
+model.to("cuda")  # can also be xpu, mps, npu etc. depending on your hardware accelerator
 ```
 
 Some models directly consume the `<video>` token, and others accept `<image>` tokens equal to the number of sampled frames. This model handles videos in the latter fashion. We will write a simple utility to handle image tokens, and another utility to get a video from a url and sample frames from it. 
@@ -58,18 +59,20 @@ import requests
 import cv2
 from PIL import Image
 
+
 def replace_video_with_images(text, frames):
-  return text.replace("<video>", "<image>" * frames)
+    return text.replace("<video>", "<image>" * frames)
+
 
 def sample_frames(url, num_frames):
 
     response = requests.get(url)
     path_id = str(uuid.uuid4())
 
-    path = f"./{path_id}.mp4" 
+    path = f"./{path_id}.mp4"
 
     with open(path, "wb") as f:
-      f.write(response.content)
+        f.write(response.content)
 
     video = cv2.VideoCapture(path)
     total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -127,7 +130,7 @@ This model has a prompt template that looks like following. First, we'll put all
 ```python
 user_prompt = "Are these two cats in these two videos doing the same thing?"
 toks = "<image>" * 12
-prompt = "<|im_start|>user"+ toks + f"\n{user_prompt}<|im_end|><|im_start|>assistant"
+prompt = "<|im_start|>user" + toks + f"\n{user_prompt}<|im_end|><|im_start|>assistant"
 inputs = processor(text=prompt, images=videos, return_tensors="pt").to(model.device, model.dtype)
 ```
 
@@ -135,11 +138,9 @@ We can now call [`~GenerationMixin.generate`] for inference. The model outputs t
 
 ```python
 output = model.generate(**inputs, max_new_tokens=100, do_sample=False)
-print(processor.decode(output[0][2:], skip_special_tokens=True)[len(user_prompt)+10:])
+print(processor.decode(output[0][2:], skip_special_tokens=True)[len(user_prompt) + 10 :])
 
 # The first cat is shown in a relaxed state, with its eyes closed and a content expression, while the second cat is shown in a more active state, with its mouth open wide, possibly in a yawn or a vocalization.
-
-
 ```
 
 And voila! 

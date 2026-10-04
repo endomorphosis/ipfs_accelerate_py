@@ -81,7 +81,9 @@ def check_lane_pid(state_dir: Path, state_prefix: str) -> dict[str, Any]:
     return result
 
 
-def check_lane_heartbeat(state_dir: Path, state_prefix: str, *, timeout_seconds: float) -> dict[str, Any]:
+def check_lane_heartbeat(
+    state_dir: Path, state_prefix: str, *, timeout_seconds: float
+) -> dict[str, Any]:
     """Check if a lane has updated its status file recently."""
     status_path = state_dir / f"{state_prefix}_status.json"
     result: dict[str, Any] = {"status_path": str(status_path), "stale": False}
@@ -139,7 +141,9 @@ def restart_lane(lane_info: dict[str, Any], *, repo_root: Path) -> dict[str, Any
     # Update PID file
     pid_path_str = lane_info.get("pid_path", "")
     if pid_path_str:
-        pid_path = Path(pid_path_str) if Path(pid_path_str).is_absolute() else repo_root / pid_path_str
+        pid_path = (
+            Path(pid_path_str) if Path(pid_path_str).is_absolute() else repo_root / pid_path_str
+        )
         pid_path.parent.mkdir(parents=True, exist_ok=True)
         pid_path.write_text(f"{process.pid}\n", encoding="utf-8")
 
@@ -165,7 +169,9 @@ def aggregate_logs(
         log_path_str = lane.get("log_path", "")
         if not log_path_str:
             continue
-        log_path = Path(log_path_str) if Path(log_path_str).is_absolute() else repo_root / log_path_str
+        log_path = (
+            Path(log_path_str) if Path(log_path_str).is_absolute() else repo_root / log_path_str
+        )
         if not log_path.exists():
             continue
 
@@ -183,10 +189,12 @@ def aggregate_logs(
 
             lines = tail_bytes.decode("utf-8", errors="replace").splitlines()[-max_lines_per_lane:]
             for line in lines:
-                aggregated.append({
-                    "lane": bundle_key,
-                    "line": line,
-                })
+                aggregated.append(
+                    {
+                        "lane": bundle_key,
+                        "line": line,
+                    }
+                )
         except OSError:
             continue
 
@@ -347,7 +355,9 @@ class SupervisorWatchdog:
                 else:
                     restart_info = lane_started or lane
                     restart_result = restart_lane(restart_info, repo_root=self.repo_root)
-                    report["action"] = "restarted" if restart_result.get("restarted") else "restart_failed"
+                    report["action"] = (
+                        "restarted" if restart_result.get("restarted") else "restart_failed"
+                    )
                     report["restart_result"] = restart_result
                     if restart_result.get("restarted"):
                         restarts += 1
@@ -401,7 +411,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=int(os.environ.get("WATCHDOG_MAX_CONSECUTIVE_RESTARTS", "5")),
     )
     parser.add_argument("--log-aggregation-dir", type=Path, default=None)
-    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    parser.add_argument(
+        "--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"]
+    )
     return parser
 
 

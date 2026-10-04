@@ -74,8 +74,12 @@ def test_configure_root_logging_filters_expected_fallback_warning_from_handler()
             "ipfs_accelerate_py.mcp_server.tools.auth_tools.native_auth_tools"
         )
         child_logger.warning("Source auth_tools import unavailable, using fallback auth functions")
-        child_logger.warning("Legacy MCP facade runtime path is deprecated (D1 warn-only); reason=force_legacy_rollback.")
-        child_logger.warning("Legacy MCP facade runtime path is deprecated (D2 opt-in only); reason=force_legacy_rollback.")
+        child_logger.warning(
+            "Legacy MCP facade runtime path is deprecated (D1 warn-only); reason=force_legacy_rollback."
+        )
+        child_logger.warning(
+            "Legacy MCP facade runtime path is deprecated (D2 opt-in only); reason=force_legacy_rollback."
+        )
 
         output = stream.getvalue()
         assert "Source auth_tools import unavailable" not in output

@@ -82,15 +82,11 @@ try:
         model_type="text",
         platform="webgpu",
         fallback_to_webnn=True,
-        fallback_to_wasm=True
+        fallback_to_wasm=True,
     )
 except WebGPUNotSupportedError:
     console.warn("WebGPU not supported, using CPU backend")
-    platform = UnifiedWebPlatform(
-        model_name="bert-base-uncased",
-        model_type="text",
-        platform="cpu"
-    )
+    platform = UnifiedWebPlatform(model_name="bert-base-uncased", model_type="text", platform="cpu")
 ```
 
 ### IPF-WG-002: WebGPU Device Lost
@@ -120,7 +116,7 @@ platform = UnifiedWebPlatform(
     model_name="bert-base-uncased",
     model_type="text",
     platform="webgpu",
-    enable_device_loss_recovery=True
+    enable_device_loss_recovery=True,
 )
 
 try:
@@ -208,15 +204,13 @@ platform = UnifiedWebPlatform(
     model_name="bert-base-uncased",
     model_type="text",
     platform="webgpu",
-    memory_manager=memory_manager
+    memory_manager=memory_manager,
 )
 
 # Configure for lower memory usage
-platform.configure({
-    "max_batch_size": 1,
-    "enable_buffer_reuse": True,
-    "enable_memory_defragmentation": True
-})
+platform.configure(
+    {"max_batch_size": 1, "enable_buffer_reuse": True, "enable_memory_defragmentation": True}
+)
 ```
 
 ### IPF-WG-005: WebGPU Timeout
@@ -246,7 +240,7 @@ platform = UnifiedWebPlatform(
     model_name="bert-base-uncased",
     model_type="text",
     platform="webgpu",
-    operation_timeout_ms=10000  # 10 seconds
+    operation_timeout_ms=10000,  # 10 seconds
 )
 
 try:
@@ -255,7 +249,7 @@ try:
         result = await platform.run_inference_with_timeout(
             input_data,
             timeout_ms=5000,  # 5 seconds
-            on_progress=tracker.update
+            on_progress=tracker.update,
         )
 except WebGPUTimeoutError:
     console.warn("Operation timed out, retrying with reduced batch size")
@@ -288,17 +282,11 @@ from fixed_web_platform.unified_web_framework import UnifiedWebPlatform
 try:
     # Create platform with WebNN
     platform = UnifiedWebPlatform(
-        model_name="bert-base-uncased",
-        model_type="text",
-        platform="webnn"
+        model_name="bert-base-uncased", model_type="text", platform="webnn"
     )
 except WebNNNotSupportedError:
     console.warn("WebNN not supported, using CPU backend")
-    platform = UnifiedWebPlatform(
-        model_name="bert-base-uncased",
-        model_type="text",
-        platform="cpu"
-    )
+    platform = UnifiedWebPlatform(model_name="bert-base-uncased", model_type="text", platform="cpu")
 ```
 
 ### IPF-WN-002: WebNN Operation Not Supported
@@ -335,9 +323,7 @@ platform = UnifiedWebPlatform(
     model_name="bert-base-uncased",
     model_type="text",
     platform="webnn",
-    config={
-        "use_fallback_activation": use_fallback_activation
-    }
+    config={"use_fallback_activation": use_fallback_activation},
 )
 ```
 
@@ -369,25 +355,21 @@ from fixed_web_platform.model_loading import download_model_with_retry
 try:
     # Create platform with model path
     platform = UnifiedWebPlatform(
-        model_name="bert-base-uncased",
-        model_type="text",
-        platform="webgpu"
+        model_name="bert-base-uncased", model_type="text", platform="webgpu"
     )
 except ModelNotFoundError as e:
     console.warn(f"Model not found: {e}")
-    
+
     # Download model with retry
     success = await download_model_with_retry(
         model_name="bert-base-uncased",
         max_retries=3,
-        retry_delay=2000  # ms
+        retry_delay=2000,  # ms
     )
-    
+
     if success:
         platform = UnifiedWebPlatform(
-            model_name="bert-base-uncased",
-            model_type="text",
-            platform="webgpu"
+            model_name="bert-base-uncased", model_type="text", platform="webgpu"
         )
     else:
         console.error("Failed to download model")
@@ -419,25 +401,19 @@ from fixed_web_platform.model_conversion import convert_model
 try:
     # Create platform
     platform = UnifiedWebPlatform(
-        model_name="bert-base-uncased",
-        model_type="text",
-        platform="webgpu"
+        model_name="bert-base-uncased", model_type="text", platform="webgpu"
     )
 except ModelFormatError as e:
     console.warn(f"Model format error: {e}")
-    
+
     # Try to convert model
     converted_path = await convert_model(
-        model_path="models/bert-base-uncased",
-        target_format="onnx",
-        enable_optimization=True
+        model_path="models/bert-base-uncased", target_format="onnx", enable_optimization=True
     )
-    
+
     if converted_path:
         platform = UnifiedWebPlatform(
-            model_path=converted_path,
-            model_type="text",
-            platform="webgpu"
+            model_path=converted_path, model_type="text", platform="webgpu"
         )
     else:
         console.error("Failed to convert model")
@@ -469,13 +445,11 @@ from fixed_web_platform.progressive_model_loader import ProgressiveModelLoader
 try:
     # Create platform
     platform = UnifiedWebPlatform(
-        model_name="llama-7b",
-        model_type="text_generation",
-        platform="webgpu"
+        model_name="llama-7b", model_type="text_generation", platform="webgpu"
     )
 except ModelSizeError as e:
     console.warn(f"Model too large: {e}")
-    
+
     # Try options:
     # 1. Use a smaller model
     try_smaller_model = True
@@ -483,38 +457,28 @@ except ModelSizeError as e:
         platform = UnifiedWebPlatform(
             model_name="llama-1b",  # Smaller variant
             model_type="text_generation",
-            platform="webgpu"
+            platform="webgpu",
         )
-    
+
     # 2. Quantize model
     try_quantization = True
     if try_quantization:
-        quantized_path = await quantize_model(
-            model_path="models/llama-7b",
-            precision="int4"
-        )
-        
+        quantized_path = await quantize_model(model_path="models/llama-7b", precision="int4")
+
         if quantized_path:
             platform = UnifiedWebPlatform(
-                model_path=quantized_path,
-                model_type="text_generation",
-                platform="webgpu"
+                model_path=quantized_path, model_type="text_generation", platform="webgpu"
             )
-    
+
     # 3. Progressive loading
     try_progressive = True
     if try_progressive:
         loader = ProgressiveModelLoader(
-            model_path="models/llama-7b",
-            chunk_size_mb=100,
-            load_on_demand=True
+            model_path="models/llama-7b", chunk_size_mb=100, load_on_demand=True
         )
-        
+
         platform = UnifiedWebPlatform(
-            model_name="llama-7b",
-            model_type="text_generation",
-            platform="webgpu",
-            loader=loader
+            model_name="llama-7b", model_type="text_generation", platform="webgpu", loader=loader
         )
 ```
 
@@ -542,37 +506,30 @@ from fixed_web_platform.compatibility import check_compatibility, find_compatibl
 
 # Check compatibility before loading
 compatibility = check_compatibility(
-    model_name="llava-7b",
-    model_type="multimodal",
-    platform="webgpu"
+    model_name="llava-7b", model_type="multimodal", platform="webgpu"
 )
 
 if not compatibility.is_compatible:
     console.warn(f"Model not compatible with WebGPU: {compatibility.reasons}")
-    
+
     # Find compatible platforms
-    compatible_platforms = find_compatible_platforms(
-        model_name="llava-7b",
-        model_type="multimodal"
-    )
-    
+    compatible_platforms = find_compatible_platforms(model_name="llava-7b", model_type="multimodal")
+
     if compatible_platforms:
         console.log(f"Compatible platforms: {compatible_platforms}")
-        
+
         # Use first compatible platform
         platform = UnifiedWebPlatform(
-            model_name="llava-7b",
-            model_type="multimodal",
-            platform=compatible_platforms[0]
+            model_name="llava-7b", model_type="multimodal", platform=compatible_platforms[0]
         )
     else:
         console.error("No compatible platforms found")
-        
+
         # Try a different model
         platform = UnifiedWebPlatform(
             model_name="clip-vit-base",  # Different model that is widely compatible
             model_type="multimodal",
-            platform="webgpu"
+            platform="webgpu",
         )
 ```
 
@@ -602,25 +559,17 @@ from fixed_web_platform.unified_web_framework import UnifiedWebPlatform
 from fixed_web_platform.input_validation import validate_input
 
 # Create platform
-platform = UnifiedWebPlatform(
-    model_name="bert-base-uncased",
-    model_type="text",
-    platform="webgpu"
-)
+platform = UnifiedWebPlatform(model_name="bert-base-uncased", model_type="text", platform="webgpu")
 
 # Validate input before inference
 input_data = {"input_text": "Sample text"}
-validation_result = validate_input(
-    input_data,
-    model_type="text",
-    model_name="bert-base-uncased"
-)
+validation_result = validate_input(input_data, model_type="text", model_name="bert-base-uncased")
 
 if validation_result.is_valid:
     result = await platform.run_inference(input_data)
 else:
     console.error(f"Input validation failed: {validation_result.errors}")
-    
+
     # Try to fix the input
     fixed_input = validation_result.suggested_fixes
     if fixed_input:
@@ -658,26 +607,25 @@ platform = UnifiedWebPlatform(
     model_name="bert-base-uncased",
     model_type="text",
     platform="webgpu",
-    inference_timeout_ms=5000  # 5 seconds
+    inference_timeout_ms=5000,  # 5 seconds
 )
 
 try:
     # Run inference with timeout
-    result = await platform.run_inference_with_timeout(
-        input_data,
-        timeout_ms=5000
-    )
+    result = await platform.run_inference_with_timeout(input_data, timeout_ms=5000)
 except InferenceTimeoutError:
     console.warn("Inference timed out, retrying with reduced settings")
-    
+
     # Configure for faster inference
-    platform.configure({
-        "max_batch_size": 1,
-        "max_sequence_length": 128,  # Reduce sequence length
-        "use_fp16": True,            # Use lower precision
-        "enable_early_stopping": True
-    })
-    
+    platform.configure(
+        {
+            "max_batch_size": 1,
+            "max_sequence_length": 128,  # Reduce sequence length
+            "use_fp16": True,  # Use lower precision
+            "enable_early_stopping": True,
+        }
+    )
+
     # Retry inference
     result = await platform.run_inference(input_data)
 ```
@@ -707,34 +655,35 @@ from fixed_web_platform.unified_web_framework import UnifiedWebPlatform
 from fixed_web_platform.memory_optimization import optimize_memory_usage
 
 # Create platform with memory optimization
-platform = UnifiedWebPlatform(
-    model_name="bert-base-uncased",
-    model_type="text",
-    platform="webgpu"
-)
+platform = UnifiedWebPlatform(model_name="bert-base-uncased", model_type="text", platform="webgpu")
 
 # Configure memory optimization
-optimize_memory_usage(platform, {
-    "enable_weight_sharing": True,
-    "enable_activation_recomputation": True,
-    "enable_memory_defragmentation": True,
-    "max_memory_usage_mb": 1024
-})
+optimize_memory_usage(
+    platform,
+    {
+        "enable_weight_sharing": True,
+        "enable_activation_recomputation": True,
+        "enable_memory_defragmentation": True,
+        "max_memory_usage_mb": 1024,
+    },
+)
 
 try:
     result = await platform.run_inference(input_data)
 except OutOfMemoryError:
     console.warn("Out of memory, retrying with reduced settings")
-    
+
     # Configure for minimal memory usage
-    platform.configure({
-        "max_batch_size": 1,
-        "max_sequence_length": 128,
-        "use_int8": True,            # Use int8 quantization
-        "disable_kv_cache": True,    # Disable KV cache for generation
-        "enable_resource_release": True
-    })
-    
+    platform.configure(
+        {
+            "max_batch_size": 1,
+            "max_sequence_length": 128,
+            "use_int8": True,  # Use int8 quantization
+            "disable_kv_cache": True,  # Disable KV cache for generation
+            "enable_resource_release": True,
+        }
+    )
+
     # Retry inference
     result = await platform.run_inference(input_data)
 ```
@@ -763,11 +712,7 @@ from fixed_web_platform.unified_web_framework import UnifiedWebPlatform
 from fixed_web_platform.result_processing import process_results_with_fallback
 
 # Create platform
-platform = UnifiedWebPlatform(
-    model_name="bert-base-uncased",
-    model_type="text",
-    platform="webgpu"
-)
+platform = UnifiedWebPlatform(model_name="bert-base-uncased", model_type="text", platform="webgpu")
 
 # Run inference
 raw_result = await platform.run_inference_raw(input_data)
@@ -775,16 +720,13 @@ raw_result = await platform.run_inference_raw(input_data)
 try:
     # Process results with error handling
     processed_result = process_results_with_fallback(
-        raw_result,
-        model_type="text",
-        model_name="bert-base-uncased",
-        enable_fallback=True
+        raw_result, model_type="text", model_name="bert-base-uncased", enable_fallback=True
     )
-    
+
     console.log("Processed result:", processed_result)
 except InferenceResultProcessingError as e:
     console.error(f"Error processing results: {e}")
-    
+
     # Display raw results if processing fails
     console.warn("Showing raw unprocessed results:")
     console.log(raw_result)
@@ -818,17 +760,17 @@ from fixed_web_platform.hardware_detection import detect_hardware_with_fallback
 try:
     # Detect hardware
     hardware_info = detect_hardware_with_fallback()
-    
+
     # Create platform with detected hardware
     platform = UnifiedWebPlatform(
         model_name="bert-base-uncased",
         model_type="text",
         platform="auto",
-        hardware_info=hardware_info
+        hardware_info=hardware_info,
     )
 except HardwareDetectionError as e:
     console.warn(f"Hardware detection failed: {e}")
-    
+
     # Use conservative defaults
     platform = UnifiedWebPlatform(
         model_name="bert-base-uncased",
@@ -837,8 +779,8 @@ except HardwareDetectionError as e:
         config={
             "use_conservative_settings": True,
             "assume_minimal_capabilities": True,
-            "enable_compatibility_mode": True
-        }
+            "enable_compatibility_mode": True,
+        },
     )
 ```
 
@@ -867,28 +809,23 @@ from fixed_web_platform.hardware_detection import check_hardware_support
 
 # Check hardware support before initializing
 support_result = check_hardware_support(
-    required_platform="webgpu",
-    required_features=["compute-shader", "storage-buffer", "float16"]
+    required_platform="webgpu", required_features=["compute-shader", "storage-buffer", "float16"]
 )
 
 if support_result.is_supported:
     # Create platform with WebGPU
     platform = UnifiedWebPlatform(
-        model_name="bert-base-uncased",
-        model_type="text",
-        platform="webgpu"
+        model_name="bert-base-uncased", model_type="text", platform="webgpu"
     )
 else:
     console.warn(f"Hardware not supported for WebGPU: {support_result.details}")
-    
+
     # Find best available fallback
     fallback_platform = support_result.suggested_fallback
-    
+
     console.log(f"Using fallback platform: {fallback_platform}")
     platform = UnifiedWebPlatform(
-        model_name="bert-base-uncased",
-        model_type="text",
-        platform=fallback_platform
+        model_name="bert-base-uncased", model_type="text", platform=fallback_platform
     )
 ```
 
@@ -922,21 +859,18 @@ try:
     db = BenchmarkDatabase(db_path="./benchmark_db.duckdb")
 except DatabaseConnectionError as e:
     console.warn(f"Database connection error: {e}")
-    
+
     # Try to fix
     db_dir = os.path.dirname("./benchmark_db.duckdb")
     ensure_directory(db_dir)
-    
+
     try:
         # Create new database
-        db = BenchmarkDatabase.create_new(
-            db_path="./benchmark_db.duckdb",
-            initialize_schema=True
-        )
+        db = BenchmarkDatabase.create_new(db_path="./benchmark_db.duckdb", initialize_schema=True)
         console.log("Created new database with schema")
     except Exception as create_error:
         console.error(f"Failed to create database: {create_error}")
-        
+
         # Use in-memory database as fallback
         db = BenchmarkDatabase.create_in_memory()
         console.log("Using in-memory database")
@@ -1033,26 +967,26 @@ try:
         db_path="./benchmark_db.duckdb",
         target_version="2.0",
         safety_checks=True,
-        backup_before_migration=True
+        backup_before_migration=True,
     )
-    
+
     if migration_result.success:
         console.log(f"Migration successful: {migration_result.details}")
     else:
         console.error(f"Migration issues: {migration_result.issues}")
 except DatabaseMigrationError as e:
     console.error(f"Migration failed: {e}")
-    
+
     # Recovery options
     recovery_options = [
         "Restore from backup",
         "Recreate database",
         "Run partial migration",
-        "Use compatibility mode"
+        "Use compatibility mode",
     ]
-    
+
     console.log("Recovery options:", recovery_options)
-    
+
     # Example: restore from backup
     backup_path = f"./backup/benchmark_db_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.duckdb"
     db = BenchmarkDatabase.restore_from_backup(backup_path)
@@ -1086,16 +1020,14 @@ from fixed_web_platform.config import load_api_config
 try:
     # Load configuration
     api_config = load_api_config("./api_config.json")
-    
+
     # Initialize API client
     api_client = APIClient(
-        api_key=api_config.api_key,
-        endpoint=api_config.endpoint,
-        timeout_ms=5000
+        api_key=api_config.api_key, endpoint=api_config.endpoint, timeout_ms=5000
     )
 except APIInitializationError as e:
     console.error(f"API initialization failed: {e}")
-    
+
     # Try fallback configuration
     try:
         fallback_config = load_api_config("./fallback_api_config.json")
@@ -1103,11 +1035,11 @@ except APIInitializationError as e:
             api_key=fallback_config.api_key,
             endpoint=fallback_config.endpoint,
             timeout_ms=10000,  # Longer timeout for fallback
-            retry_strategy="exponential_backoff"
+            retry_strategy="exponential_backoff",
         )
     except:
         console.error("Fallback configuration also failed")
-        
+
         # Use local processing instead
         console.log("Switching to local processing")
         use_local_processing = True
@@ -1136,10 +1068,7 @@ except APIInitializationError as e:
 from fixed_web_platform.api_client import APIClient
 from fixed_web_platform.auth import refresh_credentials
 
-api_client = APIClient(
-    api_key=config.api_key,
-    endpoint=config.endpoint
-)
+api_client = APIClient(api_key=config.api_key, endpoint=config.endpoint)
 
 try:
     # Test API authentication
@@ -1147,18 +1076,17 @@ try:
     console.log("Authentication successful")
 except APIAuthenticationError as e:
     console.error(f"Authentication failed: {e}")
-    
+
     if "expired" in str(e).lower():
         # Try refreshing credentials
         new_credentials = await refresh_credentials(
-            refresh_token=config.refresh_token,
-            client_id=config.client_id
+            refresh_token=config.refresh_token, client_id=config.client_id
         )
-        
+
         if new_credentials:
             console.log("Credentials refreshed")
             api_client.update_credentials(new_credentials)
-            
+
             # Retry with new credentials
             auth_result = await api_client.test_authentication()
         else:
@@ -1188,24 +1116,21 @@ except APIAuthenticationError as e:
 from fixed_web_platform.api_client import APIClient
 from fixed_web_platform.retry import retry_with_exponential_backoff
 
-api_client = APIClient(
-    api_key=config.api_key,
-    endpoint=config.endpoint
-)
+api_client = APIClient(api_key=config.api_key, endpoint=config.endpoint)
+
 
 # Define retry decorator
 @retry_with_exponential_backoff(
     max_retries=3,
     initial_delay_ms=500,
     max_delay_ms=5000,
-    retryable_status_codes=[429, 500, 502, 503, 504]
+    retryable_status_codes=[429, 500, 502, 503, 504],
 )
 async def make_api_request():
     return await api_client.make_request(
-        method="POST",
-        path="/v1/models/inference",
-        data=request_data
+        method="POST", path="/v1/models/inference", data=request_data
     )
+
 
 try:
     # Make API request with retry
@@ -1213,13 +1138,13 @@ try:
     console.log("API request successful")
 except APIRequestError as e:
     console.error(f"API request failed: {e}")
-    
+
     if e.status_code == 429:
         # Rate limit hit
         console.warn("Rate limit exceeded, backing off")
         remaining_seconds = int(e.headers.get("Retry-After", 60))
         console.log(f"Retrying after {remaining_seconds} seconds")
-        
+
         # Wait and retry
         await anyio.sleep(remaining_seconds)
         response = await make_api_request()
@@ -1262,43 +1187,39 @@ user_config = {
     "model_name": "bert-base-uncased",
     "precision": "fp16",
     "batch_size": "4",  # Should be int, not string
-    "max_sequence_length": 1024
+    "max_sequence_length": 1024,
 }
 
 try:
     # Validate configuration
     validation_result = validate_config(user_config)
-    
+
     if validation_result.is_valid:
         # Use validated config
         platform = UnifiedWebPlatform(config=user_config)
     else:
         console.warn(f"Configuration validation failed: {validation_result.errors}")
-        
+
         # Try to fix configuration
         fixed_config = fix_config(user_config, validation_result)
-        
+
         if fixed_config:
             console.log("Using fixed configuration")
             platform = UnifiedWebPlatform(config=fixed_config)
         else:
             console.error("Could not fix configuration")
-            
+
             # Use default configuration
-            default_config = merge_with_defaults({
-                "model_name": "bert-base-uncased"
-            })
-            
+            default_config = merge_with_defaults({"model_name": "bert-base-uncased"})
+
             console.log("Using default configuration")
             platform = UnifiedWebPlatform(config=default_config)
 except ConfigurationError as e:
     console.error(f"Configuration error: {e}")
-    
+
     # Use minimal valid configuration
     platform = UnifiedWebPlatform(
-        model_name="bert-base-uncased",
-        model_type="text",
-        platform="auto"
+        model_name="bert-base-uncased", model_type="text", platform="auto"
     )
 ```
 
@@ -1326,19 +1247,12 @@ from fixed_web_platform.unified_web_framework import UnifiedWebPlatform
 from fixed_web_platform.feature_detection import check_feature_support
 
 # Check feature support
-feature_support = check_feature_support([
-    "shader_precompilation",
-    "compute_shaders",
-    "kv_cache_optimization",
-    "int4_quantization"
-])
+feature_support = check_feature_support(
+    ["shader_precompilation", "compute_shaders", "kv_cache_optimization", "int4_quantization"]
+)
 
 # Create platform with supported features
-config = {
-    "model_name": "bert-base-uncased",
-    "model_type": "text",
-    "platform": "webgpu"
-}
+config = {"model_name": "bert-base-uncased", "model_type": "text", "platform": "webgpu"}
 
 # Add supported features to config
 for feature, supported in feature_support.items():
@@ -1352,14 +1266,14 @@ try:
     platform = UnifiedWebPlatform(**config)
 except FeatureNotSupportedError as e:
     console.error(f"Feature not supported: {e}")
-    
+
     # Remove unsupported feature from config
     feature_name = str(e).split("'")[1]
     config[f"enable_{feature_name}"] = False
-    
+
     # Try again without the feature
     platform = UnifiedWebPlatform(**config)
-    
+
     console.log(f"Created platform without {feature_name}")
 ```
 

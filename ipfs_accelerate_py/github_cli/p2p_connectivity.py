@@ -30,6 +30,7 @@ from dataclasses import dataclass
 
 try:
     from zeroconf import Zeroconf, ServiceInfo, ServiceBrowser
+
     HAVE_ZEROCONF = True
 except Exception:
     Zeroconf = None
@@ -51,31 +52,31 @@ DEFAULT_BOOTSTRAP_PEERS = [
 @dataclass
 class ConnectivityConfig:
     """Configuration for P2P connectivity."""
-    
+
     # Transport protocols to enable
     enable_tcp: bool = True
     enable_quic: bool = False  # Experimental
     enable_webrtc: bool = False  # For browser compatibility
-    
+
     # Discovery methods
     enable_mdns: bool = True  # Local network discovery
     enable_dht: bool = True  # Distributed peer routing
     enable_relay: bool = True  # Circuit relay for NAT traversal
-    
+
     # AutoNAT for reachability detection
     enable_autonat: bool = True
-    
+
     # Hole punching for direct connections
     enable_hole_punching: bool = True
-    
+
     # Relay configuration
     relay_hop_limit: int = 3  # Max hops through relays
     relay_timeout: int = 30  # Seconds
-    
+
     # DHT configuration
     dht_bucket_size: int = 20
     dht_query_timeout: int = 60
-    
+
     # mDNS configuration
     mdns_interval: int = 5  # Discovery interval in seconds
     mdns_ttl: int = 120  # TTL in seconds
@@ -84,15 +85,15 @@ class ConnectivityConfig:
 class UniversalConnectivity:
     """
     Enhanced P2P connectivity manager implementing universal-connectivity patterns.
-    
+
     Provides multiple discovery methods and NAT traversal techniques to ensure
     peers can find and connect to each other in various network conditions.
     """
-    
+
     def __init__(self, config: Optional[ConnectivityConfig] = None):
         """
         Initialize universal connectivity manager.
-        
+
         Args:
             config: Connectivity configuration (uses defaults if None)
         """
@@ -104,7 +105,9 @@ class UniversalConnectivity:
         self._mdns_browser = None
         self._mdns_service_info = None
         self._mdns_service_name = os.environ.get("CACHE_MDNS_SERVICE", "universal-connectivity")
-        self._mdns_service_type = os.environ.get("CACHE_MDNS_TYPE", "_ipfs-accelerate-cache._tcp.local.")
+        self._mdns_service_type = os.environ.get(
+            "CACHE_MDNS_TYPE", "_ipfs-accelerate-cache._tcp.local."
+        )
         self._mdns_thread = None
         self._mdns_stop = None
         self._mdns_error = None
@@ -138,7 +141,7 @@ class UniversalConnectivity:
             "autonat": False,
             "hole_punching": False,
         }
-        
+
         logger.info("Initialized universal connectivity manager")
         logger.info(f"  TCP: {self.config.enable_tcp}")
         logger.info(f"  QUIC: {self.config.enable_quic}")
@@ -150,11 +153,11 @@ class UniversalConnectivity:
     def set_portal(self, portal) -> None:
         """Attach an AnyIO blocking portal for cross-thread scheduling."""
         self._portal = portal
-    
+
     async def configure_transports(self, host) -> None:
         """
         Configure transport protocols on libp2p host.
-        
+
         Args:
             host: libp2p host instance
         """
@@ -162,7 +165,7 @@ class UniversalConnectivity:
             # TCP is enabled by default in libp2p
             if self.config.enable_tcp:
                 logger.info("✓ TCP transport enabled")
-            
+
             # QUIC support (if available)
             if self.config.enable_quic:
                 try:
@@ -170,7 +173,7 @@ class UniversalConnectivity:
                     logger.info("✓ QUIC transport enabled")
                 except Exception as e:
                     logger.warning(f"QUIC transport not available: {e}")
-            
+
             # WebRTC support (for browser compatibility)
             if self.config.enable_webrtc:
                 try:
@@ -178,17 +181,17 @@ class UniversalConnectivity:
                     logger.info("✓ WebRTC transport enabled")
                 except Exception as e:
                     logger.warning(f"WebRTC transport not available: {e}")
-                    
+
         except Exception as e:
             logger.error(f"Failed to configure transports: {e}")
-    
+
     async def start_mdns_discovery(self, host) -> None:
         """
         Start mDNS peer discovery for local network.
-        
+
         mDNS allows peers on the same local network to discover each other
         without needing a central server or NAT traversal.
-        
+
         Args:
             host: libp2p host instance
         """
@@ -295,7 +298,7 @@ class UniversalConnectivity:
             self._mdns_thread.start()
         except Exception as e:
             logger.warning(f"Failed to start mDNS discovery: {e!r}")
-    
+
     async def _mdns_discovery_loop(self, host) -> None:
         """Periodic mDNS discovery loop."""
         while True:
@@ -308,14 +311,14 @@ class UniversalConnectivity:
                 logger.error(f"mDNS discovery error: {e}")
                 await anyio.sleep(self.config.mdns_interval)
                 await anyio.sleep(self.config.mdns_interval)
-    
+
     async def configure_dht(self, host) -> None:
         """
         Configure Distributed Hash Table for peer routing.
-        
+
         DHT allows peers to find each other across the internet without
         a central registry.
-        
+
         Args:
             host: libp2p host instance
         """
@@ -396,35 +399,36 @@ class UniversalConnectivity:
                     continue
         except Exception:
             return
-    
+
     async def setup_circuit_relay(self, host, relay_addrs: Optional[List[str]] = None) -> None:
         """
         Setup circuit relay for NAT traversal.
-        
+
         Circuit relay allows peers behind NAT to communicate through
         intermediate relay peers.
-        
+
         Args:
             host: libp2p host instance
             relay_addrs: List of known relay peer addresses
         """
         if not self.config.enable_relay:
             return
-        
+
         try:
             self.relay_peers = relay_addrs or []
-            
+
             # Configure circuit relay (best-effort; py-libp2p relay support varies)
             logger.info("✓ Circuit relay configured")
             logger.info(f"  Hop limit: {self.config.relay_hop_limit}")
             logger.info(f"  Timeout: {self.config.relay_timeout}s")
             logger.info(f"  Known relays: {len(self.relay_peers)}")
-            
+
             # Connect to relay peers
             for relay_addr in self.relay_peers:
                 try:
                     from multiaddr import Multiaddr
                     from libp2p.peer.peerinfo import info_from_p2p_addr
+
                     ma = Multiaddr(relay_addr)
                     peer_info = info_from_p2p_addr(ma)
                     await host.connect(peer_info)
@@ -437,7 +441,7 @@ class UniversalConnectivity:
 
             if self.relay_peers:
                 self.implemented["relay"] = True
-                    
+
         except Exception as e:
             logger.warning(f"Failed to setup circuit relay: {e}")
 
@@ -462,14 +466,14 @@ class UniversalConnectivity:
                 logger.debug("Relay reservation attempted via host.relay.reserve")
         except Exception as e:
             logger.debug(f"Relay reservation attempt failed: {e}")
-    
+
     async def enable_autonat(self, host) -> None:
         """
         Enable AutoNAT for reachability detection.
-        
+
         AutoNAT helps peers determine if they are publicly reachable
         or behind NAT.
-        
+
         Args:
             host: libp2p host instance
         """
@@ -531,7 +535,9 @@ class UniversalConnectivity:
             logger.debug(f"DHT provide failed: {e}")
             return False
 
-    async def dht_find_providers(self, namespace: Optional[str] = None, *, count: int = 20) -> List[str]:
+    async def dht_find_providers(
+        self, namespace: Optional[str] = None, *, count: int = 20
+    ) -> List[str]:
         """Find provider peers for the given namespace; returns multiaddr strings."""
         if not (self._dht and self.implemented.get("dht")):
             return []
@@ -573,7 +579,9 @@ class UniversalConnectivity:
             pass
         self._rv = None
 
-    async def rendezvous_register(self, namespace: Optional[str] = None, *, ttl_s: int = 7200) -> bool:
+    async def rendezvous_register(
+        self, namespace: Optional[str] = None, *, ttl_s: int = 7200
+    ) -> bool:
         if not (self._rv and self.implemented.get("rendezvous")):
             return False
         ns = (namespace or self._rv_namespace or "").strip()
@@ -589,7 +597,9 @@ class UniversalConnectivity:
             logger.debug(f"Rendezvous register failed: {e}")
             return False
 
-    async def rendezvous_discover(self, namespace: Optional[str] = None, *, limit: int = 100) -> List[str]:
+    async def rendezvous_discover(
+        self, namespace: Optional[str] = None, *, limit: int = 100
+    ) -> List[str]:
         if not (self._rv and self.implemented.get("rendezvous")):
             return []
         ns = (namespace or self._rv_namespace or "").strip()
@@ -659,14 +669,14 @@ class UniversalConnectivity:
                 await self.rendezvous_register(ns)
         except Exception:
             pass
-    
+
     async def enable_hole_punching(self, host) -> None:
         """
         Enable hole punching for direct NAT traversal.
-        
+
         Hole punching attempts to establish direct connections between
         peers behind NAT without needing a relay.
-        
+
         Args:
             host: libp2p host instance
         """
@@ -674,30 +684,28 @@ class UniversalConnectivity:
             return
         # py-libp2p DCUtR support is not wired here; mark as best-effort.
         self.implemented["hole_punching"] = True
-    
+
     async def discover_peers_multimethod(
-        self,
-        github_registry=None,
-        bootstrap_peers: Optional[List[str]] = None
+        self, github_registry=None, bootstrap_peers: Optional[List[str]] = None
     ) -> List[str]:
         """
         Discover peers using multiple methods.
-        
+
         Tries multiple discovery methods in parallel for maximum connectivity:
         1. GitHub Cache API (for GitHub Actions runners)
         2. mDNS (for local network peers)
         3. DHT (for internet-wide discovery)
         4. Bootstrap peers (manually configured)
-        
+
         Args:
             github_registry: Optional P2PPeerRegistry instance
             bootstrap_peers: Optional list of bootstrap peer addresses
-            
+
         Returns:
             List of discovered peer addresses
         """
         discovered = set()
-        
+
         # Method 1: GitHub Cache API (if available)
         if github_registry:
             try:
@@ -708,7 +716,7 @@ class UniversalConnectivity:
                         logger.debug(f"Discovered via GitHub: {peer['peer_id'][:16]}...")
             except Exception as e:
                 logger.warning(f"GitHub discovery failed: {e}")
-        
+
         # mDNS discovery (local) - uses cached discoveries
         if self.config.enable_mdns and self.discovered_peers:
             discovered.update(self.discovered_peers)
@@ -728,36 +736,33 @@ class UniversalConnectivity:
                     discovered.add(addr)
             except Exception as e:
                 logger.debug(f"Rendezvous discovery failed: {e}")
-        
+
         # Method 4: Bootstrap peers
         if bootstrap_peers:
             discovered.update(bootstrap_peers)
             logger.debug(f"Added {len(bootstrap_peers)} bootstrap peers")
-        
+
         self.discovered_peers = discovered
         logger.info(f"✓ Discovered {len(discovered)} peer(s) via configured sources")
-        
+
         return list(discovered)
-    
+
     async def attempt_connection(
-        self,
-        host,
-        peer_addr: str,
-        use_relay: bool = True
+        self, host, peer_addr: str, use_relay: bool = True
     ) -> Optional[object]:
         """
         Attempt to connect to a peer with fallback strategies.
-        
+
         Tries multiple connection strategies:
         1. Direct connection
         2. Circuit relay (if enabled and direct fails)
         3. Hole punching (if enabled)
-        
+
         Args:
             host: libp2p host instance
             peer_addr: Peer multiaddr to connect to
             use_relay: Whether to use circuit relay as fallback
-            
+
         Returns:
             Connected peer info object if connection succeeded, else None.
         """
@@ -779,10 +784,10 @@ class UniversalConnectivity:
 
             logger.info("✓ Connected directly to peer")
             return peer_info
-            
+
         except Exception as e:
             logger.debug(f"Direct connection failed: {e}")
-            
+
             # Try circuit relay if enabled
             if use_relay and self.config.enable_relay and self.relay_peers:
                 try:
@@ -795,10 +800,10 @@ class UniversalConnectivity:
                         logger.info("✓ Connected via relay")
                         return peer_info
                     raise RuntimeError("No relay multiaddr could be constructed")
-                    
+
                 except Exception as relay_error:
                     logger.warning(f"Relay connection failed: {relay_error}")
-            
+
             # Try hole punching if enabled
             if self.config.enable_hole_punching:
                 try:
@@ -809,10 +814,10 @@ class UniversalConnectivity:
                     await host.connect(peer_info)
                     logger.info("✓ Hole punching fallback succeeded")
                     return peer_info
-                    
+
                 except Exception as punch_error:
                     logger.debug(f"Hole punching failed: {punch_error}")
-            
+
             return None
 
     def _build_relay_multiaddr(self, peer_addr: str) -> Optional[str]:
@@ -821,6 +826,7 @@ class UniversalConnectivity:
             return None
         try:
             from multiaddr import Multiaddr
+
             ma = Multiaddr(peer_addr)
             peer_id = ma.value_for_protocol("p2p")
             if not peer_id:
@@ -906,6 +912,7 @@ class _MDNSListener:
                 try:
                     from multiaddr import Multiaddr
                     from libp2p.peer.peerinfo import info_from_p2p_addr
+
                     ma = Multiaddr(multiaddr)
                     peer_info = info_from_p2p_addr(ma)
                     await self.host.connect(peer_info)
@@ -925,7 +932,7 @@ class _MDNSListener:
 
     def update_service(self, zeroconf, service_type, name) -> None:
         return
-    
+
     def get_connectivity_status(self) -> Dict:
         return self.manager.get_connectivity_status()
 
@@ -935,20 +942,20 @@ _global_connectivity: Optional[UniversalConnectivity] = None
 
 
 def get_universal_connectivity(
-    config: Optional[ConnectivityConfig] = None
+    config: Optional[ConnectivityConfig] = None,
 ) -> UniversalConnectivity:
     """
     Get or create global universal connectivity instance.
-    
+
     Args:
         config: Connectivity configuration
-        
+
     Returns:
         Global UniversalConnectivity instance
     """
     global _global_connectivity
-    
+
     if _global_connectivity is None:
         _global_connectivity = UniversalConnectivity(config)
-    
+
     return _global_connectivity

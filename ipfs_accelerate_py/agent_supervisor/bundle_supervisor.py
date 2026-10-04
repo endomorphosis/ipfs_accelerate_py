@@ -11,7 +11,13 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Sequence
 
-from .objective_graph import DEFAULT_TASK_PREFIX, build_bundle_task_payloads, repo_relative_path, safe_bundle_key, utc_now
+from .objective_graph import (
+    DEFAULT_TASK_PREFIX,
+    build_bundle_task_payloads,
+    repo_relative_path,
+    safe_bundle_key,
+    utc_now,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -37,7 +43,9 @@ class BundleLaneSpec:
         payload = asdict(self)
         for key in ("todo_path", "state_dir", "worktree_root", "log_path"):
             path = Path(payload[key])
-            payload[key] = repo_relative_path(repo_root, path) if repo_root is not None else str(path)
+            payload[key] = (
+                repo_relative_path(repo_root, path) if repo_root is not None else str(path)
+            )
         return payload
 
 
@@ -296,7 +304,9 @@ def default_state_root(repo_root: Path) -> Path:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Plan or launch isolated daemon lanes for objective bundle shards")
+    parser = argparse.ArgumentParser(
+        description="Plan or launch isolated daemon lanes for objective bundle shards"
+    )
     parser.add_argument("--bundle-index-path", type=Path, required=True)
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
     parser.add_argument("--state-root", type=Path, default=None)
@@ -316,7 +326,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-restarts", type=int, default=0)
     parser.add_argument("--implementation-timeout", type=float, default=1800.0)
     parser.add_argument("--implementation-command", default="")
-    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    parser.add_argument(
+        "--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"]
+    )
     return parser
 
 

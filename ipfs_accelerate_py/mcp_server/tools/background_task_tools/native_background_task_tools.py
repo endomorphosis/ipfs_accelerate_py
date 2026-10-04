@@ -16,7 +16,9 @@ def _normalize_delegate_payload(payload: Any) -> Dict[str, Any]:
         normalized.setdefault("status", "not_found")
         return normalized
 
-    failed = normalized.get("success") is False or bool(normalized.get("error")) or status == "error"
+    failed = (
+        normalized.get("success") is False or bool(normalized.get("error")) or status == "error"
+    )
     if failed:
         normalized["status"] = "error"
     else:
@@ -112,7 +114,9 @@ def _load_background_task_api() -> Dict[str, Any]:
                     "status": "success" if action == "create" else "scheduled",
                     "task_id": "fallback-task-id",
                     "task_type": task_type or "general",
-                    "message": "Background task created successfully" if action == "create" else "Recurring task scheduled successfully",
+                    "message": "Background task created successfully"
+                    if action == "create"
+                    else "Recurring task scheduled successfully",
                 }
             if action == "list":
                 return {
@@ -511,12 +515,24 @@ def register_native_background_task_tools(manager: Any) -> None:
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["create", "cancel", "pause", "resume", "get_stats", "list", "schedule"],
+                    "enum": [
+                        "create",
+                        "cancel",
+                        "pause",
+                        "resume",
+                        "get_stats",
+                        "list",
+                        "schedule",
+                    ],
                 },
                 "task_id": {"type": ["string", "null"]},
                 "task_type": {"type": ["string", "null"]},
                 "parameters": {"type": ["object", "null"]},
-                "priority": {"type": "string", "enum": ["high", "normal", "low"], "default": "normal"},
+                "priority": {
+                    "type": "string",
+                    "enum": ["high", "normal", "low"],
+                    "default": "normal",
+                },
                 "task_config": {"type": ["object", "null"]},
             },
             "required": ["action"],

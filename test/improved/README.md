@@ -99,6 +99,7 @@ pytest test/improved/ --cov=ipfs_accelerate_py --cov-report=html -v
 import pytest
 from test.common.test_utils import ModelTestUtils
 
+
 @pytest.fixture(scope="module")
 def model_and_tokenizer():
     """Load model once for all tests."""
@@ -106,40 +107,42 @@ def model_and_tokenizer():
     tokenizer = load_tokenizer("bert-base-uncased")
     return model, tokenizer
 
+
 @pytest.mark.model
 @pytest.mark.text
 class TestModelInference:
     """Test model inference."""
-    
+
     def test_forward_pass(self, model_and_tokenizer):
         """Test basic forward pass."""
         model, tokenizer = model_and_tokenizer
         inputs = tokenizer("test", return_tensors="pt")
-        
+
         with torch.no_grad():
             outputs = model(**inputs)
-        
+
         # Assertions validate behavior
         assert outputs is not None
         ModelTestUtils.assert_tensor_valid(outputs.last_hidden_state)
+
 
 @pytest.mark.hardware
 @pytest.mark.cuda
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
 class TestCUDA:
     """Test on CUDA devices."""
-    
+
     def test_cuda_inference(self, model_and_tokenizer):
         """Test inference on CUDA."""
         model, tokenizer = model_and_tokenizer
         model = model.to("cuda")
-        
+
         inputs = tokenizer("test", return_tensors="pt")
         inputs = {k: v.to("cuda") for k, v in inputs.items()}
-        
+
         with torch.no_grad():
             outputs = model(**inputs)
-        
+
         ModelTestUtils.assert_device_correct(outputs.last_hidden_state, "cuda")
 ```
 

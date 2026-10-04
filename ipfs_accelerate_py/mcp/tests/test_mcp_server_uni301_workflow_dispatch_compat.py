@@ -21,13 +21,17 @@ class TestMCPServerUNI301WorkflowDispatchCompat(unittest.TestCase):
         return response["result"]
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_workflow_dispatch_preserves_validation_and_success_contracts(self, mock_wrapper) -> None:
+    def test_workflow_dispatch_preserves_validation_and_success_contracts(
+        self, mock_wrapper
+    ) -> None:
         class DummyServer:
             def __init__(self):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -105,16 +109,19 @@ class TestMCPServerUNI301WorkflowDispatchCompat(unittest.TestCase):
         mock_wrapper.return_value = DummyServer()
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch(
-                "ipfs_accelerate_py.mcp_server.tools.workflow.native_workflow_tools._get_workflow_manager",
-                return_value=_FakeManager(),
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch(
+                    "ipfs_accelerate_py.mcp_server.tools.workflow.native_workflow_tools._get_workflow_manager",
+                    return_value=_FakeManager(),
+                ),
             ):
                 server = create_mcp_server(name="workflow-dispatch-compat")
                 dispatch = server.tools["tools_dispatch"]["function"]
@@ -198,13 +205,17 @@ class TestMCPServerUNI301WorkflowDispatchCompat(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_workflow_dispatch_infers_error_status_from_contradictory_delegate_payloads(self, mock_wrapper) -> None:
+    def test_workflow_dispatch_infers_error_status_from_contradictory_delegate_payloads(
+        self, mock_wrapper
+    ) -> None:
         class DummyServer:
             def __init__(self):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -249,16 +260,19 @@ class TestMCPServerUNI301WorkflowDispatchCompat(unittest.TestCase):
         mock_wrapper.return_value = DummyServer()
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch(
-                "ipfs_accelerate_py.mcp_server.tools.workflow.native_workflow_tools._get_workflow_manager",
-                return_value=_ContradictoryManager(),
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch(
+                    "ipfs_accelerate_py.mcp_server.tools.workflow.native_workflow_tools._get_workflow_manager",
+                    return_value=_ContradictoryManager(),
+                ),
             ):
                 server = create_mcp_server(name="workflow-dispatch-compat-errors")
                 dispatch = server.tools["tools_dispatch"]["function"]

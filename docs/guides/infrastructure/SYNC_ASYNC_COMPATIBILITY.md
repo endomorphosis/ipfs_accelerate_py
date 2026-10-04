@@ -52,9 +52,11 @@ import threading
 
 cache = GitHubAPICache(enable_p2p=True)
 
+
 def worker(thread_id):
     cache.put(f"thread/{thread_id}", data)
     result = cache.get(f"thread/{thread_id}")
+
 
 threads = [threading.Thread(target=worker, args=(i,)) for i in range(10)]
 for t in threads:
@@ -72,11 +74,13 @@ Combining synchronous and asynchronous usage:
 cache = GitHubAPICache(enable_p2p=True)
 cache.put("key1", data1)
 
+
 # Async
 async def process():
     cache.put("key2", data2)
     await anyio.sleep(1)
     return cache.get("key1")
+
 
 result = anyio.run(process)
 ```
@@ -93,15 +97,11 @@ The P2P functionality uses a **background thread with AnyIO**:
 def _init_p2p(self) -> None:
     def run_event_loop():
         anyio.run(self._start_p2p_host)
-    
+
     # Start in daemon thread
-    self._p2p_thread = threading.Thread(
-        target=run_event_loop,
-        daemon=True,
-        name="p2p-event-loop"
-    )
+    self._p2p_thread = threading.Thread(target=run_event_loop, daemon=True, name="p2p-event-loop")
     self._p2p_thread.start()
-    
+
     # Schedule initialization (non-blocking)
     # Host startup runs inside the AnyIO loop in the background thread
 ```
@@ -115,13 +115,9 @@ def _broadcast_in_background(self, cache_key: str, entry: CacheEntry):
     """Broadcast cache entry without blocking."""
     if not self.enable_p2p or not self._p2p_host:
         return
-    
+
     # Schedule async operation in background event loop
-    anyio.from_thread.run(
-        self._broadcast_cache_entry,
-        cache_key,
-        entry
-    )
+    anyio.from_thread.run(self._broadcast_cache_entry, cache_key, entry)
 ```
 
 ### Key Design Decisions
@@ -175,6 +171,7 @@ ExecStart=/home/barberb/ipfs_accelerate_py/.venv/bin/python3 github_autoscaler.p
 ```python
 # Good: Create once, reuse
 cache = GitHubAPICache(enable_p2p=True)
+
 
 # Bad: Creating new cache for each operation
 def get_data():

@@ -54,15 +54,11 @@ mock_db_manager.get_performance_results.return_value = sample_data
 aggregator = ResultAggregatorService(db_manager=mock_db_manager)
 
 # Configure with test-specific settings
-aggregator.configure({
-    "model_family_grouping": False,
-    "anomaly_threshold": 2.0
-})
+aggregator.configure({"model_family_grouping": False, "anomaly_threshold": 2.0})
 
 # Test aggregation
 results = aggregator.aggregate_results(
-    result_type=RESULT_TYPE_PERFORMANCE,
-    aggregation_level=AGGREGATION_LEVEL_MODEL
+    result_type=RESULT_TYPE_PERFORMANCE, aggregation_level=AGGREGATION_LEVEL_MODEL
 )
 
 # Verify results

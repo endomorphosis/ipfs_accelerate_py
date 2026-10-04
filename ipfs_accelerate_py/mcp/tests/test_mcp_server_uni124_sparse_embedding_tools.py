@@ -77,7 +77,9 @@ class TestMCPServerUNI124SparseEmbeddingTools(unittest.TestCase):
         async def _run() -> None:
             result = await manage_sparse_models(action="configure")
             self.assertEqual(result.get("status"), "error")
-            self.assertIn("model_name and config object are required", str(result.get("message", "")))
+            self.assertIn(
+                "model_name and config object are required", str(result.get("message", ""))
+            )
 
         anyio.run(_run)
 
@@ -108,7 +110,9 @@ class TestMCPServerUNI124SparseEmbeddingTools(unittest.TestCase):
                 },
             ):
                 generated = await generate_sparse_embedding(text="hello", model="splade", top_k=7)
-                searched = await sparse_search(query="hello", collection_name="docs", model="splade", top_k=3)
+                searched = await sparse_search(
+                    query="hello", collection_name="docs", model="splade", top_k=3
+                )
 
             self.assertEqual(generated.get("status"), "success")
             self.assertEqual(generated.get("text"), "hello")
@@ -167,7 +171,9 @@ class TestMCPServerUNI124SparseEmbeddingTools(unittest.TestCase):
 
         anyio.run(_run)
 
-    def test_sparse_embedding_wrappers_infer_error_status_from_contradictory_delegate_payload(self) -> None:
+    def test_sparse_embedding_wrappers_infer_error_status_from_contradictory_delegate_payload(
+        self,
+    ) -> None:
         async def _contradictory_failure(**_: object) -> dict:
             return {"status": "success", "success": False, "error": "delegate failed"}
 

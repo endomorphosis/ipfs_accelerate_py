@@ -404,7 +404,7 @@ hardware_info = {
     "rocm": detect_amd_rocm(),
     "qualcomm": detect_qualcomm_acceleration(),
     "webnn": detect_webnn_support(),
-    "webgpu": detect_webgpu_support()
+    "webgpu": detect_webgpu_support(),
 }
 ```
 
@@ -415,14 +415,14 @@ The framework uses a priority-based selection system:
 ```python
 # Hardware selection priorities
 HARDWARE_PRIORITIES = {
-    "cuda": 100,      # Highest priority for NVIDIA GPUs
-    "openvino": 90,   # High priority for Intel optimization
-    "mps": 85,        # High priority for Apple Silicon
-    "rocm": 80,       # Good priority for AMD GPUs
-    "webgpu": 70,     # Good for browser environments
-    "webnn": 65,      # Good for web-based inference
-    "qualcomm": 60,   # Mobile optimization
-    "cpu": 50         # Fallback option
+    "cuda": 100,  # Highest priority for NVIDIA GPUs
+    "openvino": 90,  # High priority for Intel optimization
+    "mps": 85,  # High priority for Apple Silicon
+    "rocm": 80,  # Good priority for AMD GPUs
+    "webgpu": 70,  # Good for browser environments
+    "webnn": 65,  # Good for web-based inference
+    "qualcomm": 60,  # Mobile optimization
+    "cpu": 50,  # Fallback option
 }
 ```
 
@@ -452,9 +452,9 @@ cid = f"Qm{content_hash[:44]}"  # IPFS Content Identifier
 ```python
 # Provider discovery and selection
 providers = ipfs_network.find_providers(model_cid)
-selected_provider = select_optimal_provider(providers, criteria=[
-    "latency", "reliability", "bandwidth", "load"
-])
+selected_provider = select_optimal_provider(
+    providers, criteria=["latency", "reliability", "bandwidth", "load"]
+)
 ```
 
 ### 3. Caching Strategy
@@ -493,17 +493,17 @@ class BrowserAccelerator {
 # Browser optimization for different model types
 BROWSER_OPTIMIZATION = {
     "text_models": {
-        "optimal": "edge",      # Best WebNN support
-        "fallback": "chrome"    # Good WebGPU support
+        "optimal": "edge",  # Best WebNN support
+        "fallback": "chrome",  # Good WebGPU support
     },
     "vision_models": {
-        "optimal": "chrome",    # Excellent WebGPU
-        "fallback": "firefox"   # Good compute shaders
+        "optimal": "chrome",  # Excellent WebGPU
+        "fallback": "firefox",  # Good compute shaders
     },
     "audio_models": {
-        "optimal": "firefox",   # Better compute shader performance
-        "fallback": "chrome"    # WebGPU fallback
-    }
+        "optimal": "firefox",  # Better compute shader performance
+        "fallback": "chrome",  # WebGPU fallback
+    },
 }
 ```
 
@@ -514,12 +514,14 @@ Python ↔ Browser communication via WebSockets or HTTP:
 ```python
 # Browser communication interface
 async def communicate_with_browser(request):
-    response = await websocket.send_json({
-        "type": "inference_request",
-        "model": request.model,
-        "inputs": request.inputs,
-        "config": request.config
-    })
+    response = await websocket.send_json(
+        {
+            "type": "inference_request",
+            "model": request.model,
+            "inputs": request.inputs,
+            "config": request.config,
+        }
+    )
     return response
 ```
 
@@ -681,22 +683,15 @@ class StoragePlugin(ABC):
         "prefer_cuda": True,
         "allow_openvino": True,
         "precision": "fp16",
-        "memory_limit": "8GB"
+        "memory_limit": "8GB",
     },
     "ipfs": {
         "gateway": "http://localhost:8080/ipfs/",
         "local_node": "http://localhost:5001",
-        "timeout": 30
+        "timeout": 30,
     },
-    "performance": {
-        "cache_size": "2GB",
-        "parallel_requests": 4,
-        "enable_profiling": False
-    },
-    "logging": {
-        "level": "INFO",
-        "file": "ipfs_accelerate.log"
-    }
+    "performance": {"cache_size": "2GB", "parallel_requests": 4, "enable_profiling": False},
+    "logging": {"level": "INFO", "file": "ipfs_accelerate.log"},
 }
 ```
 

@@ -20,7 +20,7 @@ pytestmark = pytest.mark.anyio
 
 class TestServerConfig:
     """Tests for ServerConfig."""
-    
+
     def test_default_config(self):
         """Test default configuration values."""
         config = ServerConfig()
@@ -30,7 +30,7 @@ class TestServerConfig:
         assert config.mount_path == "/mcp"
         assert config.debug is False
         assert config.enable_p2p_tools is True
-    
+
     def test_custom_config(self):
         """Test custom configuration values."""
         config = ServerConfig(
@@ -47,14 +47,14 @@ class TestServerConfig:
         assert config.mount_path == "/api"
         assert config.debug is True
         assert config.enable_p2p_tools is False
-    
+
     def test_from_env(self, monkeypatch):
         """Test configuration from environment variables."""
         monkeypatch.setenv("MCP_SERVER_NAME", "env-server")
         monkeypatch.setenv("MCP_HOST", "localhost")
         monkeypatch.setenv("MCP_PORT", "8080")
         monkeypatch.setenv("MCP_DEBUG", "1")
-        
+
         config = ServerConfig.from_env()
         assert config.name == "env-server"
         assert config.host == "localhost"
@@ -64,7 +64,7 @@ class TestServerConfig:
 
 class TestTrioMCPServer:
     """Tests for TrioMCPServer."""
-    
+
     def test_server_initialization(self):
         """Test basic server initialization."""
         server = TrioMCPServer()
@@ -72,14 +72,14 @@ class TestTrioMCPServer:
         assert server.mcp is None
         assert server.fastapi_app is None
         assert server._started is False
-    
+
     def test_server_with_custom_config(self):
         """Test server initialization with custom config."""
         config = ServerConfig(name="test-server", port=9000)
         server = TrioMCPServer(config=config)
         assert server.config.name == "test-server"
         assert server.config.port == 9000
-    
+
     def test_server_with_name_override(self):
         """Test server initialization with name override."""
         config = ServerConfig(name="config-name")
@@ -149,7 +149,9 @@ class TestTrioMCPServer:
     def test_register_p2p_tools_uses_explicit_registrars(self, monkeypatch):
         """Canonical explicit registrars should be called when both feature flags are enabled."""
         from ipfs_accelerate_py.mcp_server.tools.p2p import native_p2p_tools as taskqueue_module
-        from ipfs_accelerate_py.mcp_server.tools.p2p_workflow_tools import native_p2p_workflow_tools as workflow_module
+        from ipfs_accelerate_py.mcp_server.tools.p2p_workflow_tools import (
+            native_p2p_workflow_tools as workflow_module,
+        )
 
         calls = []
 
@@ -160,9 +162,15 @@ class TestTrioMCPServer:
             calls.append("workflow")
 
         monkeypatch.setattr(taskqueue_module, "register_native_p2p_tools", _register_taskqueue)
-        monkeypatch.setattr(workflow_module, "register_native_p2p_workflow_tools", _register_workflow)
+        monkeypatch.setattr(
+            workflow_module, "register_native_p2p_workflow_tools", _register_workflow
+        )
 
-        server = TrioMCPServer(ServerConfig(enable_p2p_tools=True, enable_taskqueue_tools=True, enable_workflow_tools=True))
+        server = TrioMCPServer(
+            ServerConfig(
+                enable_p2p_tools=True, enable_taskqueue_tools=True, enable_workflow_tools=True
+            )
+        )
         server.mcp = Mock()
 
         server._register_p2p_tools()
@@ -171,7 +179,9 @@ class TestTrioMCPServer:
     def test_register_p2p_tools_respects_feature_flags(self, monkeypatch):
         """Only enabled canonical registrar should be called when one feature flag is disabled."""
         from ipfs_accelerate_py.mcp_server.tools.p2p import native_p2p_tools as taskqueue_module
-        from ipfs_accelerate_py.mcp_server.tools.p2p_workflow_tools import native_p2p_workflow_tools as workflow_module
+        from ipfs_accelerate_py.mcp_server.tools.p2p_workflow_tools import (
+            native_p2p_workflow_tools as workflow_module,
+        )
 
         calls = []
 
@@ -182,16 +192,23 @@ class TestTrioMCPServer:
             calls.append("workflow")
 
         monkeypatch.setattr(taskqueue_module, "register_native_p2p_tools", _register_taskqueue)
-        monkeypatch.setattr(workflow_module, "register_native_p2p_workflow_tools", _register_workflow)
+        monkeypatch.setattr(
+            workflow_module, "register_native_p2p_workflow_tools", _register_workflow
+        )
 
-        server = TrioMCPServer(ServerConfig(enable_p2p_tools=True, enable_taskqueue_tools=False, enable_workflow_tools=True))
+        server = TrioMCPServer(
+            ServerConfig(
+                enable_p2p_tools=True, enable_taskqueue_tools=False, enable_workflow_tools=True
+            )
+        )
         server.mcp = Mock()
 
         server._register_p2p_tools()
         assert calls == ["workflow"]
-    
+
     def test_server_setup(self):
         """Test server setup process."""
+
         async def _run() -> None:
             config = ServerConfig(enable_p2p_tools=False)  # Disable to avoid dependency issues
             server = TrioMCPServer(config=config)
@@ -203,6 +220,7 @@ class TestTrioMCPServer:
 
     def test_server_in_trio_context(self):
         """Test that server operations run in Trio context."""
+
         async def _run() -> None:
             assert is_trio_context()
             _server = TrioMCPServer()
@@ -212,6 +230,7 @@ class TestTrioMCPServer:
 
     def test_server_lifecycle_hooks(self):
         """Test server startup and shutdown hooks."""
+
         async def _run() -> None:
             config = ServerConfig(enable_p2p_tools=False)
             server = TrioMCPServer(config=config)
@@ -225,6 +244,7 @@ class TestTrioMCPServer:
 
     def test_server_run_with_timeout(self):
         """Test server run with timeout (to avoid infinite run)."""
+
         async def _run() -> None:
             config = ServerConfig(enable_p2p_tools=False)
             server = TrioMCPServer(config=config)
@@ -238,20 +258,22 @@ class TestTrioMCPServer:
 
 class TestServerIntegration:
     """Integration tests for server functionality."""
-    
+
     def test_create_asgi_app(self):
         """Test ASGI app creation."""
+
         async def _run() -> None:
             config = ServerConfig(enable_p2p_tools=False)
             server = TrioMCPServer(config=config)
             app = server.create_asgi_app()
             assert app is not None
-            assert hasattr(app, 'routes') or hasattr(app, 'router')
+            assert hasattr(app, "routes") or hasattr(app, "router")
 
         anyio.run(_run)
 
     def test_server_with_nursery(self):
         """Test running server within a nursery."""
+
         async def _run() -> None:
             config = ServerConfig(enable_p2p_tools=False)
             server = TrioMCPServer(config=config)

@@ -58,9 +58,15 @@ class TestPeerPrimitives(unittest.TestCase):
         from ipfs_accelerate_py.mcp_server.mcplusplus import peer_bootstrap, peer_registry
 
         if peer_registry.HAVE_PEER_REGISTRY:
-            self.assertEqual(peer_registry._PeerRegistry.__module__, "ipfs_accelerate_py.github_cli.p2p_peer_registry")
+            self.assertEqual(
+                peer_registry._PeerRegistry.__module__,
+                "ipfs_accelerate_py.github_cli.p2p_peer_registry",
+            )
         if peer_bootstrap.HAVE_PEER_BOOTSTRAP:
-            self.assertEqual(peer_bootstrap._PeerBootstrap.__module__, "ipfs_accelerate_py.github_cli.p2p_bootstrap_helper")
+            self.assertEqual(
+                peer_bootstrap._PeerBootstrap.__module__,
+                "ipfs_accelerate_py.github_cli.p2p_bootstrap_helper",
+            )
 
     def test_bootstrap_nodes_management(self) -> None:
         registry = create_peer_registry(bootstrap_nodes=["/ip4/1.2.3.4/tcp/4001/p2p/x"])
@@ -75,7 +81,9 @@ class TestPeerPrimitives(unittest.TestCase):
 
     def test_registry_unavailable_paths(self) -> None:
         async def _run() -> None:
-            with patch("ipfs_accelerate_py.mcp_server.mcplusplus.peer_registry.HAVE_PEER_REGISTRY", False):
+            with patch(
+                "ipfs_accelerate_py.mcp_server.mcplusplus.peer_registry.HAVE_PEER_REGISTRY", False
+            ):
                 registry = create_peer_registry()
                 self.assertEqual(await registry.discover_peers(), [])
                 self.assertFalse(await registry.connect_to_peer("p", "m"))
@@ -87,7 +95,9 @@ class TestPeerPrimitives(unittest.TestCase):
 
     def test_bootstrap_unavailable_paths(self) -> None:
         async def _run() -> None:
-            with patch("ipfs_accelerate_py.mcp_server.mcplusplus.peer_bootstrap.HAVE_PEER_BOOTSTRAP", False):
+            with patch(
+                "ipfs_accelerate_py.mcp_server.mcplusplus.peer_bootstrap.HAVE_PEER_BOOTSTRAP", False
+            ):
                 bootstrap = create_peer_bootstrap()
                 self.assertEqual(await bootstrap.discover_peers(), [])
                 self.assertEqual(await bootstrap.get_bootstrap_addrs(), [])
@@ -133,7 +143,9 @@ class TestPeerPrimitives(unittest.TestCase):
             bundle = cast(Any, type("Bundle", (), {"peer_registry": None})())
             with patch(
                 "ipfs_accelerate_py.mcp_server.mcplusplus.peer_discovery.create_peer_registry",
-                side_effect=AssertionError("create_peer_registry should not run when bundle is supplied"),
+                side_effect=AssertionError(
+                    "create_peer_registry should not run when bundle is supplied"
+                ),
             ):
                 manager = create_peer_discovery(service_bundle=bundle)
                 peers = await manager.discover_peers()
@@ -148,7 +160,9 @@ class TestPeerPrimitives(unittest.TestCase):
             registry = create_peer_registry()
             registry.available = True
             registry._registry = type("R", (), {})()
-            registry._registry.discover_peers = AsyncMock(return_value=[{"peer_id": "p1", "multiaddr": "m1"}])
+            registry._registry.discover_peers = AsyncMock(
+                return_value=[{"peer_id": "p1", "multiaddr": "m1"}]
+            )
             peers = await registry.discover_peers()
             self.assertEqual(peers, [{"peer_id": "p1", "multiaddr": "m1"}])
 
@@ -161,7 +175,9 @@ class TestPeerPrimitives(unittest.TestCase):
             bootstrap._bootstrap = _FakeBootstrap()
 
             peers = await bootstrap.discover_peers()
-            self.assertEqual(peers, [{"peer_id": "peer-a", "multiaddr": "/ip4/127.0.0.1/tcp/4001/p2p/peer-a"}])
+            self.assertEqual(
+                peers, [{"peer_id": "peer-a", "multiaddr": "/ip4/127.0.0.1/tcp/4001/p2p/peer-a"}]
+            )
 
             addrs = await bootstrap.get_bootstrap_addrs()
             self.assertEqual(
@@ -180,7 +196,9 @@ class TestPeerPrimitives(unittest.TestCase):
                     multiaddr="/ip4/127.0.0.1/tcp/4001/p2p/peer-a",
                 )
             )
-            self.assertTrue(await bootstrap.heartbeat("peer-a", 4001, "/ip4/127.0.0.1/tcp/4001/p2p/peer-a"))
+            self.assertTrue(
+                await bootstrap.heartbeat("peer-a", 4001, "/ip4/127.0.0.1/tcp/4001/p2p/peer-a")
+            )
 
         anyio.run(_run)
 

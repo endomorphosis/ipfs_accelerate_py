@@ -169,7 +169,7 @@ from ipfs_accelerate_py.mcp.tools.p2p_workflow_tools import register_p2p_workflo
 from ipfs_accelerate_py.mcplusplus_module.tools import (
     register_p2p_taskqueue_tools,
     register_p2p_workflow_tools,
-    register_all_p2p_tools  # Convenient: registers all 20 tools
+    register_all_p2p_tools,  # Convenient: registers all 20 tools
 )
 ```
 

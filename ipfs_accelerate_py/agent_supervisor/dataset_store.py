@@ -77,7 +77,10 @@ class ObjectiveDatasetStore:
                 manager.save_dataset(dataset_id, dataset)
                 managed = manager.get_dataset(dataset_id)
                 if hasattr(managed, "save"):
-                    result = managed.save(str(written_parquet or jsonl_path), format="parquet" if written_parquet else "jsonl")
+                    result = managed.save(
+                        str(written_parquet or jsonl_path),
+                        format="parquet" if written_parquet else "jsonl",
+                    )
                     if isinstance(result, dict):
                         manager_result = result
             backend = "ipfs_datasets_py" if manager_cls is not None else dataset_backend
@@ -96,12 +99,16 @@ class ObjectiveDatasetStore:
         )
         manifest = artifact.to_dict()
         manifest["created_at"] = datetime.now(timezone.utc).isoformat()
-        manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        manifest_path.write_text(
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
         return artifact
 
 
 def _safe_dataset_id(value: str) -> str:
-    safe = "".join(char if char.isalnum() or char in {"-", "_", "."} else "-" for char in value.strip())
+    safe = "".join(
+        char if char.isalnum() or char in {"-", "_", "."} else "-" for char in value.strip()
+    )
     safe = safe.strip("-._")
     return safe or "objective-dataset"
 

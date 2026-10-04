@@ -40,14 +40,14 @@ This guide provides solutions to common issues encountered when using the IPFS A
 3. **Use Feature Detection and Fallbacks**:
    ```python
    from fixed_web_platform.unified_web_framework import UnifiedWebPlatform
-   
+
    # Create platform with fallbacks
    platform = UnifiedWebPlatform(
        model_name="bert-base-uncased",
        model_type="text",
        platform="webgpu",
        fallback_to_webnn=True,
-       fallback_to_wasm=True
+       fallback_to_wasm=True,
    )
    ```
 
@@ -60,12 +60,9 @@ This guide provides solutions to common issues encountered when using the IPFS A
    ```python
    # Enable debug mode
    platform = UnifiedWebPlatform(
-       model_name="bert-base-uncased",
-       model_type="text",
-       platform="webgpu",
-       debug_mode=True
+       model_name="bert-base-uncased", model_type="text", platform="webgpu", debug_mode=True
    )
-   
+
    # Get shader compilation logs
    logs = platform.get_shader_logs()
    print(logs)
@@ -74,10 +71,7 @@ This guide provides solutions to common issues encountered when using the IPFS A
 2. **Simplify Shader Operations**:
    ```python
    # Use simpler shader configuration
-   platform.configure({
-       "shader_complexity": "low",
-       "disable_advanced_features": True
-   })
+   platform.configure({"shader_complexity": "low", "disable_advanced_features": True})
    ```
 
 3. **Use Pre-Compiled Shaders**:
@@ -99,10 +93,7 @@ For more details, see the [WebGPU Shader Precompilation Guide](WEBGPU_SHADER_PRE
 1. **Reduce Batch Size and Workload**:
    ```python
    # Use smaller batches
-   platform.configure({
-       "max_batch_size": 1,
-       "conservative_memory": True
-   })
+   platform.configure({"max_batch_size": 1, "conservative_memory": True})
    ```
 
 2. **Implement Recovery Logic**:
@@ -138,20 +129,15 @@ For more details, see the [WebGPU Shader Precompilation Guide](WEBGPU_SHADER_PRE
 1. **Enable Progressive Loading**:
    ```python
    from fixed_web_platform.progressive_model_loader import ProgressiveModelLoader
-   
+
    # Create progressive loader
    loader = ProgressiveModelLoader(
-       model_path="models/bert-base-uncased",
-       chunk_size_mb=5,
-       show_progress=True
+       model_path="models/bert-base-uncased", chunk_size_mb=5, show_progress=True
    )
-   
+
    # Use with platform
    platform = UnifiedWebPlatform(
-       model_name="bert-base-uncased",
-       model_type="text",
-       platform="webgpu",
-       loader=loader
+       model_name="bert-base-uncased", model_type="text", platform="webgpu", loader=loader
    )
    ```
 
@@ -159,13 +145,13 @@ For more details, see the [WebGPU Shader Precompilation Guide](WEBGPU_SHADER_PRE
    ```python
    # Enable parallel loading
    os.environ["WEB_PARALLEL_LOADING_ENABLED"] = "1"
-   
+
    # Create platform with parallel loading
    platform = UnifiedWebPlatform(
        model_name="clip-vit-base-patch32",
        model_type="multimodal",
        platform="webgpu",
-       enable_parallel_loading=True
+       enable_parallel_loading=True,
    )
    ```
 
@@ -173,10 +159,7 @@ For more details, see the [WebGPU Shader Precompilation Guide](WEBGPU_SHADER_PRE
    ```python
    # Use 4-bit quantized model
    platform = UnifiedWebPlatform(
-       model_name="llama-7b-4bit",
-       model_type="text_generation",
-       platform="webgpu",
-       quantization="int4"
+       model_name="llama-7b-4bit", model_type="text_generation", platform="webgpu", quantization="int4"
    )
    ```
 
@@ -202,12 +185,12 @@ For more details, see the [WebGPU Shader Precompilation Guide](WEBGPU_SHADER_PRE
 2. **Implement Retry Logic**:
    ```python
    from fixed_web_platform.utils import load_with_retry
-   
+
    # Load model with retry logic
    model = await load_with_retry(
        model_name="bert-base-uncased",
        max_retries=3,
-       retry_delay=2000  # ms
+       retry_delay=2000,  # ms
    )
    ```
 
@@ -217,7 +200,7 @@ For more details, see the [WebGPU Shader Precompilation Guide](WEBGPU_SHADER_PRE
    platform = UnifiedWebPlatform(
        model_name="bert-tiny",  # Instead of bert-base-uncased
        model_type="text",
-       platform="webgpu"
+       platform="webgpu",
    )
    ```
 
@@ -235,7 +218,7 @@ For more details, see the [WebGPU Shader Precompilation Guide](WEBGPU_SHADER_PRE
        model_name="bert-base-uncased",
        model_type="text",
        platform="webgpu",
-       enable_shader_precompilation=True
+       enable_shader_precompilation=True,
    )
    ```
 
@@ -251,10 +234,7 @@ For more details, see the [WebGPU Shader Precompilation Guide](WEBGPU_SHADER_PRE
 3. **Pre-allocate GPU Buffers**:
    ```python
    # Enable buffer pre-allocation
-   platform.configure({
-       "preallocate_buffers": True,
-       "buffer_allocation_strategy": "eager"
-   })
+   platform.configure({"preallocate_buffers": True, "buffer_allocation_strategy": "eager"})
    ```
 
 For more details, see the [WebGPU Shader Precompilation Guide](WEBGPU_SHADER_PRECOMPILATION.md).
@@ -270,13 +250,10 @@ For more details, see the [WebGPU Shader Precompilation Guide](WEBGPU_SHADER_PRE
    ```python
    # Enable Firefox audio optimizations
    from fixed_web_platform.webgpu_audio_compute_shaders import optimize_for_firefox
-   
+
    # Apply Firefox-specific optimizations
    if browser == "firefox":
-       audio_config = optimize_for_firefox({
-           "model_name": "whisper-tiny",
-           "workgroup_size": "256x1x1"
-       })
+       audio_config = optimize_for_firefox({"model_name": "whisper-tiny", "workgroup_size": "256x1x1"})
        platform.configure(audio_config)
    ```
 
@@ -287,7 +264,7 @@ For more details, see the [WebGPU Shader Precompilation Guide](WEBGPU_SHADER_PRE
        model_name="whisper-tiny",
        model_type="audio_transcription",
        platform="webgpu",
-       enable_compute_shader_optimizations=True
+       enable_compute_shader_optimizations=True,
    )
    ```
 
@@ -301,20 +278,18 @@ For more details, see the [Firefox Audio Optimization Guide](WEB_PLATFORM_FIREFO
 1. **Use Ultra-Low Precision**:
    ```python
    from fixed_web_platform.webgpu_ultra_low_precision import UltraLowPrecisionOptimizer
-   
+
    # Create platform
    platform = UnifiedWebPlatform(
-       model_name="llama-7b",
-       model_type="text_generation",
-       platform="webgpu"
+       model_name="llama-7b", model_type="text_generation", platform="webgpu"
    )
-   
+
    # Apply ultra-low precision
    ulp = UltraLowPrecisionOptimizer(platform)
    ulp.set_weight_precision("int4")
    ulp.set_activation_precision("int8")
    ulp.enable_mixed_precision(True)
-   
+
    # Run with optimizations
    result = await ulp.run_optimized(input_data)
    ```
@@ -322,11 +297,13 @@ For more details, see the [Firefox Audio Optimization Guide](WEB_PLATFORM_FIREFO
 2. **Enable KV Cache Optimizations**:
    ```python
    # Enable KV cache optimizations
-   platform.configure({
-       "enable_kv_cache_optimization": True,
-       "kv_cache_precision": "int4",
-       "progressive_precision": True  # Higher precision for recent tokens
-   })
+   platform.configure(
+       {
+           "enable_kv_cache_optimization": True,
+           "kv_cache_precision": "int4",
+           "progressive_precision": True,  # Higher precision for recent tokens
+       }
+   )
    ```
 
 3. **Use Smaller Models**:
@@ -335,7 +312,7 @@ For more details, see the [Firefox Audio Optimization Guide](WEB_PLATFORM_FIREFO
    platform = UnifiedWebPlatform(
        model_name="llama-1b",  # Instead of llama-7b
        model_type="text_generation",
-       platform="webgpu"
+       platform="webgpu",
    )
    ```
 
@@ -365,21 +342,16 @@ For more details, see the [Firefox Audio Optimization Guide](WEB_PLATFORM_FIREFO
 2. **Reduce Batch Size and Input Length**:
    ```python
    # Use minimal batch size and truncate inputs
-   platform.configure({
-       "max_batch_size": 1,
-       "max_sequence_length": 512,
-       "disable_attention_caching": True
-   })
+   platform.configure(
+       {"max_batch_size": 1, "max_sequence_length": 512, "disable_attention_caching": True}
+   )
    ```
 
 3. **Use Lower Precision**:
    ```python
    # Use int4 precision
    platform = UnifiedWebPlatform(
-       model_name="bert-base-uncased",
-       model_type="text",
-       platform="webgpu",
-       precision="int4"
+       model_name="bert-base-uncased", model_type="text", platform="webgpu", precision="int4"
    )
    ```
 
@@ -439,8 +411,8 @@ For more details, see the [Web Platform Memory Optimization Guide](WEB_PLATFORM_
        safari_specific_config={
            "compatibility_mode": True,
            "reduced_precision": True,
-           "conservative_memory_usage": True
-       }
+           "conservative_memory_usage": True,
+       },
    )
    ```
 
@@ -450,13 +422,10 @@ For more details, see the [Web Platform Memory Optimization Guide](WEB_PLATFORM_
    if not platform.is_webgpu_supported():
        # Fall back to WebAssembly
        from fixed_web_platform.webgpu_wasm_fallback import WASMBackend
-       
+
        # Create WASM backend
-       wasm_backend = WASMBackend(
-           model_name="bert-base-uncased",
-           model_type="text"
-       )
-       
+       wasm_backend = WASMBackend(model_name="bert-base-uncased", model_type="text")
+
        # Use WASM backend
        result = await wasm_backend.run_inference(input_data)
    ```
@@ -465,13 +434,15 @@ For more details, see the [Web Platform Memory Optimization Guide](WEB_PLATFORM_
    ```python
    # Check for specific feature support
    capabilities = platform.get_capabilities()
-   
+
    # Configure based on capabilities
-   platform.configure({
-       "enable_shader_precompilation": capabilities["shader_precompilation_supported"],
-       "enable_compute_shaders": capabilities["compute_shaders_supported"],
-       "use_storage_buffers": capabilities["storage_buffers_supported"]
-   })
+   platform.configure(
+       {
+           "enable_shader_precompilation": capabilities["shader_precompilation_supported"],
+           "enable_compute_shaders": capabilities["compute_shaders_supported"],
+           "use_storage_buffers": capabilities["storage_buffers_supported"],
+       }
+   )
    ```
 
 ### Mobile Browser Issues
@@ -482,21 +453,18 @@ For more details, see the [Web Platform Memory Optimization Guide](WEB_PLATFORM_
 1. **Apply Mobile-Specific Optimizations**:
    ```python
    from fixed_web_platform.mobile_device_optimization import optimize_for_mobile
-   
+
    # Apply mobile optimizations
    mobile_config = optimize_for_mobile(
        model_name="bert-base-uncased",
        model_type="text",
        battery_optimization_level=2,  # 0-3 scale
-       memory_optimization_level=3    # Most aggressive
+       memory_optimization_level=3,  # Most aggressive
    )
-   
+
    # Create platform with mobile optimizations
    platform = UnifiedWebPlatform(
-       model_name="bert-base-uncased",
-       model_type="text",
-       platform="auto",
-       config=mobile_config
+       model_name="bert-base-uncased", model_type="text", platform="auto", config=mobile_config
    )
    ```
 
@@ -542,23 +510,22 @@ For more details, see the [Web Platform Memory Optimization Guide](WEB_PLATFORM_
    # Get API method documentation
    help_text = platform.get_method_help("run_inference")
    console.log(help_text)
-   
+
    # Use proper parameter structure
-   result = await platform.run_inference({
-       "input_text": "Sample input"  # Correct parameter name
-   })
+   result = await platform.run_inference(
+       {
+           "input_text": "Sample input"  # Correct parameter name
+       }
+   )
    ```
 
 2. **Use Type Checking**:
    ```python
    from fixed_web_platform.utils import validate_input
-   
+
    # Validate input before passing to model
-   validation_result = validate_input(
-       input_data,
-       expected_schema={"input_text": "string"}
-   )
-   
+   validation_result = validate_input(input_data, expected_schema={"input_text": "string"})
+
    if validation_result["valid"]:
        result = await platform.run_inference(input_data)
    else:
@@ -572,7 +539,7 @@ For more details, see the [Web Platform Memory Optimization Guide](WEB_PLATFORM_
        model_name="bert-base-uncased",
        model_type="text",
        platform="webgpu",
-       api_version="2.0"  # Ensure compatibility with specific API version
+       api_version="2.0",  # Ensure compatibility with specific API version
    )
    ```
 
@@ -711,10 +678,7 @@ from fixed_web_platform.debug_tools import WebGPUDebugger
 
 # Create platform with debug mode
 platform = UnifiedWebPlatform(
-    model_name="bert-base-uncased",
-    model_type="text",
-    platform="webgpu",
-    debug_mode=True
+    model_name="bert-base-uncased", model_type="text", platform="webgpu", debug_mode=True
 )
 
 # Create debugger

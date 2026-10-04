@@ -40,6 +40,7 @@ async def run():
     server = TrioMCPServer()
     await server.run()  # Pure Trio execution
 
+
 trio.run(run)
 ```
 
@@ -304,9 +305,11 @@ server.run()  # Uses uvicorn (asyncio)
 import trio
 from ipfs_accelerate_py.mcplusplus_module import TrioMCPServer
 
+
 async def main():
     server = TrioMCPServer()
     await server.run()
+
 
 trio.run(main)
 ```

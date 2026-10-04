@@ -26,10 +26,7 @@ model = AutoModel.from_pretrained("bert-base-uncased")
 
 # Export to ONNX
 success, message = export_model(
-    model=model,
-    model_id="bert-base-uncased",
-    output_path="model.onnx",
-    export_format="onnx"
+    model=model, model_id="bert-base-uncased", output_path="model.onnx", export_format="onnx"
 )
 
 if success:
@@ -60,7 +57,7 @@ success, message = export_model(
     output_path="optimized_model.onnx",
     export_format="onnx",
     hardware_target=primary_hw,
-    precision="fp16" if primary_hw in ["cuda", "amd"] else "fp32"
+    precision="fp16" if primary_hw in ["cuda", "amd"] else "fp32",
 )
 ```
 
@@ -80,7 +77,7 @@ success, message = export_model(
     output_path="web_model_dir",  # Directory to store WebNN files
     export_format="webnn",
     hardware_target="cpu",  # WebNN typically targets CPU or WASM
-    precision="fp16"  # Use FP16 for smaller model size
+    precision="fp16",  # Use FP16 for smaller model size
 )
 ```
 
@@ -97,9 +94,7 @@ model = AutoModel.from_pretrained("bert-base-uncased")
 
 # Analyze compatibility
 report = analyze_model_export_compatibility(
-    model=model,
-    model_id="bert-base-uncased",
-    formats=["onnx", "webnn"]
+    model=model, model_id="bert-base-uncased", formats=["onnx", "webnn"]
 )
 
 # Check ONNX compatibility
@@ -136,7 +131,7 @@ config = ExportConfig(
     dynamic_axes={
         "input_ids": {0: "batch_size", 1: "sequence_length"},
         "attention_mask": {0: "batch_size", 1: "sequence_length"},
-        "output": {0: "batch_size", 1: "sequence_length"}
+        "output": {0: "batch_size", 1: "sequence_length"},
     },
     optimization_level=2,
     target_hardware="cuda",
@@ -145,7 +140,7 @@ config = ExportConfig(
     simplify=True,
     constant_folding=True,
     verbose=True,
-    additional_options={"custom_setting": True}
+    additional_options={"custom_setting": True},
 )
 
 # Load model
@@ -157,7 +152,7 @@ export_model(
     model_id="bert-base-uncased",
     output_path="custom_model.onnx",
     export_format="onnx",
-    custom_config=config
+    custom_config=config,
 )
 ```
 
@@ -179,7 +174,7 @@ success, message = export_model(
     output_path="amd_optimized.onnx",
     export_format="onnx",
     hardware_target="amd",
-    precision="fp16"  # FP16 is generally best on AMD GPUs
+    precision="fp16",  # FP16 is generally best on AMD GPUs
 )
 ```
 
@@ -242,18 +237,12 @@ from model_export_capability import get_optimized_export_config
 
 # Get optimized config for AMD with FP16
 amd_config = get_optimized_export_config(
-    model_id="bert-base-uncased",
-    export_format="onnx",
-    hardware_target="amd",
-    precision="fp16"
+    model_id="bert-base-uncased", export_format="onnx", hardware_target="amd", precision="fp16"
 )
 
 # Get optimized config for OpenVINO with INT8
 openvino_config = get_optimized_export_config(
-    model_id="bert-base-uncased",
-    export_format="onnx",
-    hardware_target="openvino",
-    precision="int8"
+    model_id="bert-base-uncased", export_format="onnx", hardware_target="openvino", precision="int8"
 )
 ```
 
@@ -280,15 +269,11 @@ model = AutoModelForSequenceClassification.from_pretrained("distilbert-base-unca
 # Prepare sample inputs
 inputs = {
     "input_ids": torch.ones(1, 64, dtype=torch.long),
-    "attention_mask": torch.ones(1, 64, dtype=torch.long)
+    "attention_mask": torch.ones(1, 64, dtype=torch.long),
 }
 
 # Export directly to WebNN
-success, message = export_to_webnn(
-    model=model,
-    inputs=inputs,
-    output_dir="webnn_model"
-)
+success, message = export_to_webnn(model=model, inputs=inputs, output_dir="webnn_model")
 ```
 
 ## Mixing AMD Hardware with WebNN Export
@@ -311,10 +296,7 @@ config = ExportConfig(
     precision="fp16",
     simplify=True,
     constant_folding=True,
-    additional_options={
-        "optimize_for_web": True,
-        "minimize_model_size": True
-    }
+    additional_options={"optimize_for_web": True, "minimize_model_size": True},
 )
 
 # Export to WebNN using AMD hardware for preparation
@@ -323,7 +305,7 @@ export_model(
     model_id="distilbert-base-uncased",
     output_path="amd_optimized_webnn",
     export_format="webnn",
-    custom_config=config
+    custom_config=config,
 )
 ```
 

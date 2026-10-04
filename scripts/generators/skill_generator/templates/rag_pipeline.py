@@ -2,8 +2,8 @@
 """
 Retrieval-Augmented Generation (RAG) Pipeline Template for IPFS Accelerate Python.
 
-This module implements a pipeline template for RAG models like RAG-Token, 
-RAG-Sequence, and custom RAG implementations. It handles retrieval, 
+This module implements a pipeline template for RAG models like RAG-Token,
+RAG-Sequence, and custom RAG implementations. It handles retrieval,
 context integration, and generation.
 """
 
@@ -13,7 +13,7 @@ from .base_pipeline import BasePipelineTemplate
 
 class RAGPipelineTemplate(BasePipelineTemplate):
     """Template for Retrieval-Augmented Generation (RAG) model pipelines."""
-    
+
     def __init__(self):
         """Initialize the RAG pipeline template."""
         super().__init__()
@@ -24,7 +24,7 @@ class RAGPipelineTemplate(BasePipelineTemplate):
         self.requires_postprocessing = True
         self.supports_batching = False  # RAG typically processes one query at a time
         self.max_batch_size = 1
-    
+
     def get_import_statements(self) -> str:
         """Get RAG pipeline import statements."""
         return """
@@ -34,7 +34,7 @@ import json
 import numpy as np
 from typing import List, Dict, Union, Any, Optional, Tuple
 """
-    
+
     def get_preprocessing_code(self, task_type: str) -> str:
         """Get RAG preprocessing code for specific task types."""
         if task_type == "generative_qa" or task_type == "question_answering":
@@ -223,7 +223,7 @@ for param_name, param_value in kwargs.items():
     if param_name not in config:
         config[param_name] = param_value
 """
-    
+
     def get_postprocessing_code(self, task_type: str) -> str:
         """Get RAG postprocessing code for specific task types."""
         if task_type == "generative_qa" or task_type == "question_answering":
@@ -557,7 +557,7 @@ with self.torch.no_grad():
             "context_used": context_used if 'context_used' in locals() else False
         }
 """
-    
+
     def get_result_formatting_code(self, task_type: str) -> str:
         """Get RAG result formatting code for specific task types."""
         if task_type == "generative_qa" or task_type == "question_answering":
@@ -615,7 +615,7 @@ if "error" in results:
     
 return response
 """
-    
+
     def get_mock_input_code(self) -> str:
         """Get RAG mock input code."""
         return """
@@ -629,7 +629,7 @@ mock_input = {
     "context": ["Paris is the capital of France."]  # RAG-specific parameter: pre-provided context
 }
 """
-    
+
     def get_mock_output_code(self) -> str:
         """Get RAG mock output code."""
         return """
@@ -683,7 +683,7 @@ else:
 
 return mock_output
 """
-    
+
     def get_pipeline_utilities(self) -> str:
         """Get RAG utility functions."""
         return """
@@ -780,7 +780,7 @@ def format_context_from_documents(documents, max_length=1024, separator="\\n\\n"
     # Join all document parts with the separator
     return separator.join(context_parts)
 """
-    
+
     def is_compatible_with_architecture(self, arch_type: str) -> bool:
         """Check RAG pipeline compatibility with architecture type."""
         # RAG pipeline is compatible with RAG-based architectures
@@ -789,9 +789,9 @@ def format_context_from_documents(documents, max_length=1024, separator="\\n\\n"
             "retrieval-augmented-generation",
             "retrieval-augmented",
             "rag-token",
-            "rag-sequence"
+            "rag-sequence",
         ]
-    
+
     def is_compatible_with_task(self, task_type: str) -> bool:
         """Check RAG pipeline compatibility with task type."""
         # RAG pipeline is compatible with these tasks
@@ -799,5 +799,5 @@ def format_context_from_documents(documents, max_length=1024, separator="\\n\\n"
             "text_generation",
             "question_answering",
             "generative_qa",
-            "document_retrieval"
+            "document_retrieval",
         ]

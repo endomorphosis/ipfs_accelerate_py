@@ -70,8 +70,14 @@ def test_implementation_state_paths_follow_state_prefix(tmp_path: Path):
         state_dir=tmp_path / "custom-state",
         supervisor_events=True,
     )
-    assert overridden_namespace_state_paths["events_path"] == tmp_path / "custom-state" / "agent_supervisor_events.jsonl"
-    assert overridden_namespace_state_paths["daemon_events_path"] == tmp_path / "custom-state" / "agent_events.jsonl"
+    assert (
+        overridden_namespace_state_paths["events_path"]
+        == tmp_path / "custom-state" / "agent_supervisor_events.jsonl"
+    )
+    assert (
+        overridden_namespace_state_paths["daemon_events_path"]
+        == tmp_path / "custom-state" / "agent_events.jsonl"
+    )
 
 
 def test_apply_portal_implementation_daemon_defaults_preserves_user_values(tmp_path: Path):

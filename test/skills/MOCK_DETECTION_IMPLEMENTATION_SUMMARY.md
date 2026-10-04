@@ -47,16 +47,17 @@ The mock detection system uses a special import pattern that allows for environm
 
 ```python
 # Check if we should mock specific dependencies
-MOCK_TORCH = os.environ.get('MOCK_TORCH', 'False').lower() == 'true'
-MOCK_TRANSFORMERS = os.environ.get('MOCK_TRANSFORMERS', 'False').lower() == 'true'
-MOCK_TOKENIZERS = os.environ.get('MOCK_TOKENIZERS', 'False').lower() == 'true'
-MOCK_SENTENCEPIECE = os.environ.get('MOCK_SENTENCEPIECE', 'False').lower() == 'true'
+MOCK_TORCH = os.environ.get("MOCK_TORCH", "False").lower() == "true"
+MOCK_TRANSFORMERS = os.environ.get("MOCK_TRANSFORMERS", "False").lower() == "true"
+MOCK_TOKENIZERS = os.environ.get("MOCK_TOKENIZERS", "False").lower() == "true"
+MOCK_SENTENCEPIECE = os.environ.get("MOCK_SENTENCEPIECE", "False").lower() == "true"
 
 # Try to import torch
 try:
     if MOCK_TORCH:
         raise ImportError("Mocked torch import failure")
     import torch
+
     HAS_TORCH = True
 except ImportError:
     torch = MagicMock()
@@ -84,7 +85,9 @@ if using_real_inference and not using_mocks:
     print(f"{GREEN}🚀 Using REAL INFERENCE with actual models{RESET}")
 else:
     print(f"{BLUE}🔷 Using MOCK OBJECTS for CI/CD testing only{RESET}")
-    print(f"   Dependencies: transformers={HAS_TRANSFORMERS}, torch={HAS_TORCH}, tokenizers={HAS_TOKENIZERS}, sentencepiece={HAS_SENTENCEPIECE}")
+    print(
+        f"   Dependencies: transformers={HAS_TRANSFORMERS}, torch={HAS_TORCH}, tokenizers={HAS_TOKENIZERS}, sentencepiece={HAS_SENTENCEPIECE}"
+    )
 ```
 
 ### Metadata Enrichment

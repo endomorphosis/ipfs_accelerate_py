@@ -86,18 +86,20 @@ The integration consists of several key components:
 ### Basic Usage
 
 ```python
-from predictive_performance.multi_model_resource_pool_integration import MultiModelResourcePoolIntegration
+from predictive_performance.multi_model_resource_pool_integration import (
+    MultiModelResourcePoolIntegration,
+)
 
 # Create integration instance
 integration = MultiModelResourcePoolIntegration(
-    max_connections=4,            # Maximum browser connections
+    max_connections=4,  # Maximum browser connections
     enable_empirical_validation=True,
-    validation_interval=10,       # Validate every 10 executions
-    prediction_refinement=True,   # Update prediction models based on measurements
+    validation_interval=10,  # Validate every 10 executions
+    prediction_refinement=True,  # Update prediction models based on measurements
     enable_adaptive_optimization=True,
-    enable_trend_analysis=True,   # Enable error trend analysis
-    error_threshold=0.15,         # 15% error threshold for refinement
-    verbose=True
+    enable_trend_analysis=True,  # Enable error trend analysis
+    error_threshold=0.15,  # 15% error threshold for refinement
+    verbose=True,
 )
 
 # Initialize
@@ -108,21 +110,21 @@ try:
     model_configs = [
         {"model_name": "bert-base-uncased", "model_type": "text_embedding", "batch_size": 4},
         {"model_name": "vit-base-patch16-224", "model_type": "vision", "batch_size": 1},
-        {"model_name": "whisper-tiny", "model_type": "audio", "batch_size": 1}
+        {"model_name": "whisper-tiny", "model_type": "audio", "batch_size": 1},
     ]
-    
+
     # Execute with automatic strategy recommendation
     result = integration.execute_with_strategy(
         model_configs=model_configs,
         hardware_platform="webgpu",
         execution_strategy=None,  # Auto-select optimal strategy
-        optimization_goal="latency"
+        optimization_goal="latency",
     )
-    
+
     print(f"Selected strategy: {result['execution_strategy']}")
     print(f"Predicted latency: {result['predicted_latency']:.2f} ms")
     print(f"Actual latency: {result['actual_latency']:.2f} ms")
-    
+
 finally:
     # Clean up resources
     integration.close()
@@ -131,26 +133,28 @@ finally:
 ### Using Enhanced Empirical Validation
 
 ```python
-from predictive_performance.multi_model_resource_pool_integration import MultiModelResourcePoolIntegration
+from predictive_performance.multi_model_resource_pool_integration import (
+    MultiModelResourcePoolIntegration,
+)
 from predictive_performance.multi_model_empirical_validation import MultiModelEmpiricalValidator
 
 # Create custom validator with specific settings
 validator = MultiModelEmpiricalValidator(
     db_path="./validation_metrics.duckdb",
-    validation_history_size=200,      # Store more validation records
-    error_threshold=0.10,             # Lower threshold (10%) for refinement
-    refinement_interval=5,            # Check for refinement more frequently
+    validation_history_size=200,  # Store more validation records
+    error_threshold=0.10,  # Lower threshold (10%) for refinement
+    refinement_interval=5,  # Check for refinement more frequently
     enable_trend_analysis=True,
-    enable_visualization=True
+    enable_visualization=True,
 )
 
 # Create integration with custom validator
 integration = MultiModelResourcePoolIntegration(
-    validator=validator,              # Use custom validator
+    validator=validator,  # Use custom validator
     max_connections=4,
     enable_empirical_validation=True,
     prediction_refinement=True,
-    enable_adaptive_optimization=True
+    enable_adaptive_optimization=True,
 )
 
 # Initialize
@@ -161,50 +165,54 @@ try:
     for i in range(20):
         # Vary configurations to collect diverse validation data
         model_configs = [
-            {"model_name": "bert-base-uncased", "model_type": "text_embedding", "batch_size": i % 8 + 1},
-            {"model_name": "vit-base-patch16-224", "model_type": "vision", "batch_size": 1}
+            {
+                "model_name": "bert-base-uncased",
+                "model_type": "text_embedding",
+                "batch_size": i % 8 + 1,
+            },
+            {"model_name": "vit-base-patch16-224", "model_type": "vision", "batch_size": 1},
         ]
-        
+
         # Execute with different strategies to validate all approaches
         strategy = ["parallel", "sequential", "batched"][i % 3]
-        
+
         result = integration.execute_with_strategy(
             model_configs=model_configs,
             hardware_platform="webgpu",
             execution_strategy=strategy,
-            optimization_goal="throughput"
+            optimization_goal="throughput",
         )
-    
+
     # Get validation metrics with error trends
     metrics = integration.get_validation_metrics()
-    
+
     print("Validation Results:")
     print(f"Validation count: {metrics['validation_count']}")
-    
-    if 'error_rates' in metrics:
+
+    if "error_rates" in metrics:
         print("\nError Rates:")
-        for metric, value in metrics['error_rates'].items():
+        for metric, value in metrics["error_rates"].items():
             print(f"  {metric}: {value:.2%}")
-    
-    if 'error_trends' in metrics:
+
+    if "error_trends" in metrics:
         print("\nError Trends:")
-        for metric, trend in metrics['error_trends'].items():
-            direction = trend.get('direction', 'unknown')
-            strength = trend.get('strength', 0.0)
+        for metric, trend in metrics["error_trends"].items():
+            direction = trend.get("direction", "unknown")
+            strength = trend.get("strength", 0.0)
             print(f"  {metric}: {direction} (strength: {strength:.2f})")
-    
+
     # Get refinement recommendations
-    if hasattr(validator, 'get_refinement_recommendations'):
+    if hasattr(validator, "get_refinement_recommendations"):
         recommendations = validator.get_refinement_recommendations()
-        
+
         print("\nRefinement Recommendations:")
         print(f"Refinement needed: {recommendations['refinement_needed']}")
-        if recommendations['refinement_needed']:
+        if recommendations["refinement_needed"]:
             print(f"Reason: {recommendations['reason']}")
             print(f"Recommended method: {recommendations['recommended_method']}")
-    
+
     # Generate visualization if matplotlib is available
-    if hasattr(validator, 'visualize_validation_metrics'):
+    if hasattr(validator, "visualize_validation_metrics"):
         try:
             visualization = validator.visualize_validation_metrics(metric_type="error_rates")
             if visualization["success"]:
@@ -213,7 +221,7 @@ try:
                 # visualization["figure"].savefig("error_rates.png")
         except ImportError:
             print("\nVisualization requires matplotlib")
-    
+
 finally:
     # Clean up resources
     integration.close()
@@ -224,9 +232,7 @@ finally:
 ```python
 # Compare different execution strategies
 comparison = integration.compare_strategies(
-    model_configs=model_configs,
-    hardware_platform="webgpu",
-    optimization_goal="throughput"
+    model_configs=model_configs, hardware_platform="webgpu", optimization_goal="throughput"
 )
 
 print(f"Best strategy: {comparison['best_strategy']}")
@@ -251,16 +257,20 @@ print(f"Validation count: {metrics['validation_count']}")
 print(f"Execution count: {metrics['execution_count']}")
 
 # Error rates
-if 'error_rates' in metrics:
+if "error_rates" in metrics:
     print("\nError rates:")
-    for metric, value in metrics['error_rates'].items():
+    for metric, value in metrics["error_rates"].items():
         print(f"  {metric}: {value:.2%}")
 
 # Optimization impact
-if 'optimization_impact' in metrics:
+if "optimization_impact" in metrics:
     print("\nOptimization impact:")
-    print(f"  Average improvement: {metrics['optimization_impact'].get('avg_improvement_percent', 0):.1f}%")
-    print(f"  Recommendation accuracy: {metrics['optimization_impact'].get('recommendation_accuracy', 0):.2%}")
+    print(
+        f"  Average improvement: {metrics['optimization_impact'].get('avg_improvement_percent', 0):.1f}%"
+    )
+    print(
+        f"  Recommendation accuracy: {metrics['optimization_impact'].get('recommendation_accuracy', 0):.2%}"
+    )
 ```
 
 ### Updating Strategy Configuration
@@ -272,10 +282,10 @@ print(f"Adaptive configuration: {adaptive_config}")
 
 # Update configuration with custom values
 custom_config = {
-    "parallel_threshold": 4,      # Use parallel for 4 or fewer models
-    "sequential_threshold": 10,   # Use sequential for more than 10 models
-    "batching_size": 5,           # Batch size for batched execution
-    "memory_threshold": 6000      # Memory threshold in MB
+    "parallel_threshold": 4,  # Use parallel for 4 or fewer models
+    "sequential_threshold": 10,  # Use sequential for more than 10 models
+    "batching_size": 5,  # Batch size for batched execution
+    "memory_threshold": 6000,  # Memory threshold in MB
 }
 
 integration.update_strategy_configuration("webgpu", custom_config)
@@ -381,7 +391,9 @@ The integration supports cross-model tensor sharing through the Resource Pool:
 ```python
 # Get models from integration
 text_model = integration.resource_pool.get_model(model_type="text", model_name="bert-base-uncased")
-vision_model = integration.resource_pool.get_model(model_type="vision", model_name="vit-base-patch16-224")
+vision_model = integration.resource_pool.get_model(
+    model_type="vision", model_name="vit-base-patch16-224"
+)
 
 # Run text model and get embeddings
 text_result = text_model(text_input)
@@ -394,7 +406,7 @@ sharing_result = integration.resource_pool.share_tensor_between_models(
     producer_model=text_model,
     consumer_models=[vision_model],
     storage_type="webgpu",
-    dtype="float32"
+    dtype="float32",
 )
 ```
 

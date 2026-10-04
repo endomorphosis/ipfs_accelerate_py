@@ -107,9 +107,8 @@ def _default_task_p2p_announce_files() -> list[str]:
 
 def _read_task_p2p_announce() -> dict | None:
     # Optional env override.
-    raw = (
-        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE")
-        or os.environ.get("ipfs_accelerate_py_TASK_P2P_ANNOUNCE_FILE")
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE") or os.environ.get(
+        "ipfs_accelerate_py_TASK_P2P_ANNOUNCE_FILE"
     )
     if raw is not None and str(raw).strip().lower() in {"0", "false", "no", "off"}:
         return None
@@ -129,7 +128,11 @@ def _read_task_p2p_announce() -> dict | None:
             if not text:
                 continue
             info = json.loads(text)
-            if isinstance(info, dict) and isinstance(info.get("multiaddr"), str) and "/p2p/" in str(info.get("multiaddr")):
+            if (
+                isinstance(info, dict)
+                and isinstance(info.get("multiaddr"), str)
+                and "/p2p/" in str(info.get("multiaddr"))
+            ):
                 return info
         except Exception:
             continue
@@ -255,9 +258,10 @@ def submit_task(
     # - we have an announce hint (local service), OR
     # - user explicitly enables auto-discovery, AND libp2p is installed.
     have_hint = bool(remote_multiaddr)
-    explicit_discovery = os.environ.get("ipfs_accelerate_py_TASK_P2P_AUTO_DISCOVERY") is not None or os.environ.get(
-        "IPFS_ACCELERATE_PY_TASK_P2P_AUTO_DISCOVERY"
-    ) is not None
+    explicit_discovery = (
+        os.environ.get("ipfs_accelerate_py_TASK_P2P_AUTO_DISCOVERY") is not None
+        or os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_AUTO_DISCOVERY") is not None
+    )
 
     should_try_p2p = bool(remote_multiaddr) or (explicit_discovery and auto_discovery)
     if not should_try_p2p and announce is not None:
@@ -283,7 +287,11 @@ def submit_task(
             info = anyio.run(_run, backend="trio")
             if isinstance(info, dict):
                 tid = str(info.get("task_id") or "").strip()
-                pid = str(info.get("peer_id") or "").strip() or remote_peer_id or _extract_peer_id_from_multiaddr(remote_multiaddr)
+                pid = (
+                    str(info.get("peer_id") or "").strip()
+                    or remote_peer_id
+                    or _extract_peer_id_from_multiaddr(remote_multiaddr)
+                )
                 if pid and tid:
                     return _encode_p2p_task_id(peer_id=pid, task_id=tid)
                 if tid:
@@ -325,9 +333,10 @@ def get_task(task_id: str, *, queue_path: Optional[str] = None) -> Optional[dict
         remote_multiaddr = str(announce.get("multiaddr") or "").strip()
         remote_peer_id = str(announce.get("peer_id") or "").strip() or remote_peer_id
 
-    explicit_discovery = os.environ.get("ipfs_accelerate_py_TASK_P2P_AUTO_DISCOVERY") is not None or os.environ.get(
-        "IPFS_ACCELERATE_PY_TASK_P2P_AUTO_DISCOVERY"
-    ) is not None
+    explicit_discovery = (
+        os.environ.get("ipfs_accelerate_py_TASK_P2P_AUTO_DISCOVERY") is not None
+        or os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_AUTO_DISCOVERY") is not None
+    )
     should_try_p2p = bool(parsed is not None or remote_multiaddr)
     if not should_try_p2p and announce is not None:
         should_try_p2p = True
@@ -392,9 +401,10 @@ def wait_task(
         remote_multiaddr = str(announce.get("multiaddr") or "").strip()
         remote_peer_id = str(announce.get("peer_id") or "").strip() or remote_peer_id
 
-    explicit_discovery = os.environ.get("ipfs_accelerate_py_TASK_P2P_AUTO_DISCOVERY") is not None or os.environ.get(
-        "IPFS_ACCELERATE_PY_TASK_P2P_AUTO_DISCOVERY"
-    ) is not None
+    explicit_discovery = (
+        os.environ.get("ipfs_accelerate_py_TASK_P2P_AUTO_DISCOVERY") is not None
+        or os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_AUTO_DISCOVERY") is not None
+    )
     should_try_p2p = bool(parsed is not None or remote_multiaddr)
     if not should_try_p2p and announce is not None:
         should_try_p2p = True
@@ -411,7 +421,9 @@ def wait_task(
             remote = RemoteQueue(peer_id=effective_peer_id or "", multiaddr=remote_multiaddr)
 
             async def _run() -> Optional[dict]:
-                task = await wait_task_p2p(remote=remote, task_id=str(effective_task_id), timeout_s=float(timeout_s))
+                task = await wait_task_p2p(
+                    remote=remote, task_id=str(effective_task_id), timeout_s=float(timeout_s)
+                )
                 return task if isinstance(task, dict) else None
 
             return anyio.run(_run, backend="trio")
@@ -428,7 +440,9 @@ def wait_task(
     q = TaskQueue(queue_path)
     deadline = time.time() + max(0.0, float(timeout_s))
     task = q.get(str(task_id))
-    while task is not None and task.get("status") in {"queued", "running"} and time.time() < deadline:
+    while (
+        task is not None and task.get("status") in {"queued", "running"} and time.time() < deadline
+    ):
         time.sleep(0.1)
         task = q.get(str(task_id))
     return task if isinstance(task, dict) else None
@@ -552,7 +566,9 @@ def _chat_history_get(chat_session_id: str) -> tuple[str | None, str | None]:
     return (_load_chat_history_text(cid), cid)
 
 
-def _chat_history_append_turn(*, chat_session_id: str, user_prompt: str, assistant_text: str) -> str | None:
+def _chat_history_append_turn(
+    *, chat_session_id: str, user_prompt: str, assistant_text: str
+) -> str | None:
     sid = str(chat_session_id or "").strip()
     if not sid:
         return None
@@ -566,7 +582,11 @@ def _chat_history_append_turn(*, chat_session_id: str, user_prompt: str, assista
         _load_chat_history_index()
         prior_cid = str(_CHAT_HISTORY_INDEX.get(sid) or "").strip()
         prior_text = _load_chat_history_text(prior_cid) if prior_cid else None
-        merged = (str(prior_text or "").strip() + "\n\n" + turn).strip() if str(prior_text or "").strip() else turn
+        merged = (
+            (str(prior_text or "").strip() + "\n\n" + turn).strip()
+            if str(prior_text or "").strip()
+            else turn
+        )
         cid = _store_chat_history_text(merged)
         _CHAT_HISTORY_INDEX[sid] = cid
         _save_chat_history_index()
@@ -606,7 +626,9 @@ def generate_text_mesh(
 
     provider_norm = str(provider or "").strip().lower() or "copilot_cli"
     if provider_norm != "copilot_cli":
-        if (isinstance(resume_session_id, str) and resume_session_id.strip()) or bool(continue_session):
+        if (isinstance(resume_session_id, str) and resume_session_id.strip()) or bool(
+            continue_session
+        ):
             raise LLMRouterError(
                 "resume/continue session flags are only supported for provider='copilot_cli'"
             )
@@ -654,7 +676,11 @@ def generate_text_mesh(
 
     # Best-effort: carry forward an archived history CID when available.
     history_cid: str | None = None
-    if not (isinstance(history, str) and history.strip()) and isinstance(chat_session_id, str) and chat_session_id.strip():
+    if (
+        not (isinstance(history, str) and history.strip())
+        and isinstance(chat_session_id, str)
+        and chat_session_id.strip()
+    ):
         try:
             _hist_text, _hist_cid = _chat_history_get(chat_session_id.strip())
             if isinstance(_hist_cid, str) and _hist_cid.strip():
@@ -729,7 +755,9 @@ def generate_text_mesh(
                 remote = RemoteQueue(peer_id=str(peer_id), multiaddr=str(remote_multiaddr))
 
                 async def _run_cancel() -> None:
-                    await cancel_task_p2p(remote=remote, task_id=str(inner_id), reason="route_timeout")
+                    await cancel_task_p2p(
+                        remote=remote, task_id=str(inner_id), reason="route_timeout"
+                    )
 
                 anyio.run(_run_cancel, backend="trio")
             else:
@@ -749,7 +777,11 @@ def generate_text_mesh(
             effective_history = str(history or "").strip() if isinstance(history, str) else ""
             effective_history_cid: str | None = None
 
-            if not effective_history and isinstance(chat_session_id, str) and chat_session_id.strip():
+            if (
+                not effective_history
+                and isinstance(chat_session_id, str)
+                and chat_session_id.strip()
+            ):
                 try:
                     cached_text, cached_cid = _chat_history_get(chat_session_id.strip())
                     if isinstance(cached_text, str) and cached_text.strip():
@@ -762,7 +794,9 @@ def generate_text_mesh(
             if effective_history:
                 # Ensure the recovered history is persisted and content-addressed.
                 try:
-                    effective_history_cid = effective_history_cid or _store_chat_history_text(effective_history)
+                    effective_history_cid = effective_history_cid or _store_chat_history_text(
+                        effective_history
+                    )
                 except Exception:
                     pass
                 fallback_prompt = (
@@ -781,7 +815,9 @@ def generate_text_mesh(
 
             # If the session-bound route timed out, resubmit with a fresh session
             # id on this machine so local workers can drain the queued task.
-            if _truthy(os.environ.get("IPFS_ACCELERATE_PY_LLM_MESH_FAILOVER_REWRITE_SESSION_ID", "1")):
+            if _truthy(
+                os.environ.get("IPFS_ACCELERATE_PY_LLM_MESH_FAILOVER_REWRITE_SESSION_ID", "1")
+            ):
                 failover_sid = str(
                     os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_FAILOVER_SESSION")
                     or os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_SESSION")
@@ -859,7 +895,9 @@ def get_remote_capabilities(*, timeout_s: float = 10.0, detail: bool = False) ->
         remote = RemoteQueue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
 
         async def _run() -> Dict[str, object]:
-            caps = await get_capabilities_p2p(remote=remote, timeout_s=float(timeout_s), detail=bool(detail))
+            caps = await get_capabilities_p2p(
+                remote=remote, timeout_s=float(timeout_s), detail=bool(detail)
+            )
             return caps if isinstance(caps, dict) else {}
 
         return anyio.run(_run, backend="trio")
@@ -899,7 +937,9 @@ def call_remote_tool(
         safe_args: Dict[str, object] = args if isinstance(args, dict) else {}
 
         async def _run() -> Dict[str, object]:
-            resp = await call_tool_p2p(remote=remote, tool_name=str(tool_name), args=safe_args, timeout_s=float(timeout_s))
+            resp = await call_tool_p2p(
+                remote=remote, tool_name=str(tool_name), args=safe_args, timeout_s=float(timeout_s)
+            )
             return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}
 
         return anyio.run(_run, backend="trio")
@@ -1092,7 +1132,9 @@ def _classify_codex_error_kind(*, stdout: str, stderr: str) -> Optional[str]:
     if provider_msg and _is_codex_quota_exceeded_message(provider_msg):
         return "quota_exceeded"
 
-    combined = "\n".join([p for p in [provider_msg, stdout, stderr] if isinstance(p, str) and p.strip()])
+    combined = "\n".join(
+        [p for p in [provider_msg, stdout, stderr] if isinstance(p, str) and p.strip()]
+    )
     if _is_codex_quota_exceeded_message(combined):
         return "quota_exceeded"
 
@@ -1214,10 +1256,17 @@ def get_accelerate_status() -> dict:
     except Exception:
         backend_available = False
 
-    return {"available": backend_available, "enabled": True, "env_disabled": False, "env_var": env_value}
+    return {
+        "available": backend_available,
+        "enabled": True,
+        "env_disabled": False,
+        "env_var": env_value,
+    }
 
 
-def _resolve_transformers_module(*, deps: Optional[RouterDeps] = None, module_override: object | None = None) -> object | None:
+def _resolve_transformers_module(
+    *, deps: Optional[RouterDeps] = None, module_override: object | None = None
+) -> object | None:
     """Resolve the transformers module with optional RouterDeps injection/caching."""
 
     if module_override is not None:
@@ -1263,7 +1312,9 @@ def _response_cache_key_strategy() -> str:
     - "cid": content-addressed CID (sha2-256, CIDv1) for the request payload
     """
 
-    return os.environ.get("ipfs_accelerate_py_ROUTER_CACHE_KEY", "sha256").strip().lower() or "sha256"
+    return (
+        os.environ.get("ipfs_accelerate_py_ROUTER_CACHE_KEY", "sha256").strip().lower() or "sha256"
+    )
 
 
 def _response_cache_cid_base() -> str:
@@ -1280,7 +1331,9 @@ def _stable_kwargs_digest(kwargs: Dict[str, object]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
-def _effective_model_key(*, provider_key: str, model_name: Optional[str], kwargs: Dict[str, object]) -> str:
+def _effective_model_key(
+    *, provider_key: str, model_name: Optional[str], kwargs: Dict[str, object]
+) -> str:
     """Best-effort model identifier for caching.
 
     Callers are inconsistent about whether they pass the model via ``model_name``
@@ -1324,9 +1377,13 @@ def _effective_model_key(*, provider_key: str, model_name: Optional[str], kwargs
     return (os.getenv("ipfs_accelerate_py_LLM_MODEL", "") or "").strip()
 
 
-def _response_cache_key(*, provider: Optional[str], model_name: Optional[str], prompt: str, kwargs: Dict[str, object]) -> str:
+def _response_cache_key(
+    *, provider: Optional[str], model_name: Optional[str], prompt: str, kwargs: Dict[str, object]
+) -> str:
     provider_key = (provider or "auto").strip().lower()
-    model_key = _effective_model_key(provider_key=provider_key, model_name=model_name, kwargs=kwargs)
+    model_key = _effective_model_key(
+        provider_key=provider_key, model_name=model_name, kwargs=kwargs
+    )
 
     strategy = _response_cache_key_strategy()
     if strategy == "cid":
@@ -1349,7 +1406,9 @@ def _response_cache_key(*, provider: Optional[str], model_name: Optional[str], p
 
 @runtime_checkable
 class LLMProvider(Protocol):
-    def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str: ...
+    def generate(
+        self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+    ) -> str: ...
 
 
 class ChatMessage(TypedDict):
@@ -1530,7 +1589,9 @@ def _get_openrouter_provider() -> Optional[LLMProvider]:
     if not api_key:
         return None
 
-    base_url = os.getenv("ipfs_accelerate_py_OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
+    base_url = os.getenv(
+        "ipfs_accelerate_py_OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
+    ).rstrip("/")
 
     def _request(payload: dict, *, timeout: float) -> dict:
         req = urllib.request.Request(
@@ -1541,8 +1602,16 @@ def _get_openrouter_provider() -> Optional[LLMProvider]:
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
                 "Accept": "application/json",
-                **({"HTTP-Referer": os.getenv("OPENROUTER_HTTP_REFERER")} if os.getenv("OPENROUTER_HTTP_REFERER") else {}),
-                **({"X-Title": os.getenv("OPENROUTER_APP_TITLE")} if os.getenv("OPENROUTER_APP_TITLE") else {}),
+                **(
+                    {"HTTP-Referer": os.getenv("OPENROUTER_HTTP_REFERER")}
+                    if os.getenv("OPENROUTER_HTTP_REFERER")
+                    else {}
+                ),
+                **(
+                    {"X-Title": os.getenv("OPENROUTER_APP_TITLE")}
+                    if os.getenv("OPENROUTER_APP_TITLE")
+                    else {}
+                ),
             },
         )
 
@@ -1601,7 +1670,9 @@ def _get_openrouter_provider() -> Optional[LLMProvider]:
             timeout = float(kwargs.get("timeout", 120))
             return _request(payload, timeout=timeout)
 
-        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+        def generate(
+            self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+        ) -> str:
             data = self.chat_completions(
                 [{"role": "user", "content": prompt}],
                 model_name=model_name,
@@ -1629,10 +1700,20 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
         return None
 
     class _CodexCLIProvider:
-        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
-            model = (model_name or _coalesce_env("ipfs_accelerate_py_CODEX_CLI_MODEL", "ipfs_accelerate_py_CODEX_MODEL") or "chatgpt-5.6-terra").strip()
+        def generate(
+            self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+        ) -> str:
+            model = (
+                model_name
+                or _coalesce_env(
+                    "ipfs_accelerate_py_CODEX_CLI_MODEL", "ipfs_accelerate_py_CODEX_MODEL"
+                )
+                or "chatgpt-5.6-terra"
+            ).strip()
             sandbox = (os.getenv("ipfs_accelerate_py_CODEX_SANDBOX", "auto") or "auto").strip()
-            skip_git_repo_check = os.getenv("ipfs_accelerate_py_CODEX_SKIP_GIT_REPO_CHECK", "1") != "0"
+            skip_git_repo_check = (
+                os.getenv("ipfs_accelerate_py_CODEX_SKIP_GIT_REPO_CHECK", "1") != "0"
+            )
             timeout = float(kwargs.get("timeout", 180))
 
             trace_jsonl_path = kwargs.pop("trace_jsonl_path", None)
@@ -1689,7 +1770,12 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
                         return _clean_codex_output(extracted)
                 return _clean_codex_output(text_out)
 
-            if trace_enabled and proc.stdout and isinstance(trace_jsonl_path, str) and trace_jsonl_path.strip():
+            if (
+                trace_enabled
+                and proc.stdout
+                and isinstance(trace_jsonl_path, str)
+                and trace_jsonl_path.strip()
+            ):
                 try:
                     os.makedirs(os.path.dirname(trace_jsonl_path.strip()) or ".", exist_ok=True)
                     with open(trace_jsonl_path.strip(), "a", encoding="utf-8") as handle:
@@ -1721,7 +1807,9 @@ def _get_copilot_cli_provider() -> Optional[LLMProvider]:
         return None
 
     class _CopilotCLIProvider:
-        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+        def generate(
+            self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+        ) -> str:
             model = (
                 (model_name or "").strip()
                 or os.getenv("ipfs_accelerate_py_COPILOT_CLI_MODEL", "").strip()
@@ -1877,7 +1965,9 @@ def _get_copilot_sdk_provider() -> Optional[LLMProvider]:
         return None
 
     class _CopilotSDKProvider:
-        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+        def generate(
+            self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+        ) -> str:
             _ = model_name
             model = os.environ.get("ipfs_accelerate_py_COPILOT_SDK_MODEL", "").strip()
             timeout_seconds = float(os.environ.get("ipfs_accelerate_py_COPILOT_SDK_TIMEOUT", "120"))
@@ -1902,7 +1992,11 @@ def _get_copilot_sdk_provider() -> Optional[LLMProvider]:
                     await client.stop()
 
             try:
-                from ipfs_accelerate_py.utils.anyio_compat import AsyncContextError, fail_after, run as run_anyio
+                from ipfs_accelerate_py.utils.anyio_compat import (
+                    AsyncContextError,
+                    fail_after,
+                    run as run_anyio,
+                )
 
                 async def _run_with_timeout() -> str:
                     with fail_after(timeout_seconds):
@@ -1921,7 +2015,9 @@ def _get_gemini_cli_provider() -> Optional[LLMProvider]:
         return None
 
     class _GeminiCLIProvider:
-        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+        def generate(
+            self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+        ) -> str:
             _ = model_name
             timeout = float(kwargs.get("timeout", 180))
 
@@ -1955,9 +2051,11 @@ def _get_gemini_cli_provider() -> Optional[LLMProvider]:
             if proc.returncode == 0:
                 return _clean_gemini_output(proc.stdout or "")
 
-            stderr = (proc.stderr or "")
+            stderr = proc.stderr or ""
             # Known failure mode when running on Node.js v18.
-            node18_regex_error = ("invalid regular expression flags" in stderr.lower()) and ("node.js v18" in stderr.lower())
+            node18_regex_error = ("invalid regular expression flags" in stderr.lower()) and (
+                "node.js v18" in stderr.lower()
+            )
             if node18_regex_error:
                 try:
                     proc2 = _run(base_cmd)
@@ -1978,9 +2076,13 @@ def _get_gemini_py_provider() -> Optional[LLMProvider]:
         return None
 
     class _GeminiPyProvider:
-        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+        def generate(
+            self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+        ) -> str:
             _ = model_name
-            client = GeminiCLI(use_accelerate=_truthy(os.getenv("ipfs_accelerate_py_ENABLE_IPFS_ACCELERATE")))
+            client = GeminiCLI(
+                use_accelerate=_truthy(os.getenv("ipfs_accelerate_py_ENABLE_IPFS_ACCELERATE"))
+            )
             timeout = int(float(kwargs.get("timeout", 180)))
             result = client.execute(["generate", prompt], capture_output=True, timeout=timeout)
             if result.returncode != 0:
@@ -1996,10 +2098,14 @@ def _get_claude_code_provider() -> Optional[LLMProvider]:
         return None
 
     class _ClaudeCodeProvider:
-        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+        def generate(
+            self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+        ) -> str:
             _ = model_name
             timeout = float(kwargs.get("timeout", 180))
-            return _clean_claude_output(_run_cli_command(command, prompt, timeout_seconds=timeout, label="Claude Code CLI"))
+            return _clean_claude_output(
+                _run_cli_command(command, prompt, timeout_seconds=timeout, label="Claude Code CLI")
+            )
 
     return _ClaudeCodeProvider()
 
@@ -2011,9 +2117,13 @@ def _get_claude_py_provider() -> Optional[LLMProvider]:
         return None
 
     class _ClaudePyProvider:
-        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+        def generate(
+            self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+        ) -> str:
             _ = model_name
-            client = ClaudeCLI(use_accelerate=_truthy(os.getenv("ipfs_accelerate_py_ENABLE_IPFS_ACCELERATE")))
+            client = ClaudeCLI(
+                use_accelerate=_truthy(os.getenv("ipfs_accelerate_py_ENABLE_IPFS_ACCELERATE"))
+            )
             timeout = int(float(kwargs.get("timeout", 180)))
             result = client.execute(["chat", prompt], capture_output=True, timeout=timeout)
             if result.returncode != 0:
@@ -2045,12 +2155,18 @@ def _get_mistral_vibe_provider() -> Optional[LLMProvider]:
             return False
 
     class _MistralVibeProvider:
-        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
-            model = (model_name or os.environ.get("ipfs_accelerate_py_MISTRAL_VIBE_MODEL", "") or "").strip()
+        def generate(
+            self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+        ) -> str:
+            model = (
+                model_name or os.environ.get("ipfs_accelerate_py_MISTRAL_VIBE_MODEL", "") or ""
+            ).strip()
             timeout = float(kwargs.get("timeout", 240))
             per_call_key = kwargs.pop("mistral_api_key", None)
             mistral_api_key = (
-                str(per_call_key).strip() if per_call_key is not None and str(per_call_key).strip() else _coalesce_env("ipfs_accelerate_py_MISTRAL_API_KEY", "MISTRAL_API_KEY")
+                str(per_call_key).strip()
+                if per_call_key is not None and str(per_call_key).strip()
+                else _coalesce_env("ipfs_accelerate_py_MISTRAL_API_KEY", "MISTRAL_API_KEY")
             )
 
             try:
@@ -2118,7 +2234,9 @@ def _get_accelerate_provider(deps: RouterDeps) -> Optional[LLMProvider]:
             return None
 
         class _AccelerateLLMProvider:
-            def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+            def generate(
+                self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+            ) -> str:
                 # Best-effort hook: if accelerate cannot produce an answer, raise so
                 # the router can fall back.
                 payload = {"prompt": prompt, **kwargs}
@@ -2181,7 +2299,9 @@ def _get_local_hf_provider(*, deps: Optional[RouterDeps] = None) -> Optional[LLM
         def __init__(self) -> None:
             self._pipelines: Dict[str, object] = {}
 
-        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+        def generate(
+            self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object
+        ) -> str:
             model = model_name or os.getenv("ipfs_accelerate_py_LLM_MODEL", "gpt2")
             pipe = self._pipelines.get(model)
             if pipe is None:
@@ -2307,9 +2427,15 @@ def _get_mock_provider() -> LLMProvider:
                 cats = "cats" in text and "animals" in text
                 if fmt == "prolog":
                     # Use ASCII tokens to satisfy tests that check for prolog-like syntax.
-                    return "forall(X, (cat(X) -> animal(X)))." if cats else "exists(X, statement(X))."
+                    return (
+                        "forall(X, (cat(X) -> animal(X)))." if cats else "exists(X, statement(X))."
+                    )
                 if fmt == "tptp":
-                    return "fof(ax1, axiom, ! [X] : ( cat(X) => animal(X) ) )." if cats else "fof(ax1, axiom, ? [X] : statement(X) )."
+                    return (
+                        "fof(ax1, axiom, ! [X] : ( cat(X) => animal(X) ) )."
+                        if cats
+                        else "fof(ax1, axiom, ? [X] : statement(X) )."
+                    )
                 # symbolic/default
                 return "∀x (Cat(x) → Animal(x))" if cats else "∃x Statement(x)"
 
@@ -2322,15 +2448,23 @@ def _get_mock_provider() -> LLMProvider:
                     "fol_formula": formula,
                     "confidence": 0.9,
                     "logical_components": {
-                        "quantifiers": ["∀" if fmt == "symbolic" else ("forall" if fmt == "prolog" else "!")],
+                        "quantifiers": [
+                            "∀" if fmt == "symbolic" else ("forall" if fmt == "prolog" else "!")
+                        ],
                         "predicates": ["Cat", "Animal"],
                         "entities": ["cat", "animal"],
-                        "connectives": ["→" if fmt == "symbolic" else ("->" if fmt == "prolog" else "=>")],
+                        "connectives": [
+                            "→" if fmt == "symbolic" else ("->" if fmt == "prolog" else "=>")
+                        ],
                     },
                     "reasoning_steps": ["mock"],
                     "validation_results": {"valid": True, "backend": "mock"},
                     "warnings": [],
-                    "metadata": {"backend": "mock", "model": model_name or "mock", "output_format": fmt},
+                    "metadata": {
+                        "backend": "mock",
+                        "model": model_name or "mock",
+                        "output_format": fmt,
+                    },
                 }
                 return json.dumps(payload, ensure_ascii=False)
 
@@ -2351,7 +2485,9 @@ def _get_mock_provider() -> LLMProvider:
                 return "is, are, has"
             if "extract" in lowered and "entit" in lowered:
                 return "cat, animal"
-            if "extract" in lowered and ("connective" in lowered or "logical connective" in lowered):
+            if "extract" in lowered and (
+                "connective" in lowered or "logical connective" in lowered
+            ):
                 return "and, or, not"
 
             if "first-order logic" in lowered or "fol" in lowered:
@@ -2475,7 +2611,9 @@ def get_llm_provider(
         cached = resolved_deps.get_cached(deps_key)
         if cached is not None:
             return cached
-        return resolved_deps.set_cached(deps_key, _resolve_provider_uncached(provider, deps=resolved_deps))
+        return resolved_deps.set_cached(
+            deps_key, _resolve_provider_uncached(provider, deps=resolved_deps)
+        )
 
     # Process-global caching path.
     return _resolve_provider_cached(provider, _provider_cache_key())
@@ -2495,7 +2633,9 @@ def generate_text(
     resolved_deps = deps or get_default_router_deps()
     if _response_cache_enabled():
         try:
-            cache_key = _response_cache_key(provider=provider, model_name=model_name, prompt=prompt, kwargs=dict(kwargs))
+            cache_key = _response_cache_key(
+                provider=provider, model_name=model_name, prompt=prompt, kwargs=dict(kwargs)
+            )
             getter = getattr(resolved_deps, "get_cached_or_remote", None)
             cached = getter(cache_key) if callable(getter) else resolved_deps.get_cached(cache_key)
             if isinstance(cached, str):
@@ -2508,7 +2648,9 @@ def generate_text(
         result = backend.generate(prompt, model_name=model_name, **kwargs)
         if _response_cache_enabled():
             try:
-                cache_key = _response_cache_key(provider=provider, model_name=model_name, prompt=prompt, kwargs=dict(kwargs))
+                cache_key = _response_cache_key(
+                    provider=provider, model_name=model_name, prompt=prompt, kwargs=dict(kwargs)
+                )
                 setter = getattr(resolved_deps, "set_cached_and_remote", None)
                 if callable(setter):
                     setter(cache_key, str(result))
@@ -2525,7 +2667,9 @@ def generate_text(
                 result = backend.generate(prompt, model_name=None, **kwargs)
                 if _response_cache_enabled():
                     try:
-                        cache_key = _response_cache_key(provider=provider, model_name=None, prompt=prompt, kwargs=dict(kwargs))
+                        cache_key = _response_cache_key(
+                            provider=provider, model_name=None, prompt=prompt, kwargs=dict(kwargs)
+                        )
                         setter = getattr(resolved_deps, "set_cached_and_remote", None)
                         if callable(setter):
                             setter(cache_key, str(result))
@@ -2545,7 +2689,12 @@ def generate_text(
                     result = local_hf.generate(prompt, model_name=model_name, **kwargs)
                     if _response_cache_enabled():
                         try:
-                            cache_key = _response_cache_key(provider=provider, model_name=model_name, prompt=prompt, kwargs=dict(kwargs))
+                            cache_key = _response_cache_key(
+                                provider=provider,
+                                model_name=model_name,
+                                prompt=prompt,
+                                kwargs=dict(kwargs),
+                            )
                             setter = getattr(resolved_deps, "set_cached_and_remote", None)
                             if callable(setter):
                                 setter(cache_key, str(result))
@@ -2559,7 +2708,12 @@ def generate_text(
                         result = local_hf.generate(prompt, model_name=None, **kwargs)
                         if _response_cache_enabled():
                             try:
-                                cache_key = _response_cache_key(provider=provider, model_name=None, prompt=prompt, kwargs=dict(kwargs))
+                                cache_key = _response_cache_key(
+                                    provider=provider,
+                                    model_name=None,
+                                    prompt=prompt,
+                                    kwargs=dict(kwargs),
+                                )
                                 setter = getattr(resolved_deps, "set_cached_and_remote", None)
                                 if callable(setter):
                                     setter(cache_key, str(result))
@@ -2614,7 +2768,9 @@ def _parse_openai_compat_response(data: dict) -> OpenAICompatResponse:
                             token = entry.get("token")
                             logprob = entry.get("logprob")
                             if isinstance(token, str) and isinstance(logprob, (int, float)):
-                                top_logprobs.append(OpenAICompatTopLogProb(token=token, logprob=float(logprob)))
+                                top_logprobs.append(
+                                    OpenAICompatTopLogProb(token=token, logprob=float(logprob))
+                                )
     except Exception:
         top_logprobs = []
 
@@ -2622,7 +2778,9 @@ def _parse_openai_compat_response(data: dict) -> OpenAICompatResponse:
         choices=[
             OpenAICompatChoice(
                 message=OpenAICompatMessage(content=str(content).strip()),
-                logprobs=OpenAICompatLogProbs(content=[OpenAICompatLogProbsContentItem(top_logprobs=top_logprobs)]),
+                logprobs=OpenAICompatLogProbs(
+                    content=[OpenAICompatLogProbsContentItem(top_logprobs=top_logprobs)]
+                ),
             )
         ]
     )
@@ -2662,7 +2820,9 @@ def chat_completions_create(
         choices=[
             OpenAICompatChoice(
                 message=OpenAICompatMessage(content=str(text).strip()),
-                logprobs=OpenAICompatLogProbs(content=[OpenAICompatLogProbsContentItem(top_logprobs=[])]),
+                logprobs=OpenAICompatLogProbs(
+                    content=[OpenAICompatLogProbsContentItem(top_logprobs=[])]
+                ),
             )
         ]
     )
@@ -2685,7 +2845,9 @@ def get_openai_compat_async_client(
     default_model = model
 
     class _ChatCompletions:
-        async def create(self, *, messages: list[dict[str, str]], model: str, **kwargs: object) -> OpenAICompatResponse:
+        async def create(
+            self, *, messages: list[dict[str, str]], model: str, **kwargs: object
+        ) -> OpenAICompatResponse:
             effective_model = default_model or model
 
             def _run_sync() -> OpenAICompatResponse:

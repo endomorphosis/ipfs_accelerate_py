@@ -15,10 +15,7 @@ import logging
 from datetime import datetime
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 # Template for standardized test file
@@ -613,153 +610,163 @@ if __name__ == "__main__":
 
 # Model information for different architectures
 MODEL_INFO = {
-    'bert': {
-        'default_model': 'google-bert/bert-base-uncased',
-        'default_class': 'BertForMaskedLM',
-        'architecture': 'encoder-only',
-        'task': 'fill-mask',
-        'test_input': 'The quick brown fox jumps over the [MASK] dog.'
+    "bert": {
+        "default_model": "google-bert/bert-base-uncased",
+        "default_class": "BertForMaskedLM",
+        "architecture": "encoder-only",
+        "task": "fill-mask",
+        "test_input": "The quick brown fox jumps over the [MASK] dog.",
     },
-    'gpt2': {
-        'default_model': 'gpt2',
-        'default_class': 'GPT2LMHeadModel',
-        'architecture': 'decoder-only',
-        'task': 'text-generation',
-        'test_input': 'Once upon a time'
+    "gpt2": {
+        "default_model": "gpt2",
+        "default_class": "GPT2LMHeadModel",
+        "architecture": "decoder-only",
+        "task": "text-generation",
+        "test_input": "Once upon a time",
     },
-    't5': {
-        'default_model': 't5-small',
-        'default_class': 'T5ForConditionalGeneration',
-        'architecture': 'encoder-decoder',
-        'task': 'text2text-generation',
-        'test_input': 'translate English to German: The house is wonderful.'
+    "t5": {
+        "default_model": "t5-small",
+        "default_class": "T5ForConditionalGeneration",
+        "architecture": "encoder-decoder",
+        "task": "text2text-generation",
+        "test_input": "translate English to German: The house is wonderful.",
     },
-    'vit': {
-        'default_model': 'google/vit-base-patch16-224',
-        'default_class': 'ViTForImageClassification',
-        'architecture': 'vision',
-        'task': 'image-classification',
-        'test_input': 'image.jpg'
+    "vit": {
+        "default_model": "google/vit-base-patch16-224",
+        "default_class": "ViTForImageClassification",
+        "architecture": "vision",
+        "task": "image-classification",
+        "test_input": "image.jpg",
     },
-    'gpt-j': {
-        'default_model': 'EleutherAI/gpt-j-6b',
-        'default_class': 'GPTJForCausalLM',
-        'architecture': 'decoder-only',
-        'task': 'text-generation',
-        'test_input': 'GPT-J is a transformer model that'
-    }
+    "gpt-j": {
+        "default_model": "EleutherAI/gpt-j-6b",
+        "default_class": "GPTJForCausalLM",
+        "architecture": "decoder-only",
+        "task": "text-generation",
+        "test_input": "GPT-J is a transformer model that",
+    },
 }
+
 
 def to_pascal_case(text):
     """Convert text to PascalCase."""
     # Replace hyphens with spaces
-    text = text.replace('-', ' ')
+    text = text.replace("-", " ")
     # Capitalize each word and join
-    return ''.join(word.capitalize() for word in text.split())
+    return "".join(word.capitalize() for word in text.split())
+
 
 def to_valid_identifier(text):
     """Convert text to a valid Python identifier."""
     # Replace hyphens with underscores
-    valid_name = text.replace('-', '_')
-    
+    valid_name = text.replace("-", "_")
+
     # Ensure the name doesn't start with a number
     if valid_name and valid_name[0].isdigit():
         valid_name = f"m{valid_name}"
-    
+
     # Replace any invalid characters with underscores
     import re
-    valid_name = re.sub(r'[^a-zA-Z0-9_]', '_', valid_name)
-    
+
+    valid_name = re.sub(r"[^a-zA-Z0-9_]", "_", valid_name)
+
     return valid_name
+
 
 def create_standardized_test(model_family, output_path):
     """
     Create a standardized test file for the given model family.
-    
+
     Args:
         model_family: The model family (e.g., bert, gpt2, t5)
         output_path: Where to save the test file
-        
+
     Returns:
         True if successful, False otherwise
     """
     try:
         import traceback
+
         logger.info(f"Creating standardized test for model family: {model_family}")
-        
+
         # Get model info or use defaults
-        model_info = MODEL_INFO.get(model_family, {
-            'default_model': f'{model_family}-base',
-            'default_class': f'{to_pascal_case(model_family)}Model',
-            'architecture': 'encoder-only',
-            'task': 'fill-mask',
-            'test_input': 'The quick brown fox jumps over the lazy dog.'
-        })
-        
+        model_info = MODEL_INFO.get(
+            model_family,
+            {
+                "default_model": f"{model_family}-base",
+                "default_class": f"{to_pascal_case(model_family)}Model",
+                "architecture": "encoder-only",
+                "task": "fill-mask",
+                "test_input": "The quick brown fox jumps over the lazy dog.",
+            },
+        )
+
         # Debug info
         logger.info(f"Model info: {model_info}")
-        
+
         # Format the template
         model_pascal = to_pascal_case(model_family)
         logger.info(f"model_pascal: {model_pascal}")
-        
-        model_upper = model_family.replace('-', '_').upper()
+
+        model_upper = model_family.replace("-", "_").upper()
         logger.info(f"model_upper: {model_upper}")
-        
+
         model_valid_identifier = to_valid_identifier(model_family)
         logger.info(f"model_valid_identifier: {model_valid_identifier}")
-        
+
         logger.info("Preparing to format template")
-        
+
         try:
             model_family_lower = model_family.lower()
-            
+
             # Extract all format placeholders
             import re
-            placeholders = re.findall(r'\{(.*?)\}', TEMPLATE)
+
+            placeholders = re.findall(r"\{(.*?)\}", TEMPLATE)
             logger.info(f"Template placeholders: {set(placeholders)}")
-            
+
             # Create a complete mapping for formatting
             import datetime as dt
+
             format_dict = {
-                'model_family': model_family,
-                'model_family_lower': model_family_lower,
-                'model_pascal': model_pascal,
-                'model_upper': model_upper,
-                'model_valid_identifier': model_valid_identifier,
-                'default_model': model_info['default_model'],
-                'default_class': model_info['default_class'],
-                'architecture': model_info['architecture'],
-                'task': model_info['task'],
-                'test_input': model_info['test_input'],
+                "model_family": model_family,
+                "model_family_lower": model_family_lower,
+                "model_pascal": model_pascal,
+                "model_upper": model_upper,
+                "model_valid_identifier": model_valid_identifier,
+                "default_model": model_info["default_model"],
+                "default_class": model_info["default_class"],
+                "architecture": model_info["architecture"],
+                "task": model_info["task"],
+                "test_input": model_info["test_input"],
                 # Added placeholders based on the extracted set
-                'safe_model_id': model_family.replace("/", "__"),
-                'timestamp': dt.datetime.now().isoformat(),
-                
+                "safe_model_id": model_family.replace("/", "__"),
+                "timestamp": dt.datetime.now().isoformat(),
                 # Add any curly braces that are part of the template (not actual placeholders)
-                '{': '{',
-                '}': '}'
+                "{": "{",
+                "}": "}",
             }
-            
+
             # Create a modified template with doubled curly braces for literal braces
-            modified_template = TEMPLATE.replace('{{', '{{').replace('}}', '}}')
+            modified_template = TEMPLATE.replace("{{", "{{").replace("}}", "}}")
             content = modified_template.format(**format_dict)
         except Exception as e:
             logger.error(f"Error formatting template: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-        
+
         # Create the output directory if it doesn't exist
-        os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
-        
+        os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+
         # Write the file
-        with open(output_path, 'w') as f:
+        with open(output_path, "w") as f:
             f.write(content)
-            
+
         logger.info(f"Successfully created standardized test file at {output_path}")
         return True
     except Exception as e:
         logger.error(f"Error creating standardized test file: {e}")
         return False
+
 
 def main():
     """Main function."""
@@ -767,18 +774,19 @@ def main():
         print(f"Usage: {sys.argv[0]} [model_family] [output_path]")
         print(f"Example: {sys.argv[0]} bert fixed_tests/test_hf_bert_standardized.py")
         return 1
-        
+
     model_family = sys.argv[1]
     output_path = sys.argv[2]
-    
+
     success = create_standardized_test(model_family, output_path)
-    
+
     if success:
         print(f"✅ Successfully created standardized test file at {output_path}")
         return 0
     else:
         print(f"❌ Failed to create standardized test file")
         return 1
+
 
 if __name__ == "__main__":
     sys.exit(main())

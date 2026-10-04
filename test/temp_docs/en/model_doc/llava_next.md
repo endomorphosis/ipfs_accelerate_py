@@ -157,7 +157,9 @@ import requests
 
 processor = LlavaNextProcessor.from_pretrained("llava-hf/llava-v1.6-mistral-7b-hf")
 
-model = LlavaNextForConditionalGeneration.from_pretrained("llava-hf/llava-v1.6-mistral-7b-hf", torch_dtype=torch.float16, low_cpu_mem_usage=True)
+model = LlavaNextForConditionalGeneration.from_pretrained(
+    "llava-hf/llava-v1.6-mistral-7b-hf", torch_dtype=torch.float16, low_cpu_mem_usage=True
+)
 model.to("cuda:0")
 
 # prepare image and text prompt, using the appropriate prompt template
@@ -193,7 +195,9 @@ import torch
 from transformers import AutoProcessor, AutoModelForImageTextToText
 
 # Load the model in half-precision
-model = AutoModelForImageTextToText.from_pretrained("llava-hf/llava-v1.6-mistral-7b-hf", torch_dtype=torch.float16, device_map="auto")
+model = AutoModelForImageTextToText.from_pretrained(
+    "llava-hf/llava-v1.6-mistral-7b-hf", torch_dtype=torch.float16, device_map="auto"
+)
 processor = AutoProcessor.from_pretrained("llava-hf/llava-v1.6-mistral-7b-hf")
 
 # Get three different images
@@ -213,20 +217,20 @@ conversation_1 = [
         "content": [
             {"type": "image"},
             {"type": "text", "text": "What is shown in this image?"},
-            ],
+        ],
     },
     {
         "role": "assistant",
         "content": [
             {"type": "text", "text": "There is a red stop sign in the image."},
-            ],
+        ],
     },
     {
         "role": "user",
         "content": [
             {"type": "image"},
             {"type": "text", "text": "What about this image? How many cats do you see?"},
-            ],
+        ],
     },
 ]
 
@@ -236,7 +240,7 @@ conversation_2 = [
         "content": [
             {"type": "image"},
             {"type": "text", "text": "What is shown in this image?"},
-            ],
+        ],
     },
 ]
 
@@ -246,7 +250,9 @@ prompts = [prompt_1, prompt_2]
 
 # We can simply feed images in the order they have to be used in the text prompt
 # Each "<image>" token uses one image leaving the next for the subsequent "<image>" tokens
-inputs = processor(images=[image_stop, image_cats, image_snowman], text=prompts, padding=True, return_tensors="pt").to(model.device)
+inputs = processor(
+    images=[image_stop, image_cats, image_snowman], text=prompts, padding=True, return_tensors="pt"
+).to(model.device)
 
 # Generate
 generate_ids = model.generate(**inputs, max_new_tokens=30)
@@ -279,7 +285,9 @@ quantization_config = BitsAndBytesConfig(
     bnb_4bit_compute_dtype=torch.float16,
 )
 
-model = AutoModelForImageTextToText.from_pretrained("llava-hf/llava-v1.6-mistral-7b-hf", quantization_config=quantization_config, device_map="auto")
+model = AutoModelForImageTextToText.from_pretrained(
+    "llava-hf/llava-v1.6-mistral-7b-hf", quantization_config=quantization_config, device_map="auto"
+)
 ```
 
 ### Use Flash-Attention 2 to further speed-up generation
@@ -290,10 +298,7 @@ First make sure to install flash-attn. Refer to the [original repository of Flas
 from transformers import AutoModelForImageTextToText
 
 model = AutoModelForImageTextToText.from_pretrained(
-    model_id,
-    torch_dtype=torch.float16,
-    low_cpu_mem_usage=True,
-    use_flash_attention_2=True
+    model_id, torch_dtype=torch.float16, low_cpu_mem_usage=True, use_flash_attention_2=True
 ).to(0)
 ```
 

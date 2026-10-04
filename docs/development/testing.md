@@ -146,20 +146,21 @@ Test individual components in isolation:
 import pytest
 from ipfs_accelerate_py import ipfs_accelerate_py
 
+
 class TestCoreFramework:
     def test_initialization(self):
         """Test basic framework initialization."""
         accelerator = ipfs_accelerate_py({}, {})
         assert accelerator is not None
-        
+
     def test_hardware_detection(self):
         """Test hardware detection functionality."""
         accelerator = ipfs_accelerate_py({}, {})
-        if hasattr(accelerator, 'hardware_detection'):
+        if hasattr(accelerator, "hardware_detection"):
             hardware_info = accelerator.hardware_detection.detect_all_hardware()
             assert isinstance(hardware_info, dict)
-            assert 'cpu' in hardware_info
-            
+            assert "cpu" in hardware_info
+
     @pytest.mark.anyio
     async def test_async_processing(self):
         """Test asynchronous processing."""
@@ -167,7 +168,7 @@ class TestCoreFramework:
         result = await accelerator.process_async(
             model="bert-base-uncased",
             input_data={"input_ids": [101, 102, 103]},
-            endpoint_type="text_embedding"
+            endpoint_type="text_embedding",
         )
         assert result is not None
 ```
@@ -182,6 +183,7 @@ import pytest
 import anyio
 from ipfs_accelerate_py import ipfs_accelerate_py
 
+
 class TestEndToEndWorkflows:
     @pytest.mark.integration
     @pytest.mark.anyio
@@ -190,23 +192,23 @@ class TestEndToEndWorkflows:
         # Initialize with IPFS configuration
         config = {
             "ipfs": {"local_node": "http://localhost:5001"},
-            "hardware": {"prefer_cuda": True}
+            "hardware": {"prefer_cuda": True},
         }
         accelerator = ipfs_accelerate_py(config, {})
-        
+
         # Test local inference
         local_result = accelerator.process(
             model="bert-base-uncased",
             input_data={"input_ids": [101, 2054, 2003, 102]},
-            endpoint_type="text_embedding"
+            endpoint_type="text_embedding",
         )
         assert local_result is not None
-        
+
         # Test IPFS-accelerated inference
         ipfs_result = await accelerator.accelerate_inference(
             model="bert-base-uncased",
             input_data={"input_ids": [101, 2054, 2003, 102]},
-            use_ipfs=True
+            use_ipfs=True,
         )
         assert ipfs_result is not None
 ```
@@ -221,17 +223,14 @@ import pytest
 import time
 from ipfs_accelerate_py import ipfs_accelerate_py
 
+
 class TestModelBenchmarks:
     @pytest.mark.benchmark
-    @pytest.mark.parametrize("model", [
-        "bert-base-uncased",
-        "gpt2",
-        "vit-base-patch16-224"
-    ])
+    @pytest.mark.parametrize("model", ["bert-base-uncased", "gpt2", "vit-base-patch16-224"])
     def test_model_inference_speed(self, benchmark, model):
         """Benchmark model inference speed."""
         accelerator = ipfs_accelerate_py({}, {})
-        
+
         # Prepare test data based on model type
         if "bert" in model:
             input_data = {"input_ids": [101] + list(range(100)) + [102]}
@@ -239,29 +238,27 @@ class TestModelBenchmarks:
             input_data = {"input_ids": [101] + list(range(50))}
         elif "vit" in model:
             import torch
+
             input_data = {"pixel_values": torch.randn(1, 3, 224, 224)}
-        
+
         # Benchmark the inference
         result = benchmark(
-            accelerator.process,
-            model=model,
-            input_data=input_data,
-            endpoint_type="auto"
+            accelerator.process, model=model, input_data=input_data, endpoint_type="auto"
         )
         assert result is not None
-        
+
     @pytest.mark.benchmark
     @pytest.mark.parametrize("hardware", ["cpu", "cuda", "openvino"])
     def test_hardware_performance(self, benchmark, hardware):
         """Benchmark performance across hardware types."""
         config = {"hardware": {hardware: True}}
         accelerator = ipfs_accelerate_py(config, {})
-        
+
         result = benchmark(
             accelerator.process,
             model="bert-base-uncased",
             input_data={"input_ids": [101, 2054, 2003, 102]},
-            endpoint_type="text_embedding"
+            endpoint_type="text_embedding",
         )
         assert result is not None
 ```
@@ -295,6 +292,7 @@ import pytest
 import torch
 from ipfs_accelerate_py import ipfs_accelerate_py
 
+
 class TestCudaAcceleration:
     @pytest.mark.cuda
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
@@ -302,30 +300,28 @@ class TestCudaAcceleration:
         """Test CUDA acceleration initialization."""
         config = {"hardware": {"prefer_cuda": True}}
         accelerator = ipfs_accelerate_py(config, {})
-        
+
         # Check if CUDA is detected
-        if hasattr(accelerator, 'hardware_detection'):
+        if hasattr(accelerator, "hardware_detection"):
             hardware_info = accelerator.hardware_detection.detect_all_hardware()
             assert hardware_info["cuda"]["available"] is True
-            
+
     @pytest.mark.cuda
     @pytest.mark.slow
     def test_cuda_inference_performance(self):
         """Test CUDA inference performance."""
         config = {"hardware": {"prefer_cuda": True}}
         accelerator = ipfs_accelerate_py(config, {})
-        
+
         # Test with larger input for meaningful GPU utilization
         large_input = {"input_ids": [101] + list(range(1000)) + [102]}
-        
+
         start_time = time.time()
         result = accelerator.process(
-            model="bert-base-uncased",
-            input_data=large_input,
-            endpoint_type="text_embedding"
+            model="bert-base-uncased", input_data=large_input, endpoint_type="text_embedding"
         )
         inference_time = time.time() - start_time
-        
+
         assert result is not None
         # GPU should be faster than 1 second for this size input
         assert inference_time < 1.0
@@ -354,39 +350,40 @@ pytest test/hardware/test_webnn_webgpu.py
 import pytest
 from ipfs_accelerate_py import ipfs_accelerate_py
 
+
 class TestHuggingFaceIntegration:
     @pytest.mark.api
     @pytest.mark.anyio
     async def test_hf_model_loading(self):
         """Test HuggingFace model loading and inference."""
         accelerator = ipfs_accelerate_py({}, {})
-        
+
         # Test with a small, fast model
         result = accelerator.process(
             model="distilbert-base-uncased",
             input_data={"input_ids": [101, 2054, 2003, 102]},
-            endpoint_type="text_embedding"
+            endpoint_type="text_embedding",
         )
-        
+
         assert result is not None
         # Check if result has expected structure
         if isinstance(result, dict):
             assert "embedding" in result or "output" in result
-            
+
     @pytest.mark.api
     @pytest.mark.integration
     def test_model_family_detection(self):
         """Test automatic model family detection."""
         accelerator = ipfs_accelerate_py({}, {})
-        
-        if hasattr(accelerator, 'model_classifier'):
+
+        if hasattr(accelerator, "model_classifier"):
             # Test different model types
             test_models = [
                 ("bert-base-uncased", "text_embedding"),
                 ("gpt2", "text_generation"),
                 ("vit-base-patch16-224", "vision"),
             ]
-            
+
             for model_name, expected_type in test_models:
                 # This would test model family classification
                 # Implementation depends on the actual classifier
@@ -402,6 +399,7 @@ class TestHuggingFaceIntegration:
 import pytest
 from ipfs_accelerate_py.webnn_webgpu_integration import accelerate_with_browser
 
+
 class TestWebNNIntegration:
     @pytest.mark.browser
     @pytest.mark.webnn
@@ -414,13 +412,13 @@ class TestWebNNIntegration:
                 inputs={"input_ids": [101, 2054, 2003, 102]},
                 platform="webnn",
                 browser="edge",
-                precision=16
+                precision=16,
             )
             assert result is not None
             assert "inference_time" in result
         except Exception as e:
             pytest.skip(f"WebNN not available: {e}")
-            
+
     @pytest.mark.browser
     @pytest.mark.webgpu
     @pytest.mark.parametrize("browser", ["chrome", "firefox", "edge"])
@@ -432,7 +430,7 @@ class TestWebNNIntegration:
                 inputs={"input_ids": [101, 2054, 2003, 102]},
                 platform="webgpu",
                 browser=browser,
-                precision=16
+                precision=16,
             )
             assert result is not None
         except Exception as e:
@@ -469,50 +467,51 @@ import psutil
 import time
 from ipfs_accelerate_py import ipfs_accelerate_py
 
+
 class TestMemoryProfiling:
     @pytest.mark.performance
     def test_memory_usage(self):
         """Test memory usage during inference."""
         process = psutil.Process()
         initial_memory = process.memory_info().rss / 1024 / 1024  # MB
-        
+
         accelerator = ipfs_accelerate_py({}, {})
-        
+
         # Run multiple inferences to check for memory leaks
         for i in range(10):
             result = accelerator.process(
                 model="bert-base-uncased",
                 input_data={"input_ids": [101, 2054, 2003, 102]},
-                endpoint_type="text_embedding"
+                endpoint_type="text_embedding",
             )
             assert result is not None
-        
+
         final_memory = process.memory_info().rss / 1024 / 1024  # MB
         memory_increase = final_memory - initial_memory
-        
+
         # Memory increase should be reasonable (< 500MB for this test)
         assert memory_increase < 500
-        
+
     @pytest.mark.performance
     @pytest.mark.slow
     def test_sustained_performance(self):
         """Test performance under sustained load."""
         accelerator = ipfs_accelerate_py({}, {})
-        
+
         times = []
         for i in range(100):
             start_time = time.time()
             result = accelerator.process(
                 model="bert-base-uncased",
                 input_data={"input_ids": [101, 2054, 2003, 102]},
-                endpoint_type="text_embedding"
+                endpoint_type="text_embedding",
             )
             times.append(time.time() - start_time)
-            
+
         # Performance should be consistent
         avg_time = sum(times) / len(times)
         max_time = max(times)
-        
+
         # Max time shouldn't be more than 3x average time
         assert max_time < avg_time * 3
 ```
@@ -650,10 +649,12 @@ filterwarnings =
 import pytest
 from ipfs_accelerate_py import ipfs_accelerate_py
 
+
 @pytest.fixture
 def accelerator():
     """Fixture providing a basic accelerator instance."""
     return ipfs_accelerate_py({}, {})
+
 
 @pytest.fixture
 def cuda_accelerator():
@@ -661,16 +662,20 @@ def cuda_accelerator():
     config = {"hardware": {"prefer_cuda": True}}
     return ipfs_accelerate_py(config, {})
 
+
 @pytest.fixture
 def sample_text_input():
     """Fixture providing sample text input data."""
     return {"input_ids": [101, 2054, 2003, 2026, 2171, 102]}
 
+
 @pytest.fixture
 def sample_vision_input():
     """Fixture providing sample vision input data."""
     import torch
+
     return {"pixel_values": torch.randn(1, 3, 224, 224)}
+
 
 @pytest.fixture(scope="session")
 def ipfs_node():
@@ -688,44 +693,43 @@ def ipfs_node():
 import pytest
 from ipfs_accelerate_py import ipfs_accelerate_py
 
+
 class TestExampleFramework:
     """Example test class demonstrating best practices."""
-    
+
     def test_basic_initialization(self, accelerator):
         """Test basic framework initialization."""
         assert accelerator is not None
-        assert hasattr(accelerator, 'process')
-        
+        assert hasattr(accelerator, "process")
+
     @pytest.mark.anyio
     async def test_async_processing(self, accelerator, sample_text_input):
         """Test asynchronous processing functionality."""
         result = await accelerator.process_async(
-            model="bert-base-uncased",
-            input_data=sample_text_input,
-            endpoint_type="text_embedding"
+            model="bert-base-uncased", input_data=sample_text_input, endpoint_type="text_embedding"
         )
         assert result is not None
-        
-    @pytest.mark.parametrize("model,input_type", [
-        ("bert-base-uncased", "text"),
-        ("gpt2", "text"),
-        ("vit-base-patch16-224", "vision"),
-    ])
+
+    @pytest.mark.parametrize(
+        "model,input_type",
+        [
+            ("bert-base-uncased", "text"),
+            ("gpt2", "text"),
+            ("vit-base-patch16-224", "vision"),
+        ],
+    )
     def test_multiple_models(self, accelerator, model, input_type):
         """Test processing with different model types."""
         if input_type == "text":
             input_data = {"input_ids": [101, 2054, 2003, 102]}
         elif input_type == "vision":
             import torch
+
             input_data = {"pixel_values": torch.randn(1, 3, 224, 224)}
-            
-        result = accelerator.process(
-            model=model,
-            input_data=input_data,
-            endpoint_type=input_type
-        )
+
+        result = accelerator.process(model=model, input_data=input_data, endpoint_type=input_type)
         assert result is not None
-        
+
     @pytest.mark.gpu
     @pytest.mark.skipif("not torch.cuda.is_available()")
     def test_gpu_acceleration(self, cuda_accelerator):
@@ -733,7 +737,7 @@ class TestExampleFramework:
         result = cuda_accelerator.process(
             model="bert-base-uncased",
             input_data={"input_ids": [101, 2054, 2003, 102]},
-            endpoint_type="text_embedding"
+            endpoint_type="text_embedding",
         )
         assert result is not None
 ```

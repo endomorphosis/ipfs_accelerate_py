@@ -364,7 +364,12 @@ def __getattr__(name: str):
         from . import bundle_supervisor
 
         return getattr(bundle_supervisor, name)
-    if name in {"build_merge_prompt", "invoke_llm_resolver", "latest_failed_merge_event", "resolver_payload"}:
+    if name in {
+        "build_merge_prompt",
+        "invoke_llm_resolver",
+        "latest_failed_merge_event",
+        "resolver_payload",
+    }:
         from . import merge_resolver
 
         return getattr(merge_resolver, name)
@@ -639,6 +644,8 @@ def __getattr__(name: str):
 
         return getattr(task_proposal_router, name)
     raise AttributeError(name)
+
+
 from .codex_failure_policy import (
     COMPLETED_PATCH_STATUSES,
     TRANSIENT_MAIN_APPLY_STATUSES,

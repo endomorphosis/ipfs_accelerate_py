@@ -117,6 +117,7 @@ runs = gh.list_workflow_runs("ipfs_accelerate_py", status="queued")
 
 # Get cache statistics
 from ipfs_accelerate_py.github_cli.cache import get_global_cache
+
 cache = get_global_cache()
 stats = cache.get_stats()
 
@@ -135,10 +136,7 @@ The autoscaler automatically benefits from P2P cache sharing:
 from github_autoscaler import GitHubRunnerAutoscaler
 
 # No changes needed - cache is automatically enabled
-autoscaler = GitHubRunnerAutoscaler(
-    owner="endomorphosis",
-    poll_interval=120
-)
+autoscaler = GitHubRunnerAutoscaler(owner="endomorphosis", poll_interval=120)
 
 autoscaler.run()
 # API calls are now cached and shared between runner instances
@@ -159,10 +157,10 @@ cache = configure_cache(
     p2p_listen_port=9000,
     p2p_bootstrap_peers=[
         "/ip4/192.168.1.100/tcp/9000/p2p/QmPeerID1",
-        "/ip4/192.168.1.101/tcp/9000/p2p/QmPeerID2"
+        "/ip4/192.168.1.101/tcp/9000/p2p/QmPeerID2",
     ],
     default_ttl=300,
-    max_cache_size=2000
+    max_cache_size=2000,
 )
 
 # Use GitHub CLI - will use configured cache
