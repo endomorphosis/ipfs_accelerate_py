@@ -129,6 +129,23 @@ checks on code commit `e6cd2df9519f92d2e1c9eae6d01964de31d4079d` after incorpora
 concurrent upstream changes. Commands, source pins, log/XML digests, and the
 earlier corrected failures are retained. The AST-seal plugin remained enabled.
 
+The [source-currentness qualification](evidence/supervisor-source-currentness-20261004/qualification.json)
+records **76 passing tests, zero failures or skips** on the subsequent cache and
+security-advisor fixes. Automatic source-change invalidation now includes inputs
+declared only by proof receipts, invalidates their owning obligations before
+propagating to dependent proofs, and handles whole-file dependencies even when
+the file has no parsed scopes. Twelve regressions cover changes, deletions and
+renames across file, symbol and scope-ID dependencies, persisted-index replay,
+bounded reason chains and preservation of unrelated evidence.
+
+The security advisor captures validated source rows before checkpoint loading
+or inference callbacks. Six callback-mutation regressions bind inference,
+source hashes and optional Lake inputs to the same original bytes. This run uses
+runtime and Lake doubles with actual bounded native source qualification; it
+does not execute checkpoint inference or a Lake subprocess. The existing
+advisory authority limits and family-specific checkpoint selection remain in
+place. These fixes do not close the broader planning gaps listed below.
+
 The repair integration uses an explicitly authored IntentIR contract and lexical
 vector-index ablation. It traverses actual prompt preparation, initial indexing,
 symbolic planning, task-bound context, Doctor proof and candidate commit, worker

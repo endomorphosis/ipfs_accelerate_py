@@ -150,6 +150,56 @@ def test_explicit_lake_selection_is_bounded_and_receives_unchanged_source(monkey
     assert result["lake"]["status"] == "passed" and result["proof_authority"] is False
 
 
+@pytest.mark.parametrize("phase", ["loading", "inference"])
+@pytest.mark.parametrize("mutation", ["row_fields", "append", "clear"])
+def test_owner_callbacks_cannot_replace_captured_source_inputs(monkeypatch, phase, mutation):
+    source = rows()
+    original = deepcopy(source)
+    mutated = []
+
+    def mutate_caller():
+        if mutation == "row_fields":
+            changed = TEXT.replace("capacity < threshold", "capacity > threshold")
+            source[0].update(id="replacement.py", source_text=changed,
+                source_sha256=hashlib.sha256(changed.encode()).hexdigest(), target=candidate(">"))
+        elif mutation == "append":
+            source.append({**rows()[0], "id": "added.py"})
+        else:
+            source.clear()
+        mutated.append(deepcopy(source))
+
+    inference_calls = install_runtime(monkeypatch,
+        on_inference=mutate_caller if phase == "inference" else None)
+    if phase == "loading":
+        original_loader = shared.load_source_program_decoder_384
+
+        def load(*args, **options):
+            mutate_caller()
+            return original_loader(*args, **options)
+
+        monkeypatch.setattr(shared, "load_source_program_decoder_384", load)
+    lake_calls = []
+
+    def build(report, gate_rows, **options):
+        lake_calls.append(deepcopy(gate_rows))
+        return SimpleNamespace(to_dict=lambda: dict(status="passed", backend_executed=True,
+            proof_authority=False))
+
+    monkeypatch.setattr(shared, "build_decoded_source_program_lake", build)
+    result = subject.prepare_security_source_program_advice(
+        config=config(lake=dict(executable="/tools/lake", timeout_seconds=17)), source_rows=source)
+
+    assert inference_calls == [([TEXT], {"snapshot_path": "/models/gte-small"})]
+    assert lake_calls == [[dict(id="input-0", source_text=TEXT)]]
+    assert result["status"] == "source_candidate_advice" and result["source_count"] == 1
+    assert result["source_hashes"] == {original[0]["id"]: original[0]["source_sha256"]}
+    assert result["input_bindings"] == [dict(source_id="example.py", inference_id="input-0",
+        source_sha256=original[0]["source_sha256"])]
+    assert result["inference"]["rows"][0]["source_sha256"] == original[0]["source_sha256"]
+    assert result["lake"]["status"] == "passed" and all(result[key] is False for key in subject.FALSE)
+    assert len(mutated) == 1 and source == mutated[0] and source != original
+
+
 def test_optional_lake_failure_keeps_the_original_candidate(monkeypatch):
     install_runtime(monkeypatch)
     def unavailable(*args, **kwargs):

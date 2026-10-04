@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
+
+import pytest
 
 from ipfs_accelerate_py.agent_supervisor.task_sources.dataset_store import ObjectiveDatasetStore
 from ipfs_accelerate_py.agent_supervisor.proof.proof_scope_index import (
@@ -188,6 +191,73 @@ def test_receipt_only_canonical_dependency_is_retained_alongside_aliases() -> No
     assert key in index.receipts[0].scope_keys
     assert ProofScopeKey(ProofInputKind.POLICY, "policy:declared") in index.receipts[0].scope_keys
     assert index.invalidate((key,)).active_receipt_ids == ()
+
+
+@pytest.mark.parametrize("change", ("changed", "deleted", "renamed"))
+@pytest.mark.parametrize("dependency", ("file", "file_without_scopes", "symbol", "scope_id"))
+def test_rebuild_invalidates_receipt_only_source_dependencies(change: str, dependency: str) -> None:
+    seed = _snapshot()
+    helper_scope = {
+        "scope_id": "scope:helper",
+        "qualified_symbol": "pkg.helper.validate",
+    }
+    seed["scope_blobs"].append({
+        "path": "src/helper.py",
+        "blob_id": "blob:helper1",
+        "scopes": [] if dependency == "file_without_scopes" else [helper_scope],
+    })
+    if dependency == "scope_id":
+        seed["receipts"][0]["ast_scope_ids"].append("scope:helper")
+        key = ProofScopeKey(ProofInputKind.FILE, "src/helper.py")
+    else:
+        key = ProofScopeKey(
+            ProofInputKind.QUALIFIED_SYMBOL if dependency == "symbol" else ProofInputKind.FILE,
+            "pkg.helper.validate" if dependency == "symbol" else "src/helper.py",
+        )
+        seed["receipts"][0]["scope_keys"] = [key.to_dict()]
+    seed["obligations"].append({"obligation_id": "obligation:independent"})
+    seed["receipts"].append({
+        "receipt_id": "receipt:independent", "obligation_id": "obligation:independent",
+    })
+    original = build_proof_scope_index(**seed)
+    prior_json = original.to_json()
+    assert key not in original.obligations[0].scope_keys
+    assert build_proof_scope_index(**seed, previous=original).active_receipt_ids == original.active_receipt_ids
+
+    current = deepcopy(seed)
+    helper = current["scope_blobs"][-1]
+    if change == "changed":
+        helper["blob_id"] = "blob:helper2"
+    elif change == "deleted":
+        current["scope_blobs"].pop()
+    else:
+        helper["path"] = "src/renamed_helper.py"
+    rebuilt = build_proof_scope_index(**current, previous=original, max_reason_chain=3)
+    persisted = build_proof_scope_index(
+        **current, previous=ProofScopeIndex.from_json(prior_json), max_reason_chain=3,
+    )
+
+    for index in (rebuilt, persisted):
+        assert index.invalidated_obligation_ids == ("obligation:api", "obligation:consumer")
+        assert index.invalidated_receipt_ids == ("receipt:api", "receipt:consumer")
+        assert index.active_receipt_ids == ("receipt:independent",)
+        api_reason = index.reasons_for("obligation:api")[0]
+        assert api_reason.reason_code == f"scope_{change}"
+        assert api_reason.changed_input == ProofScopeKey(ProofInputKind.FILE, "src/helper.py")
+        consumer_reason = index.reasons_for("obligation:consumer")[0]
+        assert consumer_reason.reason_code == "dependency_invalidated"
+        assert consumer_reason.changed_input == api_reason.changed_input
+        assert len(consumer_reason.reason_chain) <= 3
+        assert index.reasons_for("receipt:consumer")[0].chain_truncated
+        # Derived scope keys can change when current AST scopes are absent or
+        # renamed; the retained evidence bodies and declared scopes stay intact.
+        assert [(item.receipt_id, item.scope_ids, item.payload) for item in index.receipts] == [
+            (item.receipt_id, item.scope_ids, item.payload) for item in original.receipts
+        ]
+    explicit = original.invalidate((key,), max_reason_chain=3)
+    assert rebuilt.active_obligation_ids == explicit.active_obligation_ids
+    assert rebuilt.active_receipt_ids == explicit.active_receipt_ids
+    assert original.to_json() == prior_json
 
 
 def test_blob_cache_reuses_unchanged_content_and_rename_invalidates_old_path() -> None:

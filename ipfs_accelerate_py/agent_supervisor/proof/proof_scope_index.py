@@ -2956,9 +2956,15 @@ def build_proof_scope_index(
         for blob in current_blobs:
             current_blob_paths.setdefault(blob.blob_id, set()).add(blob.path)
         prior_obligations_by_scope: dict[str, set[str]] = {}
-        for obligation in prior.obligations:
-            for scope_id in obligation.scope_ids:
-                prior_obligations_by_scope.setdefault(scope_id, set()).add(obligation.obligation_id)
+        prior_obligations_by_key: dict[ProofScopeKey, set[str]] = {}
+        # A receipt can depend on source inputs beyond its obligation's scopes.
+        # Seed its owner before transitive propagation so downstream proofs also
+        # lose activity when those additional inputs change.
+        for evidence in (*prior.obligations, *prior.receipts):
+            for scope_id in evidence.scope_ids:
+                prior_obligations_by_scope.setdefault(scope_id, set()).add(evidence.obligation_id)
+            for key in evidence.scope_keys:
+                prior_obligations_by_key.setdefault(key, set()).add(evidence.obligation_id)
         for old_blob in prior.blobs:
             current_at_path = current_paths.get(old_blob.path)
             if current_at_path and current_at_path.blob_id == old_blob.blob_id:
@@ -2971,17 +2977,16 @@ def build_proof_scope_index(
             else:
                 reason = "scope_deleted"
                 deleted_count += 1
+            file_key = ProofScopeKey(ProofInputKind.FILE, old_blob.path)
+            root_chain = (f"input:{file_key.key}",)
+            # Whole-file dependencies still apply when parsing yielded no scopes.
+            dependents = set(prior_obligations_by_key.get(file_key, ()))
             for scope in old_blob.scopes:
-                file_key = ProofScopeKey(ProofInputKind.FILE, old_blob.path)
-                root_chain = (f"input:{file_key.key}",)
-                dependents = set(prior_obligations_by_scope.get(scope.scope_id, ()))
-                dependents.update(
-                    item.obligation_id
-                    for item in prior.obligations
-                    if set(item.scope_keys).intersection(scope.keys)
-                )
-                for obligation_id in sorted(dependents):
-                    invalidate_obligation(obligation_id, reason, file_key, root_chain)
+                dependents.update(prior_obligations_by_scope.get(scope.scope_id, ()))
+                for key in scope.keys:
+                    dependents.update(prior_obligations_by_key.get(key, ()))
+            for obligation_id in sorted(dependents):
+                invalidate_obligation(obligation_id, reason, file_key, root_chain)
 
     known_scope_ids = set(scopes_by_id)
     for obligation in normalized_obligations:

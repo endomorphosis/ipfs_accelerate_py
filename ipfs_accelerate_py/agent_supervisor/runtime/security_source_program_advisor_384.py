@@ -112,15 +112,21 @@ def prepare_security_source_program_advice(*, config=None, source_rows=()):
         stage = "source_inputs"
         if type(source_rows) is not list or not 1 <= len(source_rows) <= MAX_ROWS:
             raise ValueError("bounded explicit source rows required")
+        captured_rows = []
         for row in source_rows:
             if type(row) is not dict or set(row) != {"id", "source_text", "source_sha256"}:
                 raise ValueError("closed source rows required; targets are forbidden")
+            row = dict(row)
             if type(row["id"]) is not str or not 0 < len(row["id"]) <= 256:
                 raise ValueError("bounded source identifier required")
             if type(row["source_text"]) is not str or not 0 < len(row["source_text"].encode()) <= MAX_SOURCE_BYTES:
                 raise ValueError("bounded nonempty source text required")
             if row["source_sha256"] != _sha(row["source_text"].encode()):
                 raise ValueError("source digest differs")
+            captured_rows.append(row)
+        # Loader and inference callbacks may retain or mutate caller-owned rows.
+        # All later inputs and checks use this detached, validated capture.
+        source_rows = captured_rows
         if len({row["id"] for row in source_rows}) != len(source_rows):
             raise ValueError("duplicate source identity")
         result["source_hashes"] = {row["id"]: row["source_sha256"] for row in source_rows}
