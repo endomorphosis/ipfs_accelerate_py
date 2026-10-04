@@ -1,0 +1,133 @@
+{
+  "files": [
+    {
+      "bytes": 2681,
+      "path": "README.md",
+      "sha256": "405e1b95658422b8c05d5a39945a58040da666c72d71646e30ca880e5e3579dd"
+    },
+    {
+      "bytes": 1535,
+      "path": "build-audit.json",
+      "sha256": "aa8f2b6cdabcc108425aa17d3a9ff262ee90b1207fa8687416128c5606d0f38d"
+    },
+    {
+      "bytes": 2097,
+      "path": "build-command.json",
+      "sha256": "d53e30d593a348f61aa2fe7e147e1dcd3a7f2b0fad0dcf4ba38efa44c41a554b"
+    },
+    {
+      "bytes": 54,
+      "path": "build-exit.json",
+      "sha256": "6d0f8d6ad2b071cb66bbc83b95a5ed7586f86afc0f181e6711ba8d8a7c0e7351"
+    },
+    {
+      "bytes": 455,
+      "path": "ci-observation.json",
+      "sha256": "e4c043d9aa14c253d67a24f86c0a858c30bc843a91ef5d1fc3ea6ba49fc885d0"
+    },
+    {
+      "bytes": 1698,
+      "path": "complete-source-pin-map-summaries.json",
+      "sha256": "ea958c06b975ea6b0d12d442c05a80a5a10136b84e83b67c7ee188c7cce1967b"
+    },
+    {
+      "bytes": 2032,
+      "path": "execute-command.json",
+      "sha256": "18c68554891d030d7825bafc452857e9d002d285cd08ff6b8c7c7068191f1584"
+    },
+    {
+      "bytes": 1338,
+      "path": "experiment-scope.json",
+      "sha256": "4193d5084d406a3a5a04116beecc8e86664c1413bc475855149441d383081905"
+    },
+    {
+      "bytes": 1219,
+      "path": "export-scope.json",
+      "sha256": "598c9adbd8f30013a726f51ef18be517ad3dfb1c98dc8b7941eae8d4d3896c66"
+    },
+    {
+      "bytes": 54,
+      "path": "full-trial-controller-exit.json",
+      "sha256": "544305e2e1aa2d8bcedc981515511bb7a9a0ce2c814a7e004abd747fd33a41e3"
+    },
+    {
+      "bytes": 6867,
+      "path": "full-trial-metadata.json",
+      "sha256": "9d65e800719e00e72138be0bd7e550bde901eab34ea56f94c6196f4753d3cd26"
+    },
+    {
+      "bytes": 27833,
+      "path": "host-pressure-summary.json",
+      "sha256": "a44e67904893f05df64242ddf2fa8d6fd7f2983d5a33853204216540aa627ead"
+    },
+    {
+      "bytes": 2461,
+      "path": "prepare-command.json",
+      "sha256": "2cd45436fe87262e363e94d32d4bb607906be0391e0957aac1f77a404ffb1b60"
+    },
+    {
+      "bytes": 54,
+      "path": "prepare-exit.json",
+      "sha256": "8b243eaecc7400cd994b88e5a1861b985b3b13aaf386df00b00bfdcb82b9b892"
+    },
+    {
+      "bytes": 270,
+      "path": "public-task-input-digests.json",
+      "sha256": "c2bd9ed3e63cbb7d5202f7c3fe124aaeb45010d8d176d77223e405a6e16806a3"
+    },
+    {
+      "bytes": 2219,
+      "path": "qualification-command.json",
+      "sha256": "5f1db7ee478bd37a9466f28905005eb1492b44c8a76db2a807674a81f9976ee7"
+    },
+    {
+      "bytes": 893,
+      "path": "qualification-controller-command.json",
+      "sha256": "35ad8cbfcdef30f16d18d94b308556a1e94ee2ae128903ed1d8a73b9fe9cf797"
+    },
+    {
+      "bytes": 4655,
+      "path": "qualification-native-observation.json",
+      "sha256": "18b32a92d49876e8eb6f6402c0d566392b5a5d3328148a0d28edccd66c6b74f4"
+    },
+    {
+      "bytes": 1806,
+      "path": "qualification-outcome.json",
+      "sha256": "99464d51eeb12c1e6148029855eabd83bdb5b9556ab965510907213c9aafc5d7"
+    },
+    {
+      "bytes": 6050,
+      "path": "retained-original-record-digests.json",
+      "sha256": "2f5ff4d93b5e2b87e19914e96e0b5a77dce9fb7c1fa7e341481bcc7183357ea0"
+    },
+    {
+      "bytes": 6808,
+      "path": "retry-basis.json",
+      "sha256": "ca7b1aa4edcb8f49a58b90e3314ae2bf9310f8ca644242dbde501687c6f2bf24"
+    },
+    {
+      "bytes": 992,
+      "path": "reviewed-input-metadata.json",
+      "sha256": "a8049b941d8ec0f37997ac4c3eeb1f091f2703f415f6b344b8fc6d4e80c64c46"
+    },
+    {
+      "bytes": 3492,
+      "path": "service-pause-restoration.json",
+      "sha256": "dbb49c76435467e8c11031b68975e25adeaa8e7000a72da0e8458de87dfc8536"
+    },
+    {
+      "bytes": 317,
+      "path": "solver-metadata.json",
+      "sha256": "7d857a397c0a951d63ee92c0bd21ceab6ff721f7c8e4a999009e0d6b26cf1b9d"
+    },
+    {
+      "bytes": 244,
+      "path": "source-revisions.json",
+      "sha256": "9a05df0276e84e6ec6d3d43b516efc0c4b3b8de0a98cab03863df103f1c5ea50"
+    }
+  ],
+  "manifest_excludes_itself": true,
+  "member_bytes": 78124,
+  "member_count": 25,
+  "schema": "bounded-benchmark-evidence-manifest@1"
+}

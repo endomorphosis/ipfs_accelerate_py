@@ -1,0 +1,21 @@
+{
+  "external_pressure_observation": {
+    "admission_mutations": false,
+    "interval_is_minimum": true,
+    "interval_seconds": 5,
+    "maximum_seconds": 3600,
+    "metadata_only": true,
+    "runtime_hooks_installed": false,
+    "scope_names_exported": false,
+    "script_sha256": "8eef26a0f3ca9d561ab94aaddafe8f4f417f642c34e4bdfedc8a707c7b6aa521"
+  },
+  "matched_baseline_campaign": false,
+  "performance_advantage_claimed": false,
+  "previous_archive_retained": "../extended-supervisor-deferral-20261004",
+  "prior_qualification_service_condition": "Leanstral temporarily stopped",
+  "prior_trial_service_condition": "Leanstral temporarily stopped",
+  "profile": "source384-5cpu-16gib-extended@1",
+  "purpose": "Qualify original-bounded owner completion RPC and an independently prepared advisory Source384 successor with fresh pinned inference and current-source reload after actual publication. Retain all pressure/proof/authority gates and original work/cleanup budgets. Prior task success and older host controls remain separate evidence.",
+  "qualification_and_trial_service_condition": "Leanstral temporarily stopped under explicit user authorization; restart and HTTP model health required afterward",
+  "schema": "successor-completion-rpc-scope@1"
+}

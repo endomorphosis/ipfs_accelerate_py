@@ -1,0 +1,25 @@
+{
+  "argv": [
+    "<PYTHON_EXECUTABLE>",
+    "-B",
+    "<EVIDENCE_ROOT>/run_qualification.py"
+  ],
+  "cwd": "<ACCELERATE_CHECKOUT>",
+  "environment": {
+    "HF_HUB_OFFLINE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "<ACCELERATE_CHECKOUT>:<DATASETS_CHECKOUT>:<WORKSPACE>/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:<HOME>/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "excluded_environment_entries": 0,
+  "metadata": {
+    "script_sha256": "09af266f9f9dcedff7dfd6005f81653e918daf4935c51709cd522e7de4ea2361"
+  },
+  "original_record_bytes_exported": false,
+  "schema": "bounded-command-projection@1"
+}

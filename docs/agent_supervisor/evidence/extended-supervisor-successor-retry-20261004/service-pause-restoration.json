@@ -1,0 +1,153 @@
+{
+  "events": [
+    {
+      "at": 1791121051.7862496,
+      "model_ready": true,
+      "phase": "before_pause",
+      "resources": {
+        "MemAvailable_kib": 40777776,
+        "MemFree_kib": 4536872,
+        "SwapFree_kib": 1300,
+        "gpu_allocations": [
+          {
+            "memory_mib": 63527,
+            "pid": 3545508
+          }
+        ],
+        "gpu_query_returncode": 0,
+        "memory_psi": {
+          "full": {
+            "avg10": 0.15,
+            "avg300": 5.7,
+            "avg60": 2.1,
+            "total": 2048460809.0
+          },
+          "some": {
+            "avg10": 0.16,
+            "avg300": 6.23,
+            "avg60": 2.28,
+            "total": 2328727162.0
+          }
+        }
+      },
+      "service": {
+        "ActiveState": "active",
+        "MainPID": "3545508",
+        "SubState": "running"
+      }
+    },
+    {
+      "at": 1791121053.0989494,
+      "phase": "paused",
+      "resources": {
+        "MemAvailable_kib": 107099488,
+        "MemFree_kib": 70787660,
+        "SwapFree_kib": 1304,
+        "gpu_allocations": [],
+        "gpu_query_returncode": 0,
+        "memory_psi": {
+          "full": {
+            "avg10": 0.12,
+            "avg300": 5.66,
+            "avg60": 2.03,
+            "total": 2048460809.0
+          },
+          "some": {
+            "avg10": 0.13,
+            "avg300": 6.19,
+            "avg60": 2.2,
+            "total": 2328727162.0
+          }
+        }
+      },
+      "returncode": 0,
+      "service": {
+        "ActiveState": "inactive",
+        "MainPID": "0",
+        "SubState": "dead"
+      }
+    },
+    {
+      "at": 1791121053.0992274,
+      "phase": "qualification_started"
+    },
+    {
+      "at": 1791121424.4956632,
+      "phase": "qualification_finished",
+      "returncode": 0
+    },
+    {
+      "at": 1791121424.496193,
+      "phase": "benchmark_prepare_started"
+    },
+    {
+      "at": 1791121437.2967196,
+      "phase": "benchmark_prepare_finished",
+      "returncode": 0
+    },
+    {
+      "at": 1791121437.2971978,
+      "phase": "benchmark_execute_started"
+    },
+    {
+      "at": 1791122061.9145327,
+      "phase": "benchmark_execute_finished",
+      "returncode": 0
+    },
+    {
+      "at": 1791122061.9149742,
+      "phase": "restoration_started"
+    },
+    {
+      "at": 1791122262.9005268,
+      "phase": "restart_returned",
+      "returncode": 0,
+      "service": {
+        "ActiveState": "active",
+        "MainPID": "3992503",
+        "SubState": "running"
+      }
+    },
+    {
+      "at": 1791122262.9353628,
+      "model_ready": true,
+      "phase": "restored",
+      "resources": {
+        "MemAvailable_kib": 40957452,
+        "MemFree_kib": 2331112,
+        "SwapFree_kib": 224,
+        "gpu_allocations": [
+          {
+            "memory_mib": 63527,
+            "pid": 3992503
+          }
+        ],
+        "gpu_query_returncode": 0,
+        "memory_psi": {
+          "full": {
+            "avg10": 3.02,
+            "avg300": 8.22,
+            "avg60": 7.51,
+            "total": 2126140849.0
+          },
+          "some": {
+            "avg10": 3.03,
+            "avg300": 9.06,
+            "avg60": 8.1,
+            "total": 2414782441.0
+          }
+        }
+      },
+      "service": {
+        "ActiveState": "active",
+        "MainPID": "3992503",
+        "SubState": "running"
+      }
+    }
+  ],
+  "restored": true,
+  "returncode": 0,
+  "schema": "bounded-service-pause-projection@1",
+  "unit": "ipfs-accelerate-leanstral.service",
+  "user_authorized": true
+}

@@ -1,0 +1,97 @@
+{
+  "actual_probe_producer_bindings": {
+    "datasets/ipfs_datasets_py/duckdb_control/codebase_catalog.py": "91986bf58356b2917483884661237c49448c0f91f3dc40d4cd3d79fa4811afdf",
+    "datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir.py": "6ca72bea0a321fd07b0ea785356b0d6b7e311c43be8a17c2475ab7f4a7bc00fc",
+    "datasets/ipfs_datasets_py/logic/software_contracts/content.py": "f21ad1d38a7bc5e2d7514696c943e6fedac439741252b39a677130dfa3e88fff",
+    "datasets/ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py": "2432a160769b9beba678ea646f0204a29229bb9d4ec8111dc0ac23f8fd8da51e",
+    "datasets/ipfs_datasets_py/logic/software_contracts/duckdb_ingest.py": "cec3c3686d10dc5d9a0d5ccf853cd873284f3e4098e41ecdd6dc517a2b73c50e",
+    "datasets/ipfs_datasets_py/logic/software_contracts/python_frontend.py": "baf1c1ec5e6a5f83a0eb640b988850264d35311cdcedc87d22cff610d05308df",
+    "datasets/ipfs_datasets_py/logic/software_contracts/semantic_index/python_analysis.py": "5b95b014af601305eeb6d0d424d3baf3861e641a62ccfc892a5f3bcc5c9754b0",
+    "datasets/ipfs_datasets_py/logic/software_contracts/semantic_index/scanner.py": "002957f910a0bc1ff29de1ed72aca9c2464218ac5f65478be34a7c8f04e166a1",
+    "datasets/ipfs_datasets_py/logic/software_contracts/semantic_index/snapshot.py": "5135e623a0a3f970252da63dce049be167e8bb73db5355f6c3116316b70aafa6",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/security_autoencoder_advisor.py": "a3b3943bacb0becc7789c86414adab9f92e6977021919fb3e84b5e3c2baba491",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/source384_config.py": "01f2377728f89eccc24958512ce6ab7f212b9ca9f5230945c59febb73da68270",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py": "bce00b3646d72d7a98628b0462b6db70cfd0cc55c416153cc59ec3dc34e947fb"
+  },
+  "after_unwind_resource_sample_is_causal_proof": false,
+  "archive_sha256": "d3349f918f2007fd6bd62dd70cb0378d099fea021f15cb9e1558d81663f8c482",
+  "classification": "source_observation_aggregate_deadline",
+  "completion_rpc_reached": false,
+  "error_phase": "initial_context",
+  "error_type": "LeaseTimeoutError",
+  "exact_message_classified_not_exported": true,
+  "manifest_sha256": "b9ab00f96f437f76a6b981302c29c4155827e1099974598262cf50507802480e",
+  "native_primary_admission_observation_attached": false,
+  "official_trial_executed": false,
+  "schema": "archive-bound-source384-failure@1",
+  "source_record_sha256": "1ada472000d91e88cdca4fc0e57914a1538167c664f4cc1508901d3131f6d0e2",
+  "successor_inference_reached": false,
+  "traceback_frames": [
+    {
+      "archive_member_sha256": "db5c200689ce288590846ad307847f7609c549b4f64257d3d517bd76b9e9a0f0",
+      "file": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "function": "initial_context",
+      "line": 385
+    },
+    {
+      "archive_member_sha256": "4f5883ee5aa24fa22e6d8f3ab691d3d4a8daef1c964616721b8185d862509a74",
+      "file": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+      "function": "prepare_initial_context",
+      "line": 356
+    },
+    {
+      "archive_member_sha256": "4f5883ee5aa24fa22e6d8f3ab691d3d4a8daef1c964616721b8185d862509a74",
+      "file": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+      "function": "_load_initial_context",
+      "line": 429
+    },
+    {
+      "archive_member_sha256": "bce00b3646d72d7a98628b0462b6db70cfd0cc55c416153cc59ec3dc34e947fb",
+      "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
+      "function": "validate_source384_context",
+      "line": 427
+    },
+    {
+      "archive_member_sha256": "bce00b3646d72d7a98628b0462b6db70cfd0cc55c416153cc59ec3dc34e947fb",
+      "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
+      "function": "_validate_source384_context",
+      "line": 495
+    },
+    {
+      "archive_member_sha256": "dd07523511858621982d2620d1648adc106798c871af57401c1ff02c7308a08e",
+      "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py",
+      "function": "validate_shared_parent_units",
+      "line": 306
+    },
+    {
+      "archive_member_sha256": "dd07523511858621982d2620d1648adc106798c871af57401c1ff02c7308a08e",
+      "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py",
+      "function": "observe",
+      "line": 295
+    },
+    {
+      "archive_member_sha256": "6ca72bea0a321fd07b0ea785356b0d6b7e311c43be8a17c2475ab7f4a7bc00fc",
+      "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+      "function": "observe_current",
+      "line": 1063
+    },
+    {
+      "archive_member_sha256": "6ca72bea0a321fd07b0ea785356b0d6b7e311c43be8a17c2475ab7f4a7bc00fc",
+      "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+      "function": "observe_entries",
+      "line": 1032
+    },
+    {
+      "archive_member_sha256": "2432a160769b9beba678ea646f0204a29229bb9d4ec8111dc0ac23f8fd8da51e",
+      "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py",
+      "function": "get_many_by_ast_cid",
+      "line": 2281
+    },
+    {
+      "archive_member_sha256": "6ca72bea0a321fd07b0ea785356b0d6b7e311c43be8a17c2475ab7f4a7bc00fc",
+      "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+      "function": "checkpoint",
+      "line": 1005
+    }
+  ]
+}

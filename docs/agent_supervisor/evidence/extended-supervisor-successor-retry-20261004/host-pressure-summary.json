@@ -1,0 +1,1110 @@
+{
+  "by_phase": [
+    {
+      "directory_read_errors": 0,
+      "discovery_truncated_samples": 0,
+      "elapsed_seconds": {
+        "maximum": 0.00013105699326843023,
+        "minimum": 0.00013105699326843023
+      },
+      "host_full_avg10_above_10_percent_samples": 0,
+      "host_memory_psi_percent": {
+        "full": {
+          "avg10": {
+            "maximum": 0.19,
+            "minimum": 0.19
+          },
+          "avg300": {
+            "maximum": 5.74,
+            "minimum": 5.74
+          },
+          "avg60": {
+            "maximum": 2.18,
+            "minimum": 2.18
+          }
+        },
+        "some": {
+          "avg10": {
+            "maximum": 0.2,
+            "minimum": 0.2
+          },
+          "avg300": {
+            "maximum": 6.28,
+            "minimum": 6.28
+          },
+          "avg60": {
+            "maximum": 2.36,
+            "minimum": 2.36
+          }
+        }
+      },
+      "host_pressure_unavailable_samples": 0,
+      "memory_kib": {
+        "AnonPages_kib": {
+          "maximum": 17394680,
+          "minimum": 17394680
+        },
+        "Dirty_kib": {
+          "maximum": 14164,
+          "minimum": 14164
+        },
+        "MemAvailable_kib": {
+          "maximum": 40842224,
+          "minimum": 40842224
+        },
+        "MemFree_kib": {
+          "maximum": 4500304,
+          "minimum": 4500304
+        },
+        "MemTotal_kib": {
+          "maximum": 127601388,
+          "minimum": 127601388
+        },
+        "Slab_kib": {
+          "maximum": 1841292,
+          "minimum": 1841292
+        },
+        "SwapFree_kib": {
+          "maximum": 1296,
+          "minimum": 1296
+        },
+        "SwapTotal_kib": {
+          "maximum": 16777212,
+          "minimum": 16777212
+        },
+        "Unevictable_kib": {
+          "maximum": 24996,
+          "minimum": 24996
+        },
+        "Writeback_kib": {
+          "maximum": 0,
+          "minimum": 0
+        }
+      },
+      "omitted_retained_scope_readings": 0,
+      "over_high_retained_scope_pressure_percent": {
+        "full": {
+          "avg10": null,
+          "avg300": null,
+          "avg60": null
+        },
+        "some": {
+          "avg10": null,
+          "avg300": null,
+          "avg60": null
+        }
+      },
+      "phase": "awaiting_controller",
+      "retained_scope_excess_above_high_bytes": null,
+      "retained_scope_pressure_percent": {
+        "full": {
+          "avg10": {
+            "maximum": 0.6,
+            "minimum": 0.19
+          },
+          "avg300": {
+            "maximum": 17.08,
+            "minimum": 5.74
+          },
+          "avg60": {
+            "maximum": 7.71,
+            "minimum": 2.18
+          }
+        },
+        "some": {
+          "avg10": {
+            "maximum": 0.6,
+            "minimum": 0.2
+          },
+          "avg300": {
+            "maximum": 17.09,
+            "minimum": 6.28
+          },
+          "avg60": {
+            "maximum": 7.71,
+            "minimum": 2.36
+          }
+        }
+      },
+      "retained_scope_readings": 6,
+      "retained_scope_readings_current_above_finite_high": 0,
+      "retained_scope_readings_with_finite_current_and_high": 1,
+      "retained_scope_readings_without_finite_current_and_high": 5,
+      "sample_count": 1,
+      "samples_with_retained_scope_current_above_finite_high": 0,
+      "traversal_truncated_samples": 0,
+      "visited_scopes_per_sample": {
+        "maximum": 190,
+        "minimum": 190
+      }
+    },
+    {
+      "directory_read_errors": 0,
+      "discovery_truncated_samples": 0,
+      "elapsed_seconds": {
+        "maximum": 1007.9048401819891,
+        "minimum": 390.85049830999924
+      },
+      "host_full_avg10_above_10_percent_samples": 21,
+      "host_memory_psi_percent": {
+        "full": {
+          "avg10": {
+            "maximum": 24.31,
+            "minimum": 0.0
+          },
+          "avg300": {
+            "maximum": 6.99,
+            "minimum": 2.81
+          },
+          "avg60": {
+            "maximum": 15.14,
+            "minimum": 0.14
+          }
+        },
+        "some": {
+          "avg10": {
+            "maximum": 26.77,
+            "minimum": 0.0
+          },
+          "avg300": {
+            "maximum": 7.87,
+            "minimum": 3.12
+          },
+          "avg60": {
+            "maximum": 17.0,
+            "minimum": 0.15
+          }
+        }
+      },
+      "host_pressure_unavailable_samples": 0,
+      "memory_kib": {
+        "AnonPages_kib": {
+          "maximum": 19811836,
+          "minimum": 17456200
+        },
+        "Dirty_kib": {
+          "maximum": 1133348,
+          "minimum": 0
+        },
+        "MemAvailable_kib": {
+          "maximum": 106432036,
+          "minimum": 103678664
+        },
+        "MemFree_kib": {
+          "maximum": 58597920,
+          "minimum": 49502060
+        },
+        "MemTotal_kib": {
+          "maximum": 127601388,
+          "minimum": 127601388
+        },
+        "Slab_kib": {
+          "maximum": 2726260,
+          "minimum": 2204512
+        },
+        "SwapFree_kib": {
+          "maximum": 74728,
+          "minimum": 8
+        },
+        "SwapTotal_kib": {
+          "maximum": 16777212,
+          "minimum": 16777212
+        },
+        "Unevictable_kib": {
+          "maximum": 24996,
+          "minimum": 24996
+        },
+        "Writeback_kib": {
+          "maximum": 1692,
+          "minimum": 0
+        }
+      },
+      "omitted_retained_scope_readings": 0,
+      "over_high_retained_scope_pressure_percent": {
+        "full": {
+          "avg10": {
+            "maximum": 87.43,
+            "minimum": 0.36
+          },
+          "avg300": {
+            "maximum": 28.21,
+            "minimum": 9.1
+          },
+          "avg60": {
+            "maximum": 60.27,
+            "minimum": 0.66
+          }
+        },
+        "some": {
+          "avg10": {
+            "maximum": 87.56,
+            "minimum": 0.36
+          },
+          "avg300": {
+            "maximum": 28.27,
+            "minimum": 9.1
+          },
+          "avg60": {
+            "maximum": 60.48,
+            "minimum": 0.66
+          }
+        }
+      },
+      "phase": "benchmark_execute_started",
+      "retained_scope_excess_above_high_bytes": {
+        "maximum": 50921472,
+        "minimum": 10735616
+      },
+      "retained_scope_pressure_percent": {
+        "full": {
+          "avg10": {
+            "maximum": 87.43,
+            "minimum": 0.0
+          },
+          "avg300": {
+            "maximum": 28.89,
+            "minimum": 0.0
+          },
+          "avg60": {
+            "maximum": 60.27,
+            "minimum": 0.02
+          }
+        },
+        "some": {
+          "avg10": {
+            "maximum": 87.56,
+            "minimum": 0.0
+          },
+          "avg300": {
+            "maximum": 28.95,
+            "minimum": 0.0
+          },
+          "avg60": {
+            "maximum": 60.48,
+            "minimum": 0.02
+          }
+        }
+      },
+      "retained_scope_readings": 614,
+      "retained_scope_readings_current_above_finite_high": 32,
+      "retained_scope_readings_with_finite_current_and_high": 65,
+      "retained_scope_readings_without_finite_current_and_high": 549,
+      "sample_count": 124,
+      "samples_with_retained_scope_current_above_finite_high": 32,
+      "traversal_truncated_samples": 0,
+      "visited_scopes_per_sample": {
+        "maximum": 192,
+        "minimum": 190
+      }
+    },
+    {
+      "directory_read_errors": 0,
+      "discovery_truncated_samples": 0,
+      "elapsed_seconds": {
+        "maximum": 385.8336260910146,
+        "minimum": 375.8003912260174
+      },
+      "host_full_avg10_above_10_percent_samples": 0,
+      "host_memory_psi_percent": {
+        "full": {
+          "avg10": {
+            "maximum": 0.0,
+            "minimum": 0.0
+          },
+          "avg300": {
+            "maximum": 4.8,
+            "minimum": 4.63
+          },
+          "avg60": {
+            "maximum": 1.18,
+            "minimum": 1.0
+          }
+        },
+        "some": {
+          "avg10": {
+            "maximum": 0.0,
+            "minimum": 0.0
+          },
+          "avg300": {
+            "maximum": 5.32,
+            "minimum": 5.14
+          },
+          "avg60": {
+            "maximum": 1.31,
+            "minimum": 1.11
+          }
+        }
+      },
+      "host_pressure_unavailable_samples": 0,
+      "memory_kib": {
+        "AnonPages_kib": {
+          "maximum": 18508620,
+          "minimum": 17406784
+        },
+        "Dirty_kib": {
+          "maximum": 61252,
+          "minimum": 56064
+        },
+        "MemAvailable_kib": {
+          "maximum": 106069304,
+          "minimum": 105561828
+        },
+        "MemFree_kib": {
+          "maximum": 59480528,
+          "minimum": 58859944
+        },
+        "MemTotal_kib": {
+          "maximum": 127601388,
+          "minimum": 127601388
+        },
+        "Slab_kib": {
+          "maximum": 2198704,
+          "minimum": 2198692
+        },
+        "SwapFree_kib": {
+          "maximum": 49176,
+          "minimum": 34180
+        },
+        "SwapTotal_kib": {
+          "maximum": 16777212,
+          "minimum": 16777212
+        },
+        "Unevictable_kib": {
+          "maximum": 24996,
+          "minimum": 24996
+        },
+        "Writeback_kib": {
+          "maximum": 0,
+          "minimum": 0
+        }
+      },
+      "omitted_retained_scope_readings": 0,
+      "over_high_retained_scope_pressure_percent": {
+        "full": {
+          "avg10": null,
+          "avg300": null,
+          "avg60": null
+        },
+        "some": {
+          "avg10": null,
+          "avg300": null,
+          "avg60": null
+        }
+      },
+      "phase": "benchmark_prepare_started",
+      "retained_scope_excess_above_high_bytes": null,
+      "retained_scope_pressure_percent": {
+        "full": {
+          "avg10": {
+            "maximum": 0.0,
+            "minimum": 0.0
+          },
+          "avg300": {
+            "maximum": 4.8,
+            "minimum": 4.63
+          },
+          "avg60": {
+            "maximum": 1.18,
+            "minimum": 1.0
+          }
+        },
+        "some": {
+          "avg10": {
+            "maximum": 0.0,
+            "minimum": 0.0
+          },
+          "avg300": {
+            "maximum": 5.32,
+            "minimum": 5.14
+          },
+          "avg60": {
+            "maximum": 1.31,
+            "minimum": 1.11
+          }
+        }
+      },
+      "retained_scope_readings": 3,
+      "retained_scope_readings_current_above_finite_high": 0,
+      "retained_scope_readings_with_finite_current_and_high": 0,
+      "retained_scope_readings_without_finite_current_and_high": 3,
+      "sample_count": 3,
+      "samples_with_retained_scope_current_above_finite_high": 0,
+      "traversal_truncated_samples": 0,
+      "visited_scopes_per_sample": {
+        "maximum": 191,
+        "minimum": 189
+      }
+    },
+    {
+      "directory_read_errors": 0,
+      "discovery_truncated_samples": 0,
+      "elapsed_seconds": {
+        "maximum": 370.78319137499784,
+        "minimum": 5.007690411002841
+      },
+      "host_full_avg10_above_10_percent_samples": 17,
+      "host_memory_psi_percent": {
+        "full": {
+          "avg10": {
+            "maximum": 24.75,
+            "minimum": 0.0
+          },
+          "avg300": {
+            "maximum": 8.22,
+            "minimum": 3.71
+          },
+          "avg60": {
+            "maximum": 16.43,
+            "minimum": 0.26
+          }
+        },
+        "some": {
+          "avg10": {
+            "maximum": 27.45,
+            "minimum": 0.0
+          },
+          "avg300": {
+            "maximum": 9.12,
+            "minimum": 4.06
+          },
+          "avg60": {
+            "maximum": 18.25,
+            "minimum": 0.28
+          }
+        }
+      },
+      "host_pressure_unavailable_samples": 0,
+      "memory_kib": {
+        "AnonPages_kib": {
+          "maximum": 18791660,
+          "minimum": 17163056
+        },
+        "Dirty_kib": {
+          "maximum": 6559376,
+          "minimum": 0
+        },
+        "MemAvailable_kib": {
+          "maximum": 106996844,
+          "minimum": 104452268
+        },
+        "MemFree_kib": {
+          "maximum": 70677532,
+          "minimum": 55708012
+        },
+        "MemTotal_kib": {
+          "maximum": 127601388,
+          "minimum": 127601388
+        },
+        "Slab_kib": {
+          "maximum": 2597324,
+          "minimum": 1835472
+        },
+        "SwapFree_kib": {
+          "maximum": 53600,
+          "minimum": 40
+        },
+        "SwapTotal_kib": {
+          "maximum": 16777212,
+          "minimum": 16777212
+        },
+        "Unevictable_kib": {
+          "maximum": 24996,
+          "minimum": 24996
+        },
+        "Writeback_kib": {
+          "maximum": 24364,
+          "minimum": 0
+        }
+      },
+      "omitted_retained_scope_readings": 0,
+      "over_high_retained_scope_pressure_percent": {
+        "full": {
+          "avg10": {
+            "maximum": 81.2,
+            "minimum": 4.49
+          },
+          "avg300": {
+            "maximum": 26.47,
+            "minimum": 11.09
+          },
+          "avg60": {
+            "maximum": 55.15,
+            "minimum": 1.69
+          }
+        },
+        "some": {
+          "avg10": {
+            "maximum": 81.2,
+            "minimum": 4.67
+          },
+          "avg300": {
+            "maximum": 26.48,
+            "minimum": 11.1
+          },
+          "avg60": {
+            "maximum": 55.16,
+            "minimum": 1.73
+          }
+        }
+      },
+      "phase": "qualification_started",
+      "retained_scope_excess_above_high_bytes": {
+        "maximum": 45875200,
+        "minimum": 18743296
+      },
+      "retained_scope_pressure_percent": {
+        "full": {
+          "avg10": {
+            "maximum": 81.2,
+            "minimum": 0.0
+          },
+          "avg300": {
+            "maximum": 26.71,
+            "minimum": 0.0
+          },
+          "avg60": {
+            "maximum": 55.15,
+            "minimum": 0.0
+          }
+        },
+        "some": {
+          "avg10": {
+            "maximum": 81.2,
+            "minimum": 0.0
+          },
+          "avg300": {
+            "maximum": 26.72,
+            "minimum": 0.11
+          },
+          "avg60": {
+            "maximum": 55.16,
+            "minimum": 0.02
+          }
+        }
+      },
+      "retained_scope_readings": 249,
+      "retained_scope_readings_current_above_finite_high": 18,
+      "retained_scope_readings_with_finite_current_and_high": 37,
+      "retained_scope_readings_without_finite_current_and_high": 212,
+      "sample_count": 74,
+      "samples_with_retained_scope_current_above_finite_high": 18,
+      "traversal_truncated_samples": 0,
+      "visited_scopes_per_sample": {
+        "maximum": 191,
+        "minimum": 189
+      }
+    },
+    {
+      "directory_read_errors": 0,
+      "discovery_truncated_samples": 0,
+      "elapsed_seconds": {
+        "maximum": 1208.491746729007,
+        "minimum": 1012.922326947999
+      },
+      "host_full_avg10_above_10_percent_samples": 17,
+      "host_memory_psi_percent": {
+        "full": {
+          "avg10": {
+            "maximum": 43.09,
+            "minimum": 3.69
+          },
+          "avg300": {
+            "maximum": 9.56,
+            "minimum": 3.86
+          },
+          "avg60": {
+            "maximum": 23.58,
+            "minimum": 4.41
+          }
+        },
+        "some": {
+          "avg10": {
+            "maximum": 47.71,
+            "minimum": 3.71
+          },
+          "avg300": {
+            "maximum": 10.55,
+            "minimum": 4.25
+          },
+          "avg60": {
+            "maximum": 26.05,
+            "minimum": 4.74
+          }
+        }
+      },
+      "host_pressure_unavailable_samples": 0,
+      "memory_kib": {
+        "AnonPages_kib": {
+          "maximum": 19004416,
+          "minimum": 17095372
+        },
+        "Dirty_kib": {
+          "maximum": 9876,
+          "minimum": 0
+        },
+        "MemAvailable_kib": {
+          "maximum": 105562084,
+          "minimum": 40911972
+        },
+        "MemFree_kib": {
+          "maximum": 58152192,
+          "minimum": 979040
+        },
+        "MemTotal_kib": {
+          "maximum": 127601388,
+          "minimum": 127601388
+        },
+        "Slab_kib": {
+          "maximum": 2268268,
+          "minimum": 1606564
+        },
+        "SwapFree_kib": {
+          "maximum": 24452,
+          "minimum": 0
+        },
+        "SwapTotal_kib": {
+          "maximum": 16777212,
+          "minimum": 16777212
+        },
+        "Unevictable_kib": {
+          "maximum": 24996,
+          "minimum": 24996
+        },
+        "Writeback_kib": {
+          "maximum": 372,
+          "minimum": 0
+        }
+      },
+      "omitted_retained_scope_readings": 0,
+      "over_high_retained_scope_pressure_percent": {
+        "full": {
+          "avg10": {
+            "maximum": 80.01,
+            "minimum": 5.34
+          },
+          "avg300": {
+            "maximum": 26.96,
+            "minimum": 14.67
+          },
+          "avg60": {
+            "maximum": 54.69,
+            "minimum": 15.67
+          }
+        },
+        "some": {
+          "avg10": {
+            "maximum": 80.19,
+            "minimum": 5.34
+          },
+          "avg300": {
+            "maximum": 27.0,
+            "minimum": 14.69
+          },
+          "avg60": {
+            "maximum": 54.77,
+            "minimum": 15.67
+          }
+        }
+      },
+      "phase": "restoration_started",
+      "retained_scope_excess_above_high_bytes": {
+        "maximum": 46514176,
+        "minimum": 4669440
+      },
+      "retained_scope_pressure_percent": {
+        "full": {
+          "avg10": {
+            "maximum": 82.87,
+            "minimum": 0.0
+          },
+          "avg300": {
+            "maximum": 27.12,
+            "minimum": 0.0
+          },
+          "avg60": {
+            "maximum": 54.69,
+            "minimum": 0.02
+          }
+        },
+        "some": {
+          "avg10": {
+            "maximum": 82.87,
+            "minimum": 0.1
+          },
+          "avg300": {
+            "maximum": 27.15,
+            "minimum": 0.0
+          },
+          "avg60": {
+            "maximum": 54.77,
+            "minimum": 0.02
+          }
+        }
+      },
+      "retained_scope_readings": 407,
+      "retained_scope_readings_current_above_finite_high": 23,
+      "retained_scope_readings_with_finite_current_and_high": 59,
+      "retained_scope_readings_without_finite_current_and_high": 348,
+      "sample_count": 40,
+      "samples_with_retained_scope_current_above_finite_high": 23,
+      "traversal_truncated_samples": 0,
+      "visited_scopes_per_sample": {
+        "maximum": 192,
+        "minimum": 190
+      }
+    },
+    {
+      "directory_read_errors": 0,
+      "discovery_truncated_samples": 0,
+      "elapsed_seconds": {
+        "maximum": 1213.5075203680026,
+        "minimum": 1213.5075203680026
+      },
+      "host_full_avg10_above_10_percent_samples": 0,
+      "host_memory_psi_percent": {
+        "full": {
+          "avg10": {
+            "maximum": 3.02,
+            "minimum": 3.02
+          },
+          "avg300": {
+            "maximum": 8.22,
+            "minimum": 8.22
+          },
+          "avg60": {
+            "maximum": 7.51,
+            "minimum": 7.51
+          }
+        },
+        "some": {
+          "avg10": {
+            "maximum": 3.03,
+            "minimum": 3.03
+          },
+          "avg300": {
+            "maximum": 9.06,
+            "minimum": 9.06
+          },
+          "avg60": {
+            "maximum": 8.1,
+            "minimum": 8.1
+          }
+        }
+      },
+      "host_pressure_unavailable_samples": 0,
+      "memory_kib": {
+        "AnonPages_kib": {
+          "maximum": 17310680,
+          "minimum": 17310680
+        },
+        "Dirty_kib": {
+          "maximum": 3008,
+          "minimum": 3008
+        },
+        "MemAvailable_kib": {
+          "maximum": 40930324,
+          "minimum": 40930324
+        },
+        "MemFree_kib": {
+          "maximum": 2203092,
+          "minimum": 2203092
+        },
+        "MemTotal_kib": {
+          "maximum": 127601388,
+          "minimum": 127601388
+        },
+        "Slab_kib": {
+          "maximum": 1606916,
+          "minimum": 1606916
+        },
+        "SwapFree_kib": {
+          "maximum": 224,
+          "minimum": 224
+        },
+        "SwapTotal_kib": {
+          "maximum": 16777212,
+          "minimum": 16777212
+        },
+        "Unevictable_kib": {
+          "maximum": 24996,
+          "minimum": 24996
+        },
+        "Writeback_kib": {
+          "maximum": 0,
+          "minimum": 0
+        }
+      },
+      "omitted_retained_scope_readings": 0,
+      "over_high_retained_scope_pressure_percent": {
+        "full": {
+          "avg10": null,
+          "avg300": null,
+          "avg60": null
+        },
+        "some": {
+          "avg10": null,
+          "avg300": null,
+          "avg60": null
+        }
+      },
+      "phase": "restored",
+      "retained_scope_excess_above_high_bytes": null,
+      "retained_scope_pressure_percent": {
+        "full": {
+          "avg10": {
+            "maximum": 3.02,
+            "minimum": 0.19
+          },
+          "avg300": {
+            "maximum": 19.99,
+            "minimum": 6.8
+          },
+          "avg60": {
+            "maximum": 11.5,
+            "minimum": 4.85
+          }
+        },
+        "some": {
+          "avg10": {
+            "maximum": 3.03,
+            "minimum": 0.19
+          },
+          "avg300": {
+            "maximum": 20.01,
+            "minimum": 6.8
+          },
+          "avg60": {
+            "maximum": 11.51,
+            "minimum": 5.22
+          }
+        }
+      },
+      "retained_scope_readings": 7,
+      "retained_scope_readings_current_above_finite_high": 0,
+      "retained_scope_readings_with_finite_current_and_high": 1,
+      "retained_scope_readings_without_finite_current_and_high": 6,
+      "sample_count": 1,
+      "samples_with_retained_scope_current_above_finite_high": 0,
+      "traversal_truncated_samples": 0,
+      "visited_scopes_per_sample": {
+        "maximum": 190,
+        "minimum": 190
+      }
+    }
+  ],
+  "declared_limit_overshoot_seconds": 0.0,
+  "first_sample_at": 1791121049.6539109,
+  "last_sample_at": 1791122263.1613002,
+  "limitations": {
+    "admission_decision_reconstruction": false,
+    "causal_proof": false,
+    "continuous_recovery_proved": false,
+    "hierarchical_scope_memory_summed": false,
+    "low_avg10_scopes_omitted": true,
+    "missing_limits_preserved_as_unavailable_in_input": true,
+    "phase_is_last_controller_event": true,
+    "polling_interval_includes_unmeasured_read_overhead": true,
+    "pressure_read_failures_in_directory_error_count": false,
+    "retention_rank_uses_max_some_full_avg10": true,
+    "scope_names_or_identifiers_exported": false,
+    "unretained_scopes_may_have_pressure": true
+  },
+  "limits": {
+    "declared_maximum_seconds": 3600,
+    "maximum_discovered_scopes": 256,
+    "maximum_line_bytes": 65536,
+    "maximum_raw_bytes": 16777216,
+    "maximum_retained_scopes_per_sample_including_root": 16,
+    "maximum_samples": 721,
+    "maximum_visited_scopes": 256,
+    "maximum_yielded_directory_entries_per_visited_scope": 1025,
+    "minimum_interval_seconds": 5
+  },
+  "maximum_sample_gap_seconds": 5.026818740996532,
+  "observed_seconds": 1213.5237914969912,
+  "observer_exit_reason": "service_restored",
+  "overall": {
+    "directory_read_errors": 0,
+    "discovery_truncated_samples": 0,
+    "elapsed_seconds": {
+      "maximum": 1213.5075203680026,
+      "minimum": 0.00013105699326843023
+    },
+    "host_full_avg10_above_10_percent_samples": 55,
+    "host_memory_psi_percent": {
+      "full": {
+        "avg10": {
+          "maximum": 43.09,
+          "minimum": 0.0
+        },
+        "avg300": {
+          "maximum": 9.56,
+          "minimum": 2.81
+        },
+        "avg60": {
+          "maximum": 23.58,
+          "minimum": 0.14
+        }
+      },
+      "some": {
+        "avg10": {
+          "maximum": 47.71,
+          "minimum": 0.0
+        },
+        "avg300": {
+          "maximum": 10.55,
+          "minimum": 3.12
+        },
+        "avg60": {
+          "maximum": 26.05,
+          "minimum": 0.15
+        }
+      }
+    },
+    "host_pressure_unavailable_samples": 0,
+    "memory_kib": {
+      "AnonPages_kib": {
+        "maximum": 19811836,
+        "minimum": 17095372
+      },
+      "Dirty_kib": {
+        "maximum": 6559376,
+        "minimum": 0
+      },
+      "MemAvailable_kib": {
+        "maximum": 106996844,
+        "minimum": 40842224
+      },
+      "MemFree_kib": {
+        "maximum": 70677532,
+        "minimum": 979040
+      },
+      "MemTotal_kib": {
+        "maximum": 127601388,
+        "minimum": 127601388
+      },
+      "Slab_kib": {
+        "maximum": 2726260,
+        "minimum": 1606564
+      },
+      "SwapFree_kib": {
+        "maximum": 74728,
+        "minimum": 0
+      },
+      "SwapTotal_kib": {
+        "maximum": 16777212,
+        "minimum": 16777212
+      },
+      "Unevictable_kib": {
+        "maximum": 24996,
+        "minimum": 24996
+      },
+      "Writeback_kib": {
+        "maximum": 24364,
+        "minimum": 0
+      }
+    },
+    "omitted_retained_scope_readings": 0,
+    "over_high_retained_scope_pressure_percent": {
+      "full": {
+        "avg10": {
+          "maximum": 87.43,
+          "minimum": 0.36
+        },
+        "avg300": {
+          "maximum": 28.21,
+          "minimum": 9.1
+        },
+        "avg60": {
+          "maximum": 60.27,
+          "minimum": 0.66
+        }
+      },
+      "some": {
+        "avg10": {
+          "maximum": 87.56,
+          "minimum": 0.36
+        },
+        "avg300": {
+          "maximum": 28.27,
+          "minimum": 9.1
+        },
+        "avg60": {
+          "maximum": 60.48,
+          "minimum": 0.66
+        }
+      }
+    },
+    "retained_scope_excess_above_high_bytes": {
+      "maximum": 50921472,
+      "minimum": 4669440
+    },
+    "retained_scope_pressure_percent": {
+      "full": {
+        "avg10": {
+          "maximum": 87.43,
+          "minimum": 0.0
+        },
+        "avg300": {
+          "maximum": 28.89,
+          "minimum": 0.0
+        },
+        "avg60": {
+          "maximum": 60.27,
+          "minimum": 0.0
+        }
+      },
+      "some": {
+        "avg10": {
+          "maximum": 87.56,
+          "minimum": 0.0
+        },
+        "avg300": {
+          "maximum": 28.95,
+          "minimum": 0.0
+        },
+        "avg60": {
+          "maximum": 60.48,
+          "minimum": 0.02
+        }
+      }
+    },
+    "retained_scope_readings": 1286,
+    "retained_scope_readings_current_above_finite_high": 73,
+    "retained_scope_readings_with_finite_current_and_high": 163,
+    "retained_scope_readings_without_finite_current_and_high": 1123,
+    "sample_count": 243,
+    "samples_with_retained_scope_current_above_finite_high": 73,
+    "traversal_truncated_samples": 0,
+    "visited_scopes_per_sample": {
+      "maximum": 192,
+      "minimum": 189
+    }
+  },
+  "records": {
+    "experiment-scope.json": {
+      "bytes": 1338,
+      "sha256": "4193d5084d406a3a5a04116beecc8e86664c1413bc475855149441d383081905"
+    },
+    "host-pressure-command.json": {
+      "bytes": 389,
+      "sha256": "d1589a6038c2700c8ac82bc725205877f80a5ee772c8391f5351e6ffd418eba7"
+    },
+    "host-pressure-exit.json": {
+      "bytes": 159,
+      "sha256": "dca98b39b016a23aae3c1390548201c409cf999e9c786a6a45fbb50a33066e24"
+    },
+    "host-pressure.jsonl": {
+      "bytes": 654643,
+      "sha256": "7b07b68af1ae4b050f526dc5b49736e53d8f7f1720951a5107c78a2abcdf16a0"
+    },
+    "observe_host_pressure.py": {
+      "bytes": 4711,
+      "sha256": "8eef26a0f3ca9d561ab94aaddafe8f4f417f642c34e4bdfedc8a707c7b6aa521"
+    }
+  },
+  "sample_count": 243,
+  "schema": "bounded-host-pressure-summary@1",
+  "summary_builder_sha256": "ef7124571ffab45b25046e45086c7038af66385aea17ae37355a1a66ecf99336",
+  "wall_clock_regressions": 0
+}

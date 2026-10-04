@@ -1,0 +1,22 @@
+{
+  "command_records_are_projections": true,
+  "complete_pin_maps_exported_as_hashes_and_counts": true,
+  "completed_task_token_savings_claimed": false,
+  "credential_contents_read_or_exported": false,
+  "exporter_sha256": "dac5c2637e092abf315b5274f9a5ed0b03e939dd8f5f954e436ea7a54036274c",
+  "host_pressure_scope_identifiers_exported": false,
+  "host_pressure_summary_is_observational": true,
+  "limitations": [
+    "Qualification and full task outcomes are separate observations.",
+    "A failed scored trial is retained as a failed outcome, never promoted to success.",
+    "The selected larger resource/admission profile requires matched baseline and ablation runs before efficiency comparison.",
+    "Command paths are placeholders and unknown environment entries are excluded; exact original-record digests identify retained local evidence.",
+    "Model execution or successful compilation does not itself establish learned semantic proof authority."
+  ],
+  "matched_baseline_advantage_claimed": false,
+  "model_bodies_exported": false,
+  "private_store_contents_read_or_exported": false,
+  "raw_runtime_logs_exported": false,
+  "schema": "bounded-benchmark-export-scope@1",
+  "verifier_bodies_exported": false
+}

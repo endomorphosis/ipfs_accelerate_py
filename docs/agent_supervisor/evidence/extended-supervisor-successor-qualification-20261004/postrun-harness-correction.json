@@ -1,0 +1,13 @@
+{
+  "correct_scope": "successor-completion-rpc-scope@1",
+  "error_type": "ValueError",
+  "measured_run_changed": false,
+  "new_sha256": "ef7124571ffab45b25046e45086c7038af66385aea17ae37355a1a66ecf99336",
+  "old_sha256": "2b1eaab430446c8fa9a428c6639ddd21e0a418ede910e0b960c1e8379bdf92a4",
+  "original_failure_package_created": false,
+  "production_changed": false,
+  "raw_body_exported": false,
+  "reason": "copied scope validator expected completion-retry-scope@1",
+  "reported_failed_operation": "summarize_host_pressure.py",
+  "schema": "postrun-artifact-scope-correction@1"
+}

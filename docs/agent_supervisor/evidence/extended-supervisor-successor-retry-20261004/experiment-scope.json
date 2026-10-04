@@ -1,0 +1,21 @@
+{
+  "external_pressure_observation": {
+    "admission_mutations": false,
+    "interval_is_minimum": true,
+    "interval_seconds": 5,
+    "maximum_seconds": 3600,
+    "metadata_only": true,
+    "runtime_hooks_installed": false,
+    "scope_names_exported": false,
+    "script_sha256": "8eef26a0f3ca9d561ab94aaddafe8f4f417f642c34e4bdfedc8a707c7b6aa521"
+  },
+  "matched_baseline_campaign": false,
+  "performance_advantage_claimed": false,
+  "previous_archive_retained": "../extended-supervisor-successor-20261004",
+  "prior_qualification_service_condition": "Leanstral temporarily stopped",
+  "prior_trial_service_condition": "Leanstral temporarily stopped",
+  "profile": "source384-5cpu-16gib-extended@1",
+  "purpose": "One retained retry of U using the identical audited archive and unchanged source/model/input/policy/budget gates. U failed initial-context source-currentness replay before completion or successor work; no primary admission cause was attached. No fresh archive is rebuilt, no prior result is promoted, and this retry tests reproducibility without claiming host-pressure recovery or an efficiency advantage.",
+  "qualification_and_trial_service_condition": "Leanstral temporarily stopped under explicit user authorization; restart and HTTP model health required afterward",
+  "schema": "successor-completion-rpc-scope@1"
+}

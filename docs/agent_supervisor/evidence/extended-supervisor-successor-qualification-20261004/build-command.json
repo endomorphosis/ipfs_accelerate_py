@@ -1,0 +1,54 @@
+{
+  "argv": [
+    "<PYTHON_EXECUTABLE>",
+    "-m",
+    "benchmarks.agent_supervisor.container_coding.terminal_deployment",
+    "bundle",
+    "--output",
+    "<EVIDENCE_ROOT>/bundle",
+    "--source",
+    "<ACCELERATE_CHECKOUT>",
+    "--datasets",
+    "<DATASETS_CHECKOUT>",
+    "--kit",
+    "<WORKSPACE>/external/ipfs_kit",
+    "--extension-dir",
+    "<HOME>/.duckdb/extensions/v1.5.5/linux_arm64",
+    "--source384-config",
+    "<EVIDENCE_ROOT>/source384-config.json",
+    "--torch-cpu-wheel",
+    "<WORKSPACE>/artifacts/source384-torch-wheel-20261003/torch-2.13.0+cpu-cp312-cp312-manylinux_2_28_aarch64.whl",
+    "--torch-cpu-wheel-sha256",
+    "6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604",
+    "--lean-toolchain",
+    "<HOME>/.elan/toolchains/leanprover--lean4---v4.34.1",
+    "--setup-cache-policy",
+    "source384-native-aarch64-dontneed@1"
+  ],
+  "cwd": "<ACCELERATE_CHECKOUT>",
+  "environment": {
+    "HF_HUB_OFFLINE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "<ACCELERATE_CHECKOUT>:<DATASETS_CHECKOUT>:<WORKSPACE>/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:<HOME>/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "excluded_environment_entries": 0,
+  "metadata": {
+    "benchmark_executed": false,
+    "delta_policy": "complete current archive inventory; upstream additions and removals explicitly retained",
+    "profile": "source384-5cpu-16gib-extended@1",
+    "provider_calls": 0,
+    "source_revisions": {
+      "datasets": "d5aaf256618c53b009695e8d5618436fba1c0419",
+      "kit": "a9b98beac1ef14278b4adf4f2289cd509530fb86",
+      "source": "46bc5a76eb70487daff2ef84f3e08fe3554aa849"
+    }
+  },
+  "original_record_bytes_exported": false,
+  "schema": "bounded-command-projection@1"
+}

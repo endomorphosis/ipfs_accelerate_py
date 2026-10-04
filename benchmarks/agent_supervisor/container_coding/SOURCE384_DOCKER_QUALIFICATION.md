@@ -1235,3 +1235,31 @@ failures and the nonqualifying pin-drift retry remain visible. See
 and [driver/work-scope controls](../../../docs/agent_supervisor/evidence/supervisor-successor-wiring-20261004/README.txt).
 A fresh complete archive, joined Docker outcome and matched arms remain required;
 these component outcomes do not change T's historical score or prove efficiency.
+
+The [first successor-generation qualification](../../../docs/agent_supervisor/evidence/extended-supervisor-successor-qualification-20261004/README.md)
+failed before any official trial. The final initial-context source observation
+reached its unchanged 90-second aggregate deadline after a DuckDB AST batch read.
+Qualification took 445.672 seconds, with 207.329 seconds in initial context.
+There was no attached primary admission observation; after-unwind pressure does
+not establish the cause. Source pins, public inputs, cleanup and service
+restoration were verified. Completion RPC and successor refresh were not reached.
+
+The [identical-archive retry](../../../docs/agent_supervisor/evidence/extended-supervisor-successor-retry-20261004/README.md)
+qualifies in 368.290 seconds and scores 1.0 on fix-code-vulnerability__zeCjBRF.
+The supervisor now reports task_completed=true, native completed revision 4,
+successful START/STOP, zero remaining processes and worker cleanup zero. Official
+agent execution takes 402.927 seconds and the driver 400.921 seconds. Planning
+uses two goals/one task, with one Doctor invocation and zero recorded model-provider
+invocations. Initial context is 154.402 seconds, including Source384 98.682 seconds.
+The selected vector retrieval lane is lexical; Source384 uses its pinned GTE
+checkpoint assets. Neither the reviewed premise's token cost nor matched workflow
+comparisons are included.
+
+Post-publication proof-index observation succeeds, but context refresh is
+incomplete: a per-task ValueError occurs after 11.122 seconds despite 451.063
+seconds available, and no successor receipt is returned. This is a successful
+official/native task with an unfinished successor integration, not a complete
+learned-source proof or an efficiency advantage. The new bounded projection
+retains that failure separately from reward. All archive pins remain unchanged;
+Leanstral is restored with model readiness. A 243-sample external pressure record
+is observational only. RPI-019/020 remain open.

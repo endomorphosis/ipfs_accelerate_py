@@ -1,0 +1,165 @@
+{
+  "records": {
+    "build-audit.json": {
+      "bytes": 2029,
+      "raw_body_exported": false,
+      "sha256": "5ab6a04142ee0314a74c104c03320b07dd7a300aadb5ad048c39675c4515509e"
+    },
+    "build-command.json": {
+      "bytes": 2350,
+      "raw_body_exported": false,
+      "sha256": "76229f71f07f6b78fe6089ea976f504e93a8895c0c4cdc1339c35ec1f3418c31"
+    },
+    "build-exit.json": {
+      "bytes": 54,
+      "raw_body_exported": false,
+      "sha256": "6d0f8d6ad2b071cb66bbc83b95a5ed7586f86afc0f181e6711ba8d8a7c0e7351"
+    },
+    "bundle/manifest.json": {
+      "bytes": 6202965,
+      "raw_body_exported": false,
+      "sha256": "b9ab00f96f437f76a6b981302c29c4155827e1099974598262cf50507802480e"
+    },
+    "ci-observation.json": {
+      "bytes": 455,
+      "raw_body_exported": false,
+      "sha256": "25ba3472f05d7af931474544624afe1b9821dac0d60cfbf20956c25e1085bf61"
+    },
+    "execute-command.json": {
+      "bytes": 2119,
+      "raw_body_exported": false,
+      "sha256": "2e9f3427fe880c82d3e34d490da74fb4d1defb2263fe9d4f31cd8c6ecaac9b31"
+    },
+    "execute-exit.json": {
+      "bytes": 54,
+      "raw_body_exported": false,
+      "sha256": "544305e2e1aa2d8bcedc981515511bb7a9a0ce2c814a7e004abd747fd33a41e3"
+    },
+    "experiment-scope.json": {
+      "bytes": 1338,
+      "raw_body_exported": false,
+      "sha256": "4193d5084d406a3a5a04116beecc8e86664c1413bc475855149441d383081905"
+    },
+    "frozen-production-pins.json": {
+      "bytes": 1908786,
+      "raw_body_exported": false,
+      "sha256": "2a6ed91836dc4f76fa76f2eb1ae035a1810c87413fc70146cc22aa4320b98fd0"
+    },
+    "full-trial-metadata.json": {
+      "bytes": 6867,
+      "raw_body_exported": false,
+      "sha256": "9d65e800719e00e72138be0bd7e550bde901eab34ea56f94c6196f4753d3cd26"
+    },
+    "host-pressure-command.json": {
+      "bytes": 389,
+      "raw_body_exported": false,
+      "read_mode": "bounded observation metadata; scope identifiers excluded from export",
+      "sha256": "d1589a6038c2700c8ac82bc725205877f80a5ee772c8391f5351e6ffd418eba7"
+    },
+    "host-pressure-exit.json": {
+      "bytes": 159,
+      "raw_body_exported": false,
+      "read_mode": "bounded observation metadata; scope identifiers excluded from export",
+      "sha256": "dca98b39b016a23aae3c1390548201c409cf999e9c786a6a45fbb50a33066e24"
+    },
+    "host-pressure-summary.json": {
+      "bytes": 27833,
+      "raw_body_exported": false,
+      "sha256": "a44e67904893f05df64242ddf2fa8d6fd7f2983d5a33853204216540aa627ead"
+    },
+    "host-pressure.jsonl": {
+      "bytes": 654643,
+      "raw_body_exported": false,
+      "read_mode": "bounded observation metadata; scope identifiers excluded from export",
+      "sha256": "7b07b68af1ae4b050f526dc5b49736e53d8f7f1720951a5107c78a2abcdf16a0"
+    },
+    "input-review.json": {
+      "bytes": 1105,
+      "raw_body_exported": false,
+      "sha256": "d9ad19aa816667ed4e7fee73fd408144669a4c81e01a13f791fcdf759c7abded"
+    },
+    "observe_host_pressure.py": {
+      "bytes": 4711,
+      "raw_body_exported": false,
+      "read_mode": "bounded observation metadata; scope identifiers excluded from export",
+      "sha256": "8eef26a0f3ca9d561ab94aaddafe8f4f417f642c34e4bdfedc8a707c7b6aa521"
+    },
+    "prepare-command.json": {
+      "bytes": 2757,
+      "raw_body_exported": false,
+      "sha256": "d4b4ab207549f8675a60b467e996144b49a130425160e4d2804406d82fed902e"
+    },
+    "prepare-exit.json": {
+      "bytes": 54,
+      "raw_body_exported": false,
+      "sha256": "8b243eaecc7400cd994b88e5a1861b985b3b13aaf386df00b00bfdcb82b9b892"
+    },
+    "qualification-01/qualification.json": {
+      "bytes": 180521,
+      "raw_body_exported": false,
+      "sha256": "ab5b312d0496fcc0b7fb1d423da6d523e5b32c7e93eb921024315430c22a0f3a"
+    },
+    "qualification-01/source384-result.json": {
+      "bytes": 41604,
+      "raw_body_exported": false,
+      "sha256": "b4d1ccd30821784afa02ddc71595f27bc07824ef13ce2647bd5353d57612482e"
+    },
+    "qualification-after-pins.json": {
+      "bytes": 1908786,
+      "raw_body_exported": false,
+      "sha256": "2a6ed91836dc4f76fa76f2eb1ae035a1810c87413fc70146cc22aa4320b98fd0"
+    },
+    "qualification-before-pins.json": {
+      "bytes": 1908786,
+      "raw_body_exported": false,
+      "sha256": "2a6ed91836dc4f76fa76f2eb1ae035a1810c87413fc70146cc22aa4320b98fd0"
+    },
+    "qualification-command.json": {
+      "bytes": 5353,
+      "raw_body_exported": false,
+      "sha256": "015f0b904c6dce6d5312ab97d269348e41ebad06a09fd270b7fcdfc6d31f7f3e"
+    },
+    "qualification-controller-command.json": {
+      "bytes": 1039,
+      "raw_body_exported": false,
+      "sha256": "a0ce7b56acd9f8ed830bf60796cf235ab76aec96deb3c171a3ebb19ef4d3e329"
+    },
+    "qualification-controller-exit.json": {
+      "bytes": 53,
+      "raw_body_exported": false,
+      "sha256": "58cd06527b7fa648d03d6ae972513486cbe14f2722d01f5de9baa72ea4961063"
+    },
+    "qualification-exit.json": {
+      "bytes": 274,
+      "raw_body_exported": false,
+      "sha256": "db3aeedd35e63d7041cd70379724899b5d5c771f950cff806ef519dbf71b4eb4"
+    },
+    "qualification-public-task-pins.json": {
+      "bytes": 270,
+      "raw_body_exported": false,
+      "sha256": "c2bd9ed3e63cbb7d5202f7c3fe124aaeb45010d8d176d77223e405a6e16806a3"
+    },
+    "retry-basis.json": {
+      "bytes": 6808,
+      "raw_body_exported": false,
+      "sha256": "ca7b1aa4edcb8f49a58b90e3314ae2bf9310f8ca644242dbde501687c6f2bf24"
+    },
+    "service-pause.json": {
+      "bytes": 2973,
+      "raw_body_exported": false,
+      "sha256": "7713ba5c35fce2ab7f549b6806e8f59ffcf04e6844ef9c474715196dc0433d57"
+    },
+    "solver-profile.json": {
+      "bytes": 342,
+      "raw_body_exported": false,
+      "sha256": "e28ce7fccf6da83ca0ed02fefd9c2704fa8895186c33bc315c2d46b6ced89a42"
+    },
+    "trial-01/receipt.json": {
+      "bytes": 511302,
+      "raw_body_exported": false,
+      "read_mode": "hash only; no parsing or referenced paths followed",
+      "sha256": "f4460d7d6b23ab1069e9478f867e1e13ae3222f1278f5f4cdadec8611e8be1f8"
+    }
+  },
+  "schema": "retained-metadata-record-digests@1"
+}

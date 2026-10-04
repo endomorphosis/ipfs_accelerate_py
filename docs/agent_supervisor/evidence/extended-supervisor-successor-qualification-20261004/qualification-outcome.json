@@ -1,0 +1,40 @@
+{
+  "controller_exit": {
+    "returncode": 1,
+    "seconds": 446.9331458090164
+  },
+  "deployment": {
+    "archive_sha256": "d3349f918f2007fd6bd62dd70cb0378d099fea021f15cb9e1558d81663f8c482",
+    "benchmark_result": false,
+    "credential_contents_recorded": false,
+    "official_verifier_executed": false,
+    "provider_calls": 0,
+    "qualified": true,
+    "schema": "terminal-native-supervisor-deployment@1",
+    "seconds": 162.30076285099494,
+    "task_source_preserved": true
+  },
+  "exit": {
+    "benchmark_result": false,
+    "cleanup_verified": true,
+    "diagnostic_only": false,
+    "official_verifier_executed": false,
+    "provider_calls": 0,
+    "public_task_inputs_unchanged": true,
+    "returncode": 1,
+    "seconds": 445.6718533989915,
+    "source_pins_unchanged": true
+  },
+  "official_reward": null,
+  "official_trial_executed": false,
+  "outcome": {
+    "benchmark_result": false,
+    "error_type": "ValueError",
+    "official_verifier_executed": false,
+    "provider_calls": 0,
+    "qualified": false,
+    "resource_profile": "source384-5cpu-16gib-extended@1",
+    "schema": "terminal-original-container-profile-qualification@1",
+    "source384_requested": true
+  }
+}
