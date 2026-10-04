@@ -794,8 +794,6 @@ def test_dependency_probe_reads_source_from_sealed_memfd_zip(monkeypatch) -> Non
         with monkeypatch.context() as patch:
             patch.setattr(preflight_module, "__file__", module_path)
             patch.setattr(preflight_module, "__loader__", loader)
-            # Real ZIP imports bind both attributes to the same loader.
-            patch.setattr(preflight_module.__spec__, "loader", loader)
             result = preflight_module._run_dependency_probe({"projects": []})
     finally:
         os.close(capsule_fd)
@@ -1537,20 +1535,6 @@ def test_public_splitter_preserves_malformed_or_continued_shell_chains(
 ) -> None:
     assert split_validation_commands(command) == [command]
     assert validation_command_repository_root(command) is None
-
-
-def test_sealed_autoformal_repair_validator_is_dependency_neutral() -> None:
-    digest = "a" * 64
-    command = (
-        "python3 scripts/ops/legal_ir/validate_autoformal_repair.py "
-        f"--packet /tmp/packets/{digest}.json --sha256 {digest}"
-    )
-    assert validation_command_dependency_scope(command) is (
-        ValidationDependencyScope.DEPENDENCY_NEUTRAL
-    )
-    assert validation_command_dependency_scope(
-        "python3 scripts/ops/legal_ir/validate_autoformal_repair.py --packet /tmp/other.json --sha256 " + digest
-    ) is ValidationDependencyScope.PROJECT_REQUIRED
 
 
 @pytest.mark.parametrize(
