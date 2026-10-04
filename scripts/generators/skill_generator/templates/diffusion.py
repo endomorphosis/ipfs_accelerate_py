@@ -12,7 +12,7 @@ from .base_architecture import BaseArchitectureTemplate
 
 class DiffusionArchitectureTemplate(BaseArchitectureTemplate):
     """Diffusion architecture template implementation."""
-    
+
     def __init__(self):
         """Initialize the diffusion architecture template."""
         super().__init__()
@@ -22,13 +22,13 @@ class DiffusionArchitectureTemplate(BaseArchitectureTemplate):
             "image_generation",
             "image_to_image",
             "inpainting",
-            "image_segmentation"
+            "image_segmentation",
         ]
         self.default_task_type = "image_generation"
         self.model_description = "This is a diffusion-based model capable of generating or transforming images based on text prompts or other image inputs."
         self.hidden_size = 1024
         self.test_input = "A beautiful landscape with mountains and rivers"
-    
+
     def get_model_class(self, task_type: str) -> str:
         """Get diffusion model class for task type."""
         if task_type == "image_generation" or task_type == "text_to_image":
@@ -41,14 +41,14 @@ class DiffusionArchitectureTemplate(BaseArchitectureTemplate):
             return "self.transformers.SamModel"
         else:
             return "self.transformers.DiffusionPipeline"
-    
+
     def get_processor_class(self, task_type: str) -> str:
         """Get diffusion processor class for task type."""
         if task_type == "image_segmentation":
             return "self.transformers.SamProcessor"
         else:
             return "self.transformers.AutoProcessor"
-    
+
     def get_input_processing_code(self, task_type: str) -> str:
         """Get diffusion input processing code."""
         if task_type == "image_generation" or task_type == "text_to_image":
@@ -285,10 +285,15 @@ class DiffusionArchitectureTemplate(BaseArchitectureTemplate):
                 "guidance_scale": 7.5
             }
         """
-    
+
     def get_output_processing_code(self, task_type: str) -> str:
         """Get diffusion output processing code."""
-        if task_type == "image_generation" or task_type == "text_to_image" or task_type == "image_to_image" or task_type == "inpainting":
+        if (
+            task_type == "image_generation"
+            or task_type == "text_to_image"
+            or task_type == "image_to_image"
+            or task_type == "inpainting"
+        ):
             return """
             # Process outputs for diffusion image generation
             import base64
@@ -376,7 +381,7 @@ class DiffusionArchitectureTemplate(BaseArchitectureTemplate):
                 # Generic output capture
                 result["output"] = str(outputs)
             """
-    
+
     def get_mock_processor_code(self) -> str:
         """Get diffusion mock processor code."""
         return """
@@ -415,7 +420,7 @@ class DiffusionArchitectureTemplate(BaseArchitectureTemplate):
                     
                     return result
                 """
-    
+
     def get_mock_output_code(self) -> str:
         """Get diffusion mock output code."""
         return """
@@ -465,14 +470,14 @@ class DiffusionArchitectureTemplate(BaseArchitectureTemplate):
                 
                 return mock_outputs
                 """
-    
+
     def get_compatibility_matrix(self) -> Dict[str, bool]:
         """Get diffusion architecture hardware compatibility matrix."""
         return {
-            "cpu": True,    # Works but very slow
-            "cuda": True,   # Best performance
-            "rocm": True,   # AMD GPUs
-            "mps": True,    # Apple GPUs
+            "cpu": True,  # Works but very slow
+            "cuda": True,  # Best performance
+            "rocm": True,  # AMD GPUs
+            "mps": True,  # Apple GPUs
             "openvino": True,  # Intel
-            "qnn": False    # Not well-supported yet
+            "qnn": False,  # Not well-supported yet
         }

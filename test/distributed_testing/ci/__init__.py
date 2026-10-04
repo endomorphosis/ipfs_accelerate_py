@@ -25,11 +25,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Import standardized interface
-from .api_interface import (
-    CIProviderInterface, 
-    TestRunResult,
-    CIProviderFactory
-)
+from .api_interface import CIProviderInterface, TestRunResult, CIProviderFactory
 
 # Import implementation classes (optional: may require extra deps like aiohttp)
 try:
@@ -110,5 +106,5 @@ __all__ = [
     "BitbucketClient",
     "TeamCityClient",
     "TravisClient",
-    "register_all_providers"
+    "register_all_providers",
 ]

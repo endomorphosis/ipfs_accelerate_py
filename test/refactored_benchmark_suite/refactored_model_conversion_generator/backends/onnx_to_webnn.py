@@ -17,31 +17,31 @@ from ..core.registry import register_converter
 
 logger = logging.getLogger(__name__)
 
-@register_converter(source_format='onnx', target_format='webnn')
+
+@register_converter(source_format="onnx", target_format="webnn")
 class OnnxToWebNNConverter(ModelConverter):
     """
     Converter for ONNX models to WebNN format.
     """
-    
+
     def _get_source_format(self) -> str:
         """Get source format."""
-        return 'onnx'
-        
+        return "onnx"
+
     def _get_target_format(self) -> str:
         """Get target format."""
-        return 'webnn'
-        
+        return "webnn"
+
     def _get_supported_model_types(self) -> List[str]:
         """Get supported model types."""
-        return [
-            'bert', 'vit', 'resnet', 'mobilenet', 'efficientnet', 'whisper'
-        ]
-        
-    def _execute_conversion(self, model_path: str, output_path: str, 
-                          model_type: Optional[str] = None, **kwargs) -> ConversionResult:
+        return ["bert", "vit", "resnet", "mobilenet", "efficientnet", "whisper"]
+
+    def _execute_conversion(
+        self, model_path: str, output_path: str, model_type: Optional[str] = None, **kwargs
+    ) -> ConversionResult:
         """
         Convert ONNX model to WebNN format.
-        
+
         Args:
             model_path: Path to the ONNX model
             output_path: Path to save the WebNN model
@@ -52,51 +52,65 @@ class OnnxToWebNNConverter(ModelConverter):
                 - optimization_level: Optimization level (0-3)
                 - supported_ops: List of supported WebNN operations
                 - browser_targets: List of target browsers ('chrome', 'firefox', 'safari', 'edge')
-                
+
         Returns:
             ConversionResult with conversion details
         """
         try:
             # Create output directory if needed
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            
+
             # Get conversion options
-            precision = kwargs.get('precision', 'default')
-            layout = kwargs.get('layout', 'default')
-            optimization_level = kwargs.get('optimization_level', 2)
-            supported_ops = kwargs.get('supported_ops', None)
-            browser_targets = kwargs.get('browser_targets', ['chrome', 'firefox', 'safari', 'edge'])
-            
+            precision = kwargs.get("precision", "default")
+            layout = kwargs.get("layout", "default")
+            optimization_level = kwargs.get("optimization_level", 2)
+            supported_ops = kwargs.get("supported_ops", None)
+            browser_targets = kwargs.get("browser_targets", ["chrome", "firefox", "safari", "edge"])
+
             # Load model metadata if available
             metadata = {}
-            metadata_path = model_path + '.json'
+            metadata_path = model_path + ".json"
             if os.path.exists(metadata_path):
                 try:
-                    with open(metadata_path, 'r') as f:
+                    with open(metadata_path, "r") as f:
                         metadata = json.load(f)
                 except Exception as e:
                     self.logger.warning(f"Error loading model metadata: {e}")
-            
+
             # Create WebNN model
             return self._create_webnn_model(
-                model_path, output_path, model_type, precision, layout,
-                optimization_level, supported_ops, browser_targets, metadata
+                model_path,
+                output_path,
+                model_type,
+                precision,
+                layout,
+                optimization_level,
+                supported_ops,
+                browser_targets,
+                metadata,
             )
-            
+
         except Exception as e:
             self.logger.error(f"Error converting ONNX model to WebNN: {e}", exc_info=True)
             return ConversionResult(
-                success=False,
-                error=f"Error converting ONNX model to WebNN: {e}"
+                success=False, error=f"Error converting ONNX model to WebNN: {e}"
             )
-    
-    def _create_webnn_model(self, model_path: str, output_path: str, model_type: Optional[str],
-                         precision: str, layout: str, optimization_level: int,
-                         supported_ops: Optional[List[str]], browser_targets: List[str],
-                         original_metadata: Dict[str, Any]) -> ConversionResult:
+
+    def _create_webnn_model(
+        self,
+        model_path: str,
+        output_path: str,
+        model_type: Optional[str],
+        precision: str,
+        layout: str,
+        optimization_level: int,
+        supported_ops: Optional[List[str]],
+        browser_targets: List[str],
+        original_metadata: Dict[str, Any],
+    ) -> ConversionResult:
         """
         Create WebNN model from ONNX model.
-        
+
         Args:
             model_path: Path to the ONNX model
             output_path: Path to save the WebNN model
@@ -107,7 +121,7 @@ class OnnxToWebNNConverter(ModelConverter):
             supported_ops: List of supported WebNN operations
             browser_targets: List of target browsers
             original_metadata: Original model metadata
-            
+
         Returns:
             ConversionResult with conversion details
         """
@@ -115,80 +129,92 @@ class OnnxToWebNNConverter(ModelConverter):
             # Check if ONNX model exists
             if not os.path.exists(model_path):
                 raise FileNotFoundError(f"ONNX model not found: {model_path}")
-            
+
             # Check if we can import onnx
             try:
                 import onnx
                 import numpy as np
             except ImportError:
                 raise ImportError("ONNX and NumPy libraries are required for WebNN conversion")
-                
+
             # Load ONNX model
             self.logger.info(f"Loading ONNX model: {model_path}")
             model = onnx.load(model_path)
-            
+
             # Validate model
             onnx.checker.check_model(model)
-            
+
             # Create a JavaScript module that loads the model in WebNN
             js_code = self._generate_webnn_js_module(
-                model_path, model, model_type, precision, layout, 
-                optimization_level, supported_ops, browser_targets
+                model_path,
+                model,
+                model_type,
+                precision,
+                layout,
+                optimization_level,
+                supported_ops,
+                browser_targets,
             )
-            
+
             # Save the JavaScript module
-            with open(output_path, 'w') as f:
+            with open(output_path, "w") as f:
                 f.write(js_code)
-                
+
             # Save original ONNX model alongside WebNN model
-            onnx_output_path = os.path.join(os.path.dirname(output_path), 
-                                       os.path.basename(model_path))
+            onnx_output_path = os.path.join(
+                os.path.dirname(output_path), os.path.basename(model_path)
+            )
             if model_path != onnx_output_path:
                 import shutil
+
                 shutil.copy(model_path, onnx_output_path)
-                
+
             # Save JSON metadata for the model
             conversion_metadata = {
-                'source_format': self.source_format,
-                'target_format': self.target_format,
-                'model_type': model_type,
-                'precision': precision,
-                'layout': layout,
-                'optimization_level': optimization_level,
-                'supported_ops': supported_ops,
-                'browser_targets': browser_targets,
-                'inputs': self._get_model_inputs(model),
-                'outputs': self._get_model_outputs(model),
-                'onnx_path': onnx_output_path,
-                'original_metadata': original_metadata
+                "source_format": self.source_format,
+                "target_format": self.target_format,
+                "model_type": model_type,
+                "precision": precision,
+                "layout": layout,
+                "optimization_level": optimization_level,
+                "supported_ops": supported_ops,
+                "browser_targets": browser_targets,
+                "inputs": self._get_model_inputs(model),
+                "outputs": self._get_model_outputs(model),
+                "onnx_path": onnx_output_path,
+                "original_metadata": original_metadata,
             }
-            
+
             # Save metadata alongside model
-            metadata_path = output_path + '.json'
-            with open(metadata_path, 'w') as f:
+            metadata_path = output_path + ".json"
+            with open(metadata_path, "w") as f:
                 json.dump(conversion_metadata, f, indent=2)
-                
+
             return ConversionResult(
                 success=True,
                 output_path=output_path,
                 format=self.target_format,
-                metadata=conversion_metadata
+                metadata=conversion_metadata,
             )
-            
+
         except Exception as e:
             self.logger.error(f"Error creating WebNN model: {e}", exc_info=True)
-            return ConversionResult(
-                success=False,
-                error=f"Error creating WebNN model: {e}"
-            )
-    
-    def _generate_webnn_js_module(self, model_path: str, onnx_model, model_type: Optional[str],
-                                precision: str, layout: str, optimization_level: int,
-                                supported_ops: Optional[List[str]], 
-                                browser_targets: List[str]) -> str:
+            return ConversionResult(success=False, error=f"Error creating WebNN model: {e}")
+
+    def _generate_webnn_js_module(
+        self,
+        model_path: str,
+        onnx_model,
+        model_type: Optional[str],
+        precision: str,
+        layout: str,
+        optimization_level: int,
+        supported_ops: Optional[List[str]],
+        browser_targets: List[str],
+    ) -> str:
         """
         Generate JavaScript module that loads the model in WebNN.
-        
+
         Args:
             model_path: Path to the ONNX model
             onnx_model: Loaded ONNX model
@@ -198,14 +224,14 @@ class OnnxToWebNNConverter(ModelConverter):
             optimization_level: Optimization level (0-3)
             supported_ops: List of supported WebNN operations
             browser_targets: List of target browsers
-            
+
         Returns:
             JavaScript module code
         """
         # Get model inputs and outputs
         inputs = self._get_model_inputs(onnx_model)
         outputs = self._get_model_outputs(onnx_model)
-        
+
         # Create a JavaScript model loader for WebNN
         js_template = """
 /**
@@ -397,32 +423,32 @@ export default {
   modelConfig
 };
 """
-        
+
         # Create inputs creation code
         inputs_creation_lines = []
         for name, info in inputs.items():
-            shape_str = str(info['shape']).replace('(', '[').replace(')', ']').replace(',]', ']')
+            shape_str = str(info["shape"]).replace("(", "[").replace(")", "]").replace(",]", "]")
             inputs_creation_lines.append(f'"{name}": builder.input("{name}", {shape_str})')
-        inputs_creation = ',\n      '.join(inputs_creation_lines)
-        
+        inputs_creation = ",\n      ".join(inputs_creation_lines)
+
         # Create output entry
         if len(outputs) == 1:
             # Single output
             output_name = list(outputs.keys())[0]
-            output_entry = f'output: model.outputs[0]'
+            output_entry = f"output: model.outputs[0]"
         else:
             # Multiple outputs
             output_entry_parts = []
             for i, name in enumerate(outputs.keys()):
                 output_entry_parts.append(f'"{name}": model.outputs[{i}]')
-            output_entry = f'outputs: {{{", ".join(output_entry_parts)}}}'
-        
+            output_entry = f"outputs: {{{', '.join(output_entry_parts)}}}"
+
         # Format the template
         model_name = os.path.splitext(os.path.basename(model_path))[0]
-        
+
         formatted_js = js_template.format(
             model_name=model_name,
-            model_type=model_type or 'unknown',
+            model_type=model_type or "unknown",
             precision=precision,
             layout=layout,
             optimization_level=optimization_level,
@@ -431,25 +457,25 @@ export default {
             outputs=json.dumps(outputs, indent=2),
             model_path_basename=os.path.basename(model_path),
             inputs_creation=inputs_creation,
-            output_entry=output_entry
+            output_entry=output_entry,
         )
-        
+
         return formatted_js
-    
+
     def _get_model_inputs(self, model) -> Dict[str, Dict[str, Any]]:
         """
         Get model input information.
-        
+
         Args:
             model: ONNX model
-            
+
         Returns:
             Dictionary of input name to input information
         """
         inputs = {}
         for input_info in model.graph.input:
             name = input_info.name
-            
+
             # Extract shape information
             shape = []
             if input_info.type.tensor_type.shape:
@@ -459,32 +485,29 @@ export default {
                         shape.append(-1)
                     else:
                         shape.append(dim.dim_value)
-            
+
             # Extract type information
             elem_type = input_info.type.tensor_type.elem_type
             type_name = self._get_onnx_type_name(elem_type)
-            
-            inputs[name] = {
-                'shape': shape,
-                'type': type_name
-            }
-            
+
+            inputs[name] = {"shape": shape, "type": type_name}
+
         return inputs
-    
+
     def _get_model_outputs(self, model) -> Dict[str, Dict[str, Any]]:
         """
         Get model output information.
-        
+
         Args:
             model: ONNX model
-            
+
         Returns:
             Dictionary of output name to output information
         """
         outputs = {}
         for output_info in model.graph.output:
             name = output_info.name
-            
+
             # Extract shape information
             shape = []
             if output_info.type.tensor_type.shape:
@@ -494,72 +517,72 @@ export default {
                         shape.append(-1)
                     else:
                         shape.append(dim.dim_value)
-            
+
             # Extract type information
             elem_type = output_info.type.tensor_type.elem_type
             type_name = self._get_onnx_type_name(elem_type)
-            
-            outputs[name] = {
-                'shape': shape,
-                'type': type_name
-            }
-            
+
+            outputs[name] = {"shape": shape, "type": type_name}
+
         return outputs
-    
+
     def _get_onnx_type_name(self, elem_type: int) -> str:
         """
         Get ONNX type name from element type.
-        
+
         Args:
             elem_type: ONNX element type
-            
+
         Returns:
             Type name
         """
         try:
             from onnx import TensorProto
+
             type_map = {
-                TensorProto.FLOAT: 'float32',
-                TensorProto.UINT8: 'uint8',
-                TensorProto.INT8: 'int8',
-                TensorProto.UINT16: 'uint16',
-                TensorProto.INT16: 'int16',
-                TensorProto.INT32: 'int32',
-                TensorProto.INT64: 'int64',
-                TensorProto.BOOL: 'bool',
-                TensorProto.FLOAT16: 'float16',
-                TensorProto.DOUBLE: 'float64',
-                TensorProto.COMPLEX64: 'complex64',
-                TensorProto.COMPLEX128: 'complex128',
-                TensorProto.STRING: 'string'
+                TensorProto.FLOAT: "float32",
+                TensorProto.UINT8: "uint8",
+                TensorProto.INT8: "int8",
+                TensorProto.UINT16: "uint16",
+                TensorProto.INT16: "int16",
+                TensorProto.INT32: "int32",
+                TensorProto.INT64: "int64",
+                TensorProto.BOOL: "bool",
+                TensorProto.FLOAT16: "float16",
+                TensorProto.DOUBLE: "float64",
+                TensorProto.COMPLEX64: "complex64",
+                TensorProto.COMPLEX128: "complex128",
+                TensorProto.STRING: "string",
             }
-            return type_map.get(elem_type, f'unknown_{elem_type}')
+            return type_map.get(elem_type, f"unknown_{elem_type}")
         except ImportError:
             # Fallback type mapping
             type_map = {
-                1: 'float32',
-                2: 'uint8',
-                3: 'int8',
-                4: 'uint16',
-                5: 'int16',
-                6: 'int32',
-                7: 'int64',
-                9: 'bool',
-                10: 'float16',
-                11: 'float64',
-                14: 'complex64',
-                15: 'complex128'
+                1: "float32",
+                2: "uint8",
+                3: "int8",
+                4: "uint16",
+                5: "int16",
+                6: "int32",
+                7: "int64",
+                9: "bool",
+                10: "float16",
+                11: "float64",
+                14: "complex64",
+                15: "complex128",
             }
-            return type_map.get(elem_type, f'unknown_{elem_type}')
-            
-    def validate_model(self, model_path: str, model_type: Optional[str] = None) -> Tuple[bool, Optional[str]]:
+            return type_map.get(elem_type, f"unknown_{elem_type}")
+
+    def validate_model(
+        self, model_path: str, model_type: Optional[str] = None
+    ) -> Tuple[bool, Optional[str]]:
         """
         Validate an ONNX model before conversion to WebNN.
-        
+
         Args:
             model_path: Path to the ONNX model
             model_type: Type of model (e.g., 'bert', 'vit')
-            
+
         Returns:
             Tuple of (valid, error_message)
         """
@@ -567,49 +590,67 @@ export default {
             # Check if file exists
             if not os.path.exists(model_path):
                 return False, f"Model file not found: {model_path}"
-                
+
             # Try to load ONNX model
             try:
                 import onnx
+
                 model = onnx.load(model_path)
                 onnx.checker.check_model(model)
-                
+
                 # Check for unsupported operations
                 unsupported_ops = self._check_unsupported_ops(model)
                 if unsupported_ops:
-                    return False, f"Model contains operations not supported by WebNN: {', '.join(unsupported_ops)}"
-                
+                    return (
+                        False,
+                        f"Model contains operations not supported by WebNN: {', '.join(unsupported_ops)}",
+                    )
+
                 return True, None
             except Exception as e:
                 return False, f"Error validating ONNX model: {e}"
-                
+
         except ImportError as e:
             return False, f"Missing required dependencies: {e}"
-    
+
     def _check_unsupported_ops(self, model) -> List[str]:
         """
         Check for operations in the ONNX model that are not supported by WebNN.
-        
+
         Args:
             model: ONNX model
-            
+
         Returns:
             List of unsupported operations
         """
         # List of operations supported by WebNN
         # This is a simplified list and may not be complete
         supported_ops = {
-            'Add', 'AveragePool', 'BatchNormalization', 'Concat', 'Conv', 'Gemm',
-            'GlobalAveragePool', 'MatMul', 'MaxPool', 'Mul', 'Relu', 'Reshape',
-            'Sigmoid', 'Softmax', 'Split', 'Tanh', 'Transpose'
+            "Add",
+            "AveragePool",
+            "BatchNormalization",
+            "Concat",
+            "Conv",
+            "Gemm",
+            "GlobalAveragePool",
+            "MatMul",
+            "MaxPool",
+            "Mul",
+            "Relu",
+            "Reshape",
+            "Sigmoid",
+            "Softmax",
+            "Split",
+            "Tanh",
+            "Transpose",
         }
-        
+
         # Collect all operations in the model
         model_ops = set()
         for node in model.graph.node:
             model_ops.add(node.op_type)
-            
+
         # Find unsupported operations
         unsupported_ops = model_ops - supported_ops
-        
+
         return list(unsupported_ops)

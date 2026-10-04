@@ -1,11 +1,26 @@
 from ipfs_accelerate_py.docker_executor import DockerExecutionConfig, DockerExecutor
-from ipfs_accelerate_py.inference_backend_manager import BackendCapabilities, BackendStatus, BackendType, InferenceBackendManager
-from ipfs_accelerate_py.model_manager import DataType, IOSpec, ModelManager, ModelMetadata, ModelType
+from ipfs_accelerate_py.inference_backend_manager import (
+    BackendCapabilities,
+    BackendStatus,
+    BackendType,
+    InferenceBackendManager,
+)
+from ipfs_accelerate_py.model_manager import (
+    DataType,
+    IOSpec,
+    ModelManager,
+    ModelMetadata,
+    ModelType,
+)
 from ipfs_accelerate_py.p2p_tasks.capability_registry import PeerCapabilityRegistry
 from ipfs_accelerate_py.p2p_tasks.orchestrator import OrchestratorConfig, TaskOrchestrator
 from ipfs_accelerate_py.p2p_tasks.task_queue import TaskQueue
 from ipfs_accelerate_py.p2p_tasks.worker import run_worker
-from ipfs_accelerate_py.container_backends.kubernetes.kubernetes import KubernetesBackend, KubernetesExecutionConfig, KubernetesJobStatus
+from ipfs_accelerate_py.container_backends.kubernetes.kubernetes import (
+    KubernetesBackend,
+    KubernetesExecutionConfig,
+    KubernetesJobStatus,
+)
 
 
 class _FakeStorage:
@@ -73,7 +88,9 @@ def test_readiness_backend_manager_result_recording(tmp_path):
 
     import asyncio
 
-    result = asyncio.run(manager.execute_task(task="text-generation", model="model-a", inputs=["hello"]))
+    result = asyncio.run(
+        manager.execute_task(task="text-generation", model="model-a", inputs=["hello"])
+    )
     assert result["backend_id"] == "backend-1"
     assert result["text"] == "ok"
     assert recorder_calls and recorder_calls[0]["backend_id"] == "backend-1"
@@ -129,7 +146,10 @@ def test_readiness_peer_capability_registry_roundtrip(tmp_path):
             "queued": 0,
             "running": 0,
             "queued_by_type": {"text-generation": 1},
-            "capabilities": {"supported_task_types": ["text-generation"], "loaded_models": ["model-a"]},
+            "capabilities": {
+                "supported_task_types": ["text-generation"],
+                "loaded_models": ["model-a"],
+            },
             "detail": {"runtime": {"cuda_available": True}},
         },
     )
@@ -153,15 +173,28 @@ def test_readiness_container_envelopes(tmp_path, monkeypatch):
     monkeypatch.setattr(
         docker,
         "_execute_capture",
-        lambda cmd, timeout: __import__("subprocess").CompletedProcess(args=cmd, returncode=0, stdout="ok\n", stderr=""),
+        lambda cmd, timeout: __import__("subprocess").CompletedProcess(
+            args=cmd, returncode=0, stdout="ok\n", stderr=""
+        ),
     )
-    docker_result = docker.execute_container(DockerExecutionConfig(image="python:3.12-slim", command=["echo", "ok"]))
+    docker_result = docker.execute_container(
+        DockerExecutionConfig(image="python:3.12-slim", command=["echo", "ok"])
+    )
     assert docker_result.output_cid is not None
     assert docker_result.provenance_cid is not None
 
     kubernetes = KubernetesBackend(namespace="default")
-    job_id = kubernetes.submit_job(KubernetesExecutionConfig(image="python:3.12-slim", job_name="readiness-job"))
-    kubernetes.record_job_artifacts(job_id, stdout="ok", stderr="", output_cid="cid-output", provenance_cid="cid-prov", exit_code=0)
+    job_id = kubernetes.submit_job(
+        KubernetesExecutionConfig(image="python:3.12-slim", job_name="readiness-job")
+    )
+    kubernetes.record_job_artifacts(
+        job_id,
+        stdout="ok",
+        stderr="",
+        output_cid="cid-output",
+        provenance_cid="cid-prov",
+        exit_code=0,
+    )
     kube_result = kubernetes.collect_result(job_id)
     assert kube_result.output_cid == "cid-output"
     assert kube_result.provenance_cid == "cid-prov"
@@ -172,7 +205,13 @@ def test_readiness_container_envelopes(tmp_path, monkeypatch):
 def test_readiness_worker_orchestrator_lineage_and_routing(monkeypatch, tmp_path):
     queue_path = str(tmp_path / "tasks.duckdb")
     orchestrator = TaskOrchestrator(
-        config=OrchestratorConfig(queue_path=queue_path, orchestrator_id="orch-test", base_worker_id="worker-test", min_workers=0, max_workers=0),
+        config=OrchestratorConfig(
+            queue_path=queue_path,
+            orchestrator_id="orch-test",
+            base_worker_id="worker-test",
+            min_workers=0,
+            max_workers=0,
+        ),
         supported_task_types=["text-generation"],
     )
     remote = _Remote("peer-a", "/ip4/127.0.0.1/tcp/4001/p2p/peer-a")
@@ -180,27 +219,69 @@ def test_readiness_worker_orchestrator_lineage_and_routing(monkeypatch, tmp_path
     registry.upsert_from_status(
         peer_id="peer-a",
         multiaddr=remote.multiaddr,
-        status={"ok": True, "queued": 0, "running": 0, "capabilities": {"supported_task_types": ["text-generation"]}},
+        status={
+            "ok": True,
+            "queued": 0,
+            "running": 0,
+            "capabilities": {"supported_task_types": ["text-generation"]},
+        },
     )
     monkeypatch.setattr(orchestrator, "_get_capability_registry", lambda: registry)
 
     import ipfs_accelerate_py.p2p_tasks.client as client
 
-    monkeypatch.setattr(client, "claim_many_sync", lambda **kwargs: [{"task_id": "remote-task-1", "task_type": "text-generation", "model_name": "model-a", "payload": {"prompt": "hello"}}] if getattr(kwargs.get("remote"), "peer_id", "") == "peer-a" else [])
+    monkeypatch.setattr(
+        client,
+        "claim_many_sync",
+        lambda **kwargs: (
+            [
+                {
+                    "task_id": "remote-task-1",
+                    "task_type": "text-generation",
+                    "model_name": "model-a",
+                    "payload": {"prompt": "hello"},
+                }
+            ]
+            if getattr(kwargs.get("remote"), "peer_id", "") == "peer-a"
+            else []
+        ),
+    )
     claimed = orchestrator._claim_from_peers(peers=[remote], max_tasks=1)
     assert claimed and claimed[0][0].peer_id == "peer-a"
 
     queue = TaskQueue(queue_path)
-    task_id = queue.submit(task_type="text-generation", model_name="model-x", payload={"prompt": "hello", "workflow_id": "wf-1", "persistence_policy": "required", "provenance_policy": "strict"})
+    task_id = queue.submit(
+        task_type="text-generation",
+        model_name="model-x",
+        payload={
+            "prompt": "hello",
+            "workflow_id": "wf-1",
+            "persistence_policy": "required",
+            "provenance_policy": "strict",
+        },
+    )
 
     class _BackendManager:
         async def execute_task(self, **kwargs):
-            return {"backend_id": "backend-1", "output_cid": "cid-output", "provenance_cid": "cid-prov", "result": {"text": "ok"}}
+            return {
+                "backend_id": "backend-1",
+                "output_cid": "cid-output",
+                "provenance_cid": "cid-prov",
+                "result": {"text": "ok"},
+            }
 
     import ipfs_accelerate_py.inference_backend_manager as ibm
+
     monkeypatch.setattr(ibm, "get_backend_manager", lambda config=None: _BackendManager())
 
-    rc = run_worker(queue_path=queue_path, worker_id="worker-1", poll_interval_s=0.05, once=True, p2p_service=False, supported_task_types=["text-generation"])
+    rc = run_worker(
+        queue_path=queue_path,
+        worker_id="worker-1",
+        poll_interval_s=0.05,
+        once=True,
+        p2p_service=False,
+        supported_task_types=["text-generation"],
+    )
     assert rc == 0
     out = queue.get(task_id)
     assert out is not None

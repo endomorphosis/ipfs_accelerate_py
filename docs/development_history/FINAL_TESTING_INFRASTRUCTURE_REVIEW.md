@@ -244,12 +244,13 @@ skip_covered = False
 ```python
 @pytest.mark.model_test  # Gated by default
 @pytest.mark.model
-@pytest.mark.text        # or vision, audio, multimodal
+@pytest.mark.text  # or vision, audio, multimodal
 class TestModelLoading:
     def test_model_loads(self, model_and_tokenizer):
         model, tokenizer = model_and_tokenizer
         ModelTestUtils.assert_model_loaded(model, MODEL_NAME)
         assert tokenizer is not None
+
 
 @pytest.mark.model_test
 @pytest.mark.benchmark
@@ -257,11 +258,11 @@ class TestPerformance:
     def test_performance_with_baseline(self, model_and_tokenizer, pytest_config):
         model, tokenizer = model_and_tokenizer
         inputs = ModelTestUtils.create_sample_text_inputs(tokenizer)
-        
+
         # Measure performance
         timing_stats = ModelTestUtils.measure_inference_time(model, inputs)
         memory_stats = ModelTestUtils.measure_memory_usage(model, inputs)
-        
+
         # Check for regressions
         result = PerformanceTestUtils.check_performance_regression(...)
 ```
@@ -651,13 +652,13 @@ def check_regression(baseline, current, tolerance=0.20):
     """
     threshold = baseline * (1 + tolerance)
     is_regression = current > threshold
-    
+
     return {
-        'is_regression': is_regression,
-        'baseline': baseline,
-        'current': current,
-        'difference': current - baseline,
-        'percent_change': ((current - baseline) / baseline) * 100
+        "is_regression": is_regression,
+        "baseline": baseline,
+        "current": current,
+        "difference": current - baseline,
+        "percent_change": ((current - baseline) / baseline) * 100,
     }
 ```
 

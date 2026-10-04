@@ -41,9 +41,7 @@ from .formal_verification_contracts import (
 
 
 FORMAL_COUNTEREXAMPLE_VERSION: Final = 1
-FORMAL_COUNTEREXAMPLE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/formal-counterexample@1"
-)
+FORMAL_COUNTEREXAMPLE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/formal-counterexample@1"
 COUNTEREXAMPLE_GRAPH_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/counterexample-knowledge-graph@1"
 )
@@ -191,9 +189,7 @@ def _enum(value: Any, kind: type[Enum], name: str) -> Any:
         return kind(str(raw).strip().lower())
     except (TypeError, ValueError) as exc:
         allowed = ", ".join(sorted({item.value for item in kind}))
-        raise CounterexampleValidationError(
-            f"{name} must be one of: {allowed}"
-        ) from exc
+        raise CounterexampleValidationError(f"{name} must be one of: {allowed}") from exc
 
 
 def _text(
@@ -222,9 +218,7 @@ def _ids(values: Any, name: str) -> tuple[str, ...]:
         raw_values: Iterable[Any] = ()
     elif isinstance(values, str):
         raw_values = (values,)
-    elif isinstance(values, Sequence) and not isinstance(
-        values, (bytes, bytearray, memoryview)
-    ):
+    elif isinstance(values, Sequence) and not isinstance(values, (bytes, bytearray, memoryview)):
         raw_values = values
     else:
         raise CounterexampleValidationError(f"{name} must be a sequence")
@@ -232,9 +226,7 @@ def _ids(values: Any, name: str) -> tuple[str, ...]:
         sorted(
             {
                 item
-                for item in (
-                    _text(value, name, maximum=256) for value in raw_values
-                )
+                for item in (_text(value, name, maximum=256) for value in raw_values)
                 if item and item not in {REDACTED, OMITTED}
             }
         )
@@ -254,18 +246,14 @@ def _mapping(value: Any, name: str) -> dict[str, Any]:
 def _schema(payload: Mapping[str, Any], expected: str) -> None:
     supplied = payload.get("schema")
     if supplied not in (None, "", expected):
-        raise CounterexampleValidationError(
-            f"unsupported schema {supplied!r}; expected {expected}"
-        )
+        raise CounterexampleValidationError(f"unsupported schema {supplied!r}; expected {expected}")
 
 
 def _claimed_identity(payload: Mapping[str, Any], actual: str, *names: str) -> None:
     for name in names:
         claimed = payload.get(name)
         if claimed and claimed != actual:
-            raise CounterexampleValidationError(
-                "counterexample content identity does not match"
-            )
+            raise CounterexampleValidationError("counterexample content identity does not match")
 
 
 def _redact_inline(value: str) -> tuple[str, int]:
@@ -328,9 +316,8 @@ def _safe_value(
         for raw_key in keys:
             key = str(raw_key).strip()
             normalized_key = key.lower().replace("-", "_")
-            if (
-                _PRIVATE_KEY_RE.search(normalized_key)
-                or _FORBIDDEN_CHANNEL_RE.match(normalized_key)
+            if _PRIVATE_KEY_RE.search(normalized_key) or _FORBIDDEN_CHANNEL_RE.match(
+                normalized_key
             ):
                 # Do not read the value: public digests must not become secret
                 # equality oracles.
@@ -348,9 +335,7 @@ def _safe_value(
                 drop_volatile=drop_volatile,
             )
         return result
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         items = list(value)
         if len(items) > budget.remaining_items:
             budget.truncated = True
@@ -446,16 +431,12 @@ def _contains_unsafe_key(value: Any) -> bool:
     if isinstance(value, Mapping):
         for key, item in value.items():
             normalized = str(key).strip().lower().replace("-", "_")
-            if _PRIVATE_KEY_RE.search(normalized) or _FORBIDDEN_CHANNEL_RE.match(
-                normalized
-            ):
+            if _PRIVATE_KEY_RE.search(normalized) or _FORBIDDEN_CHANNEL_RE.match(normalized):
                 return True
             if _contains_unsafe_key(item):
                 return True
         return False
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         return any(_contains_unsafe_key(item) for item in value)
     return False
 
@@ -465,9 +446,7 @@ def _contains_inline_secret(value: Any) -> bool:
         return any(pattern.search(value) for pattern in _INLINE_SECRET_PATTERNS)
     if isinstance(value, Mapping):
         return any(_contains_inline_secret(item) for item in value.values())
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         return any(_contains_inline_secret(item) for item in value)
     return False
 
@@ -479,21 +458,19 @@ def _count_unsafe_fields(value: Any) -> int:
         count = 0
         for key, item in value.items():
             normalized = str(key).strip().lower().replace("-", "_")
-            if _PRIVATE_KEY_RE.search(normalized) or _FORBIDDEN_CHANNEL_RE.match(
-                normalized
-            ):
+            if _PRIVATE_KEY_RE.search(normalized) or _FORBIDDEN_CHANNEL_RE.match(normalized):
                 count += 1
                 continue
             count += _count_unsafe_fields(item)
         return count
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         return sum(_count_unsafe_fields(item) for item in value)
     return 0
 
 
-def _minimal_trace(value: Any, limits: "CounterexampleLimits") -> tuple[list[Any], _SanitizationBudget]:
+def _minimal_trace(
+    value: Any, limits: "CounterexampleLimits"
+) -> tuple[list[Any], _SanitizationBudget]:
     if isinstance(value, Mapping):
         for key in _TRACE_KEYS:
             candidate = value.get(key)
@@ -502,9 +479,7 @@ def _minimal_trace(value: Any, limits: "CounterexampleLimits") -> tuple[list[Any
             ):
                 value = candidate
                 break
-    if not isinstance(value, Sequence) or isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray, memoryview)):
         value = [value] if value not in (None, "") else []
     raw_steps = list(value)
     if len(raw_steps) > limits.max_trace_steps * 2:
@@ -586,9 +561,7 @@ class CounterexampleLimits:
 
 @dataclass(frozen=True)
 class RedactionReport:
-    disposition: ConfidentialityDisposition = (
-        ConfidentialityDisposition.PUBLIC_REDACTED
-    )
+    disposition: ConfidentialityDisposition = ConfidentialityDisposition.PUBLIC_REDACTED
     dropped_fields: int = 0
     redacted_values: int = 0
 
@@ -614,13 +587,9 @@ class RedactionReport:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "RedactionReport":
         if payload.get("contains_private_material") not in (None, False):
-            raise CounterexampleValidationError(
-                "counterexample cannot claim private material"
-            )
+            raise CounterexampleValidationError("counterexample cannot claim private material")
         return cls(
-            disposition=payload.get(
-                "disposition", ConfidentialityDisposition.PUBLIC_REDACTED
-            ),
+            disposition=payload.get("disposition", ConfidentialityDisposition.PUBLIC_REDACTED),
             dropped_fields=payload.get("dropped_fields", 0),
             redacted_values=payload.get("redacted_values", 0),
         )
@@ -683,23 +652,15 @@ class CounterexampleBindings:
         if assumptions is None:
             assumptions = value.get("premise_ids")
         if assumptions is None:
-            assumptions = many(
-                "_missing_assumption_ids", "assumption_id", "premise_id"
-            )
+            assumptions = many("_missing_assumption_ids", "assumption_id", "premise_id")
 
         return cls(
             plan_ids=many("plan_ids", "plan_id", "plan_cid"),
             task_ids=many("task_ids", "task_id", "task_cid"),
-            tree_ids=many(
-                "tree_ids", "tree_id", "tree_cid", "repository_tree_id"
-            ),
-            ast_scope_ids=many(
-                "ast_scope_ids", "ast_scope_id", "scope_id", "symbol_cid"
-            ),
+            tree_ids=many("tree_ids", "tree_id", "tree_cid", "repository_tree_id"),
+            ast_scope_ids=many("ast_scope_ids", "ast_scope_id", "scope_id", "symbol_cid"),
             assumption_ids=assumptions,
-            obligation_ids=many(
-                "obligation_ids", "obligation_id", "property_id"
-            ),
+            obligation_ids=many("obligation_ids", "obligation_id", "property_id"),
             provider_ids=many("provider_ids", "provider_id", "prover_id"),
             receipt_ids=many("receipt_ids", "receipt_id"),
             invalidated_evidence_ids=many(
@@ -712,9 +673,7 @@ class CounterexampleBindings:
 
     def merged(self, other: "CounterexampleBindings") -> "CounterexampleBindings":
         if not isinstance(other, CounterexampleBindings):
-            raise CounterexampleValidationError(
-                "bindings can only be merged with bindings"
-            )
+            raise CounterexampleValidationError("bindings can only be merged with bindings")
         return CounterexampleBindings(
             **{
                 name: getattr(self, name) + getattr(other, name)
@@ -758,9 +717,7 @@ class FormalCounterexample(CanonicalContract):
     truncated: bool = False
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "kind", _enum(self.kind, CounterexampleKind, "kind")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, CounterexampleKind, "kind"))
         object.__setattr__(
             self,
             "property_class",
@@ -776,17 +733,11 @@ class FormalCounterexample(CanonicalContract):
                 maximum=256,
             ),
         )
-        object.__setattr__(
-            self, "summary", _text(self.summary, "summary", required=True)
-        )
+        object.__setattr__(self, "summary", _text(self.summary, "summary", required=True))
         if not isinstance(self.bindings, CounterexampleBindings):
-            raise CounterexampleValidationError(
-                "bindings must be CounterexampleBindings"
-            )
+            raise CounterexampleValidationError("bindings must be CounterexampleBindings")
         if not isinstance(self.redaction, RedactionReport):
-            raise CounterexampleValidationError(
-                "redaction must be a RedactionReport"
-            )
+            raise CounterexampleValidationError("redaction must be a RedactionReport")
         object.__setattr__(self, "assumption_ids", _ids(self.assumption_ids, "assumption_ids"))
         object.__setattr__(
             self,
@@ -799,18 +750,13 @@ class FormalCounterexample(CanonicalContract):
         )
         repairs = tuple(
             sorted(
-                {
-                    _enum(item, RepairClass, "repair_classes")
-                    for item in self.repair_classes
-                },
+                {_enum(item, RepairClass, "repair_classes") for item in self.repair_classes},
                 key=lambda item: item.value,
             )
         )
         object.__setattr__(self, "repair_classes", repairs)
         if self.minimized is not True:
-            raise CounterexampleValidationError(
-                "formal counterexamples must be minimized"
-            )
+            raise CounterexampleValidationError("formal counterexamples must be minimized")
         if not isinstance(self.truncated, bool):
             raise CounterexampleValidationError("truncated must be boolean")
         payload = _mapping(self.payload, "payload")
@@ -831,9 +777,7 @@ class FormalCounterexample(CanonicalContract):
                 "counterexample payload exceeds the canonical public limit"
             )
         if len(self.canonical_bytes()) > ABSOLUTE_MAX_COUNTEREXAMPLE_BYTES:
-            raise CounterexampleValidationError(
-                "counterexample exceeds the absolute public limit"
-            )
+            raise CounterexampleValidationError("counterexample exceeds the absolute public limit")
 
     @property
     def semantic_id(self) -> str:
@@ -929,17 +873,13 @@ class FormalCounterexample(CanonicalContract):
             truncated=payload.get("truncated", False),
         )
         if payload.get("contains_private_material") not in (None, False):
-            raise CounterexampleValidationError(
-                "counterexample claims to contain private material"
-            )
+            raise CounterexampleValidationError("counterexample claims to contain private material")
         if payload.get("contains_raw_prover_output") not in (None, False):
             raise CounterexampleValidationError(
                 "counterexample claims to contain raw prover output"
             )
         if payload.get("contains_source") not in (None, False):
-            raise CounterexampleValidationError(
-                "counterexample claims to contain source"
-            )
+            raise CounterexampleValidationError("counterexample claims to contain source")
         _claimed_identity(
             payload,
             result.semantic_id,
@@ -1005,22 +945,14 @@ def _infer_kind(raw: Mapping[str, Any]) -> CounterexampleKind:
         return CounterexampleKind.DCEC_CONTRADICTION
     if "tdfol" in provider:
         return CounterexampleKind.TDFOL_CONTRADICTION
-    if (
-        any(item in provider for item in ("tla", "tlc", "apalache"))
-        or "tla" in schema
-    ):
+    if any(item in provider for item in ("tla", "tlc", "apalache")) or "tla" in schema:
         return CounterexampleKind.TLA_TRACE
     if (
         any(item in provider for item in ("tamarin", "proverif", "protocol"))
         or "attack_trace" in keys
     ):
         return CounterexampleKind.PROTOCOL_ATTACK
-    if (
-        "kernel" in provider
-        or "kernel" in schema
-        or "failure_code" in keys
-        or "kernel_id" in keys
-    ):
+    if "kernel" in provider or "kernel" in schema or "failure_code" in keys or "kernel_id" in keys:
         return CounterexampleKind.KERNEL_ERROR
     if keys & {"model", "assignment", "assignments"}:
         return CounterexampleKind.SMT_MODEL
@@ -1045,9 +977,7 @@ def _counterexample_view(raw: Mapping[str, Any]) -> dict[str, Any]:
     plan = raw.get("plan")
     if isinstance(plan, Mapping):
         if plan.get("plan_id") or plan.get("content_id"):
-            result.setdefault(
-                "plan_id", plan.get("plan_id") or plan.get("content_id")
-            )
+            result.setdefault("plan_id", plan.get("plan_id") or plan.get("content_id"))
         obligation = plan.get("obligation")
         if isinstance(obligation, Mapping):
             for key in (
@@ -1068,15 +998,9 @@ def _counterexample_view(raw: Mapping[str, Any]) -> dict[str, Any]:
         for attempt in attempts:
             if not isinstance(attempt, Mapping):
                 continue
-            attempt_id = str(
-                attempt.get("attempt_id")
-                or attempt.get("content_id")
-                or ""
-            )
+            attempt_id = str(attempt.get("attempt_id") or attempt.get("content_id") or "")
             outcome = str(
-                attempt.get("effective_outcome")
-                or attempt.get("reported_outcome")
-                or ""
+                attempt.get("effective_outcome") or attempt.get("reported_outcome") or ""
             ).lower()
             if outcome == "counterexample" and attempt.get("conclusive") is True:
                 candidates.append((attempt, attempt_id))
@@ -1261,9 +1185,7 @@ def _normalize_payload(
             ("contradiction", "conflict", "conflicting_formulas", "diagnostic"),
             {},
         )
-        public, budget = _bounded_public(
-            contradiction, limits, drop_volatile=True
-        )
+        public, budget = _bounded_public(contradiction, limits, drop_volatile=True)
         premises = _canonical_set(
             _first(raw, ("conflicting_assumptions", "premises", "assumptions"), ()),
             limits,
@@ -1303,9 +1225,7 @@ def _normalize_payload(
                 budget.truncated = budget.truncated or extra.truncated
             trigger = raw.get("trigger_event_id")
             if trigger:
-                payload["trigger_event_id"] = _text(
-                    trigger, "trigger_event_id", maximum=256
-                )
+                payload["trigger_event_id"] = _text(trigger, "trigger_event_id", maximum=256)
     elif kind is CounterexampleKind.HYPERTRACE:
         allowed = {
             key: raw[key]
@@ -1362,11 +1282,7 @@ def _normalize_payload(
         # Raw exception/reason text is intentionally excluded.  Kernel codes
         # select reviewed actionable diagnostics instead.
         _, budget = _bounded_public(
-            {
-                key: value
-                for key, value in raw.items()
-                if key in payload
-            },
+            {key: value for key, value in raw.items() if key in payload},
             limits,
         )
         for key in raw:
@@ -1384,9 +1300,7 @@ def _normalize_payload(
         }
         _, budget = _bounded_public(raw, limits)
 
-    bounded, extra = _bounded_public(
-        payload, limits, maximum_bytes=limits.max_payload_bytes
-    )
+    bounded, extra = _bounded_public(payload, limits, maximum_bytes=limits.max_payload_bytes)
     budget.dropped_fields += extra.dropped_fields
     budget.redacted_values += extra.redacted_values
     budget.truncated = budget.truncated or extra.truncated
@@ -1420,9 +1334,7 @@ def _fit_counterexample(
     if compact.byte_size > limits.max_counterexample_bytes:
         compact = replace(
             compact,
-            summary=_default_summary(
-                compact.kind, compact.violated_property, compact.payload
-            ),
+            summary=_default_summary(compact.kind, compact.violated_property, compact.payload),
             repair_classes=(),
         )
     if compact.byte_size > limits.max_counterexample_bytes:
@@ -1462,9 +1374,7 @@ def normalize_counterexample(
         if plan_id and "plan_id" not in converted:
             converted = {**converted, "plan_id": str(plan_id)}
         raw = _counterexample_view(converted)
-    elif isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         raw = {"counterexample": list(value)}
     else:
         raise CounterexampleValidationError(
@@ -1504,9 +1414,7 @@ def normalize_counterexample(
         maximum=256,
     )
     payload, sanitation = _normalize_payload(selected_kind, raw, active_limits)
-    sanitation.dropped_fields = max(
-        sanitation.dropped_fields, _count_unsafe_fields(raw)
-    )
+    sanitation.dropped_fields = max(sanitation.dropped_fields, _count_unsafe_fields(raw))
     selected_assumptions = _ids(
         ((assumption_ids,) if isinstance(assumption_ids, str) else tuple(assumption_ids))
         + selected_bindings.assumption_ids
@@ -1539,9 +1447,7 @@ def normalize_counterexample(
         maximum=256,
     )
     selected_repairs = (
-        tuple(repair_classes)
-        if repair_classes is not None
-        else _repair_classes(selected_kind)
+        tuple(repair_classes) if repair_classes is not None else _repair_classes(selected_kind)
     )
     selected_summary = (
         _text(summary, "summary", required=True)
@@ -1581,9 +1487,7 @@ class FormalCounterexampleNormalizer:
     def normalize_many(
         self, values: Iterable[Any], **kwargs: Any
     ) -> tuple[FormalCounterexample, ...]:
-        return deduplicate_counterexamples(
-            self.normalize(value, **kwargs) for value in values
-        )
+        return deduplicate_counterexamples(self.normalize(value, **kwargs) for value in values)
 
 
 def _normalizer_for(kind: CounterexampleKind):
@@ -1595,19 +1499,13 @@ def _normalizer_for(kind: CounterexampleKind):
 
 normalize_smt_model = _normalizer_for(CounterexampleKind.SMT_MODEL)
 normalize_unsat_core = _normalizer_for(CounterexampleKind.SMT_UNSAT_CORE)
-normalize_dcec_contradiction = _normalizer_for(
-    CounterexampleKind.DCEC_CONTRADICTION
-)
-normalize_tdfol_contradiction = _normalizer_for(
-    CounterexampleKind.TDFOL_CONTRADICTION
-)
+normalize_dcec_contradiction = _normalizer_for(CounterexampleKind.DCEC_CONTRADICTION)
+normalize_tdfol_contradiction = _normalizer_for(CounterexampleKind.TDFOL_CONTRADICTION)
 normalize_tla_trace = _normalizer_for(CounterexampleKind.TLA_TRACE)
 normalize_protocol_attack = _normalizer_for(CounterexampleKind.PROTOCOL_ATTACK)
 normalize_hypertrace = _normalizer_for(CounterexampleKind.HYPERTRACE)
 normalize_kernel_error = _normalizer_for(CounterexampleKind.KERNEL_ERROR)
-normalize_runtime_mtl_violation = _normalizer_for(
-    CounterexampleKind.RUNTIME_MTL_VIOLATION
-)
+normalize_runtime_mtl_violation = _normalizer_for(CounterexampleKind.RUNTIME_MTL_VIOLATION)
 normalize_proof_failure = normalize_counterexample
 
 
@@ -1654,9 +1552,7 @@ class CounterexampleGraphNode:
         object.__setattr__(
             self, "node_id", _text(self.node_id, "node_id", required=True, maximum=512)
         )
-        object.__setattr__(
-            self, "kind", _enum(self.kind, CounterexampleNodeKind, "node kind")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, CounterexampleNodeKind, "node kind"))
 
     def to_dict(self) -> dict[str, str]:
         return {"node_id": self.node_id, "kind": self.kind.value}
@@ -1679,9 +1575,7 @@ class CounterexampleGraphEdge:
                 name,
                 _text(getattr(self, name), name, required=True, maximum=512),
             )
-        object.__setattr__(
-            self, "kind", _enum(self.kind, CounterexampleEdgeKind, "edge kind")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, CounterexampleEdgeKind, "edge kind"))
         if self.source_id == self.target_id:
             raise CounterexampleValidationError("graph self edges are not allowed")
 
@@ -1765,13 +1659,8 @@ class CounterexampleKnowledgeGraph(CanonicalContract):
     edges: tuple[CounterexampleGraphEdge, ...] = ()
 
     def __post_init__(self) -> None:
-        if any(
-            not isinstance(item, FormalCounterexample)
-            for item in self.counterexamples
-        ):
-            raise CounterexampleValidationError(
-                "graph counterexamples must be normalized"
-            )
+        if any(not isinstance(item, FormalCounterexample) for item in self.counterexamples):
+            raise CounterexampleValidationError("graph counterexamples must be normalized")
         if any(not isinstance(item, CounterexampleGraphNode) for item in self.nodes):
             raise CounterexampleValidationError("graph nodes are malformed")
         if any(not isinstance(item, CounterexampleGraphEdge) for item in self.edges):
@@ -1781,9 +1670,7 @@ class CounterexampleKnowledgeGraph(CanonicalContract):
         edges = {item.edge_id: item for item in self.edges}
         for counterexample in examples:
             source = counterexample.semantic_id
-            nodes[source] = CounterexampleGraphNode(
-                source, CounterexampleNodeKind.COUNTEREXAMPLE
-            )
+            nodes[source] = CounterexampleGraphNode(source, CounterexampleNodeKind.COUNTEREXAMPLE)
             for field_name, node_kind, edge_kind in _BINDING_GRAPH_SPECS:
                 for target in getattr(counterexample.bindings, field_name):
                     existing = nodes.get(target)
@@ -1799,16 +1686,10 @@ class CounterexampleKnowledgeGraph(CanonicalContract):
             edge.source_id not in node_ids or edge.target_id not in node_ids
             for edge in edges.values()
         ):
-            raise CounterexampleValidationError(
-                "every graph edge endpoint must have a node"
-            )
+            raise CounterexampleValidationError("every graph edge endpoint must have a node")
         object.__setattr__(self, "counterexamples", examples)
-        object.__setattr__(
-            self, "nodes", tuple(nodes[key] for key in sorted(nodes))
-        )
-        object.__setattr__(
-            self, "edges", tuple(edges[key] for key in sorted(edges))
-        )
+        object.__setattr__(self, "nodes", tuple(nodes[key] for key in sorted(nodes)))
+        object.__setattr__(self, "edges", tuple(edges[key] for key in sorted(edges)))
 
     @classmethod
     def from_counterexamples(
@@ -1816,41 +1697,23 @@ class CounterexampleKnowledgeGraph(CanonicalContract):
     ) -> "CounterexampleKnowledgeGraph":
         return cls(tuple(values))
 
-    def add(
-        self, value: FormalCounterexample
-    ) -> "CounterexampleKnowledgeGraph":
-        return CounterexampleKnowledgeGraph(
-            self.counterexamples + (value,), self.nodes, self.edges
-        )
+    def add(self, value: FormalCounterexample) -> "CounterexampleKnowledgeGraph":
+        return CounterexampleKnowledgeGraph(self.counterexamples + (value,), self.nodes, self.edges)
 
     def neighbors(self, node_id: str) -> tuple[CounterexampleGraphNode, ...]:
-        targets = {
-            edge.target_id
-            for edge in self.edges
-            if edge.source_id == node_id
-        } | {
-            edge.source_id
-            for edge in self.edges
-            if edge.target_id == node_id
+        targets = {edge.target_id for edge in self.edges if edge.source_id == node_id} | {
+            edge.source_id for edge in self.edges if edge.target_id == node_id
         }
         by_id = {node.node_id: node for node in self.nodes}
         return tuple(by_id[item] for item in sorted(targets))
 
-    def counterexamples_for(
-        self, *node_ids: str
-    ) -> tuple[FormalCounterexample, ...]:
+    def counterexamples_for(self, *node_ids: str) -> tuple[FormalCounterexample, ...]:
         selected = {item for item in node_ids if item}
         if not selected:
             return self.counterexamples
-        counterexample_ids = {
-            edge.source_id
-            for edge in self.edges
-            if edge.target_id in selected
-        }
+        counterexample_ids = {edge.source_id for edge in self.edges if edge.target_id in selected}
         return tuple(
-            item
-            for item in self.counterexamples
-            if item.semantic_id in counterexample_ids
+            item for item in self.counterexamples if item.semantic_id in counterexample_ids
         )
 
     def _payload(self) -> dict[str, Any]:
@@ -1947,25 +1810,18 @@ class CounterexampleContextCapsule(CanonicalContract):
             or not isinstance(self.byte_limit, int)
             or self.byte_limit < 1024
         ):
-            raise CounterexampleValidationError(
-                "capsule byte_limit must be at least 1024"
-            )
+            raise CounterexampleValidationError("capsule byte_limit must be at least 1024")
         node_ids = {item.node_id for item in self.nodes}
         if any(
-            edge.source_id not in node_ids or edge.target_id not in node_ids
-            for edge in self.edges
+            edge.source_id not in node_ids or edge.target_id not in node_ids for edge in self.edges
         ):
-            raise CounterexampleValidationError(
-                "every capsule edge endpoint must have a node"
-            )
+            raise CounterexampleValidationError("every capsule edge endpoint must have a node")
         if (
             self.usage.counterexamples != len(self.counterexamples)
             or self.usage.graph_nodes != len(self.nodes)
             or self.usage.graph_edges != len(self.edges)
         ):
-            raise CounterexampleValidationError(
-                "capsule usage does not match retained contents"
-            )
+            raise CounterexampleValidationError("capsule usage does not match retained contents")
         serialized = json.dumps(
             list(self.counterexamples), sort_keys=True, separators=(",", ":")
         ).lower()
@@ -1981,9 +1837,7 @@ class CounterexampleContextCapsule(CanonicalContract):
             "source_code",
         )
         if any(marker in serialized for marker in forbidden):
-            raise CounterexampleValidationError(
-                "unsafe field entered a counterexample capsule"
-            )
+            raise CounterexampleValidationError("unsafe field entered a counterexample capsule")
 
     @property
     def byte_size(self) -> int:
@@ -2011,9 +1865,7 @@ class CounterexampleContextCapsule(CanonicalContract):
         usage = payload.get("usage")
         limits = payload.get("limits")
         if not isinstance(usage, Mapping) or not isinstance(limits, Mapping):
-            raise CounterexampleValidationError(
-                "capsule usage and limits are required"
-            )
+            raise CounterexampleValidationError("capsule usage and limits are required")
         result = cls(
             target_ids=tuple(payload.get("target_ids") or ()),
             counterexamples=tuple(
@@ -2043,9 +1895,7 @@ class CounterexampleContextCapsule(CanonicalContract):
         if result.byte_size > result.byte_limit:
             raise CounterexampleBudgetError("decoded capsule exceeds its byte limit")
         if result.usage.encoded_bytes != result.byte_size:
-            raise CounterexampleValidationError(
-                "capsule encoded byte measurement does not match"
-            )
+            raise CounterexampleValidationError("capsule encoded byte measurement does not match")
         _claimed_identity(payload, result.content_id, "content_id")
         return result
 
@@ -2098,24 +1948,19 @@ def build_counterexample_context_capsule(
     selected = list(graph.counterexamples_for(*targets))
     total_selected = len(selected)
     selected = selected[: active_limits.max_capsule_counterexamples]
-    entries: list[Mapping[str, Any]] = [
-        item.to_capsule_dict() for item in selected
-    ]
+    entries: list[Mapping[str, Any]] = [item.to_capsule_dict() for item in selected]
     selected_ids = {item.semantic_id for item in selected}
     edges = [
         edge
         for edge in graph.edges
-        if edge.source_id in selected_ids
-        and (not targets or edge.target_id in set(targets))
+        if edge.source_id in selected_ids and (not targets or edge.target_id in set(targets))
     ][: active_limits.max_graph_edges]
     endpoint_ids = selected_ids | {
-        value
-        for edge in edges
-        for value in (edge.source_id, edge.target_id)
+        value for edge in edges for value in (edge.source_id, edge.target_id)
     }
-    nodes = [
-        node for node in graph.nodes if node.node_id in endpoint_ids
-    ][: active_limits.max_graph_nodes]
+    nodes = [node for node in graph.nodes if node.node_id in endpoint_ids][
+        : active_limits.max_graph_nodes
+    ]
     omitted = total_selected - len(entries)
 
     while True:
@@ -2144,17 +1989,14 @@ def build_counterexample_context_capsule(
             and "payload" in entries[0]
             and not (
                 isinstance(entries[0].get("payload"), Mapping)
-                and entries[0]["payload"].get("omitted")
-                == "<capsule-byte-limit>"
+                and entries[0]["payload"].get("omitted") == "<capsule-byte-limit>"
             )
         ):
             compact = dict(entries[0])
             payload_bytes = canonical_json_bytes(compact["payload"])
             compact["payload"] = {
                 "omitted": "<capsule-byte-limit>",
-                "public_digest": (
-                    "sha256:" + hashlib.sha256(payload_bytes).hexdigest()
-                ),
+                "public_digest": ("sha256:" + hashlib.sha256(payload_bytes).hexdigest()),
             }
             compact["truncated"] = True
             entries[0] = compact
@@ -2163,9 +2005,7 @@ def build_counterexample_context_capsule(
             entries.clear()
             omitted += 1
             continue
-        raise CounterexampleBudgetError(
-            "counterexample capsule metadata exceeds its byte limit"
-        )
+        raise CounterexampleBudgetError("counterexample capsule metadata exceeds its byte limit")
 
 
 build_counterexample_capsule = build_counterexample_context_capsule
@@ -2222,18 +2062,14 @@ class CounterexampleStore:
     ) -> tuple[FormalCounterexample, bool]:
         """Normalize and append once; return ``(counterexample, inserted)``."""
 
-        counterexample = normalize_counterexample(
-            value, limits=self.limits, **normalization
-        )
+        counterexample = normalize_counterexample(value, limits=self.limits, **normalization)
         record = self._record(counterexample)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a+", encoding="utf-8") as stream:
             fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
             try:
                 stream.seek(0)
-                for line in _bounded_jsonl_lines(
-                    stream, self.limits.max_counterexample_bytes
-                ):
+                for line in _bounded_jsonl_lines(stream, self.limits.max_counterexample_bytes):
                     if counterexample.semantic_id not in line:
                         continue
                     try:
@@ -2242,38 +2078,29 @@ class CounterexampleStore:
                         continue
                     if (
                         isinstance(existing, Mapping)
-                        and existing.get("counterexample_id")
-                        == counterexample.semantic_id
+                        and existing.get("counterexample_id") == counterexample.semantic_id
                     ):
                         return counterexample, False
                 stream.seek(0, os.SEEK_END)
-                stream.write(
-                    canonical_json_bytes(record).decode("utf-8") + "\n"
-                )
+                stream.write(canonical_json_bytes(record).decode("utf-8") + "\n")
                 stream.flush()
                 os.fsync(stream.fileno())
             finally:
                 fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
         return counterexample, True
 
-    def load(
-        self, *, maximum_records: int = 4096
-    ) -> tuple[FormalCounterexample, ...]:
+    def load(self, *, maximum_records: int = 4096) -> tuple[FormalCounterexample, ...]:
         if (
             isinstance(maximum_records, bool)
             or not isinstance(maximum_records, int)
             or maximum_records <= 0
         ):
-            raise CounterexampleValidationError(
-                "maximum_records must be a positive integer"
-            )
+            raise CounterexampleValidationError("maximum_records must be a positive integer")
         if not self.path.exists() or self.path.is_dir():
             return ()
         values: list[FormalCounterexample] = []
         with self.path.open("r", encoding="utf-8") as stream:
-            for line in _bounded_jsonl_lines(
-                stream, self.limits.max_counterexample_bytes
-            ):
+            for line in _bounded_jsonl_lines(stream, self.limits.max_counterexample_bytes):
                 if len(values) >= maximum_records:
                     break
                 try:
@@ -2299,16 +2126,12 @@ class CounterexampleStore:
         retained: list[FormalCounterexample] = []
         inserted = 0
         for value in values:
-            counterexample, was_inserted = self.persist(
-                value, **normalization
-            )
+            counterexample, was_inserted = self.persist(value, **normalization)
             retained.append(counterexample)
             inserted += int(was_inserted)
         return deduplicate_counterexamples(retained), inserted
 
-    def load_graph(
-        self, *, maximum_records: int = 4096
-    ) -> CounterexampleKnowledgeGraph:
+    def load_graph(self, *, maximum_records: int = 4096) -> CounterexampleKnowledgeGraph:
         """Reconstruct the canonical graph projection from durable bindings."""
 
         return CounterexampleKnowledgeGraph.from_counterexamples(
@@ -2323,9 +2146,7 @@ def persist_counterexample(
     limits: CounterexampleLimits | None = None,
     **normalization: Any,
 ) -> tuple[FormalCounterexample, bool]:
-    return CounterexampleStore(path, limits=limits).persist(
-        value, **normalization
-    )
+    return CounterexampleStore(path, limits=limits).persist(value, **normalization)
 
 
 def load_counterexamples(
@@ -2334,9 +2155,7 @@ def load_counterexamples(
     limits: CounterexampleLimits | None = None,
     maximum_records: int = 4096,
 ) -> tuple[FormalCounterexample, ...]:
-    return CounterexampleStore(path, limits=limits).load(
-        maximum_records=maximum_records
-    )
+    return CounterexampleStore(path, limits=limits).load(maximum_records=maximum_records)
 
 
 # Friendly architectural names.

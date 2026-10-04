@@ -51,18 +51,14 @@ def test_python_cli_and_mcp_use_the_same_canonical_control_contract():
         results.append(getattr(api, adapter)(request.to_dict()).to_dict())
     assert results[0] == results[1] == results[2]
     assert results[0]["decision"]["effective_mode"] == "automatic"
-    assert results[0]["decision"]["requirement_id"] == (
-        PROMPT_WORKFLOW_ROLLOUT_REQUIREMENT_ID
-    )
+    assert results[0]["decision"]["requirement_id"] == (PROMPT_WORKFLOW_ROLLOUT_REQUIREMENT_ID)
 
     api = _api()
     assert api.status().decision.effective_mode is PromptWorkflowRolloutMode.SHADOW
     api.execute("automatic")
     rolled_back = api.rollback()
     assert rolled_back.decision.effective_mode is PromptWorkflowRolloutMode.SHADOW
-    assert rolled_back.decision.affected_behavior_ids == (
-        PROMPT_WORKFLOW_BEHAVIOR_ID,
-    )
+    assert rolled_back.decision.affected_behavior_ids == (PROMPT_WORKFLOW_BEHAVIOR_ID,)
 
     api = _api()
     api.execute("automatic")

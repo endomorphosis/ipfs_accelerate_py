@@ -57,26 +57,26 @@ The CI/CD Provider API provides a standardized interface for integrating with va
 ```python
 from distributed_testing.ci import CIProviderFactory, TestRunResult
 
+
 async def run_tests_with_ci_reporting():
     # Create appropriate provider based on environment
     provider = await CIProviderFactory.create_provider(
         "github",
         {
             "token": os.environ.get("GITHUB_TOKEN"),
-            "repository": os.environ.get("GITHUB_REPOSITORY")
-        }
+            "repository": os.environ.get("GITHUB_REPOSITORY"),
+        },
     )
-    
+
     # Create a test run
-    test_run = await provider.create_test_run({
-        "name": "Example Test Run",
-        "build_id": os.environ.get("GITHUB_RUN_ID")
-    })
-    
+    test_run = await provider.create_test_run(
+        {"name": "Example Test Run", "build_id": os.environ.get("GITHUB_RUN_ID")}
+    )
+
     try:
         # Run your tests here...
         test_results = run_my_tests()
-        
+
         # Report results using standardized format
         result = TestRunResult(
             test_run_id=test_run["id"],
@@ -85,26 +85,22 @@ async def run_tests_with_ci_reporting():
             passed_tests=test_results.passed,
             failed_tests=test_results.failed,
             skipped_tests=test_results.skipped,
-            duration_seconds=test_results.duration
+            duration_seconds=test_results.duration,
         )
-        
+
         # Update test run with results
         await provider.update_test_run(
-            test_run["id"],
-            {
-                "status": result.status,
-                "summary": result.to_dict()
-            }
+            test_run["id"], {"status": result.status, "summary": result.to_dict()}
         )
-        
+
         # Add comment to PR if applicable
         if os.environ.get("GITHUB_EVENT_NAME") == "pull_request":
             pr_number = extract_pr_number()
             await provider.add_pr_comment(
                 pr_number,
-                f"## Test Results\n\n{result.passed_tests}/{result.total_tests} tests passed"
+                f"## Test Results\n\n{result.passed_tests}/{result.total_tests} tests passed",
             )
-            
+
     finally:
         # Clean up resources
         await provider.close()
@@ -126,38 +122,33 @@ The Plugin API provides a standardized way to extend the framework with custom f
 ```python
 from distributed_testing.plugin_architecture import Plugin, PluginType, HookType
 
+
 class MyReporterPlugin(Plugin):
     """Custom reporter plugin."""
-    
+
     def __init__(self):
-        super().__init__(
-            name="MyReporter",
-            version="1.0.0",
-            plugin_type=PluginType.REPORTER
-        )
-        
+        super().__init__(name="MyReporter", version="1.0.0", plugin_type=PluginType.REPORTER)
+
         # Register hooks
         self.register_hook(HookType.TASK_COMPLETED, self.on_task_completed)
-        
+
     async def initialize(self, coordinator) -> bool:
         """Initialize the plugin."""
         self.coordinator = coordinator
         self.results = []
         return True
-        
+
     async def shutdown(self) -> bool:
         """Shutdown the plugin."""
         await self.save_results()
         return True
-        
+
     async def on_task_completed(self, task_id: str, result: Any):
         """Handle task completed event."""
-        self.results.append({
-            "task_id": task_id,
-            "result": result,
-            "timestamp": datetime.now().isoformat()
-        })
-        
+        self.results.append(
+            {"task_id": task_id, "result": result, "timestamp": datetime.now().isoformat()}
+        )
+
     async def save_results(self):
         """Save results to a file."""
         with open("test_results.json", "w") as f:
@@ -180,40 +171,33 @@ The WebGPU/WebNN Resource Pool API provides a standardized interface for browser
 ```python
 from distributed_testing.resource_pool import ResourcePoolFactory, ResourceType
 
+
 async def run_model_with_resource_pool():
     # Create resource pool
     pool = await ResourcePoolFactory.create_pool(
         pool_type="browser",
         config={
             "max_connections": 4,
-            "browser_preferences": {
-                "audio": "firefox",
-                "vision": "chrome",
-                "text": "edge"
-            }
-        }
+            "browser_preferences": {"audio": "firefox", "vision": "chrome", "text": "edge"},
+        },
     )
-    
+
     try:
         # Get model executor for BERT
         executor = await pool.get_model_executor(
             model_name="bert-base-uncased",
             resource_type=ResourceType.WEBGPU,
-            preferences={
-                "max_memory": 4096,
-                "precision": "fp16"
-            }
+            preferences={"max_memory": 4096, "precision": "fp16"},
         )
-        
+
         # Run inference
-        result = await executor.run_inference({
-            "input_ids": input_ids,
-            "attention_mask": attention_mask
-        })
-        
+        result = await executor.run_inference(
+            {"input_ids": input_ids, "attention_mask": attention_mask}
+        )
+
         # Process result
         return process_result(result)
-        
+
     finally:
         # Release resources
         await pool.release_all()
@@ -234,33 +218,35 @@ Example for a custom CI provider:
 ```python
 from distributed_testing.ci.api_interface import CIProviderInterface
 
+
 class CircleCIProvider(CIProviderInterface):
     """CircleCI provider implementation."""
-    
+
     async def initialize(self, config: Dict[str, Any]) -> bool:
         """Initialize with configuration."""
         self.token = config.get("token")
         self.project = config.get("project")
-        
+
         if not self.token or not self.project:
             return False
-            
-        self.session = aiohttp.ClientSession(headers={
-            "Circle-Token": self.token,
-            "Accept": "application/json"
-        })
-        
+
+        self.session = aiohttp.ClientSession(
+            headers={"Circle-Token": self.token, "Accept": "application/json"}
+        )
+
         return True
-    
+
     # Implement other required methods...
-    
+
     async def close(self) -> None:
         """Clean up resources."""
         if self.session:
             await self.session.close()
 
+
 # Register with factory
 from distributed_testing.ci import CIProviderFactory
+
 CIProviderFactory.register_provider("circleci", CircleCIProvider)
 ```
 

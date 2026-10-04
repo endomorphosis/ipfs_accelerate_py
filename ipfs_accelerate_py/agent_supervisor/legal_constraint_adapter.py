@@ -47,9 +47,7 @@ LEGAL_APPLICABILITY_QUERY_SCHEMA: Final[str] = (
 LEGAL_SOURCE_BINDING_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/legal-source-binding@1"
 )
-LEGAL_CONSTRAINT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/legal-constraint@1"
-)
+LEGAL_CONSTRAINT_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/legal-constraint@1"
 LEGAL_PROOF_OBLIGATION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/legal-proof-obligation@1"
 )
@@ -139,9 +137,7 @@ def _text(
     if not isinstance(value, str):
         raise LegalConstraintError(f"{name} must be a string")
     if value != value.strip() or "\x00" in value:
-        raise LegalConstraintError(
-            f"{name} must not contain surrounding whitespace or NUL"
-        )
+        raise LegalConstraintError(f"{name} must not contain surrounding whitespace or NUL")
     if required and not value:
         raise LegalConstraintError(f"{name} must not be empty")
     if len(value.encode("utf-8")) > maximum:
@@ -265,9 +261,7 @@ class LegalApplicabilityQuery:
 
     @property
     def exact_scope(self) -> Mapping[str, str]:
-        return MappingProxyType(
-            {name: getattr(self, name) for name in _SCOPE_FIELDS}
-        )
+        return MappingProxyType({name: getattr(self, name) for name in _SCOPE_FIELDS})
 
     @property
     def fact_ids(self) -> frozenset[str]:
@@ -278,12 +272,7 @@ class LegalApplicabilityQuery:
         result: dict[str, list[Mapping[str, Any]]] = {}
         for item in self.applicability_facts:
             result.setdefault(item.predicate, []).append(item.value)
-        return MappingProxyType(
-            {
-                key: tuple(values)
-                for key, values in sorted(result.items())
-            }
-        )
+        return MappingProxyType({key: tuple(values) for key, values in sorted(result.items())})
 
     def to_dict(self) -> dict[str, Any]:
         payload = {
@@ -294,9 +283,7 @@ class LegalApplicabilityQuery:
             "legal_root_supervisor_digest": self.legal_root_supervisor_digest,
             **dict(self.exact_scope),
             "effective_at_ms": self.effective_at_ms,
-            "applicability_facts": [
-                item.to_dict() for item in self.applicability_facts
-            ],
+            "applicability_facts": [item.to_dict() for item in self.applicability_facts],
             "semantic_candidate_ids": list(self.semantic_candidate_ids),
             "semantic_candidates_are_authority": False,
         }
@@ -327,9 +314,7 @@ class LegalSourceBinding:
             "legal_root_cid_v1": self.legal_root_cid_v1,
             "legal_root_supervisor_digest": self.legal_root_supervisor_digest,
             "source_references": [_plain(item) for item in self.source_references],
-            "provenance_references": [
-                _plain(item) for item in self.provenance_references
-            ],
+            "provenance_references": [_plain(item) for item in self.provenance_references],
             "formal_view_ids": list(self.formal_view_ids),
         }
 
@@ -367,9 +352,7 @@ class LegalConstraint:
             "precedence": self.precedence,
             "effective_from_ms": self.effective_from_ms,
             "effective_until_ms": self.effective_until_ms,
-            "exact_scope": {
-                key: list(value) for key, value in sorted(self.exact_scope.items())
-            },
+            "exact_scope": {key: list(value) for key, value in sorted(self.exact_scope.items())},
             "exception_to": list(self.exception_to),
             "exception_ids": list(self.exception_ids),
             "conflicts_with": list(self.conflicts_with),
@@ -428,9 +411,7 @@ class LegalCompilationResult:
 
     def __post_init__(self) -> None:
         if not isinstance(self.status, LegalCompilationStatus):
-            object.__setattr__(
-                self, "status", LegalCompilationStatus(str(self.status))
-            )
+            object.__setattr__(self, "status", LegalCompilationStatus(str(self.status)))
         if not isinstance(self.outcome, LegalApplicabilityOutcome):
             object.__setattr__(
                 self,
@@ -438,9 +419,7 @@ class LegalCompilationResult:
                 LegalApplicabilityOutcome(str(self.outcome)),
             )
 
-    def _with_outcome(
-        self, outcome: LegalApplicabilityOutcome
-    ) -> tuple[LegalConstraint, ...]:
+    def _with_outcome(self, outcome: LegalApplicabilityOutcome) -> tuple[LegalConstraint, ...]:
         return tuple(item for item in self.constraints if item.outcome is outcome)
 
     @property
@@ -498,9 +477,7 @@ class LegalCompilationResult:
     @property
     def powers(self) -> tuple[LegalConstraint, ...]:
         return tuple(
-            item
-            for item in self.applicable
-            if item.active and item.modality is LegalModality.POWER
+            item for item in self.applicable if item.active and item.modality is LegalModality.POWER
         )
 
     @property
@@ -579,9 +556,7 @@ class LegalCompilationResult:
             "constraints": [item.to_dict() for item in self.constraints],
             "selected_formal_view_ids": list(self.selected_formal_view_ids),
             "assumptions": [item.to_dict() for item in self.assumptions],
-            "proof_obligations": [
-                item.to_dict() for item in self.proof_obligations
-            ],
+            "proof_obligations": [item.to_dict() for item in self.proof_obligations],
             "reason_codes": list(self.reason_codes),
             "semantic_candidate_ids": list(self.semantic_candidate_ids),
             "semantic_candidates_are_authority": False,
@@ -628,9 +603,7 @@ def _scope(
             continue
         members = _ids(value, field_name)
         if not members or any(item.lower() in _WILDCARDS for item in members):
-            raise LegalConstraintError(
-                f"{field_name} must contain explicit values, not a wildcard"
-            )
+            raise LegalConstraintError(f"{field_name} must contain explicit values, not a wildcard")
         result[field_name] = members
     return MappingProxyType(result), universal
 
@@ -677,9 +650,7 @@ def _initial_constraint(
         values = _node_values(node)
         raw_mandatory = values.get("mandatory_applicability", True)
         if not isinstance(raw_mandatory, bool):
-            raise LegalConstraintError(
-                "mandatory_applicability must be a boolean"
-            )
+            raise LegalConstraintError("mandatory_applicability must be a boolean")
         mandatory = raw_mandatory
         exact_scope, universal = _scope(values)
     except LegalConstraintError:
@@ -744,9 +715,7 @@ def _initial_constraint(
         reasons.append("not_yet_effective")
     else:
         missing = [
-            name
-            for name in _SCOPE_FIELDS
-            if name not in exact_scope and name not in universal
+            name for name in _SCOPE_FIELDS if name not in exact_scope and name not in universal
         ]
         mismatched = [
             name
@@ -765,14 +734,10 @@ def _initial_constraint(
         "required_fact_ids",
     )
     absent_facts = sorted(set(required_fact_ids).difference(query.fact_ids))
-    if (
-        absent_facts
-        and outcome
-        not in {
-            LegalApplicabilityOutcome.INAPPLICABLE,
-            LegalApplicabilityOutcome.EXPIRED,
-        }
-    ):
+    if absent_facts and outcome not in {
+        LegalApplicabilityOutcome.INAPPLICABLE,
+        LegalApplicabilityOutcome.EXPIRED,
+    }:
         outcome = LegalApplicabilityOutcome.UNKNOWN
         reasons.append("missing_required_applicability_fact")
 
@@ -806,8 +771,7 @@ def _initial_constraint(
             not node.grounded
             or not node.review_state.accepted
             or not node.trust_state.accepted
-            or node.result_authority
-            is not NormalizedResultAuthority.CONSTRAINT_INPUT
+            or node.result_authority is not NormalizedResultAuthority.CONSTRAINT_INPUT
         ):
             outcome = LegalApplicabilityOutcome.REVIEW_REQUIRED
             reasons.append("provision_not_reviewed_trusted_authority")
@@ -850,9 +814,7 @@ def _initial_constraint(
             # modality.
             modality = None
 
-    precedence = _integer(
-        values.get("precedence", values.get("priority")), "precedence", default=0
-    )
+    precedence = _integer(values.get("precedence", values.get("priority")), "precedence", default=0)
     assert precedence is not None
     return LegalConstraint(
         provision_id=node.node_id,
@@ -945,15 +907,11 @@ def _resolve_relationships(
             continue
         for exception_id in item.exception_ids:
             exception = by_id.get(exception_id)
-            if (
-                exception is None
-                or exception.outcome
-                in {
-                    LegalApplicabilityOutcome.UNKNOWN,
-                    LegalApplicabilityOutcome.CONFLICTING,
-                    LegalApplicabilityOutcome.REVIEW_REQUIRED,
-                }
-            ):
+            if exception is None or exception.outcome in {
+                LegalApplicabilityOutcome.UNKNOWN,
+                LegalApplicabilityOutcome.CONFLICTING,
+                LegalApplicabilityOutcome.REVIEW_REQUIRED,
+            }:
                 by_id[item.provision_id] = _add_reason(
                     replace(
                         item,
@@ -1037,9 +995,7 @@ def _resolve_relationships(
                         target,
                         outcome=LegalApplicabilityOutcome.SUPERSEDED,
                         active=False,
-                        defeated_by=tuple(
-                            sorted(set((*target.defeated_by, winner.provision_id)))
-                        ),
+                        defeated_by=tuple(sorted(set((*target.defeated_by, winner.provision_id)))),
                     ),
                     "express_supersession",
                 )
@@ -1048,8 +1004,7 @@ def _resolve_relationships(
         active = tuple(
             by_id[item]
             for item in sorted(by_id)
-            if by_id[item].outcome is LegalApplicabilityOutcome.APPLICABLE
-            and by_id[item].active
+            if by_id[item].outcome is LegalApplicabilityOutcome.APPLICABLE and by_id[item].active
         )
         pairs: list[tuple[LegalConstraint, LegalConstraint]] = []
         for offset, left in enumerate(active):
@@ -1072,11 +1027,7 @@ def _resolve_relationships(
     for left, right in conflict_pairs():
         if left.precedence == right.precedence:
             continue
-        winner, loser = (
-            (left, right)
-            if left.precedence > right.precedence
-            else (right, left)
-        )
+        winner, loser = (left, right) if left.precedence > right.precedence else (right, left)
         defeated.setdefault(loser.provision_id, set()).add(winner.provision_id)
     for loser_id, winner_ids in sorted(defeated.items()):
         loser = by_id[loser_id]
@@ -1085,9 +1036,7 @@ def _resolve_relationships(
                 loser,
                 outcome=LegalApplicabilityOutcome.SUPERSEDED,
                 active=False,
-                defeated_by=tuple(
-                    sorted(set((*loser.defeated_by, *winner_ids)))
-                ),
+                defeated_by=tuple(sorted(set((*loser.defeated_by, *winner_ids)))),
             ),
             "higher_precedence_provision",
         )
@@ -1122,7 +1071,9 @@ def _related_ids(node: NormalizedIRNode, keys: tuple[str, ...]) -> tuple[str, ..
 def _compile_dependencies(
     artifact: NormalizedIRArtifact,
     constraints: tuple[LegalConstraint, ...],
-) -> tuple[tuple[LegalSourceBinding, ...], tuple[CompiledLegalProofObligation, ...], tuple[str, ...]]:
+) -> tuple[
+    tuple[LegalSourceBinding, ...], tuple[CompiledLegalProofObligation, ...], tuple[str, ...]
+]:
     selected_ids = {
         item.provision_id
         for item in constraints
@@ -1159,13 +1110,10 @@ def _compile_dependencies(
         ):
             reasons.add("untrusted_required_assumption")
     for node in artifact.assumptions:
-        provision_ids = _related_ids(
-            node, ("provision_ids", "norm_ids", "applies_to")
-        )
-        if (
-            not selected_ids.intersection(provision_ids)
-            or node.node_id in {item.provision_id for item in assumptions}
-        ):
+        provision_ids = _related_ids(node, ("provision_ids", "norm_ids", "applies_to"))
+        if not selected_ids.intersection(provision_ids) or node.node_id in {
+            item.provision_id for item in assumptions
+        }:
             continue
         assumptions.append(_binding(artifact, node))
         if (
@@ -1183,9 +1131,7 @@ def _compile_dependencies(
         if node is None:
             reasons.add("missing_required_proof_obligation")
             continue
-        provision_ids = _related_ids(
-            node, ("provision_ids", "norm_ids", "applies_to")
-        )
+        provision_ids = _related_ids(node, ("provision_ids", "norm_ids", "applies_to"))
         if not provision_ids:
             provision_ids = tuple(
                 sorted(
@@ -1218,9 +1164,7 @@ def _compile_dependencies(
     # Also compile globally declared dependencies that explicitly bind an
     # applicable provision, even when the provision omits the reverse edge.
     for node in artifact.obligations:
-        provision_ids = _related_ids(
-            node, ("provision_ids", "norm_ids", "applies_to")
-        )
+        provision_ids = _related_ids(node, ("provision_ids", "norm_ids", "applies_to"))
         if not selected_ids.intersection(provision_ids):
             continue
         if node.node_id in {item.obligation_id for item in obligations}:
@@ -1317,8 +1261,7 @@ class LegalConstraintAdapter:
         if (
             artifact.root_artifact_id != query.legal_root_artifact_id
             or artifact.root_cid_v1 != query.legal_root_cid_v1
-            or artifact.root_supervisor_digest
-            != query.legal_root_supervisor_digest
+            or artifact.root_supervisor_digest != query.legal_root_supervisor_digest
         ):
             return _failed_result(
                 query,
@@ -1330,8 +1273,7 @@ class LegalConstraintAdapter:
         if (
             not artifact.review_state.accepted
             or not artifact.trust_state.accepted
-            or artifact.declared_authority.value
-            not in {"authoritative", "verified"}
+            or artifact.declared_authority.value not in {"authoritative", "verified"}
         ):
             return _failed_result(
                 query,
@@ -1378,17 +1320,14 @@ class LegalConstraintAdapter:
             )
         )
         mandatory_unknown = any(
-            item.mandatory
-            and item.outcome is LegalApplicabilityOutcome.UNKNOWN
+            item.mandatory and item.outcome is LegalApplicabilityOutcome.UNKNOWN
             for item in constraints
         )
         has_review = any(
-            item.outcome is LegalApplicabilityOutcome.REVIEW_REQUIRED
-            for item in constraints
+            item.outcome is LegalApplicabilityOutcome.REVIEW_REQUIRED for item in constraints
         ) or bool(dependency_reasons)
         has_conflict = any(
-            item.outcome is LegalApplicabilityOutcome.CONFLICTING
-            for item in constraints
+            item.outcome is LegalApplicabilityOutcome.CONFLICTING for item in constraints
         )
         has_prohibition = any(
             item.outcome is LegalApplicabilityOutcome.APPLICABLE
@@ -1424,20 +1363,13 @@ class LegalConstraintAdapter:
         else:
             status = LegalCompilationStatus.COMPLETE
             applicable = any(
-                item.outcome is LegalApplicabilityOutcome.APPLICABLE
-                for item in constraints
+                item.outcome is LegalApplicabilityOutcome.APPLICABLE for item in constraints
             )
             if applicable:
                 outcome = LegalApplicabilityOutcome.APPLICABLE
-            elif any(
-                item.outcome is LegalApplicabilityOutcome.SUPERSEDED
-                for item in constraints
-            ):
+            elif any(item.outcome is LegalApplicabilityOutcome.SUPERSEDED for item in constraints):
                 outcome = LegalApplicabilityOutcome.SUPERSEDED
-            elif any(
-                item.outcome is LegalApplicabilityOutcome.EXPIRED
-                for item in constraints
-            ):
+            elif any(item.outcome is LegalApplicabilityOutcome.EXPIRED for item in constraints):
                 outcome = LegalApplicabilityOutcome.EXPIRED
             else:
                 outcome = LegalApplicabilityOutcome.INAPPLICABLE

@@ -237,9 +237,7 @@ async def search_models(
     except Exception as exc:
         logger.debug("search_models scanner failed: %s", exc)
 
-    return _normalize_payload(
-        {"query": query.strip(), "models": [], "count": 0}
-    )
+    return _normalize_payload({"query": query.strip(), "models": [], "count": 0})
 
 
 async def add_file_to_ipfs(file_path: str, pin: bool = True) -> Dict[str, Any]:
@@ -313,9 +311,7 @@ async def get_queue_status() -> Dict[str, Any]:
     except Exception as exc:
         logger.debug("get_queue_status backend failed: %s", exc)
 
-    return _normalize_payload(
-        {"queues": {}, "total_pending": 0, "total_processing": 0}
-    )
+    return _normalize_payload({"queues": {}, "total_pending": 0, "total_processing": 0})
 
 
 async def get_model_queues(model_type: Optional[str] = None) -> Dict[str, Any]:
@@ -348,9 +344,7 @@ async def get_network_status() -> Dict[str, Any]:
 
             peers = await anyio.to_thread.run_sync(client.swarm.peers)
             peer_count = len(peers.get("Peers", [])) if isinstance(peers, dict) else 0
-            return _normalize_payload(
-                {"connected": True, "peer_count": peer_count}
-            )
+            return _normalize_payload({"connected": True, "peer_count": peer_count})
     except Exception as exc:
         logger.debug("get_network_status kit failed: %s", exc)
 
@@ -443,8 +437,8 @@ async def get_system_status() -> Dict[str, Any]:
         mem = psutil.virtual_memory()
         system_info = {
             "cpu_percent": cpu_percent,
-            "memory_total_gb": round(mem.total / (1024 ** 3), 2),
-            "memory_used_gb": round(mem.used / (1024 ** 3), 2),
+            "memory_total_gb": round(mem.total / (1024**3), 2),
+            "memory_used_gb": round(mem.used / (1024**3), 2),
             "memory_percent": mem.percent,
         }
     except Exception:
@@ -507,9 +501,7 @@ async def get_endpoint_handlers_by_model(model_type: str) -> Dict[str, Any]:
     except Exception as exc:
         logger.debug("get_endpoint_handlers_by_model backend failed: %s", exc)
 
-    return _normalize_payload(
-        {"model_type": model_type.strip(), "handlers": [], "count": 0}
-    )
+    return _normalize_payload({"model_type": model_type.strip(), "handlers": [], "count": 0})
 
 
 def register_native_shared_tools(manager: Any) -> None:
@@ -632,9 +624,7 @@ def register_native_shared_tools(manager: Any) -> None:
         description="List available models (local, cached, or API-accessible).",
         input_schema={
             "type": "object",
-            "properties": {
-                "model_type": {"type": "string"}
-            },
+            "properties": {"model_type": {"type": "string"}},
         },
         runtime="fastapi",
         tags=["native", "shared", "models"],
@@ -655,9 +645,7 @@ def register_native_shared_tools(manager: Any) -> None:
         description="Get queue information per model type.",
         input_schema={
             "type": "object",
-            "properties": {
-                "model_type": {"type": "string"}
-            },
+            "properties": {"model_type": {"type": "string"}},
         },
         runtime="fastapi",
         tags=["native", "shared", "queue"],
@@ -739,9 +727,7 @@ def register_native_shared_tools(manager: Any) -> None:
         description="Get inference queue processing history.",
         input_schema={
             "type": "object",
-            "properties": {
-                "limit": {"type": "integer", "default": 50}
-            },
+            "properties": {"limit": {"type": "integer", "default": 50}},
         },
         runtime="fastapi",
         tags=["native", "shared", "queue"],
@@ -753,9 +739,7 @@ def register_native_shared_tools(manager: Any) -> None:
         description="Get details of inference endpoint(s).",
         input_schema={
             "type": "object",
-            "properties": {
-                "endpoint_id": {"type": "string"}
-            },
+            "properties": {"endpoint_id": {"type": "string"}},
         },
         runtime="fastapi",
         tags=["native", "shared", "endpoint"],
@@ -767,9 +751,7 @@ def register_native_shared_tools(manager: Any) -> None:
         description="Get endpoint handlers that support a specific model type.",
         input_schema={
             "type": "object",
-            "properties": {
-                "model_type": {"type": "string"}
-            },
+            "properties": {"model_type": {"type": "string"}},
             "required": ["model_type"],
         },
         runtime="fastapi",

@@ -53,12 +53,8 @@ V2_ROLLOUT_REPORT_SCHEMA: Final[str] = (
 V2_ROLLOUT_EVALUATION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/v2-rollout-evaluation@1"
 )
-V2_ROLLOUT_BINDING_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/v2-rollout-binding@1"
-)
-V2_ROLLOUT_POLICY_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/v2-rollout-policy@1"
-)
+V2_ROLLOUT_BINDING_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/v2-rollout-binding@1"
+V2_ROLLOUT_POLICY_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/v2-rollout-policy@1"
 V2_ROLLOUT_BEHAVIOR_ID: Final[str] = "behavior:self-improvement-v2@1"
 MAX_V2_ROLLOUT_REPORT_BYTES: Final[int] = 1_048_576
 MAX_V2_ROLLOUT_REASON_CODES: Final[int] = 256
@@ -221,9 +217,7 @@ def _canonical_json(value: Any) -> str:
 
 
 def _digest(value: Any) -> str:
-    return "sha256:" + hashlib.sha256(
-        _canonical_json(value).encode("utf-8")
-    ).hexdigest()
+    return "sha256:" + hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
 
 
 def _text(value: Any, name: str, *, maximum: int = 512) -> str:
@@ -259,9 +253,7 @@ def _timestamp(value: datetime | str, name: str) -> str:
         parsed = value
     else:
         try:
-            parsed = datetime.fromisoformat(
-                _text(value, name).replace("Z", "+00:00")
-            )
+            parsed = datetime.fromisoformat(_text(value, name).replace("Z", "+00:00"))
         except ValueError as exc:
             raise V2RolloutError(f"{name} must be an ISO timestamp") from exc
     if parsed.tzinfo is None:
@@ -277,9 +269,7 @@ def _reject_forbidden(value: Any) -> None:
     if isinstance(value, Mapping):
         for key, item in value.items():
             if str(key).lower() in _FORBIDDEN_KEYS:
-                raise V2RolloutError(
-                    "rollout payload contains forbidden unbounded content"
-                )
+                raise V2RolloutError("rollout payload contains forbidden unbounded content")
             _reject_forbidden(item)
     elif isinstance(value, (list, tuple)):
         for item in value:
@@ -302,9 +292,7 @@ def _strict_keys(
             detail.append("missing " + ", ".join(missing))
         if extras:
             detail.append("unexpected " + ", ".join(extras))
-        raise V2RolloutError(
-            f"{name} has invalid fields: {'; '.join(detail)}"
-        )
+        raise V2RolloutError(f"{name} has invalid fields: {'; '.join(detail)}")
 
 
 def _load_json(
@@ -351,9 +339,7 @@ class V2RolloutBinding:
 
     def __post_init__(self) -> None:
         for name in self.__dataclass_fields__:
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, maximum=512)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, maximum=512))
 
     @property
     def binding_id(self) -> str:
@@ -362,10 +348,7 @@ class V2RolloutBinding:
     def to_dict(self, *, include_binding_id: bool = False) -> dict[str, str]:
         payload = {
             "schema": V2_ROLLOUT_BINDING_SCHEMA,
-            **{
-                name: str(getattr(self, name))
-                for name in self.__dataclass_fields__
-            },
+            **{name: str(getattr(self, name)) for name in self.__dataclass_fields__},
         }
         if include_binding_id:
             payload["binding_id"] = self.binding_id
@@ -388,12 +371,7 @@ class V2RolloutBinding:
             raise V2RolloutError("v2 rollout binding has unsupported fields")
         if payload.get("schema") not in (None, V2_ROLLOUT_BINDING_SCHEMA):
             raise V2RolloutError("unsupported v2 rollout binding schema")
-        result = cls(
-            **{
-                name: payload.get(name, "")
-                for name in cls.__dataclass_fields__
-            }
-        )
+        result = cls(**{name: payload.get(name, "") for name in cls.__dataclass_fields__})
         if payload.get("binding_id") not in (None, "", result.binding_id):
             raise V2RolloutError("v2 rollout binding identity does not match")
         return result
@@ -409,9 +387,7 @@ class V2RolloutPolicy:
 
     policy_id: str = V2_FROZEN_POLICY_ID
     policy_revision: str = V2_FROZEN_POLICY_REVISION
-    approved_capability_ids: tuple[str, ...] = (
-        V2_FROZEN_CAPABILITY_ID,
-    )
+    approved_capability_ids: tuple[str, ...] = (V2_FROZEN_CAPABILITY_ID,)
     approved_behavior_ids: tuple[str, ...] = (V2_ROLLOUT_BEHAVIOR_ID,)
     allowed_modes: tuple[V2RolloutMode, ...] = (
         V2RolloutMode.OFF,
@@ -435,14 +411,12 @@ class V2RolloutPolicy:
                 raise V2RolloutError(f"{name} must be non-empty and unique")
             object.__setattr__(self, name, normalized)
         raw_modes = self.allowed_modes
-        if isinstance(raw_modes, (str, bytes)) or not isinstance(
-            raw_modes, Sequence
-        ):
+        if isinstance(raw_modes, (str, bytes)) or not isinstance(raw_modes, Sequence):
             raise V2RolloutError("allowed_modes must be a sequence")
         normalized_modes = tuple(
-            item for item in V2RolloutMode if item in {
-                _mode(raw, "allowed_modes") for raw in raw_modes
-            }
+            item
+            for item in V2RolloutMode
+            if item in {_mode(raw, "allowed_modes") for raw in raw_modes}
         )
         if not normalized_modes:
             raise V2RolloutError("allowed_modes cannot be empty")
@@ -456,9 +430,7 @@ class V2RolloutPolicy:
     def policy_binding_id(self) -> str:
         return _digest(self.to_dict())
 
-    def permits(
-        self, mode: V2RolloutMode, binding: V2RolloutBinding
-    ) -> bool:
+    def permits(self, mode: V2RolloutMode, binding: V2RolloutBinding) -> bool:
         return (
             mode in self.allowed_modes
             and binding.policy_id == self.policy_id
@@ -472,9 +444,7 @@ class V2RolloutPolicy:
             "schema": V2_ROLLOUT_POLICY_SCHEMA,
             "policy_id": self.policy_id,
             "policy_revision": self.policy_revision,
-            "approved_capability_ids": list(
-                self.approved_capability_ids
-            ),
+            "approved_capability_ids": list(self.approved_capability_ids),
             "approved_behavior_ids": list(self.approved_behavior_ids),
             "allowed_modes": [item.value for item in self.allowed_modes],
             "automatic_approved": self.automatic_approved,
@@ -497,9 +467,7 @@ class V2RolloutPolicy:
         result = cls(
             policy_id=payload["policy_id"],
             policy_revision=payload["policy_revision"],
-            approved_capability_ids=tuple(
-                payload["approved_capability_ids"]
-            ),
+            approved_capability_ids=tuple(payload["approved_capability_ids"]),
             approved_behavior_ids=tuple(payload["approved_behavior_ids"]),
             allowed_modes=tuple(payload["allowed_modes"]),
         )
@@ -522,17 +490,13 @@ def _corpus_identity(corpus: V2PairedBenchmarkCorpus) -> dict[str, str]:
         "capability_revision",
     )
     identities = [
-        receipt.identity
-        for case in corpus.cases
-        for receipt in (case.baseline, case.candidate)
+        receipt.identity for case in corpus.cases for receipt in (case.baseline, case.candidate)
     ]
     result: dict[str, str] = {}
     for name in names:
         values = {str(getattr(item, name)) for item in identities}
         if len(values) != 1:
-            raise V2RolloutError(
-                f"paired corpus has inconsistent {name} bindings"
-            )
+            raise V2RolloutError(f"paired corpus has inconsistent {name} bindings")
         result[name] = values.pop()
     return result
 
@@ -548,18 +512,14 @@ class V2RolloutEvaluation:
     ablation_receipts: tuple[V2AblationReceipt, ...]
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "evaluation_id", _code(self.evaluation_id, "evaluation_id")
-        )
+        object.__setattr__(self, "evaluation_id", _code(self.evaluation_id, "evaluation_id"))
         object.__setattr__(
             self,
             "evaluated_at",
             _timestamp(self.evaluated_at, "evaluated_at"),
         )
         if not isinstance(self.corpus, V2PairedBenchmarkCorpus):
-            raise V2RolloutError(
-                "corpus must be V2PairedBenchmarkCorpus"
-            )
+            raise V2RolloutError("corpus must be V2PairedBenchmarkCorpus")
         for name, item_type in (
             ("producer_receipts", V2ProducerReceipt),
             ("ablation_receipts", V2AblationReceipt),
@@ -569,9 +529,7 @@ class V2RolloutEvaluation:
                 raise V2RolloutError(f"{name} must be a sequence")
             normalized = tuple(raw)
             if any(not isinstance(item, item_type) for item in normalized):
-                raise V2RolloutError(
-                    f"{name} contains an unsupported receipt"
-                )
+                raise V2RolloutError(f"{name} contains an unsupported receipt")
             object.__setattr__(self, name, normalized)
         # Reject cross-fixture identity drift before it can be summarized.
         _corpus_identity(self.corpus)
@@ -584,12 +542,8 @@ class V2RolloutEvaluation:
                 "evaluation_id": self.evaluation_id,
                 "evaluated_at": self.evaluated_at,
                 "corpus_id": self.corpus.corpus_id,
-                "producer_receipt_ids": [
-                    item.receipt_id for item in self.producer_receipts
-                ],
-                "ablation_receipt_ids": [
-                    item.receipt_id for item in self.ablation_receipts
-                ],
+                "producer_receipt_ids": [item.receipt_id for item in self.producer_receipts],
+                "ablation_receipt_ids": [item.receipt_id for item in self.ablation_receipts],
             }
         )
 
@@ -629,9 +583,7 @@ class V2RolloutEvaluationResult:
                 dimension.value: self.threshold_status[dimension]
                 for dimension in REQUIRED_V2_OBJECTIVE_DIMENSIONS
             },
-            "regression_dimensions": [
-                item.value for item in self.regression_dimensions
-            ],
+            "regression_dimensions": [item.value for item in self.regression_dimensions],
             "failure_codes": list(self.failure_codes),
             "passed": self.passed,
         }
@@ -654,32 +606,18 @@ def _zero_failure_counts(
     benchmark: V2BenchmarkReport,
     report: V2SelfEvaluationReport,
 ) -> Mapping[str, int]:
-    candidate_metrics = tuple(
-        case.candidate.metrics for case in evaluation.corpus.cases
-    )
-    safety_receipt = _candidate_receipt(
-        evaluation, V2ObjectiveDimension.SAFETY
-    )
-    cache_receipt = _candidate_receipt(
-        evaluation, V2ObjectiveDimension.CACHE
-    )
-    validation_receipt = _candidate_receipt(
-        evaluation, V2ObjectiveDimension.VALIDATION
-    )
-    refill_receipt = _candidate_receipt(
-        evaluation, V2ObjectiveDimension.REFILL
-    )
+    candidate_metrics = tuple(case.candidate.metrics for case in evaluation.corpus.cases)
+    safety_receipt = _candidate_receipt(evaluation, V2ObjectiveDimension.SAFETY)
+    cache_receipt = _candidate_receipt(evaluation, V2ObjectiveDimension.CACHE)
+    validation_receipt = _candidate_receipt(evaluation, V2ObjectiveDimension.VALIDATION)
+    refill_receipt = _candidate_receipt(evaluation, V2ObjectiveDimension.REFILL)
 
-    def numerator(
-        receipt: V2ProducerReceipt | None, metric: str
-    ) -> int:
+    def numerator(receipt: V2ProducerReceipt | None, metric: str) -> int:
         if receipt is None or metric not in receipt.metric_samples:
             return 1
         return receipt.metric_samples[metric].numerator
 
-    def incomplete(
-        receipt: V2ProducerReceipt | None, metric: str
-    ) -> int:
+    def incomplete(receipt: V2ProducerReceipt | None, metric: str) -> int:
         if receipt is None or metric not in receipt.metric_samples:
             return 1
         sample = receipt.metric_samples[metric]
@@ -690,40 +628,20 @@ def _zero_failure_counts(
         "authority": (
             sum(item.authority_violation_count for item in candidate_metrics)
             + sum(item.false_completion_count for item in candidate_metrics)
-            + sum(
-                item.untrusted_repository_mutation_count
-                for item in candidate_metrics
-            )
+            + sum(item.untrusted_repository_mutation_count for item in candidate_metrics)
         ),
         "escaped-defect": (
-            sum(
-                item.escaped_validation_failure_count
-                for item in candidate_metrics
-            )
-            + sum(
-                item.escaped_proof_failure_count
-                for item in candidate_metrics
-            )
-            + sum(
-                item.merge_safety_violation_count
-                for item in candidate_metrics
-            )
-            + numerator(
-                validation_receipt, "escaped-seeded-defect-rate"
-            )
+            sum(item.escaped_validation_failure_count for item in candidate_metrics)
+            + sum(item.escaped_proof_failure_count for item in candidate_metrics)
+            + sum(item.merge_safety_violation_count for item in candidate_metrics)
+            + numerator(validation_receipt, "escaped-seeded-defect-rate")
         ),
         "stale-hit": (
-            sum(
-                item.stale_authoritative_cache_hit_count
-                for item in candidate_metrics
-            )
+            sum(item.stale_authoritative_cache_hit_count for item in candidate_metrics)
             + numerator(cache_receipt, "stale-authoritative-hit-rate")
         ),
         "idempotency": (
-            sum(
-                item.restart_inconsistency_count
-                for item in candidate_metrics
-            )
+            sum(item.restart_inconsistency_count for item in candidate_metrics)
             + incomplete(refill_receipt, "exact-replay-noop-rate")
             + numerator(refill_receipt, "duplicate-successor-rate")
         ),
@@ -747,9 +665,7 @@ def _failure_codes(
     report: V2SelfEvaluationReport,
     zero_counts: Mapping[str, int],
 ) -> tuple[str, ...]:
-    reasons: set[str] = {
-        f"zero-failure:{name}" for name, count in zero_counts.items() if count
-    }
+    reasons: set[str] = {f"zero-failure:{name}" for name, count in zero_counts.items() if count}
     if not benchmark.population_complete:
         reasons.add("benchmark:population")
     if not benchmark.baseline_candidate_paired:
@@ -773,9 +689,7 @@ def _recompute_v2_rollout_evaluation(
     evaluation: V2RolloutEvaluation,
 ) -> tuple[V2RolloutEvaluationResult, V2SelfEvaluationReport]:
     if not isinstance(evaluation, V2RolloutEvaluation):
-        raise V2RolloutError(
-            "evaluation must be V2RolloutEvaluation source evidence"
-        )
+        raise V2RolloutError("evaluation must be V2RolloutEvaluation source evidence")
     benchmark = build_v2_benchmark_report(evaluation.corpus)
     report = evaluate_v2_self_improvement(
         evaluation.corpus,
@@ -860,19 +774,14 @@ def _cross_evaluation_regressions(
         if (
             set(before.candidate_values_millionths) != set(expected_metrics)
             or set(after.candidate_values_millionths) != set(expected_metrics)
-            or before.baseline_values_millionths
-            != after.baseline_values_millionths
+            or before.baseline_values_millionths != after.baseline_values_millionths
         ):
             failures.append(f"stale-baseline:{dimension.value}")
             continue
         for metric, direction in expected_metrics.items():
             old = before.candidate_values_millionths[metric]
             new = after.candidate_values_millionths[metric]
-            regressed = (
-                new < old
-                if direction is V2MetricDirection.HIGHER
-                else new > old
-            )
+            regressed = new < old if direction is V2MetricDirection.HIGHER else new > old
             if regressed:
                 failures.append(f"regression:{dimension.value}:{metric}")
     return tuple(sorted(failures))
@@ -900,28 +809,13 @@ class V2RolloutReport:
         if not isinstance(self.policy, V2RolloutPolicy):
             raise V2RolloutError("policy must be V2RolloutPolicy")
         if not isinstance(self.qualification, V2RolloutEvaluationResult):
-            raise V2RolloutError(
-                "qualification must be V2RolloutEvaluationResult"
-            )
-        if self.current is not None and not isinstance(
-            self.current, V2RolloutEvaluationResult
-        ):
-            raise V2RolloutError(
-                "current must be V2RolloutEvaluationResult or None"
-            )
-        object.__setattr__(
-            self, "desired_mode", _mode(self.desired_mode, "desired_mode")
-        )
-        object.__setattr__(
-            self, "effective_mode", _mode(self.effective_mode, "effective_mode")
-        )
-        reasons = tuple(
-            sorted(_code(item, "reason_codes") for item in self.reason_codes)
-        )
-        if (
-            len(reasons) > MAX_V2_ROLLOUT_REASON_CODES
-            or len(reasons) != len(set(reasons))
-        ):
+            raise V2RolloutError("qualification must be V2RolloutEvaluationResult")
+        if self.current is not None and not isinstance(self.current, V2RolloutEvaluationResult):
+            raise V2RolloutError("current must be V2RolloutEvaluationResult or None")
+        object.__setattr__(self, "desired_mode", _mode(self.desired_mode, "desired_mode"))
+        object.__setattr__(self, "effective_mode", _mode(self.effective_mode, "effective_mode"))
+        reasons = tuple(sorted(_code(item, "reason_codes") for item in self.reason_codes))
+        if len(reasons) > MAX_V2_ROLLOUT_REASON_CODES or len(reasons) != len(set(reasons)):
             raise V2RolloutError("rollout reason codes must be unique and bounded")
         object.__setattr__(self, "reason_codes", reasons)
         for name in (
@@ -933,13 +827,11 @@ class V2RolloutReport:
             if not isinstance(getattr(self, name), bool):
                 raise V2RolloutError(f"{name} must be a boolean")
         if self.effective_mode is V2RolloutMode.AUTOMATIC and not (
-            self.desired_mode is V2RolloutMode.AUTOMATIC
-            and self.automatic_ready
+            self.desired_mode is V2RolloutMode.AUTOMATIC and self.automatic_ready
         ):
             raise V2RolloutError("automatic mode requires the complete gate")
         if self.effective_mode is V2RolloutMode.ASSIST and not (
-            self.desired_mode is V2RolloutMode.ASSIST
-            and self.qualification_gate_passed
+            self.desired_mode is V2RolloutMode.ASSIST and self.qualification_gate_passed
         ):
             raise V2RolloutError("assist mode requires the qualification gate")
         if self.desired_mode is V2RolloutMode.OFF:
@@ -948,10 +840,7 @@ class V2RolloutReport:
         elif self.desired_mode is V2RolloutMode.SHADOW:
             if self.effective_mode is not V2RolloutMode.SHADOW:
                 raise V2RolloutError("shadow mode cannot gain authority")
-        elif (
-            self.effective_mode
-            not in {self.desired_mode, V2RolloutMode.SHADOW}
-        ):
+        elif self.effective_mode not in {self.desired_mode, V2RolloutMode.SHADOW}:
             raise V2RolloutError("a failed gate must return behavior to shadow")
         if len(self.canonical_bytes()) > MAX_V2_ROLLOUT_REPORT_BYTES:
             raise V2RolloutError("v2 rollout report exceeds its byte bound")
@@ -1024,9 +913,7 @@ class V2RolloutReport:
         return _canonical_json(self.to_dict()).encode("utf-8")
 
     def to_json(self, *, include_report_id: bool = True) -> str:
-        return _canonical_json(
-            self.to_dict(include_report_id=include_report_id)
-        )
+        return _canonical_json(self.to_dict(include_report_id=include_report_id))
 
     @classmethod
     def from_dict(
@@ -1052,9 +939,7 @@ class V2RolloutReport:
         actual = dict(payload)
         claimed_id = actual.pop("report_id", expected.report_id)
         if actual != expected.to_dict():
-            raise V2RolloutError(
-                "persisted rollout report does not match source replay"
-            )
+            raise V2RolloutError("persisted rollout report does not match source replay")
         if claimed_id != expected.report_id:
             raise V2RolloutError("v2 rollout report identity does not match")
         return expected
@@ -1072,9 +957,7 @@ class V2RolloutReport:
             name="v2 rollout report",
             maximum=MAX_V2_ROLLOUT_REPORT_BYTES,
         )
-        return cls.from_dict(
-            payload, qualification=qualification, current=current
-        )
+        return cls.from_dict(payload, qualification=qualification, current=current)
 
 
 def evaluate_v2_self_improvement_rollout(
@@ -1088,14 +971,10 @@ def evaluate_v2_self_improvement_rollout(
     """Recompute source evidence and derive a fail-closed rollout mode."""
 
     if not isinstance(qualification, V2RolloutEvaluation):
-        raise V2RolloutError(
-            "qualification must be a V2RolloutEvaluation"
-        )
+        raise V2RolloutError("qualification must be a V2RolloutEvaluation")
     desired = _mode(desired_mode, "desired_mode")
     if binding is None:
-        normalized_binding = V2RolloutBinding.from_corpus(
-            qualification.corpus
-        )
+        normalized_binding = V2RolloutBinding.from_corpus(qualification.corpus)
     elif isinstance(binding, V2RolloutBinding):
         normalized_binding = binding
     else:
@@ -1104,36 +983,23 @@ def evaluate_v2_self_improvement_rollout(
         normalized_policy = V2RolloutPolicy(
             policy_id=normalized_binding.policy_id,
             policy_revision=normalized_binding.policy_revision,
-            approved_capability_ids=(
-                normalized_binding.capability_id,
-            ),
+            approved_capability_ids=(normalized_binding.capability_id,),
             approved_behavior_ids=(normalized_binding.behavior_id,),
         )
     elif isinstance(policy, V2RolloutPolicy):
         normalized_policy = policy
     else:
         normalized_policy = V2RolloutPolicy.from_dict(policy)
-    if current_evaluation is not None and not isinstance(
-        current_evaluation, V2RolloutEvaluation
-    ):
-        raise V2RolloutError(
-            "current_evaluation must be V2RolloutEvaluation"
-        )
+    if current_evaluation is not None and not isinstance(current_evaluation, V2RolloutEvaluation):
+        raise V2RolloutError("current_evaluation must be V2RolloutEvaluation")
 
-    qualifying_result, qualifying_self_report = (
-        _recompute_v2_rollout_evaluation(qualification)
-    )
+    qualifying_result, qualifying_self_report = _recompute_v2_rollout_evaluation(qualification)
     current_result = None
     current_self_report = None
     if current_evaluation is not None:
-        current_result, current_self_report = (
-            _recompute_v2_rollout_evaluation(current_evaluation)
-        )
+        current_result, current_self_report = _recompute_v2_rollout_evaluation(current_evaluation)
     reasons: set[str] = set()
-    reasons.update(
-        f"qualification:{item}"
-        for item in qualifying_result.failure_codes
-    )
+    reasons.update(f"qualification:{item}" for item in qualifying_result.failure_codes)
 
     qualification_identity_matches = _identity_matches(
         qualifying_result.source_identity,
@@ -1142,28 +1008,20 @@ def evaluate_v2_self_improvement_rollout(
     )
     if not qualification_identity_matches:
         reasons.add("stale-binding:qualification")
-    policy_permits = normalized_policy.permits(
-        desired, normalized_binding
-    )
+    policy_permits = normalized_policy.permits(desired, normalized_binding)
     if desired is not V2RolloutMode.OFF and not policy_permits:
         reasons.add(f"policy-mode-not-approved:{desired.value}")
 
     qualification_gate_passed = bool(
         qualifying_result.passed
         and qualification_identity_matches
-        and (
-            desired is V2RolloutMode.OFF
-            or desired is V2RolloutMode.SHADOW
-            or policy_permits
-        )
+        and (desired is V2RolloutMode.OFF or desired is V2RolloutMode.SHADOW or policy_permits)
     )
 
     current_tree_gate_passed = False
     cross_regressions: tuple[str, ...] = ()
     if current_result is not None:
-        reasons.update(
-            f"current:{item}" for item in current_result.failure_codes
-        )
+        reasons.update(f"current:{item}" for item in current_result.failure_codes)
         current_identity_matches = _identity_matches(
             current_result.source_identity,
             normalized_binding,
@@ -1173,8 +1031,7 @@ def evaluate_v2_self_improvement_rollout(
             reasons.add("stale-binding:current")
         distinct = (
             qualification.evidence_id != current_evaluation.evidence_id
-            and qualification.evaluation_id
-            != current_evaluation.evaluation_id
+            and qualification.evaluation_id != current_evaluation.evaluation_id
         )
         if not distinct:
             reasons.add("current-evaluation-not-separate")
@@ -1223,8 +1080,7 @@ def evaluate_v2_self_improvement_rollout(
         effective = V2RolloutMode.SHADOW
 
     rollback_reasons = any(
-        reason.startswith(("stale-binding:", "regression:", "current:"))
-        for reason in reasons
+        reason.startswith(("stale-binding:", "regression:", "current:")) for reason in reasons
     )
     rollback_applied = bool(
         desired in {V2RolloutMode.ASSIST, V2RolloutMode.AUTOMATIC}
@@ -1255,9 +1111,7 @@ def verify_v2_rollout_report(
     """Reject a persisted decision unless source replay reproduces it."""
 
     payload = (
-        report.to_dict(include_report_id=True)
-        if isinstance(report, V2RolloutReport)
-        else report
+        report.to_dict(include_report_id=True) if isinstance(report, V2RolloutReport) else report
     )
     if not isinstance(payload, Mapping):
         raise V2RolloutError("report must be a V2RolloutReport or object")
@@ -1303,9 +1157,7 @@ Generation2RolloutReport = V2RolloutReport
 PairedV2RolloutPolicy = V2RolloutPolicy
 PairedV2RolloutReport = V2RolloutReport
 evaluate_generation2_rollout = evaluate_v2_self_improvement_rollout
-evaluate_paired_v2_self_improvement_rollout = (
-    evaluate_v2_self_improvement_rollout
-)
+evaluate_paired_v2_self_improvement_rollout = evaluate_v2_self_improvement_rollout
 evaluate_v2_rollout = evaluate_v2_self_improvement_rollout
 
 

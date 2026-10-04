@@ -82,10 +82,11 @@ conversation = [
     },
     {
         "role": "assistant",
-        "content": [{"type": "text", "text": "This image shows a red stop sign."},]
+        "content": [
+            {"type": "text", "text": "This image shows a red stop sign."},
+        ],
     },
     {
-
         "role": "user",
         "content": [
             {"type": "text", "text": "Describe the image in more details."},
@@ -97,7 +98,7 @@ text_prompt = processor.apply_chat_template(conversation, add_generation_prompt=
 
 # Note that the template simply formats your prompt, you still have to tokenize it and obtain pixel values for your images
 print(text_prompt)
-'<|im_start|>user\n<image>What is shown in this image?<|im_end|>\n<|im_start|>assistant\nPage showing the list of options.<|im_end|>'
+"<|im_start|>user\n<image>What is shown in this image?<|im_end|>\n<|im_start|>assistant\nPage showing the list of options.<|im_end|>"
 ```
 
 🚀 **Bonus:** If you're using `transformers>=4.49.0`, you can also get a vectorized output from `apply_chat_template`. See the **Usage Examples** below for more details on how to use it.
@@ -117,12 +118,12 @@ Here's how to load the model and perform inference in half-precision (`torch.flo
 from transformers import AutoProcessor, LlavaOnevisionForConditionalGeneration
 import torch
 
-processor = AutoProcessor.from_pretrained("llava-hf/llava-onevision-qwen2-7b-ov-hf") 
+processor = AutoProcessor.from_pretrained("llava-hf/llava-onevision-qwen2-7b-ov-hf")
 model = LlavaOnevisionForConditionalGeneration.from_pretrained(
     "llava-hf/llava-onevision-qwen2-7b-ov-hf",
     torch_dtype=torch.float16,
     low_cpu_mem_usage=True,
-    device_map="cuda:0"
+    device_map="cuda:0",
 )
 
 # prepare image and text prompt, using the appropriate prompt template
@@ -136,13 +137,15 @@ conversation = [
         ],
     },
 ]
-inputs = processor.apply_chat_template(conversation, add_generation_prompt=True, tokenize=True, return_dict=True, return_tensors="pt")
+inputs = processor.apply_chat_template(
+    conversation, add_generation_prompt=True, tokenize=True, return_dict=True, return_tensors="pt"
+)
 inputs = inputs.to("cuda:0", torch.float16)
 
 # autoregressively complete prompt
 output = model.generate(**inputs, max_new_tokens=100)
 print(processor.decode(output[0], skip_special_tokens=True))
-'user\n\nWhat is shown in this image?\nassistant\nThe image shows a radar chart, also known as a spider chart or a star chart, which is used to compare multiple quantitative variables. Each axis represents a different variable, and the chart is filled with'
+"user\n\nWhat is shown in this image?\nassistant\nThe image shows a radar chart, also known as a spider chart or a star chart, which is used to compare multiple quantitative variables. Each axis represents a different variable, and the chart is filled with"
 ```
 
 ### Multi image inference
@@ -156,7 +159,9 @@ import torch
 from transformers import AutoProcessor, LlavaOnevisionForConditionalGeneration
 
 # Load the model in half-precision
-model = LlavaOnevisionForConditionalGeneration.from_pretrained("llava-hf/llava-onevision-qwen2-7b-ov-hf", torch_dtype=torch.float16, device_map="auto")
+model = LlavaOnevisionForConditionalGeneration.from_pretrained(
+    "llava-hf/llava-onevision-qwen2-7b-ov-hf", torch_dtype=torch.float16, device_map="auto"
+)
 processor = AutoProcessor.from_pretrained("llava-hf/llava-onevision-qwen2-7b-ov-hf")
 
 # Prepare a batch of two prompts, where the first one is a multi-turn conversation and the second is not
@@ -166,20 +171,20 @@ conversation_1 = [
         "content": [
             {"type": "image", "url": "https://www.ilankelman.org/stopsigns/australia.jpg"},
             {"type": "text", "text": "What is shown in this image?"},
-            ],
+        ],
     },
     {
         "role": "assistant",
         "content": [
             {"type": "text", "text": "There is a red stop sign in the image."},
-            ],
+        ],
     },
     {
         "role": "user",
         "content": [
             {"type": "image", "url": "http://images.cocodataset.org/val2017/000000039769.jpg"},
             {"type": "text", "text": "What about this image? How many cats do you see?"},
-            ],
+        ],
     },
 ]
 
@@ -187,9 +192,12 @@ conversation_2 = [
     {
         "role": "user",
         "content": [
-            {"type": "image", "url": "https://huggingface.co/microsoft/kosmos-2-patch14-224/resolve/main/snowman.jpg"},
+            {
+                "type": "image",
+                "url": "https://huggingface.co/microsoft/kosmos-2-patch14-224/resolve/main/snowman.jpg",
+            },
             {"type": "text", "text": "What is shown in this image?"},
-            ],
+        ],
     },
 ]
 
@@ -199,13 +207,16 @@ inputs = processor.apply_chat_template(
     tokenize=True,
     return_dict=True,
     padding=True,
-    return_tensors="pt"
+    return_tensors="pt",
 ).to(model.device, torch.float16)
 
 # Generate
 generate_ids = model.generate(**inputs, max_new_tokens=30)
 processor.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-['user\n\nWhat is shown in this image?\nassistant\nThere is a red stop sign in the image.\nuser\n\nWhat about this image? How many cats do you see?\nassistant\ntwo', 'user\n\nWhat is shown in this image?\nassistant\n']
+[
+    "user\n\nWhat is shown in this image?\nassistant\nThere is a red stop sign in the image.\nuser\n\nWhat about this image? How many cats do you see?\nassistant\ntwo",
+    "user\n\nWhat is shown in this image?\nassistant\n",
+]
 ```
 
 ### Video inference
@@ -273,7 +284,9 @@ quantization_config = BitsAndBytesConfig(
     bnb_4bit_compute_dtype=torch.float16,
 )
 
-model = LlavaOnevisionForConditionalGeneration.from_pretrained(model_id, quantization_config=quantization_config, device_map="auto")
+model = LlavaOnevisionForConditionalGeneration.from_pretrained(
+    model_id, quantization_config=quantization_config, device_map="auto"
+)
 ```
 
 ### Use Flash-Attention 2 to further speed-up generation
@@ -284,10 +297,7 @@ First make sure to install flash-attn. Refer to the [original repository of Flas
 from transformers import LlavaOnevisionForConditionalGeneration
 
 model = LlavaOnevisionForConditionalGeneration.from_pretrained(
-    model_id,
-    torch_dtype=torch.float16,
-    low_cpu_mem_usage=True,
-    use_flash_attention_2=True
+    model_id, torch_dtype=torch.float16, low_cpu_mem_usage=True, use_flash_attention_2=True
 ).to(0)
 ```
 

@@ -62,7 +62,9 @@ def _load_graph_tools_api() -> Dict[str, Any]:
             "graph_provenance_verify": _graph_provenance_verify,
         }
     except Exception:
-        logger.warning("Source graph_tools import unavailable, using fallback graph-tools functions")
+        logger.warning(
+            "Source graph_tools import unavailable, using fallback graph-tools functions"
+        )
 
         transactions: Dict[str, Dict[str, Any]] = {}
         indexes: Dict[str, Dict[str, Any]] = {}
@@ -474,7 +476,9 @@ async def graph_transaction_begin(driver_url: Optional[str] = None) -> Dict[str,
     if normalized_driver_url is not None and not normalized_driver_url:
         return _error_result("driver_url must be a non-empty string when provided")
     try:
-        payload = await _await_maybe(_API["graph_transaction_begin"](driver_url=normalized_driver_url))
+        payload = await _await_maybe(
+            _API["graph_transaction_begin"](driver_url=normalized_driver_url)
+        )
     except Exception as exc:
         return _error_result(f"graph_transaction_begin failed: {exc}")
     normalized = _normalize_delegate_payload(payload)
@@ -500,7 +504,9 @@ async def graph_transaction_commit(
             )
         )
     except Exception as exc:
-        return _error_result(f"graph_transaction_commit failed: {exc}", transaction_id=normalized_transaction_id)
+        return _error_result(
+            f"graph_transaction_commit failed: {exc}", transaction_id=normalized_transaction_id
+        )
     normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("transaction_id", normalized_transaction_id)
     return normalized
@@ -525,7 +531,9 @@ async def graph_transaction_rollback(
             )
         )
     except Exception as exc:
-        return _error_result(f"graph_transaction_rollback failed: {exc}", transaction_id=normalized_transaction_id)
+        return _error_result(
+            f"graph_transaction_rollback failed: {exc}", transaction_id=normalized_transaction_id
+        )
     normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("transaction_id", normalized_transaction_id)
     return normalized
@@ -602,7 +610,9 @@ async def graph_constraint_add(
             )
         )
     except Exception as exc:
-        return _error_result(f"graph_constraint_add failed: {exc}", constraint_name=normalized_constraint_name)
+        return _error_result(
+            f"graph_constraint_add failed: {exc}", constraint_name=normalized_constraint_name
+        )
     normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("constraint_name", normalized_constraint_name)
     return normalized
@@ -629,7 +639,9 @@ async def query_knowledge_graph(
     if not isinstance(max_results, int) or max_results < 1:
         return _error_result("max_results must be an integer >= 1", max_results=max_results)
     if not isinstance(include_metadata, bool):
-        return _error_result("include_metadata must be a boolean", include_metadata=include_metadata)
+        return _error_result(
+            "include_metadata must be a boolean", include_metadata=include_metadata
+        )
     if ir_ops is not None and (
         not isinstance(ir_ops, list) or not all(isinstance(item, dict) for item in ir_ops)
     ):
@@ -643,9 +655,13 @@ async def query_knowledge_graph(
         ("ipfs_backend", ipfs_backend),
     ):
         if value is not None and not str(value).strip():
-            return _error_result(f"{field} must be a non-empty string when provided", **{field: value})
+            return _error_result(
+                f"{field} must be a non-empty string when provided", **{field: value}
+            )
     if not isinstance(car_fetch_mode, str) or not car_fetch_mode.strip():
-        return _error_result("car_fetch_mode must be a non-empty string", car_fetch_mode=car_fetch_mode)
+        return _error_result(
+            "car_fetch_mode must be a non-empty string", car_fetch_mode=car_fetch_mode
+        )
     try:
         payload = await _await_maybe(
             _API["query_knowledge_graph"](
@@ -682,7 +698,9 @@ async def graph_search_hybrid(
     if not normalized_query:
         return _error_result("query must be provided", query=query)
     if normalized_search_type not in _VALID_GRAPH_SEARCH_TYPES:
-        return _error_result("search_type must be one of: hybrid, keyword, semantic", search_type=search_type)
+        return _error_result(
+            "search_type must be one of: hybrid, keyword, semantic", search_type=search_type
+        )
     if not isinstance(limit, int) or limit < 1:
         return _error_result("limit must be an integer >= 1", limit=limit)
     if normalized_driver_url is not None and not normalized_driver_url:
@@ -718,7 +736,9 @@ async def graph_srl_extract(
     if not isinstance(return_triples, bool):
         return _error_result("return_triples must be a boolean", return_triples=return_triples)
     if not isinstance(return_temporal_graph, bool):
-        return _error_result("return_temporal_graph must be a boolean", return_temporal_graph=return_temporal_graph)
+        return _error_result(
+            "return_temporal_graph must be a boolean", return_temporal_graph=return_temporal_graph
+        )
     try:
         payload = await _await_maybe(
             _API["graph_srl_extract"](
@@ -749,7 +769,9 @@ async def graph_ontology_materialize(
     if schema is not None and not isinstance(schema, dict):
         return _error_result("schema must be an object when provided", schema=schema)
     if not isinstance(check_consistency, bool):
-        return _error_result("check_consistency must be a boolean", check_consistency=check_consistency)
+        return _error_result(
+            "check_consistency must be a boolean", check_consistency=check_consistency
+        )
     if not isinstance(explain, bool):
         return _error_result("explain must be a boolean", explain=explain)
     if normalized_driver_url is not None and not normalized_driver_url:
@@ -765,7 +787,9 @@ async def graph_ontology_materialize(
             )
         )
     except Exception as exc:
-        return _error_result(f"graph_ontology_materialize failed: {exc}", graph_name=normalized_graph_name)
+        return _error_result(
+            f"graph_ontology_materialize failed: {exc}", graph_name=normalized_graph_name
+        )
     normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("graph_name", normalized_graph_name)
     return normalized
@@ -785,9 +809,13 @@ async def graph_distributed_execute(
     if not normalized_query:
         return _error_result("query must be provided", query=query)
     if not isinstance(num_partitions, int) or num_partitions < 1:
-        return _error_result("num_partitions must be an integer >= 1", num_partitions=num_partitions)
+        return _error_result(
+            "num_partitions must be an integer >= 1", num_partitions=num_partitions
+        )
     if not normalized_strategy:
-        return _error_result("partition_strategy must be a non-empty string", partition_strategy=partition_strategy)
+        return _error_result(
+            "partition_strategy must be a non-empty string", partition_strategy=partition_strategy
+        )
     if not isinstance(parallel, bool):
         return _error_result("parallel must be a boolean", parallel=parallel)
     if not isinstance(explain, bool):
@@ -813,14 +841,18 @@ async def graph_distributed_execute(
     return normalized
 
 
-async def graph_graphql_query(query: str, kg_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+async def graph_graphql_query(
+    query: str, kg_data: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
     normalized_query = str(query or "").strip()
     if not normalized_query:
         return _error_result("query must be provided", query=query)
     if kg_data is not None and not isinstance(kg_data, dict):
         return _error_result("kg_data must be an object when provided", kg_data=kg_data)
     try:
-        payload = await _await_maybe(_API["graph_graphql_query"](query=normalized_query, kg_data=kg_data))
+        payload = await _await_maybe(
+            _API["graph_graphql_query"](query=normalized_query, kg_data=kg_data)
+        )
     except Exception as exc:
         return _error_result(f"graph_graphql_query failed: {exc}", query=normalized_query)
     normalized = _normalize_delegate_payload(payload)
@@ -842,11 +874,15 @@ async def graph_visualize(
     if kg_data is not None and not isinstance(kg_data, dict):
         return _error_result("kg_data must be an object when provided", kg_data=kg_data)
     if max_entities is not None and (not isinstance(max_entities, int) or max_entities < 1):
-        return _error_result("max_entities must be null or an integer >= 1", max_entities=max_entities)
+        return _error_result(
+            "max_entities must be null or an integer >= 1", max_entities=max_entities
+        )
     if not isinstance(directed, bool):
         return _error_result("directed must be a boolean", directed=directed)
     if normalized_graph_name is not None and not normalized_graph_name:
-        return _error_result("graph_name must be a non-empty string when provided", graph_name=graph_name)
+        return _error_result(
+            "graph_name must be a non-empty string when provided", graph_name=graph_name
+        )
     try:
         payload = await _await_maybe(
             _API["graph_visualize"](
@@ -878,9 +914,13 @@ async def graph_complete_suggestions(
     if not isinstance(min_score, (int, float)) or not 0.0 <= float(min_score) <= 1.0:
         return _error_result("min_score must be a number between 0.0 and 1.0", min_score=min_score)
     if not isinstance(max_suggestions, int) or max_suggestions < 1:
-        return _error_result("max_suggestions must be an integer >= 1", max_suggestions=max_suggestions)
+        return _error_result(
+            "max_suggestions must be an integer >= 1", max_suggestions=max_suggestions
+        )
     if entity_id is not None and not normalized_entity_id:
-        return _error_result("entity_id must be a non-empty string when provided", entity_id=entity_id)
+        return _error_result(
+            "entity_id must be a non-empty string when provided", entity_id=entity_id
+        )
     if rel_type is not None and not normalized_rel_type:
         return _error_result("rel_type must be a non-empty string when provided", rel_type=rel_type)
     try:
@@ -933,7 +973,9 @@ async def graph_explain(
     if normalized_explain_type in {"path", "why_connected"} and (
         not normalized_start or not normalized_end
     ):
-        return _error_result("start_entity_id and end_entity_id are required for path-based explain_type")
+        return _error_result(
+            "start_entity_id and end_entity_id are required for path-based explain_type"
+        )
     try:
         payload = await _await_maybe(
             _API["graph_explain"](
@@ -1189,7 +1231,11 @@ def register_native_graph_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "query": {"type": "string", "minLength": 1},
-                "search_type": {"type": "string", "enum": sorted(_VALID_GRAPH_SEARCH_TYPES), "default": "semantic"},
+                "search_type": {
+                    "type": "string",
+                    "enum": sorted(_VALID_GRAPH_SEARCH_TYPES),
+                    "default": "semantic",
+                },
                 "limit": {"type": "integer", "minimum": 1, "default": 10},
                 "driver_url": {"type": ["string", "null"]},
             },
@@ -1284,7 +1330,11 @@ def register_native_graph_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "format": {"type": "string", "enum": sorted(_VALID_GRAPH_VISUALIZE_FORMATS), "default": "dot"},
+                "format": {
+                    "type": "string",
+                    "enum": sorted(_VALID_GRAPH_VISUALIZE_FORMATS),
+                    "default": "dot",
+                },
                 "kg_data": {"type": ["object", "null"]},
                 "max_entities": {"type": ["integer", "null"], "minimum": 1},
                 "directed": {"type": "boolean", "default": True},
@@ -1324,7 +1374,11 @@ def register_native_graph_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "explain_type": {"type": "string", "enum": sorted(_VALID_GRAPH_EXPLAIN_TYPES), "default": "entity"},
+                "explain_type": {
+                    "type": "string",
+                    "enum": sorted(_VALID_GRAPH_EXPLAIN_TYPES),
+                    "default": "entity",
+                },
                 "entity_id": {"type": ["string", "null"]},
                 "start_entity_id": {"type": ["string", "null"]},
                 "end_entity_id": {"type": ["string", "null"]},

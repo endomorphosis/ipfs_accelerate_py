@@ -82,7 +82,7 @@ platform = UnifiedWebPlatform(
     model_type="text",
     platform="webgpu",
     bits=4,
-    mixed_precision=True  # Recommended for 4-bit to preserve accuracy
+    mixed_precision=True,  # Recommended for 4-bit to preserve accuracy
 )
 
 # Run inference with quantized model
@@ -92,19 +92,16 @@ result = platform.run_inference({"input_text": "Sample text for inference"})
 #### Mixed Precision Configuration
 
 ```python
-from fixed_web_platform.webgpu_quantization import (
-    setup_quantization_config, 
-    MixedPrecisionConfig
-)
+from fixed_web_platform.webgpu_quantization import setup_quantization_config, MixedPrecisionConfig
 from fixed_web_platform.unified_web_framework import UnifiedWebPlatform
 
 # Create advanced mixed precision config
 precision_config = MixedPrecisionConfig(
     model_type="text",
-    default_bits=4,              # Default precision for most layers
-    attention_bits=8,            # Higher precision for attention mechanism
-    embedding_bits=8,            # Higher precision for embeddings
-    output_bits=8                # Higher precision for output layers
+    default_bits=4,  # Default precision for most layers
+    attention_bits=8,  # Higher precision for attention mechanism
+    embedding_bits=8,  # Higher precision for embeddings
+    output_bits=8,  # Higher precision for output layers
 )
 
 # Configure quantization
@@ -112,16 +109,13 @@ config = setup_quantization_config(
     model_type="text",
     mixed_precision=True,
     precision_config=precision_config,
-    block_size=128,              # Block size for quantization
-    scheme="symmetric"           # Symmetric quantization scheme
+    block_size=128,  # Block size for quantization
+    scheme="symmetric",  # Symmetric quantization scheme
 )
 
 # Initialize with advanced configuration
 platform = UnifiedWebPlatform(
-    model_name="bert-base-uncased",
-    model_type="text",
-    platform="webgpu",
-    quantization_config=config
+    model_name="bert-base-uncased", model_type="text", platform="webgpu", quantization_config=config
 )
 ```
 
@@ -130,24 +124,17 @@ platform = UnifiedWebPlatform(
 ```python
 # Text Models (BERT, T5) - 4-bit mixed precision recommended
 config_text = setup_quantization_config(
-    model_type="text",
-    bits=4,
-    mixed_precision=True,
-    block_size=128
+    model_type="text", bits=4, mixed_precision=True, block_size=128
 )
 
 # Vision Models (ViT, DETR) - 8-bit recommended
-config_vision = setup_quantization_config(
-    model_type="vision",
-    bits=8,
-    block_size=64
-)
+config_vision = setup_quantization_config(model_type="vision", bits=8, block_size=64)
 
 # Audio Models (Whisper, Wav2Vec2) - 8-bit with Firefox optimization
 config_audio = setup_quantization_config(
     model_type="audio",
     bits=8,
-    optimize_for_browser="firefox"  # Firefox has better audio compute shaders
+    optimize_for_browser="firefox",  # Firefox has better audio compute shaders
 )
 
 # LLMs (LLaMA, Qwen2) - 4-bit mixed with KV cache optimization
@@ -156,7 +143,7 @@ config_llm = setup_quantization_config(
     bits=4,
     mixed_precision=True,
     kv_cache_optimization=True,
-    max_sequence_length=8192  # Enabled by memory savings
+    max_sequence_length=8192,  # Enabled by memory savings
 )
 ```
 
@@ -167,11 +154,7 @@ config_llm = setup_quantization_config(
 from fixed_web_platform.webgpu_audio_compute_shaders import optimize_for_firefox
 
 # Configure for Firefox audio processing (workgroup size 256x1x1)
-config = setup_quantization_config(
-    model_type="audio",
-    bits=8,
-    optimize_for_browser="firefox"
-)
+config = setup_quantization_config(model_type="audio", bits=8, optimize_for_browser="firefox")
 config = optimize_for_firefox(config)
 
 # Chrome optimization for general use
@@ -180,7 +163,7 @@ config = setup_quantization_config(
     bits=4,
     mixed_precision=True,
     optimize_for_browser="chrome",
-    shader_precompilation=True
+    shader_precompilation=True,
 )
 ```
 
@@ -194,7 +177,7 @@ config = setup_ultra_low_precision(
     model_type="text",
     bits=2,
     adaptive=True,  # Dynamically adjust precision for critical operations
-    critical_layers=["embeddings", "attention.query", "lm_head"]  # Higher precision
+    critical_layers=["embeddings", "attention.query", "lm_head"],  # Higher precision
 )
 
 # Initialize with ultra-low precision (use with caution)
@@ -203,7 +186,7 @@ platform = UnifiedWebPlatform(
     model_type="text",
     platform="webgpu",
     experimental_precision=True,
-    quantization_config=config
+    quantization_config=config,
 )
 ```
 
@@ -220,7 +203,7 @@ results = benchmark_quantization(
     mixed_precision=[False, True],
     platforms=["webgpu"],
     browsers=["chrome"],
-    metrics=["latency", "throughput", "memory", "accuracy"]
+    metrics=["latency", "throughput", "memory", "accuracy"],
 )
 
 # Print results
@@ -239,7 +222,7 @@ for result in results:
 from fixed_web_platform.webgpu_ultra_low_precision import (
     setup_ultra_low_precision,
     quantize_model_mixed_precision,
-    MixedPrecisionConfig
+    MixedPrecisionConfig,
 )
 
 # Basic 2-bit quantization
@@ -251,8 +234,7 @@ precision_config.optimize_memory_usage(available_memory_mb=2048)
 
 # Apply mixed precision quantization
 quantized_model = quantize_model_mixed_precision(
-    model, 
-    precision_config=precision_config.precision_map
+    model, precision_config=precision_config.precision_map
 )
 ```
 
@@ -281,16 +263,10 @@ The Safari WebGPU implementation enables model execution in Safari browsers with
 ### Usage
 
 ```python
-from fixed_web_platform.safari_webgpu_handler import (
-    SafariWebGPUHandler,
-    optimize_for_safari
-)
+from fixed_web_platform.safari_webgpu_handler import SafariWebGPUHandler, optimize_for_safari
 
 # Create Safari handler with Metal API integration
-handler = SafariWebGPUHandler(
-    fallback_to_wasm=True,
-    enable_metal_api=True
-)
+handler = SafariWebGPUHandler(fallback_to_wasm=True, enable_metal_api=True)
 
 # Check if operation should use fallback
 if handler.should_use_fallback("compute_shader"):
@@ -345,20 +321,18 @@ streaming = WebGPUStreamingInference(
         "memory_pressure_handling": True,
         "memory_thresholds": {
             "critical": 0.90,  # 90% of available memory
-            "high": 0.75,      # 75% of available memory
-            "medium": 0.60     # 60% of available memory
+            "high": 0.75,  # 75% of available memory
+            "medium": 0.60,  # 60% of available memory
         },
         "memory_pressure_actions": ["reduce_batch_size", "prune_kv_cache", "reduce_precision"],
         "memory_limit_mb": 4096,  # 4GB memory limit
-        "check_frequency_ms": 500  # Check every 500ms
-    }
+        "check_frequency_ms": 500,  # Check every 500ms
+    },
 )
 
 # Generate with automatic memory pressure handling
 result = streaming.generate(
-    "Write a story about a cybernetic dolphin",
-    max_tokens=500,
-    callback=token_callback
+    "Write a story about a cybernetic dolphin", max_tokens=500, callback=token_callback
 )
 
 # Stream tokens with WebSocket and memory pressure handling
@@ -370,8 +344,8 @@ await streaming.stream_websocket(
         "send_stats_frequency": 50,
         "memory_metrics": True,
         "latency_metrics": True,
-        "batch_metrics": True
-    }
+        "batch_metrics": True,
+    },
 )
 
 # Create standalone memory monitor for custom handling
@@ -380,7 +354,7 @@ monitor = MemoryMonitor(
     memory_limit_mb=4096,
     thresholds={"critical": 0.90, "high": 0.75, "medium": 0.60},
     check_interval_ms=500,
-    actions=["reduce_batch_size", "prune_kv_cache", "reduce_precision"]
+    actions=["reduce_batch_size", "prune_kv_cache", "reduce_precision"],
 )
 
 # Check memory pressure and get recommended action
@@ -389,7 +363,7 @@ action = monitor.check_memory_pressure(memory_mb)
 if action:
     print(f"Memory pressure detected: {action['level']}")
     print(f"Recommended actions: {action['actions']}")
-    
+
     # Apply the recommended action
     if "reduce_batch_size" in action["actions"]:
         current_batch_size = max(1, current_batch_size // 2)
@@ -433,34 +407,29 @@ Progressive model loading enables efficient loading of large models by splitting
 ```python
 from fixed_web_platform.progressive_model_loader import (
     ProgressiveModelLoader,
-    optimize_loading_strategy
+    optimize_loading_strategy,
 )
 
 # Create loader with memory optimization
 loader = ProgressiveModelLoader(
-    model_name="llama-7b", 
+    model_name="llama-7b",
     platform="webgpu",
     memory_optimization_level="aggressive",
     prioritize_components=["embeddings", "lm_head", "first_layer"],
     max_chunk_size_mb=50,
     enable_checkpointing=True,
-    cache_strategy="lru"
+    cache_strategy="lru",
 )
 
 # Load with progress reporting
 model = loader.load(
-    on_progress=lambda progress, component: 
-        print(f"Loading {component}: {progress*100:.2f}%"),
-    on_component_loaded=lambda component:
-        print(f"Component loaded: {component}")
+    on_progress=lambda progress, component: print(f"Loading {component}: {progress * 100:.2f}%"),
+    on_component_loaded=lambda component: print(f"Component loaded: {component}"),
 )
 
 # Optimize loading strategy for device constraints
 optimized_config = optimize_loading_strategy(
-    model_name="llama-7b",
-    platform="webgpu",
-    device_memory_mb=4096,
-    target_startup_time_ms=1500
+    model_name="llama-7b", platform="webgpu", device_memory_mb=4096, target_startup_time_ms=1500
 )
 ```
 
@@ -491,24 +460,18 @@ WebAssembly fallback ensures models can run even in browsers without WebGPU supp
 from fixed_web_platform.webgpu_wasm_fallback import WebAssemblyFallback
 
 # Create fallback with SIMD optimization
-fallback = WebAssemblyFallback(
-    enable_simd=True,
-    use_shared_memory=True
-)
+fallback = WebAssemblyFallback(enable_simd=True, use_shared_memory=True)
 
 # Dispatch operation with optimal backend selection
 result = dispatch_operation(
     operation="matmul",
     inputs={"a": input_tensor, "b": weight_tensor},
     webgpu_available=detector.get_feature_support("webgpu"),
-    performance_history=perf_tracker.get_history()
+    performance_history=perf_tracker.get_history(),
 )
 
 # Execute specific operation with fallback
-matmul_result = fallback.matrix_multiply(
-    a=input_tensor,
-    b=weight_tensor
-)
+matmul_result = fallback.matrix_multiply(a=input_tensor, b=weight_tensor)
 ```
 
 ### Performance Impact
@@ -539,10 +502,7 @@ from streaming_pipeline import WebSocketStreamingHandler
 
 # Create streaming handler
 streaming_handler = WebSocketStreamingHandler(
-    model="llama-7b",
-    batch_size=1,
-    max_tokens=100,
-    device="webgpu"
+    model="llama-7b", batch_size=1, max_tokens=100, device="webgpu"
 )
 
 # Start streaming session
@@ -550,8 +510,7 @@ session_id = streaming_handler.start_session()
 
 # Generate tokens with streaming
 async for token in streaming_handler.generate_streaming(
-    prompt="Once upon a time",
-    session_id=session_id
+    prompt="Once upon a time", session_id=session_id
 ):
     # Process each token as it arrives
     print(token, end="", flush=True)
@@ -586,7 +545,7 @@ The browser adaptation system automatically detects browser capabilities and opt
 ```python
 from fixed_web_platform.browser_capability_detector import (
     BrowserCapabilityDetector,
-    create_browser_optimization_profile
+    create_browser_optimization_profile,
 )
 
 # Detect browser capabilities
@@ -601,8 +560,7 @@ if detector.get_feature_support("ultra_low_precision"):
 
 # Get browser-specific optimization profile
 browser_profile = create_browser_optimization_profile(
-    browser_info={"name": "firefox", "version": 119},
-    capabilities=capabilities
+    browser_info={"name": "firefox", "version": 119}, capabilities=capabilities
 )
 ```
 
@@ -636,7 +594,7 @@ The streaming inference pipeline provides end-to-end streaming for LLMs with ada
 from fixed_web_platform.webgpu_streaming_inference import (
     WebGPUStreamingInference,
     create_streaming_endpoint,
-    optimize_for_streaming
+    optimize_for_streaming,
 )
 
 # Create streaming endpoint with full optimization
@@ -648,9 +606,10 @@ streaming = WebGPUStreamingInference(
         "memory_pressure_handling": True,
         "adaptive_batch_size": True,
         "stream_buffer_size": 3,
-        "prefill_optimized": True
-    }
+        "prefill_optimized": True,
+    },
 )
+
 
 # Stream tokens with callback function
 def token_callback(token, is_last=False):
@@ -658,12 +617,13 @@ def token_callback(token, is_last=False):
     if is_last:
         print("\nGeneration complete!")
 
+
 # Generate with streaming
 response = streaming.generate(
     "Explain the key benefits of streaming inference in web browsers",
     max_tokens=200,
     temperature=0.7,
-    callback=token_callback
+    callback=token_callback,
 )
 
 # Get detailed performance stats
@@ -682,18 +642,20 @@ await streaming.stream_websocket(
         "send_stats_frequency": 50,
         "memory_metrics": True,
         "latency_metrics": True,
-        "batch_metrics": True
-    }
+        "batch_metrics": True,
+    },
 )
 
 # Create an endpoint with browser-optimized configuration
 endpoint = create_streaming_endpoint(
     model_path="llama-7b",
-    config=optimize_for_streaming({
-        "quantization": "int2",
-        "browser": "firefox",  # Browser-specific optimizations
-        "ultra_low_latency": True
-    })
+    config=optimize_for_streaming(
+        {
+            "quantization": "int2",
+            "browser": "firefox",  # Browser-specific optimizations
+            "ultra_low_latency": True,
+        }
+    ),
 )
 
 # Use async interface for streaming
@@ -736,7 +698,7 @@ The unified framework integration provides standardized interfaces across all co
 from fixed_web_platform.unified_web_framework import (
     WebPlatformAccelerator,
     create_web_endpoint,
-    get_optimal_config
+    get_optimal_config,
 )
 
 # Get browser-optimized configuration
@@ -744,10 +706,7 @@ config = get_optimal_config("bert-base-uncased", "text")
 
 # Create web accelerator with automatic browser detection
 accelerator = WebPlatformAccelerator(
-    model_path="bert-base-uncased",
-    model_type="text",
-    config=config,
-    auto_detect=True
+    model_path="bert-base-uncased", model_type="text", config=config, auto_detect=True
 )
 
 # Create inference endpoint
@@ -874,7 +833,7 @@ The interactive performance dashboard provides comprehensive visualization tools
 from fixed_web_platform.benchmark_db_visualizer import (
     BenchmarkDBVisualizer,
     compare_browsers,
-    generate_browser_impact_chart
+    generate_browser_impact_chart,
 )
 
 # Create visualizer
@@ -882,8 +841,7 @@ visualizer = BenchmarkDBVisualizer(db_path="./benchmark_db.duckdb")
 
 # Generate browser comparison report
 report = visualizer.generate_performance_report(
-    format="html",
-    output="browser_comparison_report.html"
+    format="html", output="browser_comparison_report.html"
 )
 
 # Generate historical comparison of models
@@ -893,7 +851,7 @@ historical_data = visualizer.generate_historical_comparison(
     metric="throughput",
     date_range={"start": "2025-05-01", "end": "2025-08-31"},
     format="html",
-    output="historical_performance.html"
+    output="historical_performance.html",
 )
 
 # Generate interactive dashboard
@@ -901,24 +859,19 @@ visualizer.generate_interactive_dashboard(
     data={
         "models": ["bert", "t5", "whisper"],
         "browsers": ["chrome", "firefox", "safari"],
-        "metrics": ["latency", "throughput", "memory"]
+        "metrics": ["latency", "throughput", "memory"],
     },
-    output="performance_dashboard.html"
+    output="performance_dashboard.html",
 )
 
 # Compare browser performance for audio models
 browser_comparison = compare_browsers(
-    model_type="audio",
-    browsers=["chrome", "firefox", "edge", "safari"],
-    metric="inference_time_ms"
+    model_type="audio", browsers=["chrome", "firefox", "edge", "safari"], metric="inference_time_ms"
 )
 
 # Generate browser impact chart for Firefox vs Chrome on audio models
 chart = generate_browser_impact_chart(
-    browser1="firefox",
-    browser2="chrome",
-    model_type="audio",
-    output="firefox_audio_advantage.png"
+    browser1="firefox", browser2="chrome", model_type="audio", output="firefox_audio_advantage.png"
 )
 ```
 
@@ -974,11 +927,11 @@ python test/analyze_memory_optimizations.py --model llama --generate-report --ou
    ```python
    # Example of optimal precision assignment for LLaMA
    precision_config = {
-       "embedding": 8,       # Keep embeddings at higher precision
-       "attention.query": 3, # Use 3-bit for attention queries
-       "attention.key": 3,   # Use 3-bit for attention keys
-       "feed_forward": 2,    # Use 2-bit for feed forward layers
-       "lm_head": 4          # Use 4-bit for output projection
+       "embedding": 8,  # Keep embeddings at higher precision
+       "attention.query": 3,  # Use 3-bit for attention queries
+       "attention.key": 3,  # Use 3-bit for attention keys
+       "feed_forward": 2,  # Use 2-bit for feed forward layers
+       "lm_head": 4,  # Use 4-bit for output projection
    }
    ```
 
@@ -1010,7 +963,7 @@ python test/analyze_memory_optimizations.py --model llama --generate-report --ou
        "enable_websocket": True,
        "optimize_for_latency": True,
        "chunk_size": 16,  # Process in small chunks for faster feedback
-       "progressive_kv_cache": True  # Enable progressive KV cache
+       "progressive_kv_cache": True,  # Enable progressive KV cache
    }
    ```
 

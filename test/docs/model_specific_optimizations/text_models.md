@@ -35,8 +35,8 @@ platform = UnifiedWebPlatform(
         "precision": "fp16",
         "batch_size": 32,
         "kv_cache_enabled": False,  # Not needed for embedding models
-        "cuda_optimization_level": "highest"
-    }
+        "cuda_optimization_level": "highest",
+    },
 )
 
 # Generative models (LLaMA, GPT, etc.)
@@ -46,12 +46,12 @@ platform = UnifiedWebPlatform(
     platform="cuda",
     config={
         "precision": "int8",  # or fp16 for higher accuracy
-        "batch_size": 4,      # Adjust based on GPU memory
+        "batch_size": 4,  # Adjust based on GPU memory
         "kv_cache_enabled": True,
         "kv_cache_max_length": 2048,
         "cuda_optimization_level": "highest",
         "tensor_parallelism": 1,  # Increase for multi-GPU setups
-    }
+    },
 )
 ```
 
@@ -73,14 +73,14 @@ ROCm provides good performance for small to medium-sized text models.
 ```python
 # Embedding models on ROCm
 platform = UnifiedWebPlatform(
-    model_name="bert-base-uncased", 
+    model_name="bert-base-uncased",
     model_type="text",
     platform="rocm",
     config={
         "precision": "fp16",
         "batch_size": 24,  # Slightly smaller than CUDA
-        "rocm_optimization_level": "high"
-    }
+        "rocm_optimization_level": "high",
+    },
 )
 
 # Generative models on ROCm
@@ -90,11 +90,11 @@ platform = UnifiedWebPlatform(
     platform="rocm",
     config={
         "precision": "int8",  # Lower precision for larger models
-        "batch_size": 2,      # Start small and test
+        "batch_size": 2,  # Start small and test
         "kv_cache_enabled": True,
         "kv_cache_max_length": 1024,  # Smaller context windows
-        "rocm_optimization_level": "medium"
-    }
+        "rocm_optimization_level": "medium",
+    },
 )
 ```
 
@@ -117,11 +117,7 @@ platform = UnifiedWebPlatform(
     model_name="bert-base-uncased",
     model_type="text",
     platform="mps",
-    config={
-        "precision": "fp16",
-        "batch_size": 16,
-        "use_mps_graph": True
-    }
+    config={"precision": "fp16", "batch_size": 16, "use_mps_graph": True},
 )
 
 # Generative models on MPS
@@ -135,8 +131,8 @@ platform = UnifiedWebPlatform(
         "kv_cache_enabled": True,
         "kv_cache_max_length": 512,
         "use_mps_graph": True,
-        "power_efficient": True  # For battery life on laptops
-    }
+        "power_efficient": True,  # For battery life on laptops
+    },
 )
 ```
 
@@ -164,8 +160,8 @@ platform = UnifiedWebPlatform(
         "precision": "int8",
         "batch_size": 1,
         "power_mode": "efficient",
-        "hexagon_enabled": True  # Use Hexagon DSP
-    }
+        "hexagon_enabled": True,  # Use Hexagon DSP
+    },
 )
 
 # Small generative models on Qualcomm
@@ -180,8 +176,8 @@ platform = UnifiedWebPlatform(
         "kv_cache_max_length": 256,  # Smaller context
         "power_mode": "efficient",
         "hexagon_enabled": True,
-        "sparse_inference": True  # Optimized for sparsity
-    }
+        "sparse_inference": True,  # Optimized for sparsity
+    },
 )
 ```
 
@@ -205,11 +201,7 @@ platform = UnifiedWebPlatform(
     model_name="bert-tiny",
     model_type="text",
     platform="webnn",
-    config={
-        "precision": "fp16",
-        "batch_size": 4,
-        "use_wasm_threads": True
-    }
+    config={"precision": "fp16", "batch_size": 4, "use_wasm_threads": True},
 )
 
 # Generative models on WebNN
@@ -223,8 +215,8 @@ platform = UnifiedWebPlatform(
         "kv_cache_enabled": True,
         "kv_cache_max_length": 256,
         "use_wasm_threads": True,
-        "use_simd": True
-    }
+        "use_simd": True,
+    },
 )
 ```
 
@@ -252,8 +244,8 @@ platform = UnifiedWebPlatform(
         "precision": "fp16",
         "batch_size": 8,
         "shader_precompile": True,
-        "optimize_for_browser": "auto"  # Automatically detect and optimize
-    }
+        "optimize_for_browser": "auto",  # Automatically detect and optimize
+    },
 )
 
 # Generative models on WebGPU
@@ -268,8 +260,8 @@ platform = UnifiedWebPlatform(
         "kv_cache_max_length": 512,
         "shader_precompile": True,
         "optimize_for_browser": "auto",
-        "compute_shader_optimizations": True
-    }
+        "compute_shader_optimizations": True,
+    },
 )
 
 # WebGPU streaming for text generation
@@ -282,8 +274,8 @@ streaming = WebGPUStreamingInference(
         "kv_cache_optimization": True,
         "optimize_compute_transfer": True,
         "optimize_for_latency": True,
-        "browser_optimizations": True
-    }
+        "browser_optimizations": True,
+    },
 )
 ```
 

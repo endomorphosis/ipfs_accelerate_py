@@ -124,10 +124,7 @@ ipfs-accelerate github p2p-discover once --owner myorg --output-json
 from ipfs_accelerate_py.p2p_workflow_discovery import P2PWorkflowDiscoveryService
 
 # Create service
-service = P2PWorkflowDiscoveryService(
-    owner="myorg",
-    poll_interval=300
-)
+service = P2PWorkflowDiscoveryService(owner="myorg", poll_interval=300)
 
 # Run once
 stats = service.run_discovery_cycle()
@@ -148,10 +145,7 @@ from ipfs_accelerate_py.p2p_workflow_scheduler import P2PWorkflowScheduler
 scheduler = P2PWorkflowScheduler(peer_id="my-custom-peer")
 
 # Create service with custom scheduler
-service = P2PWorkflowDiscoveryService(
-    owner="myorg",
-    scheduler=scheduler
-)
+service = P2PWorkflowDiscoveryService(owner="myorg", scheduler=scheduler)
 
 # Run discovery
 service.start()
@@ -380,9 +374,9 @@ P2P Summary: 3 pending, 2 assigned, 3 runners allocated for P2P
 
 ```python
 service = P2PWorkflowDiscoveryService(
-    owner="myorg",           # Organization or user to monitor
-    poll_interval=300,       # Seconds between discovery cycles
-    scheduler=None           # Optional custom scheduler
+    owner="myorg",  # Organization or user to monitor
+    poll_interval=300,  # Seconds between discovery cycles
+    scheduler=None,  # Optional custom scheduler
 )
 ```
 
@@ -390,12 +384,12 @@ service = P2PWorkflowDiscoveryService(
 
 ```python
 autoscaler = GitHubRunnerAutoscaler(
-    owner="myorg",           # Organization or user to monitor
-    poll_interval=120,       # Seconds between checks
-    since_days=1,            # Monitor repos updated in last N days
-    max_runners=8,           # Maximum runners to provision
-    filter_by_arch=True,     # Filter workflows by architecture
-    enable_p2p=True          # Enable P2P workflow monitoring
+    owner="myorg",  # Organization or user to monitor
+    poll_interval=120,  # Seconds between checks
+    since_days=1,  # Monitor repos updated in last N days
+    max_runners=8,  # Maximum runners to provision
+    filter_by_arch=True,  # Filter workflows by architecture
+    enable_p2p=True,  # Enable P2P workflow monitoring
 )
 ```
 

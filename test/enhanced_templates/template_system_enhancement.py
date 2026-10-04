@@ -21,13 +21,15 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Set
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, 
-                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 # Try to import duckdb
 try:
     import duckdb
+
     DUCKDB_AVAILABLE = True
     logger.info("DuckDB is available, will use database storage")
 except ImportError:
@@ -40,27 +42,45 @@ DEFAULT_DB_PATH = "./template_db.duckdb"
 
 # Model type definitions
 MODEL_TYPES = [
-    "bert", "t5", "llama", "vit", "clip", "whisper", "wav2vec2", 
-    "clap", "llava", "xclip", "qwen", "detr", "default"
+    "bert",
+    "t5",
+    "llama",
+    "vit",
+    "clip",
+    "whisper",
+    "wav2vec2",
+    "clap",
+    "llava",
+    "xclip",
+    "qwen",
+    "detr",
+    "default",
 ]
 
 # Hardware platform definitions
 HARDWARE_PLATFORMS = [
-    "cpu", "cuda", "rocm", "mps", "openvino", "qualcomm", "samsung", "webnn", "webgpu"
+    "cpu",
+    "cuda",
+    "rocm",
+    "mps",
+    "openvino",
+    "qualcomm",
+    "samsung",
+    "webnn",
+    "webgpu",
 ]
 
 # Template types
-TEMPLATE_TYPES = [
-    "test", "benchmark", "skill", "helper", "hardware_specific"
-]
+TEMPLATE_TYPES = ["test", "benchmark", "skill", "helper", "hardware_specific"]
 
 # Modality types for template categorization
 MODALITY_TYPES = {
     "text": ["bert", "t5", "llama", "roberta", "gpt2"],
     "vision": ["vit", "resnet", "detr"],
     "audio": ["whisper", "wav2vec2", "clap"],
-    "multimodal": ["clip", "llava", "xclip"]
+    "multimodal": ["clip", "llava", "xclip"],
 }
+
 
 def parse_args():
     """Parse command line arguments"""
@@ -68,42 +88,43 @@ def parse_args():
         description="Enhance the template database system with validation, improved placeholder handling, and inheritance"
     )
     parser.add_argument(
-        "--db-path", type=str, default=DEFAULT_DB_PATH,
-        help=f"Path to template database file (default: {DEFAULT_DB_PATH})"
+        "--db-path",
+        type=str,
+        default=DEFAULT_DB_PATH,
+        help=f"Path to template database file (default: {DEFAULT_DB_PATH})",
     )
     parser.add_argument(
-        "--check-db", action="store_true",
-        help="Check if database exists and has proper schema"
+        "--check-db", action="store_true", help="Check if database exists and has proper schema"
     )
     parser.add_argument(
-        "--validate-templates", action="store_true",
-        help="Validate all templates in the database for syntax and hardware support"
+        "--validate-templates",
+        action="store_true",
+        help="Validate all templates in the database for syntax and hardware support",
     )
     parser.add_argument(
-        "--validate-model-type", type=str,
-        help="Validate templates for a specific model type"
+        "--validate-model-type", type=str, help="Validate templates for a specific model type"
     )
     parser.add_argument(
-        "--list-templates", action="store_true",
-        help="List all templates in the database with validation status"
+        "--list-templates",
+        action="store_true",
+        help="List all templates in the database with validation status",
     )
     parser.add_argument(
-        "--add-inheritance", action="store_true",
-        help="Add inheritance system to templates"
+        "--add-inheritance", action="store_true", help="Add inheritance system to templates"
     )
     parser.add_argument(
-        "--enhance-placeholders", action="store_true",
-        help="Enhance placeholder handling in templates"
+        "--enhance-placeholders",
+        action="store_true",
+        help="Enhance placeholder handling in templates",
     )
     parser.add_argument(
-        "--apply-all-enhancements", action="store_true",
-        help="Apply all enhancements (validation, inheritance, placeholders)"
+        "--apply-all-enhancements",
+        action="store_true",
+        help="Apply all enhancements (validation, inheritance, placeholders)",
     )
-    parser.add_argument(
-        "--debug", action="store_true",
-        help="Enable debug logging"
-    )
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     return parser.parse_args()
+
 
 def setup_environment(args):
     """Set up the environment and configure logging"""
@@ -111,6 +132,7 @@ def setup_environment(args):
         logging.getLogger().setLevel(logging.DEBUG)
         logger.setLevel(logging.DEBUG)
         logger.debug("Debug logging enabled")
+
 
 def check_database(db_path: str) -> bool:
     """Check if database exists and has the correct schema"""
@@ -120,87 +142,88 @@ def check_database(db_path: str) -> bool:
 
     try:
         conn = duckdb.connect(db_path)
-        
+
         # Check if templates table exists
         result = conn.execute("""
         SELECT count(*) FROM information_schema.tables 
         WHERE table_name = 'templates'
         """).fetchone()
-        
+
         if result[0] == 0:
             logger.error("Templates table not found in database")
             return False
-        
+
         # Check if templates table has the expected columns
         result = conn.execute("""
         PRAGMA table_info(templates)
         """).fetchall()
-        
+
         columns = [row[1] for row in result]
-        required_columns = ['model_type', 'template_type', 'template', 'hardware_platform']
-        
+        required_columns = ["model_type", "template_type", "template", "hardware_platform"]
+
         for column in required_columns:
             if column not in columns:
                 logger.error(f"Required column '{column}' not found in templates table")
                 return False
-        
+
         # Check if database has templates
         result = conn.execute("""
         SELECT COUNT(*) FROM templates
         """).fetchone()
-        
+
         template_count = result[0]
         if template_count == 0:
             logger.warning("Database exists but contains no templates")
         else:
             logger.info(f"Database contains {template_count} templates")
-        
+
         conn.close()
         return True
     except Exception as e:
         logger.error(f"Error checking database: {e}")
         return False
 
+
 def enhance_schema(db_path: str) -> bool:
     """Enhance the database schema to support template inheritance and validation"""
     try:
         conn = duckdb.connect(db_path)
-        
+
         # Check if validation columns already exist
         result = conn.execute("""
         PRAGMA table_info(templates)
         """).fetchall()
-        
+
         columns = [row[1] for row in result]
-        
+
         # Add validation column if it doesn't exist
-        if 'validation_status' not in columns:
+        if "validation_status" not in columns:
             logger.info("Adding validation_status column to templates table")
             conn.execute("""
             ALTER TABLE templates ADD COLUMN validation_status VARCHAR
             """)
-        
+
         # Add parent_template column for inheritance if it doesn't exist
-        if 'parent_template' not in columns:
+        if "parent_template" not in columns:
             logger.info("Adding parent_template column to templates table")
             conn.execute("""
             ALTER TABLE templates ADD COLUMN parent_template VARCHAR
             """)
-        
+
         # Add modality column for better categorization if it doesn't exist
-        if 'modality' not in columns:
+        if "modality" not in columns:
             logger.info("Adding modality column to templates table")
             conn.execute("""
             ALTER TABLE templates ADD COLUMN modality VARCHAR
             """)
-        
+
         # Add last_updated column for tracking changes if it doesn't exist
-        if 'last_updated' not in columns:
+        if "last_updated" not in columns:
             logger.info("Adding last_updated column to templates table")
             conn.execute("""
             ALTER TABLE templates ADD COLUMN last_updated TIMESTAMP
             """)
-        
+
         # Create a new template_validation table if it doesn't exist
         conn.execute("""
         CREATE TABLE IF NOT EXISTS template_validation (
@@ -213,7 +236,7 @@ def enhance_schema(db_path: str) -> bool:
             hardware_support TEXT
         )
         """)
-        
+
         # Create a template_placeholders table if it doesn't exist
         conn.execute("""
         CREATE TABLE IF NOT EXISTS template_placeholders (
@@ -224,7 +247,7 @@ def enhance_schema(db_path: str) -> bool:
             required BOOLEAN
         )
         """)
-        
+
         conn.close()
         logger.info("Database schema enhanced successfully")
         return True
@@ -232,122 +255,133 @@ def enhance_schema(db_path: str) -> bool:
         logger.error(f"Error enhancing database schema: {e}")
         return False
 
+
 def extract_placeholders(template: str) -> Set[str]:
     """Extract all placeholders from a template"""
     # Find all patterns like {placeholder_name}
-    pattern = r'\{([a-zA-Z0-9_]+)\}'
+    pattern = r"\{([a-zA-Z0-9_]+)\}"
     placeholders = set(re.findall(pattern, template))
     return placeholders
+
 
 def validate_template_syntax(template: str) -> Tuple[bool, List[str]]:
     """Validate template syntax (check for balanced braces, valid Python syntax, etc.)"""
     errors = []
-    
+
     # Check for balanced braces in placeholders
-    if template.count('{') != template.count('}'):
+    if template.count("{") != template.count("}"):
         errors.append("Unbalanced braces in template")
-    
+
     # Check for Python syntax errors
     try:
         # We need to replace all placeholder patterns with actual values for compilation
         placeholders = extract_placeholders(template)
         test_template = template
-        
+
         for placeholder in placeholders:
             test_template = test_template.replace(f"{{{placeholder}}}", f'"{placeholder}"')
-        
+
         # Try to compile the template as Python code
-        compile(test_template, '<template>', 'exec')
+        compile(test_template, "<template>", "exec")
     except SyntaxError as e:
         errors.append(f"Python syntax error: {e}")
-    
+
     # Check for common template issues
     if "{{" in template or "}}" in template:
         errors.append("Double braces detected: {{ or }} should be single { or }")
-    
+
     if "\\n" in template and '"""' in template:
         # This could be legitimate in some cases, so just add a warning
         errors.append("Warning: \\n escape sequence found in triple-quoted string")
-    
+
     return len(errors) == 0, errors
 
-def validate_hardware_support(template: str, hardware_platform: str = None) -> Tuple[bool, Dict[str, bool]]:
+
+def validate_hardware_support(
+    template: str, hardware_platform: str = None
+) -> Tuple[bool, Dict[str, bool]]:
     """Validate hardware support in a template"""
     # Initialize hardware support status for all platforms
     hardware_support = {platform: False for platform in HARDWARE_PLATFORMS}
-    hardware_support['cpu'] = True  # CPU support is assumed for all templates
-    
+    hardware_support["cpu"] = True  # CPU support is assumed for all templates
+
     # Check for hardware-specific imports and configurations
     if "torch.cuda" in template or "device = 'cuda'" in template:
-        hardware_support['cuda'] = True
-    
+        hardware_support["cuda"] = True
+
     if "rocm" in template or "AMD" in template:
-        hardware_support['rocm'] = True
-    
+        hardware_support["rocm"] = True
+
     if "mps" in template or "torch.backends.mps" in template:
-        hardware_support['mps'] = True
-    
+        hardware_support["mps"] = True
+
     if "openvino" in template or "OpenVINO" in template:
-        hardware_support['openvino'] = True
-    
+        hardware_support["openvino"] = True
+
     if "qualcomm" in template or "QNN" in template:
-        hardware_support['qualcomm'] = True
-    
+        hardware_support["qualcomm"] = True
+
     if "samsung" in template or "Exynos" in template:
-        hardware_support['samsung'] = True
-    
+        hardware_support["samsung"] = True
+
     if "webnn" in template or "WebNN" in template:
-        hardware_support['webnn'] = True
-    
+        hardware_support["webnn"] = True
+
     if "webgpu" in template or "WebGPU" in template:
-        hardware_support['webgpu'] = True
-    
+        hardware_support["webgpu"] = True
+
     # If a specific hardware platform is specified, check if it's supported
     if hardware_platform:
         return hardware_support.get(hardware_platform, False), hardware_support
-    
+
     # Otherwise, return overall validation status and hardware support dict
     return True, hardware_support
 
-def validate_template(template: str, template_type: str, model_type: str, hardware_platform: str = None) -> Tuple[bool, Dict[str, Any]]:
+
+def validate_template(
+    template: str, template_type: str, model_type: str, hardware_platform: str = None
+) -> Tuple[bool, Dict[str, Any]]:
     """Validate a template for syntax, hardware support, and mandatory placeholders"""
     validation_results = {
-        'syntax': {'success': False, 'errors': []},
-        'hardware': {'success': False, 'support': {}},
-        'placeholders': {'success': False, 'missing': [], 'all': []}
+        "syntax": {"success": False, "errors": []},
+        "hardware": {"success": False, "support": {}},
+        "placeholders": {"success": False, "missing": [], "all": []},
     }
-    
+
     # Validate syntax
     syntax_valid, syntax_errors = validate_template_syntax(template)
-    validation_results['syntax']['success'] = syntax_valid
-    validation_results['syntax']['errors'] = syntax_errors
-    
+    validation_results["syntax"]["success"] = syntax_valid
+    validation_results["syntax"]["errors"] = syntax_errors
+
     # Validate hardware support
     hardware_valid, hardware_support = validate_hardware_support(template, hardware_platform)
-    validation_results['hardware']['success'] = hardware_valid
-    validation_results['hardware']['support'] = hardware_support
-    
+    validation_results["hardware"]["success"] = hardware_valid
+    validation_results["hardware"]["support"] = hardware_support
+
     # Extract and validate placeholders
     placeholders = extract_placeholders(template)
-    validation_results['placeholders']['all'] = list(placeholders)
-    
+    validation_results["placeholders"]["all"] = list(placeholders)
+
     # Check for mandatory placeholders based on template type
-    mandatory_placeholders = {'model_name', 'normalized_name', 'generated_at'}
+    mandatory_placeholders = {"model_name", "normalized_name", "generated_at"}
     missing_placeholders = mandatory_placeholders - placeholders
-    
-    validation_results['placeholders']['success'] = len(missing_placeholders) == 0
-    validation_results['placeholders']['missing'] = list(missing_placeholders)
-    
+
+    validation_results["placeholders"]["success"] = len(missing_placeholders) == 0
+    validation_results["placeholders"]["missing"] = list(missing_placeholders)
+
     # Determine overall validation status
-    validation_success = syntax_valid and hardware_valid and validation_results['placeholders']['success']
-    
+    validation_success = (
+        syntax_valid and hardware_valid and validation_results["placeholders"]["success"]
+    )
+
     return validation_success, validation_results
+
 
 def validate_all_templates(db_path: str, model_type: str = None) -> bool:
     """Validate all templates in the database or templates for a specific model type"""
     try:
         conn = duckdb.connect(db_path)
-        
+
         # Query templates to validate
         if model_type:
             logger.info(f"Validating templates for model type: {model_type}")
@@ -364,23 +398,25 @@ def validate_all_templates(db_path: str, model_type: str = None) -> bool:
             FROM templates
             """
             results = conn.execute(query).fetchall()
-        
+
         if not results:
             logger.warning(f"No templates found to validate")
             return False
-        
+
         # Validate each template
         success_count = 0
         fail_count = 0
-        
+
         for rowid, model_type, template_type, template, hardware_platform in results:
-            logger.info(f"Validating template: {model_type}/{template_type}/{hardware_platform or 'generic'}")
-            
+            logger.info(
+                f"Validating template: {model_type}/{template_type}/{hardware_platform or 'generic'}"
+            )
+
             # Validate template
             success, validation_results = validate_template(
                 template, template_type, model_type, hardware_platform
             )
-            
+
             # Update template with validation status
             if success:
                 status = "VALID"
@@ -388,35 +424,43 @@ def validate_all_templates(db_path: str, model_type: str = None) -> bool:
             else:
                 status = "INVALID"
                 fail_count += 1
-                
+
                 # Log validation errors
-                if not validation_results['syntax']['success']:
+                if not validation_results["syntax"]["success"]:
                     logger.error(f"Syntax errors: {validation_results['syntax']['errors']}")
-                
-                if not validation_results['placeholders']['success']:
-                    logger.error(f"Missing placeholders: {validation_results['placeholders']['missing']}")
-            
+
+                if not validation_results["placeholders"]["success"]:
+                    logger.error(
+                        f"Missing placeholders: {validation_results['placeholders']['missing']}"
+                    )
+
             # Update template validation status in database
-            conn.execute("""
+            conn.execute(
+                """
             UPDATE templates 
             SET validation_status = ?, 
                 last_updated = CURRENT_TIMESTAMP
             WHERE rowid = ?
-            """, [status, rowid])
-            
+            """,
+                [status, rowid],
+            )
+
             # Store detailed validation results in template_validation table
-            hardware_support_json = json.dumps(validation_results['hardware']['support'])
-            conn.execute("""
+            hardware_support_json = json.dumps(validation_results["hardware"]["support"])
+            conn.execute(
+                """
             INSERT INTO template_validation
             (template_id, validation_date, validation_type, success, errors, hardware_support)
             VALUES (?, CURRENT_TIMESTAMP, 'full', ?, ?, ?)
-            """, [
-                rowid, 
-                success, 
-                json.dumps(validation_results['syntax']['errors']), 
-                hardware_support_json
-            ])
-        
+            """,
+                [
+                    rowid,
+                    success,
+                    json.dumps(validation_results["syntax"]["errors"]),
+                    hardware_support_json,
+                ],
+            )
+
         logger.info(f"Validation complete: {success_count} valid, {fail_count} invalid")
         conn.close()
         return success_count > 0
@@ -424,11 +468,12 @@ def validate_all_templates(db_path: str, model_type: str = None) -> bool:
         logger.error(f"Error validating templates: {e}")
         return False
 
+
 def list_templates_with_validation(db_path: str) -> bool:
     """List all templates in the database with their validation status"""
     try:
         conn = duckdb.connect(db_path)
-        
+
         # Query templates with validation status
         query = """
         SELECT t.model_type, t.template_type, t.hardware_platform, 
@@ -445,38 +490,49 @@ def list_templates_with_validation(db_path: str) -> bool:
             AND latest.validation_date = v.validation_date
         ORDER BY t.model_type, t.template_type, t.hardware_platform
         """
-        
+
         results = conn.execute(query).fetchall()
-        
+
         if not results:
             logger.warning("No templates found in database")
             return False
-        
+
         # Display template information
         print("\nTemplates with Validation Status:")
         print("-" * 100)
-        print(f"{'Model Type':<15} {'Template Type':<15} {'Hardware':<10} {'Status':<10} {'Modality':<12} {'Latest Validation':<20} {'Hardware Support'}")
+        print(
+            f"{'Model Type':<15} {'Template Type':<15} {'Hardware':<10} {'Status':<10} {'Modality':<12} {'Latest Validation':<20} {'Hardware Support'}"
+        )
         print("-" * 100)
-        
+
         for row in results:
-            model_type, template_type, hardware, status, modality, latest_validation, latest_success, hardware_support = row
-            
+            (
+                model_type,
+                template_type,
+                hardware,
+                status,
+                modality,
+                latest_validation,
+                latest_success,
+                hardware_support,
+            ) = row
+
             # Format hardware platform display
             hardware = hardware or "generic"
-            
+
             # Format status display
             status = status or "UNKNOWN"
-            
+
             # Format modality display
             modality = modality or "unknown"
-            
+
             # Format latest validation display
             validation_date = latest_validation or "Never"
             if latest_success is not None:
                 validation_status = "✅ PASS" if latest_success else "❌ FAIL"
             else:
                 validation_status = "⚠️ NONE"
-            
+
             # Format hardware support display
             if hardware_support:
                 hardware_info = json.loads(hardware_support)
@@ -484,20 +540,23 @@ def list_templates_with_validation(db_path: str) -> bool:
                 hw_display = ", ".join(supported_hw)
             else:
                 hw_display = "Unknown"
-            
-            print(f"{model_type:<15} {template_type:<15} {hardware:<10} {status:<10} {modality:<12} {validation_date} {validation_status:<10} {hw_display}")
-        
+
+            print(
+                f"{model_type:<15} {template_type:<15} {hardware:<10} {status:<10} {modality:<12} {validation_date} {validation_status:<10} {hw_display}"
+            )
+
         conn.close()
         return True
     except Exception as e:
         logger.error(f"Error listing templates: {e}")
         return False
 
+
 def add_template_inheritance(db_path: str) -> bool:
     """Add inheritance system to templates"""
     try:
         conn = duckdb.connect(db_path)
-        
+
         # Step 1: Define parent-child relationships for model types
         model_inheritance = {
             # Text models inherit from default text template
@@ -505,23 +564,20 @@ def add_template_inheritance(db_path: str) -> bool:
             "t5": {"parent": "default_text"},
             "llama": {"parent": "default_text"},
             "gpt2": {"parent": "default_text"},
-            
             # Vision models inherit from default vision template
             "vit": {"parent": "default_vision"},
             "resnet": {"parent": "default_vision"},
             "detr": {"parent": "default_vision"},
-            
             # Audio models inherit from default audio template
             "whisper": {"parent": "default_audio"},
             "wav2vec2": {"parent": "default_audio"},
             "clap": {"parent": "default_audio"},
-            
             # Multimodal models inherit from default multimodal template
             "clip": {"parent": "default_multimodal"},
             "llava": {"parent": "default_multimodal"},
-            "xclip": {"parent": "default_multimodal"}
+            "xclip": {"parent": "default_multimodal"},
         }
-        
+
         # Step 2: Define default templates for each modality if they don't exist
         default_templates = {
             "default_text": {
@@ -904,21 +960,24 @@ class Test{normalized_name}(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 """
-            }
+            },
         }
-        
+
         # Step 3: Add default templates to database if they don't exist
         for parent_name, templates in default_templates.items():
             for template_type, template_content in templates.items():
                 # Check if parent template exists
-                result = conn.execute("""
+                result = conn.execute(
+                    """
                 SELECT COUNT(*) FROM templates
                 WHERE model_type = ? AND template_type = ?
-                """, [parent_name, template_type]).fetchone()
-                
+                """,
+                    [parent_name, template_type],
+                ).fetchone()
+
                 if result[0] == 0:
                     logger.info(f"Adding parent template {parent_name}/{template_type}")
-                    
+
                     # Determine modality
                     if parent_name == "default_text":
                         modality = "text"
@@ -930,18 +989,21 @@ if __name__ == "__main__":
                         modality = "multimodal"
                     else:
                         modality = None
-                    
+
                     # Insert parent template
-                    conn.execute("""
+                    conn.execute(
+                        """
                     INSERT INTO templates
                     (model_type, template_type, template, hardware_platform, validation_status, modality, last_updated)
                     VALUES (?, ?, ?, NULL, 'VALID', ?, CURRENT_TIMESTAMP)
-                    """, [parent_name, template_type, template_content, modality])
-        
+                    """,
+                        [parent_name, template_type, template_content, modality],
+                    )
+
         # Step 4: Update existing templates with parent information
         for model_type, inheritance_info in model_inheritance.items():
             parent_type = inheritance_info["parent"]
-            
+
             # Determine modality
             if parent_type == "default_text":
                 modality = "text"
@@ -953,23 +1015,31 @@ if __name__ == "__main__":
                 modality = "multimodal"
             else:
                 modality = None
-            
+
             # Get templates for this model type
-            results = conn.execute("""
+            results = conn.execute(
+                """
             SELECT rowid, model_type, template_type, hardware_platform
             FROM templates
             WHERE model_type = ?
-            """, [model_type]).fetchall()
-            
+            """,
+                [model_type],
+            ).fetchall()
+
             for rowid, model_type, template_type, hardware_platform in results:
                 # Set parent_template and modality
-                logger.info(f"Updating template {model_type}/{template_type}/{hardware_platform or 'generic'} with parent {parent_type}")
-                conn.execute("""
+                logger.info(
+                    f"Updating template {model_type}/{template_type}/{hardware_platform or 'generic'} with parent {parent_type}"
+                )
+                conn.execute(
+                    """
                 UPDATE templates
                 SET parent_template = ?, modality = ?, last_updated = CURRENT_TIMESTAMP
                 WHERE rowid = ?
-                """, [parent_type, modality, rowid])
-        
+                """,
+                    [parent_type, modality, rowid],
+                )
+
         conn.close()
         logger.info("Template inheritance system added successfully")
         return True
@@ -977,74 +1047,131 @@ if __name__ == "__main__":
         logger.error(f"Error adding template inheritance: {e}")
         return False
 
+
 def enhance_placeholders(db_path: str) -> bool:
     """Enhance placeholder handling in templates"""
     try:
         conn = duckdb.connect(db_path)
-        
+
         # Step 1: Define standard placeholders and their properties
         standard_placeholders = {
             # Core placeholders
-            "model_name": {"description": "Full model name", "default_value": None, "required": True},
-            "normalized_name": {"description": "Normalized model name for class names", "default_value": None, "required": True},
-            "generated_at": {"description": "Generation timestamp", "default_value": None, "required": True},
-            
+            "model_name": {
+                "description": "Full model name",
+                "default_value": None,
+                "required": True,
+            },
+            "normalized_name": {
+                "description": "Normalized model name for class names",
+                "default_value": None,
+                "required": True,
+            },
+            "generated_at": {
+                "description": "Generation timestamp",
+                "default_value": None,
+                "required": True,
+            },
             # Hardware-related placeholders
-            "best_hardware": {"description": "Best available hardware for the model", "default_value": "cpu", "required": False},
-            "torch_device": {"description": "PyTorch device to use", "default_value": "cpu", "required": False},
-            "has_cuda": {"description": "Boolean indicating CUDA availability", "default_value": "False", "required": False},
-            "has_rocm": {"description": "Boolean indicating ROCm availability", "default_value": "False", "required": False},
-            "has_mps": {"description": "Boolean indicating MPS availability", "default_value": "False", "required": False},
-            "has_openvino": {"description": "Boolean indicating OpenVINO availability", "default_value": "False", "required": False},
-            "has_webnn": {"description": "Boolean indicating WebNN availability", "default_value": "False", "required": False},
-            "has_webgpu": {"description": "Boolean indicating WebGPU availability", "default_value": "False", "required": False},
-            
+            "best_hardware": {
+                "description": "Best available hardware for the model",
+                "default_value": "cpu",
+                "required": False,
+            },
+            "torch_device": {
+                "description": "PyTorch device to use",
+                "default_value": "cpu",
+                "required": False,
+            },
+            "has_cuda": {
+                "description": "Boolean indicating CUDA availability",
+                "default_value": "False",
+                "required": False,
+            },
+            "has_rocm": {
+                "description": "Boolean indicating ROCm availability",
+                "default_value": "False",
+                "required": False,
+            },
+            "has_mps": {
+                "description": "Boolean indicating MPS availability",
+                "default_value": "False",
+                "required": False,
+            },
+            "has_openvino": {
+                "description": "Boolean indicating OpenVINO availability",
+                "default_value": "False",
+                "required": False,
+            },
+            "has_webnn": {
+                "description": "Boolean indicating WebNN availability",
+                "default_value": "False",
+                "required": False,
+            },
+            "has_webgpu": {
+                "description": "Boolean indicating WebGPU availability",
+                "default_value": "False",
+                "required": False,
+            },
             # Model-related placeholders
-            "model_family": {"description": "Model family classification", "default_value": "default", "required": False},
-            "model_subfamily": {"description": "Model subfamily classification", "default_value": None, "required": False},
+            "model_family": {
+                "description": "Model family classification",
+                "default_value": "default",
+                "required": False,
+            },
+            "model_subfamily": {
+                "description": "Model subfamily classification",
+                "default_value": None,
+                "required": False,
+            },
         }
-        
+
         # Step 2: Clear existing placeholders and add standard ones
         conn.execute("DELETE FROM template_placeholders")
-        
+
         for placeholder_name, properties in standard_placeholders.items():
-            conn.execute("""
+            conn.execute(
+                """
             INSERT INTO template_placeholders
             (placeholder, description, default_value, required)
             VALUES (?, ?, ?, ?)
-            """, [
-                placeholder_name,
-                properties["description"],
-                properties["default_value"],
-                properties["required"]
-            ])
-        
+            """,
+                [
+                    placeholder_name,
+                    properties["description"],
+                    properties["default_value"],
+                    properties["required"],
+                ],
+            )
+
         # Step 3: Extract additional placeholders from existing templates
         query = """
         SELECT template FROM templates
         """
         templates = conn.execute(query).fetchall()
-        
+
         additional_placeholders = set()
-        for template, in templates:
+        for (template,) in templates:
             placeholders = extract_placeholders(template)
             additional_placeholders.update(placeholders)
-        
+
         # Step 4: Add any additional placeholders found
         for placeholder in additional_placeholders:
             if placeholder not in standard_placeholders:
-                conn.execute("""
+                conn.execute(
+                    """
                 INSERT INTO template_placeholders
                 (placeholder, description, default_value, required)
                 VALUES (?, ?, NULL, FALSE)
-                """, [placeholder, f"Auto-detected placeholder: {placeholder}"])
-        
+                """,
+                    [placeholder, f"Auto-detected placeholder: {placeholder}"],
+                )
+
         # Step 5: Create helper functions for placeholder documentation (utilities for test/benchmark generators)
-        
+
         # First, check if the utilities directory exists, create if not
         utilities_dir = os.path.join(os.path.dirname(db_path), "template_utilities")
         os.makedirs(utilities_dir, exist_ok=True)
-        
+
         # Create a placeholder helper module
         helper_path = os.path.join(utilities_dir, "placeholder_helpers.py")
         with open(helper_path, "w") as f:
@@ -1150,9 +1277,9 @@ def render_template(template: str, context: Dict[str, Any]) -> str:
     result = template.format(**context)
     return result
 """)
-        
+
         logger.info(f"Created placeholder helper module at {helper_path}")
-        
+
         # Create an initialization file for the utilities directory
         init_path = os.path.join(utilities_dir, "__init__.py")
         with open(init_path, "w") as f:
@@ -1172,9 +1299,9 @@ __all__ = [
     'render_template'
 ]
 """)
-        
+
         logger.info(f"Created utilities package initialization file at {init_path}")
-        
+
         conn.close()
         logger.info("Placeholder system enhanced successfully")
         return True
@@ -1182,78 +1309,87 @@ __all__ = [
         logger.error(f"Error enhancing placeholders: {e}")
         return False
 
+
 def apply_all_enhancements(db_path: str) -> bool:
     """Apply all template system enhancements"""
     logger.info("Applying all template system enhancements")
-    
+
     # Step 1: Check if database exists and has proper schema
     if not check_database(db_path):
         logger.error("Database check failed")
         return False
-    
+
     # Step 2: Enhance database schema
     if not enhance_schema(db_path):
         logger.error("Schema enhancement failed")
         return False
-    
+
     # Step 3: Validate all templates
     if not validate_all_templates(db_path):
         logger.warning("Template validation found issues (continuing with other enhancements)")
-    
+
     # Step 4: Add template inheritance
     if not add_template_inheritance(db_path):
         logger.error("Template inheritance enhancement failed")
         return False
-    
+
     # Step 5: Enhance placeholders
     if not enhance_placeholders(db_path):
         logger.error("Placeholder enhancement failed")
         return False
-    
+
     # Step 6: List templates with validation status
     list_templates_with_validation(db_path)
-    
+
     logger.info("All template system enhancements applied successfully")
     return True
+
 
 def main():
     """Main function"""
     args = parse_args()
     setup_environment(args)
-    
+
     # Apply operations based on command-line arguments
     if args.check_db:
         check_database(args.db_path)
-    
+
     if args.validate_templates:
         validate_all_templates(args.db_path)
-    
+
     if args.validate_model_type:
         validate_all_templates(args.db_path, args.validate_model_type)
-    
+
     if args.list_templates:
         list_templates_with_validation(args.db_path)
-    
+
     if args.add_inheritance:
         add_template_inheritance(args.db_path)
-    
+
     if args.enhance_placeholders:
         enhance_placeholders(args.db_path)
-    
+
     if args.apply_all_enhancements:
         apply_all_enhancements(args.db_path)
-    
+
     # If no specific operation was specified, show usage
-    if not any([
-        args.check_db, args.validate_templates, args.validate_model_type,
-        args.list_templates, args.add_inheritance, args.enhance_placeholders,
-        args.apply_all_enhancements
-    ]):
+    if not any(
+        [
+            args.check_db,
+            args.validate_templates,
+            args.validate_model_type,
+            args.list_templates,
+            args.add_inheritance,
+            args.enhance_placeholders,
+            args.apply_all_enhancements,
+        ]
+    ):
         logger.error("No operation specified")
         logger.info("Use --help to see available operations")
         return 1
-    
+
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

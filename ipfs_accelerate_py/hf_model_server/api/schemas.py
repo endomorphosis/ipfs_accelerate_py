@@ -12,8 +12,10 @@ from pydantic import BaseModel, Field
 # Completions API
 # ============================================================================
 
+
 class CompletionRequest(BaseModel):
     """OpenAI-compatible completion request"""
+
     model: str = Field(..., description="Model to use for completion")
     prompt: Union[str, List[str]] = Field(..., description="Prompt(s) to generate from")
     max_tokens: int = Field(default=16, description="Maximum tokens to generate")
@@ -31,6 +33,7 @@ class CompletionRequest(BaseModel):
 
 class CompletionChoice(BaseModel):
     """Single completion choice"""
+
     text: str
     index: int
     logprobs: Optional[Dict] = None
@@ -39,6 +42,7 @@ class CompletionChoice(BaseModel):
 
 class CompletionUsage(BaseModel):
     """Token usage information"""
+
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int
@@ -46,6 +50,7 @@ class CompletionUsage(BaseModel):
 
 class CompletionResponse(BaseModel):
     """OpenAI-compatible completion response"""
+
     id: str
     object: Literal["text_completion"] = "text_completion"
     created: int
@@ -58,8 +63,10 @@ class CompletionResponse(BaseModel):
 # Chat Completions API
 # ============================================================================
 
+
 class ChatMessage(BaseModel):
     """Chat message"""
+
     role: Literal["system", "user", "assistant"] = Field(..., description="Message role")
     content: str = Field(..., description="Message content")
     name: Optional[str] = Field(default=None, description="Name of the message sender")
@@ -67,6 +74,7 @@ class ChatMessage(BaseModel):
 
 class ChatCompletionRequest(BaseModel):
     """OpenAI-compatible chat completion request"""
+
     model: str = Field(..., description="Model to use")
     messages: List[ChatMessage] = Field(..., description="Conversation messages")
     max_tokens: Optional[int] = Field(default=None, description="Maximum tokens to generate")
@@ -82,6 +90,7 @@ class ChatCompletionRequest(BaseModel):
 
 class ChatCompletionChoice(BaseModel):
     """Chat completion choice"""
+
     index: int
     message: ChatMessage
     finish_reason: str
@@ -89,6 +98,7 @@ class ChatCompletionChoice(BaseModel):
 
 class ChatCompletionResponse(BaseModel):
     """OpenAI-compatible chat completion response"""
+
     id: str
     object: Literal["chat.completion"] = "chat.completion"
     created: int
@@ -101,8 +111,10 @@ class ChatCompletionResponse(BaseModel):
 # Embeddings API
 # ============================================================================
 
+
 class EmbeddingRequest(BaseModel):
     """OpenAI-compatible embedding request"""
+
     model: str = Field(..., description="Model to use for embeddings")
     input: Union[str, List[str]] = Field(..., description="Text(s) to embed")
     user: Optional[str] = Field(default=None)
@@ -110,6 +122,7 @@ class EmbeddingRequest(BaseModel):
 
 class EmbeddingData(BaseModel):
     """Single embedding"""
+
     object: Literal["embedding"] = "embedding"
     embedding: List[float]
     index: int
@@ -117,6 +130,7 @@ class EmbeddingData(BaseModel):
 
 class EmbeddingResponse(BaseModel):
     """OpenAI-compatible embedding response"""
+
     object: Literal["list"] = "list"
     data: List[EmbeddingData]
     model: str
@@ -127,8 +141,10 @@ class EmbeddingResponse(BaseModel):
 # Models API
 # ============================================================================
 
+
 class ModelInfo(BaseModel):
     """Model information"""
+
     id: str
     object: Literal["model"] = "model"
     created: int
@@ -140,6 +156,7 @@ class ModelInfo(BaseModel):
 
 class ModelListResponse(BaseModel):
     """List of available models"""
+
     object: Literal["list"] = "list"
     data: List[ModelInfo]
 
@@ -148,8 +165,10 @@ class ModelListResponse(BaseModel):
 # Error Responses
 # ============================================================================
 
+
 class ErrorDetail(BaseModel):
     """Error detail"""
+
     message: str
     type: str
     param: Optional[str] = None
@@ -158,6 +177,7 @@ class ErrorDetail(BaseModel):
 
 class ErrorResponse(BaseModel):
     """API error response"""
+
     error: ErrorDetail
 
 
@@ -165,8 +185,10 @@ class ErrorResponse(BaseModel):
 # Extended Model Management (Non-OpenAI)
 # ============================================================================
 
+
 class LoadModelRequest(BaseModel):
     """Load a model"""
+
     model_id: str = Field(..., description="Model ID to load")
     hardware: Optional[str] = Field(default=None, description="Specific hardware to use")
     options: Dict[str, Any] = Field(default_factory=dict, description="Model loading options")
@@ -174,6 +196,7 @@ class LoadModelRequest(BaseModel):
 
 class LoadModelResponse(BaseModel):
     """Model load response"""
+
     model_id: str
     status: str
     hardware: str
@@ -187,11 +210,13 @@ class LoadModelResponse(BaseModel):
 
 class UnloadModelRequest(BaseModel):
     """Unload a model"""
+
     model_id: str = Field(..., description="Model ID to unload")
 
 
 class UnloadModelResponse(BaseModel):
     """Model unload response"""
+
     model_id: str
     status: str
     message: str
@@ -204,6 +229,7 @@ class UnloadModelResponse(BaseModel):
 
 class ServerStatus(BaseModel):
     """Server status information"""
+
     status: str
     version: str
     models_loaded: int

@@ -27,7 +27,11 @@ class RiskRecord:
     @property
     def score(self) -> float:
         # Weighted deterministic risk formula (0..1 clipped).
-        base = (self.denial_ratio * 0.60) + (min(10, self.obligation_count) * 0.03) + (min(10, self.disputed_count) * 0.07)
+        base = (
+            (self.denial_ratio * 0.60)
+            + (min(10, self.obligation_count) * 0.03)
+            + (min(10, self.disputed_count) * 0.07)
+        )
         return max(0.0, min(1.0, base))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -139,7 +143,13 @@ class RiskScheduler:
             if bool(signal.get("disputed", False)):
                 consensus_adjustment += 0.20
 
-        priority = risk_penalty + readiness_penalty + (1.0 - value_bonus) + retry_penalty + consensus_adjustment
+        priority = (
+            risk_penalty
+            + readiness_penalty
+            + (1.0 - value_bonus)
+            + retry_penalty
+            + consensus_adjustment
+        )
 
         self._sequence += 1
 

@@ -352,11 +352,11 @@ class BrowserOptimizationManager:
         self.browser = browser.lower()
         self.model_type = model_type
         self.compute_shaders_enabled = self._check_compute_shader_support()
-        
+
     def _check_compute_shader_support(self):
         """Check if current browser supports compute shaders"""
         return self.browser not in ["safari"] or self._check_safari_version() >= 18
-        
+
     def get_optimal_workgroup_size(self):
         """Get the optimal workgroup size for the current browser"""
         if self.model_type in ["whisper", "wav2vec2", "clap"]:
@@ -366,7 +366,7 @@ class BrowserOptimizationManager:
             elif self.browser in ["chrome", "edge"]:
                 return [128, 2, 1]  # Chrome/Edge
             else:
-                return [64, 4, 1]   # Default
+                return [64, 4, 1]  # Default
         else:
             # Default for other model types
             if self.browser in ["chrome", "edge"]:

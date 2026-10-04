@@ -12,7 +12,9 @@ import logging
 from typing import Dict, Any, List, Optional
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger("generate_missing_tests")
 
 # Add parent directory to path
@@ -601,24 +603,25 @@ if __name__ == "__main__":
     unittest.main()
 """
 
+
 def find_apis_dir() -> str:
     """
     Find the 'apis' directory containing test files.
-    
+
     Returns:
         str: Path to the apis directory
     """
     potential_locations = [
         os.path.join(script_dir, "apis"),
         os.path.join(parent_dir, "apis"),
-        os.path.join(parent_dir, "test", "apis")
+        os.path.join(parent_dir, "test", "apis"),
     ]
-    
+
     for location in potential_locations:
         if os.path.isdir(location):
             logger.info(f"Found APIs directory at: {location}")
             return location
-    
+
     # If not found in common locations, search for it
     logger.info("Searching for APIs directory...")
     for root, dirs, files in os.walk(parent_dir):
@@ -626,60 +629,59 @@ def find_apis_dir() -> str:
             apis_dir = os.path.join(root, "apis")
             logger.info(f"Found APIs directory at: {apis_dir}")
             return apis_dir
-    
+
     raise FileNotFoundError("Could not find 'apis' directory containing test files")
+
 
 def check_missing_test_files(apis_dir: str) -> Dict[str, bool]:
     """
     Check which test files are missing in the apis directory.
-    
+
     Args:
         apis_dir: Path to the apis directory
-        
+
     Returns:
         Dict mapping API names to whether their test file is missing
     """
-    test_files = {
-        "vllm": "test_vllm.py",
-        "s3_kit": "test_s3_kit.py"
-    }
-    
+    test_files = {"vllm": "test_vllm.py", "s3_kit": "test_s3_kit.py"}
+
     missing_tests = {}
-    
+
     for api_name, filename in test_files.items():
         file_path = os.path.join(apis_dir, filename)
         missing_tests[api_name] = not os.path.exists(file_path)
-        
+
         if missing_tests[api_name]:
             logger.info(f"Test file missing for {api_name}: {filename}")
         else:
             logger.info(f"Test file exists for {api_name}: {filename}")
-    
+
     return missing_tests
+
 
 def generate_test_file(api_name: str, apis_dir: str) -> str:
     """
     Generate a test file for the specified API.
-    
+
     Args:
         api_name: Name of the API (vllm or s3_kit)
         apis_dir: Path to the apis directory
-        
+
     Returns:
         str: Path to the generated test file
     """
     filename = f"test_{api_name}.py"
     file_path = os.path.join(apis_dir, filename)
-    
+
     if os.path.exists(file_path):
         logger.warning(f"Test file already exists at {file_path}, creating backup")
-        backup_path = file_path + '.bak'
+        backup_path = file_path + ".bak"
         # Backup existing file
-        with open(file_path, 'r') as f:
+        with open(file_path, "r") as f:
             existing_content = f.read()
-        with open(backup_path, 'w') as f:
+        with open(backup_path, "w") as f:
             f.write(existing_content)
-    
+
     # Select template based on API name
     if api_name == "vllm":
         template = VLLM_TEST_TEMPLATE
@@ -687,59 +689,68 @@ def generate_test_file(api_name: str, apis_dir: str) -> str:
         template = S3_KIT_TEST_TEMPLATE
     else:
         raise ValueError(f"Unknown API name: {api_name}")
-    
+
     # Write the test file
-    with open(file_path, 'w') as f:
+    with open(file_path, "w") as f:
         f.write(template)
-    
+
     logger.info(f"Generated test file for {api_name} at {file_path}")
     return file_path
+
 
 def main():
     """Main function to run the script."""
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="Generate missing test files for API backends")
-    parser.add_argument('--apis', choices=['llvm', 's3_kit', 'all'], default='all', 
-                      help="Which API test file to generate (default: all)")
-    parser.add_argument('--apis-dir', type=str, help="Path to the apis directory (optional)")
-    parser.add_argument('--force', action='store_true', help="Force regeneration even if files exist")
-    
+    parser.add_argument(
+        "--apis",
+        choices=["llvm", "s3_kit", "all"],
+        default="all",
+        help="Which API test file to generate (default: all)",
+    )
+    parser.add_argument("--apis-dir", type=str, help="Path to the apis directory (optional)")
+    parser.add_argument(
+        "--force", action="store_true", help="Force regeneration even if files exist"
+    )
+
     args = parser.parse_args()
-    
+
     try:
         # Find APIs directory
         apis_dir = args.apis_dir if args.apis_dir else find_apis_dir()
-        
+
         # Check which test files are missing
         missing_tests = check_missing_test_files(apis_dir)
-        
+
         # Generate missing test files
         generated_files = []
-        
+
         apis_to_generate = []
-        if args.apis == 'all':
-            apis_to_generate = ['llvm', 's3_kit']
+        if args.apis == "all":
+            apis_to_generate = ["llvm", "s3_kit"]
         else:
             apis_to_generate = [args.apis]
-        
+
         for api_name in apis_to_generate:
             if args.force or missing_tests[api_name]:
                 file_path = generate_test_file(api_name, apis_dir)
                 generated_files.append((api_name, file_path))
-        
+
         if generated_files:
             logger.info("\nGenerated test files:")
             for api_name, file_path in generated_files:
                 logger.info(f"- {api_name}: {file_path}")
         else:
             logger.info("No test files were generated")
-    
+
     except Exception as e:
         logger.error(f"Error: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

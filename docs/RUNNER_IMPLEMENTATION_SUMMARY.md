@@ -159,6 +159,7 @@ await mcp.call_tool('runner_start_autoscaler', {owner: 'myorg'});
 **Python API** (for custom integration):
 ```python
 from ipfs_accelerate_py.kit.runner_kit import get_runner_kit
+
 kit = get_runner_kit()
 kit.start_autoscaler()
 ```
@@ -234,11 +235,7 @@ workflows.data.forEach(queue => {
 from ipfs_accelerate_py.kit.runner_kit import get_runner_kit, RunnerConfig
 
 # Create config
-config = RunnerConfig(
-    owner='myorg',
-    max_runners=20,
-    poll_interval=60
-)
+config = RunnerConfig(owner="myorg", max_runners=20, poll_interval=60)
 
 # Initialize
 kit = get_runner_kit(config)
@@ -247,7 +244,7 @@ kit = get_runner_kit(config)
 kit.start_autoscaler(background=True)
 
 # Custom logic: provision extra for priority repos
-priority_repos = ['owner/critical-app']
+priority_repos = ["owner/critical-app"]
 queues = kit.get_workflow_queues()
 
 for queue in queues:
@@ -379,7 +376,8 @@ ipfs-accelerate runner start --owner myorg --interval 60
 **Option 2 - Python:**
 ```python
 from ipfs_accelerate_py.kit.runner_kit import get_runner_kit, RunnerConfig
-kit = get_runner_kit(RunnerConfig(owner='myorg', poll_interval=60))
+
+kit = get_runner_kit(RunnerConfig(owner="myorg", poll_interval=60))
 kit.start_autoscaler()
 ```
 

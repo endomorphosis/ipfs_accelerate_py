@@ -27,14 +27,20 @@ def test_retryable_transport_error_additional_transient_markers(message: str):
 
 def test_submit_task_retries_on_retryable_response(monkeypatch):
     import ipfs_accelerate_py.p2p_tasks.client as client
-    from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue, get_p2p_retry_metrics, reset_p2p_retry_metrics
+    from ipfs_accelerate_py.p2p_tasks.client import (
+        RemoteQueue,
+        get_p2p_retry_metrics,
+        reset_p2p_retry_metrics,
+    )
 
     responses = [
         {"ok": False, "error": "discovery_timeout"},
         {"ok": True, "task_id": "task-123"},
     ]
 
-    async def fake_dial_and_request(*, remote, message, dial_timeout_s, allow_broad_discovery_override=None):
+    async def fake_dial_and_request(
+        *, remote, message, dial_timeout_s, allow_broad_discovery_override=None
+    ):
         assert isinstance(message, dict)
         return responses.pop(0)
 
@@ -72,12 +78,18 @@ def test_submit_task_retries_on_retryable_response(monkeypatch):
 
 def test_submit_task_retry_uses_lightweight_discovery_override(monkeypatch):
     import ipfs_accelerate_py.p2p_tasks.client as client
-    from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue, get_p2p_retry_metrics, reset_p2p_retry_metrics
+    from ipfs_accelerate_py.p2p_tasks.client import (
+        RemoteQueue,
+        get_p2p_retry_metrics,
+        reset_p2p_retry_metrics,
+    )
 
     seen_overrides: list[bool | None] = []
     attempts = {"n": 0}
 
-    async def fake_dial_and_request(*, remote, message, dial_timeout_s, allow_broad_discovery_override=None):
+    async def fake_dial_and_request(
+        *, remote, message, dial_timeout_s, allow_broad_discovery_override=None
+    ):
         del remote, message, dial_timeout_s
         seen_overrides.append(allow_broad_discovery_override)
         attempts["n"] += 1
@@ -119,12 +131,18 @@ def test_submit_task_retry_uses_lightweight_discovery_override(monkeypatch):
 
 def test_dial_and_request_with_retries_uses_lightweight_override(monkeypatch):
     import ipfs_accelerate_py.p2p_tasks.client as client
-    from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue, get_p2p_retry_metrics, reset_p2p_retry_metrics
+    from ipfs_accelerate_py.p2p_tasks.client import (
+        RemoteQueue,
+        get_p2p_retry_metrics,
+        reset_p2p_retry_metrics,
+    )
 
     seen_overrides: list[bool | None] = []
     attempts = {"n": 0}
 
-    async def fake_dial_and_request(*, remote, message, dial_timeout_s, allow_broad_discovery_override=None):
+    async def fake_dial_and_request(
+        *, remote, message, dial_timeout_s, allow_broad_discovery_override=None
+    ):
         del remote, message, dial_timeout_s
         seen_overrides.append(allow_broad_discovery_override)
         attempts["n"] += 1
@@ -192,14 +210,20 @@ def test_retry_delay_is_bounded_for_large_attempts(monkeypatch):
 
 def test_request_status_retries_on_retryable_response(monkeypatch):
     import ipfs_accelerate_py.p2p_tasks.client as client
-    from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue, get_p2p_retry_metrics, reset_p2p_retry_metrics
+    from ipfs_accelerate_py.p2p_tasks.client import (
+        RemoteQueue,
+        get_p2p_retry_metrics,
+        reset_p2p_retry_metrics,
+    )
 
     responses = [
         {"ok": False, "error": "discovery_timeout"},
         {"ok": True, "status": "ready"},
     ]
 
-    async def fake_dial_and_request(*, remote, message, dial_timeout_s, allow_broad_discovery_override=None):
+    async def fake_dial_and_request(
+        *, remote, message, dial_timeout_s, allow_broad_discovery_override=None
+    ):
         del remote, dial_timeout_s, allow_broad_discovery_override
         assert message.get("op") == "status"
         return responses.pop(0)
@@ -244,7 +268,9 @@ def test_request_status_detail_mode_mirrors_top_level_sections(monkeypatch):
             "scheduler": {"counts": {"workers": 1}},
         }
 
-    monkeypatch.setattr(client, "_dial_and_request_with_retries", fake_dial_and_request_with_retries)
+    monkeypatch.setattr(
+        client, "_dial_and_request_with_retries", fake_dial_and_request_with_retries
+    )
 
     async def _do() -> None:
         remote = RemoteQueue(peer_id="peer-status", multiaddr="")
@@ -271,13 +297,17 @@ def test_request_status_detail_mode_preserves_existing_detail(monkeypatch):
             "transport": {"mcp_p2p": {"stats": {"sessions_started": 1}}},
         }
 
-    monkeypatch.setattr(client, "_dial_and_request_with_retries", fake_dial_and_request_with_retries)
+    monkeypatch.setattr(
+        client, "_dial_and_request_with_retries", fake_dial_and_request_with_retries
+    )
 
     async def _do() -> None:
         remote = RemoteQueue(peer_id="peer-status", multiaddr="")
         resp = await client.request_status(remote=remote, timeout_s=1.0, detail=True)
         assert resp.get("ok") is True
-        assert ((resp.get("detail") or {}).get("transport") or {}).get("mcp_p2p", {}).get("stats", {}).get("sessions_started") == 5
+        assert ((resp.get("detail") or {}).get("transport") or {}).get("mcp_p2p", {}).get(
+            "stats", {}
+        ).get("sessions_started") == 5
 
     anyio.run(_do, backend="trio")
 
@@ -288,7 +318,9 @@ def test_wait_task_preserves_long_poll_dial_timeout(monkeypatch):
 
     seen_dial_timeouts: list[float] = []
 
-    async def fake_dial_and_request(*, remote, message, dial_timeout_s, allow_broad_discovery_override=None):
+    async def fake_dial_and_request(
+        *, remote, message, dial_timeout_s, allow_broad_discovery_override=None
+    ):
         del remote, allow_broad_discovery_override
         assert message.get("op") == "wait"
         seen_dial_timeouts.append(float(dial_timeout_s))
@@ -322,12 +354,18 @@ def test_wait_task_preserves_long_poll_dial_timeout(monkeypatch):
 
 def test_wait_task_retry_uses_lightweight_discovery_override(monkeypatch):
     import ipfs_accelerate_py.p2p_tasks.client as client
-    from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue, get_p2p_retry_metrics, reset_p2p_retry_metrics
+    from ipfs_accelerate_py.p2p_tasks.client import (
+        RemoteQueue,
+        get_p2p_retry_metrics,
+        reset_p2p_retry_metrics,
+    )
 
     seen_overrides: list[bool | None] = []
     attempts = {"n": 0}
 
-    async def fake_dial_and_request(*, remote, message, dial_timeout_s, allow_broad_discovery_override=None):
+    async def fake_dial_and_request(
+        *, remote, message, dial_timeout_s, allow_broad_discovery_override=None
+    ):
         del remote, dial_timeout_s
         assert message.get("op") == "wait"
         seen_overrides.append(allow_broad_discovery_override)
@@ -368,14 +406,20 @@ def test_wait_task_retry_uses_lightweight_discovery_override(monkeypatch):
 
 def test_wait_task_retries_on_retryable_response(monkeypatch):
     import ipfs_accelerate_py.p2p_tasks.client as client
-    from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue, get_p2p_retry_metrics, reset_p2p_retry_metrics
+    from ipfs_accelerate_py.p2p_tasks.client import (
+        RemoteQueue,
+        get_p2p_retry_metrics,
+        reset_p2p_retry_metrics,
+    )
 
     responses = [
         {"ok": False, "error": "discovery_timeout"},
         {"ok": True, "task": {"task_id": "t-resp", "status": "completed"}},
     ]
 
-    async def fake_dial_and_request(*, remote, message, dial_timeout_s, allow_broad_discovery_override=None):
+    async def fake_dial_and_request(
+        *, remote, message, dial_timeout_s, allow_broad_discovery_override=None
+    ):
         del remote, dial_timeout_s, allow_broad_discovery_override
         assert message.get("op") == "wait"
         return responses.pop(0)
@@ -410,13 +454,19 @@ def test_wait_task_retries_on_retryable_response(monkeypatch):
 
 def test_wait_task_cooldown_fast_fail(monkeypatch):
     import ipfs_accelerate_py.p2p_tasks.client as client
-    from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue, get_p2p_retry_metrics, reset_p2p_retry_metrics
+    from ipfs_accelerate_py.p2p_tasks.client import (
+        RemoteQueue,
+        get_p2p_retry_metrics,
+        reset_p2p_retry_metrics,
+    )
 
     attempts = {"n": 0}
     cooldown_calls = {"n": 0}
     sleeps: list[float] = []
 
-    async def fake_dial_and_request(*, remote, message, dial_timeout_s, allow_broad_discovery_override=None):
+    async def fake_dial_and_request(
+        *, remote, message, dial_timeout_s, allow_broad_discovery_override=None
+    ):
         del remote, message, dial_timeout_s, allow_broad_discovery_override
         attempts["n"] += 1
         return {"ok": True, "task": {"task_id": "t-fast", "status": "completed"}}

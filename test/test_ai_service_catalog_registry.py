@@ -161,9 +161,7 @@ def test_source_precedence_resolves_conflict_without_hiding_losing_claim():
     view = registry.view(at="2030-01-01T00:00:00Z")
     assert view.snapshot.providers[0].description == "router"
     assert {claim.record.description for claim in view.claims} == {"static", "router"}
-    diagnostic = next(
-        item for item in view.diagnostics if item.code == "precedence_conflict"
-    )
+    diagnostic = next(item for item in view.diagnostics if item.code == "precedence_conflict")
     assert diagnostic.winner_source == "router"
     assert not diagnostic.ambiguous
 
@@ -220,17 +218,11 @@ def test_snapshot_cid_depends_only_on_canonical_content_and_order_is_stable():
 
 
 def test_pagination_cursor_is_snapshot_and_query_bound():
-    registry = CatalogRegistry(
-        ProviderDescriptor(name="page-%d" % index) for index in range(5)
-    )
+    registry = CatalogRegistry(ProviderDescriptor(name="page-%d" % index) for index in range(5))
     original = registry.snapshot(at="2030-01-01T00:00:00Z")
     first = paginate_snapshot(original, "providers", limit=2)
-    second = paginate_snapshot(
-        original, "providers", limit=2, cursor=first.next_cursor
-    )
-    third = paginate_snapshot(
-        original, "providers", limit=2, cursor=second.next_cursor
-    )
+    second = paginate_snapshot(original, "providers", limit=2, cursor=first.next_cursor)
+    third = paginate_snapshot(original, "providers", limit=2, cursor=second.next_cursor)
     assert [len(first.items), len(second.items), len(third.items)] == [2, 2, 1]
     assert first.total == second.total == third.total == 5
     assert third.next_cursor is None
@@ -343,9 +335,7 @@ def test_no_candidate_reasons_cover_constraint_failures(constraints, fragment):
     registry = CatalogRegistry()
     register_service(registry, records)
     result = CatalogResolver().resolve(
-        registry.snapshot(at="2030-01-01T00:00:00Z"),
-        operation="text.chat",
-        **constraints
+        registry.snapshot(at="2030-01-01T00:00:00Z"), operation="text.chat", **constraints
     )
     assert not result.found
     assert result.total_candidates == 0
@@ -364,9 +354,7 @@ def test_model_alias_collision_is_scoped_by_provider_but_global_use_fails():
     snapshot = registry.snapshot(at="2030-01-01T00:00:00Z")
     resolver = CatalogResolver()
 
-    ambiguous = resolver.resolve(
-        snapshot, operation="text.chat", model="first-model"
-    )
+    ambiguous = resolver.resolve(snapshot, operation="text.chat", model="first-model")
     assert not ambiguous.found
     assert any("ambiguous" in reason for reason in ambiguous.reasons)
     scoped = resolver.resolve(
@@ -441,10 +429,12 @@ def test_serialization_round_trips_for_snapshot_page_view_and_resolution():
     view = registry.view(at="2030-01-01T00:00:00Z")
     snapshot = deserialize_snapshot(serialize_snapshot(view.snapshot))
     assert snapshot == view.snapshot
-    assert RegistryView.from_dict(
-        json.loads(json.dumps(view.to_dict(), sort_keys=True))
-    ) == view
-    assert RegistryDiagnostic.from_dict(view.diagnostics[0].to_dict()) == view.diagnostics[0] if view.diagnostics else True
+    assert RegistryView.from_dict(json.loads(json.dumps(view.to_dict(), sort_keys=True))) == view
+    assert (
+        RegistryDiagnostic.from_dict(view.diagnostics[0].to_dict()) == view.diagnostics[0]
+        if view.diagnostics
+        else True
+    )
 
     page = paginate_snapshot(snapshot, "providers", limit=1)
     assert CatalogPage.from_dict(page.to_dict()) == page
@@ -457,6 +447,7 @@ def test_serialization_round_trips_for_snapshot_page_view_and_resolution():
     )
     assert ResolutionRequest.from_dict(request.to_dict()) == request
     result = CatalogResolver().resolve(snapshot, request)
-    assert ResolutionResult.from_dict(
-        json.loads(json.dumps(result.to_dict(), sort_keys=True))
-    ) == result
+    assert (
+        ResolutionResult.from_dict(json.loads(json.dumps(result.to_dict(), sort_keys=True)))
+        == result
+    )

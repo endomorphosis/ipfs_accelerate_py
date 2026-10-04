@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 
 # Setup logging
 import logging
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -24,19 +25,13 @@ except ImportError:
 
 # Try to import datasets integration for API tracking
 try:
-    from ..datasets_integration import (
-        is_datasets_available,
-        ProvenanceLogger,
-        DatasetsManager
-    )
+    from ..datasets_integration import is_datasets_available, ProvenanceLogger, DatasetsManager
+
     HAVE_DATASETS_INTEGRATION = True
 except ImportError:
     try:
-        from datasets_integration import (
-            is_datasets_available,
-            ProvenanceLogger,
-            DatasetsManager
-        )
+        from datasets_integration import is_datasets_available, ProvenanceLogger, DatasetsManager
+
         HAVE_DATASETS_INTEGRATION = True
     except ImportError:
         HAVE_DATASETS_INTEGRATION = False
@@ -44,20 +39,21 @@ except ImportError:
         ProvenanceLogger = None
         DatasetsManager = None
 
+
 class gemini(BaseAPIBackend):
     def __init__(self, resources=None, metadata=None):
         self.resources = resources if resources else {}
         self.metadata = metadata if metadata else {}
-        
+
         # Get API key from metadata or environment
         self.api_key = self._get_api_key()
-        
+
         # Set API base URL
         self.api_base = "https://generativelanguage.googleapis.com/v1"
-        
+
         # Default model
         self.default_model = "gemini-1.5-pro"
-        
+
         # Initialize queue and backoff systems
         self._init_queue(queue_size=100, max_concurrent_requests=5)
         # Batching settings
@@ -67,24 +63,24 @@ class gemini(BaseAPIBackend):
         self.batch_queue = {}  # Keyed by model name
         self.batch_timers = {}  # Timers for each batch
         self.batch_lock = threading.RLock()
-        
+
         # Models that support batching
         self.embedding_models = []  # Models supporting batched embeddings
         self.completion_models = []  # Models supporting batched completions
         self.supported_batch_models = []  # All models supporting batching
 
         self._init_circuit_breaker()
-        
+
         # Initialize backoff configuration
         self.max_retries = 5
         self.initial_retry_delay = 1
         self.backoff_factor = 2
         self.max_retry_delay = 16
-        
+
         # Request tracking
         self.request_tracking = True
         self.recent_requests = {}
-        
+
         return None
 
     def _get_api_key(self):
@@ -93,12 +89,12 @@ class gemini(BaseAPIBackend):
         api_key = self.metadata.get("gemini_api_key") or self.metadata.get("google_api_key")
         if api_key:
             return api_key
-        
+
         # Try to get from environment
         env_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
         if env_key:
             return env_key
-        
+
         # Try to load from dotenv
         try:
             load_dotenv()
@@ -107,11 +103,10 @@ class gemini(BaseAPIBackend):
                 return env_key
         except ImportError:
             pass
-        
+
         # Raise error if no key found
         raise ValueError("No Gemini API key found in metadata or environment")
-    
-    
+
     def _process_queue(self):
         """Delegate to the shared BaseAPIBackend implementation."""
         return super()._process_queue()
@@ -119,16 +114,12 @@ class gemini(BaseAPIBackend):
     def _with_queue_and_backoff(self, func, *args, **kwargs):
         """Execute a function with queue and backoff"""
         future = Future()
-        
+
         try:
             with self.queue_lock:
                 if self.active_requests >= self.max_concurrent_requests:
                     # Queue the request
-                    request_info = {
-                        "func": func,
-                        "args": args,
-                        "kwargs": kwargs
-                    }
+                    request_info = {"func": func, "args": args, "kwargs": kwargs}
                     result_future = self.queue_with_priority(request_info)
                     wait_start = time.time()
                     while not result_future["completed"] and (time.time() - wait_start) < 300:
@@ -144,7 +135,7 @@ class gemini(BaseAPIBackend):
         except Exception as e:
             logger.error(f"Error with queue management: {e}")
             # Fall through to direct processing
-        
+
         # Process directly with retries if not queued
         retry_count = 0
         while retry_count <= self.max_retries:
@@ -160,40 +151,42 @@ class gemini(BaseAPIBackend):
                     with self.queue_lock:
                         self.active_requests = max(0, self.active_requests - 1)
                     raise
-                
+
                 # Calculate backoff delay
                 delay = min(
                     self.initial_retry_delay * (self.backoff_factor ** (retry_count - 1)),
-                    self.max_retry_delay
+                    self.max_retry_delay,
                 )
-                
+
                 # Sleep with backoff
                 logger.warning(f"Request failed, retrying in {delay} seconds: {e}")
                 time.sleep(delay)
-        
+
         # Decrement counter
         with self.queue_lock:
             self.active_requests = max(0, self.active_requests - 1)
-        
+
         return future.result()
-    
+
     def make_post_request(self, url=None, data=None, api_key=None, request_id=None):
         # Check circuit breaker first
         if hasattr(self, "check_circuit_breaker") and not self.check_circuit_breaker():
-            raise Exception(f"Circuit breaker is OPEN. Service appears to be unavailable. Try again in {self.reset_timeout} seconds.")
-        
+            raise Exception(
+                f"Circuit breaker is OPEN. Service appears to be unavailable. Try again in {self.reset_timeout} seconds."
+            )
+
         """Make a POST request to the Gemini API"""
         # Use default API key if not provided
         if not api_key:
             api_key = self.api_key
-        
+
         if not api_key:
             raise ValueError("No API key provided for Gemini API request")
-        
+
         # Generate request ID if not provided
         if not request_id:
             request_id = f"req_{int(time.time())}_{hashlib.md5(str(data).encode()).hexdigest()[:8]}"
-        
+
         # Create URL with API key parameter
         if not url:
             # Default to text generation endpoint
@@ -202,24 +195,17 @@ class gemini(BaseAPIBackend):
             url = f"{url}?key={api_key}"
         else:
             url = f"{url}&key={api_key}"
-        
+
         # Setup headers
-        headers = {
-            "Content-Type": "application/json"
-        }
-        
+        headers = {"Content-Type": "application/json"}
+
         if request_id:
             headers["X-Request-ID"] = request_id
-        
+
         # Make request
         def _do_request():
-            response = requests.post(
-                url=url,
-                json=data,
-                headers=headers,
-                timeout=60
-            )
-            
+            response = requests.post(url=url, json=data, headers=headers, timeout=60)
+
             # Check for errors
             if response.status_code != 200:
                 error_message = f"Gemini API request failed with status {response.status_code}"
@@ -229,35 +215,34 @@ class gemini(BaseAPIBackend):
                         error_message = f"{error_message}: {error_data['error'].get('message', '')}"
                 except:
                     error_message = f"{error_message}: {response.text[:100]}"
-                
+
                 raise ValueError(error_message)
-            
+
             return response.json()
-        
+
         # Execute with queue and backoff
         return self._with_queue_and_backoff(_do_request)
-    
-    def chat(self, messages, model=None, max_tokens=None, temperature=None, request_id=None, **kwargs):
+
+    def chat(
+        self, messages, model=None, max_tokens=None, temperature=None, request_id=None, **kwargs
+    ):
         """Send a chat request to Gemini API"""
         # Use specified model or default
         model = model or self.default_model
-        
+
         # Format messages for Gemini API
         formatted_messages = self._format_messages(messages)
-        
+
         # Prepare request data
-        data = {
-            "model": model,
-            "contents": formatted_messages
-        }
-        
+        data = {"model": model, "contents": formatted_messages}
+
         # Add generation config if provided
         generation_config = {}
         if max_tokens is not None:
             generation_config["maxOutputTokens"] = max_tokens
         if temperature is not None:
             generation_config["temperature"] = temperature
-        
+
         # Add other parameters from kwargs
         for key in ["topP", "topK"]:
             if key in kwargs:
@@ -266,40 +251,44 @@ class gemini(BaseAPIBackend):
                 # Convert snake_case to camelCase
                 snake_key = key.lower()
                 generation_config[key] = kwargs[snake_key]
-        
+
         if generation_config:
             data["generationConfig"] = generation_config
-        
+
         # Make request
         response = self.make_post_request(data=data, request_id=request_id)
-        
+
         # Process and normalize response
         return {
             "text": self._extract_text(response),
             "model": model,
             "usage": self._extract_usage(response),
             "implementation_type": "(REAL)",
-            "raw_response": response  # Include raw response for advanced use
+            "raw_response": response,  # Include raw response for advanced use
         }
-    
-    def generate(self, prompt, model=None, max_tokens=None, temperature=None, request_id=None, **kwargs):
+
+    def generate(
+        self, prompt, model=None, max_tokens=None, temperature=None, request_id=None, **kwargs
+    ):
         """Generate text with Gemini (alias for chat)"""
         # Convert prompt to messages format
         if isinstance(prompt, list):
             messages = prompt
         else:
             messages = [{"role": "user", "content": prompt}]
-        
+
         return self.chat(
             messages=messages,
             model=model,
             max_tokens=max_tokens,
             temperature=temperature,
             request_id=request_id,
-            **kwargs
+            **kwargs,
         )
-    
-    def completions(self, prompt, model=None, max_tokens=None, temperature=None, request_id=None, **kwargs):
+
+    def completions(
+        self, prompt, model=None, max_tokens=None, temperature=None, request_id=None, **kwargs
+    ):
         """Generate completions with Gemini (alias for chat)"""
         return self.generate(
             prompt=prompt,
@@ -307,21 +296,30 @@ class gemini(BaseAPIBackend):
             max_tokens=max_tokens,
             temperature=temperature,
             request_id=request_id,
-            **kwargs
+            **kwargs,
         )
-    
-    def process_image(self, image_data, prompt, model=None, max_tokens=None, temperature=None, request_id=None, **kwargs):
+
+    def process_image(
+        self,
+        image_data,
+        prompt,
+        model=None,
+        max_tokens=None,
+        temperature=None,
+        request_id=None,
+        **kwargs,
+    ):
         """Process an image with Gemini API"""
         # Use specified model or multimodal default
         model = model or "gemini-1.5-pro-vision"
-        
+
         # Encode image data to base64
         if isinstance(image_data, bytes):
-            encoded_image = base64.b64encode(image_data).decode('utf-8')
+            encoded_image = base64.b64encode(image_data).decode("utf-8")
         else:
             # Assume it's already encoded
             encoded_image = image_data
-        
+
         # Prepare content with text and image
         content = [
             {
@@ -331,26 +329,23 @@ class gemini(BaseAPIBackend):
                     {
                         "inline_data": {
                             "mime_type": kwargs.get("mime_type", "image/jpeg"),
-                            "data": encoded_image
+                            "data": encoded_image,
                         }
-                    }
-                ]
+                    },
+                ],
             }
         ]
-        
+
         # Prepare request data
-        data = {
-            "model": model,
-            "contents": content
-        }
-        
+        data = {"model": model, "contents": content}
+
         # Add generation config if provided
         generation_config = {}
         if max_tokens is not None:
             generation_config["maxOutputTokens"] = max_tokens
         if temperature is not None:
             generation_config["temperature"] = temperature
-        
+
         # Add other parameters from kwargs
         for key in ["topP", "topK"]:
             if key in kwargs:
@@ -358,32 +353,32 @@ class gemini(BaseAPIBackend):
             elif key.lower() in kwargs:  # Handle snake_case keys too
                 snake_key = key.lower()
                 generation_config[key] = kwargs[snake_key]
-        
+
         if generation_config:
             data["generationConfig"] = generation_config
-        
+
         # Make request
         response = self.make_post_request(data=data, request_id=request_id)
-        
+
         # Process and normalize response
         return {
             "text": self._extract_text(response),
             "model": model,
             "usage": self._extract_usage(response),
             "implementation_type": "(REAL)",
-            "raw_response": response  # Include raw response for advanced use
+            "raw_response": response,  # Include raw response for advanced use
         }
-    
+
     def _format_messages(self, messages):
         """Format messages for Gemini API"""
         formatted_messages = []
         current_role = None
         current_parts = []
-        
+
         for message in messages:
             role = message.get("role", "user")
             content = message.get("content", "")
-            
+
             # Map standard roles to Gemini roles
             if role == "assistant":
                 gemini_role = "model"
@@ -392,28 +387,22 @@ class gemini(BaseAPIBackend):
                 gemini_role = "user"
             else:
                 gemini_role = "user"
-            
+
             # If role changes, add previous message
             if current_role and current_role != gemini_role and current_parts:
-                formatted_messages.append({
-                    "role": current_role,
-                    "parts": current_parts.copy()
-                })
+                formatted_messages.append({"role": current_role, "parts": current_parts.copy()})
                 current_parts = []
-            
+
             # Add content to parts
             current_role = gemini_role
             current_parts.append({"text": content})
-        
+
         # Add final message
         if current_role and current_parts:
-            formatted_messages.append({
-                "role": current_role,
-                "parts": current_parts.copy()
-            })
-        
+            formatted_messages.append({"role": current_role, "parts": current_parts.copy()})
+
         return formatted_messages
-    
+
     def _extract_text(self, response):
         """Extract text from Gemini API response"""
         try:
@@ -421,58 +410,59 @@ class gemini(BaseAPIBackend):
             candidates = response.get("candidates", [])
             if not candidates:
                 return ""
-            
+
             # Get content from first candidate
             content = candidates[0].get("content", {})
-            
+
             # Extract text from parts
             parts = content.get("parts", [])
             texts = [part.get("text", "") for part in parts if "text" in part]
-            
+
             # Join all text parts
             return "".join(texts)
         except Exception as e:
             logger.error(f"Error extracting text from response: {e}")
             return ""
-    
+
     def _extract_usage(self, response):
         """Extract usage information from response"""
         try:
             # Get usage information from response
             usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-            
+
             # Get candidates from response
             candidates = response.get("candidates", [])
             if not candidates:
                 return usage
-            
+
             # Get token count from first candidate
             token_count = candidates[0].get("tokenCount", {})
-            
+
             # Extract token counts
             usage["prompt_tokens"] = token_count.get("inputTokens", 0)
             usage["completion_tokens"] = token_count.get("outputTokens", 0)
             usage["total_tokens"] = token_count.get("totalTokens", 0)
-            
+
             return usage
         except Exception as e:
             logger.error(f"Error extracting usage from response: {e}")
             return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-    
+
     def create_gemini_endpoint_handler(self):
         """Create an endpoint handler for Gemini"""
+
         async def endpoint_handler(prompt, **kwargs):
             """Handle requests to Gemini endpoint"""
             try:
                 # Extract model from kwargs or use default
                 model = kwargs.get("model", self.default_model)
-                
+
                 # Check if prompt contains an image
                 if isinstance(prompt, dict) and "image" in prompt:
                     # Process as image request
                     image_data = prompt["image"]
                     text_prompt = prompt.get("text", "Describe this image")
-                    
+
                     response = self.process_image(image_data, text_prompt, model, **kwargs)
                     return response
                 else:
@@ -483,28 +473,33 @@ class gemini(BaseAPIBackend):
                     else:
                         # Create a simple user message
                         messages = [{"role": "user", "content": prompt}]
-                    
+
                     # Make the request
                     response = self.chat(messages, model, **kwargs)
                     return response
             except Exception as e:
                 logger.error(f"Error calling Gemini endpoint: {e}")
                 return {"text": f"Error: {str(e)}", "implementation_type": "(ERROR)"}
-        
+
         return endpoint_handler
-        
+
     def test_gemini_endpoint(self, model=None):
         """Test the Gemini endpoint"""
         try:
             # Use specified model or default
             model = model or self.default_model
-            
+
             # Create a simple message
-            messages = [{"role": "user", "content": "Testing the Gemini API. Please respond with a short message."}]
-            
+            messages = [
+                {
+                    "role": "user",
+                    "content": "Testing the Gemini API. Please respond with a short message.",
+                }
+            ]
+
             # Make the request
             response = self.chat(messages, model)
-            
+
             # Check if the response contains text
             return "text" in response and response.get("implementation_type") == "(REAL)"
         except Exception as e:
@@ -513,66 +508,72 @@ class gemini(BaseAPIBackend):
 
     def add_to_batch(self, model, request_info):
         # Add a request to the batch queue for the specified model
-        if not hasattr(self, "batching_enabled") or not self.batching_enabled or model not in self.supported_batch_models:
+        if (
+            not hasattr(self, "batching_enabled")
+            or not self.batching_enabled
+            or model not in self.supported_batch_models
+        ):
             # Either batching is disabled or model doesn't support it
             return False
-            
+
         with self.batch_lock:
             # Initialize batch queue for this model if needed
             if model not in self.batch_queue:
                 self.batch_queue[model] = []
-                
+
             # Add request to batch
             self.batch_queue[model].append(request_info)
-            
+
             # Check if we need to start a timer for this batch
             if len(self.batch_queue[model]) == 1:
                 # First item in batch, start timer
                 if model in self.batch_timers and self.batch_timers[model] is not None:
                     self.batch_timers[model].cancel()
-                
+
                 self.batch_timers[model] = threading.Timer(
-                    self.batch_timeout, 
-                    self._process_batch,
-                    args=[model]
+                    self.batch_timeout, self._process_batch, args=[model]
                 )
                 self.batch_timers[model].daemon = True
                 self.batch_timers[model].start()
-                
+
             # Check if batch is full and should be processed immediately
             if len(self.batch_queue[model]) >= self.max_batch_size:
                 # Cancel timer since we're processing now
                 if model in self.batch_timers and self.batch_timers[model] is not None:
                     self.batch_timers[model].cancel()
                     self.batch_timers[model] = None
-                    
+
                 # Process batch immediately
                 threading.Thread(target=self._process_batch, args=[model]).start()
                 return True
-                
+
             return True
-    
+
     def _process_batch(self, model):
         # Process a batch of requests for the specified model
         with self.batch_lock:
             # Get all requests for this model
             if model not in self.batch_queue:
                 return
-                
+
             batch_requests = self.batch_queue[model]
             self.batch_queue[model] = []
-            
+
             # Clear timer reference
             if model in self.batch_timers:
                 self.batch_timers[model] = None
-        
+
         if not batch_requests:
             return
-            
+
         # Update batch statistics
-        if hasattr(self, "collect_metrics") and self.collect_metrics and hasattr(self, "update_stats"):
+        if (
+            hasattr(self, "collect_metrics")
+            and self.collect_metrics
+            and hasattr(self, "update_stats")
+        ):
             self.update_stats({"batched_requests": len(batch_requests)})
-        
+
         try:
             # Check which type of batch processing to use
             if model in self.embedding_models:
@@ -585,19 +586,21 @@ class gemini(BaseAPIBackend):
                 for req in batch_requests:
                     future = req.get("future")
                     if future:
-                        future["error"] = Exception(f"No batch processing available for model {model}")
+                        future["error"] = Exception(
+                            f"No batch processing available for model {model}"
+                        )
                         future["completed"] = True
-                
+
         except Exception as e:
             logger.error(f"Error processing batch for model {model}: {e}")
-            
+
             # Set error for all futures in the batch
             for req in batch_requests:
                 future = req.get("future")
                 if future:
                     future["error"] = e
                     future["completed"] = True
-    
+
     def _process_embedding_batch(self, model, batch_requests):
         # Process a batch of embedding requests for improved throughput
         try:
@@ -607,11 +610,11 @@ class gemini(BaseAPIBackend):
                 data = req.get("data", {})
                 text = data.get("text", data.get("input", ""))
                 texts.append(text)
-            
+
             # This is a placeholder - subclasses should implement this
             # with the actual batched embedding API call
             batch_result = {"embeddings": [[0.1, 0.2] * 50] * len(texts)}
-            
+
             # Distribute results to individual futures
             for i, req in enumerate(batch_requests):
                 future = req.get("future")
@@ -619,13 +622,13 @@ class gemini(BaseAPIBackend):
                     future["result"] = {
                         "embedding": batch_result["embeddings"][i],
                         "model": model,
-                        "implementation_type": "MOCK-BATCHED"
+                        "implementation_type": "MOCK-BATCHED",
                     }
                     future["completed"] = True
                 elif future:
                     future["error"] = Exception("Batch embedding result index out of range")
                     future["completed"] = True
-                    
+
         except Exception as e:
             # Propagate error to all futures
             for req in batch_requests:
@@ -633,7 +636,7 @@ class gemini(BaseAPIBackend):
                 if future:
                     future["error"] = e
                     future["completed"] = True
-    
+
     def _process_completion_batch(self, model, batch_requests):
         # Process a batch of completion requests in one API call
         try:
@@ -643,11 +646,13 @@ class gemini(BaseAPIBackend):
                 data = req.get("data", {})
                 prompt = data.get("prompt", data.get("input", ""))
                 prompts.append(prompt)
-            
+
             # This is a placeholder - subclasses should implement this
             # with the actual batched completion API call
-            batch_result = {"completions": [f"Mock response for prompt {i}" for i in range(len(prompts))]}
-            
+            batch_result = {
+                "completions": [f"Mock response for prompt {i}" for i in range(len(prompts))]
+            }
+
             # Distribute results to individual futures
             for i, req in enumerate(batch_requests):
                 future = req.get("future")
@@ -655,13 +660,13 @@ class gemini(BaseAPIBackend):
                     future["result"] = {
                         "text": batch_result["completions"][i],
                         "model": model,
-                        "implementation_type": "MOCK-BATCHED"
+                        "implementation_type": "MOCK-BATCHED",
                     }
                     future["completed"] = True
                 elif future:
                     future["error"] = Exception("Batch completion result index out of range")
                     future["completed"] = True
-                    
+
         except Exception as e:
             # Propagate error to all futures
             for req in batch_requests:
@@ -669,4 +674,3 @@ class gemini(BaseAPIBackend):
                 if future:
                     future["error"] = e
                     future["completed"] = True
-    

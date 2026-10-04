@@ -8,7 +8,9 @@ from unittest.mock import patch
 
 import anyio
 
-from ipfs_accelerate_py.mcp_server.tools.file_converter_tools import native_file_converter_tools as nfc
+from ipfs_accelerate_py.mcp_server.tools.file_converter_tools import (
+    native_file_converter_tools as nfc,
+)
 
 
 class _DummyManager:
@@ -68,15 +70,21 @@ class TestMCPServerUNI131FileConverterTools(unittest.TestCase):
         async def _run() -> None:
             empty_list = await nfc.batch_convert_tool(input_paths=[])
             self.assertEqual(empty_list.get("status"), "error")
-            self.assertIn("input_paths must be a non-empty list of strings", str(empty_list.get("error", "")))
+            self.assertIn(
+                "input_paths must be a non-empty list of strings", str(empty_list.get("error", ""))
+            )
 
             blank_value = await nfc.batch_convert_tool(input_paths=["ok.txt", "   "])
             self.assertEqual(blank_value.get("status"), "error")
-            self.assertIn("input_paths must be a non-empty list of strings", str(blank_value.get("error", "")))
+            self.assertIn(
+                "input_paths must be a non-empty list of strings", str(blank_value.get("error", ""))
+            )
 
             bad_concurrency = await nfc.batch_convert_tool(input_paths=["ok.txt"], max_concurrent=0)
             self.assertEqual(bad_concurrency.get("status"), "error")
-            self.assertIn("max_concurrent must be an integer >= 1", str(bad_concurrency.get("error", "")))
+            self.assertIn(
+                "max_concurrent must be an integer >= 1", str(bad_concurrency.get("error", ""))
+            )
 
         anyio.run(_run)
 
@@ -147,7 +155,9 @@ class TestMCPServerUNI131FileConverterTools(unittest.TestCase):
     def test_download_url_tool_minimal_success_payload_defaults(self) -> None:
         async def _run() -> None:
             with patch.dict(nfc._API, {"download_url_tool": lambda **_: {"status": "success"}}):
-                result = await nfc.download_url_tool(url="https://example.com", timeout=15, max_size_mb=25)
+                result = await nfc.download_url_tool(
+                    url="https://example.com", timeout=15, max_size_mb=25
+                )
 
             self.assertEqual(result.get("status"), "success")
             self.assertEqual(result.get("success"), True)
@@ -173,7 +183,9 @@ class TestMCPServerUNI131FileConverterTools(unittest.TestCase):
     def test_batch_convert_tool_minimal_success_payload_defaults(self) -> None:
         async def _run() -> None:
             with patch.dict(nfc._API, {"batch_convert_tool": lambda **_: {"status": "success"}}):
-                result = await nfc.batch_convert_tool(input_paths=["/tmp/example.txt"], max_concurrent=2)
+                result = await nfc.batch_convert_tool(
+                    input_paths=["/tmp/example.txt"], max_concurrent=2
+                )
 
             self.assertEqual(result.get("status"), "success")
             self.assertEqual(result.get("success"), True)
@@ -197,7 +209,9 @@ class TestMCPServerUNI131FileConverterTools(unittest.TestCase):
 
     def test_generate_embeddings_tool_minimal_success_payload_defaults(self) -> None:
         async def _run() -> None:
-            with patch.dict(nfc._API, {"generate_embeddings_tool": lambda **_: {"status": "success"}}):
+            with patch.dict(
+                nfc._API, {"generate_embeddings_tool": lambda **_: {"status": "success"}}
+            ):
                 result = await nfc.generate_embeddings_tool(
                     input_path="/tmp/example.txt",
                     vector_store="qdrant",
@@ -227,8 +241,13 @@ class TestMCPServerUNI131FileConverterTools(unittest.TestCase):
 
     def test_extract_knowledge_graph_tool_error_only_payload_infers_error_status(self) -> None:
         async def _run() -> None:
-            with patch.dict(nfc._API, {"extract_knowledge_graph_tool": lambda **_: {"error": "graph unavailable"}}):
-                result = await nfc.extract_knowledge_graph_tool(input_path="/tmp/example.txt", enable_ipfs=True)
+            with patch.dict(
+                nfc._API,
+                {"extract_knowledge_graph_tool": lambda **_: {"error": "graph unavailable"}},
+            ):
+                result = await nfc.extract_knowledge_graph_tool(
+                    input_path="/tmp/example.txt", enable_ipfs=True
+                )
 
             self.assertEqual(result.get("status"), "error")
             self.assertEqual(result.get("tool"), "extract_knowledge_graph_tool")
@@ -237,7 +256,9 @@ class TestMCPServerUNI131FileConverterTools(unittest.TestCase):
 
         anyio.run(_run)
 
-    def test_file_converter_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+    def test_file_converter_wrappers_infer_error_status_from_contradictory_delegate_payloads(
+        self,
+    ) -> None:
         async def _contradictory_failure(**_: object) -> dict:
             return {"status": "success", "success": False, "error": "delegate failed"}
 
@@ -255,7 +276,9 @@ class TestMCPServerUNI131FileConverterTools(unittest.TestCase):
                 converted = await nfc.convert_file_tool(input_path="/tmp/example.txt")
                 batched = await nfc.batch_convert_tool(input_paths=["/tmp/example.txt"])
                 info = await nfc.file_info_tool(input_path="/tmp/example.txt")
-                knowledge_graph = await nfc.extract_knowledge_graph_tool(input_path="/tmp/example.txt")
+                knowledge_graph = await nfc.extract_knowledge_graph_tool(
+                    input_path="/tmp/example.txt"
+                )
                 downloaded = await nfc.download_url_tool(url="https://example.com")
 
             self.assertEqual(converted.get("status"), "error")

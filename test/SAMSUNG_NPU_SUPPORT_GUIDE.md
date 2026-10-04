@@ -87,10 +87,12 @@ For development and testing without Samsung hardware, you can use simulation mod
 ```python
 # Set environment variable for simulation
 import os
+
 os.environ["TEST_SAMSUNG_CHIPSET"] = "exynos_2400"  # or any supported chipset
 
 # Now any Samsung NPU detection will return a simulated device
 from samsung_support import SamsungDetector
+
 detector = SamsungDetector()
 chipset = detector.detect_samsung_hardware()  # Returns simulated Exynos 2400
 ```
@@ -102,10 +104,10 @@ The simulation mode provides realistic performance estimates based on the specif
 ```python
 # Import Samsung support
 from samsung_support import (
-    SamsungDetector, 
-    SamsungModelConverter, 
+    SamsungDetector,
+    SamsungModelConverter,
     SamsungThermalMonitor,
-    SamsungBenchmarkRunner
+    SamsungBenchmarkRunner,
 )
 
 # Detect Samsung hardware
@@ -117,7 +119,7 @@ if chipset:
     print(f"NPU cores: {chipset.npu_cores}")
     print(f"NPU performance: {chipset.npu_tops} TOPS")
     print(f"Supported precisions: {', '.join(chipset.supported_precisions)}")
-    
+
     # Get capability analysis
     analysis = detector.get_capability_analysis(chipset)
     print(f"Recommended optimizations: {analysis['recommended_optimizations']}")
@@ -137,7 +139,7 @@ converter.convert_to_samsung_format(
     precision="INT8",
     optimize_for_latency=True,
     enable_power_optimization=True,
-    one_ui_optimization=True  # Samsung-specific optimization
+    one_ui_optimization=True,  # Samsung-specific optimization
 )
 
 # Quantize a model for Samsung NPU
@@ -146,13 +148,12 @@ converter.quantize_model(
     output_path="models/bert-base-uncased.int8.one",
     calibration_data_path="data/calibration",
     precision="INT8",
-    per_channel=True
+    per_channel=True,
 )
 
 # Analyze model compatibility
 compatibility = converter.analyze_model_compatibility(
-    model_path="models/bert-base-uncased.onnx",
-    target_chipset="exynos_2400"
+    model_path="models/bert-base-uncased.onnx", target_chipset="exynos_2400"
 )
 print(f"Recommended precision: {compatibility['compatibility']['recommended_precision']}")
 print(f"Optimization opportunities: {compatibility['compatibility']['optimization_opportunities']}")
@@ -171,19 +172,19 @@ results = benchmark_runner.run_benchmark(
     model_path="models/bert-base-uncased.one",
     batch_sizes=[1, 2, 4, 8],
     precision="INT8",
-    one_ui_optimization=True  # Enable One UI optimizations
+    one_ui_optimization=True,  # Enable One UI optimizations
 )
 
 # Compare impact of One UI optimization
 comparison = benchmark_runner.compare_one_ui_optimization_impact(
-    model_path="models/bert-base-uncased.one",
-    batch_size=1,
-    precision="INT8"
+    model_path="models/bert-base-uncased.one", batch_size=1, precision="INT8"
 )
 
 print(f"Throughput improvement: {comparison['improvements']['throughput_percent']:.2f}%")
 print(f"Latency improvement: {comparison['improvements']['latency_percent']:.2f}%")
-print(f"Power efficiency improvement: {comparison['improvements']['power_efficiency_percent']:.2f}%")
+print(
+    f"Power efficiency improvement: {comparison['improvements']['power_efficiency_percent']:.2f}%"
+)
 ```
 
 Typical One UI optimizations provide the following benefits:
@@ -229,11 +230,12 @@ For long-running workloads, more advanced thermal management is recommended:
 ```python
 # Create thermal monitor with advanced options
 thermal_monitor = SamsungThermalMonitor(
-    cooling_policy="adaptive",      # "adaptive", "aggressive", or "conservative"
-    temperature_threshold=75.0,     # Maximum temperature in Celsius
-    throttling_enabled=True,        # Enable automatic throttling
-    one_ui_integration=True         # Enable One UI thermal integration
+    cooling_policy="adaptive",  # "adaptive", "aggressive", or "conservative"
+    temperature_threshold=75.0,  # Maximum temperature in Celsius
+    throttling_enabled=True,  # Enable automatic throttling
+    one_ui_integration=True,  # Enable One UI thermal integration
 )
+
 
 # Register callback for thermal events
 def on_thermal_event(event_type, data):
@@ -245,13 +247,14 @@ def on_thermal_event(event_type, data):
     elif event_type == "cooling_completed":
         print(f"Cooling completed, temperature now: {data['temperature']:.1f}°C")
 
+
 thermal_monitor.register_callback(on_thermal_event)
 
 # Start monitoring with continuous logging
 thermal_monitor.start_monitoring(
-    log_interval_sec=5.0,           # Log every 5 seconds
-    log_file="thermal_log.json",    # Save logs to file
-    verbose=True                    # Print logs to console
+    log_interval_sec=5.0,  # Log every 5 seconds
+    log_file="thermal_log.json",  # Save logs to file
+    verbose=True,  # Print logs to console
 )
 
 # Run workload with thermal awareness
@@ -263,27 +266,23 @@ try:
             cooling_time = thermal_monitor.get_recommended_cooling_time()
             print(f"Pausing for cooling: {cooling_time:.1f} seconds")
             time.sleep(cooling_time)
-        
+
         # Run inference with thermally-optimized batch size
         optimal_batch = thermal_monitor.get_optimal_batch_size(
-            current_batch=8, 
-            min_batch=1, 
-            max_batch=16
+            current_batch=8, min_batch=1, max_batch=16
         )
-        
+
         # Run inference with optimal batch size...
         # ...
-        
+
         # Update thermal monitor with workload stats
         thermal_monitor.update_workload_stats(
-            batch_size=optimal_batch,
-            inference_time_ms=50.0,
-            memory_mb=250.0
+            batch_size=optimal_batch, inference_time_ms=50.0, memory_mb=250.0
         )
 finally:
     # Always stop monitoring
     thermal_monitor.stop_monitoring()
-    
+
     # Get thermal summary
     summary = thermal_monitor.get_thermal_summary()
     print(f"Maximum temperature: {summary['max_temperature']:.1f}°C")
@@ -291,7 +290,7 @@ finally:
     print(f"Throttling events: {summary['throttling_events']}")
     print(f"Cooling periods: {summary['cooling_periods']}")
     print(f"Total cooling time: {summary['total_cooling_time_sec']:.1f} seconds")
-    
+
     # Save detailed report
     thermal_monitor.save_thermal_report("thermal_report.html")
 ```
@@ -306,22 +305,24 @@ from samsung_support import SamsungGameBooster
 # Initialize Game Booster integration
 game_booster = SamsungGameBooster(
     app_name="AI Model Inference",
-    priority="high",                # "high", "medium", or "low"
-    performance_mode="optimized"    # "optimized", "maximum", or "battery"
+    priority="high",  # "high", "medium", or "low"
+    performance_mode="optimized",  # "optimized", "maximum", or "battery"
 )
 
 # Register with Game Booster service
 game_booster.register()
 
 # Set performance profile
-game_booster.set_performance_profile({
-    "cpu_boost": True,
-    "gpu_boost": False,
-    "npu_boost": True,
-    "memory_boost": True,
-    "thermal_limit_relaxed": True,
-    "power_saving_disabled": True
-})
+game_booster.set_performance_profile(
+    {
+        "cpu_boost": True,
+        "gpu_boost": False,
+        "npu_boost": True,
+        "memory_boost": True,
+        "thermal_limit_relaxed": True,
+        "power_saving_disabled": True,
+    }
+)
 
 # Run your workload with Game Booster active
 try:
@@ -355,7 +356,7 @@ results = benchmark_runner.run_benchmark(
     duration_seconds=60,
     one_ui_optimization=True,
     monitor_thermals=True,
-    output_path="results/samsung_benchmark_results.json"
+    output_path="results/samsung_benchmark_results.json",
 )
 
 # Compare with CPU
@@ -363,7 +364,7 @@ comparison = benchmark_runner.compare_with_cpu(
     model_path="models/bert-base-uncased.one",
     batch_size=1,
     precision="INT8",
-    one_ui_optimization=True
+    one_ui_optimization=True,
 )
 
 print(f"Throughput speedup: {comparison['speedups']['throughput']:.2f}x")
@@ -461,7 +462,7 @@ converter.convert_to_samsung_format(
     precision="INT8",
     optimize_for_latency=True,
     enable_power_optimization=True,
-    one_ui_optimization=True
+    one_ui_optimization=True,
 )
 ```
 
@@ -476,7 +477,7 @@ converter.convert_to_samsung_format(
     precision="INT8",
     optimize_for_latency=False,  # Optimize for throughput instead
     enable_power_optimization=True,
-    one_ui_optimization=True
+    one_ui_optimization=True,
 )
 ```
 
@@ -491,7 +492,7 @@ converter.convert_to_samsung_format(
     precision="INT8",
     optimize_for_latency=True,
     enable_power_optimization=True,
-    one_ui_optimization=True
+    one_ui_optimization=True,
 )
 ```
 
@@ -566,7 +567,7 @@ results = benchmark_runner.run_benchmark(
     model_path="models/bert-base-uncased.one",
     batch_sizes=[1, 2, 4, 8],
     precision="INT8",
-    one_ui_optimization=True
+    one_ui_optimization=True,
 )
 ```
 
@@ -621,16 +622,14 @@ for acc in accelerators:
 model_path = "models/bert-base-uncased.onnx"
 optimal_acc = mobile_manager.select_optimal_accelerator(
     model_path=model_path,
-    priority="performance"  # "performance", "efficiency", or "compatibility"
+    priority="performance",  # "performance", "efficiency", or "compatibility"
 )
 
 print(f"Selected accelerator: {optimal_acc.name}")
 
 # Deploy model to the selected accelerator
 deployment = mobile_manager.deploy_model(
-    model_path=model_path,
-    accelerator=optimal_acc,
-    optimization_level="high"
+    model_path=model_path, accelerator=optimal_acc, optimization_level="high"
 )
 
 # Run inference
@@ -658,7 +657,7 @@ deployment = UnifiedDeployment(
     model_path="models/bert-base-uncased.onnx",
     target_platforms=["samsung", "qualcomm", "cpu"],
     quantization="int8",
-    optimization_level="high"
+    optimization_level="high",
 )
 
 # Deploy to all target platforms
@@ -692,29 +691,20 @@ from model_hub import ModelHub, HardwareProfile
 samsung_profile = HardwareProfile.from_device()  # Auto-detect current device
 # Or create a specific profile
 samsung_profile = HardwareProfile(
-    hardware_type="samsung_npu",
-    chipset="exynos_2400",
-    memory_gb=8.0,
-    precision="int8"
+    hardware_type="samsung_npu", chipset="exynos_2400", memory_gb=8.0, precision="int8"
 )
 
 # Connect to model hub with hardware profile
 hub = ModelHub(hardware_profile=samsung_profile)
 
 # Find compatible models
-compatible_models = hub.find_compatible_models(
-    task="text-classification",
-    max_size_mb=200
-)
+compatible_models = hub.find_compatible_models(task="text-classification", max_size_mb=200)
 
 for model in compatible_models:
     print(f"{model.name}: {model.size_mb} MB, Compatible: {model.compatibility_score}%")
 
 # Download and deploy a model
-model_deployment = hub.download_and_deploy(
-    model_id="bert-base-uncased",
-    optimization_level="high"
-)
+model_deployment = hub.download_and_deploy(model_id="bert-base-uncased", optimization_level="high")
 
 # Run inference
 result = model_deployment.run_inference(input_data)

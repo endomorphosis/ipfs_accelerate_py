@@ -195,9 +195,7 @@ def _ledger() -> SupervisorTokenLedger:
                 context_id="context:initial",
                 cache_decision=CacheDecision.MISS,
                 validation_result=ValidationResult.FAILED,
-                terminal_attribution_id=(
-                    rejected_terminal.terminal_attribution_id
-                ),
+                terminal_attribution_id=(rejected_terminal.terminal_attribution_id),
                 usage=failed_usage,
             ),
             TokenAttribution(
@@ -208,9 +206,7 @@ def _ledger() -> SupervisorTokenLedger:
                 context_id="context:retry-delta",
                 cache_decision=CacheDecision.HIT,
                 validation_result=ValidationResult.PASSED,
-                terminal_attribution_id=(
-                    accepted_terminal.terminal_attribution_id
-                ),
+                terminal_attribution_id=(accepted_terminal.terminal_attribution_id),
                 usage=accepted_usage,
             ),
             TokenAttribution(
@@ -221,9 +217,7 @@ def _ledger() -> SupervisorTokenLedger:
                 context_id="context:analysis",
                 cache_decision=CacheDecision.BYPASS,
                 validation_result=ValidationResult.NOT_RUN,
-                terminal_attribution_id=(
-                    abandoned_terminal.terminal_attribution_id
-                ),
+                terminal_attribution_id=(abandoned_terminal.terminal_attribution_id),
                 usage=fallback_usage,
             ),
         ),
@@ -255,9 +249,7 @@ def test_ledger_attributes_every_native_counter_and_charges_failed_work() -> Non
     assert report.cost_per_accepted_criterion_microunits == 1_525
     assert report.tokens_per_accepted_criterion == 225
     assert report.accepted_evidence_gain == 3
-    assert report.evidence_gain_per_thousand_tokens == pytest.approx(
-        3 * 1_000 / 225
-    )
+    assert report.evidence_gain_per_thousand_tokens == pytest.approx(3 * 1_000 / 225)
 
     by_id = {item.criterion_id: item for item in report.criterion_costs}
     assert by_id["criterion:provider-attribution"].accepted
@@ -287,7 +279,8 @@ def test_calibration_is_exactly_scoped_and_replayable_without_text() -> None:
     assert not calibration.supports(_envelope("model:foreign"))
     payload = calibration.to_dict()
     assert all(
-        set(sample) <= {
+        set(sample)
+        <= {
             "schema",
             "contract_version",
             "sample_id",
@@ -297,10 +290,7 @@ def test_calibration_is_exactly_scoped_and_replayable_without_text() -> None:
         }
         for sample in payload["samples"]
     )
-    assert (
-        FallbackTokenizerCalibration.from_json(calibration.to_json())
-        == calibration
-    )
+    assert FallbackTokenizerCalibration.from_json(calibration.to_json()) == calibration
 
 
 def test_contracts_are_immutable_content_addressed_and_round_trip() -> None:
@@ -316,9 +306,7 @@ def test_contracts_are_immutable_content_addressed_and_round_trip() -> None:
 
     tampered = json.loads(ledger.to_json())
     tampered["report"]["input_tokens"] += 1
-    with pytest.raises(
-        TokenLedgerValidationError, match="report does not reconcile"
-    ):
+    with pytest.raises(TokenLedgerValidationError, match="report does not reconcile"):
         SupervisorTokenLedger.from_dict(tampered)
 
     unknown = ledger.to_dict()
@@ -359,13 +347,9 @@ def test_reconciliation_rejects_missing_duplicated_and_foreign_usage(
             ),
         )
     elif mutation == "terminally_unattributed":
-        attributions[0] = replace(
-            attributions[0], terminal_attribution_id="terminal:missing"
-        )
+        attributions[0] = replace(attributions[0], terminal_attribution_id="terminal:missing")
     elif mutation == "foreign_binding":
-        attributions[0] = replace(
-            attributions[0], binding=_binding(task_id="ASI-foreign")
-        )
+        attributions[0] = replace(attributions[0], binding=_binding(task_id="ASI-foreign"))
     elif mutation == "unused_terminal":
         terminals.append(
             replace(
@@ -420,13 +404,9 @@ def test_rejects_negative_overlapping_and_misclassified_counters() -> None:
 
     ledger = _ledger()
     accepted = next(
-        item
-        for item in ledger.attributions
-        if item.validation_result is ValidationResult.PASSED
+        item for item in ledger.attributions if item.validation_result is ValidationResult.PASSED
     )
-    with pytest.raises(
-        TokenLedgerValidationError, match="failed-attempt.*incomplete"
-    ):
+    with pytest.raises(TokenLedgerValidationError, match="failed-attempt.*incomplete"):
         SupervisorTokenLedger(
             binding=ledger.binding,
             lifecycle_events=ledger.lifecycle_events,
@@ -447,9 +427,7 @@ def test_rejects_negative_overlapping_and_misclassified_counters() -> None:
 def test_rejects_foreign_fallback_calibration_and_forged_terminal_claims() -> None:
     ledger = _ledger()
     fallback = next(
-        item
-        for item in ledger.attributions
-        if item.usage.source is UsageSource.CALIBRATED_FALLBACK
+        item for item in ledger.attributions if item.usage.source is UsageSource.CALIBRATED_FALLBACK
     )
     foreign = FallbackTokenizerCalibration(
         envelope=_envelope("model:foreign"),
@@ -505,9 +483,7 @@ def test_v1_adapter_preserves_retry_and_failed_attempt_charges() -> None:
     assert report.input_tokens == receipt.tokens.input_tokens
     assert report.output_tokens == receipt.tokens.output_tokens
     assert report.reused_tokens == receipt.tokens.reused_tokens
-    assert report.retry_tokens == sum(
-        item.tokens.total_tokens for item in receipt.retries
-    )
+    assert report.retry_tokens == sum(item.tokens.total_tokens for item in receipt.retries)
     assert report.failed_attempt_tokens > 0
     assert report.accepted_criterion_count == 1
     assert report.total_cost_microunits == receipt.total_cost_microunits

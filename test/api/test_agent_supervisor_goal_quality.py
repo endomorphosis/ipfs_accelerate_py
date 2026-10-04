@@ -321,9 +321,7 @@ def test_declared_completion_gate_is_explicit_but_never_inferred() -> None:
     )
     assert GoalDebtCode.HIDDEN_AUTHORITY in lint_goal(undeclared).debt_codes
 
-    declared = replace(
-        undeclared, authorized_completion_producer_ids=("producer:gate",)
-    )
+    declared = replace(undeclared, authorized_completion_producer_ids=("producer:gate",))
     assert GoalDebtCode.HIDDEN_AUTHORITY not in lint_goal(declared).debt_codes
 
 
@@ -348,8 +346,7 @@ def test_unresolved_uncertainty_and_unsupported_semantics_remain_typed_debt() ->
     assert GoalDebtCode.UNCERTAINTY_DEBT in report.debt_codes
     assert GoalDebtCode.UNSUPPORTED_SEMANTICS in report.debt_codes
     assert any(
-        item.code is GoalDebtCode.UNCERTAINTY_DEBT
-        and item.severity is DebtSeverity.WARNING
+        item.code is GoalDebtCode.UNCERTAINTY_DEBT and item.severity is DebtSeverity.WARNING
         for item in report.debt
     )
     assert not report.accepted
@@ -366,8 +363,7 @@ def test_unresolved_uncertainty_and_unsupported_semantics_remain_typed_debt() ->
         ),
     )
     assert any(
-        item.code is GoalDebtCode.UNCERTAINTY_DEBT
-        and item.severity is DebtSeverity.ERROR
+        item.code is GoalDebtCode.UNCERTAINTY_DEBT and item.severity is DebtSeverity.ERROR
         for item in lint_goal(blocking).debt
     )
 
@@ -378,9 +374,7 @@ def test_frozen_root_identity_survives_child_refinement_and_rejects_substitution
     assert_frozen_root(parent, child)
     assert child.root is parent.root
 
-    substituted = replace(
-        child, root=FrozenRootIdentity("ASI-G200", "objective:forged")
-    )
+    substituted = replace(child, root=FrozenRootIdentity("ASI-G200", "objective:forged"))
     with pytest.raises(GoalQualityError, match="frozen root"):
         assert_frozen_root(parent, substituted)
 
@@ -424,18 +418,12 @@ def test_current_objective_markdown_projects_conservatively_with_stable_root() -
         "unknown authority is rejected",
         "unknown authority and orphan dependencies are rejected",
     )
-    assert (
-        goal_from_objective_markdown(changed_child, "ASI-G230").root
-        == goal.root
-    )
+    assert goal_from_objective_markdown(changed_child, "ASI-G230").root == goal.root
     changed_root = markdown.replace(
         "Build the generation-two supervisor",
         "Build and operate the generation-two supervisor",
     )
-    assert (
-        goal_from_objective_markdown(changed_root, "ASI-G230").root
-        != goal.root
-    )
+    assert goal_from_objective_markdown(changed_root, "ASI-G230").root != goal.root
 
 
 def test_projection_rejects_parent_cycles_and_missing_selected_goal() -> None:

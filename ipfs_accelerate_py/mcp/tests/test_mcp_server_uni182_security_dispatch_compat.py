@@ -28,7 +28,9 @@ class TestMCPServerUNI182SecurityDispatchCompat(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -45,16 +47,19 @@ class TestMCPServerUNI182SecurityDispatchCompat(unittest.TestCase):
             return {"status": "success", "allowed": False, **kwargs}
 
         async def _run_flow() -> None:
-            with patch(
-                "ipfs_accelerate_py.mcp_server.tools.security_tools.native_security_tools._CHECK_ACCESS_PERMISSION",
-                _check_access,
-            ), patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
+            with (
+                patch(
+                    "ipfs_accelerate_py.mcp_server.tools.security_tools.native_security_tools._CHECK_ACCESS_PERMISSION",
+                    _check_access,
+                ),
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
             ):
                 server = create_mcp_server(name="security-dispatch-compat")
 
@@ -72,8 +77,16 @@ class TestMCPServerUNI182SecurityDispatchCompat(unittest.TestCase):
                         "check_access_permissions_batch",
                         {
                             "requests": [
-                                {"resource_id": "resource-allow", "user_id": "user-1", "permission_type": "read"},
-                                {"resource_id": "resource-deny", "user_id": "user-2", "permission_type": "read"},
+                                {
+                                    "resource_id": "resource-allow",
+                                    "user_id": "user-1",
+                                    "permission_type": "read",
+                                },
+                                {
+                                    "resource_id": "resource-deny",
+                                    "user_id": "user-2",
+                                    "permission_type": "read",
+                                },
                                 "bad-entry",
                             ],
                             "fail_fast": False,
@@ -89,13 +102,17 @@ class TestMCPServerUNI182SecurityDispatchCompat(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_security_dispatch_infers_error_status_from_contradictory_delegate_payloads(self, mock_wrapper) -> None:
+    def test_security_dispatch_infers_error_status_from_contradictory_delegate_payloads(
+        self, mock_wrapper
+    ) -> None:
         class DummyServer:
             def __init__(self):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -110,17 +127,20 @@ class TestMCPServerUNI182SecurityDispatchCompat(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failure"}
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.object(
-                native_security_tools,
-                "_CHECK_ACCESS_PERMISSION",
-                _contradictory_failure,
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.object(
+                    native_security_tools,
+                    "_CHECK_ACCESS_PERMISSION",
+                    _contradictory_failure,
+                ),
             ):
                 server = create_mcp_server(name="security-dispatch-compat-errors")
                 dispatch = server.tools["tools_dispatch"]["function"]

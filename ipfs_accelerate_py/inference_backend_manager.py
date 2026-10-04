@@ -56,6 +56,7 @@ logger = logging.getLogger(__name__)
 
 class BackendType(Enum):
     """Types of inference backends"""
+
     GPU = "gpu"  # Local GPU inference (CUDA, ROCm, etc.)
     API = "api"  # Remote API endpoints
     CLI = "cli"  # CLI tool integrations
@@ -67,6 +68,7 @@ class BackendType(Enum):
 
 class BackendStatus(Enum):
     """Backend health status"""
+
     HEALTHY = "healthy"
     DEGRADED = "degraded"
     UNHEALTHY = "unhealthy"
@@ -78,6 +80,7 @@ class BackendStatus(Enum):
 @dataclass
 class BackendCapabilities:
     """Describes what a backend can do"""
+
     supported_tasks: Set[str] = field(default_factory=set)  # e.g., "text-generation", "embedding"
     supported_models: Set[str] = field(default_factory=set)
     max_batch_size: int = 1
@@ -94,15 +97,9 @@ class BackendCapabilities:
             "protocols",
         ):
             values = getattr(self, field_name)
-            if isinstance(values, str) or not isinstance(
-                values, (set, frozenset, list, tuple)
-            ):
+            if isinstance(values, str) or not isinstance(values, (set, frozenset, list, tuple)):
                 raise TypeError(f"{field_name} must be a collection of strings")
-            normalized = {
-                item.strip()
-                for item in values
-                if isinstance(item, str) and item.strip()
-            }
+            normalized = {item.strip() for item in values if isinstance(item, str) and item.strip()}
             if len(normalized) != len(values):
                 raise ValueError(f"{field_name} must contain non-empty strings")
             setattr(self, field_name, normalized)
@@ -208,14 +205,10 @@ class ProviderRegistration:
             "default_base_url",
         ):
             value = getattr(self, field_name)
-            if value is not None and (
-                not isinstance(value, str) or not value.strip()
-            ):
+            if value is not None and (not isinstance(value, str) or not value.strip()):
                 raise ValueError(f"{field_name} must be non-empty text or None")
         tasks = frozenset(
-            item.strip()
-            for item in self.supported_tasks
-            if isinstance(item, str) and item.strip()
+            item.strip() for item in self.supported_tasks if isinstance(item, str) and item.strip()
         )
         if not tasks or len(tasks) != len(self.supported_tasks):
             raise ValueError("supported_tasks must contain non-empty task names")
@@ -225,9 +218,7 @@ class ProviderRegistration:
             capabilities=_catalog_capabilities(tuple(tasks), streaming=True),
             lifecycle=LifecycleState.DECLARED,
             state=OperationalState(known=True),
-            provenance=(
-                Provenance(source="inference-backend-manager.providers"),
-            ),
+            provenance=(Provenance(source="inference-backend-manager.providers"),),
         )
         if descriptor.name != name:
             raise ValueError("provider descriptor name must match registration name")
@@ -288,6 +279,7 @@ ProviderConfiguration = ProviderRegistration
 @dataclass
 class BackendMetrics:
     """Runtime metrics for a backend"""
+
     total_requests: int = 0
     successful_requests: int = 0
     failed_requests: int = 0
@@ -328,6 +320,7 @@ class BackendRegistration:
 @dataclass
 class BackendInfo:
     """Complete information about a backend"""
+
     backend_id: str
     backend_type: BackendType
     name: str
@@ -423,9 +416,7 @@ def _provider_spec(
             capabilities=_catalog_capabilities(tuple(tasks), streaming=True),
             lifecycle=LifecycleState.DECLARED,
             state=OperationalState(known=True),
-            provenance=(
-                Provenance(source="inference-backend-manager.providers"),
-            ),
+            provenance=(Provenance(source="inference-backend-manager.providers"),),
         ),
     )
 
@@ -433,7 +424,7 @@ def _provider_spec(
 class InferenceBackendManager:
     """
     Unified manager for all inference backends
-    
+
     Responsibilities:
     - Backend registration and discovery
     - Health monitoring
@@ -441,7 +432,7 @@ class InferenceBackendManager:
     - Load balancing
     - Status reporting
     """
-    
+
     def __init__(
         self,
         config: Optional[Dict[str, Any]] = None,
@@ -459,40 +450,44 @@ class InferenceBackendManager:
         )
         provider_registry = self.config.get("provider_registry", provider_registry)
 
-        state_path = self.config.get('registry_state_path') or self.config.get('state_path')
+        state_path = self.config.get("registry_state_path") or self.config.get("state_path")
         if state_path is None:
-            state_path = Path.home() / '.cache' / 'ipfs_accelerate' / 'backend_registry.json'
+            state_path = Path.home() / ".cache" / "ipfs_accelerate" / "backend_registry.json"
         self._state_path = Path(state_path).expanduser()
-        capability_registry_path = self.config.get('capability_registry_path')
+        capability_registry_path = self.config.get("capability_registry_path")
         if capability_registry_path is None:
-            capability_registry_path = Path.home() / '.cache' / 'ipfs_accelerate' / 'peer_capability_registry.json'
+            capability_registry_path = (
+                Path.home() / ".cache" / "ipfs_accelerate" / "peer_capability_registry.json"
+            )
         self._capability_registry_path = str(Path(capability_registry_path).expanduser())
-        self._persist_registry = bool(self.config.get('persist_registry', True))
+        self._persist_registry = bool(self.config.get("persist_registry", True))
         try:
             self._state_path.parent.mkdir(parents=True, exist_ok=True)
         except Exception:
             self._persist_registry = False
-        
+
         # Backend registry
         self.backends: Dict[str, BackendInfo] = {}
         self._lock = threading.RLock()
         self._backend_aliases: Dict[str, str] = {}
-        
+
         # Backend type mapping
         self.backends_by_type: Dict[BackendType, List[str]] = defaultdict(list)
-        
+
         # Task mapping (which backends can handle which tasks)
         self.task_routing: Dict[str, List[str]] = defaultdict(list)
-        
+
         # Health check configuration
-        self.health_check_interval = self.config.get('health_check_interval', 60)
-        self.health_check_enabled = self.config.get('enable_health_checks', True)
+        self.health_check_interval = self.config.get("health_check_interval", 60)
+        self.health_check_enabled = self.config.get("enable_health_checks", True)
         self._health_check_task = None
-        
+
         # Load balancing strategy
-        self.load_balancing_strategy = self.config.get('load_balancing', 'round_robin')
+        self.load_balancing_strategy = self.config.get("load_balancing", "round_robin")
         self._round_robin_counters: Dict[str, int] = defaultdict(int)
-        self._result_recorder: Optional[Callable[..., Dict[str, Any]]] = self.config.get('result_recorder')
+        self._result_recorder: Optional[Callable[..., Dict[str, Any]]] = self.config.get(
+            "result_recorder"
+        )
 
         registry = self._PROVIDER_REGISTRY if provider_registry is None else provider_registry
         self._provider_registry = {
@@ -504,9 +499,7 @@ class InferenceBackendManager:
 
         self._load_registry_state()
         self._catalog = AIServiceCatalog() if catalog is None else catalog
-        source_name = self.config.get(
-            "catalog_source_name", BackendManagerCatalogSource.source
-        )
+        source_name = self.config.get("catalog_source_name", BackendManagerCatalogSource.source)
         source_precedence = self.config.get(
             "catalog_source_precedence", BackendManagerCatalogSource.precedence
         )
@@ -525,7 +518,7 @@ class InferenceBackendManager:
                 self._project_backend_catalog_records(backend)
             self._publish_catalog_locked(refresh=False)
         self._register_catalog_source()
-        
+
         logger.info("InferenceBackendManager initialized")
 
     @property
@@ -564,11 +557,7 @@ class InferenceBackendManager:
             raise TypeError("catalog must provide register_source()")
         source_name = self._catalog_source.source
         states = getattr(self._catalog, "source_states", None)
-        existing = (
-            {item.name for item in states()}
-            if callable(states)
-            else set()
-        )
+        existing = {item.name for item in states()} if callable(states) else set()
         if source_name in existing:
             logger.warning(
                 "Catalog source %s is already registered; projection remains local",
@@ -616,9 +605,7 @@ class InferenceBackendManager:
                 raise_on_error=False,
             )
             if result.failed:
-                logger.warning(
-                    "Backend catalog source retained its prior catalog generation"
-                )
+                logger.warning("Backend catalog source retained its prior catalog generation")
         except Exception as exc:
             # Publishing is derived state and must not roll back a successful
             # runtime registration or endpoint lifecycle operation.
@@ -670,9 +657,7 @@ class InferenceBackendManager:
             "healthy": backend_info.healthy,
             "routable": backend_info.routable,
             "provider": (
-                backend_info.provider.to_dict()
-                if backend_info.provider is not None
-                else None
+                backend_info.provider.to_dict() if backend_info.provider is not None else None
             ),
             "models": [item.to_dict() for item in backend_info.models],
             "deployments": [item.to_dict() for item in backend_info.deployments],
@@ -729,18 +714,11 @@ class InferenceBackendManager:
                 if payload.get("provider")
                 else None
             ),
-            models=tuple(
-                ModelDescriptor.from_dict(item)
-                for item in payload.get("models", ())
-            ),
+            models=tuple(ModelDescriptor.from_dict(item) for item in payload.get("models", ())),
             deployments=tuple(
-                DeploymentDescriptor.from_dict(item)
-                for item in payload.get("deployments", ())
+                DeploymentDescriptor.from_dict(item) for item in payload.get("deployments", ())
             ),
-            bindings=tuple(
-                RouterBinding.from_dict(item)
-                for item in payload.get("bindings", ())
-            ),
+            bindings=tuple(RouterBinding.from_dict(item) for item in payload.get("bindings", ())),
         )
         return backend_info
 
@@ -820,7 +798,9 @@ class InferenceBackendManager:
 
         method_name = self._resolve_execution_method_name(task=task, instance=instance)
         if method_name is None:
-            raise RuntimeError(f"Backend '{backend.backend_id}' does not support executable method for task '{task}'")
+            raise RuntimeError(
+                f"Backend '{backend.backend_id}' does not support executable method for task '{task}'"
+            )
 
         method = getattr(instance, method_name)
         call_kwargs = self._build_execution_kwargs(
@@ -866,7 +846,13 @@ class InferenceBackendManager:
         if task == "text-generation":
             candidates = ["run_inference", "generate_text", "generate", "chat", "completion"]
         elif task in {"text-embedding", "embedding"}:
-            candidates = ["run_inference", "generate_embedding", "embedding", "embed", "batch_embed"]
+            candidates = [
+                "run_inference",
+                "generate_embedding",
+                "embedding",
+                "embed",
+                "batch_embed",
+            ]
         else:
             candidates = ["run_inference", "infer", "predict", "generate"]
 
@@ -935,7 +921,9 @@ class InferenceBackendManager:
         merged.setdefault("endpoint", endpoint)
         merged.setdefault("protocol", protocols[0] if protocols else None)
         merged.setdefault("protocols", protocols)
-        merged.setdefault("hardware_type", hardware_types[0] if hardware_types else merged.get("device"))
+        merged.setdefault(
+            "hardware_type", hardware_types[0] if hardware_types else merged.get("device")
+        )
         merged.setdefault("hardware_types", hardware_types)
         merged.setdefault("placement_node", placement_node)
         merged.setdefault("task", task)
@@ -965,7 +953,7 @@ class InferenceBackendManager:
                 logger.warning(f"Result recorder failed for backend {backend_id}: {exc}")
 
         return merged
-    
+
     @staticmethod
     def _coerce_backend_type(value: Any) -> BackendType:
         if isinstance(value, BackendType):
@@ -1001,19 +989,13 @@ class InferenceBackendManager:
         )
 
     @staticmethod
-    def _typed_records(
-        values: Any, record_type: Any, field_name: str
-    ) -> Tuple[Any, ...]:
+    def _typed_records(values: Any, record_type: Any, field_name: str) -> Tuple[Any, ...]:
         if values is None:
             return ()
-        if isinstance(values, (str, bytes, Mapping)) or not isinstance(
-            values, Sequence
-        ):
+        if isinstance(values, (str, bytes, Mapping)) or not isinstance(values, Sequence):
             raise TypeError(f"{field_name} must be a sequence")
         return tuple(
-            item
-            if isinstance(item, record_type)
-            else record_type.from_dict(item)
+            item if isinstance(item, record_type) else record_type.from_dict(item)
             for item in values
         )
 
@@ -1042,21 +1024,25 @@ class InferenceBackendManager:
         bindings: Any,
     ) -> BackendRegistration:
         if isinstance(backend_id, BackendRegistration):
-            if any(
-                value is not None
-                for value in (
-                    backend_type,
-                    name,
-                    capabilities,
-                    endpoint,
-                    metadata,
-                    status,
-                    provider,
+            if (
+                any(
+                    value is not None
+                    for value in (
+                        backend_type,
+                        name,
+                        capabilities,
+                        endpoint,
+                        metadata,
+                        status,
+                        provider,
+                    )
                 )
-            ) or aliases or models or deployments or bindings:
-                raise ValueError(
-                    "a BackendRegistration cannot be combined with other fields"
-                )
+                or aliases
+                or models
+                or deployments
+                or bindings
+            ):
+                raise ValueError("a BackendRegistration cannot be combined with other fields")
             record = backend_id
             return cls._coerce_backend_registration(
                 record.backend_id,
@@ -1082,28 +1068,39 @@ class InferenceBackendManager:
             )
         if isinstance(backend_id, Mapping):
             if any(value is not None for value in (backend_type, name, capabilities)):
-                raise ValueError(
-                    "a registration mapping cannot be combined with other fields"
-                )
+                raise ValueError("a registration mapping cannot be combined with other fields")
             values = dict(backend_id)
             allowed = {
-                "backend_id", "backend_type", "name", "instance", "capabilities",
-                "endpoint", "metadata", "aliases", "status", "configured",
-                "authorized", "reachable", "live", "ready", "healthy",
-                "routable", "provider", "models", "deployment", "deployments",
+                "backend_id",
+                "backend_type",
+                "name",
+                "instance",
+                "capabilities",
+                "endpoint",
+                "metadata",
+                "aliases",
+                "status",
+                "configured",
+                "authorized",
+                "reachable",
+                "live",
+                "ready",
+                "healthy",
+                "routable",
+                "provider",
+                "models",
+                "deployment",
+                "deployments",
                 "bindings",
             }
             unknown = set(values) - allowed
             if unknown:
                 raise ValueError(
-                    "unknown backend registration fields: %s"
-                    % ", ".join(sorted(unknown))
+                    "unknown backend registration fields: %s" % ", ".join(sorted(unknown))
                 )
             if "deployment" in values:
                 if "deployments" in values:
-                    raise ValueError(
-                        "registration cannot set deployment and deployments"
-                    )
+                    raise ValueError("registration cannot set deployment and deployments")
                 values["deployments"] = (values.pop("deployment"),)
             return cls._coerce_backend_registration(
                 values.get("backend_id"),
@@ -1131,17 +1128,13 @@ class InferenceBackendManager:
             raise ValueError("backend_id must be non-empty text")
         if not isinstance(name, str) or not name.strip():
             raise ValueError("name must be non-empty text")
-        if endpoint is not None and (
-            not isinstance(endpoint, str) or not endpoint.strip()
-        ):
+        if endpoint is not None and (not isinstance(endpoint, str) or not endpoint.strip()):
             raise ValueError("endpoint must be non-empty text or None")
         if metadata is None:
             metadata = {}
         if not isinstance(metadata, Mapping):
             raise TypeError("metadata must be a mapping")
-        if isinstance(aliases, str) or not isinstance(
-            aliases, (list, tuple, set, frozenset)
-        ):
+        if isinstance(aliases, str) or not isinstance(aliases, (list, tuple, set, frozenset)):
             raise TypeError("aliases must be a collection of strings")
         normalized_aliases = tuple(
             sorted(
@@ -1181,11 +1174,7 @@ class InferenceBackendManager:
             endpoint=endpoint.strip() if endpoint is not None else None,
             metadata=dict(metadata),
             aliases=normalized_aliases,
-            status=(
-                cls._coerce_backend_status(status)
-                if status is not None
-                else None
-            ),
+            status=(cls._coerce_backend_status(status) if status is not None else None),
             configured=configured,
             authorized=authorized,
             reachable=reachable,
@@ -1195,15 +1184,11 @@ class InferenceBackendManager:
             routable=routable,
             provider=provider,
             models=cls._typed_records(models, ModelDescriptor, "models"),
-            deployments=cls._typed_records(
-                deployments, DeploymentDescriptor, "deployments"
-            ),
+            deployments=cls._typed_records(deployments, DeploymentDescriptor, "deployments"),
             bindings=cls._typed_records(bindings, RouterBinding, "bindings"),
         )
 
-    def _provider_registration(
-        self, name: str
-    ) -> Optional[ProviderRegistration]:
+    def _provider_registration(self, name: str) -> Optional[ProviderRegistration]:
         return self._provider_registry.get(name)
 
     def _project_backend_catalog_records(self, backend: BackendInfo) -> None:
@@ -1235,9 +1220,7 @@ class InferenceBackendManager:
         row = {
             "backend_id": backend.backend_id,
             "backend_type": (
-                backend.backend_type.value
-                if backend.endpoint is not None
-                else "in-process"
+                backend.backend_type.value if backend.endpoint is not None else "in-process"
             ),
             "name": backend.name,
             "endpoint": backend.endpoint,
@@ -1261,10 +1244,7 @@ class InferenceBackendManager:
                     {
                         _TASK_OPERATIONS[item.strip().casefold()].value
                         for item in backend.capabilities.supported_tasks
-                        if (
-                            isinstance(item, str)
-                            and item.strip().casefold() in _TASK_OPERATIONS
-                        )
+                        if (isinstance(item, str) and item.strip().casefold() in _TASK_OPERATIONS)
                     }
                 ),
                 "supported_models": sorted(backend.capabilities.supported_models),
@@ -1286,10 +1266,7 @@ class InferenceBackendManager:
                 if projection.diagnostics
                 else "registration did not produce a deployment"
             )
-            raise ValueError(
-                "backend cannot be represented as a catalog deployment: %s"
-                % message
-            )
+            raise ValueError("backend cannot be represented as a catalog deployment: %s" % message)
 
         generated_provider = projection.providers[0]
         provider_spec = self._provider_registration(generated_provider.name)
@@ -1308,24 +1285,17 @@ class InferenceBackendManager:
 
         if not backend.models:
             backend.models = projection.models
-        if any(
-            model.provider_id != backend.provider.provider_id
-            for model in backend.models
-        ):
+        if any(model.provider_id != backend.provider.provider_id for model in backend.models):
             raise ValueError("model descriptor provider_id does not match provider")
 
         if not backend.deployments:
             backend.deployments = projection.deployments
         else:
-            generated_by_model = {
-                item.model_id: item for item in projection.deployments
-            }
+            generated_by_model = {item.model_id: item for item in projection.deployments}
             updated = []
             for deployment in backend.deployments:
                 if deployment.provider_id != backend.provider.provider_id:
-                    raise ValueError(
-                        "deployment descriptor provider_id does not match provider"
-                    )
+                    raise ValueError("deployment descriptor provider_id does not match provider")
                 current = generated_by_model.get(deployment.model_id)
                 updated.append(
                     replace(
@@ -1336,9 +1306,7 @@ class InferenceBackendManager:
                             else deployment.lifecycle
                         ),
                         state=(
-                            current.state
-                            if observed and current is not None
-                            else deployment.state
+                            current.state if observed and current is not None else deployment.state
                         ),
                     )
                 )
@@ -1374,11 +1342,9 @@ class InferenceBackendManager:
         if not backend.bindings and operations:
             backend.bindings = tuple(
                 RouterBinding(
-                    router=str(
-                        backend.metadata.get(
-                            "router", "inference_backend_manager"
-                        )
-                    ).strip().casefold(),
+                    router=str(backend.metadata.get("router", "inference_backend_manager"))
+                    .strip()
+                    .casefold(),
                     provider_id=backend.provider.provider_id,
                     model_id=deployment.model_id,
                     deployment_id=deployment.deployment_id,
@@ -1395,17 +1361,11 @@ class InferenceBackendManager:
                 for deployment in backend.deployments
             )
         elif observed:
-            backend.bindings = tuple(
-                replace(binding, state=state)
-                for binding in backend.bindings
-            )
+            backend.bindings = tuple(replace(binding, state=state) for binding in backend.bindings)
         deployment_ids = {item.deployment_id for item in backend.deployments}
         if any(
             binding.provider_id != backend.provider.provider_id
-            or (
-                binding.deployment_id is not None
-                and binding.deployment_id not in deployment_ids
-            )
+            or (binding.deployment_id is not None and binding.deployment_id not in deployment_ids)
             for binding in backend.bindings
         ):
             raise ValueError("router binding does not match registered deployment")
@@ -1437,7 +1397,7 @@ class InferenceBackendManager:
     ) -> bool:
         """
         Register a new inference backend
-        
+
         Args:
             backend_id: Unique identifier for the backend
             backend_type: Type of backend
@@ -1446,22 +1406,36 @@ class InferenceBackendManager:
             capabilities: What the backend can do
             endpoint: Optional endpoint URL
             metadata: Additional metadata
-            
+
         Returns:
             True if registration successful
         """
         if deployment is not None:
             if deployments:
-                logger.warning(
-                    "registration cannot set both deployment and deployments"
-                )
+                logger.warning("registration cannot set both deployment and deployments")
                 return False
             deployments = (deployment,)
         try:
             registration = self._coerce_backend_registration(
-                backend_id, backend_type, name, instance, capabilities, endpoint,
-                metadata, aliases, status, configured, authorized, reachable,
-                live, ready, healthy, routable, provider, models, deployments,
+                backend_id,
+                backend_type,
+                name,
+                instance,
+                capabilities,
+                endpoint,
+                metadata,
+                aliases,
+                status,
+                configured,
+                authorized,
+                reachable,
+                live,
+                ready,
+                healthy,
+                routable,
+                provider,
+                models,
+                deployments,
                 bindings,
             )
         except (TypeError, ValueError, KeyError) as exc:
@@ -1477,8 +1451,7 @@ class InferenceBackendManager:
                 if owner != backend_id
             }
             if backend_id.casefold() in aliases_in_use or any(
-                alias in self.backends and alias != backend_id
-                or alias in aliases_in_use
+                alias in self.backends and alias != backend_id or alias in aliases_in_use
                 for alias in registration.aliases
             ):
                 logger.warning("Rejected registration with a duplicate alias")
@@ -1515,9 +1488,7 @@ class InferenceBackendManager:
                 )
                 return False
             if previous is not None:
-                if backend_id in self.backends_by_type.get(
-                    previous.backend_type, []
-                ):
+                if backend_id in self.backends_by_type.get(previous.backend_type, []):
                     self.backends_by_type[previous.backend_type].remove(backend_id)
                     if not self.backends_by_type[previous.backend_type]:
                         del self.backends_by_type[previous.backend_type]
@@ -1533,12 +1504,12 @@ class InferenceBackendManager:
                 self.backends_by_type[registration.backend_type].append(backend_id)
             for alias in registration.aliases:
                 self._backend_aliases[alias] = backend_id
-            
+
             # Update task routing
             for task in backend_info.capabilities.supported_tasks:
                 if backend_id not in self.task_routing[task]:
                     self.task_routing[task].append(backend_id)
-            
+
             logger.info(
                 "Registered backend: %s (%s) - Type: %s",
                 backend_id,
@@ -1547,22 +1518,22 @@ class InferenceBackendManager:
             )
             self._publish_catalog_locked()
             self._save_registry_state()
-            
+
             return True
-    
+
     def unregister_backend(self, backend_id: str) -> bool:
         """Unregister a backend"""
         with self._lock:
             if backend_id not in self.backends:
                 logger.warning(f"Backend {backend_id} not found")
                 return False
-            
+
             backend_info = self.backends[backend_id]
-            
+
             # Remove from type mapping
             if backend_id in self.backends_by_type[backend_info.backend_type]:
                 self.backends_by_type[backend_info.backend_type].remove(backend_id)
-            
+
             # Remove from task routing
             for task in backend_info.capabilities.supported_tasks:
                 if backend_id in self.task_routing[task]:
@@ -1571,16 +1542,18 @@ class InferenceBackendManager:
                         del self.task_routing[task]
             for alias in backend_info.aliases:
                 self._backend_aliases.pop(alias, None)
-            
+
             # Remove from registry
             del self.backends[backend_id]
             self._publish_catalog_locked()
             self._save_registry_state()
-            
+
             logger.info(f"Unregistered backend: {backend_id}")
             return True
 
-    def prune_stale_backends(self, max_age_s: float = 300.0, *, statuses: Optional[Set[BackendStatus]] = None) -> List[str]:
+    def prune_stale_backends(
+        self, max_age_s: float = 300.0, *, statuses: Optional[Set[BackendStatus]] = None
+    ) -> List[str]:
         """Remove backends that have not been seen recently.
 
         Args:
@@ -1593,11 +1566,15 @@ class InferenceBackendManager:
         """
         removed: List[str] = []
         cutoff = time.time() - float(max_age_s)
-        eligible_statuses = set(statuses) if statuses is not None else {
-            BackendStatus.OFFLINE,
-            BackendStatus.UNHEALTHY,
-            BackendStatus.UNKNOWN,
-        }
+        eligible_statuses = (
+            set(statuses)
+            if statuses is not None
+            else {
+                BackendStatus.OFFLINE,
+                BackendStatus.UNHEALTHY,
+                BackendStatus.UNKNOWN,
+            }
+        )
 
         with self._lock:
             backend_ids = list(self.backends.keys())
@@ -1631,7 +1608,7 @@ class InferenceBackendManager:
         if removed:
             logger.info("Pruned stale backends: %s", ", ".join(removed))
         return removed
-    
+
     def get_backend(self, backend_id: str) -> Optional[BackendInfo]:
         """Get information about a specific backend"""
         requested = str(backend_id).strip()
@@ -1642,9 +1619,7 @@ class InferenceBackendManager:
             owner = self._backend_aliases.get(requested.casefold())
             return self.backends.get(owner) if owner is not None else None
 
-    def get_backend_by_deployment(
-        self, deployment_id: str
-    ) -> Optional[BackendInfo]:
+    def get_backend_by_deployment(self, deployment_id: str) -> Optional[BackendInfo]:
         """Look up the executable backend owning a typed deployment."""
 
         with self._lock:
@@ -1652,10 +1627,7 @@ class InferenceBackendManager:
                 (
                     backend
                     for backend in self.backends.values()
-                    if any(
-                        item.deployment_id == deployment_id
-                        for item in backend.deployments
-                    )
+                    if any(item.deployment_id == deployment_id for item in backend.deployments)
                 ),
                 None,
             )
@@ -1733,9 +1705,7 @@ class InferenceBackendManager:
                     backend.deployments,
                     backend.bindings,
                 ) = previous
-                raise ValueError(
-                    "endpoint cannot be represented as a catalog deployment"
-                ) from exc
+                raise ValueError("endpoint cannot be represented as a catalog deployment") from exc
             self._publish_catalog_locked()
             self._save_registry_state()
             return True
@@ -1762,10 +1732,7 @@ class InferenceBackendManager:
             "healthy": healthy,
             "routable": routable,
         }
-        if any(
-            value is not None and not isinstance(value, bool)
-            for value in values.values()
-        ):
+        if any(value is not None and not isinstance(value, bool) for value in values.values()):
             raise TypeError("liveness observations must be boolean or None")
         with self._lock:
             backend = self.get_backend(backend_id)
@@ -1802,42 +1769,39 @@ class InferenceBackendManager:
             self._publish_catalog_locked()
             self._save_registry_state()
             return True
-    
+
     def list_backends(
         self,
         backend_type: Optional[BackendType] = None,
         status: Optional[BackendStatus] = None,
-        task: Optional[str] = None
+        task: Optional[str] = None,
     ) -> List[BackendInfo]:
         """
         List backends with optional filtering
-        
+
         Args:
             backend_type: Filter by backend type
             status: Filter by status
             task: Filter by supported task
-            
+
         Returns:
             List of matching backends
         """
         with self._lock:
-            backends = [
-                self.backends[backend_id]
-                for backend_id in sorted(self.backends)
-            ]
-            
+            backends = [self.backends[backend_id] for backend_id in sorted(self.backends)]
+
             if backend_type:
                 backends = [b for b in backends if b.backend_type == backend_type]
-            
+
             if status:
                 backends = [b for b in backends if b.status == status]
-            
+
             if task:
                 backend_ids = self.task_routing.get(task, [])
                 backends = [b for b in backends if b.backend_id in backend_ids]
-            
+
             return backends
-    
+
     def select_backend_for_task(
         self,
         task: str,
@@ -1850,13 +1814,13 @@ class InferenceBackendManager:
     ) -> Optional[BackendInfo]:
         """
         Select the best backend for a given task
-        
+
         Args:
             task: The inference task type
             model: Optional specific model required
             preferred_types: Preferred backend types (in order)
             required_protocols: Required protocol support
-            
+
         Returns:
             Selected backend or None if no suitable backend found
         """
@@ -1884,51 +1848,57 @@ class InferenceBackendManager:
             if not candidate_ids:
                 logger.warning(f"No backends found for task: {task}")
                 return None
-            
+
             candidates = [self.backends[bid] for bid in candidate_ids if bid in self.backends]
             selection_reasons: Dict[str, str] = {}
 
             for candidate in candidates:
                 reasons = [f"supports_task:{task}"]
                 if model:
-                    if candidate.capabilities.supported_models and model in candidate.capabilities.supported_models:
+                    if (
+                        candidate.capabilities.supported_models
+                        and model in candidate.capabilities.supported_models
+                    ):
                         reasons.append(f"supports_model:{model}")
                     elif candidate.capabilities.supported_models:
                         reasons.append(f"model_mismatch:{model}")
                 if required_protocols:
-                    missing_protocols = [proto for proto in required_protocols if proto not in candidate.capabilities.protocols]
+                    missing_protocols = [
+                        proto
+                        for proto in required_protocols
+                        if proto not in candidate.capabilities.protocols
+                    ]
                     if missing_protocols:
                         reasons.append(f"missing_protocols:{','.join(missing_protocols)}")
                     else:
                         reasons.append(f"protocols:{','.join(required_protocols)}")
-                if normalized_preferred_types and candidate.backend_type in normalized_preferred_types:
+                if (
+                    normalized_preferred_types
+                    and candidate.backend_type in normalized_preferred_types
+                ):
                     reasons.append(f"preferred_type:{candidate.backend_type.value}")
                 if self.load_balancing_strategy:
                     reasons.append(f"strategy:{self.load_balancing_strategy}")
                 if self._capability_registry_path:
                     reasons.append(f"capability_registry:{self._capability_registry_path}")
                 selection_reasons[candidate.backend_id] = ";".join(reasons)
-            
+
             # Filter by status (only healthy backends)
             candidates = [b for b in candidates if b.status == BackendStatus.HEALTHY]
-            
+
             if not candidates:
                 logger.warning(f"No healthy backends found for task: {task}")
                 return None
-            
+
             # Filter by model if specified
             if model:
-                candidates = [
-                    b for b in candidates
-                    if self._backend_supports_model(b, model)
-                ]
+                candidates = [b for b in candidates if self._backend_supports_model(b, model)]
 
             if provider:
-                requested_provider = self._resolve_provider_name(
-                    str(provider).strip().casefold()
-                )
+                requested_provider = self._resolve_provider_name(str(provider).strip().casefold())
                 candidates = [
-                    b for b in candidates
+                    b
+                    for b in candidates
                     if b.provider is not None
                     and requested_provider
                     in {
@@ -1940,46 +1910,47 @@ class InferenceBackendManager:
 
             if deployment_id:
                 candidates = [
-                    b for b in candidates
-                    if any(
-                        item.deployment_id == deployment_id
-                        for item in b.deployments
-                    )
+                    b
+                    for b in candidates
+                    if any(item.deployment_id == deployment_id for item in b.deployments)
                 ]
-            
+
             # Filter by protocol if specified
             if required_protocols:
                 candidates = [
-                    b for b in candidates
+                    b
+                    for b in candidates
                     if all(proto in b.capabilities.protocols for proto in required_protocols)
                 ]
-            
+
             if not candidates:
                 logger.warning(f"No backends match requirements for task: {task}")
                 return None
-            
+
             # Sort by preferred types if specified
             if normalized_preferred_types:
                 type_priority = {t: i for i, t in enumerate(normalized_preferred_types)}
-                candidates.sort(key=lambda b: type_priority.get(b.backend_type, len(normalized_preferred_types)))
-            
+                candidates.sort(
+                    key=lambda b: type_priority.get(b.backend_type, len(normalized_preferred_types))
+                )
+
             # Apply load balancing strategy
-            if self.load_balancing_strategy == 'round_robin':
+            if self.load_balancing_strategy == "round_robin":
                 # Round-robin within task
                 idx = self._round_robin_counters[task] % len(candidates)
                 self._round_robin_counters[task] += 1
                 selected = candidates[idx]
-            
-            elif self.load_balancing_strategy == 'least_loaded':
+
+            elif self.load_balancing_strategy == "least_loaded":
                 # Select backend with smallest queue
                 candidates.sort(key=lambda b: b.metrics.current_queue_size)
                 selected = candidates[0]
-            
-            elif self.load_balancing_strategy == 'best_performance':
+
+            elif self.load_balancing_strategy == "best_performance":
                 # Select backend with best average latency
-                candidates.sort(key=lambda b: b.metrics.average_latency_ms or float('inf'))
+                candidates.sort(key=lambda b: b.metrics.average_latency_ms or float("inf"))
                 selected = candidates[0]
-            
+
             else:
                 # Default: return first candidate
                 selected = candidates[0]
@@ -1995,23 +1966,20 @@ class InferenceBackendManager:
             return selected
 
     @staticmethod
-    def _backend_supports_model(
-        backend: BackendInfo, requested: str
-    ) -> bool:
+    def _backend_supports_model(backend: BackendInfo, requested: str) -> bool:
         if not backend.capabilities.supported_models and not backend.models:
             return True
         if requested in backend.capabilities.supported_models:
             return True
         normalized = str(requested).strip().casefold()
         return any(
-            normalized in {model.name, model.model_id, *model.aliases}
-            for model in backend.models
+            normalized in {model.name, model.model_id, *model.aliases} for model in backend.models
         )
-    
+
     def get_backend_status_report(self) -> Dict[str, Any]:
         """
         Generate a comprehensive status report of all backends
-        
+
         Returns:
             Status report dictionary
         """
@@ -2022,13 +1990,13 @@ class InferenceBackendManager:
                     bt.value: len(ids) for bt, ids in self.backends_by_type.items()
                 },
                 "backends_by_status": {
-                    status.value: len([
-                        b for b in self.backends.values() if b.status == status
-                    ])
+                    status.value: len([b for b in self.backends.values() if b.status == status])
                     for status in BackendStatus
                 },
                 "total_requests": sum(b.metrics.total_requests for b in self.backends.values()),
-                "total_successful": sum(b.metrics.successful_requests for b in self.backends.values()),
+                "total_successful": sum(
+                    b.metrics.successful_requests for b in self.backends.values()
+                ),
                 "total_failed": sum(b.metrics.failed_requests for b in self.backends.values()),
                 "supported_tasks": sorted(self.task_routing),
                 "catalog_revision": self.catalog_revision,
@@ -2044,12 +2012,8 @@ class InferenceBackendManager:
                         "tasks": sorted(b.capabilities.supported_tasks),
                         "protocols": sorted(b.capabilities.protocols),
                         "hardware_types": sorted(b.capabilities.hardware_types),
-                        "provider_id": (
-                            b.provider.provider_id if b.provider else None
-                        ),
-                        "deployment_ids": [
-                            item.deployment_id for item in b.deployments
-                        ],
+                        "provider_id": (b.provider.provider_id if b.provider else None),
+                        "deployment_ids": [item.deployment_id for item in b.deployments],
                         "liveness": {
                             "configured": b.configured,
                             "authorized": b.authorized,
@@ -2070,21 +2034,19 @@ class InferenceBackendManager:
                             "requests": b.metrics.total_requests,
                             "success_rate": (
                                 b.metrics.successful_requests / b.metrics.total_requests * 100
-                                if b.metrics.total_requests > 0 else 0
+                                if b.metrics.total_requests > 0
+                                else 0
                             ),
                             "avg_latency_ms": b.metrics.average_latency_ms,
                             "queue_size": b.metrics.current_queue_size,
                             "models_loaded": b.metrics.models_loaded,
-                        }
+                        },
                     }
-                    for b in (
-                        self.backends[backend_id]
-                        for backend_id in sorted(self.backends)
-                    )
+                    for b in (self.backends[backend_id] for backend_id in sorted(self.backends))
                 ],
-                "timestamp": time.time()
+                "timestamp": time.time(),
             }
-    
+
     def _update_backend_status(
         self,
         backend_id: str,
@@ -2106,21 +2068,21 @@ class InferenceBackendManager:
             self._project_backend_catalog_records(backend)
             self._publish_catalog_locked()
             self._save_registry_state()
-    
+
     def record_request(self, backend_id: str, success: bool, latency_ms: float):
         """Record metrics for a request"""
         with self._lock:
             if backend_id not in self.backends:
                 return
-            
+
             metrics = self.backends[backend_id].metrics
             metrics.total_requests += 1
-            
+
             if success:
                 metrics.successful_requests += 1
             else:
                 metrics.failed_requests += 1
-            
+
             # Update average latency (exponential moving average)
             if metrics.average_latency_ms == 0:
                 metrics.average_latency_ms = latency_ms
@@ -2130,7 +2092,7 @@ class InferenceBackendManager:
                     alpha * latency_ms + (1 - alpha) * metrics.average_latency_ms
                 )
             self._save_registry_state()
-    
+
     async def health_check_loop(self):
         """Periodic health check for all backends"""
         while self.health_check_enabled:
@@ -2138,14 +2100,14 @@ class InferenceBackendManager:
                 await self.run_health_checks()
             except Exception as e:
                 logger.error(f"Error in health check loop: {e}")
-            
+
             await asyncio.sleep(self.health_check_interval)
-    
+
     async def run_health_checks(self):
         """Run health checks on all backends"""
         with self._lock:
             backend_ids = list(self.backends.keys())
-        
+
         for backend_id in backend_ids:
             try:
                 await self.check_backend_health(backend_id)
@@ -2156,72 +2118,58 @@ class InferenceBackendManager:
                     BackendStatus.UNHEALTHY,
                     observed_health=False,
                 )
-    
+
     async def check_backend_health(self, backend_id: str) -> bool:
         """
         Check health of a specific backend
-        
+
         Args:
             backend_id: Backend to check
-            
+
         Returns:
             True if healthy, False otherwise
         """
         backend_info = self.get_backend(backend_id)
         if not backend_info:
             return False
-        
+
         # Update last health check time
         backend_info.metrics.last_health_check = time.time()
-        
+
         # Check if backend has a health check method
         instance = backend_info.instance
-        if instance and hasattr(instance, 'health_check'):
+        if instance and hasattr(instance, "health_check"):
             try:
                 if asyncio.iscoroutinefunction(instance.health_check):
                     result = await instance.health_check()
                 else:
                     result = instance.health_check()
-                
+
                 if isinstance(result, Mapping):
                     observed = {
                         name: result.get(name)
-                        for name in (
-                            "reachable", "live", "ready", "healthy", "routable"
-                        )
+                        for name in ("reachable", "live", "ready", "healthy", "routable")
                     }
                     if any(
                         value is not None and not isinstance(value, bool)
                         for value in observed.values()
                     ):
-                        raise TypeError(
-                            "health check observations must be boolean or None"
-                        )
+                        raise TypeError("health check observations must be boolean or None")
                     successful = (
-                        observed["healthy"]
-                        if observed["healthy"] is not None
-                        else observed["live"]
+                        observed["healthy"] if observed["healthy"] is not None else observed["live"]
                     )
                     if successful is None:
                         successful = bool(result)
                     self.update_backend_liveness(
                         backend_id,
-                        status=(
-                            BackendStatus.HEALTHY
-                            if successful
-                            else BackendStatus.UNHEALTHY
-                        ),
+                        status=(BackendStatus.HEALTHY if successful else BackendStatus.UNHEALTHY),
                         **observed,
                     )
                     return bool(successful)
                 successful = bool(result)
                 self._update_backend_status(
                     backend_id,
-                    (
-                        BackendStatus.HEALTHY
-                        if successful
-                        else BackendStatus.UNHEALTHY
-                    ),
+                    (BackendStatus.HEALTHY if successful else BackendStatus.UNHEALTHY),
                     observed_health=successful,
                 )
                 return successful
@@ -2233,21 +2181,21 @@ class InferenceBackendManager:
                     observed_health=False,
                 )
                 return False
-        
+
         # If no health check method, assume healthy if recently seen
         time_since_seen = time.time() - backend_info.last_seen
         if time_since_seen > 300:  # 5 minutes
             self._update_backend_status(backend_id, BackendStatus.OFFLINE)
             return False
-        
+
         return True
-    
+
     def start_health_monitoring(self):
         """Start the background health check loop"""
         if self._health_check_task is None and self.health_check_enabled:
             logger.info("Starting health monitoring")
             self._health_check_task = asyncio.create_task(self.health_check_loop())
-    
+
     def stop_health_monitoring(self):
         """Stop the background health check loop"""
         if self._health_check_task:
@@ -2263,63 +2211,107 @@ class InferenceBackendManager:
     #: only by :meth:`_adapt_provider_registration`.
     _PROVIDER_REGISTRY: Dict[str, ProviderRegistration] = {
         "xai": _provider_spec(
-            "xai", "ipfs_accelerate_py.api_backends.xai", "xai",
-            "XAI_API_KEY", "ipfs_accelerate_py_XAI_API_KEY",
-            "https://api.x.ai/v1", "xAI Grok",
+            "xai",
+            "ipfs_accelerate_py.api_backends.xai",
+            "xai",
+            "XAI_API_KEY",
+            "ipfs_accelerate_py_XAI_API_KEY",
+            "https://api.x.ai/v1",
+            "xAI Grok",
             {"text-generation", "embeddings", "vision"},
             aliases=("grok", "xai_grok"),
         ),
         "meta_ai": _provider_spec(
-            "meta_ai", "ipfs_accelerate_py.api_backends.meta_ai", "meta_ai",
-            "META_AI_API_KEY", "ipfs_accelerate_py_META_AI_API_KEY",
-            "https://api.meta.ai/v1", "Meta Model API (Muse Spark)",
+            "meta_ai",
+            "ipfs_accelerate_py.api_backends.meta_ai",
+            "meta_ai",
+            "META_AI_API_KEY",
+            "ipfs_accelerate_py_META_AI_API_KEY",
+            "https://api.meta.ai/v1",
+            "Meta Model API (Muse Spark)",
             {"text-generation", "embeddings", "vision"},
             aliases=("meta", "meta_llama", "meta_spark", "spark"),
         ),
         "openai": _provider_spec(
-            "openai", "ipfs_accelerate_py.api_backends.openai_api", "openai_api",
-            "OPENAI_API_KEY", "ipfs_accelerate_py_OPENAI_API_KEY",
-            "https://api.openai.com/v1", "OpenAI",
+            "openai",
+            "ipfs_accelerate_py.api_backends.openai_api",
+            "openai_api",
+            "OPENAI_API_KEY",
+            "ipfs_accelerate_py_OPENAI_API_KEY",
+            "https://api.openai.com/v1",
+            "OpenAI",
             {"text-generation", "embeddings", "vision", "audio"},
             aliases=("openai_api",),
         ),
         "claude": _provider_spec(
-            "claude", "ipfs_accelerate_py.api_backends.claude", "claude",
-            "ANTHROPIC_API_KEY", "ipfs_accelerate_py_ANTHROPIC_API_KEY",
-            "https://api.anthropic.com", "Anthropic Claude",
+            "claude",
+            "ipfs_accelerate_py.api_backends.claude",
+            "claude",
+            "ANTHROPIC_API_KEY",
+            "ipfs_accelerate_py_ANTHROPIC_API_KEY",
+            "https://api.anthropic.com",
+            "Anthropic Claude",
             {"text-generation", "vision"},
             aliases=("anthropic",),
         ),
         "gemini": _provider_spec(
-            "gemini", "ipfs_accelerate_py.api_backends.gemini", "gemini",
-            "GEMINI_API_KEY", "ipfs_accelerate_py_GEMINI_API_KEY",
-            "https://generativelanguage.googleapis.com", "Google Gemini",
+            "gemini",
+            "ipfs_accelerate_py.api_backends.gemini",
+            "gemini",
+            "GEMINI_API_KEY",
+            "ipfs_accelerate_py_GEMINI_API_KEY",
+            "https://generativelanguage.googleapis.com",
+            "Google Gemini",
             {"text-generation", "embeddings", "vision", "audio"},
         ),
         "groq": _provider_spec(
-            "groq", "ipfs_accelerate_py.api_backends.groq", "groq",
-            "GROQ_API_KEY", "ipfs_accelerate_py_GROQ_API_KEY",
-            "https://api.groq.com/openai/v1", "Groq",
+            "groq",
+            "ipfs_accelerate_py.api_backends.groq",
+            "groq",
+            "GROQ_API_KEY",
+            "ipfs_accelerate_py_GROQ_API_KEY",
+            "https://api.groq.com/openai/v1",
+            "Groq",
             {"text-generation", "audio"},
         ),
         "hf_tei": _provider_spec(
-            "hf_tei", "ipfs_accelerate_py.api_backends.hf_tei", "hf_tei",
-            "HF_API_KEY", "ipfs_accelerate_py_HF_API_KEY", None,
-            "HuggingFace TEI", {"embeddings"},
+            "hf_tei",
+            "ipfs_accelerate_py.api_backends.hf_tei",
+            "hf_tei",
+            "HF_API_KEY",
+            "ipfs_accelerate_py_HF_API_KEY",
+            None,
+            "HuggingFace TEI",
+            {"embeddings"},
         ),
         "hf_tgi": _provider_spec(
-            "hf_tgi", "ipfs_accelerate_py.api_backends.hf_tgi", "hf_tgi",
-            "HF_API_KEY", "ipfs_accelerate_py_HF_API_KEY", None,
-            "HuggingFace TGI", {"text-generation"},
+            "hf_tgi",
+            "ipfs_accelerate_py.api_backends.hf_tgi",
+            "hf_tgi",
+            "HF_API_KEY",
+            "ipfs_accelerate_py_HF_API_KEY",
+            None,
+            "HuggingFace TGI",
+            {"text-generation"},
         ),
         "ollama": _provider_spec(
-            "ollama", "ipfs_accelerate_py.api_backends.ollama", "ollama",
-            None, None, "http://localhost:11434", "Ollama",
+            "ollama",
+            "ipfs_accelerate_py.api_backends.ollama",
+            "ollama",
+            None,
+            None,
+            "http://localhost:11434",
+            "Ollama",
             {"text-generation", "embeddings", "vision"},
         ),
         "vllm": _provider_spec(
-            "vllm", "ipfs_accelerate_py.api_backends.vllm", "vllm",
-            None, None, "http://localhost:8000/v1", "vLLM",
+            "vllm",
+            "ipfs_accelerate_py.api_backends.vllm",
+            "vllm",
+            None,
+            None,
+            "http://localhost:8000/v1",
+            "vLLM",
             {"text-generation", "embeddings"},
         ),
     }
@@ -2337,28 +2329,21 @@ class InferenceBackendManager:
     }
 
     @staticmethod
-    def _adapt_provider_registration(
-        name: str, value: Any
-    ) -> ProviderRegistration:
+    def _adapt_provider_registration(name: str, value: Any) -> ProviderRegistration:
         """The sole adapter for deprecated seven-position provider tuples."""
 
         if isinstance(value, ProviderRegistration):
             if value.name != name:
-                raise ValueError(
-                    "provider registration name must match its registry key"
-                )
+                raise ValueError("provider registration name must match its registry key")
             return value
         if isinstance(value, tuple):
             warnings.warn(
-                "Tuple-shaped provider registrations are deprecated; "
-                "use ProviderRegistration",
+                "Tuple-shaped provider registrations are deprecated; use ProviderRegistration",
                 DeprecationWarning,
                 stacklevel=3,
             )
             if len(value) != 7:
-                raise ValueError(
-                    "legacy provider registration must contain 7 fields"
-                )
+                raise ValueError("legacy provider registration must contain 7 fields")
             return ProviderRegistration(
                 name=name,
                 backend_module_path=value[0],
@@ -2369,9 +2354,7 @@ class InferenceBackendManager:
                 display_name=value[5],
                 supported_tasks=frozenset(value[6]),
             )
-        raise TypeError(
-            "provider registration must be ProviderRegistration or a legacy tuple"
-        )
+        raise TypeError("provider registration must be ProviderRegistration or a legacy tuple")
 
     def _resolve_provider_name(self, provider: str) -> str:
         """Normalise a provider alias to the canonical name."""
@@ -2421,8 +2404,11 @@ class InferenceBackendManager:
         spec = self._provider_registration(canonical)
         if spec is None:
             logger.warning("configure_provider: unknown provider '%s'", provider)
-            return {"provider": provider, "configured": False,
-                    "error": f"Unknown provider '{provider}'"}
+            return {
+                "provider": provider,
+                "configured": False,
+                "error": f"Unknown provider '{provider}'",
+            }
 
         mod_path = spec.backend_module_path
         cls_name = spec.backend_class_name
@@ -2435,11 +2421,7 @@ class InferenceBackendManager:
         # Resolve API key from env if not supplied
         resolved_key = api_key
         if not resolved_key and env_primary:
-            resolved_key = (
-                os.environ.get(env_primary)
-                or os.environ.get(env_secondary or "")
-                or ""
-            )
+            resolved_key = os.environ.get(env_primary) or os.environ.get(env_secondary or "") or ""
 
         # Resolve base URL
         resolved_url = base_url or default_base_url
@@ -2456,7 +2438,8 @@ class InferenceBackendManager:
         except Exception as exc:
             logger.warning(
                 "configure_provider: failed to instantiate '%s': %s",
-                canonical, exc,
+                canonical,
+                exc,
             )
             return {"provider": provider, "configured": False, "error": str(exc)}
 
@@ -2477,7 +2460,9 @@ class InferenceBackendManager:
         )
         logger.info(
             "configure_provider: registered '%s' (backend_id=%s, key_set=%s)",
-            canonical, backend_id, bool(resolved_key),
+            canonical,
+            backend_id,
+            bool(resolved_key),
         )
         return {"provider": canonical, "configured": ok, "backend_id": backend_id}
 
@@ -2519,7 +2504,7 @@ def get_backend_manager(config: Optional[Dict[str, Any]] = None) -> InferenceBac
 def register_backend_from_config(backend_config: Dict[str, Any]) -> bool:
     """
     Register a backend from a configuration dictionary
-    
+
     Args:
         backend_config: Backend configuration containing:
             - backend_id: Unique identifier
@@ -2529,38 +2514,38 @@ def register_backend_from_config(backend_config: Dict[str, Any]) -> bool:
             - capabilities: Optional capabilities dict
             - endpoint: Optional endpoint URL
             - metadata: Optional metadata
-            
+
     Returns:
         True if registration successful
     """
     manager = get_backend_manager()
-    
-    backend_type_str = backend_config.get('backend_type', 'api')
+
+    backend_type_str = backend_config.get("backend_type", "api")
     try:
         backend_type = BackendType(backend_type_str)
     except ValueError:
         logger.error(f"Invalid backend type: {backend_type_str}")
         return False
-    
+
     capabilities = None
-    if 'capabilities' in backend_config:
-        cap_dict = backend_config['capabilities']
+    if "capabilities" in backend_config:
+        cap_dict = backend_config["capabilities"]
         capabilities = BackendCapabilities(
-            supported_tasks=set(cap_dict.get('supported_tasks', [])),
-            supported_models=set(cap_dict.get('supported_models', [])),
-            max_batch_size=cap_dict.get('max_batch_size', 1),
-            supports_streaming=cap_dict.get('supports_streaming', False),
-            supports_batching=cap_dict.get('supports_batching', False),
-            hardware_types=set(cap_dict.get('hardware_types', [])),
-            protocols=set(cap_dict.get('protocols', ['http']))
+            supported_tasks=set(cap_dict.get("supported_tasks", [])),
+            supported_models=set(cap_dict.get("supported_models", [])),
+            max_batch_size=cap_dict.get("max_batch_size", 1),
+            supports_streaming=cap_dict.get("supports_streaming", False),
+            supports_batching=cap_dict.get("supports_batching", False),
+            hardware_types=set(cap_dict.get("hardware_types", [])),
+            protocols=set(cap_dict.get("protocols", ["http"])),
         )
-    
+
     return manager.register_backend(
-        backend_id=backend_config['backend_id'],
+        backend_id=backend_config["backend_id"],
         backend_type=backend_type,
-        name=backend_config['name'],
-        instance=backend_config.get('instance'),
+        name=backend_config["name"],
+        instance=backend_config.get("instance"),
         capabilities=capabilities,
-        endpoint=backend_config.get('endpoint'),
-        metadata=backend_config.get('metadata', {})
+        endpoint=backend_config.get("endpoint"),
+        metadata=backend_config.get("metadata", {}),
     )

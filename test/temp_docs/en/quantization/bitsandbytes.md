@@ -41,8 +41,7 @@ from transformers import AutoModelForCausalLM, BitsAndBytesConfig
 quantization_config = BitsAndBytesConfig(load_in_8bit=True)
 
 model_8bit = AutoModelForCausalLM.from_pretrained(
-    "bigscience/bloom-1b7", 
-    quantization_config=quantization_config
+    "bigscience/bloom-1b7", quantization_config=quantization_config
 )
 ```
 
@@ -55,9 +54,7 @@ from transformers import AutoModelForCausalLM, BitsAndBytesConfig
 quantization_config = BitsAndBytesConfig(load_in_8bit=True)
 
 model_8bit = AutoModelForCausalLM.from_pretrained(
-    "facebook/opt-350m", 
-    quantization_config=quantization_config, 
-    torch_dtype="auto"
+    "facebook/opt-350m", quantization_config=quantization_config, torch_dtype="auto"
 )
 model_8bit.model.decoder.layers[-1].final_layer_norm.weight.dtype
 ```
@@ -70,8 +67,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 quantization_config = BitsAndBytesConfig(load_in_8bit=True)
 
 model = AutoModelForCausalLM.from_pretrained(
-    "bigscience/bloom-560m", 
-    quantization_config=quantization_config
+    "bigscience/bloom-560m", quantization_config=quantization_config
 )
 tokenizer = AutoTokenizer.from_pretrained("bigscience/bloom-560m")
 
@@ -89,8 +85,7 @@ from transformers import AutoModelForCausalLM, BitsAndBytesConfig
 quantization_config = BitsAndBytesConfig(load_in_4bit=True)
 
 model_4bit = AutoModelForCausalLM.from_pretrained(
-    "bigscience/bloom-1b7",
-    quantization_config=quantization_config
+    "bigscience/bloom-1b7", quantization_config=quantization_config
 )
 ```
 
@@ -103,9 +98,7 @@ from transformers import AutoModelForCausalLM, BitsAndBytesConfig
 quantization_config = BitsAndBytesConfig(load_in_4bit=True)
 
 model_4bit = AutoModelForCausalLM.from_pretrained(
-    "facebook/opt-350m",
-    quantization_config=quantization_config, 
-    torch_dtype="auto"
+    "facebook/opt-350m", quantization_config=quantization_config, torch_dtype="auto"
 )
 model_4bit.model.decoder.layers[-1].final_layer_norm.weight.dtype
 ```
@@ -181,8 +174,7 @@ from transformers import AutoModelForCausalLM, BitsAndBytesConfig
 model_id = "bigscience/bloom-1b7"
 
 quantization_config = BitsAndBytesConfig(
-    llm_int8_threshold=0.0,
-    llm_int8_enable_fp32_cpu_offload=True
+    llm_int8_threshold=0.0, llm_int8_enable_fp32_cpu_offload=True
 )
 
 model_8bit = AutoModelForCausalLM.from_pretrained(
@@ -245,7 +237,9 @@ nf4_config = BitsAndBytesConfig(
     bnb_4bit_quant_type="nf4",
 )
 
-model_nf4 = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype="auto", quantization_config=nf4_config)
+model_nf4 = AutoModelForCausalLM.from_pretrained(
+    model_id, torch_dtype="auto", quantization_config=nf4_config
+)
 ```
 
 For inference, the `bnb_4bit_quant_type` does not have a huge impact on performance. However, to remain consistent with the model weights, you should use the `bnb_4bit_compute_dtype` and `torch_dtype` values.
@@ -262,7 +256,9 @@ double_quant_config = BitsAndBytesConfig(
     bnb_4bit_use_double_quant=True,
 )
 
-model_double_quant = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-13b-chat-hf", torch_dtype="auto", quantization_config=double_quant_config)
+model_double_quant = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Llama-2-13b-chat-hf", torch_dtype="auto", quantization_config=double_quant_config
+)
 ```
 
 ## Dequantizing bitsandbytes models
@@ -272,7 +268,9 @@ Once quantized, you can [`~PreTrainedModel.dequantize`] a model to the original 
 ```python
 from transformers import AutoModelForCausalLM, BitsAndBytesConfig, AutoTokenizer
 
-model = AutoModelForCausalLM.from_pretrained("facebook/opt-125m", BitsAndBytesConfig(load_in_4bit=True))
+model = AutoModelForCausalLM.from_pretrained(
+    "facebook/opt-125m", BitsAndBytesConfig(load_in_4bit=True)
+)
 model.dequantize()
 ```
 

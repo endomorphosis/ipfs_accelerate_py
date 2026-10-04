@@ -173,4 +173,7 @@ def default_cache_dir() -> Path:
 
 
 def cache_enabled() -> bool:
-    return _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_CACHE") or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_ENABLE_CACHE"))
+    return _truthy(
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_CACHE")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_ENABLE_CACHE")
+    )

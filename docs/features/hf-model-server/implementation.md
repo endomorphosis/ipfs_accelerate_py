@@ -176,35 +176,36 @@ python -m ipfs_accelerate_py.hf_model_server.cli serve
 ```python
 import requests
 
-response = requests.post("http://localhost:8000/v1/completions", json={
-    "model": "gpt2",
-    "prompt": "Once upon a time",
-    "max_tokens": 50,
-    "temperature": 0.7
-})
+response = requests.post(
+    "http://localhost:8000/v1/completions",
+    json={"model": "gpt2", "prompt": "Once upon a time", "max_tokens": 50, "temperature": 0.7},
+)
 
 print(response.json())
 ```
 
 **Chat Completion:**
 ```python
-response = requests.post("http://localhost:8000/v1/chat/completions", json={
-    "model": "gpt2",
-    "messages": [
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": "What is AI?"}
-    ]
-})
+response = requests.post(
+    "http://localhost:8000/v1/chat/completions",
+    json={
+        "model": "gpt2",
+        "messages": [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "What is AI?"},
+        ],
+    },
+)
 
 print(response.json())
 ```
 
 **Embeddings:**
 ```python
-response = requests.post("http://localhost:8000/v1/embeddings", json={
-    "model": "bert-base-uncased",
-    "input": "Hello, world!"
-})
+response = requests.post(
+    "http://localhost:8000/v1/embeddings",
+    json={"model": "bert-base-uncased", "input": "Hello, world!"},
+)
 
 embeddings = response.json()["data"][0]["embedding"]
 print(f"Embedding dimension: {len(embeddings)}")

@@ -28,6 +28,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_mock_cache():
     cache = MagicMock()
     cache.get_chat_completion.return_value = None
@@ -46,11 +47,13 @@ def _run_async(coro):
 # ApiKeyPool tests
 # ---------------------------------------------------------------------------
 
+
 class TestApiKeyPool(unittest.TestCase):
     """Tests for ApiKeyPool."""
 
     def _pool(self, keys=None):
         from ipfs_accelerate_py.cli_integrations.api_key_pool import ApiKeyPool
+
         return ApiKeyPool(keys or ["key-A", "key-B", "key-C"])
 
     # ------------------------------------------------------------------
@@ -59,16 +62,19 @@ class TestApiKeyPool(unittest.TestCase):
 
     def test_construction_single_key(self):
         from ipfs_accelerate_py.cli_integrations.api_key_pool import ApiKeyPool
+
         pool = ApiKeyPool(["only"])
         self.assertEqual(len(pool), 1)
 
     def test_construction_empty_raises(self):
         from ipfs_accelerate_py.cli_integrations.api_key_pool import ApiKeyPool
+
         with self.assertRaises(ValueError):
             ApiKeyPool([])
 
     def test_construction_bad_strategy_raises(self):
         from ipfs_accelerate_py.cli_integrations.api_key_pool import ApiKeyPool
+
         with self.assertRaises(ValueError):
             ApiKeyPool(["k"], strategy="random")
 
@@ -83,6 +89,7 @@ class TestApiKeyPool(unittest.TestCase):
 
     def test_round_robin_single_key(self):
         from ipfs_accelerate_py.cli_integrations.api_key_pool import ApiKeyPool
+
         pool = ApiKeyPool(["only"])
         for _ in range(5):
             self.assertEqual(pool.get_key(), "only")
@@ -154,6 +161,7 @@ class TestApiKeyPool(unittest.TestCase):
 
     def test_empty_pool_raises_on_get(self):
         from ipfs_accelerate_py.cli_integrations.api_key_pool import ApiKeyPool
+
         pool = ApiKeyPool(["k"])
         pool.remove_key("k")
         with self.assertRaises(RuntimeError):
@@ -198,18 +206,32 @@ class TestApiKeyPool(unittest.TestCase):
 # DualModeWrapper.get_api_key / pool integration
 # ---------------------------------------------------------------------------
 
+
 class TestDualModeWrapperMultiKey(unittest.TestCase):
     """Test get_api_key with and without a pool."""
 
     def _make_wrapper(self, api_keys=None, api_key=None):
         """Build a concrete DualModeWrapper subclass for testing."""
-        with patch("ipfs_accelerate_py.cli_integrations.dual_mode_wrapper.get_global_secrets_manager") as sm, \
-             patch("shutil.which", return_value=None), \
-             patch("subprocess.run"):
+        with (
+            patch(
+                "ipfs_accelerate_py.cli_integrations.dual_mode_wrapper.get_global_secrets_manager"
+            ) as sm,
+            patch("shutil.which", return_value=None),
+            patch("subprocess.run"),
+        ):
             sm.return_value.get_credential.return_value = None
             from ipfs_accelerate_py.cli_integrations.groq_cli_integration import GroqCLIIntegration
-            with patch("ipfs_accelerate_py.cli_integrations.groq_cli_integration.get_llm_cache", return_value=_make_mock_cache()), \
-                 patch("ipfs_accelerate_py.cli_integrations.groq_cli_integration.get_global_llm_cache", return_value=_make_mock_cache()):
+
+            with (
+                patch(
+                    "ipfs_accelerate_py.cli_integrations.groq_cli_integration.get_llm_cache",
+                    return_value=_make_mock_cache(),
+                ),
+                patch(
+                    "ipfs_accelerate_py.cli_integrations.groq_cli_integration.get_global_llm_cache",
+                    return_value=_make_mock_cache(),
+                ),
+            ):
                 return GroqCLIIntegration(api_key=api_key, api_keys=api_keys)
 
     def test_no_pool_returns_single_key(self):
@@ -239,17 +261,31 @@ class TestDualModeWrapperMultiKey(unittest.TestCase):
 # _aexecute_with_fallback tests
 # ---------------------------------------------------------------------------
 
+
 class TestAExecuteWithFallback(unittest.TestCase):
     """Verify _aexecute_with_fallback offloads work to threads."""
 
     def _make_groq(self):
-        with patch("ipfs_accelerate_py.cli_integrations.dual_mode_wrapper.get_global_secrets_manager") as sm, \
-             patch("shutil.which", return_value=None), \
-             patch("subprocess.run"):
+        with (
+            patch(
+                "ipfs_accelerate_py.cli_integrations.dual_mode_wrapper.get_global_secrets_manager"
+            ) as sm,
+            patch("shutil.which", return_value=None),
+            patch("subprocess.run"),
+        ):
             sm.return_value.get_credential.return_value = None
             from ipfs_accelerate_py.cli_integrations.groq_cli_integration import GroqCLIIntegration
-            with patch("ipfs_accelerate_py.cli_integrations.groq_cli_integration.get_llm_cache", return_value=_make_mock_cache()), \
-                 patch("ipfs_accelerate_py.cli_integrations.groq_cli_integration.get_global_llm_cache", return_value=_make_mock_cache()):
+
+            with (
+                patch(
+                    "ipfs_accelerate_py.cli_integrations.groq_cli_integration.get_llm_cache",
+                    return_value=_make_mock_cache(),
+                ),
+                patch(
+                    "ipfs_accelerate_py.cli_integrations.groq_cli_integration.get_global_llm_cache",
+                    return_value=_make_mock_cache(),
+                ),
+            ):
                 return GroqCLIIntegration(api_key="test-key")
 
     def test_aexecute_returns_result(self):
@@ -296,6 +332,7 @@ class TestAExecuteWithFallback(unittest.TestCase):
 
         try:
             import anyio  # noqa: F401
+
             _run_async(groq._aexecute_with_fallback(sdk_func=_capture_thread, operation="test"))
             self.assertEqual(len(called_from), 1)
             self.assertNotEqual(called_from[0], main_tid)
@@ -307,6 +344,7 @@ class TestAExecuteWithFallback(unittest.TestCase):
 # Per-integration async method tests
 # ---------------------------------------------------------------------------
 
+
 def _setup_integration(IntegrationClass, patch_module, **extra_patches):
     """Helper to build a mocked integration."""
     patches = {
@@ -317,29 +355,45 @@ def _setup_integration(IntegrationClass, patch_module, **extra_patches):
         f"{patch_module}.get_global_llm_cache": MagicMock(return_value=_make_mock_cache()),
     }
     patches.update(extra_patches)
-    ctx = [patch(k, v if callable(v) and not isinstance(v, MagicMock) else MagicMock(return_value=v() if callable(v) else v))
-           for k, v in patches.items()]
+    ctx = [
+        patch(
+            k,
+            v
+            if callable(v) and not isinstance(v, MagicMock)
+            else MagicMock(return_value=v() if callable(v) else v),
+        )
+        for k, v in patches.items()
+    ]
     # Simple approach: just patch the secrets manager and cache
-    with patch("ipfs_accelerate_py.cli_integrations.dual_mode_wrapper.get_global_secrets_manager") as sm, \
-         patch("shutil.which", return_value=None), \
-         patch("subprocess.run"):
+    with (
+        patch(
+            "ipfs_accelerate_py.cli_integrations.dual_mode_wrapper.get_global_secrets_manager"
+        ) as sm,
+        patch("shutil.which", return_value=None),
+        patch("subprocess.run"),
+    ):
         sm.return_value.get_credential.return_value = None
-        with patch(f"{patch_module}.get_llm_cache", return_value=_make_mock_cache()), \
-             patch(f"{patch_module}.get_global_llm_cache", return_value=_make_mock_cache()):
+        with (
+            patch(f"{patch_module}.get_llm_cache", return_value=_make_mock_cache()),
+            patch(f"{patch_module}.get_global_llm_cache", return_value=_make_mock_cache()),
+        ):
             return IntegrationClass(api_key="test-key")
 
 
 class TestClaudeAsyncMethods(unittest.TestCase):
     def setUp(self):
         self.claude = _setup_integration(
-            __import__("ipfs_accelerate_py.cli_integrations.claude_code_cli_integration",
-                       fromlist=["ClaudeCodeCLIIntegration"]).ClaudeCodeCLIIntegration,
+            __import__(
+                "ipfs_accelerate_py.cli_integrations.claude_code_cli_integration",
+                fromlist=["ClaudeCodeCLIIntegration"],
+            ).ClaudeCodeCLIIntegration,
             "ipfs_accelerate_py.cli_integrations.claude_code_cli_integration",
         )
 
     def test_achat_returns_response(self):
         def _fake(**kwargs):
             return {"response": "claude async", "cached": False}
+
         with patch.object(self.claude, "_chat_sdk", side_effect=_fake):
             result = _run_async(self.claude.achat("hi"))
         self.assertEqual(result["response"], "claude async")
@@ -347,6 +401,7 @@ class TestClaudeAsyncMethods(unittest.TestCase):
     def test_agenerate_code_delegates_to_achat(self):
         async def _fake_achat(*a, **kw):
             return {"response": "code", "cached": False, "mode": "SDK"}
+
         with patch.object(self.claude, "achat", side_effect=_fake_achat) as m:
             _run_async(self.claude.agenerate_code("write me code"))
             m.assert_awaited_once()
@@ -370,14 +425,17 @@ class TestClaudeAsyncMethods(unittest.TestCase):
 class TestGeminiAsyncMethods(unittest.TestCase):
     def setUp(self):
         self.gemini = _setup_integration(
-            __import__("ipfs_accelerate_py.cli_integrations.gemini_cli_integration",
-                       fromlist=["GeminiCLIIntegration"]).GeminiCLIIntegration,
+            __import__(
+                "ipfs_accelerate_py.cli_integrations.gemini_cli_integration",
+                fromlist=["GeminiCLIIntegration"],
+            ).GeminiCLIIntegration,
             "ipfs_accelerate_py.cli_integrations.gemini_cli_integration",
         )
 
     def test_agenerate_text_returns_response(self):
         def _fake(**kwargs):
             return {"response": "gemini async", "cached": False}
+
         with patch.object(self.gemini, "_generate_text_sdk", side_effect=_fake):
             result = _run_async(self.gemini.agenerate_text("hello"))
         self.assertEqual(result["response"], "gemini async")
@@ -385,6 +443,7 @@ class TestGeminiAsyncMethods(unittest.TestCase):
     def test_achat_delegates_to_agenerate_text(self):
         async def _fake(*a, **kw):
             return {"response": "g", "cached": False, "mode": "SDK"}
+
         with patch.object(self.gemini, "agenerate_text", side_effect=_fake) as m:
             _run_async(self.gemini.achat("hi"))
             m.assert_awaited_once()
@@ -393,14 +452,17 @@ class TestGeminiAsyncMethods(unittest.TestCase):
 class TestGroqAsyncMethods(unittest.TestCase):
     def setUp(self):
         self.groq = _setup_integration(
-            __import__("ipfs_accelerate_py.cli_integrations.groq_cli_integration",
-                       fromlist=["GroqCLIIntegration"]).GroqCLIIntegration,
+            __import__(
+                "ipfs_accelerate_py.cli_integrations.groq_cli_integration",
+                fromlist=["GroqCLIIntegration"],
+            ).GroqCLIIntegration,
             "ipfs_accelerate_py.cli_integrations.groq_cli_integration",
         )
 
     def test_achat_returns_response(self):
         def _fake(**kwargs):
             return {"response": "groq async", "cached": False}
+
         with patch.object(self.groq, "_chat_sdk", side_effect=_fake):
             result = _run_async(self.groq.achat("hi"))
         self.assertEqual(result["response"], "groq async")
@@ -408,6 +470,7 @@ class TestGroqAsyncMethods(unittest.TestCase):
     def test_acomplete_returns_response(self):
         def _fake(**kwargs):
             return {"response": "groq complete async", "cached": False}
+
         with patch.object(self.groq, "_complete_sdk", side_effect=_fake):
             result = _run_async(self.groq.acomplete("continue:"))
         self.assertEqual(result["response"], "groq complete async")
@@ -429,15 +492,28 @@ class TestGroqAsyncMethods(unittest.TestCase):
 
 class TestXAIGrokAsyncMethods(unittest.TestCase):
     def setUp(self):
-        from ipfs_accelerate_py.cli_integrations.xai_grok_cli_integration import XAIGrokCLIIntegration
-        with patch("ipfs_accelerate_py.cli_integrations.dual_mode_wrapper.get_global_secrets_manager") as sm, \
-             patch("shutil.which", return_value=None), \
-             patch("subprocess.run"):
+        from ipfs_accelerate_py.cli_integrations.xai_grok_cli_integration import (
+            XAIGrokCLIIntegration,
+        )
+
+        with (
+            patch(
+                "ipfs_accelerate_py.cli_integrations.dual_mode_wrapper.get_global_secrets_manager"
+            ) as sm,
+            patch("shutil.which", return_value=None),
+            patch("subprocess.run"),
+        ):
             sm.return_value.get_credential.return_value = None
-            with patch("ipfs_accelerate_py.cli_integrations.xai_grok_cli_integration.get_llm_cache",
-                       return_value=_make_mock_cache()), \
-                 patch("ipfs_accelerate_py.cli_integrations.xai_grok_cli_integration.get_global_llm_cache",
-                       return_value=_make_mock_cache()):
+            with (
+                patch(
+                    "ipfs_accelerate_py.cli_integrations.xai_grok_cli_integration.get_llm_cache",
+                    return_value=_make_mock_cache(),
+                ),
+                patch(
+                    "ipfs_accelerate_py.cli_integrations.xai_grok_cli_integration.get_global_llm_cache",
+                    return_value=_make_mock_cache(),
+                ),
+            ):
                 self.grok = XAIGrokCLIIntegration(api_key="xai-test", headless=True)
 
     def _fake_chat(self, response="grok async", **kwargs):
@@ -450,7 +526,9 @@ class TestXAIGrokAsyncMethods(unittest.TestCase):
 
     def test_aplan_mode_headless_approved(self):
         plan_text = "## Plan\n1. step\n## Implementation\n```python\npass\n```"
-        with patch.object(self.grok, "_chat_sdk", return_value={"response": plan_text, "cached": False}):
+        with patch.object(
+            self.grok, "_chat_sdk", return_value={"response": plan_text, "cached": False}
+        ):
             result = _run_async(self.grok.aplan_mode("do X"))
         self.assertTrue(result["approved"])
         self.assertIn("step", result["plan"])
@@ -506,17 +584,25 @@ class TestXAIGrokAsyncMethods(unittest.TestCase):
 # CLIEndpointAdapter.async_execute tests
 # ---------------------------------------------------------------------------
 
+
 class TestCLIEndpointAdapterAsync(unittest.TestCase):
     """Tests for the async_execute() method added to CLIEndpointAdapter."""
 
     def _make_adapter(self):
         """Create a concrete CLIEndpointAdapter for testing."""
         from ipfs_accelerate_py.mcp_server.tools.cli_endpoint_adapters import ClaudeCodeAdapter
+
         adapter = ClaudeCodeAdapter.__new__(ClaudeCodeAdapter)
         adapter.endpoint_id = "test-claude"
         adapter.cli_path = "/usr/bin/claude"
         adapter.config = {}
-        adapter.stats = {"requests": 0, "successes": 0, "failures": 0, "total_time": 0.0, "avg_time": 0.0}
+        adapter.stats = {
+            "requests": 0,
+            "successes": 0,
+            "failures": 0,
+            "total_time": 0.0,
+            "avg_time": 0.0,
+        }
         return adapter
 
     def test_async_execute_delegates_to_execute(self):
@@ -542,6 +628,7 @@ class TestCLIEndpointAdapterAsync(unittest.TestCase):
         with patch.object(adapter, "execute", side_effect=_capture):
             try:
                 import anyio  # noqa: F401
+
                 _run_async(adapter.async_execute("prompt"))
                 self.assertEqual(len(called_from), 1)
                 self.assertNotEqual(called_from[0], main_tid)
@@ -565,9 +652,11 @@ class TestCLIEndpointAdapterAsync(unittest.TestCase):
 # Package export test
 # ---------------------------------------------------------------------------
 
+
 class TestPackageExports(unittest.TestCase):
     def test_api_key_pool_exported(self):
         import ipfs_accelerate_py.cli_integrations as mod
+
         self.assertIn("ApiKeyPool", mod.__all__)
         self.assertTrue(callable(mod.ApiKeyPool))
 

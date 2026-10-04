@@ -107,11 +107,7 @@ def _channel_bound_evidence(
     }
     receipt.update(receipt_overrides or {})
     provenance_cid = _channel_revision(
-        {
-            key: value
-            for key, value in receipt.items()
-            if key != "executed_at"
-        },
+        {key: value for key, value in receipt.items() if key != "executed_at"},
         "documentation-completion-receipt",
     )
     values: dict[str, object] = {
@@ -142,10 +138,12 @@ def _evaluate(
             "verified": True,
             "repository_tree": CURRENT_TREE,
             "evaluated_at": NOW.isoformat(),
-            "criteria": [{
-                "criterion": "The public API returns a verified result.",
-                "status": "verified",
-            }]
+            "criteria": [
+                {
+                    "criterion": "The public API returns a verified result.",
+                    "status": "verified",
+                }
+            ],
         },
         "analyzer_health": {
             "status": "healthy",
@@ -427,9 +425,7 @@ def test_channel_bound_evidence_round_trips_and_satisfies_exact_coverage_binding
 
     assert decision.verified is True
     channel_check = next(
-        check
-        for check in decision.gate.checks
-        if check.name == "producer_channel_binding"
+        check for check in decision.gate.checks if check.name == "producer_channel_binding"
     )
     assert channel_check.passed is True
 
@@ -551,10 +547,39 @@ def test_stable_verified_completion_remains_truthful_in_projected_receipt() -> N
 @pytest.mark.parametrize(
     ("gate_overrides", "reason_code"),
     [
-        ({"coverage": {"criteria": [{"criterion": "The public API returns a verified result.", "status": "stale"}]}}, "coverage_unverified"),
+        (
+            {
+                "coverage": {
+                    "criteria": [
+                        {
+                            "criterion": "The public API returns a verified result.",
+                            "status": "stale",
+                        }
+                    ]
+                }
+            },
+            "coverage_unverified",
+        ),
         ({"analyzer_health": {"status": "partial"}}, "analyzer_unhealthy"),
-        ({"exhaustion_quorum": {"satisfied": False, "members": [], "duplicates": [{"reason": "duplicate_evidence_channel"}]}}, "exhaustion_quorum_unsatisfied"),
-        ({"analysis_result": {"terminal_reason": "timed_out", "safe_for_completion_reasoning": False}}, "analysis_not_completion_safe"),
+        (
+            {
+                "exhaustion_quorum": {
+                    "satisfied": False,
+                    "members": [],
+                    "duplicates": [{"reason": "duplicate_evidence_channel"}],
+                }
+            },
+            "exhaustion_quorum_unsatisfied",
+        ),
+        (
+            {
+                "analysis_result": {
+                    "terminal_reason": "timed_out",
+                    "safe_for_completion_reasoning": False,
+                }
+            },
+            "analysis_not_completion_safe",
+        ),
     ],
 )
 def test_completion_gate_rejects_nonqualifying_analysis_proof(
@@ -676,13 +701,9 @@ def test_quorum_derives_independence_and_rejects_arbitrary_distinct_labels() -> 
     assert decision.verified is False
     assert "exhaustion_quorum_inconsistent" in decision.reason_codes
     quorum_check = next(
-        check
-        for check in decision.gate.checks
-        if check.name == "exhaustion_quorum"
+        check for check in decision.gate.checks if check.name == "exhaustion_quorum"
     )
-    assert "duplicate_derived_independence_channel" in quorum_check.evidence[
-        "inconsistencies"
-    ]
+    assert "duplicate_derived_independence_channel" in quorum_check.evidence["inconsistencies"]
 
 
 def test_quorum_accepts_raw_aggregate_receipts_and_rejects_relabelled_producer() -> None:
@@ -734,9 +755,7 @@ def test_quorum_accepts_raw_aggregate_receipts_and_rejects_relabelled_producer()
     )
     assert replayed.verified is False
     quorum_check = next(
-        check
-        for check in replayed.gate.checks
-        if check.name == "exhaustion_quorum"
+        check for check in replayed.gate.checks if check.name == "exhaustion_quorum"
     )
     assert "duplicate_producer_id" in quorum_check.evidence["inconsistencies"]
 
@@ -749,14 +768,10 @@ def test_quorum_accepts_raw_aggregate_receipts_and_rejects_relabelled_producer()
         gate_overrides={"exhaustion_quorum": gate},
     )
     duplicate_child_check = next(
-        check
-        for check in duplicate_child.gate.checks
-        if check.name == "exhaustion_quorum"
+        check for check in duplicate_child.gate.checks if check.name == "exhaustion_quorum"
     )
     assert duplicate_child.verified is False
-    assert "duplicate_child_receipt_sha256" in duplicate_child_check.evidence[
-        "inconsistencies"
-    ]
+    assert "duplicate_child_receipt_sha256" in duplicate_child_check.evidence["inconsistencies"]
 
 
 @pytest.mark.parametrize(
@@ -815,10 +830,12 @@ def test_completion_gate_rejects_contradictory_stale_or_malformed_coverage(
         "verified": True,
         "repository_tree": CURRENT_TREE,
         "evaluated_at": NOW.isoformat(),
-        "criteria": [{
-            "acceptance_criterion": "The public API returns a verified result.",
-            "status": "verified",
-        }],
+        "criteria": [
+            {
+                "acceptance_criterion": "The public API returns a verified result.",
+                "status": "verified",
+            }
+        ],
     }
     coverage.update(coverage_override)
 
@@ -839,12 +856,14 @@ def test_completion_gate_rejects_contradictory_stale_or_malformed_coverage(
 def test_failed_terminal_validation_cannot_be_overridden_by_positive_summary(
     terminal_status: str,
 ) -> None:
-    decision = _evaluate([
-        _complete_evidence(
-            validation_passed=True,
-            validation_receipt={"status": terminal_status, "passed": True},
-        )
-    ])
+    decision = _evaluate(
+        [
+            _complete_evidence(
+                validation_passed=True,
+                validation_receipt={"status": terminal_status, "passed": True},
+            )
+        ]
+    )
 
     assert decision.verified is False
     assert "failed_validation" in decision.reason_codes
@@ -871,13 +890,15 @@ def test_failed_terminal_validation_cannot_be_overridden_by_positive_summary(
             "quorum_met": False,
             "required_members": 1,
             "member_count": 1,
-            "members": [{
-                "member_id": "one",
-                "evidence_channel": "audit",
-                "receipt_cid": "bafy-one",
-                "finished_at": NOW.isoformat(),
-                "binding": {"tree_id": CURRENT_TREE, "repository_id": ""},
-            }],
+            "members": [
+                {
+                    "member_id": "one",
+                    "evidence_channel": "audit",
+                    "receipt_cid": "bafy-one",
+                    "finished_at": NOW.isoformat(),
+                    "binding": {"tree_id": CURRENT_TREE, "repository_id": ""},
+                }
+            ],
             "binding": {"tree_id": CURRENT_TREE, "repository_id": ""},
         },
     ],
@@ -921,29 +942,31 @@ def test_parent_gate_recursively_rejects_hidden_reopened_descendant() -> None:
         [_complete_evidence()],
         current_state=GoalState.PROVISIONALLY_COMPLETE,
         gate_overrides={
-            "child_goals": [{
-                "goal_id": "G1.S1",
-                "state": "verified_complete",
-                "verified": True,
-                "completion_gate": {
-                    "passed": True,
-                    "evaluated_evidence": {
-                        "child_goals": [{
-                            "goal_id": "G1.S1.S1",
-                            "state": "reopened",
-                            "verified": False,
-                        }]
+            "child_goals": [
+                {
+                    "goal_id": "G1.S1",
+                    "state": "verified_complete",
+                    "verified": True,
+                    "completion_gate": {
+                        "passed": True,
+                        "evaluated_evidence": {
+                            "child_goals": [
+                                {
+                                    "goal_id": "G1.S1.S1",
+                                    "state": "reopened",
+                                    "verified": False,
+                                }
+                            ]
+                        },
                     },
-                },
-            }]
+                }
+            ]
         },
     )
 
     assert decision.verified is False
     assert "child_reopened" in decision.reason_codes
-    children_check = next(
-        check for check in decision.gate.checks if check.name == "child_goals"
-    )
+    children_check = next(check for check in decision.gate.checks if check.name == "child_goals")
     assert children_check.evidence["unverified_children"][0]["goal_id"] == "G1.S1.S1"
 
 
@@ -995,9 +1018,7 @@ def test_parent_gate_requires_exact_declared_descendant_set() -> None:
         },
     )
     assert unexpected.verified is False
-    children_check = next(
-        check for check in unexpected.gate.checks if check.name == "child_goals"
-    )
+    children_check = next(check for check in unexpected.gate.checks if check.name == "child_goals")
     assert children_check.evidence["unexpected_child_goal_ids"] == ["G1.S2"]
 
 
@@ -1006,7 +1027,9 @@ def test_parent_completion_cannot_hide_nonverified_child(child_state: GoalState)
     decision = _evaluate(
         [_complete_evidence()],
         current_state=GoalState.PROVISIONALLY_COMPLETE,
-        gate_overrides={"child_goals": [{"goal_id": "G1.S1", "state": child_state.value, "verified": False}]},
+        gate_overrides={
+            "child_goals": [{"goal_id": "G1.S1", "state": child_state.value, "verified": False}]
+        },
     )
 
     assert decision.verified is False
@@ -1055,9 +1078,7 @@ def test_stale_evidence_fails_closed() -> None:
 
 
 def test_evidence_from_a_different_repository_tree_fails_closed() -> None:
-    decision = _evaluate(
-        [_complete_evidence(repository_tree="sha256:previous-repository-tree")]
-    )
+    decision = _evaluate([_complete_evidence(repository_tree="sha256:previous-repository-tree")])
 
     assert decision.state is GoalState.PROVISIONALLY_COMPLETE
     assert decision.verified is False
@@ -1132,9 +1153,7 @@ def test_each_completion_contradiction_reopens_and_records_full_provenance(
     assert payload["source_receipts"] == [contradiction.source_receipt]
     assert payload["newly_scheduled_work"] == [{"task_id": "REF-901", "reason": kind}]
     assert payload["historical_completion_receipts"] == historical
-    assert payload["reopening_receipt"]["historical_completion_receipt_ids"] == [
-        "bafy-completion"
-    ]
+    assert payload["reopening_receipt"]["historical_completion_receipt_ids"] == ["bafy-completion"]
 
 
 def test_unrelated_contradiction_does_not_churn_completed_goal() -> None:
@@ -1172,18 +1191,14 @@ def test_replayed_contradiction_is_idempotent_and_retains_effective_reopened_sta
         goal_id="G10.S3",
         current_state=GoalState.VERIFIED_COMPLETE,
         contradictions=[contradiction],
-        historical_completion_receipts=[
-            {"goal_id": "G10.S3", "receipt_id": "bafy-completion"}
-        ],
+        historical_completion_receipts=[{"goal_id": "G10.S3", "receipt_id": "bafy-completion"}],
         now=NOW,
     )
     replay = reopen_goal_for_contradictions(
         goal_id="G10.S3",
         current_state=GoalState.VERIFIED_COMPLETE,
         contradictions=[contradiction],
-        historical_completion_receipts=[
-            {"goal_id": "G10.S3", "receipt_id": "bafy-completion"}
-        ],
+        historical_completion_receipts=[{"goal_id": "G10.S3", "receipt_id": "bafy-completion"}],
         existing_reopen_receipts=[first.reopening_receipt],
         now=NOW + timedelta(minutes=10),
     )
@@ -1214,8 +1229,7 @@ def test_reopening_recalculates_parent_and_dependent_without_erasing_history() -
         {"goal_id": "G3", "state": "verified_complete"},
     ]
     completion_history = [
-        {"goal_id": goal["goal_id"], "receipt_id": f"complete-{goal['goal_id']}"}
-        for goal in goals
+        {"goal_id": goal["goal_id"], "receipt_id": f"complete-{goal['goal_id']}"} for goal in goals
     ]
     contradiction = ContradictionEvidence(
         goal_id="G1.S1",
@@ -1329,9 +1343,7 @@ def test_coverage_discovery_detects_every_reopening_surface_without_cross_goal_c
         "changed_surface",
     }
     assert {item.goal_id for item in first} == {"G1"}
-    assert [item.contradiction_id for item in first] == [
-        item.contradiction_id for item in replay
-    ]
+    assert [item.contradiction_id for item in first] == [item.contradiction_id for item in replay]
     assert all(item.scheduled_work for item in first)
     assert all(item.scheduled_work[0]["task_id"] == "REF-901" for item in first)
 
@@ -1414,15 +1426,17 @@ def test_supervisor_mapped_finding_projection_is_deterministic_and_deduplicated(
 
 
 def test_supervisor_deterministically_maps_new_surface_finding_to_goal_coverage() -> None:
-    goals = [{
-        "goal_id": "G10.S3",
-        "title": "Meta glasses API",
-        "fields": {
-            "status": "verified_complete",
-            "acceptance": "The Meta glasses API remains operational.",
-            "outputs": "swissknife/meta_glasses.py",
-        },
-    }]
+    goals = [
+        {
+            "goal_id": "G10.S3",
+            "title": "Meta glasses API",
+            "fields": {
+                "status": "verified_complete",
+                "acceptance": "The Meta glasses API remains operational.",
+                "outputs": "swissknife/meta_glasses.py",
+            },
+        }
+    ]
     finding = {
         "fingerprint": "finding-new-surface",
         "source": "swissknife/meta_glasses.py:42",
@@ -1438,9 +1452,7 @@ def test_supervisor_deterministically_maps_new_surface_finding_to_goal_coverage(
 
     assert len(contradictions) == 1
     assert contradictions[0]["goal_id"] == "G10.S3"
-    assert contradictions[0]["impacted_criteria"] == [
-        "The Meta glasses API remains operational."
-    ]
+    assert contradictions[0]["impacted_criteria"] == ["The Meta glasses API remains operational."]
     mapping = contradictions[0]["source_receipt"]["finding_mapping"]
     assert mapping["inferred"] is True
     assert mapping["confidence"] >= 0.2
@@ -1721,9 +1733,7 @@ def test_objective_tracker_aborts_when_validation_mutates_repository_tree(
             repo_root=repo,
             objective_path=objective_path,
             completion_evidence_records={"G10.S3": [evidence]},
-            completion_gate_records={
-                "G10.S3": _tracker_gate(identity, "criterion one")
-            },
+            completion_gate_records={"G10.S3": _tracker_gate(identity, "criterion one")},
         )
 
     assert (repo / "source.py").read_text(encoding="utf-8") == "VALUE = 2\n"
@@ -1779,7 +1789,9 @@ def test_completion_control_artifact_writes_do_not_self_invalidate_tree(tmp_path
         ),
         encoding="utf-8",
     )
-    _git(repo, "add", "objective.md", "state/completion-gate.json", "state/completion-evidence.json")
+    _git(
+        repo, "add", "objective.md", "state/completion-gate.json", "state/completion-evidence.json"
+    )
     _git(repo, "commit", "-m", "update completion controls")
     after_control_commit = completion_tree_identity(
         repo,
@@ -1877,8 +1889,9 @@ def test_semantic_objective_revision_ignores_lifecycle_but_tracks_acceptance(
     initial = objective_completion_revision(objective_path)
 
     objective_path.write_text(
-        objective_path.read_text(encoding="utf-8")
-        .replace("- Status: active", "- Status: provisionally_complete")
+        objective_path.read_text(encoding="utf-8").replace(
+            "- Status: active", "- Status: provisionally_complete"
+        )
         + "- Completion confidence: 0.5\n",
         encoding="utf-8",
     )
@@ -2093,12 +2106,8 @@ def test_objective_tracker_reopens_self_asserted_verified_state_without_evidence
     assert result.state_counts["reopened"] == 1
     assert result.decisions["G10.S3"]["previous_state"] == "verified_complete"
     assert result.decisions["G10.S3"]["state"] == "reopened"
-    assert "missing_criterion_evidence" in result.decisions["G10.S3"][
-        "reason_codes"
-    ]
-    assert "verification_invalidated" in result.decisions["G10.S3"][
-        "reason_codes"
-    ]
+    assert "missing_criterion_evidence" in result.decisions["G10.S3"]["reason_codes"]
+    assert "verification_invalidated" in result.decisions["G10.S3"]["reason_codes"]
     assert "- Status: reopened" in objective_path.read_text(encoding="utf-8")
 
 
@@ -2142,9 +2151,7 @@ def test_open_validation_gate_does_not_reopen_implementation_stage(
 
     assert result.provisional_goal_ids == ["G10.S3"]
     assert result.decisions["G10.S3"]["state"] == "provisionally_complete"
-    assert "- Status: provisionally_complete" in objective_path.read_text(
-        encoding="utf-8"
-    )
+    assert "- Status: provisionally_complete" in objective_path.read_text(encoding="utf-8")
 
 
 def test_objective_tracker_automatically_aggregates_descendant_state(tmp_path) -> None:
@@ -2283,13 +2290,15 @@ def test_legacy_completed_goal_migration_fails_closed_and_is_replay_stable() -> 
 
 def test_completion_compatibility_readers_accept_legacy_event_and_evidence_shapes() -> None:
     lifecycle = GoalLifecycle.from_dict({"goal_id": "G-old", "status": "completed", "events": []})
-    evidence = CompletionEvidence.from_dict({
-        "version": 0,
-        "criterion": "criterion one",
-        "task_id": "REF-old",
-        "tree_identity": CURRENT_TREE,
-        "receipt_cid": "bafy-old",
-    })
+    evidence = CompletionEvidence.from_dict(
+        {
+            "version": 0,
+            "criterion": "criterion one",
+            "task_id": "REF-old",
+            "tree_identity": CURRENT_TREE,
+            "receipt_cid": "bafy-old",
+        }
+    )
 
     assert lifecycle.state is GoalState.VERIFIED_COMPLETE
     assert evidence.acceptance_criterion == "criterion one"
@@ -2312,10 +2321,12 @@ def test_legacy_completed_goal_only_migrates_verified_with_full_gate() -> None:
             "verified": True,
             "repository_tree": CURRENT_TREE,
             "evaluated_at": NOW.isoformat(),
-            "criteria": [{
-                "criterion": "The public API returns a verified result.",
-                "status": "verified",
-            }],
+            "criteria": [
+                {
+                    "criterion": "The public API returns a verified result.",
+                    "status": "verified",
+                }
+            ],
         },
         analyzer_health={
             "status": "healthy",
@@ -2369,9 +2380,10 @@ def test_legacy_completed_goal_only_migrates_verified_with_full_gate() -> None:
 
 
 def test_completion_diagnostics_exposes_stale_health_quorum_and_uncovered_proof() -> None:
-    decision = _evaluate([
-        _complete_evidence(observed_at=NOW - timedelta(hours=2))
-    ], current_state=GoalState.PROVISIONALLY_COMPLETE)
+    decision = _evaluate(
+        [_complete_evidence(observed_at=NOW - timedelta(hours=2))],
+        current_state=GoalState.PROVISIONALLY_COMPLETE,
+    )
     diagnostics = completion_diagnostics(decision)
 
     assert diagnostics["lifecycle_state"] == "provisionally_complete"

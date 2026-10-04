@@ -174,6 +174,7 @@ The plugin system uses a type system to categorize plugins:
 ```python
 class PluginType(Enum):
     """Enum of plugin types."""
+
     REPORTER = "reporter"
     SCHEDULER = "scheduler"
     RESOURCE_MANAGER = "resource_manager"
@@ -246,27 +247,24 @@ class CIProviderInterface(abc.ABC):
 ```python
 from distributed_testing.plugin_architecture import Plugin, PluginType, HookType
 
+
 class CustomPlugin(Plugin):
     """Custom plugin example."""
-    
+
     def __init__(self):
-        super().__init__(
-            name="CustomPlugin",
-            version="1.0.0",
-            plugin_type=PluginType.CUSTOM
-        )
-        
+        super().__init__(name="CustomPlugin", version="1.0.0", plugin_type=PluginType.CUSTOM)
+
         # Register hooks
         self.register_hook(HookType.TASK_COMPLETED, self.on_task_completed)
-        
+
     async def initialize(self, coordinator) -> bool:
         self.coordinator = coordinator
         return True
-        
+
     async def shutdown(self) -> bool:
         # Clean up resources
         return True
-        
+
     async def on_task_completed(self, task_id: str, result: Any):
         # Handle task completion
         print(f"Task {task_id} completed with result: {result}")
@@ -277,24 +275,24 @@ class CustomPlugin(Plugin):
 ```python
 # Create MS Teams connector with webhook integration
 teams = await ExternalSystemFactory.create_connector(
-    "msteams", 
-    {
-        "webhook_url": "https://outlook.office.com/webhook/YOUR_WEBHOOK_URL"
-    }
+    "msteams", {"webhook_url": "https://outlook.office.com/webhook/YOUR_WEBHOOK_URL"}
 )
 
 # Send a message with facts
-await teams.create_item("message", {
-    "title": "Test Execution Completed",
-    "text": "Test execution has completed successfully.",
-    "theme_color": "0078D7",  # Blue
-    "facts": [
-        ("Test Suite", "API Tests"),
-        ("Result", "PASSED"),
-        ("Duration", "10m 15s"),
-        ("Failures", "0")
-    ]
-})
+await teams.create_item(
+    "message",
+    {
+        "title": "Test Execution Completed",
+        "text": "Test execution has completed successfully.",
+        "theme_color": "0078D7",  # Blue
+        "facts": [
+            ("Test Suite", "API Tests"),
+            ("Result", "PASSED"),
+            ("Duration", "10m 15s"),
+            ("Failures", "0"),
+        ],
+    },
+)
 
 # Close the connection
 await teams.close()
@@ -306,17 +304,13 @@ await teams.close()
 # Create GitHub Actions provider
 github = await CIProviderFactory.create_provider(
     "github",
-    {
-        "token": os.environ.get("GITHUB_TOKEN"),
-        "repository": os.environ.get("GITHUB_REPOSITORY")
-    }
+    {"token": os.environ.get("GITHUB_TOKEN"), "repository": os.environ.get("GITHUB_REPOSITORY")},
 )
 
 # Create a test run
-test_run = await github.create_test_run({
-    "name": "API Tests",
-    "build_id": os.environ.get("GITHUB_RUN_ID")
-})
+test_run = await github.create_test_run(
+    {"name": "API Tests", "build_id": os.environ.get("GITHUB_RUN_ID")}
+)
 
 # Update with results
 await github.update_test_run(
@@ -324,12 +318,8 @@ await github.update_test_run(
     {
         "status": "completed",
         "conclusion": "success",
-        "summary": {
-            "total": 100,
-            "passed": 98,
-            "failed": 2
-        }
-    }
+        "summary": {"total": 100, "passed": 98, "failed": 2},
+    },
 )
 
 # Add comment to PR
@@ -338,12 +328,12 @@ if os.environ.get("GITHUB_EVENT_NAME") == "pull_request":
     await github.add_pr_comment(
         pr_number,
         """## Test Results
-        
+
 ✅ 98/100 tests passed (98%)
 ⚠️ 2 tests failed
 
 [View detailed results](http://example.com/results)
-        """
+        """,
     )
 ```
 

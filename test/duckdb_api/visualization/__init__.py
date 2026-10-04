@@ -11,9 +11,9 @@ Submodules:
 # Import advanced visualization components for easier access
 from data.duckdb.visualization.advanced_visualization import (
     BaseVisualization,
-    HardwareHeatmapVisualization, 
+    HardwareHeatmapVisualization,
     TimeSeriesVisualization,
-    Visualization3D
+    Visualization3D,
 )
 
 __all__ = [

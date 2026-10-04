@@ -80,8 +80,7 @@ def _request_expansion(
         parent_completeness_witness_id=parent.witness.content_id,
         unresolved_question=question or f"expand mandatory dependency {reference.node_id}",
         expansion_handle=reference.expansion_handle,
-        budget=budget
-        or DecisionContextExpansionBudget(1, 20_000, 1_048_576, 30_000),
+        budget=budget or DecisionContextExpansionBudget(1, 20_000, 1_048_576, 30_000),
         prior_request_ids=prior_request_ids,
         authority_id=request.authority.content_id,
         semantic_graph_root_id=graph.root_id,
@@ -108,23 +107,17 @@ def _references(compilation):
 
 def test_question_bound_expansion_is_delta_only_and_reconstructs_parent() -> None:
     request, graph, store, compiler, parent, context, reference = _parent()
-    expansion = _request_expansion(
-        request, graph, parent, context, reference
-    )
+    expansion = _request_expansion(request, graph, parent, context, reference)
 
     result = expand_decision_context(compiler, parent, expansion, store)
     rebuilt = reconstruct_decision_context(parent, result.retry_capsule)
 
     assert rebuilt == result.reconstructed_compilation == parent
-    assert result.retry_capsule.expanded_evidence[0].node_content_id == (
-        reference.node_content_id
-    )
+    assert result.retry_capsule.expanded_evidence[0].node_content_id == (reference.node_content_id)
     assert result.retry_capsule.changed_dependencies[0].kind is (
         DecisionContextChangeKind.EXPANDED_EVIDENCE
     )
-    assert {"required_core", "contexts", "witness"}.isdisjoint(
-        result.transmitted_payload
-    )
+    assert {"required_core", "contexts", "witness"}.isdisjoint(result.transmitted_payload)
     assert result.delta_input_tokens < result.full_replay_input_tokens
     assert DecisionContextExpansionRequest.from_json(expansion.to_json()) == expansion
 
@@ -140,9 +133,7 @@ def test_question_bound_expansion_is_delta_only_and_reconstructs_parent() -> Non
 
 def test_expansion_rejects_unadmitted_and_cross_boundary_handles() -> None:
     request, graph, store, compiler, parent, context, reference = _parent()
-    expansion = _request_expansion(
-        request, graph, parent, context, reference
-    )
+    expansion = _request_expansion(request, graph, parent, context, reference)
     forged_handle = replace(
         reference.expansion_handle,
         reference_id="mandatory:outside-closure",
@@ -164,9 +155,7 @@ def test_expansion_rejects_unadmitted_and_cross_boundary_handles() -> None:
         ("current_authority_id", _digest("authority:other")),
     ):
         with pytest.raises(DecisionContextInvalidatedError):
-            compiler.expand_decision_context(
-                parent, expansion, store, **{field: value}
-            )
+            compiler.expand_decision_context(parent, expansion, store, **{field: value})
 
 
 @pytest.mark.parametrize(
@@ -184,13 +173,9 @@ def test_expansion_fails_closed_on_each_budget(
     pattern: str,
 ) -> None:
     request, graph, store, compiler, parent, context, reference = _parent()
-    expansion = _request_expansion(
-        request, graph, parent, context, reference, budget=budget
-    )
+    expansion = _request_expansion(request, graph, parent, context, reference, budget=budget)
     with pytest.raises(DecisionContextExpansionError, match=pattern):
-        compiler.expand_decision_context(
-            parent, expansion, store, elapsed_latency_ms=elapsed
-        )
+        compiler.expand_decision_context(parent, expansion, store, elapsed_latency_ms=elapsed)
 
 
 def test_retry_binds_exact_parent_preserves_omissions_and_round_trips() -> None:
@@ -204,15 +189,11 @@ def test_retry_binds_exact_parent_preserves_omissions_and_round_trips() -> None:
     capsule = result.retry_capsule
 
     assert result.reconstructed_compilation == parent
-    assert capsule.omission_reasons == {
-        "optional:evidence:with:colon": "token_budget"
-    }
+    assert capsule.omission_reasons == {"optional:evidence:with:colon": "token_budget"}
     assert capsule.delta_input_tokens < capsule.full_replay_input_tokens
     assert DecisionContextRetryCapsule.from_json(capsule.to_json()) == capsule
     assert reconstruct_decision_context(parent, capsule) == parent
-    assert {"required_core", "contexts", "witness"}.isdisjoint(
-        result.transmitted_payload
-    )
+    assert {"required_core", "contexts", "witness"}.isdisjoint(result.transmitted_payload)
 
     forged = capsule.to_record()
     forged["parent_context_id"] = "decision-context:forged"
@@ -225,23 +206,17 @@ def test_retry_binds_exact_parent_preserves_omissions_and_round_trips() -> None:
     with pytest.raises(DecisionContextInvalidatedError, match="corpus browsing"):
         compiler.compile_retry(
             parent,
-            changed_dependencies=(
-                replace(_diagnostic(), payload={"corpus_query": "everything"}),
-            ),
+            changed_dependencies=(replace(_diagnostic(), payload={"corpus_query": "everything"}),),
         )
 
 
 def test_paired_retries_reduce_tokens_without_coverage_or_safety_loss() -> None:
     for index in range(5):
         _, _, _, compiler, parent, _, _ = _parent()
-        result = compiler.compile_retry(
-            parent, changed_dependencies=(_diagnostic(str(index)),)
-        )
+        result = compiler.compile_retry(parent, changed_dependencies=(_diagnostic(str(index)),))
         rebuilt = result.reconstructed_compilation
 
-        assert result.delta_input_tokens * 100 <= (
-            result.full_replay_input_tokens * 65
-        )
+        assert result.delta_input_tokens * 100 <= (result.full_replay_input_tokens * 65)
         assert rebuilt.required_core == parent.required_core
         assert rebuilt.witness.mandatory_node_ids == parent.witness.mandatory_node_ids
         assert rebuilt.witness.mandatory_edge_ids == parent.witness.mandatory_edge_ids
@@ -297,9 +272,7 @@ def test_structural_retry_revalidates_declared_change_and_full_closure(
     assert reconstruct_decision_context(parent, result.retry_capsule, target) == target
     with pytest.raises(DecisionContextRetryError, match="structural"):
         reconstruct_decision_context(parent, result.retry_capsule)
-    with pytest.raises(
-        DecisionContextRetryError, match="undeclared|does not match"
-    ):
+    with pytest.raises(DecisionContextRetryError, match="undeclared|does not match"):
         compiler.compile_retry(
             parent,
             changed_dependencies=(
@@ -322,6 +295,4 @@ def test_structural_retry_revalidates_declared_change_and_full_closure(
 def test_retry_invalidates_changed_repository_roots_or_authority(kwargs) -> None:
     _, _, _, compiler, parent, _, _ = _parent()
     with pytest.raises(DecisionContextInvalidatedError):
-        compiler.compile_retry(
-            parent, changed_dependencies=(_diagnostic(),), **kwargs
-        )
+        compiler.compile_retry(parent, changed_dependencies=(_diagnostic(),), **kwargs)
