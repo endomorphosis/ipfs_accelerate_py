@@ -1,6 +1,6 @@
 {
   "assembly": "Bounded pilot exporter plus authored review corrections and publication qualification; canonical raw receipts remain local.",
-  "bytes": 2439023,
+  "bytes": 2439040,
   "file_count": 64,
   "files": [
     {
@@ -34,9 +34,9 @@
       "sha256": "b5a1933cea61471eb2b4e678c49a558884610b91870076b504c1533c3187cdc1"
     },
     {
-      "bytes": 15221,
+      "bytes": 15242,
       "path": "export_public_pilot.py",
-      "sha256": "3a8aeb46c0b08ff33fb25a8b7957326ddb0cd3c6c2bd41476ccc8ecdc994836a"
+      "sha256": "0f17460ad1ba05b4ab833979cb945906c46dc470e19c7042c7f56ef28fb3c6fd"
     },
     {
       "bytes": 58278,
@@ -309,9 +309,9 @@
       "sha256": "e13b868d1a5b737a459360157de0f3361ed7c5556bd2096575cd5e236c3cb5a2"
     },
     {
-      "bytes": 379,
+      "bytes": 375,
       "path": "scores.csv",
-      "sha256": "bcbd76e5e73aa41f30d106d219173224426ab9f11edf91b5003153c90cd3300b"
+      "sha256": "db62dd493dd320f61d0f17f0dc9201c2d434883ec0e1c7a22f80033dc139a505"
     },
     {
       "bytes": 1909249,

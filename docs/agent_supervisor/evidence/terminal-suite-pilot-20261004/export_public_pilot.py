@@ -236,7 +236,7 @@ lines.extend([
 with (OUT / 'scores.csv').open('x', newline='') as f:
     fields = ('task', 'official_reward', 'supervisor_completed', 'agent_seconds',
               'agent_setup_seconds', 'input_tokens', 'cached_input_tokens', 'output_tokens', 'total_tokens')
-    writer = csv.DictWriter(f, fieldnames=fields)
+    writer = csv.DictWriter(f, fieldnames=fields, lineterminator="\n")
     writer.writeheader()
     for row in rows:
         writer.writerow(dict(task=row['task'], official_reward=(row['reward'] or {}).get('reward'),
