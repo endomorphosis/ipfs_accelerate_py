@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Performance Analytics - Distributed Testing Framework</title>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <link rel="stylesheet" href="/static/css/{{ theme }}.css">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        .analytics-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .analytics-card {
+            background-color: var(--card-bg);
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            overflow: hidden;
+        }
+        
+        .analytics-section {
+            margin-bottom: 30px;
+        }
+        
+        .analytics-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .analytics-title {
+            font-size: 1.4em;
+            font-weight: bold;
+            color: var(--heading-color);
+            margin: 0;
+        }
+        
+        .analytics-subtitle {
+            font-size: 1.1em;
+            color: var(--heading-color);
+            margin: 0 0 15px 0;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .tab-container {
+            margin-bottom: 20px;
+        }
+        
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 20px;
+        }
+        
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: 1px solid var(--border-color);
+            border-bottom: none;
+            border-radius: 5px 5px 0 0;
+            margin-right: 5px;
+            background-color: var(--card-bg);
+            color: var(--text-color);
+        }
+        
+        .tab.active {
+            background-color: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+        
+        .tab-content {
+            display: none;
+            padding: 20px;
+            border: 1px solid var(--border-color);
+            border-radius: 0 0 5px 5px;
+            background-color: var(--card-bg);
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .chart-container {
+            width: 100%;
+            height: 500px;
+            margin: 15px 0;
+        }
+        
+        .summary-box {
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+        
+        .regression-box {
+            background-color: var(--danger-color-light);
+            border-left: 4px solid var(--danger-color);
+        }
+        
+        .positive-box {
+            background-color: var(--success-color-light);
+            border-left: 4px solid var(--success-color);
+        }
+        
+        .neutral-box {
+            background-color: var(--bg-lighter);
+            border-left: 4px solid var(--primary-color);
+        }
+        
+        .model-list {
+            margin-top: 20px;
+            background-color: var(--bg-lighter);
+            border-radius: 5px;
+            padding: 15px;
+        }
+        
+        .model-list-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: var(--heading-color);
+        }
+        
+        .model-item {
+            padding: 8px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .model-item:last-child {
+            border-bottom: none;
+        }
+        
+        .metric-selector {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .metric-badge {
+            padding: 5px 10px;
+            border-radius: 15px;
+            cursor: pointer;
+            background-color: var(--bg-lighter);
+            color: var(--text-color);
+            transition: background-color 0.3s;
+        }
+        
+        .metric-badge.active {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        
+        .alert-count {
+            display: inline-block;
+            background-color: var(--danger-color);
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            text-align: center;
+            font-size: 0.8em;
+            line-height: 20px;
+            margin-left: 5px;
+        }
+        
+        .metric-viz {
+            margin-top: 20px;
+            display: none;
+        }
+        
+        .metric-viz.active {
+            display: block;
+        }
+        
+        .time-range-selector {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .time-range-selector label {
+            font-weight: bold;
+        }
+        
+        .time-range-selector select {
+            padding: 5px 10px;
+            border-radius: 5px;
+            background-color: var(--bg-lighter);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+        }
+        
+        .metric-details {
+            margin-top: 15px;
+            padding: 15px;
+            background-color: var(--bg-lighter);
+            border-radius: 5px;
+        }
+        
+        .metric-detail-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .metric-detail-item:last-child {
+            border-bottom: none;
+        }
+        
+        .metric-detail-label {
+            font-weight: bold;
+        }
+        
+        .last-update {
+            font-size: 0.9em;
+            color: var(--text-muted);
+            text-align: right;
+            margin-top: 10px;
+        }
+        
+        .no-data-message {
+            padding: 30px;
+            text-align: center;
+            color: var(--text-muted);
+            background-color: var(--bg-lighter);
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        
+        .action-button {
+            padding: 8px 15px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        .action-button:hover {
+            background-color: var(--primary-color-hover);
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Dashboard Sidebar -->
+        {% include 'sidebar.html' %}
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="content-header">
+                <h1>Performance Analytics</h1>
+                <div class="header-controls">
+                    <div class="theme-toggle">
+                        <span>Theme:</span>
+                        <select id="themeSelector" onchange="changeTheme()">
+                            <option value="light" {% if theme == 'light' %}selected{% endif %}>Light</option>
+                            <option value="dark" {% if theme == 'dark' %}selected{% endif %}>Dark</option>
+                        </select>
+                    </div>
+                </div>
+            </header>
+
+            <div class="dashboard-content">
+                <div class="analytics-container">
+                    <div class="analytics-card">
+                        <div class="analytics-header">
+                            <h2 class="analytics-title">Performance Summary</h2>
+                            <div class="time-range-selector">
+                                <label for="timeRange">Time Range:</label>
+                                <select id="timeRange" onchange="changeTimeRange()">
+                                    <option value="7" {% if time_range == 7 %}selected{% endif %}>Last 7 days</option>
+                                    <option value="14" {% if time_range == 14 %}selected{% endif %}>Last 14 days</option>
+                                    <option value="30" {% if time_range == 30 %}selected{% endif %}>Last 30 days</option>
+                                    <option value="90" {% if time_range == 90 %}selected{% endif %}>Last 90 days</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        {% if analytics_data.summary %}
+                            {% if analytics_data.summary.total_regressions > 0 %}
+                                <div class="summary-box regression-box">
+                                    <h3>⚠️ Performance Regressions Detected</h3>
+                                    <p>There are <strong>{{ analytics_data.summary.total_regressions }}</strong> performance regressions detected.</p>
+                                </div>
+                            {% else %}
+                                <div class="summary-box positive-box">
+                                    <h3>✅ No Performance Regressions</h3>
+                                    <p>No significant performance regressions were detected in the current time range.</p>
+                                </div>
+                            {% endif %}
+                            
+                            {% if analytics_data.summary.positive_trends > 0 %}
+                                <div class="summary-box positive-box">
+                                    <h3>📈 Positive Performance Trends</h3>
+                                    <p>{{ analytics_data.summary.positive_trends }} metrics show positive performance trends.</p>
+                                </div>
+                            {% endif %}
+                            
+                            <div class="last-update">
+                                Last updated: {{ analytics_data.timestamp }}
+                            </div>
+                        {% else %}
+                            <div class="no-data-message">
+                                <h3>No Performance Data Available</h3>
+                                <p>Run performance analytics to generate data:</p>
+                                <pre>python -m duckdb_api.distributed_testing.tests.performance_analytics --generate-report --upload-to-dashboard</pre>
+                                <button class="action-button" onclick="runPerformanceAnalytics()">Generate Performance Analytics</button>
+                            </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="tab-container">
+                        <div class="tabs">
+                            <div class="tab active" onclick="openTab(event, 'regressions')">Performance Regressions</div>
+                            <div class="tab" onclick="openTab(event, 'trends')">Performance Trends</div>
+                        </div>
+                        
+                        <div id="regressions" class="tab-content active">
+                            {% if analytics_data.regression_visualizations %}
+                                <div class="metric-selector">
+                                    {% for metric, data in analytics_data.regression_visualizations.items() %}
+                                        <div class="metric-badge {% if loop.first %}active{% endif %}" 
+                                             data-metric="{{ metric }}" 
+                                             data-type="regression"
+                                             onclick="selectMetric(event, 'regression', '{{ metric }}')">
+                                            {{ metric_display.get(metric, metric) }}
+                                            {% if data.regression_count > 0 %}
+                                                <span class="alert-count">{{ data.regression_count }}</span>
+                                            {% endif %}
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                                
+                                {% for metric, data in analytics_data.regression_visualizations.items() %}
+                                    <div id="regression-{{ metric }}" 
+                                         class="metric-viz {% if loop.first %}active{% endif %}">
+                                        
+                                        <div class="chart-container" id="regression-chart-{{ metric }}"></div>
+                                        
+                                        {% if data.affected_models|length > 0 %}
+                                            <div class="model-list">
+                                                <div class="model-list-title">Affected Models:</div>
+                                                {% for model in data.affected_models %}
+                                                    <div class="model-item">
+                                                        <strong>{{ model.model }} ({{ model.hardware_type }})</strong>: 
+                                                        {{ model.change_percent|round(1) }}% change
+                                                        (Baseline: {{ model.baseline_mean|round(2) }}, Current: {{ model.comparison_mean|round(2) }})
+                                                    </div>
+                                                {% endfor %}
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                    
+                                    <script>
+                                        // Render the chart
+                                        var chartData{{ loop.index }} = {{ data.figure_html|safe }};
+                                        Plotly.newPlot('regression-chart-{{ metric }}', chartData{{ loop.index }}.data, chartData{{ loop.index }}.layout);
+                                    </script>
+                                {% endfor %}
+                            {% else %}
+                                <div class="no-data-message">
+                                    <h3>No Regression Data Available</h3>
+                                    <p>No regression data is available for the current time range.</p>
+                                </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div id="trends" class="tab-content">
+                            {% if analytics_data.trend_visualizations %}
+                                <div class="metric-selector">
+                                    {% for metric, data in analytics_data.trend_visualizations.items() %}
+                                        <div class="metric-badge {% if loop.first %}active{% endif %}" 
+                                             data-metric="{{ metric }}" 
+                                             data-type="trend"
+                                             onclick="selectMetric(event, 'trend', '{{ metric }}')">
+                                            {{ metric_display.get(metric, metric) }}
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                                
+                                {% for metric, data in analytics_data.trend_visualizations.items() %}
+                                    <div id="trend-{{ metric }}" 
+                                         class="metric-viz {% if loop.first %}active{% endif %}">
+                                        
+                                        <div class="chart-container" id="trend-chart-{{ metric }}"></div>
+                                        
+                                        <div class="metric-details">
+                                            <div class="metric-detail-item">
+                                                <div class="metric-detail-label">Increasing Trends:</div>
+                                                <div>{{ data.trend_distribution.get('increasing', 0) }}</div>
+                                            </div>
+                                            <div class="metric-detail-item">
+                                                <div class="metric-detail-label">Decreasing Trends:</div>
+                                                <div>{{ data.trend_distribution.get('decreasing', 0) }}</div>
+                                            </div>
+                                            <div class="metric-detail-item">
+                                                <div class="metric-detail-label">Stable Trends:</div>
+                                                <div>{{ data.trend_distribution.get('stable', 0) }}</div>
+                                            </div>
+                                        </div>
+                                        
+                                        {% if data.top_models|length > 0 %}
+                                            <div class="model-list">
+                                                <div class="model-list-title">Top Models by Trend Magnitude:</div>
+                                                {% for model in data.top_models %}
+                                                    <div class="model-item {% if model.is_good_trend %}positive-box{% else %}regression-box{% endif %}">
+                                                        {% if model.is_good_trend %}📈{% else %}📉{% endif %}
+                                                        <strong>{{ model.model }} ({{ model.hardware_type }})</strong>: 
+                                                        Slope: {{ model.slope|round(4) }}, Direction: {{ model.trend_direction }}
+                                                    </div>
+                                                {% endfor %}
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                    
+                                    <script>
+                                        // Render the chart
+                                        var trendChartData{{ loop.index }} = {{ data.figure_html|safe }};
+                                        Plotly.newPlot('trend-chart-{{ metric }}', trendChartData{{ loop.index }}.data, trendChartData{{ loop.index }}.layout);
+                                    </script>
+                                {% endfor %}
+                            {% else %}
+                                <div class="no-data-message">
+                                    <h3>No Trend Data Available</h3>
+                                    <p>No trend data is available for the current time range.</p>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        function openTab(evt, tabName) {
+            // Hide all tab content
+            var tabcontent = document.getElementsByClassName("tab-content");
+            for (var i = 0; i < tabcontent.length; i++) {
+                tabcontent[i].classList.remove("active");
+            }
+            
+            // Remove active class from all tabs
+            var tabs = document.getElementsByClassName("tab");
+            for (var i = 0; i < tabs.length; i++) {
+                tabs[i].classList.remove("active");
+            }
+            
+            // Show the current tab and add an "active" class to the button that opened the tab
+            document.getElementById(tabName).classList.add("active");
+            evt.currentTarget.classList.add("active");
+        }
+        
+        function selectMetric(evt, type, metric) {
+            // Hide all metric visualizations for this type
+            var metricViz = document.querySelectorAll(`[id^="${type}-"]`);
+            for (var i = 0; i < metricViz.length; i++) {
+                metricViz[i].classList.remove("active");
+            }
+            
+            // Remove active class from all metric badges for this type
+            var badges = document.querySelectorAll(`[data-type="${type}"]`);
+            for (var i = 0; i < badges.length; i++) {
+                badges[i].classList.remove("active");
+            }
+            
+            // Show the selected metric and add active class to the badge
+            document.getElementById(`${type}-${metric}`).classList.add("active");
+            evt.currentTarget.classList.add("active");
+            
+            // Trigger resize to make plotly charts render properly
+            window.dispatchEvent(new Event('resize'));
+        }
+        
+        function changeTheme() {
+            var theme = document.getElementById("themeSelector").value;
+            var url = new URL(window.location.href);
+            url.searchParams.set('theme', theme);
+            window.location.href = url.toString();
+        }
+        
+        function changeTimeRange() {
+            var range = document.getElementById("timeRange").value;
+            var url = new URL(window.location.href);
+            url.searchParams.set('time_range', range);
+            window.location.href = url.toString();
+        }
+        
+        function runPerformanceAnalytics() {
+            // This would trigger a server-side action to run performance analytics
+            // For now, just redirect to a URL that would start the process
+            window.location.href = '/run-performance-analytics';
+        }
+        
+        // Make sure plots are properly sized
+        window.addEventListener('resize', function() {
+            document.querySelectorAll('.chart-container').forEach(function(container) {
+                var chartId = container.id;
+                Plotly.relayout(chartId, {
+                    'width': container.offsetWidth,
+                    'height': container.offsetHeight
+                });
+            });
+        });
+        
+        // Initialize plots
+        document.addEventListener('DOMContentLoaded', function() {
+            window.dispatchEvent(new Event('resize'));
+        });
+    </script>
+</body>
+</html>

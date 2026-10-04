@@ -1,0 +1,10 @@
+2025-03-19 20:39:53,322 - INFO - Regenerating test files for: bert
+2025-03-19 20:39:53,322 - INFO - Regenerating test file for bert...
+2025-03-19 20:39:53,396 - INFO - Fixed indentation issues in /home/barberb/ipfs_accelerate_py/test/skills/test_output/test_hf_bert.py
+2025-03-19 20:39:53,397 - INFO - ✅ Successfully regenerated test file for bert: /home/barberb/ipfs_accelerate_py/test/skills/test_output/test_hf_bert.py
+2025-03-19 20:39:53,397 - INFO - 
+Regeneration Summary:
+2025-03-19 20:39:53,397 - INFO - - Successful: 1
+2025-03-19 20:39:53,397 - INFO - - Failed: 0
+2025-03-19 20:39:53,397 - INFO - - Total: 1
+2025-03-19 20:39:53,397 - INFO - - Output directory: /home/barberb/ipfs_accelerate_py/test/skills/test_output

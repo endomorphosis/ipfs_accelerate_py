@@ -1,0 +1,681 @@
+{% extends "layout.html" %}
+
+{% block title %}Test Results - Result Aggregator{% endblock %}
+
+{% block header_title %}Test Results{% endblock %}
+
+{% block styles %}
+<style>
+    .filters {
+        background-color: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        padding: 20px;
+        margin-bottom: 20px;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 15px;
+    }
+    
+    .filter-group {
+        margin-bottom: 10px;
+    }
+    
+    .filter-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+        font-size: 0.9rem;
+        color: var(--dark-color);
+    }
+    
+    .filter-group select,
+    .filter-group input {
+        width: 100%;
+        padding: 8px 10px;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        background-color: white;
+    }
+    
+    .filter-actions {
+        display: flex;
+        justify-content: flex-end;
+        grid-column: 1 / -1;
+    }
+    
+    .result-table-container {
+        overflow-x: auto;
+    }
+    
+    .result-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .result-table th,
+    .result-table td {
+        padding: 10px;
+        text-align: left;
+        border-bottom: 1px solid var(--border-color);
+    }
+    
+    .result-table th {
+        background-color: var(--light-color);
+        font-weight: bold;
+        position: sticky;
+        top: 0;
+    }
+    
+    .result-table tr:hover {
+        background-color: var(--light-color);
+    }
+    
+    .status-badge {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: bold;
+    }
+    
+    .status-completed {
+        background-color: #e6fffa;
+        color: #0c9d58;
+    }
+    
+    .status-failed {
+        background-color: #fff5f5;
+        color: #e53e3e;
+    }
+    
+    .status-running {
+        background-color: #ebf8ff;
+        color: #3182ce;
+    }
+    
+    .pagination {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 20px;
+    }
+    
+    .pagination-info {
+        font-size: 0.9rem;
+        color: var(--gray-color);
+    }
+    
+    .pagination-controls {
+        display: flex;
+        gap: 10px;
+    }
+    
+    .pagination-button {
+        background-color: white;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        padding: 5px 10px;
+        cursor: pointer;
+    }
+    
+    .pagination-button:hover {
+        background-color: var(--light-color);
+    }
+    
+    .pagination-button:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+    }
+    
+    .pagination-button.active {
+        background-color: var(--primary-color);
+        color: white;
+        border-color: var(--primary-color);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="filters">
+    <div class="filter-group">
+        <label for="test-type">Test Type</label>
+        <select id="test-type">
+            <option value="">All Types</option>
+            <!-- Will be populated via JavaScript -->
+        </select>
+    </div>
+    
+    <div class="filter-group">
+        <label for="status">Status</label>
+        <select id="status">
+            <option value="">All Statuses</option>
+            <option value="completed">Completed</option>
+            <option value="failed">Failed</option>
+            <option value="running">Running</option>
+        </select>
+    </div>
+    
+    <div class="filter-group">
+        <label for="worker-id">Worker ID</label>
+        <select id="worker-id">
+            <option value="">All Workers</option>
+            <!-- Will be populated via JavaScript -->
+        </select>
+    </div>
+    
+    <div class="filter-group">
+        <label for="start-date">Start Date</label>
+        <input type="datetime-local" id="start-date">
+    </div>
+    
+    <div class="filter-group">
+        <label for="end-date">End Date</label>
+        <input type="datetime-local" id="end-date">
+    </div>
+    
+    <div class="filter-actions">
+        <button id="apply-filters" class="btn btn-primary">Apply Filters</button>
+        <button id="reset-filters" class="btn btn-secondary" style="margin-left: 10px;">Reset</button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>Test Results</h2>
+        <div>
+            <select id="results-per-page">
+                <option value="10">10 per page</option>
+                <option value="25" selected>25 per page</option>
+                <option value="50">50 per page</option>
+                <option value="100">100 per page</option>
+            </select>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="result-table-container">
+            <table class="result-table" id="results-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Task ID</th>
+                        <th>Worker ID</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Duration</th>
+                        <th>Timestamp</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Will be populated via JavaScript -->
+                    <tr>
+                        <td colspan="8" style="text-align: center;">Loading results...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="pagination">
+            <div class="pagination-info" id="pagination-info">
+                Showing 0 - 0 of 0 results
+            </div>
+            <div class="pagination-controls" id="pagination-controls">
+                <!-- Will be populated via JavaScript -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Result Details Modal -->
+<div id="result-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); z-index: 1000; overflow: auto;">
+    <div style="background-color: white; margin: 10% auto; padding: 20px; border-radius: 8px; width: 80%; max-width: 800px; max-height: 80vh; overflow: auto;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 id="modal-title">Result Details</h2>
+            <button id="close-modal" style="background: none; border: none; font-size: 1.5rem; cursor: pointer;">&times;</button>
+        </div>
+        <div id="modal-content">
+            <!-- Will be populated via JavaScript -->
+            <p>Loading result details...</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Variables for pagination
+    let currentPage = 1;
+    let totalResults = 0;
+    let resultsPerPage = 25;
+    let totalPages = 1;
+    
+    // Variables for filters
+    let filters = {
+        test_type: '',
+        status: '',
+        worker_id: '',
+        start_time: '',
+        end_time: ''
+    };
+    
+    // Fetch test types and worker IDs for filter dropdowns
+    function fetchFilterOptions() {
+        // Fetch test types
+        fetch('/api/aggregated?group_by=test_type')
+            .then(response => response.json())
+            .then(data => {
+                const testTypeSelect = document.getElementById('test-type');
+                
+                // Extract unique test types
+                const testTypes = [...new Set(data.map(item => item.test_type))];
+                
+                // Add options to the select element
+                for (const testType of testTypes) {
+                    const option = document.createElement('option');
+                    option.value = testType;
+                    option.textContent = testType;
+                    testTypeSelect.appendChild(option);
+                }
+            })
+            .catch(error => console.error('Error fetching test types:', error));
+        
+        // Fetch worker IDs
+        fetch('/api/aggregated?group_by=worker_id')
+            .then(response => response.json())
+            .then(data => {
+                const workerSelect = document.getElementById('worker-id');
+                
+                // Extract unique worker IDs
+                const workerIds = [...new Set(data.map(item => item.worker_id))];
+                
+                // Add options to the select element
+                for (const workerId of workerIds) {
+                    const option = document.createElement('option');
+                    option.value = workerId;
+                    option.textContent = workerId;
+                    workerSelect.appendChild(option);
+                }
+            })
+            .catch(error => console.error('Error fetching worker IDs:', error));
+    }
+    
+    // Fetch results with pagination and filters
+    function fetchResults() {
+        // Update loading state
+        const tableBody = document.querySelector('#results-table tbody');
+        tableBody.innerHTML = '<tr><td colspan="8" style="text-align: center;">Loading results...</td></tr>';
+        
+        // Build query parameters
+        const offset = (currentPage - 1) * resultsPerPage;
+        let queryParams = `limit=${resultsPerPage}&offset=${offset}`;
+        
+        for (const [key, value] of Object.entries(filters)) {
+            if (value) {
+                queryParams += `&${key}=${encodeURIComponent(value)}`;
+            }
+        }
+        
+        // Fetch results
+        fetch(`/api/results?${queryParams}`)
+            .then(response => response.json())
+            .then(data => {
+                // Update table
+                updateResultsTable(data);
+                
+                // Count total results
+                if (offset === 0) {
+                    // Only count on first page load or filter change
+                    countTotalResults();
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching results:', error);
+                tableBody.innerHTML = '<tr><td colspan="8" style="text-align: center;">Error loading results</td></tr>';
+            });
+    }
+    
+    // Count total results for pagination
+    function countTotalResults() {
+        // Build query parameters for counting
+        let queryParams = 'limit=1';  // We only need one result to check the count
+        
+        for (const [key, value] of Object.entries(filters)) {
+            if (value) {
+                queryParams += `&${key}=${encodeURIComponent(value)}`;
+            }
+        }
+        
+        // We're using a hack here to get the total count
+        // A proper API would provide a count endpoint
+        fetch(`/api/results?${queryParams}`)
+            .then(response => {
+                // Get total count from header or other means
+                // For now, let's assume all results are returned and we count them
+                totalResults = 500;  // Placeholder
+                
+                // Calculate total pages
+                totalPages = Math.ceil(totalResults / resultsPerPage);
+                
+                // Update pagination controls
+                updatePagination();
+            })
+            .catch(error => console.error('Error counting results:', error));
+    }
+    
+    // Update results table
+    function updateResultsTable(results) {
+        const tableBody = document.querySelector('#results-table tbody');
+        tableBody.innerHTML = '';
+        
+        if (results.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="8" style="text-align: center;">No results found</td></tr>';
+            return;
+        }
+        
+        for (const result of results) {
+            const row = document.createElement('tr');
+            
+            // Format time
+            const resultTime = new Date(result.timestamp);
+            const timeFormatted = resultTime.toLocaleString();
+            
+            // Create status badge class
+            const statusClass = `status-badge status-${result.status.toLowerCase()}`;
+            
+            row.innerHTML = `
+                <td>${result.id}</td>
+                <td>${result.task_id}</td>
+                <td>${result.worker_id}</td>
+                <td>${result.type}</td>
+                <td><span class="${statusClass}">${result.status}</span></td>
+                <td>${result.duration.toFixed(2)}s</td>
+                <td>${timeFormatted}</td>
+                <td>
+                    <button class="btn btn-primary view-details" data-id="${result.id}">Details</button>
+                </td>
+            `;
+            
+            tableBody.appendChild(row);
+        }
+        
+        // Add event listeners to view details buttons
+        const viewDetailsButtons = document.querySelectorAll('.view-details');
+        for (const button of viewDetailsButtons) {
+            button.addEventListener('click', function() {
+                const resultId = this.getAttribute('data-id');
+                showResultDetails(resultId);
+            });
+        }
+    }
+    
+    // Update pagination controls
+    function updatePagination() {
+        const paginationInfo = document.getElementById('pagination-info');
+        const paginationControls = document.getElementById('pagination-controls');
+        
+        // Calculate range
+        const start = (currentPage - 1) * resultsPerPage + 1;
+        const end = Math.min(start + resultsPerPage - 1, totalResults);
+        
+        // Update info
+        paginationInfo.textContent = `Showing ${start} - ${end} of ${totalResults} results`;
+        
+        // Update controls
+        paginationControls.innerHTML = '';
+        
+        // Previous button
+        const prevButton = document.createElement('button');
+        prevButton.className = 'pagination-button';
+        prevButton.innerHTML = '<i class="fas fa-chevron-left"></i>';
+        prevButton.disabled = currentPage === 1;
+        prevButton.addEventListener('click', function() {
+            if (currentPage > 1) {
+                currentPage--;
+                fetchResults();
+            }
+        });
+        paginationControls.appendChild(prevButton);
+        
+        // Page buttons
+        const maxButtons = 5;
+        const startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
+        const endPage = Math.min(totalPages, startPage + maxButtons - 1);
+        
+        for (let i = startPage; i <= endPage; i++) {
+            const pageButton = document.createElement('button');
+            pageButton.className = 'pagination-button';
+            if (i === currentPage) {
+                pageButton.classList.add('active');
+            }
+            pageButton.textContent = i;
+            pageButton.addEventListener('click', function() {
+                currentPage = i;
+                fetchResults();
+            });
+            paginationControls.appendChild(pageButton);
+        }
+        
+        // Next button
+        const nextButton = document.createElement('button');
+        nextButton.className = 'pagination-button';
+        nextButton.innerHTML = '<i class="fas fa-chevron-right"></i>';
+        nextButton.disabled = currentPage === totalPages;
+        nextButton.addEventListener('click', function() {
+            if (currentPage < totalPages) {
+                currentPage++;
+                fetchResults();
+            }
+        });
+        paginationControls.appendChild(nextButton);
+    }
+    
+    // Show result details
+    function showResultDetails(resultId) {
+        const modal = document.getElementById('result-modal');
+        const modalContent = document.getElementById('modal-content');
+        
+        // Show modal with loading state
+        modal.style.display = 'block';
+        modalContent.innerHTML = '<p>Loading result details...</p>';
+        
+        // Fetch result details
+        fetch(`/api/result/${resultId}`)
+            .then(response => response.json())
+            .then(result => {
+                // Format result details
+                let content = `
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div>
+                            <h3>Basic Information</h3>
+                            <table style="width: 100%;">
+                                <tr>
+                                    <th style="width: 30%; text-align: left; padding: 8px;">ID</th>
+                                    <td style="padding: 8px;">${result.id}</td>
+                                </tr>
+                                <tr>
+                                    <th style="width: 30%; text-align: left; padding: 8px;">Task ID</th>
+                                    <td style="padding: 8px;">${result.task_id}</td>
+                                </tr>
+                                <tr>
+                                    <th style="width: 30%; text-align: left; padding: 8px;">Worker ID</th>
+                                    <td style="padding: 8px;">${result.worker_id}</td>
+                                </tr>
+                                <tr>
+                                    <th style="width: 30%; text-align: left; padding: 8px;">Type</th>
+                                    <td style="padding: 8px;">${result.type}</td>
+                                </tr>
+                                <tr>
+                                    <th style="width: 30%; text-align: left; padding: 8px;">Status</th>
+                                    <td style="padding: 8px;">${result.status}</td>
+                                </tr>
+                                <tr>
+                                    <th style="width: 30%; text-align: left; padding: 8px;">Duration</th>
+                                    <td style="padding: 8px;">${result.duration.toFixed(2)}s</td>
+                                </tr>
+                                <tr>
+                                    <th style="width: 30%; text-align: left; padding: 8px;">Timestamp</th>
+                                    <td style="padding: 8px;">${new Date(result.timestamp).toLocaleString()}</td>
+                                </tr>
+                            </table>
+                        </div>
+                        
+                        <div>
+                            <h3>Metrics</h3>
+                            <table style="width: 100%;">
+                                <tr>
+                                    <th style="width: 30%; text-align: left; padding: 8px;">Metric</th>
+                                    <th style="text-align: left; padding: 8px;">Value</th>
+                                </tr>
+                `;
+                
+                // Add metrics
+                for (const [metric, value] of Object.entries(result.metrics)) {
+                    if (typeof value === 'object' && value !== null) {
+                        content += `
+                            <tr>
+                                <td style="padding: 8px;">${metric}</td>
+                                <td style="padding: 8px;">${value.value} ${value.unit}</td>
+                            </tr>
+                        `;
+                    } else {
+                        content += `
+                            <tr>
+                                <td style="padding: 8px;">${metric}</td>
+                                <td style="padding: 8px;">${typeof value === 'number' ? value.toFixed(2) : value}</td>
+                            </tr>
+                        `;
+                    }
+                }
+                
+                content += `
+                            </table>
+                        </div>
+                    </div>
+                `;
+                
+                // Add details section if present
+                if (result.details && Object.keys(result.details).length > 0) {
+                    content += `
+                        <h3 style="margin-top: 20px;">Details</h3>
+                        <pre style="background-color: #f5f5f5; padding: 10px; border-radius: 4px; overflow: auto; max-height: 200px;">${JSON.stringify(result.details, null, 2)}</pre>
+                    `;
+                }
+                
+                // Add anomalies section if present
+                if (result.anomalies && result.anomalies.length > 0) {
+                    content += `
+                        <h3 style="margin-top: 20px;">Anomalies</h3>
+                        <div style="background-color: #fff5f5; padding: 10px; border-radius: 4px; margin-bottom: 20px;">
+                    `;
+                    
+                    for (const anomaly of result.anomalies) {
+                        content += `
+                            <div style="margin-bottom: 15px;">
+                                <div style="font-weight: bold;">Score: ${anomaly.score.toFixed(4)} - ${anomaly.type}</div>
+                        `;
+                        
+                        if (anomaly.details && anomaly.details.anomalous_features) {
+                            content += `<ul style="margin-top: 5px; margin-bottom: 10px;">`;
+                            for (const feature of anomaly.details.anomalous_features) {
+                                content += `<li>${feature.feature}: ${feature.value.toFixed(2)} (z-score: ${feature.z_score.toFixed(2)})</li>`;
+                            }
+                            content += `</ul>`;
+                        }
+                        
+                        content += `</div>`;
+                    }
+                    
+                    content += `</div>`;
+                }
+                
+                // Update modal content
+                modalContent.innerHTML = content;
+            })
+            .catch(error => {
+                console.error('Error fetching result details:', error);
+                modalContent.innerHTML = `<p>Error loading result details: ${error.message}</p>`;
+            });
+    }
+    
+    // Apply filters
+    function applyFilters() {
+        // Reset pagination to first page
+        currentPage = 1;
+        
+        // Get filter values
+        filters.test_type = document.getElementById('test-type').value;
+        filters.status = document.getElementById('status').value;
+        filters.worker_id = document.getElementById('worker-id').value;
+        
+        // Get date filters
+        const startDate = document.getElementById('start-date').value;
+        const endDate = document.getElementById('end-date').value;
+        
+        // Convert dates to ISO format
+        filters.start_time = startDate ? new Date(startDate).toISOString() : '';
+        filters.end_time = endDate ? new Date(endDate).toISOString() : '';
+        
+        // Fetch results with new filters
+        fetchResults();
+    }
+    
+    // Reset filters
+    function resetFilters() {
+        // Reset filter form
+        document.getElementById('test-type').value = '';
+        document.getElementById('status').value = '';
+        document.getElementById('worker-id').value = '';
+        document.getElementById('start-date').value = '';
+        document.getElementById('end-date').value = '';
+        
+        // Reset filter values
+        filters = {
+            test_type: '',
+            status: '',
+            worker_id: '',
+            start_time: '',
+            end_time: ''
+        };
+        
+        // Reset pagination
+        currentPage = 1;
+        
+        // Fetch results
+        fetchResults();
+    }
+    
+    // Initialize page
+    document.addEventListener('DOMContentLoaded', function() {
+        // Fetch filter options
+        fetchFilterOptions();
+        
+        // Initial results fetch
+        fetchResults();
+        
+        // Set up event listeners
+        document.getElementById('apply-filters').addEventListener('click', applyFilters);
+        document.getElementById('reset-filters').addEventListener('click', resetFilters);
+        
+        // Results per page
+        document.getElementById('results-per-page').addEventListener('change', function() {
+            resultsPerPage = parseInt(this.value);
+            currentPage = 1;  // Reset to first page
+            fetchResults();
+        });
+        
+        // Close modal
+        document.getElementById('close-modal').addEventListener('click', function() {
+            document.getElementById('result-modal').style.display = 'none';
+        });
+        
+        // Close modal when clicking outside
+        window.addEventListener('click', function(event) {
+            const modal = document.getElementById('result-modal');
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+
+{% block title %}Validation Details - {{ title }}{% endblock %}
+
+{% block header %}
+    Validation Details
+    <small class="text-muted">ID: {{ validation.id }}</small>
+{% endblock %}
+
+{% block header_buttons %}
+<div>
+    <a href="{{ url_for('validation_results') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Back to Results
+    </a>
+    <div class="btn-group ms-2">
+        <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">
+            <i class="bi bi-gear"></i> Actions
+        </button>
+        <ul class="dropdown-menu {% if theme == 'dark' %}dropdown-menu-dark{% endif %}">
+            <li>
+                <a class="dropdown-item" href="{{ url_for('generate_report') }}?validation_id={{ validation.id }}">
+                    <i class="bi bi-file-earmark-text"></i> Generate Report
+                </a>
+            </li>
+            <li>
+                <a class="dropdown-item" href="{{ url_for('calibrate') }}?validation_id={{ validation.id }}">
+                    <i class="bi bi-sliders"></i> Calibrate Parameters
+                </a>
+            </li>
+            <li><hr class="dropdown-divider"></li>
+            <li>
+                <a class="dropdown-item" href="{{ url_for('drift_detection') }}?validation_id={{ validation.id }}">
+                    <i class="bi bi-graph-up"></i> Include in Drift Detection
+                </a>
+            </li>
+        </ul>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-4">
+        <!-- Overview Card -->
+        <div class="card mb-4 {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-info-circle"></i> Overview</h5>
+            </div>
+            <div class="card-body">
+                <dl class="row">
+                    <dt class="col-sm-5">Model</dt>
+                    <dd class="col-sm-7">{{ validation.model_id }}</dd>
+                    
+                    <dt class="col-sm-5">Hardware</dt>
+                    <dd class="col-sm-7">{{ validation.hardware_id }}</dd>
+                    
+                    <dt class="col-sm-5">Timestamp</dt>
+                    <dd class="col-sm-7">{{ validation.validation_timestamp }}</dd>
+                    
+                    <dt class="col-sm-5">Batch Size</dt>
+                    <dd class="col-sm-7">{{ validation.batch_size }}</dd>
+                    
+                    <dt class="col-sm-5">Precision</dt>
+                    <dd class="col-sm-7">{{ validation.precision }}</dd>
+                    
+                    <dt class="col-sm-5">Protocol</dt>
+                    <dd class="col-sm-7">{{ validation.protocol | default('standard') }}</dd>
+                    
+                    <dt class="col-sm-5">Status</dt>
+                    <dd class="col-sm-7">
+                        {% if validation.status == "passed" %}
+                            <span class="badge bg-success">Passed</span>
+                        {% elif validation.status == "warning" %}
+                            <span class="badge bg-warning text-dark">Warning</span>
+                        {% elif validation.status == "failed" %}
+                            <span class="badge bg-danger">Failed</span>
+                        {% else %}
+                            <span class="badge bg-secondary">Unknown</span>
+                        {% endif %}
+                    </dd>
+                </dl>
+            </div>
+        </div>
+        
+        <!-- Overall Metrics Card -->
+        <div class="card mb-4 {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-bar-chart"></i> Overall Metrics</h5>
+            </div>
+            <div class="card-body">
+                <div class="text-center mb-3">
+                    <div class="display-4 mb-2">
+                        {% if validation.mape is defined %}
+                            {% if validation.mape < 5 %}
+                                <span class="status-good">{{ "%.2f"|format(validation.mape) }}%</span>
+                            {% elif validation.mape < 10 %}
+                                <span class="status-warning">{{ "%.2f"|format(validation.mape) }}%</span>
+                            {% else %}
+                                <span class="status-bad">{{ "%.2f"|format(validation.mape) }}%</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="text-muted">N/A</span>
+                        {% endif %}
+                    </div>
+                    <p class="text-muted mb-0">Mean Absolute Percentage Error</p>
+                </div>
+                
+                <hr class="{% if theme == 'dark' %}bg-secondary{% endif %}">
+                
+                <dl class="row mb-0">
+                    <dt class="col-sm-6">MAE</dt>
+                    <dd class="col-sm-6">{{ "%.2f"|format(validation.mae) if validation.mae is defined else "N/A" }}</dd>
+                    
+                    <dt class="col-sm-6">RMSE</dt>
+                    <dd class="col-sm-6">{{ "%.2f"|format(validation.rmse) if validation.rmse is defined else "N/A" }}</dd>
+                    
+                    <dt class="col-sm-6">R²</dt>
+                    <dd class="col-sm-6">{{ "%.4f"|format(validation.r_squared) if validation.r_squared is defined else "N/A" }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-8">
+        <!-- Metric Comparison -->
+        <div class="card mb-4 {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-table"></i> Metric Comparison</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table {% if theme == 'dark' %}table-dark{% endif %}">
+                        <thead>
+                            <tr>
+                                <th>Metric</th>
+                                <th>Simulation</th>
+                                <th>Hardware</th>
+                                <th>Error (%)</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if validation.metrics is defined %}
+                                {% for metric in validation.metrics %}
+                                <tr>
+                                    <td>{{ metric.name | replace('_', ' ') | title }}</td>
+                                    <td>{{ "%.2f"|format(metric.simulation_value) }}</td>
+                                    <td>{{ "%.2f"|format(metric.hardware_value) }}</td>
+                                    <td>
+                                        {% if metric.error_percentage is defined %}
+                                            {% if metric.error_percentage < 5 %}
+                                                <span class="status-good">{{ "%.2f"|format(metric.error_percentage) }}%</span>
+                                            {% elif metric.error_percentage < 10 %}
+                                                <span class="status-warning">{{ "%.2f"|format(metric.error_percentage) }}%</span>
+                                            {% else %}
+                                                <span class="status-bad">{{ "%.2f"|format(metric.error_percentage) }}%</span>
+                                            {% endif %}
+                                        {% else %}
+                                            <span class="text-muted">N/A</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if metric.status == "passed" %}
+                                            <span class="badge bg-success">Passed</span>
+                                        {% elif metric.status == "warning" %}
+                                            <span class="badge bg-warning text-dark">Warning</span>
+                                        {% elif metric.status == "failed" %}
+                                            <span class="badge bg-danger">Failed</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Unknown</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="5" class="text-center text-muted">No metric details available</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Visualization (if available) -->
+        {% if validation.visualization_url is defined and validation.visualization_url %}
+        <div class="card mb-4 {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-graph-up"></i> Visualization</h5>
+            </div>
+            <div class="card-body">
+                <iframe src="{{ validation.visualization_url }}" width="100%" height="400" frameborder="0"></iframe>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Notes and Recommendations -->
+        <div class="card mb-4 {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-card-text"></i> Notes & Recommendations</h5>
+            </div>
+            <div class="card-body">
+                {% if validation.notes is defined and validation.notes %}
+                    <h6>Notes:</h6>
+                    <p>{{ validation.notes }}</p>
+                {% endif %}
+                
+                {% if validation.recommendations is defined and validation.recommendations %}
+                    <h6>Recommendations:</h6>
+                    <ul>
+                        {% for recommendation in validation.recommendations %}
+                            <li>{{ recommendation }}</li>
+                        {% endfor %}
+                    </ul>
+                {% endif %}
+                
+                {% if (validation.notes is not defined or not validation.notes) and 
+                      (validation.recommendations is not defined or not validation.recommendations) %}
+                    <p class="text-muted text-center">No notes or recommendations available.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Raw Data (Collapsible) -->
+<div class="card mb-4 {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+    <div class="card-header" role="button" data-bs-toggle="collapse" data-bs-target="#rawDataCollapse" aria-expanded="false">
+        <div class="d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="bi bi-code-square"></i> Raw Data</h5>
+            <i class="bi bi-chevron-down"></i>
+        </div>
+    </div>
+    <div class="collapse" id="rawDataCollapse">
+        <div class="card-body">
+            <pre class="{% if theme == 'dark' %}bg-dark text-light{% endif %}" style="max-height: 400px; overflow-y: auto;">{{ validation | tojson(indent=2) }}</pre>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Toggle chevron direction when raw data is expanded/collapsed
+    document.addEventListener('DOMContentLoaded', function() {
+        const rawDataCollapse = document.getElementById('rawDataCollapse');
+        if (rawDataCollapse) {
+            rawDataCollapse.addEventListener('shown.bs.collapse', function() {
+                const chevron = rawDataCollapse.previousElementSibling.querySelector('.bi-chevron-down');
+                chevron.classList.replace('bi-chevron-down', 'bi-chevron-up');
+            });
+            
+            rawDataCollapse.addEventListener('hidden.bs.collapse', function() {
+                const chevron = rawDataCollapse.previousElementSibling.querySelector('.bi-chevron-up');
+                chevron.classList.replace('bi-chevron-up', 'bi-chevron-down');
+            });
+        }
+    });
+</script>
+{% endblock %}

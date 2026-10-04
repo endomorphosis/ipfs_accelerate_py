@@ -1,0 +1,3 @@
+# Simple model list for testing
+bert-base-uncased
+gpt2-small

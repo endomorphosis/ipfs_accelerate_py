@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Hardware Monitoring Test Report</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        h1, h2, h3 {
+            color: #2c3e50;
+        }
+        .summary {
+            margin-bottom: 30px;
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .success {
+            color: #2ecc71;
+        }
+        .failure {
+            color: #e74c3c;
+        }
+        .error {
+            color: #e74c3c;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        table, th, td {
+            border: 1px solid #ddd;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+    <h1>Hardware Monitoring Test Report</h1>
+    <div class="summary">
+        <h2>Test Summary</h2>
+        <p>Date: 2025-03-16 01:07:04</p>
+        <p>Tests Run: 13</p>
+        <p>Failures: <span class="success">0</span></p>
+        <p>Errors: <span class="success">0</span></p>
+        <p>Skipped: 1</p>
+        <p>Status: <span class="success">Passed</span></p>
+    </div>
+    
+    <div>
+        <h2>Tests</h2>
+        <table>
+            <tr>
+                <th>Test Class</th>
+                <th>Description</th>
+            </tr>
+            <tr>
+                <td>TestHardwareUtilizationMonitor</td>
+                <td>Tests for the hardware utilization monitor component</td>
+            </tr>
+            <tr>
+                <td>TestCoordinatorHardwareMonitoringIntegration</td>
+                <td>Tests for the coordinator hardware monitoring integration component</td>
+            </tr>
+        </table>
+    </div>
+    

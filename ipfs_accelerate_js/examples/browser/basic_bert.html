@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IPFS Accelerate JS - BERT Example</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.5;
+    }
+    
+    h1 {
+      color: #1a73e8;
+    }
+    
+    #capabilities, #model-info, #results {
+      background-color: #f8f9fa;
+      border-radius: 6px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+    
+    textarea {
+      width: 100%;
+      height: 100px;
+      margin-bottom: 16px;
+      padding: 8px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      font-family: inherit;
+    }
+    
+    button {
+      background-color: #1a73e8;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    
+    button:hover {
+      background-color: #0d65d9;
+    }
+    
+    button:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+    
+    pre {
+      background-color: #f1f3f4;
+      padding: 10px;
+      border-radius: 4px;
+      overflow-x: auto;
+    }
+    
+    .loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(255,255,255,.3);
+      border-radius: 50%;
+      border-top-color: white;
+      animation: spin 1s ease-in-out infinite;
+      vertical-align: middle;
+      margin-left: 8px;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .hidden {
+      display: none;
+    }
+    
+    .status-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      margin-right: 6px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    
+    .status-supported {
+      background-color: #d4edda;
+      color: #155724;
+    }
+    
+    .status-unsupported {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+  </style>
+</head>
+<body>
+  <h1>IPFS Accelerate JS - BERT Example</h1>
+  
+  <div id="sdk-loading">
+    <p>Loading IPFS Accelerate SDK...</p>
+  </div>
+  
+  <div id="main-content" class="hidden">
+    <h2>Hardware Capabilities</h2>
+    <div id="capabilities">
+      <div id="webgpu-status">
+        <h3>WebGPU: <span id="webgpu-badge" class="status-badge">Loading...</span></h3>
+        <div id="webgpu-details"></div>
+      </div>
+      
+      <div id="webnn-status">
+        <h3>WebNN: <span id="webnn-badge" class="status-badge">Loading...</span></h3>
+        <div id="webnn-details"></div>
+      </div>
+      
+      <div>
+        <h3>Recommended Backend: <span id="recommended-backend">Loading...</span></h3>
+      </div>
+    </div>
+    
+    <h2>BERT Model</h2>
+    <div id="model-section">
+      <div id="model-loading">
+        <p>Loading BERT model...<span class="loading"></span></p>
+      </div>
+      
+      <div id="model-info" class="hidden">
+        <h3>Model Information</h3>
+        <div id="model-details"></div>
+        
+        <h3>Text Embedding</h3>
+        <textarea id="input-text" placeholder="Enter text for embedding...">The quick brown fox jumps over the lazy dog.</textarea>
+        <button id="run-button">Run Inference</button>
+        <span id="run-loading" class="loading hidden"></span>
+      </div>
+    </div>
+    
+    <div id="results" class="hidden">
+      <h2>Results</h2>
+      <div id="results-details"></div>
+      <h3>Embedding Visualization</h3>
+      <div id="embedding-vis"></div>
+    </div>
+  </div>
+  
+  <!-- Load the SDK -->
+  <script type="module">
+    // In a real application, you would import from the NPM package
+    // For this example, we'll use a placeholder that simulates loading the SDK
+    
+    // Simulate loading the SDK 
+    function loadSDK() {
+      return new Promise((resolve) => {
+        // Simulate loading delay
+        setTimeout(() => {
+          // Mocked SDK for this example
+          const sdk = {
+            initialize: async (options) => {
+              console.log('Initializing SDK with options:', options);
+              
+              // Detect WebGPU
+              const webGPUSupported = 'gpu' in navigator;
+              
+              // Detect WebNN (approximation)
+              const webNNSupported = 'ml' in navigator;
+              
+              const hardware = {
+                getCapabilities: () => ({
+                  webgpu: {
+                    supported: webGPUSupported,
+                    adapterInfo: webGPUSupported ? {
+                      vendor: 'Example GPU Vendor',
+                      device: 'Example GPU Model'
+                    } : undefined,
+                    isSimulated: false
+                  },
+                  webnn: {
+                    supported: webNNSupported,
+                    deviceType: webNNSupported ? 'gpu' : undefined,
+                    deviceName: webNNSupported ? 'Example Neural Engine' : undefined,
+                    isSimulated: false
+                  },
+                  optimalBackend: webGPUSupported ? 'webgpu' : (webNNSupported ? 'webnn' : 'cpu')
+                })
+              };
+              
+              const createModel = async (name, options) => {
+                console.log(`Creating model: ${name} with options:`, options);
+                
+                // Simulate model loading delay
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                
+                return {
+                  getType: () => 'text',
+                  getName: () => name,
+                  getMetadata: () => ({
+                    hiddenSize: 768,
+                    numLayers: 12,
+                    vocabSize: 30522
+                  }),
+                  predict: async (input) => {
+                    console.log('Running inference with input:', input);
+                    
+                    // Simulate inference delay
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    
+                    // Create mock tensors
+                    const lastHiddenState = {
+                      getDimensions: () => [1, input.input.split(' ').length + 2, 768],
+                      getData: () => new Float32Array(768).fill(0).map(() => Math.random() - 0.5),
+                      dispose: () => {}
+                    };
+                    
+                    const pooledOutput = {
+                      getDimensions: () => [1, 768],
+                      getData: () => new Float32Array(768).fill(0).map(() => Math.random() - 0.5),
+                      dispose: () => {}
+                    };
+                    
+                    return {
+                      lastHiddenState,
+                      pooledOutput
+                    };
+                  },
+                  dispose: () => {
+                    console.log('Disposing model');
+                  }
+                };
+              };
+              
+              return {
+                hardware,
+                createModel
+              };
+            }
+          };
+          
+          resolve(sdk);
+        }, 1000);
+      });
+    }
+    
+    // Main application
+    async function main() {
+      try {
+        // Load the SDK
+        const { initialize } = await loadSDK();
+        document.getElementById('sdk-loading').classList.add('hidden');
+        document.getElementById('main-content').classList.remove('hidden');
+        
+        // Initialize the SDK
+        const sdk = await initialize({
+          logging: true,
+          preferredBackends: ['webgpu', 'webnn', 'cpu'],
+          enableCache: true
+        });
+        
+        // Get hardware capabilities
+        const hardware = sdk.hardware;
+        const capabilities = hardware.getCapabilities();
+        
+        // Update WebGPU status
+        const webgpuBadge = document.getElementById('webgpu-badge');
+        const webgpuDetails = document.getElementById('webgpu-details');
+        if (capabilities.webgpu.supported) {
+          webgpuBadge.textContent = 'Supported';
+          webgpuBadge.className = 'status-badge status-supported';
+          webgpuDetails.innerHTML = `
+            <p><strong>Vendor:</strong> ${capabilities.webgpu.adapterInfo?.vendor || 'Unknown'}</p>
+            <p><strong>Device:</strong> ${capabilities.webgpu.adapterInfo?.device || 'Unknown'}</p>
+            <p><strong>Simulated:</strong> ${capabilities.webgpu.isSimulated ? 'Yes' : 'No'}</p>
+          `;
+        } else {
+          webgpuBadge.textContent = 'Not Supported';
+          webgpuBadge.className = 'status-badge status-unsupported';
+          webgpuDetails.innerHTML = `<p>WebGPU is not supported in this browser.</p>`;
+        }
+        
+        // Update WebNN status
+        const webnnBadge = document.getElementById('webnn-badge');
+        const webnnDetails = document.getElementById('webnn-details');
+        if (capabilities.webnn.supported) {
+          webnnBadge.textContent = 'Supported';
+          webnnBadge.className = 'status-badge status-supported';
+          webnnDetails.innerHTML = `
+            <p><strong>Device Type:</strong> ${capabilities.webnn.deviceType || 'Unknown'}</p>
+            <p><strong>Device Name:</strong> ${capabilities.webnn.deviceName || 'Unknown'}</p>
+            <p><strong>Simulated:</strong> ${capabilities.webnn.isSimulated ? 'Yes' : 'No'}</p>
+          `;
+        } else {
+          webnnBadge.textContent = 'Not Supported';
+          webnnBadge.className = 'status-badge status-unsupported';
+          webnnDetails.innerHTML = `<p>WebNN is not supported in this browser.</p>`;
+        }
+        
+        // Update recommended backend
+        document.getElementById('recommended-backend').textContent = capabilities.optimalBackend;
+        
+        // Load BERT model
+        const bertModel = await sdk.createModel('bert-base-uncased', {
+          preferredBackend: capabilities.optimalBackend
+        });
+        
+        // Update model info
+        document.getElementById('model-loading').classList.add('hidden');
+        document.getElementById('model-info').classList.remove('hidden');
+        
+        const modelType = bertModel.getType();
+        const modelName = bertModel.getName();
+        const modelMetadata = bertModel.getMetadata();
+        
+        document.getElementById('model-details').innerHTML = `
+          <p><strong>Type:</strong> ${modelType}</p>
+          <p><strong>Name:</strong> ${modelName}</p>
+          <p><strong>Hidden Size:</strong> ${modelMetadata.hiddenSize}</p>
+          <p><strong>Layers:</strong> ${modelMetadata.numLayers}</p>
+          <p><strong>Vocab Size:</strong> ${modelMetadata.vocabSize}</p>
+        `;
+        
+        // Set up inference button
+        const runButton = document.getElementById('run-button');
+        const runLoading = document.getElementById('run-loading');
+        const resultsSection = document.getElementById('results');
+        const resultsDetails = document.getElementById('results-details');
+        const embeddingVis = document.getElementById('embedding-vis');
+        
+        runButton.addEventListener('click', async () => {
+          const inputText = document.getElementById('input-text').value;
+          if (!inputText.trim()) {
+            alert('Please enter some text for embedding.');
+            return;
+          }
+          
+          // Disable button and show loading
+          runButton.disabled = true;
+          runLoading.classList.remove('hidden');
+          
+          try {
+            // Run inference
+            const result = await bertModel.predict({
+              input: inputText
+            });
+            
+            // Get dimensions of the output
+            const lastHiddenState = result.lastHiddenState;
+            const pooledOutput = result.pooledOutput;
+            
+            // Show results
+            resultsSection.classList.remove('hidden');
+            resultsDetails.innerHTML = `
+              <p><strong>Input Text:</strong> ${inputText}</p>
+              <p><strong>Last Hidden State Shape:</strong> ${lastHiddenState.getDimensions().join(' × ')}</p>
+              <p><strong>Pooled Output Shape:</strong> ${pooledOutput.getDimensions().join(' × ')}</p>
+            `;
+            
+            // Extract embedding from pooled output
+            const embedding = pooledOutput.getData();
+            const first5Values = Array.from(embedding.slice(0, 5)).map(v => v.toFixed(4));
+            
+            resultsDetails.innerHTML += `
+              <p><strong>First 5 Values of Embedding:</strong> [${first5Values.join(', ')}]</p>
+            `;
+            
+            // Simple visualization of embedding
+            const values = Array.from(embedding.slice(0, 100));
+            const max = Math.max(...values.map(Math.abs));
+            const normValues = values.map(v => v / max);
+            
+            // Create a simple bar chart
+            embeddingVis.innerHTML = `
+              <div style="display: flex; height: 200px; align-items: flex-end; overflow-x: auto; padding-bottom: 10px;">
+                ${normValues.map((v, i) => `
+                  <div style="
+                    width: 4px;
+                    height: ${Math.abs(v) * 100}%;
+                    margin: 0 1px;
+                    background-color: ${v >= 0 ? '#4285f4' : '#ea4335'};
+                    position: relative;
+                  " title="Index ${i}: ${values[i].toFixed(4)}">
+                  </div>
+                `).join('')}
+              </div>
+              <p><em>Visualization of first 100 values (blue=positive, red=negative)</em></p>
+            `;
+            
+            // Clean up
+            lastHiddenState.dispose();
+            pooledOutput.dispose();
+          } catch (error) {
+            console.error('Inference error:', error);
+            alert('Error running inference: ' + error.message);
+          } finally {
+            // Re-enable button and hide loading
+            runButton.disabled = false;
+            runLoading.classList.add('hidden');
+          }
+        });
+      } catch (error) {
+        console.error('Application error:', error);
+        document.getElementById('sdk-loading').innerHTML = `<p>Error loading SDK: ${error.message}</p>`;
+      }
+    }
+    
+    // Start the application
+    main();
+  </script>
+</body>
+</html>

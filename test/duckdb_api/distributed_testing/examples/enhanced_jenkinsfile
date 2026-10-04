@@ -1,0 +1,211 @@
+pipeline {
+    agent none
+    
+    parameters {
+        choice(name: 'TEST_TYPE', choices: ['integration', 'fault_tolerance', 'load_balancer', 'monitoring', 'all'], description: 'Type of tests to run')
+        choice(name: 'HARDWARE', choices: ['cpu', 'cuda', 'rocm', 'openvino', 'webgpu', 'webnn', 'all'], description: 'Hardware to test on')
+        string(name: 'COORDINATOR_URL', defaultValue: 'http://coordinator:8080', description: 'URL of the distributed testing coordinator')
+        password(name: 'API_KEY', defaultValue: 'jenkins_key', description: 'API key for coordinator authentication')
+        string(name: 'TIMEOUT', defaultValue: '3600', description: 'Timeout in seconds')
+        booleanParam(name: 'SETUP_LOCAL', defaultValue: false, description: 'Set up local coordinator and workers')
+        string(name: 'WORKERS', defaultValue: '2', description: 'Number of workers to use with local setup')
+        booleanParam(name: 'GENERATE_GRAPHS', defaultValue: true, description: 'Generate performance graphs')
+    }
+    
+    environment {
+        TEST_DIR = "duckdb_api/distributed_testing/tests"
+        REPORT_DIR = "test_reports"
+        LOG_DIR = "test_logs"
+        DB_PATH = "./test_benchmark_db.duckdb"
+    }
+    
+    stages {
+        stage('Select Agent') {
+            steps {
+                script {
+                    def agentLabel = 'python'
+                    
+                    // Choose hardware-specific agent if needed
+                    if (params.HARDWARE == 'cuda') {
+                        agentLabel = 'cuda'
+                    } else if (params.HARDWARE == 'rocm') {
+                        agentLabel = 'rocm'
+                    }
+                    
+                    // Set agent for the rest of the pipeline
+                    env.AGENT_LABEL = agentLabel
+                }
+            }
+        }
+        
+        stage('Setup Local Environment') {
+            when {
+                expression { return params.SETUP_LOCAL }
+            }
+            agent {
+                label "${env.AGENT_LABEL}"
+            }
+            steps {
+                sh """
+                    python -m pip install --upgrade pip
+                    pip install duckdb websockets pytest pytest-asyncio requests pyjwt matplotlib pandas
+                    pip install -e .
+                    
+                    mkdir -p ${LOG_DIR}
+                    mkdir -p ${REPORT_DIR}
+                    
+                    echo "Starting local coordinator and workers..."
+                    
+                    # Start coordinator
+                    python -m duckdb_api.distributed_testing.run_coordinator_server \\
+                      --host 0.0.0.0 \\
+                      --port 8080 \\
+                      --db-path ${DB_PATH} \\
+                      --api-key ${API_KEY} \\
+                      --log-level INFO > ${LOG_DIR}/coordinator.log 2>&1 &
+                    
+                    # Wait for coordinator to start
+                    sleep 5
+                    
+                    # Start worker nodes
+                    for i in \$(seq 1 ${params.WORKERS}); do
+                        python -m duckdb_api.distributed_testing.run_worker_client \\
+                          --coordinator-host localhost \\
+                          --coordinator-port 8080 \\
+                          --worker-id "jenkins-worker-\$i" \\
+                          --api-key ${API_KEY} \\
+                          --log-level INFO > ${LOG_DIR}/worker-\$i.log 2>&1 &
+                    done
+                    
+                    # Wait for workers to register
+                    sleep 10
+                    
+                    echo "Local environment setup complete."
+                """
+            }
+        }
+        
+        stage('Run Tests') {
+            agent {
+                label "${env.AGENT_LABEL}"
+            }
+            steps {
+                sh """
+                    python -m pip install --upgrade pip
+                    pip install duckdb websockets pytest pytest-asyncio requests pyjwt matplotlib pandas
+                    pip install -e .
+                    
+                    mkdir -p ${REPORT_DIR}
+                    
+                    # Set coordinator URL based on setup
+                    COORD_URL=${params.COORDINATOR_URL}
+                    if [ "${params.SETUP_LOCAL}" = "true" ]; then
+                        COORD_URL="http://localhost:8080"
+                    fi
+                    
+                    # Determine test pattern based on test type
+                    TEST_PATTERN=""
+                    if [ "${params.TEST_TYPE}" = "integration" ]; then
+                        TEST_PATTERN="${TEST_DIR}/test_integration*.py ${TEST_DIR}/test_coordinator_integration*.py"
+                    elif [ "${params.TEST_TYPE}" = "fault_tolerance" ]; then
+                        TEST_PATTERN="${TEST_DIR}/test_*fault_tolerance*.py ${TEST_DIR}/test_*recovery*.py"
+                    elif [ "${params.TEST_TYPE}" = "load_balancer" ]; then
+                        TEST_PATTERN="${TEST_DIR}/test_load_balancer*.py ${TEST_DIR}/test_coordinator_load_balancer*.py"
+                    elif [ "${params.TEST_TYPE}" = "monitoring" ]; then
+                        TEST_PATTERN="${TEST_DIR}/test_*monitoring*.py ${TEST_DIR}/test_*dashboard*.py"
+                    elif [ "${params.TEST_TYPE}" = "all" ]; then
+                        TEST_PATTERN="${TEST_DIR}/test_*.py"
+                    fi
+                    
+                    echo "Running tests: \$TEST_PATTERN"
+                    echo "Coordinator URL: \$COORD_URL"
+                    echo "Hardware: ${params.HARDWARE}"
+                    
+                    # Run distributed tests
+                    python -m duckdb_api.distributed_testing.cicd_integration \\
+                      --provider jenkins \\
+                      --coordinator \$COORD_URL \\
+                      --api-key ${API_KEY} \\
+                      --test-pattern "\$TEST_PATTERN" \\
+                      --timeout ${params.TIMEOUT} \\
+                      --output-dir ${REPORT_DIR} \\
+                      --report-formats json md html \\
+                      --verbose
+                """
+            }
+        }
+        
+        stage('Generate Performance Reports') {
+            when {
+                expression { return params.GENERATE_GRAPHS }
+            }
+            agent {
+                label "${env.AGENT_LABEL}"
+            }
+            steps {
+                sh """
+                    python -m pip install --upgrade pip
+                    pip install matplotlib pandas duckdb
+                    
+                    # Generate performance visualizations
+                    python -m duckdb_api.distributed_testing.visualize_load_balancer_performance \\
+                      --input-dir ${REPORT_DIR} \\
+                      --output-file ${REPORT_DIR}/performance_graphs.html \\
+                      --test-type ${params.TEST_TYPE} \\
+                      --hardware ${params.HARDWARE}
+                      
+                    # Generate summary report
+                    python -m duckdb_api.distributed_testing.result_aggregator_standalone \\
+                      --input-dir ${REPORT_DIR} \\
+                      --output-file ${REPORT_DIR}/summary_report.md \\
+                      --format md \\
+                      --include-graphs
+                """
+            }
+        }
+    }
+    
+    post {
+        always {
+            node(env.AGENT_LABEL) {
+                // Archive test reports and logs
+                archiveArtifacts artifacts: "${REPORT_DIR}/**", allowEmptyArchive: true
+                
+                // Archive logs if local setup was used
+                script {
+                    if (params.SETUP_LOCAL) {
+                        archiveArtifacts artifacts: "${LOG_DIR}/**", allowEmptyArchive: true
+                        
+                        // Kill local processes
+                        sh """
+                            echo "Cleaning up local environment..."
+                            pkill -f "run_coordinator_server" || true
+                            pkill -f "run_worker_client" || true
+                        """
+                    }
+                }
+                
+                // Publish JUnit results if available
+                junit allowEmptyResults: true, testResults: "${REPORT_DIR}/test_report_*.xml"
+                
+                // Publish HTML reports
+                publishHTML target: [
+                    allowMissing: true,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: "${REPORT_DIR}",
+                    reportFiles: '*.html',
+                    reportName: 'Distributed Testing Reports'
+                ]
+            }
+        }
+        
+        success {
+            echo "Distributed testing completed successfully!"
+        }
+        
+        failure {
+            echo "Distributed testing failed. Check the reports for details."
+        }
+    }
+}

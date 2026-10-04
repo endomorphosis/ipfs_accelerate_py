@@ -1,0 +1,414 @@
+/* 
+ * Distributed Testing Framework - Dashboard Style
+ * Main CSS file for the monitoring dashboard
+ */
+
+:root {
+    --primary-color: #3498db;
+    --secondary-color: #2c3e50;
+    --success-color: #2ecc71;
+    --warning-color: #f39c12;
+    --danger-color: #e74c3c;
+    --info-color: #3498db;
+    --light-color: #ecf0f1;
+    --dark-color: #2c3e50;
+    --text-color: #333;
+    --bg-color: #f5f5f5;
+    --card-bg-color: #fff;
+}
+
+body {
+    padding-top: 20px;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Dashboard Header */
+.dashboard-header {
+    background-color: var(--card-bg-color);
+    padding: 20px;
+    margin-bottom: 20px;
+    border-radius: 5px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.dashboard-header h1 {
+    margin: 0;
+    font-size: 1.8rem;
+    font-weight: 600;
+    color: var(--secondary-color);
+}
+
+/* Navigation */
+.navbar-brand {
+    font-weight: bold;
+    color: var(--primary-color);
+}
+
+.nav-tabs .nav-link {
+    color: var(--secondary-color);
+    font-weight: 500;
+}
+
+.nav-tabs .nav-link.active {
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+.nav-tabs {
+    margin-bottom: 20px;
+    border-bottom: 2px solid var(--light-color);
+}
+
+.tab-pane {
+    padding: 20px;
+    background-color: var(--card-bg-color);
+    border: 1px solid var(--light-color);
+    border-top: none;
+    border-radius: 0 0 5px 5px;
+}
+
+/* Cards */
+.card {
+    margin-bottom: 20px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    border: none;
+    border-radius: 5px;
+    overflow: hidden;
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+}
+
+.card-header {
+    background-color: var(--light-color);
+    color: var(--secondary-color);
+    font-weight: 600;
+    padding: 12px 15px;
+    border-bottom: none;
+}
+
+.card-body {
+    padding: 20px;
+}
+
+/* Metric Cards */
+.metric-value {
+    font-size: 2.5rem;
+    font-weight: bold;
+    color: var(--primary-color);
+    margin-bottom: 5px;
+    line-height: 1;
+}
+
+.metric-label {
+    font-size: 1rem;
+    color: var(--secondary-color);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 500;
+}
+
+/* Status Indicators */
+.status-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 5px;
+    position: relative;
+}
+
+.status-active {
+    background-color: var(--success-color);
+    box-shadow: 0 0 0 2px rgba(46, 204, 113, 0.3);
+}
+
+.status-inactive {
+    background-color: var(--danger-color);
+    box-shadow: 0 0 0 2px rgba(231, 76, 60, 0.3);
+}
+
+.status-pending {
+    background-color: var(--warning-color);
+    box-shadow: 0 0 0 2px rgba(243, 156, 18, 0.3);
+}
+
+.status-running {
+    background-color: var(--info-color);
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.3);
+    animation: pulse 1.5s infinite;
+}
+
+.status-completed {
+    background-color: var(--success-color);
+}
+
+.status-failed {
+    background-color: var(--danger-color);
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(52, 152, 219, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 10px rgba(52, 152, 219, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(52, 152, 219, 0);
+    }
+}
+
+/* Alert Badge */
+.alert-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background-color: var(--danger-color);
+    color: white;
+    border-radius: 50%;
+    width: 22px;
+    height: 22px;
+    font-size: 12px;
+    text-align: center;
+    line-height: 22px;
+    font-weight: bold;
+    animation: bounce 1s infinite alternate;
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+}
+
+@keyframes bounce {
+    from {
+        transform: scale(1);
+    }
+    to {
+        transform: scale(1.2);
+    }
+}
+
+/* Charts */
+.chart-container {
+    width: 100%;
+    height: 300px;
+    position: relative;
+}
+
+/* Tables */
+.table-responsive {
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+.table {
+    margin-bottom: 0;
+}
+
+.table thead th {
+    background-color: var(--light-color);
+    color: var(--secondary-color);
+    border-bottom: none;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+    letter-spacing: 0.5px;
+}
+
+.table tbody tr:hover {
+    background-color: rgba(52, 152, 219, 0.05);
+}
+
+/* Badges */
+.badge {
+    padding: 0.4em 0.6em;
+    font-weight: 500;
+    border-radius: 4px;
+}
+
+/* Buttons */
+.btn {
+    border-radius: 4px;
+    font-weight: 500;
+    padding: 0.5rem 1rem;
+    transition: all 0.2s ease-in-out;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.btn-primary {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.btn-primary:hover {
+    background-color: #2980b9;
+    border-color: #2980b9;
+}
+
+.btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+}
+
+/* Modals */
+.modal-content {
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.modal-header {
+    background-color: var(--light-color);
+    border-bottom: none;
+    padding: 1.25rem 1.5rem;
+}
+
+.modal-header h5 {
+    color: var(--secondary-color);
+    font-weight: 600;
+}
+
+.modal-body {
+    padding: 1.5rem;
+}
+
+.modal-footer {
+    border-top: none;
+    padding: 1.25rem 1.5rem;
+}
+
+/* Forms */
+.form-control {
+    border-radius: 4px;
+    border: 1px solid #cfd9db;
+    padding: 0.625rem 0.75rem;
+    transition: all 0.2s ease-in-out;
+}
+
+.form-control:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.25);
+}
+
+.form-label {
+    color: var(--secondary-color);
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+}
+
+/* Loading State */
+.loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(255, 255, 255, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    border-radius: 5px;
+}
+
+.spinner-border {
+    width: 3rem;
+    height: 3rem;
+    color: var(--primary-color);
+}
+
+/* Custom Tooltip */
+.custom-tooltip {
+    position: relative;
+    display: inline-block;
+}
+
+.custom-tooltip .tooltip-text {
+    visibility: hidden;
+    width: 200px;
+    background-color: var(--dark-color);
+    color: white;
+    text-align: center;
+    border-radius: 6px;
+    padding: 10px;
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    transform: translateX(-50%);
+    opacity: 0;
+    transition: opacity 0.3s;
+    font-size: 0.875rem;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+.custom-tooltip .tooltip-text::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: var(--dark-color) transparent transparent transparent;
+}
+
+.custom-tooltip:hover .tooltip-text {
+    visibility: visible;
+    opacity: 1;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    .dashboard-header {
+        padding: 15px;
+    }
+    
+    .card {
+        margin-bottom: 15px;
+    }
+    
+    .metric-value {
+        font-size: 1.8rem;
+    }
+    
+    .btn-group .btn {
+        padding: 0.375rem 0.75rem;
+    }
+    
+    .nav-tabs .nav-link {
+        padding: 0.5rem 0.75rem;
+    }
+    
+    .chart-container {
+        height: 250px;
+    }
+}
+
+/* Print Styles */
+@media print {
+    .btn, .nav-tabs, .modal, .no-print {
+        display: none !important;
+    }
+    
+    body {
+        background-color: white;
+    }
+    
+    .card {
+        break-inside: avoid;
+        box-shadow: none;
+        border: 1px solid #ddd;
+    }
+    
+    .dashboard-header {
+        box-shadow: none;
+        border: 1px solid #ddd;
+    }
+}

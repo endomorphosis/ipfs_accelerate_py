@@ -1,0 +1,8 @@
+# Allow GitHub Actions runner to fix git file ownership without password
+# This is needed because containerized workflows may create files as root
+# Install: sudo cp runner-fix-permissions /etc/sudoers.d/ && sudo chmod 440 /etc/sudoers.d/runner-fix-permissions
+
+# Allow barberb to chown files in runner workspaces
+barberb ALL=(ALL) NOPASSWD: /usr/bin/chown -R barberb\:barberb /home/barberb/actions-runner*/_work/*
+barberb ALL=(ALL) NOPASSWD: /usr/bin/chown -R barberb\:barberb /home/barberb/*/actions-runner/_work/*
+barberb ALL=(ALL) NOPASSWD: /usr/bin/chown -R barberb\:barberb /home/barberb/actions-runners/*/_work/*

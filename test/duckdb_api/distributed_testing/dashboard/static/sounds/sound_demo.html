@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error Notification Sound Demo</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        .sound-card {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 16px;
+            margin-bottom: 16px;
+            border-left: 5px solid #3498db;
+        }
+        .sound-system-critical {
+            border-left-color: #e74c3c;
+        }
+        .sound-critical {
+            border-left-color: #e67e22;
+        }
+        .sound-warning {
+            border-left-color: #f1c40f;
+        }
+        .sound-info {
+            border-left-color: #3498db;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .btn-system-critical {
+            background-color: #e74c3c;
+        }
+        .btn-system-critical:hover {
+            background-color: #c0392b;
+        }
+        .btn-critical {
+            background-color: #e67e22;
+        }
+        .btn-critical:hover {
+            background-color: #d35400;
+        }
+        .btn-warning {
+            background-color: #f1c40f;
+            color: #333;
+        }
+        .btn-warning:hover {
+            background-color: #f39c12;
+        }
+        .btn-info {
+            background-color: #3498db;
+        }
+        .btn-info:hover {
+            background-color: #2980b9;
+        }
+        .controls {
+            margin-top: 24px;
+            padding: 16px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .volume-control {
+            display: flex;
+            align-items: center;
+            margin-top: 8px;
+        }
+        .volume-control label {
+            margin-right: 12px;
+            width: 100px;
+        }
+        .volume-control input {
+            flex-grow: 1;
+        }
+        input[type="checkbox"] {
+            margin-right: 8px;
+        }
+        .explanation {
+            margin-top: 16px;
+            font-size: 0.9rem;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1>Error Notification Sound Demo</h1>
+    <p>This demo allows you to test the different error notification sounds used in the Error Visualization system.</p>
+    
+    <div class="sound-card sound-system-critical">
+        <h2>System-Critical Error Sound</h2>
+        <p>Used for coordinator failure, database corruption, and security breaches. Features a rising frequency pattern with accelerating pulse rate.</p>
+        <button class="btn-system-critical" onclick="playSound('error-system-critical.mp3')">Play System-Critical Sound</button>
+        <div class="explanation">
+            <strong>Technical details:</strong> Rising pattern 880Hz (A5) → 1046.5Hz (C6) → 1318.5Hz (E6) with accelerating pulse (4Hz to 16Hz), duration 1.0s
+        </div>
+    </div>
+    
+    <div class="sound-card sound-critical">
+        <h2>Critical Error Sound</h2>
+        <p>Used for hardware availability errors, resource allocation errors, and worker crashes. Features higher frequency with pulsing effect.</p>
+        <button class="btn-critical" onclick="playSound('error-critical.mp3')">Play Critical Sound</button>
+        <div class="explanation">
+            <strong>Technical details:</strong> 880Hz (A5) and 440Hz (A4) with 8Hz pulsing, duration 0.7s
+        </div>
+    </div>
+    
+    <div class="sound-card sound-warning">
+        <h2>Warning Error Sound</h2>
+        <p>Used for network errors, resource cleanup issues, and worker timeouts. Features medium frequency with moderate decay.</p>
+        <button class="btn-warning" onclick="playSound('error-warning.mp3')">Play Warning Sound</button>
+        <div class="explanation">
+            <strong>Technical details:</strong> 660Hz (E5) and 330Hz (E4) with moderate decay, duration 0.5s
+        </div>
+    </div>
+    
+    <div class="sound-card sound-info">
+        <h2>Informational Error Sound</h2>
+        <p>Used for test execution errors and other non-critical issues. Features lower frequency with quick decay.</p>
+        <button class="btn-info" onclick="playSound('error-info.mp3')">Play Info Sound</button>
+        <div class="explanation">
+            <strong>Technical details:</strong> 523.25Hz (C5) with quick decay, duration 0.3s
+        </div>
+    </div>
+    
+    <div class="controls">
+        <h2>Sound Controls</h2>
+        <div class="volume-control">
+            <label for="volume">Volume:</label>
+            <input type="range" id="volume" min="0" max="1" step="0.1" value="0.7">
+            <span id="volume-value">70%</span>
+        </div>
+        <div>
+            <input type="checkbox" id="mute">
+            <label for="mute">Mute all sounds</label>
+        </div>
+        <div>
+            <button onclick="playAllSounds()">Play All Sounds in Sequence</button>
+        </div>
+    </div>
+    
+    <script>
+        // Audio context and audio elements
+        let audioContext;
+        let gainNode;
+        const audioElements = {};
+        let isMuted = false;
+        
+        // Initialize audio context on user interaction
+        function initAudio() {
+            if (audioContext) return;
+            
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                gainNode = audioContext.createGain();
+                gainNode.connect(audioContext.destination);
+                
+                // Load all sound files
+                const soundFiles = [
+                    'error-system-critical.mp3',
+                    'error-critical.mp3',
+                    'error-warning.mp3',
+                    'error-info.mp3'
+                ];
+                
+                soundFiles.forEach(file => {
+                    const audio = new Audio(file);
+                    audioElements[file] = audio;
+                });
+                
+                console.log('Audio context initialized');
+            } catch (e) {
+                console.error('Failed to initialize audio context:', e);
+                alert('Your browser does not support Web Audio API. Sound playback may not work correctly.');
+            }
+        }
+        
+        // Play a sound with the current volume setting
+        function playSound(soundFile) {
+            initAudio();
+            
+            if (isMuted) return;
+            
+            // Stop any currently playing sounds
+            Object.values(audioElements).forEach(audio => {
+                audio.pause();
+                audio.currentTime = 0;
+            });
+            
+            const audio = audioElements[soundFile] || new Audio(soundFile);
+            audio.volume = document.getElementById('volume').value;
+            audio.play();
+        }
+        
+        // Play all sounds in sequence
+        function playAllSounds() {
+            if (isMuted) return;
+            
+            const sounds = [
+                'error-system-critical.mp3',
+                'error-critical.mp3',
+                'error-warning.mp3',
+                'error-info.mp3'
+            ];
+            
+            let delay = 0;
+            sounds.forEach(sound => {
+                setTimeout(() => playSound(sound), delay);
+                delay += 1500; // 1.5 seconds between sounds
+            });
+        }
+        
+        // Update volume display value
+        document.getElementById('volume').addEventListener('input', function() {
+            const volumePercent = Math.round(this.value * 100);
+            document.getElementById('volume-value').textContent = volumePercent + '%';
+        });
+        
+        // Handle mute toggle
+        document.getElementById('mute').addEventListener('change', function() {
+            isMuted = this.checked;
+        });
+        
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // We'll initialize audio on the first user interaction
+            document.body.addEventListener('click', initAudio, { once: true });
+        });
+    </script>
+</body>
+</html>

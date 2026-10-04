@@ -1877,7 +1877,6 @@ class BoardControlPlane:
             "bm25_count": bm25_count,
             "knowledge_graph_count": kg_count,
             "proof_cache_count": proof_count,
-            "proof_cache_ingestion": self.last_proof_cache_ingestion,
             "backend": self.backend,
             "ducklake_attached": self.ducklake_attached,
         }
@@ -1909,118 +1908,61 @@ class BoardControlPlane:
                             return found
         return found
 
-    def ingest_proof_cache_page(
-        self, namespace: str, path: str | os.PathLike[str], *,
-        after_key_id: str = "", page_size: int = 512,
-    ) -> dict[str, Any]:
-        """Copy one ordered historical page, exposing omissions and continuation.
+    def ingest_proof_cache_files(
+        self,
+        namespace: str,
+        paths: Sequence[str | os.PathLike[str]],
+    ) -> int:
+        """Copy durable proof-cache receipts into the DuckLake proof table."""
 
-        The cursor is a key, not an authority token or a database snapshot.
-        Separate calls may observe different cache generations; a completed
-        traversal alone cannot establish current repository proof coverage.
-        """
-        from .duckdb_state import open_duckdb_connection
-
-        if type(page_size) is not int or not 1 <= page_size <= 512:
-            raise BoardControlPlaneError("proof page size must be an integer from 1 to 512")
-        if type(after_key_id) is not str or len(after_key_id.encode()) > 8192:
-            raise BoardControlPlaneError("bounded proof continuation key required")
         board = normalize_board_namespace(namespace)
-        source = Path(path).absolute()
-        report = dict(schema="board-proof-cache-page@1", source=str(source),
-            after_key_id=after_key_id, next_after_key_id=None, scanned=0, ingested=0,
-            omissions=[], status="unavailable", traversal_complete=False,
-            snapshot_consistent=False, proof_authority=False, completion_authority=False)
-        if not source.is_file() or source.suffix.lower() not in {".duckdb", ".ddb"}:
-            report["omissions"].append({"reason": "missing_or_unsupported_cache_file"})
-            return report
-        if source.resolve() == self.database_path.resolve():
-            report["omissions"].append({"reason": "board_catalog_is_not_a_proof_cache"})
-            return report
-        try:
-            cache = open_duckdb_connection(source, timeout_seconds=1, memory_limit="64MB", threads=1)
+        ingested = 0
+        for raw_path in paths:
+            path = Path(raw_path)
+            if not path.is_file():
+                continue
+            if path.suffix.lower() not in {".duckdb", ".ddb"}:
+                continue
             try:
-                rows = cache.execute("""SELECT key_id, key_json, entry_json FROM proof_cache_entries
-                    WHERE key_id > ? ORDER BY key_id LIMIT ?""", [after_key_id, page_size + 1]).fetchall()
+                cache = DuckDBConnection(path, memory_limit="64MB", threads=1)
+            except Exception:
+                continue
+            try:
+                try:
+                    rows = cache.execute(
+                        "SELECT key_id, key_json, entry_json FROM proof_cache_entries LIMIT 512"
+                    ).fetchall()
+                except Exception:
+                    rows = []
+                for row in rows:
+                    key_id = str(row[0] or "").strip()
+                    if not key_id:
+                        continue
+                    status = "cached"
+                    try:
+                        entry = json.loads(str(row[2] or "{}"))
+                        if isinstance(entry, Mapping):
+                            status = str(
+                                entry.get("status") or entry.get("result") or "cached"
+                            )
+                    except json.JSONDecodeError:
+                        entry = {"entry_json": str(row[2] or "")}
+                    self.put_artefact(
+                        "proof_cache",
+                        board_namespace=board,
+                        artefact_id=f"cache:{path.name}:{key_id[:80]}",
+                        obligation_id=str(row[1] or key_id)[:240],
+                        status=status,
+                        payload={
+                            "source": str(path),
+                            "key_id": key_id,
+                            "entry": entry if isinstance(entry, Mapping) else {},
+                        },
+                    )
+                    ingested += 1
             finally:
                 cache.close()
-        except Exception as exc:
-            report["omissions"].append({"reason": "cache_read_unavailable", "error_type": type(exc).__name__})
-            return report
-        selected = rows[:page_size]
-        report["scanned"] = len(selected)
-        for row in selected:
-            key_id = row[0]
-            if type(key_id) is not str or not key_id or len(key_id.encode()) > 8192:
-                report["omissions"].append({"reason": "invalid_cache_key"})
-                continue
-            try:
-                if (type(row[1]) is not str or type(row[2]) is not str
-                        or len(row[1].encode()) + len(row[2].encode()) > 2 * 1024 * 1024):
-                    raise ValueError("oversized cache row")
-                key = json.loads(row[1]); entry = json.loads(row[2])
-                if type(key) is not dict or type(entry) is not dict:
-                    raise ValueError("non-object cache row")
-            except (TypeError, ValueError):
-                report["omissions"].append({"reason": "malformed_cache_row", "key_id": key_id})
-                continue
-            # Full locator/key identity avoids collisions between equal basenames
-            # or keys sharing the old 80-character prefix. Entry flags are data.
-            identity = hashlib.sha256(_canonical_json({"source": str(source.resolve()),
-                                                       "key_id": key_id}).encode()).hexdigest()
-            self.put_artefact("proof_cache", board_namespace=board,
-                artefact_id="cache:" + identity,
-                obligation_id=str(key.get("obligation") or key_id)[:240],
-                status="historical_candidate", payload={"source": str(source), "key_id": key_id,
-                    "key": key, "entry": entry, "proof_authority": False,
-                    "completion_authority": False, "requires_fresh_verification": True})
-            report["ingested"] += 1
-        more = len(rows) > page_size
-        report["next_after_key_id"] = selected[-1][0] if more else None
-        report["traversal_complete"] = not more
-        report["status"] = "partial" if report["omissions"] else ("page" if more else "complete")
-        return report
-
-    def ingest_proof_cache_files(
-        self, namespace: str, paths: Sequence[str | os.PathLike[str]], *, max_pages: int = 128,
-    ) -> int:
-        """Compatibility count API; complete pages and omissions are retained.
-
-        ``last_proof_cache_ingestion`` records bounds, unavailable files and
-        continuation keys. Use ``ingest_proof_cache_page`` to resume a bounded
-        traversal. Historical records never admit proof or completion.
-        """
-        if type(max_pages) is not int or not 1 <= max_pages <= 4096:
-            raise BoardControlPlaneError("proof ingestion max_pages must be from 1 to 4096")
-        reports = []
-        total = 0
-        for path in paths:
-            after = ""
-            for _ in range(max_pages):
-                report = self.ingest_proof_cache_page(namespace, path, after_key_id=after)
-                reports.append(report)
-                total += report["ingested"]
-                next_key = report["next_after_key_id"]
-                if next_key is None:
-                    break
-                if not isinstance(next_key, str) or next_key <= after:
-                    report["omissions"].append({"reason": "nonadvancing_cache_cursor"})
-                    report["status"] = "partial"
-                    break
-                after = next_key
-            else:
-                reports[-1]["omissions"].append({"reason": "page_budget_exhausted"})
-                reports[-1]["status"] = "partial"
-        self.last_proof_cache_ingestion = {
-            "schema": "board-proof-cache-ingestion@1", "ingested": total, "pages": reports,
-            "traversal_complete": all(r["traversal_complete"] for r in reports
-                if r["next_after_key_id"] is None) and all(
-                    not r["omissions"] for r in reports),
-            "snapshot_consistent": False, "proof_authority": False, "completion_authority": False}
-        report_id = hashlib.sha256(_canonical_json(self.last_proof_cache_ingestion).encode()).hexdigest()
-        self.put_artefact("other", board_namespace=namespace,
-            artefact_id="proof-cache-ingestion:" + report_id, payload=self.last_proof_cache_ingestion)
-        return total
+        return ingested
 
     def _materialize_board_database(self, namespace: str, path: Path) -> None:
         """Write a queryable per-board DuckDB sibling for Quack/DuckLake attach."""

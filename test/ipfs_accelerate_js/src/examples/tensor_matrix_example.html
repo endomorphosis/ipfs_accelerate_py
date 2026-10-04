@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tensor Matrix Operations Example</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      line-height: 1.6;
+      padding: 20px;
+      max-width: 1000px;
+      margin: 0 auto;
+      color: #333;
+    }
+    h1 {
+      color: #1a73e8;
+      border-bottom: 2px solid #eee;
+      padding-bottom: 10px;
+    }
+    h2 {
+      color: #1a73e8;
+      margin-top: 30px;
+    }
+    pre {
+      background-color: #f5f5f5;
+      padding: 15px;
+      border-radius: 5px;
+      overflow-x: auto;
+      margin: 20px 0;
+    }
+    .info-box {
+      background-color: #e8f0fe;
+      border-left: 5px solid #1a73e8;
+      padding: 15px;
+      margin: 20px 0;
+      border-radius: 0 5px 5px 0;
+    }
+    .result-container {
+      margin-top: 20px;
+    }
+    button {
+      background-color: #1a73e8;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-right: 10px;
+    }
+    button:hover {
+      background-color: #0d62c9;
+    }
+    .output {
+      white-space: pre-wrap;
+      font-family: monospace;
+      font-size: 14px;
+    }
+    .code-sample {
+      background-color: #f8f9fa;
+      padding: 15px;
+      border-radius: 5px;
+      margin: 20px 0;
+    }
+    .operations-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 20px;
+      margin-top: 20px;
+    }
+    .operation-card {
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      padding: 15px;
+      background-color: #fff;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+    .operation-card h3 {
+      margin-top: 0;
+      color: #1a73e8;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 10px;
+    }
+    .tensor-display {
+      background-color: #f8f9fa;
+      padding: 10px;
+      border-radius: 4px;
+      font-family: monospace;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Tensor Operations Example</h1>
+  
+  <div class="info-box">
+    <p>This example demonstrates various tensor operations implemented in the IPFS Accelerate TypeScript SDK. It includes matrix operations, element-wise operations, and neural network operations on tensors.</p>
+  </div>
+  
+  <h2>Tensor Operations</h2>
+  
+  <div class="actions">
+    <button id="runMatrix">Run Matrix Examples</button>
+    <button id="runElementWise">Run Element-wise Examples</button>
+    <button id="runNN">Run Neural Network Examples</button>
+    <button id="runAll">Run All Examples</button>
+    <button id="clearOutput">Clear Output</button>
+  </div>
+  
+  <div class="result-container">
+    <h3>Console Output:</h3>
+    <pre id="output" class="output"></pre>
+  </div>
+  
+  <h2>Visual Results</h2>
+  
+  <div id="visual-results" class="operations-grid">
+    <!-- Results will be displayed here -->
+  </div>
+  
+  <h2>Example Code</h2>
+  
+  <div class="code-sample">
+    <h3>Matrix Operations</h3>
+    <pre><code>// Create tensors
+const a = new Tensor<number>([2, 3], [1, 2, 3, 4, 5, 6]);
+const b = new Tensor<number>([3, 2], [7, 8, 9, 10, 11, 12]);
+
+// Matrix multiplication
+const c = matmul(a, b);
+
+// Transpose
+const aT = transpose(a);
+
+// Reshape
+const aReshaped = reshape(a, [3, 2]);
+
+// Identity matrix
+const identity = eye(3);
+
+// Diagonal matrix
+const diagTensor = diag(new Tensor<number>([3], [5, 6, 7]));</code></pre>
+  </div>
+  
+  <div class="code-sample">
+    <h3>Element-wise Operations</h3>
+    <pre><code>// Create tensors
+const a = new Tensor<number>([2, 2], [1, 2, 3, 4]);
+const b = new Tensor<number>([2, 2], [5, 6, 7, 8]);
+
+// Addition
+const sum = add(a, b);
+
+// Subtraction
+const diff = subtract(a, b);
+
+// Multiplication
+const prod = multiply(a, b);
+
+// Exponential
+const expA = exp(a);
+
+// Natural logarithm
+const logB = log(b);
+
+// Square root
+const sqrtB = sqrt(b);</code></pre>
+  </div>
+  
+  <div class="code-sample">
+    <h3>Neural Network Operations</h3>
+    <pre><code>// Create tensors
+const a = new Tensor<number>([2, 3], [-1, 0, 2, 3, -2, 1]);
+const b = new Tensor<number>([2, 3], [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]);
+
+// ReLU
+const reluA = relu(a);
+
+// Sigmoid
+const sigmoidA = sigmoid(a);
+
+// Tanh
+const tanhA = tanh(a);
+
+// Softmax
+const softmaxB = softmax(b, 1);
+
+// Layer Normalization
+const layerNormB = layerNorm(b, 1e-5, 1);</code></pre>
+  </div>
+  
+  <script type="module">
+    // Import the examples
+    import { runMatrixExamples, runElementWiseExamples, runNNExamples, runAllExamples } from './tensor_matrix_example.js';
+    
+    // Initialize output
+    const outputElement = document.getElementById('output');
+    const visualResults = document.getElementById('visual-results');
+    
+    // Override console.log to also display in our output element
+    const originalLog = console.log;
+    console.log = function(...args) {
+      originalLog.apply(console, args);
+      outputElement.textContent += args.join(' ') + '\n';
+    };
+    
+    // Display a tensor in a visual card
+    function displayTensor(name, tensor, description = '') {
+      const card = document.createElement('div');
+      card.className = 'operation-card';
+      
+      // Create card heading
+      const heading = document.createElement('h3');
+      heading.textContent = name;
+      card.appendChild(heading);
+      
+      // Add description if provided
+      if (description) {
+        const desc = document.createElement('p');
+        desc.textContent = description;
+        card.appendChild(desc);
+      }
+      
+      // Create tensor display
+      const tensorDisplay = document.createElement('div');
+      tensorDisplay.className = 'tensor-display';
+      tensorDisplay.textContent = tensor.toString();
+      card.appendChild(tensorDisplay);
+      
+      // Add properties
+      const props = document.createElement('div');
+      props.innerHTML = `
+        <strong>Shape:</strong> [${tensor.shape.join(', ')}]<br>
+        <strong>Size:</strong> ${tensor.size}<br>
+        <strong>Data Type:</strong> ${tensor.dataType}<br>
+      `;
+      card.appendChild(props);
+      
+      return card;
+    }
+    
+    // Display operation results
+    function displayResults(results, category) {
+      // Create category heading
+      const heading = document.createElement('h2');
+      heading.textContent = category;
+      visualResults.appendChild(heading);
+      
+      // Create grid section
+      const grid = document.createElement('div');
+      grid.className = 'operations-grid';
+      visualResults.appendChild(grid);
+      
+      // Add each result as a card
+      for (const [name, tensor] of Object.entries(results)) {
+        // Skip non-tensor entries
+        if (!tensor || !tensor.shape) continue;
+        
+        const card = displayTensor(name, tensor);
+        grid.appendChild(card);
+      }
+    }
+    
+    // Run matrix examples button
+    document.getElementById('runMatrix').addEventListener('click', () => {
+      outputElement.textContent = '';
+      visualResults.innerHTML = '';
+      
+      try {
+        const results = runMatrixExamples();
+        displayResults(results, 'Matrix Operations');
+      } catch (error) {
+        console.error('Error running matrix examples:', error);
+        outputElement.textContent += '\nError: ' + error.message;
+      }
+    });
+    
+    // Run element-wise examples button
+    document.getElementById('runElementWise').addEventListener('click', () => {
+      outputElement.textContent = '';
+      visualResults.innerHTML = '';
+      
+      try {
+        const results = runElementWiseExamples();
+        displayResults(results, 'Element-wise Operations');
+      } catch (error) {
+        console.error('Error running element-wise examples:', error);
+        outputElement.textContent += '\nError: ' + error.message;
+      }
+    });
+    
+    // Run neural network examples button
+    document.getElementById('runNN').addEventListener('click', () => {
+      outputElement.textContent = '';
+      visualResults.innerHTML = '';
+      
+      try {
+        const results = runNNExamples();
+        displayResults(results, 'Neural Network Operations');
+      } catch (error) {
+        console.error('Error running neural network examples:', error);
+        outputElement.textContent += '\nError: ' + error.message;
+      }
+    });
+    
+    // Run all examples button
+    document.getElementById('runAll').addEventListener('click', () => {
+      outputElement.textContent = '';
+      visualResults.innerHTML = '';
+      
+      try {
+        const results = runAllExamples();
+        displayResults(results.matrix, 'Matrix Operations');
+        displayResults(results.elementWise, 'Element-wise Operations');
+        displayResults(results.nn, 'Neural Network Operations');
+      } catch (error) {
+        console.error('Error running all examples:', error);
+        outputElement.textContent += '\nError: ' + error.message;
+      }
+    });
+    
+    // Clear output button
+    document.getElementById('clearOutput').addEventListener('click', () => {
+      outputElement.textContent = '';
+      visualResults.innerHTML = '';
+    });
+  </script>
+</body>
+</html>

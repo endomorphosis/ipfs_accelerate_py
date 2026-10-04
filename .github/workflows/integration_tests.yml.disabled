@@ -1,0 +1,127 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Test mode'
+        required: true
+        default: 'standard'
+        type: choice
+        options:
+          - standard
+          - hardware-only
+          - web-only
+          - all
+
+jobs:
+  hardware-compatibility-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.8, 3.9]
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+        pip install transformers
+    
+    - name: Run hardware compatibility tests
+      run: |
+        if [ "${{ github.event.inputs.test_mode }}" == "hardware-only" ]; then
+          ./run_integration_ci_tests.sh --hardware-only
+        elif [ "${{ github.event.inputs.test_mode }}" == "web-only" ]; then
+          ./run_integration_ci_tests.sh --web-only
+        elif [ "${{ github.event.inputs.test_mode }}" == "all" ]; then
+          ./run_integration_ci_tests.sh --all
+        else
+          ./run_integration_ci_tests.sh
+        fi
+    
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: integration-test-results-${{ matrix.python-version }}
+        path: integration_test_results_ci.json
+
+  web-platform-tests:
+    runs-on: ubuntu-latest
+    needs: hardware-compatibility-tests
+    if: ${{ github.event.inputs.test_mode == 'web-only' || github.event.inputs.test_mode == 'all' }}
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+        pip install transformers onnx onnxruntime
+        npm install -g @xenova/transformers
+    
+    - name: Run web platform tests
+      run: |
+        ./run_integration_ci_tests.sh --web-only
+    
+    - name: Upload web test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: web-platform-test-results
+        path: integration_test_results_ci.json
+
+  cross-platform-tests:
+    runs-on: macos-latest
+    if: ${{ github.event.inputs.test_mode == 'all' }}
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install torch torchvision torchaudio
+        pip install transformers
+    
+    - name: Run integration tests with MPS
+      run: |
+        python generators/test_runners/integration_test_suite.py --categories hardware_detection cross_platform --hardware cpu mps --ci-mode --output integration_test_results_macos.json
+    
+    - name: Upload macOS test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: macos-test-results
+        path: integration_test_results_macos.json

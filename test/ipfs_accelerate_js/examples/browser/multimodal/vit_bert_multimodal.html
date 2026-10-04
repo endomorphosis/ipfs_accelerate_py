@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multimodal Demo: ViT + BERT</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    .upload-section {
+      border: 2px dashed #ccc;
+      padding: 20px;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    #preview {
+      max-width: 100%;
+      max-height: 300px;
+      margin-top: 10px;
+    }
+    .results {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    .progress-bar {
+      width: 100%;
+      height: 20px;
+      background-color: #f0f0f0;
+      border-radius: 5px;
+      margin-top: 5px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background-color: #4CAF50;
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+    .backend-info {
+      background-color: #f8f9fa;
+      padding: 10px;
+      border-radius: 5px;
+      margin-top: 20px;
+    }
+    .loading {
+      display: none;
+      margin-top: 20px;
+      text-align: center;
+    }
+    #error-message {
+      color: red;
+      margin-top: 10px;
+      display: none;
+    }
+    .result-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 5px;
+      border-bottom: 1px solid #eee;
+    }
+    .text-input {
+      width: 100%;
+      padding: 10px;
+      margin-top: 10px;
+      margin-bottom: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    .model-section {
+      border: 1px solid #ddd;
+      padding: 15px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+    .sharing-section {
+      grid-column: span 2;
+      border: 1px solid #4CAF50;
+      background-color: #f0f8ff;
+      padding: 15px;
+      border-radius: 5px;
+      margin-top: 20px;
+    }
+    .perf-metrics {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 10px;
+    }
+    .metric {
+      text-align: center;
+      padding: 10px;
+      background-color: #f5f5f5;
+      border-radius: 5px;
+      flex: 1;
+      margin: 0 5px;
+    }
+    .metric-value {
+      font-size: 1.5em;
+      font-weight: bold;
+      color: #4CAF50;
+    }
+    .sharing-control {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 10px;
+    }
+    .btn {
+      padding: 10px 15px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .btn:hover {
+      background-color: #45a049;
+    }
+    .btn:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+  <h1>Multimodal Demo: Vision Transformer + BERT</h1>
+  <p>This demo shows both ViT and BERT models running together with cross-model tensor sharing capabilities.</p>
+  
+  <div id="error-message"></div>
+  
+  <div class="container">
+    <!-- Vision Model Section -->
+    <div class="model-section">
+      <h2>Vision Model (ViT)</h2>
+      <div class="upload-section" id="drop-area">
+        <p>Drop an image here or click to select</p>
+        <input type="file" id="file-input" accept="image/*" style="display: none;">
+        <button id="select-file" class="btn">Select Image</button>
+        <div>
+          <img id="preview" style="display: none;">
+        </div>
+      </div>
+      
+      <div class="loading" id="vit-loading">
+        <p>Processing image...</p>
+        <div class="progress-bar">
+          <div class="progress-fill" id="vit-progress"></div>
+        </div>
+      </div>
+      
+      <div class="results" id="vit-results" style="display: none;">
+        <h3>Classification Results</h3>
+        <div id="top-predictions"></div>
+      </div>
+    </div>
+    
+    <!-- Text Model Section -->
+    <div class="model-section">
+      <h2>Text Model (BERT)</h2>
+      <div>
+        <p>Enter text to analyze with BERT:</p>
+        <textarea id="text-input" class="text-input" rows="6" placeholder="Enter text here..."></textarea>
+        <button id="process-text" class="btn">Process Text</button>
+      </div>
+      
+      <div class="loading" id="bert-loading">
+        <p>Processing text...</p>
+        <div class="progress-bar">
+          <div class="progress-fill" id="bert-progress"></div>
+        </div>
+      </div>
+      
+      <div class="results" id="bert-results" style="display: none;">
+        <h3>Text Analysis Results</h3>
+        <div id="bert-output"></div>
+      </div>
+    </div>
+    
+    <!-- Cross-Model Tensor Sharing Section -->
+    <div class="sharing-section">
+      <h2>Cross-Model Tensor Sharing</h2>
+      <p>This section demonstrates the performance benefits of sharing tensor data between models.</p>
+      
+      <div class="sharing-control">
+        <div>
+          <label for="sharing-toggle">Enable tensor sharing:</label>
+          <input type="checkbox" id="sharing-toggle" checked>
+        </div>
+        <button id="run-multimodal" class="btn" disabled>Run Multimodal Analysis</button>
+      </div>
+      
+      <div class="loading" id="multimodal-loading">
+        <p>Running multimodal analysis...</p>
+        <div class="progress-bar">
+          <div class="progress-fill" id="multimodal-progress"></div>
+        </div>
+      </div>
+      
+      <div class="results" id="multimodal-results" style="display: none;">
+        <h3>Multimodal Analysis Results</h3>
+        <div id="multimodal-output"></div>
+        
+        <div class="perf-metrics">
+          <div class="metric">
+            <div>Individual Models Time</div>
+            <div class="metric-value" id="individual-time">-</div>
+            <div>milliseconds</div>
+          </div>
+          <div class="metric">
+            <div>Shared Models Time</div>
+            <div class="metric-value" id="shared-time">-</div>
+            <div>milliseconds</div>
+          </div>
+          <div class="metric">
+            <div>Time Saved</div>
+            <div class="metric-value" id="time-saved">-</div>
+            <div>milliseconds</div>
+          </div>
+          <div class="metric">
+            <div>Memory Saved</div>
+            <div class="metric-value" id="memory-saved">-</div>
+            <div>MB</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="backend-info">
+    <h3>Hardware Backend Information</h3>
+    <p id="backend-info"></p>
+    <p id="performance-info"></p>
+  </div>
+  
+  <script type="module">
+    import { 
+      createVitModel, 
+      createBertModel,
+      getBrowserHardwareCapabilities, 
+      createWebGPUBackend, 
+      createWebNNBackend 
+    } from '../../../src/index.js';
+    
+    // Define ImageNet classes (top 25 for brevity)
+    const IMAGENET_CLASSES = [
+      'tench', 'goldfish', 'great white shark', 'tiger shark', 'hammerhead shark',
+      'electric ray', 'stingray', 'rooster', 'hen', 'ostrich', 'brambling',
+      'goldfinch', 'house finch', 'junco', 'indigo bunting', 'American robin',
+      'bulbul', 'jay', 'magpie', 'chickadee', 'water ouzel', 'kite', 'bald eagle',
+      'vulture', 'great grey owl', /* ...more classes would go here */ 
+    ];
+    
+    // Main application
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Get DOM elements
+      const fileInput = document.getElementById('file-input');
+      const selectFileButton = document.getElementById('select-file');
+      const dropArea = document.getElementById('drop-area');
+      const preview = document.getElementById('preview');
+      const textInput = document.getElementById('text-input');
+      const processTextButton = document.getElementById('process-text');
+      const runMultimodalButton = document.getElementById('run-multimodal');
+      const sharingToggle = document.getElementById('sharing-toggle');
+      
+      // Results elements
+      const vitLoadingElement = document.getElementById('vit-loading');
+      const vitResultsElement = document.getElementById('vit-results');
+      const vitProgressElement = document.getElementById('vit-progress');
+      const topPredictionsElement = document.getElementById('top-predictions');
+      
+      const bertLoadingElement = document.getElementById('bert-loading');
+      const bertResultsElement = document.getElementById('bert-results');
+      const bertProgressElement = document.getElementById('bert-progress');
+      const bertOutputElement = document.getElementById('bert-output');
+      
+      const multimodalLoadingElement = document.getElementById('multimodal-loading');
+      const multimodalResultsElement = document.getElementById('multimodal-results');
+      const multimodalProgressElement = document.getElementById('multimodal-progress');
+      const multimodalOutputElement = document.getElementById('multimodal-output');
+      
+      const individualTimeElement = document.getElementById('individual-time');
+      const sharedTimeElement = document.getElementById('shared-time');
+      const timeSavedElement = document.getElementById('time-saved');
+      const memorySavedElement = document.getElementById('memory-saved');
+      
+      const backendInfoElement = document.getElementById('backend-info');
+      const performanceInfoElement = document.getElementById('performance-info');
+      const errorMessageElement = document.getElementById('error-message');
+      
+      // Create model and hardware instances
+      let vitModel = null;
+      let bertModel = null;
+      let hardware = null;
+      let isProcessing = false;
+      let currentImageData = null;
+      let imageProcessed = false;
+      let textProcessed = false;
+      
+      // Initialize hardware and models
+      try {
+        // Detect capabilities
+        const capabilities = await getBrowserHardwareCapabilities();
+        
+        // Display backend info
+        backendInfoElement.textContent = 
+          `Browser: ${capabilities.browser}, WebGPU: ${capabilities.webgpu ? 'Supported' : 'Not Supported'}, WebNN: ${capabilities.webnn ? 'Supported' : 'Not Supported'}`;
+        
+        // Create hardware backend
+        if (capabilities.webgpu) {
+          hardware = await createWebGPUBackend();
+        } else if (capabilities.webnn) {
+          hardware = await createWebNNBackend();
+        } else {
+          showError('WebGPU and WebNN are not supported in this browser. This demo requires hardware acceleration.');
+          return;
+        }
+        
+        await hardware.initialize();
+        
+        // Create models
+        vitModel = createVitModel(hardware, {
+          modelId: 'google/vit-base-patch16-224',
+          useOptimizedOps: true
+        });
+        
+        bertModel = createBertModel(hardware, {
+          modelId: 'bert-base-uncased',
+          useOptimizedOps: true
+        });
+        
+        // Initialize models in background
+        updateVitProgress(10);
+        updateBertProgress(10);
+        
+        await Promise.all([
+          vitModel.initialize(),
+          bertModel.initialize()
+        ]);
+        
+        updateVitProgress(100);
+        updateBertProgress(100);
+        
+        console.log('Models initialized');
+        performanceInfoElement.textContent = 'Both models loaded and ready for inference.';
+      } catch (error) {
+        console.error('Error initializing:', error);
+        showError(`Error initializing: ${error instanceof Error ? error.message : String(error)}`);
+        return;
+      }
+      
+      // Set up event listeners
+      selectFileButton.addEventListener('click', () => {
+        fileInput.click();
+      });
+      
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) {
+          handleSelectedFile(e.target.files[0]);
+        }
+      });
+      
+      // Drag and drop handling
+      dropArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropArea.style.borderColor = '#2196F3';
+      });
+      
+      dropArea.addEventListener('dragleave', () => {
+        dropArea.style.borderColor = '#ccc';
+      });
+      
+      dropArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropArea.style.borderColor = '#ccc';
+        
+        if (e.dataTransfer?.files.length) {
+          handleSelectedFile(e.dataTransfer.files[0]);
+        }
+      });
+      
+      processTextButton.addEventListener('click', () => {
+        const text = textInput.value.trim();
+        if (text) {
+          processText(text);
+        } else {
+          showError('Please enter some text to process.');
+        }
+      });
+      
+      runMultimodalButton.addEventListener('click', async () => {
+        if (!currentImageData || !textInput.value.trim()) {
+          showError('Please process both an image and text before running multimodal analysis.');
+          return;
+        }
+        
+        await runMultimodalAnalysis();
+      });
+      
+      // Watch for both image and text being processed to enable multimodal button
+      function checkMultimodalReady() {
+        if (imageProcessed && textProcessed) {
+          runMultimodalButton.disabled = false;
+        } else {
+          runMultimodalButton.disabled = true;
+        }
+      }
+      
+      function handleSelectedFile(file) {
+        if (!file.type.startsWith('image/')) {
+          showError('Please select an image file.');
+          return;
+        }
+        
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          loadAndDisplayImage(e.target.result);
+        };
+        reader.readAsDataURL(file);
+      }
+      
+      function loadAndDisplayImage(url) {
+        // Create image element for processing
+        const img = new Image();
+        
+        img.onload = () => {
+          // Display the image
+          preview.src = url;
+          preview.style.display = 'block';
+          
+          // Process the image
+          processImage(img);
+        };
+        
+        img.onerror = () => {
+          showError('Error loading image. Try another image or check the URL.');
+        };
+        
+        img.src = url;
+      }
+      
+      async function processImage(imageElement) {
+        if (!vitModel || isProcessing) {
+          return;
+        }
+        
+        try {
+          isProcessing = true;
+          imageProcessed = false;
+          checkMultimodalReady();
+          
+          // Show loading indicator
+          vitLoadingElement.style.display = 'block';
+          vitResultsElement.style.display = 'none';
+          
+          // Reset progress
+          updateVitProgress(0);
+          
+          // Preprocess image to 224x224 (ViT standard input size)
+          currentImageData = preprocessImage(imageElement, 224, 224);
+          updateVitProgress(30);
+          
+          // Prepare input
+          const input = {
+            imageData: currentImageData,
+            width: 224,
+            height: 224,
+            isPreprocessed: false // We're providing raw pixel data (0-255)
+          };
+          
+          // Record start time for performance measurement
+          const startTime = performance.now();
+          
+          // Run inference
+          const result = await vitModel.process(input);
+          updateVitProgress(90);
+          
+          // Calculate elapsed time
+          const elapsed = performance.now() - startTime;
+          
+          // Display results
+          displayVitResults(result, elapsed);
+          
+          // Hide loading indicator
+          vitLoadingElement.style.display = 'none';
+          vitResultsElement.style.display = 'block';
+          
+          isProcessing = false;
+          imageProcessed = true;
+          checkMultimodalReady();
+        } catch (error) {
+          console.error('Error processing image:', error);
+          showError(`Error processing image: ${error instanceof Error ? error.message : String(error)}`);
+          vitLoadingElement.style.display = 'none';
+          isProcessing = false;
+          imageProcessed = false;
+          checkMultimodalReady();
+        }
+      }
+      
+      async function processText(text) {
+        if (!bertModel || isProcessing) {
+          return;
+        }
+        
+        try {
+          isProcessing = true;
+          textProcessed = false;
+          checkMultimodalReady();
+          
+          // Show loading indicator
+          bertLoadingElement.style.display = 'block';
+          bertResultsElement.style.display = 'none';
+          
+          // Reset progress
+          updateBertProgress(0);
+          
+          // Record start time for performance measurement
+          const startTime = performance.now();
+          
+          // Tokenize text
+          const tokens = await bertModel.tokenize(text);
+          updateBertProgress(30);
+          
+          // Run inference
+          const result = await bertModel.process(tokens);
+          updateBertProgress(90);
+          
+          // Calculate elapsed time
+          const elapsed = performance.now() - startTime;
+          
+          // Display results
+          displayBertResults(result, text, elapsed);
+          
+          // Hide loading indicator
+          bertLoadingElement.style.display = 'none';
+          bertResultsElement.style.display = 'block';
+          
+          isProcessing = false;
+          textProcessed = true;
+          checkMultimodalReady();
+        } catch (error) {
+          console.error('Error processing text:', error);
+          showError(`Error processing text: ${error instanceof Error ? error.message : String(error)}`);
+          bertLoadingElement.style.display = 'none';
+          isProcessing = false;
+          textProcessed = false;
+          checkMultimodalReady();
+        }
+      }
+      
+      async function runMultimodalAnalysis() {
+        if (isProcessing || !currentImageData || !textInput.value.trim()) {
+          return;
+        }
+        
+        try {
+          isProcessing = true;
+          
+          // Show loading indicator
+          multimodalLoadingElement.style.display = 'block';
+          multimodalResultsElement.style.display = 'none';
+          
+          // Reset progress
+          updateMultimodalProgress(0);
+          
+          const enableSharing = sharingToggle.checked;
+          const text = textInput.value.trim();
+          
+          // First, run the models separately to measure baseline performance
+          updateMultimodalProgress(10);
+          
+          // Reset models to clear any cached embeddings
+          await vitModel.dispose();
+          await bertModel.dispose();
+          
+          // Re-initialize models
+          vitModel = createVitModel(hardware, {
+            modelId: 'google/vit-base-patch16-224',
+            useOptimizedOps: true
+          });
+          
+          bertModel = createBertModel(hardware, {
+            modelId: 'bert-base-uncased',
+            useOptimizedOps: true
+          });
+          
+          await Promise.all([
+            vitModel.initialize(),
+            bertModel.initialize()
+          ]);
+          
+          updateMultimodalProgress(20);
+          
+          // Measure performance without sharing
+          const startTimeWithoutSharing = performance.now();
+          
+          // Run ViT
+          const vitInput = {
+            imageData: currentImageData,
+            width: 224,
+            height: 224,
+            isPreprocessed: false
+          };
+          const vitResult = await vitModel.process(vitInput);
+          
+          updateMultimodalProgress(40);
+          
+          // Run BERT 
+          const bertTokens = await bertModel.tokenize(text);
+          const bertResult = await bertModel.process(bertTokens);
+          
+          const timeWithoutSharing = performance.now() - startTimeWithoutSharing;
+          updateMultimodalProgress(60);
+          
+          // Now, if sharing is enabled, run with sharing to measure improvement
+          let timeWithSharing = 0;
+          let memorySaved = 0;
+          
+          if (enableSharing) {
+            // Reset models
+            await vitModel.dispose();
+            await bertModel.dispose();
+            
+            // Re-initialize models
+            vitModel = createVitModel(hardware, {
+              modelId: 'google/vit-base-patch16-224',
+              useOptimizedOps: true
+            });
+            
+            bertModel = createBertModel(hardware, {
+              modelId: 'bert-base-uncased',
+              useOptimizedOps: true
+            });
+            
+            await Promise.all([
+              vitModel.initialize(),
+              bertModel.initialize()
+            ]);
+            
+            // Measure performance with sharing
+            const startTimeWithSharing = performance.now();
+            
+            // Run ViT and create shared tensor
+            const vitInput = {
+              imageData: currentImageData,
+              width: 224,
+              height: 224,
+              isPreprocessed: false
+            };
+            const vitSharedResult = await vitModel.process(vitInput);
+            const sharedTensor = vitModel.getSharedTensor('vision_embedding');
+            
+            // In a real multimodal model, we would use the shared tensor
+            // For this demo, we'll simulate using it by running BERT
+            const bertTokens = await bertModel.tokenize(text);
+            const bertSharedResult = await bertModel.process(bertTokens);
+            
+            // This is where the shared tensor would be used in a real multimodal model
+            // For demo purposes, we'll estimate memory saved based on tensor size
+            if (sharedTensor) {
+              // Estimate memory saved in MB (assuming float32 values, 4 bytes each)
+              const tensorElements = sharedTensor.tensor.dimensions.reduce((a, b) => a * b, 1);
+              memorySaved = (tensorElements * 4) / (1024 * 1024);
+            }
+            
+            timeWithSharing = performance.now() - startTimeWithSharing;
+          } else {
+            // If sharing is disabled, use the same time as without sharing
+            timeWithSharing = timeWithoutSharing;
+          }
+          
+          updateMultimodalProgress(80);
+          
+          // Calculate time saved
+          const timeSaved = Math.max(0, timeWithoutSharing - timeWithSharing);
+          
+          // Display results
+          displayMultimodalResults({
+            individualTime: timeWithoutSharing,
+            sharedTime: timeWithSharing,
+            timeSaved: timeSaved,
+            memorySaved: memorySaved,
+            vitResult: vitResult,
+            bertResult: bertResult
+          });
+          
+          updateMultimodalProgress(100);
+          
+          // Hide loading indicator
+          multimodalLoadingElement.style.display = 'none';
+          multimodalResultsElement.style.display = 'block';
+          
+          isProcessing = false;
+        } catch (error) {
+          console.error('Error running multimodal analysis:', error);
+          showError(`Error running multimodal analysis: ${error instanceof Error ? error.message : String(error)}`);
+          multimodalLoadingElement.style.display = 'none';
+          isProcessing = false;
+        }
+      }
+      
+      function preprocessImage(image, targetWidth, targetHeight) {
+        const canvas = document.createElement('canvas');
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+        const ctx = canvas.getContext('2d');
+        
+        // Draw image with resize
+        ctx.drawImage(image, 0, 0, targetWidth, targetHeight);
+        
+        // Get image data (RGBA format)
+        const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
+        
+        // Convert to RGB format (remove alpha channel)
+        const rgbData = new Uint8Array(targetWidth * targetHeight * 3);
+        for (let i = 0; i < imageData.data.length / 4; i++) {
+          rgbData[i * 3] = imageData.data[i * 4]; // R
+          rgbData[i * 3 + 1] = imageData.data[i * 4 + 1]; // G
+          rgbData[i * 3 + 2] = imageData.data[i * 4 + 2]; // B
+        }
+        
+        return rgbData;
+      }
+      
+      function displayVitResults(result, elapsed) {
+        // Clear previous results
+        topPredictionsElement.innerHTML = '';
+        
+        // Get top 5 predictions
+        const indices = Array.from({ length: result.probabilities.length }, (_, i) => i);
+        const sortedIndices = indices
+          .sort((a, b) => result.probabilities[b] - result.probabilities[a])
+          .slice(0, 5);
+        
+        // Display top 5 predictions
+        sortedIndices.forEach(idx => {
+          const probability = result.probabilities[idx] * 100;
+          const className = idx < IMAGENET_CLASSES.length 
+            ? IMAGENET_CLASSES[idx] 
+            : `Class ${idx}`;
+          
+          const resultItem = document.createElement('div');
+          resultItem.className = 'result-item';
+          
+          const classLabel = document.createElement('div');
+          classLabel.textContent = className;
+          
+          const probabilityLabel = document.createElement('div');
+          probabilityLabel.textContent = `${probability.toFixed(2)}%`;
+          
+          resultItem.appendChild(classLabel);
+          resultItem.appendChild(probabilityLabel);
+          topPredictionsElement.appendChild(resultItem);
+          
+          const progressBar = document.createElement('div');
+          progressBar.className = 'progress-bar';
+          
+          const progressFill = document.createElement('div');
+          progressFill.className = 'progress-fill';
+          progressFill.style.width = `${probability}%`;
+          
+          progressBar.appendChild(progressFill);
+          topPredictionsElement.appendChild(progressBar);
+        });
+      }
+      
+      function displayBertResults(result, text, elapsed) {
+        // Clear previous results
+        bertOutputElement.innerHTML = '';
+        
+        // Display processed text with CLS token embedding
+        const lastHiddenState = result.lastHiddenState;
+        const pooledOutput = result.pooledOutput;
+        
+        // For demo purposes, we'll just show the first 5 values of the pooled output
+        const pooledOutputSection = document.createElement('div');
+        pooledOutputSection.innerHTML = `
+          <p>Text: <strong>${text}</strong></p>
+          <p>Embedding representation (first 5 values):</p>
+          <code>${pooledOutput.slice(0, 5).map(v => v.toFixed(4)).join(', ')}...</code>
+        `;
+        
+        bertOutputElement.appendChild(pooledOutputSection);
+      }
+      
+      function displayMultimodalResults(results) {
+        // Clear previous results
+        multimodalOutputElement.innerHTML = '';
+        
+        // Display the multimodal results
+        const resultSection = document.createElement('div');
+        resultSection.innerHTML = `
+          <p>Combined analysis of image and text completed!</p>
+          <p>Top image classification: <strong>${IMAGENET_CLASSES[results.vitResult.classId]}</strong> (${(results.vitResult.probabilities[results.vitResult.classId] * 100).toFixed(2)}%)</p>
+          <p>Text analysis summary: <strong>${results.bertResult.pooledOutput.slice(0, 3).map(v => v.toFixed(4)).join(', ')}...</strong></p>
+        `;
+        
+        multimodalOutputElement.appendChild(resultSection);
+        
+        // Display performance metrics
+        individualTimeElement.textContent = results.individualTime.toFixed(2);
+        sharedTimeElement.textContent = results.sharedTime.toFixed(2);
+        timeSavedElement.textContent = results.timeSaved.toFixed(2);
+        memorySavedElement.textContent = results.memorySaved.toFixed(2);
+      }
+      
+      function updateVitProgress(percent) {
+        vitProgressElement.style.width = `${percent}%`;
+      }
+      
+      function updateBertProgress(percent) {
+        bertProgressElement.style.width = `${percent}%`;
+      }
+      
+      function updateMultimodalProgress(percent) {
+        multimodalProgressElement.style.width = `${percent}%`;
+      }
+      
+      function showError(message) {
+        errorMessageElement.textContent = message;
+        errorMessageElement.style.display = 'block';
+        
+        // Hide after 5 seconds
+        setTimeout(() => {
+          errorMessageElement.style.display = 'none';
+        }, 5000);
+      }
+    });
+  </script>
+</body>
+</html>

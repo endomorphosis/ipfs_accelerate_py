@@ -1,0 +1,109 @@
+version: '3.8'
+
+services:
+  coordinator:
+    image: python:3.10-slim
+    container_name: dtf-coordinator
+    volumes:
+      - ../../../..:/app
+    working_dir: /app
+    ports:
+      - "8080:8080"   # Coordinator API
+      - "5000:5000"   # Dashboard
+    command: >
+      bash -c "
+        pip install -r /app/test/duckdb_api/distributed_testing/requirements.test.txt &&
+        python -m duckdb_api.distributed_testing.run_coordinator_with_dashboard --host 0.0.0.0 --open-browser false
+      "
+    environment:
+      - PYTHONPATH=/app
+    networks:
+      - dtf-network
+    restart: unless-stopped
+
+  worker-cpu:
+    image: python:3.10-slim
+    container_name: dtf-worker-cpu
+    volumes:
+      - ../../../..:/app
+    working_dir: /app
+    depends_on:
+      - coordinator
+    command: >
+      bash -c "
+        pip install -r /app/test/duckdb_api/distributed_testing/requirements.test.txt &&
+        sleep 5 &&
+        python -m duckdb_api.distributed_testing.worker --coordinator ws://coordinator:8080 --worker-id cpu-worker --capabilities '{\"hardware_types\":[\"cpu\"],\"cpu_cores\":4,\"memory_gb\":8}'
+      "
+    environment:
+      - PYTHONPATH=/app
+    networks:
+      - dtf-network
+    restart: unless-stopped
+
+  worker-gpu:
+    image: python:3.10-slim
+    container_name: dtf-worker-gpu
+    volumes:
+      - ../../../..:/app
+    working_dir: /app
+    depends_on:
+      - coordinator
+    command: >
+      bash -c "
+        pip install -r /app/test/duckdb_api/distributed_testing/requirements.test.txt &&
+        sleep 5 &&
+        python -m duckdb_api.distributed_testing.worker --coordinator ws://coordinator:8080 --worker-id gpu-worker --capabilities '{\"hardware_types\":[\"cpu\",\"cuda\"],\"cuda_compute\":7.5,\"memory_gb\":16}'
+      "
+    environment:
+      - PYTHONPATH=/app
+    networks:
+      - dtf-network
+    restart: unless-stopped
+
+  worker-webgpu:
+    image: python:3.10-slim
+    container_name: dtf-worker-webgpu
+    volumes:
+      - ../../../..:/app
+    working_dir: /app
+    depends_on:
+      - coordinator
+    command: >
+      bash -c "
+        pip install -r /app/test/duckdb_api/distributed_testing/requirements.test.txt &&
+        sleep 5 &&
+        python -m duckdb_api.distributed_testing.worker --coordinator ws://coordinator:8080 --worker-id webgpu-worker --capabilities '{\"hardware_types\":[\"cpu\",\"webgpu\"],\"browsers\":[\"chrome\",\"firefox\"],\"memory_gb\":8}'
+      "
+    environment:
+      - PYTHONPATH=/app
+    networks:
+      - dtf-network
+    restart: unless-stopped
+
+  tester:
+    image: python:3.10-slim
+    container_name: dtf-tester
+    volumes:
+      - ../../../..:/app
+    working_dir: /app
+    depends_on:
+      - coordinator
+      - worker-cpu
+      - worker-gpu
+      - worker-webgpu
+    command: >
+      bash -c "
+        pip install -r /app/test/duckdb_api/distributed_testing/requirements.test.txt &&
+        sleep 10 &&
+        cd /app/test/duckdb_api/distributed_testing &&
+        ./run_all_tests.sh
+      "
+    environment:
+      - PYTHONPATH=/app
+    networks:
+      - dtf-network
+
+networks:
+  dtf-network:
+    driver: bridge

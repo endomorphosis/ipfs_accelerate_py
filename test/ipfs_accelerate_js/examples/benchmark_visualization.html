@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>WebGPU Fusion & Quantization Benchmark Visualization</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background-color: #f5f5f7;
+      color: #333;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    .header h1 {
+      font-size: 28px;
+      margin-bottom: 10px;
+    }
+    .header p {
+      font-size: 16px;
+      color: #666;
+    }
+    .charts-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      justify-content: center;
+      margin-bottom: 30px;
+    }
+    .chart-wrapper {
+      background-color: #fff;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+      padding: 20px;
+      width: calc(50% - 20px);
+      min-width: 400px;
+    }
+    .chart-wrapper h2 {
+      font-size: 18px;
+      margin-top: 0;
+      margin-bottom: 15px;
+      color: #333;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      margin-bottom: 30px;
+      background-color: #fff;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+      padding: 20px;
+    }
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      min-width: 200px;
+    }
+    .control-group label {
+      font-size: 14px;
+      margin-bottom: 5px;
+      color: #666;
+    }
+    .control-group select, .control-group input {
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid #ddd;
+      font-size: 14px;
+    }
+    button {
+      background-color: #0070c9;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    button:hover {
+      background-color: #0058a1;
+    }
+    .results {
+      background-color: #fff;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+      padding: 20px;
+      margin-top: 20px;
+    }
+    .results h2 {
+      font-size: 18px;
+      margin-top: 0;
+      margin-bottom: 15px;
+    }
+    .result-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .result-table th, .result-table td {
+      padding: 10px;
+      text-align: left;
+      border-bottom: 1px solid #eee;
+    }
+    .result-table th {
+      font-weight: 500;
+      color: #666;
+    }
+    .browser-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 16px;
+      font-weight: bold;
+      margin-bottom: 15px;
+    }
+    .browser-icon {
+      width: 24px;
+      height: 24px;
+    }
+    .tab-nav {
+      display: flex;
+      border-bottom: 1px solid #ddd;
+      margin-bottom: 20px;
+    }
+    .tab-button {
+      background: none;
+      border: none;
+      padding: 10px 20px;
+      margin-right: 5px;
+      border-radius: 6px 6px 0 0;
+      color: #666;
+      cursor: pointer;
+    }
+    .tab-button.active {
+      background-color: #f0f0f0;
+      color: #333;
+      border: 1px solid #ddd;
+      border-bottom: none;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      margin-top: 15px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 14px;
+    }
+    .legend-color {
+      width: 15px;
+      height: 15px;
+      border-radius: 3px;
+    }
+    .status {
+      font-style: italic;
+      color: #666;
+      margin-top: 10px;
+      text-align: center;
+    }
+    .benchmark-info {
+      background-color: #fff;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .benchmark-info h2 {
+      font-size: 18px;
+      margin-top: 0;
+      margin-bottom: 15px;
+    }
+    @media (max-width: 900px) {
+      .chart-wrapper {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>WebGPU Fusion & Quantization Benchmark Visualization</h1>
+    <p>Interactive visualization of WebGPU operation fusion and quantization performance across browsers</p>
+    <div class="browser-indicator">
+      <span>Current Browser:</span>
+      <span id="browser-name">Detecting...</span>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="control-group">
+      <label for="operation-type">Operation Type</label>
+      <select id="operation-type">
+        <option value="matmul">Matrix Multiplication</option>
+        <option value="matmul-relu">MatMul + ReLU Fusion</option>
+        <option value="attention">Attention Mechanism</option>
+        <option value="elementwise">Elementwise Operations</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label for="matrix-size">Matrix Size</label>
+      <select id="matrix-size">
+        <option value="small">Small (64x64)</option>
+        <option value="medium" selected>Medium (256x256)</option>
+        <option value="large">Large (1024x1024)</option>
+        <option value="xlarge">X-Large (2048x2048)</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label for="precision">Precision</label>
+      <select id="precision">
+        <option value="fp32">FP32 (32-bit float)</option>
+        <option value="int8">INT8 (8-bit quantized)</option>
+        <option value="int4" selected>INT4 (4-bit quantized)</option>
+        <option value="int3">INT3 (3-bit quantized)</option>
+        <option value="int2">INT2 (2-bit quantized)</option>
+        <option value="int1">INT1 (1-bit quantized)</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label for="iterations">Iterations</label>
+      <input type="number" id="iterations" value="20" min="1" max="100">
+    </div>
+    <button id="run-benchmark">Run Benchmark</button>
+  </div>
+
+  <div class="tab-nav">
+    <button class="tab-button active" data-tab="performance">Performance</button>
+    <button class="tab-button" data-tab="memory">Memory Usage</button>
+    <button class="tab-button" data-tab="accuracy">Accuracy</button>
+    <button class="tab-button" data-tab="comparison">Browser Comparison</button>
+  </div>
+
+  <div id="performance-tab" class="tab-content active">
+    <div class="benchmark-info">
+      <h2>About This Benchmark</h2>
+      <p>This benchmark measures the performance of matrix operations with various optimization techniques:</p>
+      <ul>
+        <li><strong>Operation Fusion:</strong> Combines multiple operations into a single shader to reduce memory transfers and kernel launches</li>
+        <li><strong>Quantization:</strong> Reduces precision of weights from 32-bit float to lower bit widths (8, 4, 3, 2, or 1 bit)</li>
+        <li><strong>Browser-Specific Optimizations:</strong> Tailored optimizations for each browser's WebGPU implementation</li>
+      </ul>
+      <p>The benchmark compares these optimizations against baseline implementations to measure their impact.</p>
+    </div>
+    
+    <div class="charts-container">
+      <div class="chart-wrapper">
+        <h2>Operation Execution Time (ms)</h2>
+        <canvas id="execution-time-chart"></canvas>
+        <div class="legend" id="execution-time-legend"></div>
+      </div>
+      <div class="chart-wrapper">
+        <h2>Speedup vs. Baseline</h2>
+        <canvas id="speedup-chart"></canvas>
+        <div class="legend" id="speedup-legend"></div>
+      </div>
+    </div>
+    
+    <div class="results">
+      <h2>Performance Results</h2>
+      <table class="result-table" id="performance-table">
+        <thead>
+          <tr>
+            <th>Optimization</th>
+            <th>Execution Time (ms)</th>
+            <th>Speedup</th>
+            <th>Operations/sec</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Results will be populated here -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="memory-tab" class="tab-content">
+    <div class="charts-container">
+      <div class="chart-wrapper">
+        <h2>Memory Usage (MB)</h2>
+        <canvas id="memory-usage-chart"></canvas>
+        <div class="legend" id="memory-usage-legend"></div>
+      </div>
+      <div class="chart-wrapper">
+        <h2>Memory Reduction vs. FP32</h2>
+        <canvas id="memory-reduction-chart"></canvas>
+        <div class="legend" id="memory-reduction-legend"></div>
+      </div>
+    </div>
+    
+    <div class="results">
+      <h2>Memory Usage Results</h2>
+      <table class="result-table" id="memory-table">
+        <thead>
+          <tr>
+            <th>Precision</th>
+            <th>Memory Usage (MB)</th>
+            <th>Reduction vs. FP32</th>
+            <th>Bits Per Weight</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Results will be populated here -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="accuracy-tab" class="tab-content">
+    <div class="charts-container">
+      <div class="chart-wrapper">
+        <h2>Accuracy vs. FP32 (%)</h2>
+        <canvas id="accuracy-chart"></canvas>
+        <div class="legend" id="accuracy-legend"></div>
+      </div>
+      <div class="chart-wrapper">
+        <h2>Error Distribution</h2>
+        <canvas id="error-distribution-chart"></canvas>
+        <div class="legend" id="error-distribution-legend"></div>
+      </div>
+    </div>
+    
+    <div class="results">
+      <h2>Accuracy Results</h2>
+      <table class="result-table" id="accuracy-table">
+        <thead>
+          <tr>
+            <th>Precision</th>
+            <th>Accuracy (%)</th>
+            <th>Avg Error</th>
+            <th>Max Error</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Results will be populated here -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="comparison-tab" class="tab-content">
+    <div class="charts-container">
+      <div class="chart-wrapper">
+        <h2>Browser Performance Comparison</h2>
+        <canvas id="browser-comparison-chart"></canvas>
+        <div class="legend" id="browser-comparison-legend"></div>
+      </div>
+      <div class="chart-wrapper">
+        <h2>Optimization Impact by Browser</h2>
+        <canvas id="optimization-impact-chart"></canvas>
+        <div class="legend" id="optimization-impact-legend"></div>
+      </div>
+    </div>
+    
+    <div class="results">
+      <h2>Browser Comparison Results</h2>
+      <table class="result-table" id="browser-comparison-table">
+        <thead>
+          <tr>
+            <th>Browser</th>
+            <th>Base Execution (ms)</th>
+            <th>Optimized Execution (ms)</th>
+            <th>Improvement</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Results will be populated here -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="status" id="status">Ready to run benchmarks</p>
+
+  <script type="module">
+    import { WebGPUBackend } from '../src/hardware/webgpu/backend.js';
+    import { WebGPUOperationFusion, FusionPattern } from '../src/hardware/webgpu/optimizations/operation_fusion.js';
+    import { BrowserType } from '../src/hardware/webgpu/browser_optimized_operations.js';
+    import { Tensor } from '../src/tensor/tensor.js';
+
+    // Initialize charts
+    const executionTimeChart = new Chart(
+      document.getElementById('execution-time-chart'),
+      {
+        type: 'bar',
+        data: {
+          labels: [],
+          datasets: []
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: 'Time (ms)'
+              }
+            }
+          }
+        }
+      }
+    );
+
+    const speedupChart = new Chart(
+      document.getElementById('speedup-chart'),
+      {
+        type: 'bar',
+        data: {
+          labels: [],
+          datasets: []
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: 'Speedup (×)'
+              }
+            }
+          }
+        }
+      }
+    );
+
+    const memoryUsageChart = new Chart(
+      document.getElementById('memory-usage-chart'),
+      {
+        type: 'bar',
+        data: {
+          labels: [],
+          datasets: []
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: 'Memory Usage (MB)'
+              }
+            }
+          }
+        }
+      }
+    );
+
+    const memoryReductionChart = new Chart(
+      document.getElementById('memory-reduction-chart'),
+      {
+        type: 'bar',
+        data: {
+          labels: [],
+          datasets: []
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: 'Memory Reduction (%)'
+              }
+            }
+          }
+        }
+      }
+    );
+
+    const accuracyChart = new Chart(
+      document.getElementById('accuracy-chart'),
+      {
+        type: 'bar',
+        data: {
+          labels: [],
+          datasets: []
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: {
+              beginAtZero: true,
+              max: 100,
+              title: {
+                display: true,
+                text: 'Accuracy (%)'
+              }
+            }
+          }
+        }
+      }
+    );
+
+    const errorDistributionChart = new Chart(
+      document.getElementById('error-distribution-chart'),
+      {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: []
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: 'Error Magnitude'
+              }
+            },
+            x: {
+              title: {
+                display: true,
+                text: 'Error Percentile'
+              }
+            }
+          }
+        }
+      }
+    );
+
+    const browserComparisonChart = new Chart(
+      document.getElementById('browser-comparison-chart'),
+      {
+        type: 'bar',
+        data: {
+          labels: ['Chrome', 'Firefox', 'Safari', 'Edge'],
+          datasets: []
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: 'Execution Time (ms)'
+              }
+            }
+          }
+        }
+      }
+    );
+
+    const optimizationImpactChart = new Chart(
+      document.getElementById('optimization-impact-chart'),
+      {
+        type: 'bar',
+        data: {
+          labels: ['Chrome', 'Firefox', 'Safari', 'Edge'],
+          datasets: []
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: 'Improvement (%)'
+              }
+            }
+          }
+        }
+      }
+    );
+
+    // Detect browser
+    function detectBrowser() {
+      const userAgent = navigator.userAgent.toLowerCase();
+      let browserName = 'Unknown';
+      
+      if (userAgent.indexOf('edge') > -1 || userAgent.indexOf('edg') > -1) {
+        browserName = 'Microsoft Edge';
+      } else if (userAgent.indexOf('chrome') > -1) {
+        browserName = 'Google Chrome';
+      } else if (userAgent.indexOf('firefox') > -1) {
+        browserName = 'Mozilla Firefox';
+      } else if (userAgent.indexOf('safari') > -1) {
+        browserName = 'Apple Safari';
+      }
+      
+      document.getElementById('browser-name').textContent = browserName;
+      return browserName;
+    }
+
+    // Tab functionality
+    document.querySelectorAll('.tab-button').forEach(button => {
+      button.addEventListener('click', () => {
+        // Remove active class from all buttons and content
+        document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        
+        // Add active class to clicked button and corresponding content
+        button.classList.add('active');
+        const tabId = button.getAttribute('data-tab') + '-tab';
+        document.getElementById(tabId).classList.add('active');
+      });
+    });
+
+    // Generate test data
+    function generateTestData(size) {
+      let dimensions;
+      switch (size) {
+        case 'small':
+          dimensions = [64, 64];
+          break;
+        case 'medium':
+          dimensions = [256, 256];
+          break;
+        case 'large':
+          dimensions = [1024, 1024];
+          break;
+        case 'xlarge':
+          dimensions = [2048, 2048];
+          break;
+        default:
+          dimensions = [256, 256];
+      }
+      
+      const [m, n] = dimensions;
+      const dataSize = m * n;
+      const data = new Array(dataSize).fill(0).map(() => Math.random() * 2 - 1);
+      
+      return {
+        dimensions,
+        data
+      };
+    }
+
+    // Convert precision string to bit width
+    function getPrecisionBits(precision) {
+      switch (precision) {
+        case 'fp32': return 32;
+        case 'int8': return 8;
+        case 'int4': return 4;
+        case 'int3': return 3;
+        case 'int2': return 2;
+        case 'int1': return 1;
+        default: return 32;
+      }
+    }
+
+    // Mock benchmark results (in a real implementation, these would come from actual WebGPU operations)
+    async function runMockBenchmark() {
+      const operationType = document.getElementById('operation-type').value;
+      const matrixSize = document.getElementById('matrix-size').value;
+      const precision = document.getElementById('precision').value;
+      const iterations = parseInt(document.getElementById('iterations').value);
+      const bitsPerWeight = getPrecisionBits(precision);
+      
+      // Update status
+      document.getElementById('status').textContent = 'Running benchmark...';
+      
+      // Generate test data
+      const { dimensions, data } = generateTestData(matrixSize);
+      const [m, n] = dimensions;
+      
+      // Mock times based on browser, operation, size, and precision
+      const browserName = detectBrowser();
+      let baselineFactor = 1.0;
+      let fusionFactor = 0.8;
+      let quantizationFactor = 0.9;
+      let browserOptFactor = 0.85;
+      let combinedFactor = 0.7;
+      
+      // Adjust factors based on browser
+      if (browserName.includes('Chrome')) {
+        baselineFactor = 1.0;
+        fusionFactor = 0.75;
+        browserOptFactor = 0.8;
+      } else if (browserName.includes('Firefox')) {
+        baselineFactor = 1.1;
+        fusionFactor = 0.7;
+        browserOptFactor = 0.75;
+      } else if (browserName.includes('Safari')) {
+        baselineFactor = 0.9;
+        fusionFactor = 0.8;
+        browserOptFactor = 0.7;
+      } else if (browserName.includes('Edge')) {
+        baselineFactor = 1.0;
+        fusionFactor = 0.8;
+        browserOptFactor = 0.78;
+      }
+      
+      // Adjust factors based on operation type
+      if (operationType === 'matmul') {
+        baselineFactor *= 1.0;
+      } else if (operationType === 'matmul-relu') {
+        baselineFactor *= 1.2;
+        fusionFactor = 0.6; // Fusion has more impact on matmul+relu
+      } else if (operationType === 'attention') {
+        baselineFactor *= 1.5;
+        fusionFactor = 0.5; // Fusion has significant impact on attention
+        combinedFactor = 0.45;
+      } else if (operationType === 'elementwise') {
+        baselineFactor *= 0.5;
+        fusionFactor = 0.85; // Fusion has less impact on simple elementwise
+        combinedFactor = 0.8;
+      }
+      
+      // Adjust factors based on matrix size
+      if (matrixSize === 'small') {
+        baselineFactor *= 0.1;
+      } else if (matrixSize === 'medium') {
+        baselineFactor *= 1.0;
+      } else if (matrixSize === 'large') {
+        baselineFactor *= 10.0;
+      } else if (matrixSize === 'xlarge') {
+        baselineFactor *= 40.0;
+      }
+      
+      // Adjust factors based on precision
+      if (bitsPerWeight < 32) {
+        // Lower precision improves memory but might slightly worsen compute time
+        quantizationFactor = 0.95 + (32 - bitsPerWeight) * 0.01;
+      }
+      
+      // Calculate mock times (ms)
+      const baselineTime = baselineFactor * 10; // Base time in ms
+      const fusionTime = baselineTime * fusionFactor;
+      const quantizationTime = baselineTime * quantizationFactor;
+      const browserOptTime = baselineTime * browserOptFactor;
+      const combinedTime = baselineTime * combinedFactor;
+      
+      // Add some randomness to make it look realistic
+      function addNoise(value) {
+        return value * (1 + (Math.random() * 0.1 - 0.05));
+      }
+      
+      const results = {
+        labels: ['Baseline', 'With Fusion', 'With Quantization', 'Browser Optimized', 'Combined'],
+        executionTimes: [
+          addNoise(baselineTime),
+          addNoise(fusionTime),
+          addNoise(quantizationTime),
+          addNoise(browserOptTime),
+          addNoise(combinedTime)
+        ],
+        speedups: [
+          1.0,
+          baselineTime / fusionTime,
+          baselineTime / quantizationTime,
+          baselineTime / browserOptTime,
+          baselineTime / combinedTime
+        ],
+        opsPerSec: [
+          1000 / baselineTime,
+          1000 / fusionTime,
+          1000 / quantizationTime,
+          1000 / browserOptTime,
+          1000 / combinedTime
+        ]
+      };
+      
+      // Calculate memory usage (MB)
+      const fp32MemoryMB = (m * n * 4) / (1024 * 1024); // 4 bytes per float32
+      const memoryResults = {
+        labels: ['FP32', 'INT8', 'INT4', 'INT3', 'INT2', 'INT1'],
+        memoryUsage: [
+          fp32MemoryMB,
+          fp32MemoryMB * 0.25,  // 8-bit = 25% of FP32
+          fp32MemoryMB * 0.125, // 4-bit = 12.5% of FP32
+          fp32MemoryMB * 0.094, // 3-bit = 9.4% of FP32
+          fp32MemoryMB * 0.0625, // 2-bit = 6.25% of FP32
+          fp32MemoryMB * 0.0325  // 1-bit = 3.25% of FP32 (extra overhead)
+        ],
+        reductions: [
+          0,
+          75,
+          87.5,
+          90.6,
+          93.75,
+          96.75
+        ],
+        bitsPerWeight: [32, 8, 4, 3, 2, 1]
+      };
+      
+      // Calculate accuracy
+      const accuracyResults = {
+        labels: ['FP32', 'INT8', 'INT4', 'INT3', 'INT2', 'INT1'],
+        accuracy: [
+          100,
+          99.5,
+          98,
+          95,
+          90,
+          80
+        ],
+        avgError: [
+          0,
+          0.002,
+          0.01,
+          0.02,
+          0.05,
+          0.1
+        ],
+        maxError: [
+          0,
+          0.01,
+          0.05,
+          0.1,
+          0.2,
+          0.4
+        ]
+      };
+      
+      // Browser comparison
+      const browserResults = {
+        labels: ['Chrome', 'Firefox', 'Safari', 'Edge'],
+        baseExecution: [
+          addNoise(10),
+          addNoise(11),
+          addNoise(9),
+          addNoise(10)
+        ],
+        optimizedExecution: [
+          addNoise(7),
+          addNoise(8),
+          addNoise(6),
+          addNoise(7.5)
+        ]
+      };
+      
+      browserResults.improvements = browserResults.baseExecution.map((base, i) => 
+        ((base - browserResults.optimizedExecution[i]) / base) * 100
+      );
+      
+      // Update status
+      document.getElementById('status').textContent = 'Benchmark completed';
+      
+      return {
+        performance: results,
+        memory: memoryResults,
+        accuracy: accuracyResults,
+        browsers: browserResults
+      };
+    }
+
+    // Update charts with benchmark results
+    function updateCharts(results) {
+      // Update execution time chart
+      executionTimeChart.data.labels = results.performance.labels;
+      executionTimeChart.data.datasets = [{
+        label: 'Execution Time (ms)',
+        data: results.performance.executionTimes,
+        backgroundColor: [
+          'rgba(54, 162, 235, 0.7)',
+          'rgba(255, 99, 132, 0.7)',
+          'rgba(255, 206, 86, 0.7)',
+          'rgba(75, 192, 192, 0.7)',
+          'rgba(153, 102, 255, 0.7)'
+        ]
+      }];
+      executionTimeChart.update();
+      
+      // Update speedup chart
+      speedupChart.data.labels = results.performance.labels;
+      speedupChart.data.datasets = [{
+        label: 'Speedup vs. Baseline',
+        data: results.performance.speedups,
+        backgroundColor: [
+          'rgba(54, 162, 235, 0.7)',
+          'rgba(255, 99, 132, 0.7)',
+          'rgba(255, 206, 86, 0.7)',
+          'rgba(75, 192, 192, 0.7)',
+          'rgba(153, 102, 255, 0.7)'
+        ]
+      }];
+      speedupChart.update();
+      
+      // Update memory usage chart
+      memoryUsageChart.data.labels = results.memory.labels;
+      memoryUsageChart.data.datasets = [{
+        label: 'Memory Usage (MB)',
+        data: results.memory.memoryUsage,
+        backgroundColor: [
+          'rgba(54, 162, 235, 0.7)',
+          'rgba(255, 99, 132, 0.7)',
+          'rgba(255, 206, 86, 0.7)',
+          'rgba(75, 192, 192, 0.7)',
+          'rgba(153, 102, 255, 0.7)',
+          'rgba(255, 159, 64, 0.7)'
+        ]
+      }];
+      memoryUsageChart.update();
+      
+      // Update memory reduction chart
+      memoryReductionChart.data.labels = results.memory.labels;
+      memoryReductionChart.data.datasets = [{
+        label: 'Memory Reduction (%)',
+        data: results.memory.reductions,
+        backgroundColor: [
+          'rgba(54, 162, 235, 0.7)',
+          'rgba(255, 99, 132, 0.7)',
+          'rgba(255, 206, 86, 0.7)',
+          'rgba(75, 192, 192, 0.7)',
+          'rgba(153, 102, 255, 0.7)',
+          'rgba(255, 159, 64, 0.7)'
+        ]
+      }];
+      memoryReductionChart.update();
+      
+      // Update accuracy chart
+      accuracyChart.data.labels = results.accuracy.labels;
+      accuracyChart.data.datasets = [{
+        label: 'Accuracy (%)',
+        data: results.accuracy.accuracy,
+        backgroundColor: [
+          'rgba(54, 162, 235, 0.7)',
+          'rgba(255, 99, 132, 0.7)',
+          'rgba(255, 206, 86, 0.7)',
+          'rgba(75, 192, 192, 0.7)',
+          'rgba(153, 102, 255, 0.7)',
+          'rgba(255, 159, 64, 0.7)'
+        ]
+      }];
+      accuracyChart.update();
+      
+      // Update error distribution chart (simplified for this demo)
+      const percentiles = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+      errorDistributionChart.data.labels = percentiles;
+      
+      // Generate fake error distributions
+      const errorDatasets = [];
+      for (let i = 0; i < results.accuracy.labels.length; i++) {
+        if (results.accuracy.labels[i] === 'FP32') continue; // Skip FP32 as it's the reference
+        
+        const maxError = results.accuracy.maxError[i];
+        const errorData = percentiles.map(p => maxError * (p / 100) ** 2); // Quadratic distribution
+        
+        errorDatasets.push({
+          label: results.accuracy.labels[i],
+          data: errorData,
+          borderColor: getColorForIndex(i),
+          fill: false
+        });
+      }
+      
+      errorDistributionChart.data.datasets = errorDatasets;
+      errorDistributionChart.update();
+      
+      // Update browser comparison chart
+      browserComparisonChart.data.datasets = [
+        {
+          label: 'Baseline',
+          data: results.browsers.baseExecution,
+          backgroundColor: 'rgba(54, 162, 235, 0.7)'
+        },
+        {
+          label: 'Optimized',
+          data: results.browsers.optimizedExecution,
+          backgroundColor: 'rgba(255, 99, 132, 0.7)'
+        }
+      ];
+      browserComparisonChart.update();
+      
+      // Update optimization impact chart
+      optimizationImpactChart.data.datasets = [{
+        label: 'Performance Improvement (%)',
+        data: results.browsers.improvements,
+        backgroundColor: 'rgba(75, 192, 192, 0.7)'
+      }];
+      optimizationImpactChart.update();
+      
+      // Update performance table
+      const perfTable = document.getElementById('performance-table').getElementsByTagName('tbody')[0];
+      perfTable.innerHTML = '';
+      for (let i = 0; i < results.performance.labels.length; i++) {
+        const row = perfTable.insertRow();
+        row.insertCell(0).textContent = results.performance.labels[i];
+        row.insertCell(1).textContent = results.performance.executionTimes[i].toFixed(2) + ' ms';
+        row.insertCell(2).textContent = results.performance.speedups[i].toFixed(2) + '×';
+        row.insertCell(3).textContent = Math.round(results.performance.opsPerSec[i]);
+      }
+      
+      // Update memory table
+      const memTable = document.getElementById('memory-table').getElementsByTagName('tbody')[0];
+      memTable.innerHTML = '';
+      for (let i = 0; i < results.memory.labels.length; i++) {
+        const row = memTable.insertRow();
+        row.insertCell(0).textContent = results.memory.labels[i];
+        row.insertCell(1).textContent = results.memory.memoryUsage[i].toFixed(2) + ' MB';
+        row.insertCell(2).textContent = results.memory.reductions[i].toFixed(2) + '%';
+        row.insertCell(3).textContent = results.memory.bitsPerWeight[i];
+      }
+      
+      // Update accuracy table
+      const accTable = document.getElementById('accuracy-table').getElementsByTagName('tbody')[0];
+      accTable.innerHTML = '';
+      for (let i = 0; i < results.accuracy.labels.length; i++) {
+        const row = accTable.insertRow();
+        row.insertCell(0).textContent = results.accuracy.labels[i];
+        row.insertCell(1).textContent = results.accuracy.accuracy[i].toFixed(2) + '%';
+        row.insertCell(2).textContent = results.accuracy.avgError[i].toFixed(5);
+        row.insertCell(3).textContent = results.accuracy.maxError[i].toFixed(5);
+      }
+      
+      // Update browser comparison table
+      const browserTable = document.getElementById('browser-comparison-table').getElementsByTagName('tbody')[0];
+      browserTable.innerHTML = '';
+      for (let i = 0; i < results.browsers.labels.length; i++) {
+        const row = browserTable.insertRow();
+        row.insertCell(0).textContent = results.browsers.labels[i];
+        row.insertCell(1).textContent = results.browsers.baseExecution[i].toFixed(2) + ' ms';
+        row.insertCell(2).textContent = results.browsers.optimizedExecution[i].toFixed(2) + ' ms';
+        row.insertCell(3).textContent = results.browsers.improvements[i].toFixed(2) + '%';
+      }
+    }
+
+    // Helper function to get color for index
+    function getColorForIndex(index) {
+      const colors = [
+        'rgba(54, 162, 235, 1)',
+        'rgba(255, 99, 132, 1)',
+        'rgba(255, 206, 86, 1)',
+        'rgba(75, 192, 192, 1)',
+        'rgba(153, 102, 255, 1)',
+        'rgba(255, 159, 64, 1)'
+      ];
+      return colors[index % colors.length];
+    }
+
+    // Run benchmark when button is clicked
+    document.getElementById('run-benchmark').addEventListener('click', async () => {
+      const results = await runMockBenchmark();
+      updateCharts(results);
+    });
+
+    // Initialize the page
+    detectBrowser();
+    runMockBenchmark().then(updateCharts);
+  </script>
+</body>
+</html>

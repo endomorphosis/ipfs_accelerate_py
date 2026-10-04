@@ -1,0 +1,1141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Browser-Optimized BERT Demo | IPFS Accelerate</title>
+  <style>
+    :root {
+      --primary-color: #0078d7;
+      --secondary-color: #00b294;
+      --success-color: #107c10;
+      --warning-color: #ff8c00;
+      --error-color: #e81123;
+      --bg-color: #f9f9f9;
+      --card-bg: #ffffff;
+      --text-color: #333333;
+      --border-color: #e0e0e0;
+    }
+    
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      line-height: 1.6;
+    }
+    
+    header {
+      background-color: var(--primary-color);
+      color: white;
+      padding: 1rem 2rem;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+    
+    h1, h2, h3, h4 {
+      margin-top: 0;
+      line-height: 1.2;
+    }
+    
+    .card {
+      background-color: var(--card-bg);
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      border: 1px solid var(--border-color);
+    }
+    
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+    
+    .card-header h3 {
+      margin: 0;
+    }
+    
+    .flex-container {
+      display: flex;
+      gap: 1.5rem;
+    }
+    
+    .flex-item {
+      flex: 1;
+    }
+    
+    .browser-info {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    
+    .browser-icon {
+      width: 24px;
+      height: 24px;
+      background-size: contain;
+      background-repeat: no-repeat;
+      background-position: center;
+    }
+    
+    .btn {
+      background-color: var(--primary-color);
+      color: white;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: background-color 0.2s;
+    }
+    
+    .btn:hover {
+      background-color: #0062ab;
+    }
+    
+    .btn:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+    
+    .btn-secondary {
+      background-color: var(--secondary-color);
+    }
+    
+    .btn-secondary:hover {
+      background-color: #008975;
+    }
+    
+    .input-group {
+      display: flex;
+      margin-bottom: 1rem;
+    }
+    
+    .input-group input {
+      flex: 1;
+      padding: 0.5rem;
+      border: 1px solid var(--border-color);
+      border-radius: 4px 0 0 4px;
+      font-size: 1rem;
+    }
+    
+    .input-group button {
+      border-radius: 0 4px 4px 0;
+      padding: 0.5rem 1rem;
+    }
+    
+    textarea {
+      width: 100%;
+      padding: 0.75rem;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 0.9rem;
+      margin-bottom: 1rem;
+      resize: vertical;
+    }
+    
+    .status-message {
+      padding: 1rem;
+      border-radius: 4px;
+      margin-bottom: 1rem;
+      font-weight: 500;
+    }
+    
+    .status-info {
+      background-color: rgba(0, 120, 215, 0.1);
+      border: 1px solid rgba(0, 120, 215, 0.3);
+      color: var(--primary-color);
+    }
+    
+    .status-error {
+      background-color: rgba(232, 17, 35, 0.1);
+      border: 1px solid rgba(232, 17, 35, 0.3);
+      color: var(--error-color);
+    }
+    
+    .status-success {
+      background-color: rgba(16, 124, 16, 0.1);
+      border: 1px solid rgba(16, 124, 16, 0.3);
+      color: var(--success-color);
+    }
+    
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 1rem;
+    }
+    
+    .tab {
+      padding: 0.75rem 1.5rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border-bottom: 2px solid transparent;
+      font-weight: 500;
+    }
+    
+    .tab.active {
+      border-bottom-color: var(--primary-color);
+      color: var(--primary-color);
+    }
+    
+    .tab-content {
+      display: none;
+    }
+    
+    .tab-content.active {
+      display: block;
+    }
+    
+    .sentiment-container {
+      margin-top: 1.5rem;
+      padding: 1.5rem;
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    
+    .sentiment-result {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+    
+    .sentiment-label {
+      font-size: 1.5rem;
+      font-weight: bold;
+      margin-bottom: 0.5rem;
+    }
+    
+    .sentiment-score {
+      font-size: 1.1rem;
+      margin-bottom: 0.5rem;
+    }
+    
+    .sentiment-gauge {
+      width: 100%;
+      height: 24px;
+      background: linear-gradient(to right, var(--error-color), var(--warning-color), var(--success-color));
+      border-radius: 12px;
+      margin: 1rem 0;
+      position: relative;
+    }
+    
+    .sentiment-marker {
+      position: absolute;
+      top: -18px;
+      width: 16px;
+      height: 16px;
+      background-color: var(--primary-color);
+      border-radius: 50%;
+      transform: translateX(-50%);
+      margin-left: 50%;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    
+    .sentiment-scale {
+      display: flex;
+      justify-content: space-between;
+      width: 100%;
+      margin-top: 4px;
+    }
+    
+    .scale-label {
+      font-size: 0.8rem;
+      color: #666;
+    }
+    
+    .embedding-preview {
+      font-family: monospace;
+      white-space: pre-wrap;
+      font-size: 0.8rem;
+      padding: 1rem;
+      background-color: #f5f5f5;
+      border-radius: 4px;
+      overflow-x: auto;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    
+    .qa-container {
+      margin-top: 1.5rem;
+    }
+    
+    .qa-result {
+      padding: 1rem;
+      background-color: #f5f5f5;
+      border-radius: 4px;
+      margin-top: 1rem;
+    }
+    
+    .qa-highlight {
+      background-color: rgba(0, 120, 215, 0.15);
+      padding: 0.2rem;
+      border-radius: 2px;
+    }
+    
+    .performance-container {
+      margin-top: 1.5rem;
+    }
+    
+    .performance-metrics {
+      display: flex;
+      justify-content: space-around;
+      margin: 1.5rem 0;
+    }
+    
+    .metric-card {
+      text-align: center;
+      padding: 1.5rem;
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+      width: 20%;
+    }
+    
+    .metric-value {
+      font-size: 2rem;
+      font-weight: bold;
+      color: var(--primary-color);
+      margin: 0.5rem 0;
+    }
+    
+    .metric-label {
+      font-size: 0.9rem;
+      color: #666;
+    }
+    
+    .performance-chart {
+      height: 300px;
+      margin: 1.5rem 0;
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+      padding: 1.5rem;
+    }
+    
+    .chart {
+      width: 100%;
+      height: 240px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      gap: 2rem;
+    }
+    
+    .chart-bar {
+      width: 80px;
+      background-color: var(--primary-color);
+      border-radius: 4px 4px 0 0;
+      position: relative;
+      transition: height 1s ease;
+    }
+    
+    .chart-bar.standard {
+      background-color: #888;
+    }
+    
+    .chart-label {
+      position: absolute;
+      bottom: -24px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 0.8rem;
+    }
+    
+    .chart-value {
+      position: absolute;
+      top: -24px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 0.8rem;
+      font-weight: bold;
+    }
+    
+    .speedup {
+      text-align: center;
+      font-size: 1.2rem;
+      font-weight: bold;
+      color: var(--success-color);
+      margin-top: 2rem;
+    }
+    
+    .browser-capabilities {
+      max-height: 300px;
+      overflow-y: auto;
+      font-family: monospace;
+      white-space: pre-wrap;
+      font-size: 0.8rem;
+      padding: 1rem;
+      background-color: #333;
+      color: white;
+      border-radius: 4px;
+    }
+    
+    @media (max-width: 768px) {
+      .flex-container {
+        flex-direction: column;
+      }
+      
+      .performance-metrics {
+        flex-direction: column;
+        gap: 1rem;
+      }
+      
+      .metric-card {
+        width: auto;
+      }
+      
+      .chart {
+        gap: 1rem;
+      }
+      
+      .chart-bar {
+        width: 60px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Browser-Optimized BERT Demo</h1>
+    <p>Demonstrating optimized NLP capabilities with WebGPU acceleration</p>
+  </header>
+  
+  <div class="container">
+    <div class="card">
+      <div class="card-header">
+        <h3>Browser Capabilities</h3>
+        <button id="detect-capabilities-btn" class="btn">Detect Capabilities</button>
+      </div>
+      
+      <div id="browser-status" class="status-message status-info">
+        Click "Detect Capabilities" to check browser support for WebGPU and optimizations
+      </div>
+      
+      <div id="browser-capabilities" class="browser-capabilities" style="display: none;"></div>
+    </div>
+    
+    <div class="tabs">
+      <div class="tab active" data-tab="embeddings">Text Embeddings</div>
+      <div class="tab" data-tab="sentiment">Sentiment Analysis</div>
+      <div class="tab" data-tab="qa">Question Answering</div>
+      <div class="tab" data-tab="performance">Performance</div>
+    </div>
+    
+    <div class="tab-content active" id="embeddings">
+      <div class="card">
+        <div class="card-header">
+          <h3>Generate Text Embeddings</h3>
+        </div>
+        
+        <p>Generate high-quality embeddings from text using BERT with browser-optimized WebGPU acceleration</p>
+        
+        <textarea id="embedding-text" rows="4" placeholder="Enter text to generate BERT embeddings">This is an example text that will be converted into a vector representation using BERT.</textarea>
+        
+        <button id="generate-embedding-btn" class="btn">Generate Embedding</button>
+        
+        <div id="embedding-status" class="status-message status-info" style="margin-top: 1rem;">
+          Enter text and click "Generate Embedding" to create a vector representation
+        </div>
+        
+        <div id="embedding-result" style="display: none; margin-top: 1rem;">
+          <h4>Embedding Result:</h4>
+          <div id="embedding-preview" class="embedding-preview"></div>
+          
+          <div id="embedding-metrics" style="margin-top: 1rem;">
+            <div><strong>Dimensions:</strong> <span id="embedding-dimensions">768</span></div>
+            <div><strong>Processing Time:</strong> <span id="embedding-time">0</span> ms</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="tab-content" id="sentiment">
+      <div class="card">
+        <div class="card-header">
+          <h3>Sentiment Analysis</h3>
+        </div>
+        
+        <p>Analyze the sentiment of text using BERT with browser-optimized WebGPU acceleration</p>
+        
+        <textarea id="sentiment-text" rows="4" placeholder="Enter text for sentiment analysis">This movie was fantastic! I really enjoyed it and would recommend it to everyone.</textarea>
+        
+        <button id="analyze-sentiment-btn" class="btn">Analyze Sentiment</button>
+        
+        <div id="sentiment-status" class="status-message status-info" style="margin-top: 1rem;">
+          Enter text and click "Analyze Sentiment" to determine the sentiment
+        </div>
+        
+        <div id="sentiment-container" class="sentiment-container" style="display: none;">
+          <div class="sentiment-result">
+            <div class="sentiment-label" id="sentiment-label">Positive</div>
+            <div class="sentiment-score">Confidence: <span id="sentiment-score">95</span>%</div>
+          </div>
+          
+          <div class="sentiment-gauge">
+            <div class="sentiment-marker" id="sentiment-marker" style="margin-left: 75%;"></div>
+          </div>
+          
+          <div class="sentiment-scale">
+            <div class="scale-label">Negative</div>
+            <div class="scale-label">Neutral</div>
+            <div class="scale-label">Positive</div>
+          </div>
+          
+          <div id="sentiment-metrics" style="margin-top: 1.5rem; text-align: center;">
+            <div>Processing Time: <span id="sentiment-time">0</span> ms</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="tab-content" id="qa">
+      <div class="card">
+        <div class="card-header">
+          <h3>Question Answering</h3>
+        </div>
+        
+        <p>Answer questions based on context using BERT with browser-optimized WebGPU acceleration</p>
+        
+        <div>
+          <h4>Context:</h4>
+          <textarea id="qa-context" rows="6" placeholder="Enter contextual information">The Eiffel Tower is a wrought-iron lattice tower on the Champ de Mars in Paris, France. It is named after the engineer Gustave Eiffel, whose company designed and built the tower. Locally nicknamed "La dame de fer" (French for "Iron Lady"), it was constructed from 1887 to 1889 as the entrance to the 1889 World's Fair. It is 330 metres (1,083 ft) tall, about the same height as an 81-storey building, and the tallest structure in Paris. Its base is square, measuring 125 metres (410 ft) on each side.</textarea>
+          
+          <h4>Question:</h4>
+          <textarea id="qa-question" rows="2" placeholder="Enter your question">Who designed the Eiffel Tower?</textarea>
+          
+          <button id="answer-question-btn" class="btn">Answer Question</button>
+        </div>
+        
+        <div id="qa-status" class="status-message status-info" style="margin-top: 1rem;">
+          Enter a context and question, then click "Answer Question" to find the answer
+        </div>
+        
+        <div id="qa-result" class="qa-result" style="display: none;">
+          <h4>Answer:</h4>
+          <div id="qa-answer"></div>
+          
+          <div id="qa-metrics" style="margin-top: 1rem;">
+            <div>Confidence Score: <span id="qa-confidence">0</span></div>
+            <div>Processing Time: <span id="qa-time">0</span> ms</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="tab-content" id="performance">
+      <div class="card">
+        <div class="card-header">
+          <h3>Performance Benchmark</h3>
+        </div>
+        
+        <p>Compare optimized vs. standard implementations of BERT with WebGPU acceleration</p>
+        
+        <textarea id="benchmark-text" rows="4" placeholder="Enter text for benchmarking">This is an example text that will be used to benchmark the performance of BERT with browser-optimized WebGPU acceleration compared to standard implementations.</textarea>
+        
+        <button id="run-benchmark-btn" class="btn">Run Benchmark</button>
+        
+        <div id="benchmark-status" class="status-message status-info" style="margin-top: 1rem;">
+          Enter text and click "Run Benchmark" to compare performance
+        </div>
+        
+        <div id="performance-container" class="performance-container" style="display: none;">
+          <div class="performance-metrics">
+            <div class="metric-card">
+              <div class="metric-label">Optimized Time</div>
+              <div class="metric-value" id="optimized-time">0</div>
+              <div class="metric-label">milliseconds</div>
+            </div>
+            
+            <div class="metric-card">
+              <div class="metric-label">Standard Time</div>
+              <div class="metric-value" id="standard-time">0</div>
+              <div class="metric-label">milliseconds</div>
+            </div>
+            
+            <div class="metric-card">
+              <div class="metric-label">Browser</div>
+              <div class="metric-value" id="browser-type">Chrome</div>
+              <div class="metric-label" id="browser-version">100</div>
+            </div>
+          </div>
+          
+          <div class="performance-chart">
+            <h4>Performance Comparison</h4>
+            <div class="chart">
+              <div class="chart-bar optimized" id="optimized-bar" style="height: 0%;">
+                <div class="chart-value" id="optimized-bar-value">0 ms</div>
+                <div class="chart-label">Optimized</div>
+              </div>
+              
+              <div class="chart-bar standard" id="standard-bar" style="height: 0%;">
+                <div class="chart-value" id="standard-bar-value">0 ms</div>
+                <div class="chart-label">Standard</div>
+              </div>
+            </div>
+            
+            <div class="speedup" id="speedup-text">0x faster with browser optimizations</div>
+          </div>
+          
+          <div class="card" style="margin-top: 1.5rem;">
+            <h4>Operation Breakdown</h4>
+            <table style="width: 100%; border-collapse: collapse;">
+              <thead>
+                <tr>
+                  <th style="text-align: left; padding: 0.5rem; border-bottom: 1px solid #ddd;">Operation</th>
+                  <th style="text-align: right; padding: 0.5rem; border-bottom: 1px solid #ddd;">Optimized (ms)</th>
+                  <th style="text-align: right; padding: 0.5rem; border-bottom: 1px solid #ddd;">Standard (ms)</th>
+                  <th style="text-align: right; padding: 0.5rem; border-bottom: 1px solid #ddd;">Speedup</th>
+                </tr>
+              </thead>
+              <tbody id="operation-breakdown">
+                <!-- Operation breakdown will be inserted here -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    // Initialize the demo
+    document.addEventListener('DOMContentLoaded', function() {
+      // Get DOM elements
+      const detectCapabilitiesBtn = document.getElementById('detect-capabilities-btn');
+      const browserStatus = document.getElementById('browser-status');
+      const browserCapabilities = document.getElementById('browser-capabilities');
+      
+      const embeddingText = document.getElementById('embedding-text');
+      const generateEmbeddingBtn = document.getElementById('generate-embedding-btn');
+      const embeddingStatus = document.getElementById('embedding-status');
+      const embeddingResult = document.getElementById('embedding-result');
+      const embeddingPreview = document.getElementById('embedding-preview');
+      const embeddingDimensions = document.getElementById('embedding-dimensions');
+      const embeddingTime = document.getElementById('embedding-time');
+      
+      const sentimentText = document.getElementById('sentiment-text');
+      const analyzeSentimentBtn = document.getElementById('analyze-sentiment-btn');
+      const sentimentStatus = document.getElementById('sentiment-status');
+      const sentimentContainer = document.getElementById('sentiment-container');
+      const sentimentLabel = document.getElementById('sentiment-label');
+      const sentimentScore = document.getElementById('sentiment-score');
+      const sentimentMarker = document.getElementById('sentiment-marker');
+      const sentimentTime = document.getElementById('sentiment-time');
+      
+      const qaContext = document.getElementById('qa-context');
+      const qaQuestion = document.getElementById('qa-question');
+      const answerQuestionBtn = document.getElementById('answer-question-btn');
+      const qaStatus = document.getElementById('qa-status');
+      const qaResult = document.getElementById('qa-result');
+      const qaAnswer = document.getElementById('qa-answer');
+      const qaConfidence = document.getElementById('qa-confidence');
+      const qaTime = document.getElementById('qa-time');
+      
+      const benchmarkText = document.getElementById('benchmark-text');
+      const runBenchmarkBtn = document.getElementById('run-benchmark-btn');
+      const benchmarkStatus = document.getElementById('benchmark-status');
+      const performanceContainer = document.getElementById('performance-container');
+      const optimizedTime = document.getElementById('optimized-time');
+      const standardTime = document.getElementById('standard-time');
+      const browserType = document.getElementById('browser-type');
+      const browserVersion = document.getElementById('browser-version');
+      const optimizedBar = document.getElementById('optimized-bar');
+      const standardBar = document.getElementById('standard-bar');
+      const optimizedBarValue = document.getElementById('optimized-bar-value');
+      const standardBarValue = document.getElementById('standard-bar-value');
+      const speedupText = document.getElementById('speedup-text');
+      const operationBreakdown = document.getElementById('operation-breakdown');
+      
+      const tabs = document.querySelectorAll('.tab');
+      const tabContents = document.querySelectorAll('.tab-content');
+      
+      // Initialize WebGPU variables
+      let webGPUSupported = false;
+      let webGPUDevice = null;
+      let browserCapabilitiesData = null;
+      
+      // Check for WebGPU support
+      function checkWebGPUSupport() {
+        return !!navigator.gpu;
+      }
+      
+      // Detect browser type
+      function detectBrowserType() {
+        const userAgent = navigator.userAgent.toLowerCase();
+        
+        if (userAgent.indexOf('edg') > -1) return 'Edge';
+        if (userAgent.indexOf('chrome') > -1) return 'Chrome';
+        if (userAgent.indexOf('firefox') > -1) return 'Firefox';
+        if (userAgent.indexOf('safari') > -1) return 'Safari';
+        
+        return 'Unknown';
+      }
+      
+      // Initialize WebGPU
+      async function initializeWebGPU() {
+        if (!checkWebGPUSupport()) {
+          return false;
+        }
+        
+        try {
+          const adapter = await navigator.gpu.requestAdapter({
+            powerPreference: 'high-performance'
+          });
+          
+          if (!adapter) {
+            return false;
+          }
+          
+          webGPUDevice = await adapter.requestDevice();
+          webGPUSupported = true;
+          
+          return true;
+        } catch (error) {
+          console.error('Error initializing WebGPU:', error);
+          return false;
+        }
+      }
+      
+      // Detect browser capabilities
+      async function detectCapabilities() {
+        browserStatus.className = 'status-message status-info';
+        browserStatus.textContent = 'Detecting browser capabilities...';
+        browserCapabilities.style.display = 'none';
+        
+        const webGPUInitialized = await initializeWebGPU();
+        
+        if (!webGPUInitialized) {
+          browserStatus.className = 'status-message status-error';
+          browserStatus.textContent = 'WebGPU is not supported in your browser. Please try using Chrome, Edge, or Safari (Technology Preview).';
+          return;
+        }
+        
+        // Mock browser capabilities data
+        const browserName = detectBrowserType();
+        const browserVersionMatch = navigator.userAgent.match(/(?:chrome|firefox|safari|edg(?:e|ios|a)?)\/(\d+)/i);
+        const browserVersionNumber = browserVersionMatch ? browserVersionMatch[1] : 'Unknown';
+        
+        browserCapabilitiesData = {
+          browserType: browserName.toLowerCase(),
+          browserVersion: browserVersionNumber,
+          gpuVendor: 'Simulated GPU Vendor',
+          gpuModel: 'Simulated GPU Model',
+          wgslVersion: '1.0',
+          optimalWorkgroupSizes: {
+            matmul: browserName === 'Firefox' ? [16, 16, 1] : 
+                    browserName === 'Safari' ? [4, 4, 1] : [8, 8, 1],
+            reduction: browserName === 'Firefox' ? [128, 1, 1] : 
+                     browserName === 'Safari' ? [64, 1, 1] : [256, 1, 1],
+            elementwise: browserName === 'Safari' ? [64, 1, 1] : [256, 1, 1],
+            attention: browserName === 'Firefox' ? [64, 1, 1] : 
+                     browserName === 'Safari' ? [32, 1, 1] : [128, 1, 1]
+          },
+          flashAttentionSupported: browserName === 'Chrome' || browserName === 'Edge',
+          fusedOperationsSupported: browserName !== 'Safari',
+          sharedMemorySupported: browserName !== 'Safari',
+          storageBufferOffsetAlignment: 256,
+          maxStorageBufferBindingSize: 1 << 27, // 128MB
+          shaderFeatures: {
+            f16: browserName !== 'Safari',
+            shader2: browserName === 'Chrome' || browserName === 'Edge',
+            atomics: true
+          }
+        };
+        
+        // Display capabilities
+        browserCapabilities.textContent = JSON.stringify(browserCapabilitiesData, null, 2);
+        browserCapabilities.style.display = 'block';
+        
+        browserStatus.className = 'status-message status-success';
+        browserStatus.textContent = `WebGPU is supported in your browser (${browserName} ${browserVersionNumber})! Browser-optimized BERT can use hardware acceleration for optimal performance.`;
+      }
+      
+      // Mock BERT embedding function
+      async function generateEmbedding(text) {
+        embeddingStatus.className = 'status-message status-info';
+        embeddingStatus.textContent = 'Generating embedding...';
+        embeddingResult.style.display = 'none';
+        
+        if (!webGPUSupported) {
+          embeddingStatus.className = 'status-message status-error';
+          embeddingStatus.textContent = 'WebGPU is not supported in your browser. Please detect browser capabilities first.';
+          return;
+        }
+        
+        // Simulate processing time (faster with optimizations)
+        const baseTime = 200; // Base time in ms
+        const browserFactor = 
+          browserCapabilitiesData.browserType === 'chrome' ? 0.8 :
+          browserCapabilitiesData.browserType === 'edge' ? 0.85 :
+          browserCapabilitiesData.browserType === 'firefox' ? 1.1 :
+          browserCapabilitiesData.browserType === 'safari' ? 1.4 : 1.0;
+        
+        const processingTime = baseTime * browserFactor;
+        
+        // Simulate processing delay
+        await new Promise(resolve => setTimeout(resolve, processingTime));
+        
+        // Generate a mock embedding (768 dimensions for BERT base)
+        const dimensions = 768;
+        const embedding = new Float32Array(dimensions);
+        for (let i = 0; i < dimensions; i++) {
+          embedding[i] = (Math.random() - 0.5) * 2; // Random values between -1 and 1
+        }
+        
+        // Display results
+        const displayDimensions = Math.min(10, dimensions);
+        let previewText = `// Generated embedding with ${dimensions} dimensions (showing first ${displayDimensions})\n[\n`;
+        
+        for (let i = 0; i < displayDimensions; i++) {
+          previewText += `  ${embedding[i].toFixed(6)}${i < displayDimensions - 1 ? ',' : ''}\n`;
+        }
+        
+        if (displayDimensions < dimensions) {
+          previewText += '  // ... additional dimensions not shown\n';
+        }
+        
+        previewText += ']\n\n// This embedding can be used for semantic search, clustering, or as input to other models';
+        
+        embeddingPreview.textContent = previewText;
+        embeddingDimensions.textContent = dimensions;
+        embeddingTime.textContent = processingTime.toFixed(2);
+        
+        embeddingStatus.className = 'status-message status-success';
+        embeddingStatus.textContent = 'Embedding generated successfully!';
+        embeddingResult.style.display = 'block';
+        
+        return embedding;
+      }
+      
+      // Mock sentiment analysis function
+      async function analyzeSentiment(text) {
+        sentimentStatus.className = 'status-message status-info';
+        sentimentStatus.textContent = 'Analyzing sentiment...';
+        sentimentContainer.style.display = 'none';
+        
+        if (!webGPUSupported) {
+          sentimentStatus.className = 'status-message status-error';
+          sentimentStatus.textContent = 'WebGPU is not supported in your browser. Please detect browser capabilities first.';
+          return;
+        }
+        
+        // Simulate processing time (faster with optimizations)
+        const baseTime = 180; // Base time in ms
+        const browserFactor = 
+          browserCapabilitiesData.browserType === 'chrome' ? 0.8 :
+          browserCapabilitiesData.browserType === 'edge' ? 0.85 :
+          browserCapabilitiesData.browserType === 'firefox' ? 1.1 :
+          browserCapabilitiesData.browserType === 'safari' ? 1.4 : 1.0;
+        
+        const processingTime = baseTime * browserFactor;
+        
+        // Simulate processing delay
+        await new Promise(resolve => setTimeout(resolve, processingTime));
+        
+        // Simple mock sentiment analysis
+        const lowerText = text.toLowerCase();
+        const positiveWords = ['good', 'great', 'excellent', 'fantastic', 'amazing', 'wonderful', 'love', 'best', 'happy', 'joy'];
+        const negativeWords = ['bad', 'terrible', 'awful', 'horrible', 'hate', 'worst', 'sad', 'disappointing', 'failure', 'poor'];
+        
+        let positiveScore = 0;
+        let negativeScore = 0;
+        
+        positiveWords.forEach(word => {
+          const regex = new RegExp(`\\b${word}\\b`, 'gi');
+          const matches = lowerText.match(regex);
+          if (matches) {
+            positiveScore += matches.length;
+          }
+        });
+        
+        negativeWords.forEach(word => {
+          const regex = new RegExp(`\\b${word}\\b`, 'gi');
+          const matches = lowerText.match(regex);
+          if (matches) {
+            negativeScore += matches.length;
+          }
+        });
+        
+        // Default slightly positive if no sentiment words found
+        if (positiveScore === 0 && negativeScore === 0) {
+          positiveScore = 1;
+        }
+        
+        const totalScore = positiveScore + negativeScore;
+        const normalizedScore = (positiveScore / totalScore) * 100;
+        
+        // Determine sentiment label
+        let sentiment;
+        if (normalizedScore > 60) {
+          sentiment = 'Positive';
+        } else if (normalizedScore < 40) {
+          sentiment = 'Negative';
+        } else {
+          sentiment = 'Neutral';
+        }
+        
+        // Display results
+        sentimentLabel.textContent = sentiment;
+        sentimentScore.textContent = normalizedScore.toFixed(1);
+        sentimentMarker.style.marginLeft = `${normalizedScore}%`;
+        sentimentTime.textContent = processingTime.toFixed(2);
+        
+        sentimentStatus.className = 'status-message status-success';
+        sentimentStatus.textContent = 'Sentiment analysis completed successfully!';
+        sentimentContainer.style.display = 'block';
+        
+        return { sentiment, score: normalizedScore };
+      }
+      
+      // Mock question answering function
+      async function answerQuestion(context, question) {
+        qaStatus.className = 'status-message status-info';
+        qaStatus.textContent = 'Answering question...';
+        qaResult.style.display = 'none';
+        
+        if (!webGPUSupported) {
+          qaStatus.className = 'status-message status-error';
+          qaStatus.textContent = 'WebGPU is not supported in your browser. Please detect browser capabilities first.';
+          return;
+        }
+        
+        // Simulate processing time (faster with optimizations)
+        const baseTime = 250; // Base time in ms
+        const browserFactor = 
+          browserCapabilitiesData.browserType === 'chrome' ? 0.8 :
+          browserCapabilitiesData.browserType === 'edge' ? 0.85 :
+          browserCapabilitiesData.browserType === 'firefox' ? 1.1 :
+          browserCapabilitiesData.browserType === 'safari' ? 1.4 : 1.0;
+        
+        const processingTime = baseTime * browserFactor;
+        
+        // Simulate processing delay
+        await new Promise(resolve => setTimeout(resolve, processingTime));
+        
+        // Simple mock QA system
+        // For a real implementation, we would use actual BERT model for QA
+        
+        // Convert context and question to lowercase for simpler matching
+        const lowerContext = context.toLowerCase();
+        const lowerQuestion = question.toLowerCase();
+        
+        // Define keywords to look for in the question
+        const whoKeywords = ['who', 'person', 'people', 'name'];
+        const whatKeywords = ['what', 'thing', 'object'];
+        const whenKeywords = ['when', 'time', 'date', 'year'];
+        const whereKeywords = ['where', 'location', 'place'];
+        const howKeywords = ['how', 'method', 'way'];
+        
+        // Check what type of question it is
+        let questionType = 'unknown';
+        
+        if (whoKeywords.some(keyword => lowerQuestion.includes(keyword))) {
+          questionType = 'who';
+        } else if (whatKeywords.some(keyword => lowerQuestion.includes(keyword))) {
+          questionType = 'what';
+        } else if (whenKeywords.some(keyword => lowerQuestion.includes(keyword))) {
+          questionType = 'when';
+        } else if (whereKeywords.some(keyword => lowerQuestion.includes(keyword))) {
+          questionType = 'where';
+        } else if (howKeywords.some(keyword => lowerQuestion.includes(keyword))) {
+          questionType = 'how';
+        }
+        
+        // Extract keywords from the question (excluding common words)
+        const commonWords = ['a', 'an', 'the', 'is', 'was', 'are', 'were', 'do', 'does', 'did', 'to', 'in', 'on', 'at', 'by', 'with', 'who', 'what', 'when', 'where', 'why', 'how'];
+        const questionWords = lowerQuestion.split(/\W+/).filter(word => word.length > 2 && !commonWords.includes(word));
+        
+        // Find sentences in the context that contain question keywords
+        const sentences = context.replace(/([.!?])\s*(?=[A-Z])/g, "$1|").split("|");
+        const relevantSentences = sentences.filter(sentence => {
+          const lowerSentence = sentence.toLowerCase();
+          return questionWords.some(word => lowerSentence.includes(word));
+        });
+        
+        let answer = '';
+        let confidence = 0;
+        
+        if (relevantSentences.length > 0) {
+          // Special case for Eiffel Tower example
+          if (lowerQuestion.includes('eiffel') && lowerQuestion.includes('tower')) {
+            if (lowerQuestion.includes('design') || lowerQuestion.includes('built') || lowerQuestion.includes('engineer')) {
+              answer = "The Eiffel Tower was designed by the engineer Gustave Eiffel, whose company designed and built the tower.";
+              confidence = 0.92;
+            } else if (lowerQuestion.includes('height') || lowerQuestion.includes('tall')) {
+              answer = "The Eiffel Tower is 330 metres (1,083 ft) tall, about the same height as an 81-storey building.";
+              confidence = 0.89;
+            } else if (lowerQuestion.includes('nickname')) {
+              answer = 'The Eiffel Tower is locally nicknamed "La dame de fer" (French for "Iron Lady").';
+              confidence = 0.95;
+            } else if (lowerQuestion.includes('when') || lowerQuestion.includes('built') || lowerQuestion.includes('constructed')) {
+              answer = "The Eiffel Tower was constructed from 1887 to 1889 as the entrance to the 1889 World's Fair.";
+              confidence = 0.91;
+            } else {
+              // Default answer for other Eiffel Tower questions
+              answer = relevantSentences[0].trim();
+              confidence = 0.78;
+            }
+          } else {
+            // Generic answer based on most relevant sentence
+            answer = relevantSentences[0].trim();
+            confidence = 0.75;
+          }
+        } else {
+          // No relevant sentences found
+          answer = "I don't have enough information to answer that question based on the provided context.";
+          confidence = 0.3;
+        }
+        
+        // Display results
+        qaAnswer.textContent = answer;
+        qaConfidence.textContent = confidence.toFixed(2);
+        qaTime.textContent = processingTime.toFixed(2);
+        
+        qaStatus.className = 'status-message status-success';
+        qaStatus.textContent = 'Question answered successfully!';
+        qaResult.style.display = 'block';
+        
+        return { answer, confidence };
+      }
+      
+      // Mock performance benchmark function
+      async function runBenchmark(text) {
+        benchmarkStatus.className = 'status-message status-info';
+        benchmarkStatus.textContent = 'Running performance benchmark...';
+        performanceContainer.style.display = 'none';
+        
+        if (!webGPUSupported) {
+          benchmarkStatus.className = 'status-message status-error';
+          benchmarkStatus.textContent = 'WebGPU is not supported in your browser. Please detect browser capabilities first.';
+          return;
+        }
+        
+        // Simulate processing delay for more realistic experience
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Calculate simulated times based on browser
+        const baseOptimizedTime = 
+          browserCapabilitiesData.browserType === 'chrome' ? 48.2 :
+          browserCapabilitiesData.browserType === 'edge' ? 47.8 :
+          browserCapabilitiesData.browserType === 'firefox' ? 74.3 :
+          browserCapabilitiesData.browserType === 'safari' ? 97.8 : 60.0;
+        
+        const baseStandardTime = 
+          browserCapabilitiesData.browserType === 'chrome' ? 120.5 :
+          browserCapabilitiesData.browserType === 'edge' ? 115.3 :
+          browserCapabilitiesData.browserType === 'firefox' ? 148.7 :
+          browserCapabilitiesData.browserType === 'safari' ? 183.4 : 140.0;
+        
+        // Add some randomness
+        const randomFactor = 0.95 + (Math.random() * 0.1); // 0.95 to 1.05
+        const optimizedTimeValue = baseOptimizedTime * randomFactor;
+        const standardTimeValue = baseStandardTime * randomFactor;
+        
+        // Calculate speedup
+        const speedupValue = standardTimeValue / optimizedTimeValue;
+        
+        // Display results
+        optimizedTime.textContent = optimizedTimeValue.toFixed(1);
+        standardTime.textContent = standardTimeValue.toFixed(1);
+        browserType.textContent = browserCapabilitiesData.browserType.charAt(0).toUpperCase() + 
+                                browserCapabilitiesData.browserType.slice(1);
+        browserVersion.textContent = browserCapabilitiesData.browserVersion;
+        
+        // Calculate bar heights (percentage of max)
+        const maxTime = Math.max(optimizedTimeValue, standardTimeValue);
+        const optimizedBarHeight = (optimizedTimeValue / maxTime * 100).toFixed(0);
+        const standardBarHeight = (standardTimeValue / maxTime * 100).toFixed(0);
+        
+        // Update chart
+        optimizedBar.style.height = `${optimizedBarHeight}%`;
+        standardBar.style.height = `${standardBarHeight}%`;
+        optimizedBarValue.textContent = `${optimizedTimeValue.toFixed(1)} ms`;
+        standardBarValue.textContent = `${standardTimeValue.toFixed(1)} ms`;
+        speedupText.textContent = `${speedupValue.toFixed(2)}x faster with browser optimizations`;
+        
+        // Generate operation breakdown
+        const operations = [
+          { name: 'Self-Attention', optimized: baseOptimizedTime * 0.4, standard: baseStandardTime * 0.5 },
+          { name: 'Feed-Forward', optimized: baseOptimizedTime * 0.3, standard: baseStandardTime * 0.25 },
+          { name: 'Layer Normalization', optimized: baseOptimizedTime * 0.15, standard: baseStandardTime * 0.15 },
+          { name: 'Embedding Lookup', optimized: baseOptimizedTime * 0.1, standard: baseStandardTime * 0.07 },
+          { name: 'Softmax', optimized: baseOptimizedTime * 0.05, standard: baseStandardTime * 0.03 }
+        ];
+        
+        operationBreakdown.innerHTML = '';
+        operations.forEach(op => {
+          const speedup = op.standard / op.optimized;
+          const speedupClass = speedup >= 2.5 ? 'success-color' : speedup >= 1.5 ? 'primary-color' : 'text-color';
+          
+          operationBreakdown.innerHTML += `
+            <tr>
+              <td style="padding: 0.5rem; border-bottom: 1px solid #ddd;">${op.name}</td>
+              <td style="text-align: right; padding: 0.5rem; border-bottom: 1px solid #ddd;">${op.optimized.toFixed(1)}</td>
+              <td style="text-align: right; padding: 0.5rem; border-bottom: 1px solid #ddd;">${op.standard.toFixed(1)}</td>
+              <td style="text-align: right; padding: 0.5rem; border-bottom: 1px solid #ddd; color: var(--${speedupClass});">${speedup.toFixed(2)}x</td>
+            </tr>
+          `;
+        });
+        
+        benchmarkStatus.className = 'status-message status-success';
+        benchmarkStatus.textContent = 'Benchmark completed successfully!';
+        performanceContainer.style.display = 'block';
+      }
+      
+      // Tab switching function
+      function switchTab(tabId) {
+        tabs.forEach(tab => {
+          tab.classList.toggle('active', tab.getAttribute('data-tab') === tabId);
+        });
+        
+        tabContents.forEach(content => {
+          content.classList.toggle('active', content.getAttribute('id') === tabId);
+        });
+      }
+      
+      // Initialize WebGPU status
+      if (checkWebGPUSupport()) {
+        browserStatus.textContent = 'WebGPU is supported in this browser! Click "Detect Capabilities" for detailed information.';
+      } else {
+        browserStatus.className = 'status-message status-error';
+        browserStatus.textContent = 'WebGPU is not supported in your browser. Please try using Chrome, Edge, or Safari (Technology Preview).';
+        detectCapabilitiesBtn.disabled = true;
+      }
+      
+      // Add event listeners
+      detectCapabilitiesBtn.addEventListener('click', detectCapabilities);
+      generateEmbeddingBtn.addEventListener('click', () => generateEmbedding(embeddingText.value));
+      analyzeSentimentBtn.addEventListener('click', () => analyzeSentiment(sentimentText.value));
+      answerQuestionBtn.addEventListener('click', () => answerQuestion(qaContext.value, qaQuestion.value));
+      runBenchmarkBtn.addEventListener('click', () => runBenchmark(benchmarkText.value));
+      
+      // Add tab click event listeners
+      tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+          const tabId = tab.getAttribute('data-tab');
+          if (tabId) {
+            switchTab(tabId);
+          }
+        });
+      });
+    });
+  </script>
+</body>
+</html>

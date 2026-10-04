@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vision Transformer Example - IPFS Accelerate JS</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .example-section {
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .image-container {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+    .image-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    img {
+      max-width: 224px;
+      max-height: 224px;
+      border-radius: 8px;
+      cursor: pointer;
+      border: 2px solid transparent;
+    }
+    img.selected {
+      border-color: #2563eb;
+    }
+    button {
+      background-color: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 8px 16px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-top: 10px;
+    }
+    button:hover {
+      background-color: #1d4ed8;
+    }
+    .result-container {
+      margin-top: 20px;
+      padding: 15px;
+      background-color: #f8f9fa;
+      border-radius: 8px;
+      min-height: 100px;
+    }
+    .prediction {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 5px;
+    }
+    .prediction-bar {
+      background-color: #dbeafe;
+      height: 20px;
+      margin-top: 3px;
+      border-radius: 3px;
+    }
+    .hardware-info {
+      margin-top: 20px;
+      padding: 15px;
+      background-color: #f0f9ff;
+      border-radius: 8px;
+      font-family: monospace;
+      white-space: pre-wrap;
+    }
+    .performance-metrics {
+      margin-top: 20px;
+    }
+    .loading {
+      display: none;
+      margin-top: 10px;
+      color: #666;
+    }
+    h2 {
+      color: #1e40af;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Vision Transformer (ViT) Demo</h1>
+    <p>
+      This demo shows how to use the Vision Transformer (ViT) model for image classification with WebGPU/WebNN hardware acceleration. 
+      The model automatically uses the best available hardware on your device.
+    </p>
+
+    <div class="example-section">
+      <h2>Image Classification</h2>
+      <p>Select an image below and click "Classify Image" to run the ViT model.</p>
+      
+      <div class="image-container">
+        <div class="image-item">
+          <img src="https://images.unsplash.com/photo-1517849845537-4d257902454a" 
+               alt="Dog" id="image1" class="demo-image">
+          <span>Dog</span>
+        </div>
+        <div class="image-item">
+          <img src="https://images.unsplash.com/photo-1519052537078-e6302a4968d4" 
+               alt="Cat" id="image2" class="demo-image">
+          <span>Cat</span>
+        </div>
+        <div class="image-item">
+          <img src="https://images.unsplash.com/photo-1555169062-013468b47731" 
+               alt="Bird" id="image3" class="demo-image">
+          <span>Bird</span>
+        </div>
+      </div>
+      
+      <button id="classifyBtn" disabled>Loading Model...</button>
+      <div id="loading" class="loading">Running inference...</div>
+      
+      <div class="result-container" id="resultContainer">
+        <p>Classification results will appear here</p>
+      </div>
+    </div>
+    
+    <div class="hardware-info" id="hardwareInfo">
+      Detecting hardware capabilities...
+    </div>
+    
+    <div class="performance-metrics" id="performanceMetrics">
+      <h2>Performance Metrics</h2>
+      <p>Run the classification multiple times to see performance metrics</p>
+      <div id="metricsContent"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { createHardwareAbstraction } from '../hardware/hardware_abstraction.js';
+    import { createViT } from '../model/vision/index.js';
+    
+    let selectedImage = null;
+    let hardware = null;
+    let vit = null;
+    let performanceData = {
+      webgpu: [],
+      webnn: [],
+      wasm: [],
+      cpu: []
+    };
+    
+    // Initialize the demo
+    async function initDemo() {
+      try {
+        // Initialize hardware abstraction layer
+        hardware = await createHardwareAbstraction({
+          logging: true
+        });
+        
+        // Display hardware capabilities
+        displayHardwareInfo(hardware);
+        
+        // Initialize ViT model
+        vit = await createViT('vit-base-patch16-224', hardware, {
+          returnEmbeddings: true
+        });
+        
+        // Update button state
+        document.getElementById('classifyBtn').textContent = 'Select an image to classify';
+        
+        // Set up image selection
+        const images = document.querySelectorAll('.demo-image');
+        images.forEach(img => {
+          img.addEventListener('click', () => {
+            // Clear previous selection
+            images.forEach(i => i.classList.remove('selected'));
+            
+            // Set new selection
+            img.classList.add('selected');
+            selectedImage = img;
+            
+            document.getElementById('classifyBtn').textContent = 'Classify Image';
+            document.getElementById('classifyBtn').disabled = false;
+          });
+        });
+        
+        // Set up classify button
+        document.getElementById('classifyBtn').addEventListener('click', classifyImage);
+        document.getElementById('classifyBtn').disabled = true;
+      } catch (error) {
+        console.error('Error initializing demo:', error);
+        document.getElementById('hardwareInfo').textContent = 'Error initializing hardware: ' + error.message;
+      }
+    }
+    
+    // Display hardware capabilities
+    function displayHardwareInfo(hardware) {
+      const capabilities = hardware.getCapabilities();
+      const hardwareInfo = document.getElementById('hardwareInfo');
+      
+      let webgpuInfo = capabilities.webgpu.supported ? 'Supported' : 'Not supported';
+      if (capabilities.webgpu.supported) {
+        webgpuInfo += capabilities.webgpu.isSimulated ? ' (Simulated)' : ' (Native)';
+        if (capabilities.webgpu.adapterInfo) {
+          webgpuInfo += ` - ${capabilities.webgpu.adapterInfo.description || 'Unknown GPU'}`;
+        }
+      }
+      
+      let webnnInfo = capabilities.webnn.supported ? 'Supported' : 'Not supported';
+      if (capabilities.webnn.supported) {
+        webnnInfo += capabilities.webnn.isSimulated ? ' (Simulated)' : ' (Native)';
+        if (capabilities.webnn.deviceName) {
+          webnnInfo += ` - ${capabilities.webnn.deviceName}`;
+        }
+      }
+      
+      hardwareInfo.innerHTML = `<h2>Hardware Capabilities</h2>
+<strong>Browser:</strong> ${capabilities.browserName} ${capabilities.browserVersion}
+<strong>WebGPU:</strong> ${webgpuInfo}
+<strong>WebNN:</strong> ${webnnInfo}
+<strong>WebAssembly:</strong> ${capabilities.wasm.supported ? 'Supported' : 'Not supported'}
+<strong>Optimal Backend:</strong> ${capabilities.optimalBackend}`;
+    }
+    
+    // Run classification on the selected image
+    async function classifyImage() {
+      if (!selectedImage || !vit) return;
+      
+      try {
+        // Show loading indicator
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('classifyBtn').disabled = true;
+        
+        const startTime = performance.now();
+        
+        // Run inference
+        const result = await vit.predict(selectedImage);
+        
+        const endTime = performance.now();
+        const processingTime = endTime - startTime;
+        
+        // Update performance metrics
+        const backend = vit.getConfig().backend || 'unknown';
+        if (performanceData[backend]) {
+          performanceData[backend].push(processingTime);
+          updatePerformanceMetrics();
+        }
+        
+        // Display results
+        displayResults(result, processingTime);
+        
+        // Hide loading indicator
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('classifyBtn').disabled = false;
+      } catch (error) {
+        console.error('Error classifying image:', error);
+        document.getElementById('resultContainer').innerHTML = `<p>Error: ${error.message}</p>`;
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('classifyBtn').disabled = false;
+      }
+    }
+    
+    // Display classification results
+    function displayResults(result, processingTime) {
+      const resultContainer = document.getElementById('resultContainer');
+      
+      let html = `<h3>Classification Results (${processingTime.toFixed(2)} ms)</h3>`;
+      
+      // Add predictions with bars
+      html += result.predictions.map(pred => {
+        const percentage = (pred.score * 100).toFixed(1);
+        return `<div class="prediction">
+          <span>${pred.label}</span>
+          <span>${percentage}%</span>
+        </div>
+        <div class="prediction-bar" style="width: ${percentage}%"></div>`;
+      }).join('');
+      
+      // Add embedding information if available
+      if (result.embeddings) {
+        const norm = Math.sqrt(
+          result.embeddings.reduce((sum, val) => sum + val * val, 0)
+        );
+        
+        html += `<h3>Embedding Information</h3>
+        <p>Dimension: ${result.embeddings.length}</p>
+        <p>L2 Norm: ${norm.toFixed(4)}</p>`;
+      }
+      
+      resultContainer.innerHTML = html;
+    }
+    
+    // Update performance metrics display
+    function updatePerformanceMetrics() {
+      const metricsContent = document.getElementById('metricsContent');
+      
+      let html = '';
+      
+      for (const [backend, times] of Object.entries(performanceData)) {
+        if (times.length === 0) continue;
+        
+        const average = times.reduce((sum, time) => sum + time, 0) / times.length;
+        const min = Math.min(...times);
+        const max = Math.max(...times);
+        
+        html += `<h3>${backend.toUpperCase()} Backend (${times.length} runs)</h3>
+        <p>Average: ${average.toFixed(2)} ms</p>
+        <p>Min: ${min.toFixed(2)} ms</p>
+        <p>Max: ${max.toFixed(2)} ms</p>`;
+      }
+      
+      metricsContent.innerHTML = html || '<p>No performance data yet</p>';
+    }
+    
+    // Run different backends for comparison
+    async function runBackendComparison() {
+      if (!selectedImage || !vit || !hardware) return;
+      
+      const backends = ['webgpu', 'webnn', 'wasm', 'cpu'];
+      const results = [];
+      
+      for (const backend of backends) {
+        if (hardware.isBackendSupported(backend)) {
+          // Update configuration to use this backend
+          vit.updateConfig({ backend });
+          
+          // Run inference
+          const startTime = performance.now();
+          const result = await vit.predict(selectedImage);
+          const endTime = performance.now();
+          
+          results.push({
+            backend,
+            time: endTime - startTime,
+            topPrediction: result.predictions[0]
+          });
+        }
+      }
+      
+      console.log('Backend comparison results:', results);
+    }
+    
+    // Initialize when the page loads
+    window.addEventListener('DOMContentLoaded', initDemo);
+  </script>
+</body>
+</html>

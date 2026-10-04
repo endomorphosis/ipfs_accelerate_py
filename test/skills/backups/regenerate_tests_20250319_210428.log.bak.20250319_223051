@@ -1,0 +1,27 @@
+2025-03-19 21:04:28,180 - INFO - Regenerating test files for: bert, gpt2, t5, vit
+2025-03-19 21:04:28,181 - INFO - Regenerating test file for bert...
+2025-03-19 21:04:28,263 - INFO - Applying indentation fixes to fixed_tests/test_hf_bert.py...
+2025-03-19 21:04:28,264 - INFO - Created backup at fixed_tests/test_hf_bert.py.bak
+2025-03-19 21:04:28,655 - INFO - ✅ Fixed indentation in fixed_tests/test_hf_bert.py
+2025-03-19 21:04:28,657 - ERROR - ❌ Syntax error in fixed_tests/test_hf_bert.py: unexpected indent (test_hf_bert.py, line 47)
+2025-03-19 21:04:28,657 - INFO - Regenerating test file for gpt2...
+2025-03-19 21:04:28,754 - INFO - Applying indentation fixes to fixed_tests/test_hf_gpt2.py...
+2025-03-19 21:04:28,755 - INFO - Created backup at fixed_tests/test_hf_gpt2.py.bak
+2025-03-19 21:04:28,867 - INFO - ✅ Fixed indentation in fixed_tests/test_hf_gpt2.py
+2025-03-19 21:04:28,868 - ERROR - ❌ Syntax error in fixed_tests/test_hf_gpt2.py: unexpected indent (test_hf_gpt2.py, line 47)
+2025-03-19 21:04:28,868 - INFO - Regenerating test file for t5...
+2025-03-19 21:04:28,959 - INFO - Applying indentation fixes to fixed_tests/test_hf_t5.py...
+2025-03-19 21:04:28,960 - INFO - Created backup at fixed_tests/test_hf_t5.py.bak
+2025-03-19 21:04:29,364 - INFO - ✅ Fixed indentation in fixed_tests/test_hf_t5.py
+2025-03-19 21:04:29,364 - ERROR - ❌ Syntax error in fixed_tests/test_hf_t5.py: unexpected indent (test_hf_t5.py, line 47)
+2025-03-19 21:04:29,364 - INFO - Regenerating test file for vit...
+2025-03-19 21:04:29,437 - INFO - Applying indentation fixes to fixed_tests/test_hf_vit.py...
+2025-03-19 21:04:29,438 - INFO - Created backup at fixed_tests/test_hf_vit.py.bak
+2025-03-19 21:04:29,782 - INFO - ✅ Fixed indentation in fixed_tests/test_hf_vit.py
+2025-03-19 21:04:29,782 - ERROR - ❌ Syntax error in fixed_tests/test_hf_vit.py: unexpected indent (test_hf_vit.py, line 47)
+2025-03-19 21:04:29,782 - INFO - 
+Regeneration Summary:
+2025-03-19 21:04:29,782 - INFO - - Successful: 0
+2025-03-19 21:04:29,782 - INFO - - Failed: 4
+2025-03-19 21:04:29,782 - INFO - - Total: 4
+2025-03-19 21:04:29,783 - INFO - - Output directory: fixed_tests

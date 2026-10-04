@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebGPU/WebNN Test Page</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .status { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .supported { background-color: #d4edda; color: #155724; }
+        .not-supported { background-color: #f8d7da; color: #721c24; }
+        pre { background-color: #f5f5f5; padding: 10px; border-radius: 5px; overflow: auto; }
+    </style>
+</head>
+<body>
+    <h1>WebGPU/WebNN Browser Capability Test</h1>
+    
+    <h2>WebGPU Status</h2>
+    <div id="webgpu-status" class="status"></div>
+    <div id="webgpu-adapter-info"></div>
+    
+    <h2>WebNN Status</h2>
+    <div id="webnn-status" class="status"></div>
+    
+    <h2>Browser Information</h2>
+    <pre id="browser-info"></pre>
+    
+    <script>
+        // Display browser information
+        document.getElementById('browser-info').textContent = 
+            `User Agent: ${navigator.userAgent}\n` +
+            `Platform: ${navigator.platform}\n` +
+            `Vendor: ${navigator.vendor}\n` +
+            `Languages: ${navigator.languages.join(', ')}\n` +
+            `Hardware Concurrency: ${navigator.hardwareConcurrency}\n` +
+            `Device Memory: ${navigator.deviceMemory || 'Not available'}GB`;
+        
+        // Check WebGPU support
+        if ('gpu' in navigator) {
+            document.getElementById('webgpu-status').textContent = 'WebGPU is supported in this browser!';
+            document.getElementById('webgpu-status').className = 'status supported';
+            
+            // Get adapter info
+            async function getAdapterInfo() {
+                try {
+                    const adapter = await navigator.gpu.requestAdapter();
+                    if (adapter) {
+                        const info = await adapter.requestAdapterInfo();
+                        document.getElementById('webgpu-adapter-info').innerHTML = 
+                            `<strong>Adapter Info:</strong><br>` +
+                            `Vendor: ${info.vendor || 'Not available'}<br>` +
+                            `Architecture: ${info.architecture || 'Not available'}<br>` +
+                            `Device: ${info.device || 'Not available'}<br>` +
+                            `Description: ${info.description || 'Not available'}`;
+                    } else {
+                        document.getElementById('webgpu-adapter-info').textContent = 'No WebGPU adapter available';
+                    }
+                } catch (error) {
+                    document.getElementById('webgpu-adapter-info').textContent = `Error getting adapter info: ${error.message}`;
+                }
+            }
+            getAdapterInfo();
+        } else {
+            document.getElementById('webgpu-status').textContent = 'WebGPU is not supported in this browser';
+            document.getElementById('webgpu-status').className = 'status not-supported';
+        }
+        
+        // Check WebNN support
+        if ('ml' in navigator && 'getNeuralNetworkContext' in navigator.ml) {
+            document.getElementById('webnn-status').textContent = 'WebNN is supported in this browser!';
+            document.getElementById('webnn-status').className = 'status supported';
+        } else {
+            document.getElementById('webnn-status').textContent = 'WebNN is not supported in this browser';
+            document.getElementById('webnn-status').className = 'status not-supported';
+        }
+    </script>
+</body>
+</html>

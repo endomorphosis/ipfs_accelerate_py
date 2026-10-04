@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vision Transformer (ViT) Demo</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .upload-section {
+      border: 2px dashed #ccc;
+      padding: 20px;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    #preview {
+      max-width: 100%;
+      max-height: 300px;
+      margin-top: 10px;
+    }
+    .results {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    .result-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 5px;
+      border-bottom: 1px solid #eee;
+    }
+    .progress-bar {
+      width: 100%;
+      height: 20px;
+      background-color: #f0f0f0;
+      border-radius: 5px;
+      margin-top: 5px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background-color: #4CAF50;
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+    .backend-info {
+      background-color: #f8f9fa;
+      padding: 10px;
+      border-radius: 5px;
+      margin-top: 20px;
+    }
+    .loading {
+      display: none;
+      margin-top: 20px;
+      text-align: center;
+    }
+    .attention-map {
+      margin-top: 20px;
+    }
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid #ccc;
+      margin-bottom: 20px;
+    }
+    .tab {
+      padding: 10px 20px;
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+    .tab.active {
+      border: 1px solid #ccc;
+      border-bottom: 1px solid white;
+      border-radius: 5px 5px 0 0;
+      margin-bottom: -1px;
+      background-color: white;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    #error-message {
+      color: red;
+      margin-top: 10px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>Vision Transformer (ViT) Demo</h1>
+  <p>This demo shows a Vision Transformer model running with hardware acceleration in the browser using WebGPU/WebNN.</p>
+  
+  <div class="tabs">
+    <div class="tab active" data-tab="upload">Upload Image</div>
+    <div class="tab" data-tab="sample">Sample Images</div>
+    <div class="tab" data-tab="about">About ViT</div>
+  </div>
+  
+  <div class="tab-content active" id="upload-tab">
+    <div class="upload-section" id="drop-area">
+      <p>Drop an image here or click to select</p>
+      <input type="file" id="file-input" accept="image/*" style="display: none;">
+      <button id="select-file">Select Image</button>
+      <div>
+        <img id="preview" style="display: none;">
+      </div>
+    </div>
+  </div>
+  
+  <div class="tab-content" id="sample-tab">
+    <h3>Sample Images</h3>
+    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+      <div style="cursor: pointer;" class="sample-image">
+        <img src="https://storage.googleapis.com/ipfs-accelerate-public/samples/dog.jpg" width="150" alt="Dog">
+        <p>Dog</p>
+      </div>
+      <div style="cursor: pointer;" class="sample-image">
+        <img src="https://storage.googleapis.com/ipfs-accelerate-public/samples/cat.jpg" width="150" alt="Cat">
+        <p>Cat</p>
+      </div>
+      <div style="cursor: pointer;" class="sample-image">
+        <img src="https://storage.googleapis.com/ipfs-accelerate-public/samples/bird.jpg" width="150" alt="Bird">
+        <p>Bird</p>
+      </div>
+      <div style="cursor: pointer;" class="sample-image">
+        <img src="https://storage.googleapis.com/ipfs-accelerate-public/samples/flower.jpg" width="150" alt="Flower">
+        <p>Flower</p>
+      </div>
+    </div>
+  </div>
+  
+  <div class="tab-content" id="about-tab">
+    <h3>About Vision Transformer</h3>
+    <p>The Vision Transformer (ViT) is a transformer-based neural network architecture designed for image classification tasks. Unlike traditional convolutional neural networks (CNNs), ViT treats an image as a sequence of patches, similar to how transformers process sequences of words in natural language processing.</p>
+    
+    <h4>Key features:</h4>
+    <ul>
+      <li><strong>Patch-based approach:</strong> Images are divided into fixed-size patches, which are linearly embedded.</li>
+      <li><strong>Position embeddings:</strong> Position information is added to the patch embeddings.</li>
+      <li><strong>Self-attention mechanism:</strong> The model uses self-attention to capture relationships between different image regions.</li>
+      <li><strong>Hardware acceleration:</strong> This implementation leverages WebGPU and WebNN for hardware acceleration in the browser.</li>
+      <li><strong>Cross-model tensor sharing:</strong> The implementation supports sharing embeddings with other models for multimodal tasks.</li>
+    </ul>
+  </div>
+  
+  <div id="error-message"></div>
+  
+  <div class="loading" id="loading">
+    <p>Processing image...</p>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progress"></div>
+    </div>
+  </div>
+  
+  <div class="results" id="results" style="display: none;">
+    <h2>Classification Results</h2>
+    <div id="top-predictions"></div>
+    
+    <div class="backend-info">
+      <h3>Hardware Backend Information</h3>
+      <p id="backend-info"></p>
+      <p id="performance-info"></p>
+    </div>
+  </div>
+  
+  <div class="attention-map" id="attention-visualization" style="display: none;">
+    <h3>Attention Visualization</h3>
+    <p>This visualization shows how the model attends to different parts of the image:</p>
+    <canvas id="attention-canvas" width="448" height="448"></canvas>
+  </div>
+  
+  <script type="module" src="./vit_example.js"></script>
+</body>
+</html>

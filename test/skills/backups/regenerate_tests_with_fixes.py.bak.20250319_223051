@@ -1,0 +1,303 @@
+#!/usr/bin/env python3
+"""
+Regenerate test files with indentation fixes.
+
+This script:
+1. Uses the fixed test generator (test_generator_fixed.py)
+2. Generates test files for specified model families
+3. Applies indentation fixes to generated files
+4. Validates the generated files for syntax errors
+
+Usage:
+  python regenerate_tests_with_fixes.py --families bert gpt2 t5 vit
+  python regenerate_tests_with_fixes.py --all
+  python regenerate_tests_with_fixes.py --list
+"""
+
+import os
+import sys
+import re
+import subprocess
+import argparse
+import logging
+from datetime import datetime
+from pathlib import Path
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(f"regenerate_tests_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# Import from local helper modules - these should be in the same directory
+try:
+    from regenerate_tests import get_available_model_families, BASE_MODEL_FAMILIES, EXTENDED_MODEL_FAMILIES
+    from fix_file_indentation import fix_class_method_indentation
+    USE_ENHANCED_FIXES = True
+except ImportError:
+    logger.warning("Could not import all helper modules. Using basic regeneration only.")
+    # Define fallback constants
+    BASE_MODEL_FAMILIES = ["bert", "gpt2", "t5", "vit"]
+    EXTENDED_MODEL_FAMILIES = {}
+    USE_ENHANCED_FIXES = False
+
+# Configuration - These can be modified via command-line options
+GENERATOR_PATH = "test_generator_fixed.py"
+DEFAULT_OUTPUT_DIR = "fixed_tests"
+VALIDATE_SYNTAX = True  # Set to False to skip syntax validation
+
+# These will be set in main()
+output_dir = DEFAULT_OUTPUT_DIR 
+validate_syntax = VALIDATE_SYNTAX
+
+def verify_python_syntax(file_path):
+    """
+    Verify that the generated Python file has valid syntax.
+    
+    Args:
+        file_path: Path to the file to check
+        
+    Returns:
+        Tuple of (success, error_message)
+    """
+    try:
+        # Compile the file to check syntax without executing it
+        with open(file_path, 'r') as f:
+            code = f.read()
+        compile(code, file_path, 'exec')
+        return True, None
+    except SyntaxError as e:
+        return False, str(e)
+
+def regenerate_test_file(family, output_dir=None, validate_syntax=True, backup=True):
+    """
+    Regenerate a test file for a specific model family with indentation fixes.
+    
+    Args:
+        family: Model family name (e.g., 'bert', 'gpt2')
+        output_dir: Directory to output the generated file (defaults to DEFAULT_OUTPUT_DIR)
+        validate_syntax: Whether to validate syntax of the generated file
+        backup: If True, create backups before modification
+        
+    Returns:
+        Tuple of (success, output_path)
+    """
+    if output_dir is None:
+        output_dir = DEFAULT_OUTPUT_DIR
+    logger.info(f"Regenerating test file for {family}...")
+    
+    # Make sure output dir exists
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Generate command for the generator script
+    cmd = [
+        sys.executable,
+        GENERATOR_PATH,
+        "--family", family,
+        "--output", output_dir
+    ]
+    
+    # Run the generator
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            logger.error(f"❌ Generator failed for {family}: {result.stderr}")
+            return False, None
+        
+        # Path to the generated file
+        output_path = os.path.join(output_dir, f"test_hf_{family}.py")
+        
+        if not os.path.exists(output_path):
+            logger.error(f"❌ Generator did not create output file for {family}")
+            return False, None
+        
+        # Apply our enhanced indentation fixes
+        logger.info(f"Applying indentation fixes to {output_path}...")
+        
+        try:
+            if USE_ENHANCED_FIXES:
+                # Use our comprehensive fixer
+                from fix_file_indentation import fix_class_method_indentation
+                fix_class_method_indentation(output_path, backup=backup)
+            else:
+                # Simple string-based fixes as fallback
+                apply_basic_fixes(output_path, backup=backup)
+        except Exception as e:
+            logger.warning(f"Error applying fixes: {e}, using basic fixes only")
+            apply_basic_fixes(output_path, backup=backup)
+        
+        # Validate Python syntax if enabled
+        if validate_syntax:
+            syntax_valid, error = verify_python_syntax(output_path)
+            if not syntax_valid:
+                logger.error(f"❌ Syntax error in {output_path}: {error}")
+                return False, output_path
+            logger.info(f"✅ Syntax validation passed for {output_path}")
+        
+        logger.info(f"✅ Successfully regenerated test file for {family}: {output_path}")
+        return True, output_path
+    
+    except Exception as e:
+        logger.error(f"❌ Error regenerating test file for {family}: {e}")
+        return False, None
+
+def apply_basic_fixes(file_path, backup=True):
+    """
+    Apply basic indentation fixes to a test file.
+    Fallback method if the enhanced fixer is not available.
+    
+    Args:
+        file_path: Path to the file to fix
+        backup: If True, create a backup before modification
+    """
+    if backup:
+        backup_path = f"{file_path}.bak"
+        import shutil
+        shutil.copy2(file_path, backup_path)
+    
+    with open(file_path, 'r') as f:
+        content = f.read()
+    
+    # Apply basic fixes
+    fixes = [
+        # Method spacing
+        ('return results\n    def', 'return results\n\n    def'),
+        ('self.performance_stats = {}\n    def', 'self.performance_stats = {}\n\n    def'),
+        
+        # Indentation fixes
+        ('        if not HAS_', '        if not HAS_'),
+        ('    if device', '        if device'),
+        ('    for _ in range', '        for _ in range'),
+        ('    try:', '        try:'),
+        ('    logger.', '        logger.'),
+        
+        # Error handling
+        ('            else:\n            results', '            else:\n                results')
+    ]
+    
+    for old, new in fixes:
+        content = content.replace(old, new)
+    
+    # Ensure proper method declarations
+    content = re.sub(r'(\s+)def test_pipeline\(', r'    def test_pipeline(', content)
+    content = re.sub(r'(\s+)def test_from_pretrained\(', r'    def test_from_pretrained(', content)
+    content = re.sub(r'(\s+)def run_tests\(', r'    def run_tests(', content)
+    
+    with open(file_path, 'w') as f:
+        f.write(content)
+    
+    logger.info(f"Applied basic indentation fixes to {file_path}")
+
+def main():
+    """Command-line entry point."""
+    parser = argparse.ArgumentParser(description="Regenerate test files with indentation fixes")
+    
+    # Get available model families for choices
+    try:
+        all_families = get_available_model_families()
+    except:
+        all_families = BASE_MODEL_FAMILIES
+    
+    # Basic options
+    parser.add_argument("--families", nargs="+", choices=all_families, default=BASE_MODEL_FAMILIES,
+                        help=f"Model families to regenerate (default: {', '.join(BASE_MODEL_FAMILIES)})")
+    parser.add_argument("--all", action="store_true",
+                        help="Regenerate all known model families")
+    parser.add_argument("--output-dir", type=str, default=DEFAULT_OUTPUT_DIR,
+                        help=f"Output directory for test files (default: {DEFAULT_OUTPUT_DIR})")
+    
+    # List option
+    parser.add_argument("--list", action="store_true",
+                        help="List all available model families and exit")
+    
+    # Validation options
+    parser.add_argument("--skip-validation", action="store_true",
+                        help="Skip syntax validation of generated files")
+    
+    # Backup options
+    parser.add_argument("--no-backup", action="store_true",
+                        help="Don't create backup files")
+    
+    # Verbosity
+    parser.add_argument("--verbose", action="store_true",
+                        help="Enable verbose logging")
+    
+    args = parser.parse_args()
+    
+    # Set verbosity
+    if args.verbose:
+        logger.setLevel(logging.DEBUG)
+    
+    # Set output directory
+    output_dir = args.output_dir
+    
+    # Set validation flag
+    validate_syntax = not args.skip_validation
+    
+    # List mode
+    if args.list:
+        print("\nAvailable model families:")
+        print("\nBase families (fully tested):")
+        for family in BASE_MODEL_FAMILIES:
+            print(f"  - {family}")
+        
+        if EXTENDED_MODEL_FAMILIES:
+            print("\nExtended families by architecture type:")
+            for arch_type, families in EXTENDED_MODEL_FAMILIES.items():
+                print(f"\n  {arch_type.upper()}:")
+                for family in families:
+                    if family in BASE_MODEL_FAMILIES:
+                        print(f"    - {family} (base)")
+                    else:
+                        print(f"    - {family}")
+        return 0
+    
+    # Determine which families to regenerate
+    families_to_regenerate = []
+    if args.all:
+        families_to_regenerate = all_families
+        logger.info(f"Regenerating test files for ALL {len(families_to_regenerate)} model families")
+    else:
+        families_to_regenerate = args.families
+        logger.info(f"Regenerating test files for: {', '.join(families_to_regenerate)}")
+    
+    # Regenerate each family
+    successful = 0
+    failed = 0
+    
+    for family in families_to_regenerate:
+        success, _ = regenerate_test_file(
+            family, 
+            output_dir=output_dir,
+            validate_syntax=validate_syntax,
+            backup=not args.no_backup
+        )
+        if success:
+            successful += 1
+        else:
+            failed += 1
+    
+    # Print summary
+    logger.info("\nRegeneration Summary:")
+    logger.info(f"- Successful: {successful}")
+    logger.info(f"- Failed: {failed}")
+    logger.info(f"- Total: {successful + failed}")
+    logger.info(f"- Output directory: {output_dir}")
+    
+    # If we fixed any files, provide guidance
+    if successful > 0:
+        print("\nNext steps:")
+        print(f"1. Check the generated files in {output_dir} for proper indentation")
+        print("2. Run the generated tests to verify they work correctly")
+        print("3. If everything looks good, move them to the main test directory")
+    
+    return 0 if failed == 0 else 1
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,9 @@
+# Glob patterns for files that are temporarily allowed to reference legacy async APIs.
+#
+# The intent is for this file to shrink over time until it is empty.
+#
+# Examples:
+# ipfs_accelerate_py/legacy/**
+# test/**
+
+# Current policy: empty (migration complete).

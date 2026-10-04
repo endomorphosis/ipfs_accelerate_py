@@ -1,0 +1,26 @@
+# Core requirements for the benchmark database system
+duckdb>=0.10.0
+pandas>=2.0.0
+numpy>=1.24.0
+pyarrow>=13.0.0
+
+# API server requirements
+fastapi>=0.100.0
+uvicorn>=0.22.0
+pydantic>=2.0.0
+
+# Visualization requirements
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Reporting and formatting
+jinja2>=3.1.2
+tabulate>=0.9.0
+markdown>=3.4.0
+
+# Optional: Excel output support
+openpyxl>=3.0.0
+
+# Optional: Advanced visualization
+plotly>=5.10.0
+dash>=2.8.0

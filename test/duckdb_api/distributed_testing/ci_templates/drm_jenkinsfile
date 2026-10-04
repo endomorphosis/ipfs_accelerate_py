@@ -1,0 +1,239 @@
+pipeline {
+    agent none
+    
+    parameters {
+        choice(name: 'COMPONENT', choices: ['all', 'dynamic_resource_manager', 'resource_performance_predictor', 'cloud_provider_manager', 'resource_optimizer', 'drm_integration'], description: 'DRM component to test')
+        booleanParam(name: 'RUN_E2E', defaultValue: true, description: 'Run end-to-end tests')
+    }
+    
+    stages {
+        stage('Unit Tests') {
+            parallel {
+                stage('Dynamic Resource Manager') {
+                    agent {
+                        docker {
+                            image 'python:3.10-slim'
+                        }
+                    }
+                    steps {
+                        checkout scm
+                        sh '''
+                            python -m pip install --upgrade pip
+                            pip install pytest pytest-mock
+                            pip install -r test/duckdb_api/distributed_testing/requirements.txt
+                            cd test
+                            python -m pytest duckdb_api/distributed_testing/tests/test_dynamic_resource_manager.py -v
+                        '''
+                    }
+                    post {
+                        always {
+                            junit 'test/test_results/*.xml'
+                            archiveArtifacts artifacts: 'test/test_results/*', allowEmptyArchive: true
+                        }
+                    }
+                }
+                stage('Resource Performance Predictor') {
+                    agent {
+                        docker {
+                            image 'python:3.10-slim'
+                        }
+                    }
+                    steps {
+                        checkout scm
+                        sh '''
+                            python -m pip install --upgrade pip
+                            pip install pytest pytest-mock
+                            pip install -r test/duckdb_api/distributed_testing/requirements.txt
+                            cd test
+                            python -m pytest duckdb_api/distributed_testing/tests/test_resource_performance_predictor.py -v
+                        '''
+                    }
+                    post {
+                        always {
+                            junit 'test/test_results/*.xml'
+                            archiveArtifacts artifacts: 'test/test_results/*', allowEmptyArchive: true
+                        }
+                    }
+                }
+                stage('Cloud Provider Manager') {
+                    agent {
+                        docker {
+                            image 'python:3.10-slim'
+                        }
+                    }
+                    steps {
+                        checkout scm
+                        sh '''
+                            python -m pip install --upgrade pip
+                            pip install pytest pytest-mock
+                            pip install -r test/duckdb_api/distributed_testing/requirements.txt
+                            cd test
+                            python -m pytest duckdb_api/distributed_testing/tests/test_cloud_provider_manager.py -v
+                        '''
+                    }
+                    post {
+                        always {
+                            junit 'test/test_results/*.xml'
+                            archiveArtifacts artifacts: 'test/test_results/*', allowEmptyArchive: true
+                        }
+                    }
+                }
+                stage('Resource Optimizer') {
+                    agent {
+                        docker {
+                            image 'python:3.10-slim'
+                        }
+                    }
+                    steps {
+                        checkout scm
+                        sh '''
+                            python -m pip install --upgrade pip
+                            pip install pytest pytest-mock
+                            pip install -r test/duckdb_api/distributed_testing/requirements.txt
+                            cd test
+                            python -m pytest duckdb_api/distributed_testing/tests/test_resource_optimization.py -v
+                        '''
+                    }
+                    post {
+                        always {
+                            junit 'test/test_results/*.xml'
+                            archiveArtifacts artifacts: 'test/test_results/*', allowEmptyArchive: true
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Integration Tests') {
+            agent {
+                docker {
+                    image 'python:3.10-slim'
+                }
+            }
+            steps {
+                checkout scm
+                sh '''
+                    python -m pip install --upgrade pip
+                    pip install pytest pytest-mock
+                    pip install -r test/duckdb_api/distributed_testing/requirements.txt
+                    cd test
+                    python -m pytest duckdb_api/distributed_testing/tests/test_drm_integration.py -v
+                '''
+            }
+            post {
+                always {
+                    junit 'test/test_results/*.xml'
+                    archiveArtifacts artifacts: 'test/test_results/*', allowEmptyArchive: true
+                }
+            }
+        }
+        
+        stage('Performance Tests') {
+            agent {
+                docker {
+                    image 'python:3.10-slim'
+                }
+            }
+            steps {
+                checkout scm
+                sh '''
+                    python -m pip install --upgrade pip
+                    pip install pytest pytest-mock
+                    pip install -r test/duckdb_api/distributed_testing/requirements.txt
+                    cd test
+                    python duckdb_api/distributed_testing/tests/run_resource_optimization_tests.py --verbose
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'test/test_results/*', allowEmptyArchive: true
+                }
+            }
+        }
+        
+        stage('End-to-End Tests') {
+            agent {
+                docker {
+                    image 'python:3.10-slim'
+                }
+            }
+            when {
+                expression { return params.RUN_E2E }
+            }
+            steps {
+                checkout scm
+                sh '''
+                    python -m pip install --upgrade pip
+                    pip install pytest pytest-mock
+                    pip install -r test/duckdb_api/distributed_testing/requirements.txt
+                    cd test
+                    python duckdb_api/distributed_testing/tests/run_e2e_drm_test.py --quick --output-dir=./e2e_reports
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'test/e2e_reports/*', allowEmptyArchive: true
+                }
+            }
+        }
+        
+        stage('Distributed Testing') {
+            agent {
+                docker {
+                    image 'python:3.10-slim'
+                }
+            }
+            environment {
+                COORDINATOR_URL = credentials('COORDINATOR_URL')
+                API_KEY = credentials('COORDINATOR_API_KEY')
+            }
+            steps {
+                checkout scm
+                sh '''
+                    python -m pip install --upgrade pip
+                    pip install -r test/duckdb_api/distributed_testing/requirements.txt
+                    
+                    # Start coordinator and workers (for local testing)
+                    # For production, use an already running coordinator service
+                    if [ -z "$COORDINATOR_URL" ]; then
+                        cd test
+                        python -m duckdb_api.distributed_testing.coordinator --port 8080 --api-key jenkins-key &
+                        export COORDINATOR_URL="http://localhost:8080"
+                        export API_KEY="jenkins-key"
+                        sleep 5  # Give coordinator time to start
+                        
+                        python -m duckdb_api.distributed_testing.worker --coordinator $COORDINATOR_URL --api-key $API_KEY --worker-id worker-1 &
+                        python -m duckdb_api.distributed_testing.worker --coordinator $COORDINATOR_URL --api-key $API_KEY --worker-id worker-2 &
+                        sleep 5  # Give workers time to register
+                    fi
+                    
+                    cd test
+                    python -m duckdb_api.distributed_testing.drm_cicd_integration \
+                        --provider jenkins \
+                        --coordinator $COORDINATOR_URL \
+                        --api-key $API_KEY \
+                        --component ${params.COMPONENT} \
+                        --output-dir ./drm_reports \
+                        --verbose
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'test/drm_reports/*', allowEmptyArchive: true
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo 'Tests completed'
+        }
+        success {
+            echo 'All tests passed!'
+        }
+        failure {
+            echo 'Tests failed!'
+        }
+    }
+}

@@ -1,0 +1,326 @@
+name: Mobile Cross-Platform Analysis
+
+on:
+  workflow_run:
+    workflows:
+      - "Android Mobile CI"
+      - "iOS Mobile CI"
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      run_regression_check:
+        description: 'Run performance regression detection'
+        type: boolean
+        default: true
+      regression_threshold:
+        description: 'Regression detection threshold (%)'
+        type: number
+        default: 10.0
+      generate_dashboard:
+        description: 'Generate performance dashboard'
+        type: boolean
+        default: true
+      dashboard_theme:
+        description: 'Dashboard theme'
+        type: choice
+        options:
+          - light
+          - dark
+        default: 'light'
+      historical_days:
+        description: 'Historical data days to include'
+        type: number
+        default: 14
+
+jobs:
+  cross-platform-analysis:
+    name: Cross-Platform Analysis
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r test/requirements.txt
+          pip install plotly pandas kaleido  # For visualization
+      
+      - name: Create directories
+        run: |
+          mkdir -p benchmark_results
+          mkdir -p analysis_results
+      
+      - name: Download Android benchmark artifacts
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          workflow: android_mobile_ci.yml
+          workflow_conclusion: success
+          name: android-benchmark-*
+          path: benchmark_results/android
+          if_no_artifact_found: warn
+      
+      - name: Download iOS benchmark artifacts
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          workflow: ios_mobile_ci.yml
+          workflow_conclusion: success
+          name: ios-benchmark-*
+          path: benchmark_results/ios
+          if_no_artifact_found: warn
+      
+      - name: List downloaded artifacts
+        run: |
+          echo "Android benchmark artifacts:"
+          ls -la benchmark_results/android || echo "No Android artifacts found"
+          echo ""
+          echo "iOS benchmark artifacts:"
+          ls -la benchmark_results/ios || echo "No iOS artifacts found"
+      
+      - name: Merge benchmark databases
+        run: |
+          python test/merge_benchmark_databases.py \
+            --output benchmark_results/merged_results.duckdb \
+            --input-dir benchmark_results/ \
+            --pattern "**/*.duckdb" \
+            --verbose
+      
+      - name: Run cross-platform analysis
+        run: |
+          python test/cross_platform_analysis.py analyze \
+            --db-path benchmark_results/merged_results.duckdb \
+            --output analysis_results/analysis_results.json
+          
+          python test/cross_platform_analysis.py compare \
+            --db-path benchmark_results/merged_results.duckdb \
+            --output analysis_results/cross_platform_report.md \
+            --format markdown
+          
+          python test/cross_platform_analysis.py visualize \
+            --db-path benchmark_results/merged_results.duckdb \
+            --output analysis_results/performance_comparison.png
+      
+      - name: Check for performance regressions
+        if: ${{ github.event.inputs.run_regression_check != 'false' }}
+        run: |
+          # Set default threshold if not specified
+          THRESHOLD="${{ github.event.inputs.regression_threshold }}"
+          if [[ -z "$THRESHOLD" ]]; then
+            THRESHOLD="10.0"
+          fi
+          
+          python test/check_mobile_regressions.py \
+            --data-file analysis_results/analysis_results.json \
+            --db-path benchmark_results/merged_results.duckdb \
+            --threshold $THRESHOLD \
+            --output analysis_results/regression_report.md \
+            --format markdown \
+            --days ${{ github.event.inputs.historical_days || 14 }} \
+            --verbose
+      
+      - name: Generate performance dashboard
+        if: ${{ github.event.inputs.generate_dashboard != 'false' }}
+        run: |
+          # Set default theme if not specified
+          THEME="${{ github.event.inputs.dashboard_theme }}"
+          if [[ -z "$THEME" ]]; then
+            THEME="light"
+          fi
+          
+          python test/generate_mobile_dashboard.py \
+            --data-file analysis_results/analysis_results.json \
+            --db-path benchmark_results/merged_results.duckdb \
+            --output analysis_results/mobile_dashboard.html \
+            --theme $THEME \
+            --days ${{ github.event.inputs.historical_days || 14 }} \
+            --title "Mobile Performance Dashboard (Build #${{ github.run_number }})" \
+            --verbose
+      
+      - name: Upload merged database
+        uses: actions/upload-artifact@v3
+        with:
+          name: mobile-merged-database
+          path: benchmark_results/merged_results.duckdb
+      
+      - name: Upload analysis results
+        uses: actions/upload-artifact@v3
+        with:
+          name: mobile-analysis-results
+          path: analysis_results/
+      
+      - name: Create performance summary
+        run: |
+          {
+            echo "## Mobile Performance Summary"
+            echo ""
+            echo "### Cross-Platform Comparison"
+            echo ""
+            
+            # Extract key metrics from analysis results
+            python -c "
+          import json, sys
+          
+          try:
+              with open('analysis_results/analysis_results.json', 'r') as f:
+                  data = json.load(f)
+              
+              platforms = data.get('platforms', {})
+              platform_names = list(platforms.keys())
+              
+              if len(platform_names) < 2:
+                  print('Insufficient platform data for comparison.')
+                  sys.exit(0)
+              
+              print(f'Comparing performance between {len(platform_names)} platforms: {\", \".join(platform_names)}')
+              print('')
+              
+              # Create performance summary table
+              print('| Model | Metric | ' + ' | '.join(p.capitalize() for p in platform_names) + ' | Winner |')
+              print('|-------|--------|' + '|'.join(['------' for _ in range(len(platform_names))]) + '|--------|')
+              
+              # Get common models across platforms
+              all_models = set()
+              for platform in platforms.values():
+                  all_models.update(platform.get('models', {}).keys())
+              
+              common_models = []
+              for model in all_models:
+                  if all(model in platforms[p].get('models', {}) for p in platform_names):
+                      common_models.append(model)
+              
+              # Only show a few key models if there are many
+              if len(common_models) > 5:
+                  common_models = sorted(common_models)[:5]
+              
+              for model in common_models:
+                  # Compare throughput
+                  row = f'| {model} | Throughput (items/s) |'
+                  throughputs = []
+                  
+                  for platform in platform_names:
+                      platform_data = platforms[platform]
+                      model_data = platform_data.get('models', {}).get(model, {})
+                      batch_data = model_data.get('batch_sizes', {}).get('1', {})
+                      throughput = batch_data.get('throughput', 0)
+                      throughputs.append(throughput)
+                      row += f' {throughput:.2f} |'
+                  
+                  # Determine winner
+                  if all(t == 0 for t in throughputs):
+                      winner = 'N/A'
+                  else:
+                      max_value = max(throughputs)
+                      max_index = throughputs.index(max_value)
+                      winner = platform_names[max_index].capitalize()
+                  
+                  row += f' {winner} |'
+                  print(row)
+                  
+                  # Compare latency
+                  row = f'| {model} | Latency (ms) |'
+                  latencies = []
+                  
+                  for platform in platform_names:
+                      platform_data = platforms[platform]
+                      model_data = platform_data.get('models', {}).get(model, {})
+                      batch_data = model_data.get('batch_sizes', {}).get('1', {})
+                      latency = batch_data.get('latency', 0)
+                      latencies.append(latency)
+                      row += f' {latency:.2f} |'
+                  
+                  # Determine winner (lower is better for latency)
+                  if all(l == 0 for l in latencies):
+                      winner = 'N/A'
+                  else:
+                      # Filter out zeros
+                      valid_latencies = [(i, l) for i, l in enumerate(latencies) if l > 0]
+                      if valid_latencies:
+                          min_index, _ = min(valid_latencies, key=lambda x: x[1])
+                          winner = platform_names[min_index].capitalize()
+                      else:
+                          winner = 'N/A'
+                  
+                  row += f' {winner} |'
+                  print(row)
+          except Exception as e:
+              print(f'Error generating summary: {e}')
+              sys.exit(1)
+          "
+            
+            echo ""
+            
+            # Add links to detailed reports
+            echo "### Detailed Reports"
+            echo ""
+            echo "- [Cross-Platform Comparison Report](../artifacts/mobile-analysis-results/cross_platform_report.md)"
+            
+            if [[ -f "analysis_results/regression_report.md" ]]; then
+              echo "- [Performance Regression Report](../artifacts/mobile-analysis-results/regression_report.md)"
+            fi
+            
+            echo "- [Interactive Dashboard](../artifacts/mobile-analysis-results/mobile_dashboard.html)"
+            
+          } > performance_summary.md
+      
+      - name: Find performance regressions
+        id: find_regressions
+        if: ${{ github.event.inputs.run_regression_check != 'false' }}
+        run: |
+          # Check if regression report exists
+          if [[ ! -f "analysis_results/regression_report.md" ]]; then
+            echo "No regression report found."
+            echo "has_regressions=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Look for critical regressions
+          grep -q "⚠️ \*\*CRITICAL REGRESSIONS DETECTED\*\* ⚠️" analysis_results/regression_report.md
+          
+          if [[ $? -eq 0 ]]; then
+            echo "Critical regressions detected!"
+            echo "has_regressions=true" >> $GITHUB_OUTPUT
+          else
+            echo "No critical regressions detected."
+            echo "has_regressions=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Create GitHub PR comment
+        uses: peter-evans/create-or-update-comment@v2
+        if: ${{ github.event_name == 'pull_request' }}
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body-file: performance_summary.md
+      
+      - name: Create GitHub PR comment with regression warning
+        uses: peter-evans/create-or-update-comment@v2
+        if: ${{ github.event_name == 'pull_request' && steps.find_regressions.outputs.has_regressions == 'true' }}
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ### ⚠️ Performance Regression Warning ⚠️
+            
+            Critical performance regressions have been detected in mobile benchmarks.
+            Please review the [regression report](../artifacts/mobile-analysis-results/regression_report.md) for details.
+            
+            This may impact user experience on mobile devices.
+      
+      - name: Publish dashboard to GitHub Pages
+        if: ${{ github.ref == 'refs/heads/main' && github.event.inputs.generate_dashboard != 'false' }}
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          branch: gh-pages
+          folder: analysis_results
+          target-folder: mobile-benchmarks
+          clean: false

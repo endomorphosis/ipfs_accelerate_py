@@ -1,0 +1,151 @@
+#!/usr/bin/env python3
+"""
+Test script to verify that the integrated test generator correctly handles
+different model architectures and produces functional test files.
+"""
+
+import os
+import sys
+import argparse
+import subprocess
+import tempfile
+import shutil
+from pathlib import Path
+
+# Test models for each architecture
+TEST_MODELS = {
+    "encoder_only": [
+        "bert-base-uncased",      # Text encoder-only model
+        "google/vit-base-patch16-224"  # Vision encoder-only model
+    ],
+    "decoder_only": [
+        "gpt2",                   # Text decoder-only model
+    ],
+    "encoder_decoder": [
+        "t5-small",               # Text encoder-decoder model
+    ]
+}
+
+def run_test_generator(model_family, output_dir):
+    """Run the test generator for a specific model family."""
+    cmd = [
+        sys.executable,
+        "./test_generator.py",
+        "--family", model_family,
+        "--output", output_dir
+    ]
+    
+    print(f"Running: {' '.join(cmd)}")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    
+    if result.returncode != 0:
+        print(f"Error generating test for {model_family}:")
+        print(result.stderr)
+        return False
+    
+    print(f"Successfully generated test file for {model_family}")
+    return True
+
+def run_test_file(test_file, model_id):
+    """Run a generated test file with a specific model ID."""
+    cmd = [
+        sys.executable,
+        test_file,
+        "--model", model_id,
+        "--cpu-only"  # Use CPU for consistent testing
+    ]
+    
+    print(f"Testing model {model_id} with {test_file}")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    
+    # Check for error messages in output
+    if "Failed to test" in result.stdout:
+        print(f"Test failed for {model_id}:")
+        print(result.stdout)
+        return False
+    
+    if "Successfully tested" in result.stdout:
+        print(f"✅ {model_id} test passed!")
+        return True
+    
+    print(f"Unknown test result for {model_id}")
+    print(result.stdout)
+    return False
+
+def run_integration_tests():
+    """Run tests for all model architectures to verify integration."""
+    # Create temporary directory for test files
+    with tempfile.TemporaryDirectory() as temp_dir:
+        print(f"Using temporary directory: {temp_dir}")
+        
+        # Test each model architecture
+        results = {}
+        
+        for model_family in ["bert", "gpt2", "t5", "vit"]:
+            # Generate test file
+            generate_success = run_test_generator(model_family, temp_dir)
+            
+            if not generate_success:
+                results[model_family] = {
+                    "generate": False,
+                    "models": {}
+                }
+                continue
+            
+            test_file = os.path.join(temp_dir, f"test_hf_{model_family}.py")
+            
+            # Determine which models to test
+            models_to_test = []
+            if model_family == "bert":
+                models_to_test = TEST_MODELS["encoder_only"][0:1]
+            elif model_family == "gpt2":
+                models_to_test = TEST_MODELS["decoder_only"]
+            elif model_family == "t5":
+                models_to_test = TEST_MODELS["encoder_decoder"]
+            elif model_family == "vit":
+                models_to_test = TEST_MODELS["encoder_only"][1:2]
+            
+            # Test each model
+            model_results = {}
+            for model_id in models_to_test:
+                model_results[model_id] = run_test_file(test_file, model_id)
+            
+            results[model_family] = {
+                "generate": True,
+                "models": model_results
+            }
+        
+        # Print summary
+        print("\nTest Summary:")
+        all_passed = True
+        
+        for family, family_results in results.items():
+            if not family_results["generate"]:
+                print(f"❌ {family}: Failed to generate test file")
+                all_passed = False
+                continue
+            
+            family_success = all(family_results["models"].values())
+            if family_success:
+                print(f"✅ {family}: All model tests passed")
+            else:
+                print(f"❌ {family}: Some model tests failed")
+                for model, success in family_results["models"].items():
+                    print(f"  {'✅' if success else '❌'} {model}")
+                all_passed = False
+        
+        if all_passed:
+            print("\n🎉 All integration tests passed! The fix was successful.")
+        else:
+            print("\n❌ Some tests failed. Please review the errors and fix them.")
+        
+        return all_passed
+
+def main():
+    parser = argparse.ArgumentParser(description="Test the integrated test generator")
+    args = parser.parse_args()
+    
+    run_integration_tests()
+
+if __name__ == "__main__":
+    main()

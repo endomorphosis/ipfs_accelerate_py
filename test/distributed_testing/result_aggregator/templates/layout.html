@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Result Aggregator Dashboard{% endblock %}</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- Basic styles -->
+    <style>
+        :root {
+            --primary-color: #0066cc;
+            --primary-light: #e6f0ff;
+            --secondary-color: #464646;
+            --accent-color: #ff6b6b;
+            --success-color: #28a745;
+            --warning-color: #ffc107;
+            --danger-color: #dc3545;
+            --light-color: #f8f9fa;
+            --dark-color: #343a40;
+            --gray-color: #6c757d;
+            --border-color: #dee2e6;
+            --sidebar-width: 250px;
+            --header-height: 60px;
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            display: flex;
+            min-height: 100vh;
+        }
+        
+        /* Sidebar */
+        .sidebar {
+            width: var(--sidebar-width);
+            background-color: var(--dark-color);
+            color: white;
+            height: 100vh;
+            position: fixed;
+            z-index: 10;
+            transition: all 0.3s;
+            overflow-y: auto;
+        }
+        
+        .sidebar-header {
+            padding: 20px;
+            background-color: rgba(0, 0, 0, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .sidebar-header h3 {
+            color: white;
+            margin: 0;
+            font-size: 1.2rem;
+        }
+        
+        .sidebar-menu {
+            padding: 10px 0;
+        }
+        
+        .sidebar-item {
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            color: #ddd;
+            text-decoration: none;
+            transition: all 0.3s;
+        }
+        
+        .sidebar-item i {
+            margin-right: 10px;
+            width: 20px;
+            text-align: center;
+        }
+        
+        .sidebar-item:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: white;
+        }
+        
+        .sidebar-item.active {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        
+        /* Main content */
+        .main-content {
+            flex: 1;
+            margin-left: var(--sidebar-width);
+            transition: all 0.3s;
+        }
+        
+        /* Header */
+        .header {
+            height: var(--header-height);
+            background-color: white;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            position: sticky;
+            top: 0;
+            z-index: 5;
+        }
+        
+        .header-title h1 {
+            font-size: 1.5rem;
+            color: var(--dark-color);
+        }
+        
+        .header-actions {
+            display: flex;
+            align-items: center;
+        }
+        
+        .notification-bell {
+            position: relative;
+            margin-right: 20px;
+            cursor: pointer;
+        }
+        
+        .notification-count {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background-color: var(--accent-color);
+            color: white;
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            font-size: 0.7rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .user-dropdown {
+            position: relative;
+            cursor: pointer;
+        }
+        
+        .user-dropdown-content {
+            position: absolute;
+            right: 0;
+            top: 100%;
+            background-color: white;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            border-radius: 4px;
+            min-width: 150px;
+            display: none;
+            z-index: 10;
+        }
+        
+        .user-dropdown:hover .user-dropdown-content {
+            display: block;
+        }
+        
+        .dropdown-item {
+            padding: 10px 15px;
+            color: var(--dark-color);
+            text-decoration: none;
+            display: block;
+        }
+        
+        .dropdown-item:hover {
+            background-color: var(--light-color);
+        }
+        
+        /* Content */
+        .content {
+            padding: 20px;
+        }
+        
+        /* Card component */
+        .card {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        
+        .card-header {
+            padding: 15px 20px;
+            border-bottom: 1px solid var(--border-color);
+            background-color: var(--light-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .card-header h2 {
+            font-size: 1.1rem;
+            margin: 0;
+            color: var(--dark-color);
+        }
+        
+        .card-body {
+            padding: 20px;
+        }
+        
+        /* Grid */
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            margin: 0 -10px;
+        }
+        
+        .col {
+            flex: 1;
+            padding: 0 10px;
+        }
+        
+        .col-2 {
+            flex: 2;
+            padding: 0 10px;
+        }
+        
+        .col-3 {
+            flex: 3;
+            padding: 0 10px;
+        }
+        
+        /* Notification drawer */
+        .notification-drawer {
+            position: fixed;
+            top: var(--header-height);
+            right: 0;
+            width: 320px;
+            height: calc(100vh - var(--header-height));
+            background-color: white;
+            box-shadow: -2px 0 5px rgba(0, 0, 0, 0.1);
+            z-index: 100;
+            transform: translateX(100%);
+            transition: transform 0.3s ease-in-out;
+            overflow-y: auto;
+        }
+        
+        .notification-drawer.open {
+            transform: translateX(0);
+        }
+        
+        .notification-drawer-header {
+            padding: 15px 20px;
+            background-color: var(--light-color);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .notification-drawer-header h3 {
+            margin: 0;
+            font-size: 1.1rem;
+        }
+        
+        .notification-drawer-body {
+            padding: 10px 0;
+        }
+        
+        .notification-item {
+            padding: 10px 20px;
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .notification-item:hover {
+            background-color: var(--light-color);
+        }
+        
+        .notification-item .notification-time {
+            font-size: 0.8rem;
+            color: var(--gray-color);
+            margin-bottom: 5px;
+        }
+        
+        .notification-item .notification-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .notification-item .notification-message {
+            font-size: 0.9rem;
+            color: var(--secondary-color);
+        }
+        
+        .notification-item.unread {
+            border-left: 3px solid var(--primary-color);
+        }
+        
+        /* Button styles */
+        .btn {
+            display: inline-block;
+            font-weight: 500;
+            text-align: center;
+            white-space: nowrap;
+            vertical-align: middle;
+            user-select: none;
+            border: 1px solid transparent;
+            padding: 0.375rem 0.75rem;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            border-radius: 0.25rem;
+            transition: color 0.15s ease-in-out, background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;
+            cursor: pointer;
+        }
+        
+        .btn-primary {
+            color: #fff;
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+        
+        .btn-primary:hover {
+            background-color: #0055aa;
+            border-color: #0055aa;
+        }
+        
+        .btn-secondary {
+            color: #fff;
+            background-color: var(--secondary-color);
+            border-color: var(--secondary-color);
+        }
+        
+        .btn-secondary:hover {
+            background-color: #3d3d3d;
+            border-color: #3d3d3d;
+        }
+        
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+            
+            .sidebar.open {
+                transform: translateX(0);
+            }
+            
+            .main-content {
+                margin-left: 0;
+            }
+            
+            .col {
+                flex: 0 0 100%;
+                margin-bottom: 15px;
+            }
+        }
+    </style>
+    
+    {% block styles %}{% endblock %}
+</head>
+<body>
+    <!-- Sidebar -->
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h3>Result Aggregator</h3>
+            <button class="btn btn-secondary" id="sidebar-toggle"><i class="fas fa-bars"></i></button>
+        </div>
+        <div class="sidebar-menu">
+            <a href="{{ url_for('index') }}" class="sidebar-item {% if request.path == url_for('index') %}active{% endif %}">
+                <i class="fas fa-home"></i> Dashboard
+            </a>
+            <a href="{{ url_for('monitoring_dashboard') }}" class="sidebar-item {% if request.path == url_for('monitoring_dashboard') %}active{% endif %}">
+                <i class="fas fa-tachometer-alt"></i> Real-time Monitoring
+            </a>
+            <a href="{{ url_for('results_page') }}" class="sidebar-item {% if request.path == url_for('results_page') %}active{% endif %}">
+                <i class="fas fa-list-ul"></i> Test Results
+            </a>
+            <a href="{{ url_for('trends_page') }}" class="sidebar-item {% if request.path == url_for('trends_page') %}active{% endif %}">
+                <i class="fas fa-chart-line"></i> Performance Trends
+            </a>
+            <a href="{{ url_for('anomalies_page') }}" class="sidebar-item {% if request.path == url_for('anomalies_page') %}active{% endif %}">
+                <i class="fas fa-exclamation-triangle"></i> Anomalies
+            </a>
+            <a href="{{ url_for('reports_page') }}" class="sidebar-item {% if request.path == url_for('reports_page') %}active{% endif %}">
+                <i class="fas fa-file-alt"></i> Reports
+            </a>
+            <a href="{{ url_for('settings_page') }}" class="sidebar-item {% if request.path == url_for('settings_page') %}active{% endif %}">
+                <i class="fas fa-cog"></i> Settings
+            </a>
+        </div>
+    </div>
+    
+    <!-- Main content -->
+    <div class="main-content">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-title">
+                <h1>{% block header_title %}Dashboard{% endblock %}</h1>
+            </div>
+            <div class="header-actions">
+                <div class="notification-bell" id="notification-bell">
+                    <i class="fas fa-bell"></i>
+                    <span class="notification-count" id="notification-count">0</span>
+                </div>
+                <div class="user-dropdown">
+                    <span><i class="fas fa-user"></i> {{ session.username }}</span>
+                    <div class="user-dropdown-content">
+                        <a href="{{ url_for('settings_page') }}" class="dropdown-item">Settings</a>
+                        <a href="{{ url_for('logout') }}" class="dropdown-item">Logout</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Content -->
+        <div class="content">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+    
+    <!-- Notification drawer -->
+    <div class="notification-drawer" id="notification-drawer">
+        <div class="notification-drawer-header">
+            <h3>Notifications</h3>
+            <button class="btn btn-secondary" id="notification-close"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="notification-drawer-body" id="notification-list">
+            <!-- Notifications will be added here -->
+        </div>
+    </div>
+    
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+    {% if socketio_available %}
+    <script src="https://cdn.socket.io/4.4.1/socket.io.min.js"></script>
+    {% endif %}
+    
+    <script>
+        // Toggle sidebar
+        document.getElementById('sidebar-toggle').addEventListener('click', function() {
+            document.getElementById('sidebar').classList.toggle('open');
+        });
+        
+        // Toggle notification drawer
+        document.getElementById('notification-bell').addEventListener('click', function() {
+            document.getElementById('notification-drawer').classList.toggle('open');
+        });
+        
+        // Close notification drawer
+        document.getElementById('notification-close').addEventListener('click', function() {
+            document.getElementById('notification-drawer').classList.remove('open');
+        });
+        
+        // Fetch notifications
+        let notifications = [];
+        let unreadCount = 0;
+        
+        function updateNotificationCount() {
+            document.getElementById('notification-count').textContent = unreadCount.toString();
+        }
+        
+        function renderNotifications() {
+            const notificationList = document.getElementById('notification-list');
+            notificationList.innerHTML = '';
+            
+            if (notifications.length === 0) {
+                notificationList.innerHTML = '<div class="notification-item"><div class="notification-message">No notifications</div></div>';
+                return;
+            }
+            
+            for (const notification of notifications) {
+                const notificationItem = document.createElement('div');
+                notificationItem.className = 'notification-item';
+                if (!notification.read) {
+                    notificationItem.classList.add('unread');
+                }
+                
+                const timeElement = document.createElement('div');
+                timeElement.className = 'notification-time';
+                
+                // Format time
+                const notificationTime = new Date(notification.timestamp);
+                timeElement.textContent = notificationTime.toLocaleString();
+                
+                const titleElement = document.createElement('div');
+                titleElement.className = 'notification-title';
+                titleElement.textContent = notification.type.charAt(0).toUpperCase() + notification.type.slice(1);
+                
+                const messageElement = document.createElement('div');
+                messageElement.className = 'notification-message';
+                messageElement.textContent = notification.message;
+                
+                notificationItem.appendChild(timeElement);
+                notificationItem.appendChild(titleElement);
+                notificationItem.appendChild(messageElement);
+                
+                notificationList.appendChild(notificationItem);
+                
+                // Mark as read when clicked
+                notificationItem.addEventListener('click', function() {
+                    if (!notification.read) {
+                        notification.read = true;
+                        notificationItem.classList.remove('unread');
+                        unreadCount--;
+                        updateNotificationCount();
+                    }
+                });
+            }
+        }
+        
+        function fetchNotifications() {
+            fetch('/api/notifications')
+                .then(response => response.json())
+                .then(data => {
+                    notifications = data.map(notification => ({
+                        ...notification,
+                        read: false
+                    }));
+                    unreadCount = notifications.length;
+                    updateNotificationCount();
+                    renderNotifications();
+                })
+                .catch(error => console.error('Error fetching notifications:', error));
+        }
+        
+        // Fetch notifications on page load
+        fetchNotifications();
+        
+        // Socket.IO for real-time updates
+        {% if socketio_available %}
+        const socket = io();
+        
+        socket.on('connect', function() {
+            console.log('Connected to SocketIO');
+        });
+        
+        socket.on('notification', function(notification) {
+            console.log('New notification:', notification);
+            notifications.unshift({
+                ...notification,
+                read: false
+            });
+            unreadCount++;
+            updateNotificationCount();
+            renderNotifications();
+        });
+        {% endif %}
+    </script>
+    
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,324 @@
+{% extends "base.html" %}
+
+{% block title %}Integrations - Simulation Validation Framework{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- CI/CD Integration Section -->
+    <div class="col-md-6 mb-4">
+        <div class="card shadow h-100">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-github"></i> CI/CD Integration
+                </h5>
+            </div>
+            <div class="card-body">
+                <p>Set up CI/CD integration to automatically validate simulation results in your continuous integration pipeline.</p>
+                
+                <h6 class="mt-4 mb-3">API Keys</h6>
+                {% if ci_integrations %}
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead {% if theme == 'dark' %}class="table-dark"{% endif %}>
+                            <tr>
+                                <th>Name</th>
+                                <th>Key</th>
+                                <th>Created</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for integration in ci_integrations %}
+                            <tr>
+                                <td>{{ integration.name }}</td>
+                                <td>{{ integration.key }}</td>
+                                <td>{{ integration.created_at }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    No CI/CD API keys have been created yet.
+                </div>
+                {% endif %}
+                
+                {% if session.temp_ci_api_key %}
+                <div class="alert alert-success">
+                    <h6 class="fw-bold">New API Key Created</h6>
+                    <p class="mb-0">Your new API key is: <code>{{ session.temp_ci_api_key }}</code></p>
+                    <p class="mb-0 mt-2"><strong>Important:</strong> This key will only be shown once. Please save it now.</p>
+                </div>
+                {% endif %}
+                
+                <form method="POST" action="{{ url_for('generate_ci_api_key') }}" class="mt-3">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-key"></i> Generate New API Key
+                    </button>
+                </form>
+                
+                <h6 class="mt-4 mb-3">Example Usage</h6>
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <pre class="mb-0"><code># Example API call
+import requests
+import json
+
+url = "{{ request.url_root }}api/ci-trigger"
+headers = {
+    "Content-Type": "application/json",
+    "X-API-Key": "YOUR_API_KEY"
+}
+data = {
+    "run_id": "github-action-12345",
+    "commit_id": "abcdef1234",
+    "validation_results": [
+        {
+            "id": "validation-1",
+            "model_id": "bert-base",
+            "hardware_id": "cuda",
+            "simulation_error": 0.05,
+            "metrics": {
+                "throughput_ratio": 0.95,
+                "latency_ratio": 1.02
+            }
+        }
+    ]
+}
+
+response = requests.post(url, headers=headers, json=data)
+print(response.json())</code></pre>
+                    </div>
+                </div>
+                
+                <h6 class="mt-4 mb-3">GitHub Action Example</h6>
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <pre class="mb-0"><code>name: Simulation Validation
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Run validation
+        id: validate
+        run: |
+          # Your validation script here
+          echo "::set-output name=results::$(cat results.json)"
+      
+      - name: Submit validation results
+        env:
+          API_KEY: ${{ secrets.SIMULATION_API_KEY }}
+        run: |
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-API-Key: $API_KEY" \
+            -d '{
+              "run_id": "${{ github.run_id }}",
+              "commit_id": "${{ github.sha }}",
+              "validation_results": ${{ steps.validate.outputs.results }}
+            }' \
+            {{ request.url_root }}api/ci-trigger</code></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Webhook Integration Section -->
+    <div class="col-md-6 mb-4">
+        <div class="card shadow h-100">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-code-slash"></i> Webhook Integration
+                </h5>
+            </div>
+            <div class="card-body">
+                <p>Set up webhook integration to receive validation results from external systems.</p>
+                
+                <h6 class="mt-4 mb-3">API Keys</h6>
+                {% if webhook_integrations %}
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead {% if theme == 'dark' %}class="table-dark"{% endif %}>
+                            <tr>
+                                <th>Name</th>
+                                <th>Key</th>
+                                <th>Created</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for integration in webhook_integrations %}
+                            <tr>
+                                <td>{{ integration.name }}</td>
+                                <td>{{ integration.key }}</td>
+                                <td>{{ integration.created_at }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    No webhook API keys have been created yet.
+                </div>
+                {% endif %}
+                
+                {% if session.temp_webhook_api_key %}
+                <div class="alert alert-success">
+                    <h6 class="fw-bold">New API Key Created</h6>
+                    <p class="mb-0">Your new API key is: <code>{{ session.temp_webhook_api_key }}</code></p>
+                    <p class="mb-0 mt-2"><strong>Important:</strong> This key will only be shown once. Please save it now.</p>
+                </div>
+                {% endif %}
+                
+                <form method="POST" action="{{ url_for('generate_webhook_api_key') }}" class="mt-3">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-key"></i> Generate New API Key
+                    </button>
+                </form>
+                
+                <h6 class="mt-4 mb-3">Available Webhooks</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead {% if theme == 'dark' %}class="table-dark"{% endif %}>
+                            <tr>
+                                <th>Endpoint</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>/api/webhooks/validation</code></td>
+                                <td>Receive validation results from external systems</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <h6 class="mt-4 mb-3">Example Usage</h6>
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <pre class="mb-0"><code># Example API call
+import requests
+import json
+
+url = "{{ request.url_root }}api/webhooks/validation"
+headers = {
+    "Content-Type": "application/json",
+    "X-API-Key": "YOUR_API_KEY"
+}
+data = {
+    "id": "validation-12345",
+    "model_id": "bert-base",
+    "hardware_id": "cuda",
+    "simulation_error": 0.05,
+    "metrics": {
+        "throughput_ratio": 0.95,
+        "latency_ratio": 1.02
+    },
+    "timestamp": "2025-03-15T10:30:00Z"
+}
+
+response = requests.post(url, headers=headers, json=data)
+print(response.json())</code></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Status Dashboard Section -->
+<div class="card shadow mt-3">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="bi bi-graph-up"></i> Integration Status
+        </h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <h6>CI/CD Integration Status</h6>
+                <p id="ci-status">Loading...</p>
+                <div id="ci-results" class="mt-3">
+                    <!-- CI/CD results will be loaded here -->
+                </div>
+            </div>
+            <div class="col-md-6">
+                <h6>Recent Webhook Activity</h6>
+                <p id="webhook-status">Loading...</p>
+                <div id="webhook-results" class="mt-3">
+                    <!-- Webhook results will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Load CI/CD status
+    fetch('{{ url_for("ci_status") }}')
+        .then(response => response.json())
+        .then(data => {
+            const ciStatusElement = document.getElementById('ci-status');
+            const ciResultsElement = document.getElementById('ci-results');
+            
+            if (data.last_ci_run) {
+                ciStatusElement.innerHTML = `
+                    <div class="alert alert-success">
+                        Last CI run: ${data.last_ci_run.timestamp}<br>
+                        Run ID: ${data.last_ci_run.run_id}<br>
+                        Commit: ${data.last_ci_run.commit_id || 'N/A'}
+                    </div>
+                `;
+                
+                if (data.validation_results && data.validation_results.length > 0) {
+                    let resultsHtml = '<h6 class="mt-3">Validation Results</h6>';
+                    resultsHtml += '<div class="list-group">';
+                    
+                    data.validation_results.forEach(result => {
+                        resultsHtml += `
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <h6 class="mb-1">${result.model_id} on ${result.hardware_id}</h6>
+                                    <span class="badge bg-primary">${result.simulation_error || 'N/A'}</span>
+                                </div>
+                                <p class="mb-1">Metrics: ${JSON.stringify(result.metrics || {})}</p>
+                            </div>
+                        `;
+                    });
+                    
+                    resultsHtml += '</div>';
+                    ciResultsElement.innerHTML = resultsHtml;
+                } else {
+                    ciResultsElement.innerHTML = '<div class="alert alert-info">No validation results found for the last CI run.</div>';
+                }
+            } else {
+                ciStatusElement.innerHTML = '<div class="alert alert-info">No CI runs recorded yet.</div>';
+                ciResultsElement.innerHTML = '';
+            }
+        })
+        .catch(error => {
+            document.getElementById('ci-status').innerHTML = `<div class="alert alert-danger">Error loading CI/CD status: ${error}</div>`;
+        });
+        
+    // For webhook status, we would need to implement a similar endpoint
+    // For now, show a placeholder
+    document.getElementById('webhook-status').innerHTML = '<div class="alert alert-info">Webhook status reporting is coming soon.</div>';
+});
+</script>
+{% endblock %}

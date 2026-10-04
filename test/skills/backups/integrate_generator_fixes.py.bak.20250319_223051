@@ -1,0 +1,311 @@
+#!/usr/bin/env python3
+"""
+Integration script for deploying fixed HuggingFace test files.
+This script helps deploy the fixed test files and tools to the main project.
+"""
+
+import os
+import sys
+import argparse
+import shutil
+import subprocess
+import logging
+from pathlib import Path
+from datetime import datetime
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(f"integration_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# Define the files to integrate
+FILES_TO_INTEGRATE = {
+    "test_files": [
+        "fixed_tests/test_hf_bert.py",
+        "fixed_tests/test_hf_gpt2.py",
+        "fixed_tests/test_hf_t5.py",
+        "fixed_tests/test_hf_vit.py"
+    ],
+    "tools": [
+        "create_minimal_test.py",
+        "fix_test_indentation.py",
+        "fix_file_indentation.py",
+        "regenerate_tests.py", 
+        "test_generator_fixed.py"
+    ],
+    "docs": [
+        "HF_TEST_TROUBLESHOOTING_GUIDE.md",
+        "FIXED_GENERATOR_README.md",
+        "INTEGRATION_PLAN.md",
+        "TESTING_FIXES_SUMMARY.md"
+    ]
+}
+
+def verify_file_syntax(file_path):
+    """
+    Verify Python syntax for a file.
+    
+    Args:
+        file_path: Path to the Python file
+        
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if not file_path.endswith('.py'):
+        return True, None  # Not a Python file
+        
+    try:
+        result = subprocess.run(
+            [sys.executable, '-m', 'py_compile', file_path],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode == 0:
+            return True, None
+        else:
+            return False, result.stderr.strip()
+    except Exception as e:
+        return False, str(e)
+
+def backup_file(file_path, backup_dir=None):
+    """
+    Create a backup of a file.
+    
+    Args:
+        file_path: Path to the file to backup
+        backup_dir: Optional directory for backups
+        
+    Returns:
+        Path to the backup file
+    """
+    if not os.path.exists(file_path):
+        return None
+        
+    # Determine backup path
+    if backup_dir:
+        os.makedirs(backup_dir, exist_ok=True)
+        backup_path = os.path.join(
+            backup_dir, 
+            f"{os.path.basename(file_path)}.bak.{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        )
+    else:
+        backup_path = f"{file_path}.bak"
+    
+    # Create backup
+    shutil.copy2(file_path, backup_path)
+    logger.info(f"Created backup: {backup_path}")
+    return backup_path
+
+def deploy_files(files, dest_dir, backup_dir=None, verify=True):
+    """
+    Deploy files to the destination directory.
+    
+    Args:
+        files: List of files to deploy
+        dest_dir: Destination directory
+        backup_dir: Optional directory for backups
+        verify: Whether to verify Python syntax
+        
+    Returns:
+        Tuple of (deployed_count, failed_count, backups)
+    """
+    deployed = 0
+    failed = 0
+    backups = []
+    
+    os.makedirs(dest_dir, exist_ok=True)
+    
+    for file_path in files:
+        # Skip if source file doesn't exist
+        if not os.path.exists(file_path):
+            logger.warning(f"Source file not found: {file_path}")
+            failed += 1
+            continue
+            
+        # Determine destination path
+        dest_file = os.path.join(dest_dir, os.path.basename(file_path))
+        
+        # Backup existing file if it exists
+        if os.path.exists(dest_file):
+            backup = backup_file(dest_file, backup_dir)
+            if backup:
+                backups.append(backup)
+        
+        # Deploy the file
+        try:
+            shutil.copy2(file_path, dest_file)
+            logger.info(f"Deployed: {file_path} -> {dest_file}")
+            
+            # Verify syntax if it's a Python file
+            if verify and file_path.endswith('.py'):
+                is_valid, error = verify_file_syntax(dest_file)
+                if is_valid:
+                    logger.info(f"Syntax verified: {dest_file}")
+                else:
+                    logger.error(f"Syntax error in {dest_file}: {error}")
+                    failed += 1
+                    continue
+                    
+            deployed += 1
+        except Exception as e:
+            logger.error(f"Failed to deploy {file_path}: {e}")
+            failed += 1
+    
+    return deployed, failed, backups
+
+def verify_generation(generator_path, dest_dir):
+    """
+    Verify that the generator can produce valid files.
+    
+    Args:
+        generator_path: Path to the generator script
+        dest_dir: Directory for generated files
+        
+    Returns:
+        Tuple of (success_count, failure_count)
+    """
+    families = ["bert", "gpt2", "t5", "vit"]
+    success = 0
+    failure = 0
+    
+    for family in families:
+        output_path = os.path.join(dest_dir, f"test_hf_{family}_generated.py")
+        
+        try:
+            # Generate test file
+            subprocess.run(
+                [
+                    sys.executable, 
+                    generator_path, 
+                    "--family", family, 
+                    "--output", dest_dir
+                ],
+                check=True,
+                capture_output=True,
+                text=True
+            )
+            
+            # Verify syntax
+            is_valid, error = verify_file_syntax(output_path)
+            if is_valid:
+                logger.info(f"Successfully generated and verified: {family}")
+                success += 1
+            else:
+                logger.error(f"Generated file has syntax error ({family}): {error}")
+                failure += 1
+        except Exception as e:
+            logger.error(f"Failed to generate test for {family}: {e}")
+            failure += 1
+    
+    return success, failure
+
+def main():
+    parser = argparse.ArgumentParser(description="Integrate fixed HuggingFace test files")
+    
+    parser.add_argument("--dest-dir", type=str, default="..",
+                        help="Destination directory (default: parent directory)")
+    parser.add_argument("--backup-dir", type=str, default="backups",
+                        help="Directory for backups (default: ./backups)")
+    parser.add_argument("--skip-verify", action="store_true",
+                        help="Skip syntax verification")
+    parser.add_argument("--test-only", action="store_true",
+                        help="Test integration without copying files")
+    parser.add_argument("--verify-generator", action="store_true",
+                        help="Verify the generator can produce valid files")
+    
+    # File groups to integrate
+    parser.add_argument("--test-files", action="store_true",
+                        help="Integrate test files")
+    parser.add_argument("--tools", action="store_true",
+                        help="Integrate tool scripts")
+    parser.add_argument("--docs", action="store_true",
+                        help="Integrate documentation")
+    parser.add_argument("--all", action="store_true",
+                        help="Integrate all files")
+    
+    args = parser.parse_args()
+    
+    # Determine which file groups to integrate
+    files_to_deploy = []
+    if args.test_files or args.all:
+        files_to_deploy.extend(FILES_TO_INTEGRATE["test_files"])
+    if args.tools or args.all:
+        files_to_deploy.extend(FILES_TO_INTEGRATE["tools"])
+    if args.docs or args.all:
+        files_to_deploy.extend(FILES_TO_INTEGRATE["docs"])
+        
+    if not files_to_deploy:
+        parser.error("No files selected for integration. Use --test-files, --tools, --docs, or --all")
+    
+    # Create full paths
+    dest_dir = os.path.abspath(args.dest_dir)
+    backup_dir = os.path.abspath(args.backup_dir) if args.backup_dir else None
+    
+    # Test mode - just verify files
+    if args.test_only:
+        logger.info("TEST MODE: Verifying files without deployment")
+        verified = 0
+        failed = 0
+        
+        for file_path in files_to_deploy:
+            if file_path.endswith('.py'):
+                is_valid, error = verify_file_syntax(file_path)
+                if is_valid:
+                    logger.info(f"✅ {file_path} - Valid syntax")
+                    verified += 1
+                else:
+                    logger.error(f"❌ {file_path} - Syntax error: {error}")
+                    failed += 1
+            else:
+                logger.info(f"📄 {file_path} - Not a Python file (skipped syntax check)")
+                verified += 1
+                
+        logger.info(f"\nTest Results:")
+        logger.info(f"- Files checked: {len(files_to_deploy)}")
+        logger.info(f"- Valid: {verified}")
+        logger.info(f"- Failed: {failed}")
+        return 0 if failed == 0 else 1
+    
+    # Deploy files
+    logger.info(f"Deploying {len(files_to_deploy)} files to {dest_dir}")
+    deployed, failed, backups = deploy_files(
+        files_to_deploy, 
+        dest_dir, 
+        backup_dir=backup_dir,
+        verify=not args.skip_verify
+    )
+    
+    # Verify generator if requested
+    if args.verify_generator and (args.tools or args.all):
+        logger.info("Verifying generator functionality...")
+        generator_path = os.path.join(dest_dir, "test_generator_fixed.py")
+        success, failure = verify_generation(generator_path, dest_dir)
+        logger.info(f"Generator verification: {success} successful, {failure} failed")
+    
+    # Print summary
+    logger.info("\nIntegration Summary:")
+    logger.info(f"- Files processed: {len(files_to_deploy)}")
+    logger.info(f"- Successfully deployed: {deployed}")
+    logger.info(f"- Failed: {failed}")
+    logger.info(f"- Backups created: {len(backups)}")
+    
+    # Print backup restore command
+    if backups:
+        restore_command = "# To restore backups:\n"
+        for backup in backups:
+            dest = backup.rsplit('.', 2)[0]  # Remove .bak.timestamp
+            restore_command += f"cp {backup} {dest}\n"
+        
+        logger.info("\nBackup Restore Commands:")
+        logger.info(restore_command)
+    
+    return 0 if failed == 0 else 1
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,1670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hardware Optimization Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
+    <style>
+        .optimization-card {
+            border-left: 4px solid #007bff;
+            margin-bottom: 15px;
+            transition: transform 0.2s ease;
+        }
+        .optimization-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+        .confidence-high {
+            border-left-color: #28a745;
+        }
+        .confidence-medium {
+            border-left-color: #ffc107;
+        }
+        .confidence-low {
+            border-left-color: #dc3545;
+        }
+        .metric-improvement {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .metric-reduction {
+            color: #007bff;
+            font-weight: bold;
+        }
+        .hardware-badge {
+            text-transform: uppercase;
+            font-size: 0.7rem;
+            padding: 0.25rem 0.5rem;
+        }
+        .bg-cpu { background-color: #6c757d; }
+        .bg-cuda { background-color: #76b900; }
+        .bg-rocm { background-color: #ED1C24; }
+        .bg-mps { background-color: #A2AAAD; }
+        .bg-openvino { background-color: #0071C5; }
+        .bg-webgpu { background-color: #8250DF; }
+        .bg-webnn { background-color: #F7DF1E; color: #000 !important; }
+        .tag {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            margin-right: 0.5rem;
+            margin-bottom: 0.5rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            background-color: #e9ecef;
+        }
+        #loadingIndicator {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        .chart-container {
+            height: 300px;
+            position: relative;
+        }
+        
+        /* Enhanced Visualization Styles */
+        .implementation-preview {
+            max-height: 300px;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+        
+        .implementation-code {
+            padding: 1rem;
+            margin-bottom: 0;
+            white-space: pre-wrap;
+            font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size: 0.9rem;
+            color: #212529;
+            line-height: 1.5;
+        }
+        
+        .file-preview-content {
+            padding: 1rem;
+            margin-bottom: 0;
+            white-space: pre-wrap;
+            font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size: 0.9rem;
+            color: #212529;
+            line-height: 1.5;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+        
+        /* Animated progress bars */
+        .progress-bar {
+            transition: width 1s ease-in-out;
+        }
+        
+        /* File badges */
+        .badge.bg-primary {
+            background-color: #0d6efd !important;
+        }
+        
+        .badge.bg-success {
+            background-color: #198754 !important;
+        }
+        
+        .badge.bg-info {
+            background-color: #0dcaf0 !important;
+        }
+        
+        .badge.bg-warning {
+            background-color: #ffc107 !important;
+        }
+        
+        /* Performance visualization */
+        .performance-summary {
+            text-align: center;
+            padding: 1.5rem 0;
+        }
+        
+        .performance-metric {
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            transition: transform 0.2s ease;
+        }
+        
+        .performance-metric:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .metric-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+        
+        .metric-label {
+            font-size: 0.9rem;
+            color: #6c757d;
+        }
+        
+        /* Export result enhancements */
+        .export-result-header {
+            padding: 1.5rem;
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+            margin-bottom: 1.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div id="loadingIndicator" style="display:none;">
+        <div class="d-flex flex-column align-items-center">
+            <div class="spinner-border text-primary mb-3" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <div id="loadingMessage">Loading...</div>
+        </div>
+    </div>
+
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="bi bi-speedometer2 me-2"></i>
+                Hardware Optimization Dashboard
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#recommendations">Recommendations</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#analysis">Performance Analysis</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#reports">Reports</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <div class="row">
+            <div class="col-lg-3">
+                <div class="card mb-4">
+                    <div class="card-header bg-primary text-white">
+                        <i class="bi bi-search me-2"></i>
+                        Find Optimizations
+                    </div>
+                    <div class="card-body">
+                        <form id="optimizationForm">
+                            <div class="mb-3">
+                                <label for="modelName" class="form-label">Model Name</label>
+                                <input type="text" class="form-control" id="modelName" placeholder="e.g., bert-base-uncased">
+                            </div>
+                            <div class="mb-3">
+                                <label for="hardwarePlatform" class="form-label">Hardware Platform</label>
+                                <select class="form-select" id="hardwarePlatform">
+                                    <option value="cuda">NVIDIA GPU (CUDA)</option>
+                                    <option value="cpu">CPU</option>
+                                    <option value="rocm">AMD GPU (ROCm)</option>
+                                    <option value="mps">Apple Silicon (MPS)</option>
+                                    <option value="openvino">Intel OpenVINO</option>
+                                    <option value="webgpu">WebGPU</option>
+                                    <option value="webnn">WebNN</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="modelFamily" class="form-label">Model Family (Optional)</label>
+                                <select class="form-select" id="modelFamily">
+                                    <option value="">Auto-detect</option>
+                                    <option value="transformer_encoder">Transformer Encoder</option>
+                                    <option value="transformer">Transformer</option>
+                                    <option value="cnn">CNN</option>
+                                    <option value="audio">Audio</option>
+                                    <option value="multimodal">Multimodal</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="batchSize" class="form-label">Batch Size (Optional)</label>
+                                <input type="number" class="form-control" id="batchSize" placeholder="e.g., 8">
+                            </div>
+                            <div class="mb-3">
+                                <label for="precision" class="form-label">Current Precision (Optional)</label>
+                                <select class="form-select" id="precision">
+                                    <option value="fp32">FP32</option>
+                                    <option value="fp16">FP16</option>
+                                    <option value="int8">INT8</option>
+                                    <option value="int4">INT4</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="bi bi-lightning-charge-fill me-2"></i>
+                                Find Optimizations
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="card mb-4">
+                    <div class="card-header bg-success text-white">
+                        <i class="bi bi-graph-up me-2"></i>
+                        Performance Analysis
+                    </div>
+                    <div class="card-body">
+                        <form id="analysisForm">
+                            <div class="mb-3">
+                                <label for="analysisModel" class="form-label">Model Name</label>
+                                <input type="text" class="form-control" id="analysisModel" placeholder="e.g., bert-base-uncased">
+                            </div>
+                            <div class="mb-3">
+                                <label for="analysisHardware" class="form-label">Hardware Platform</label>
+                                <select class="form-select" id="analysisHardware">
+                                    <option value="cuda">NVIDIA GPU (CUDA)</option>
+                                    <option value="cpu">CPU</option>
+                                    <option value="rocm">AMD GPU (ROCm)</option>
+                                    <option value="mps">Apple Silicon (MPS)</option>
+                                    <option value="openvino">Intel OpenVINO</option>
+                                    <option value="webgpu">WebGPU</option>
+                                    <option value="webnn">WebNN</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="analysisBatchSize" class="form-label">Batch Size (Optional)</label>
+                                <input type="number" class="form-control" id="analysisBatchSize" placeholder="Any batch size">
+                            </div>
+                            <div class="mb-3">
+                                <label for="analysisDays" class="form-label">Time Range (Days)</label>
+                                <select class="form-select" id="analysisDays">
+                                    <option value="30">Last 30 days</option>
+                                    <option value="90" selected>Last 90 days</option>
+                                    <option value="180">Last 180 days</option>
+                                    <option value="365">Last year</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn btn-success w-100">
+                                <i class="bi bi-bar-chart-fill me-2"></i>
+                                Analyze Performance
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-9">
+                <div id="recommendations" class="card mb-4">
+                    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="bi bi-lightning-charge-fill me-2"></i>
+                            Optimization Recommendations
+                        </div>
+                        <div id="recommendationBadges"></div>
+                    </div>
+                    <div class="card-body">
+                        <div id="recommendationsContent">
+                            <div class="text-center py-5">
+                                <i class="bi bi-search" style="font-size: 3rem; color: #6c757d;"></i>
+                                <h4 class="mt-3">Find Hardware Optimizations</h4>
+                                <p class="text-muted">
+                                    Select a model and hardware platform to get optimization recommendations
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="analysis" class="card mb-4" style="display: none;">
+                    <div class="card-header bg-success text-white">
+                        <i class="bi bi-graph-up me-2"></i>
+                        Performance Analysis
+                    </div>
+                    <div class="card-body">
+                        <div id="analysisContent">
+                            <div class="text-center py-5">
+                                <i class="bi bi-bar-chart" style="font-size: 3rem; color: #6c757d;"></i>
+                                <h4 class="mt-3">Analyze Performance</h4>
+                                <p class="text-muted">
+                                    Use the form to analyze performance data for a specific model and hardware
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="reports" class="card mb-4" style="display: none;">
+                    <div class="card-header bg-info text-white">
+                        <i class="bi bi-file-earmark-text me-2"></i>
+                        Optimization Reports
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-4">
+                            <div class="col-md-8">
+                                <h5>Generate Comprehensive Report</h5>
+                                <p class="text-muted">
+                                    Generate a comprehensive optimization report for multiple models and hardware platforms
+                                </p>
+                            </div>
+                            <div class="col-md-4 text-end">
+                                <button id="generateReportBtn" class="btn btn-info me-2">
+                                    <i class="bi bi-file-earmark-plus me-2"></i>
+                                    Generate Report
+                                </button>
+                                <button id="exportReportBtn" class="btn btn-outline-primary" disabled>
+                                    <i class="bi bi-download me-2"></i>
+                                    Export All
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div id="reportsContent">
+                            <div class="text-center py-5">
+                                <i class="bi bi-file-earmark-text" style="font-size: 3rem; color: #6c757d;"></i>
+                                <h4 class="mt-3">No Reports Yet</h4>
+                                <p class="text-muted">
+                                    Generate a report to see optimization recommendations across multiple models
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Report Generation Modal -->
+    <div class="modal fade" id="reportModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-file-earmark-text me-2"></i>
+                        Generate Optimization Report
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="reportForm">
+                        <div class="mb-3">
+                            <label class="form-label">Select Models</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="modelBert" checked>
+                                <label class="form-check-label" for="modelBert">bert-base-uncased</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="modelGpt2" checked>
+                                <label class="form-check-label" for="modelGpt2">gpt2</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="modelVit" checked>
+                                <label class="form-check-label" for="modelVit">vit-base-patch16-224</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="modelT5">
+                                <label class="form-check-label" for="modelT5">t5-small</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="modelWhisper">
+                                <label class="form-check-label" for="modelWhisper">openai/whisper-tiny</label>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Select Hardware Platforms</label>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="hwCpu" checked>
+                                        <label class="form-check-label" for="hwCpu">CPU</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="hwCuda" checked>
+                                        <label class="form-check-label" for="hwCuda">NVIDIA GPU (CUDA)</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="hwRocm">
+                                        <label class="form-check-label" for="hwRocm">AMD GPU (ROCm)</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="hwMps">
+                                        <label class="form-check-label" for="hwMps">Apple Silicon (MPS)</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="hwOpenvino">
+                                        <label class="form-check-label" for="hwOpenvino">Intel OpenVINO</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="hwWebgpu">
+                                        <label class="form-check-label" for="hwWebgpu">WebGPU</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="reportPrecision" class="form-label">Current Precision</label>
+                            <select class="form-select" id="reportPrecision">
+                                <option value="fp32">FP32</option>
+                                <option value="fp16">FP16</option>
+                                <option value="int8">INT8</option>
+                                <option value="int4">INT4</option>
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-info" id="submitReportBtn">
+                        <i class="bi bi-file-earmark-text me-2"></i>
+                        Generate Report
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Implementation Details Modal -->
+    <div class="modal fade" id="implementationModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="implementationTitle">Implementation Details</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="implementationContent"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" id="exportOptimizationBtn">
+                        <i class="bi bi-download me-2"></i>Export Implementation
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Export Modal -->
+    <div class="modal fade" id="exportModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-download me-2"></i>
+                        Export Optimization
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-primary mb-4">
+                        <div class="d-flex">
+                            <div class="me-3">
+                                <i class="bi bi-info-circle" style="font-size: 1.5rem;"></i>
+                            </div>
+                            <div>
+                                <h5 id="exportRecommendation">Mixed Precision</h5>
+                                <div class="d-flex mb-1">
+                                    <div class="me-3">Model:</div>
+                                    <div class="fw-bold" id="exportModel">bert-base-uncased</div>
+                                </div>
+                                <div class="d-flex">
+                                    <div class="me-3">Hardware:</div>
+                                    <div class="fw-bold" id="exportHardware">cuda</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <div class="text-center">
+                                <div class="text-success fw-bold" id="exportThroughput">+50.0%</div>
+                                <small>Throughput</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-center">
+                                <div class="text-primary fw-bold" id="exportLatency">-30.0%</div>
+                                <small>Latency</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-center">
+                                <div class="text-primary fw-bold" id="exportMemory">-40.0%</div>
+                                <small>Memory</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="exportFramework" class="form-label">Framework</label>
+                        <select class="form-select" id="exportFramework">
+                            <option value="pytorch">PyTorch</option>
+                            <option value="tensorflow">TensorFlow</option>
+                            <option value="onnx">ONNX</option>
+                            <option value="openvino">OpenVINO</option>
+                            <option value="webgpu">WebGPU</option>
+                            <option value="webnn">WebNN</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="exportFormat" class="form-label">Export Format</label>
+                        <select class="form-select" id="exportFormat">
+                            <option value="all">All Formats</option>
+                            <option value="python">Python Only</option>
+                            <option value="json">JSON Only</option>
+                            <option value="yaml">YAML Only</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="confirmExportBtn">
+                        <i class="bi bi-download me-2"></i>
+                        Export Files
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Export Result Modal -->
+    <div class="modal fade" id="exportResultModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title" id="exportResultTitle">
+                        <i class="bi bi-check-circle-fill me-2"></i>
+                        Export Successful
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <div class="export-result-header">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-shrink-0">
+                                <i class="bi bi-box-seam" style="font-size: 2rem; color: #0d6efd;"></i>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <h5 class="fw-bold mb-1">Optimization Export Complete</h5>
+                                <p class="text-muted mb-0">The following files have been generated and are ready for download.</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="px-4 pb-4" id="exportFileList">
+                        <!-- This will be populated by the JavaScript -->
+                        <div class="text-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-3 text-muted">Loading export results...</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="downloadExportBtn">
+                        <i class="bi bi-download me-2"></i>
+                        Download ZIP Archive
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Toast Notification for Download Started -->
+    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+        <div id="downloadStartedToast" class="toast align-items-center text-white bg-success" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="3000">
+            <div class="d-flex">
+                <div class="toast-body">
+                    <i class="bi bi-download me-2"></i>
+                    Download started. Please wait...
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+    <script src="export_integration.js"></script>
+    <script>
+        // API Configuration
+        const API_BASE_URL = 'http://localhost:8080/api/hardware-optimization';
+        
+        // DOM Elements
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const loadingMessage = document.getElementById('loadingMessage');
+        const optimizationForm = document.getElementById('optimizationForm');
+        const analysisForm = document.getElementById('analysisForm');
+        const recommendationsContent = document.getElementById('recommendationsContent');
+        const analysisContent = document.getElementById('analysisContent');
+        const reportsContent = document.getElementById('reportsContent');
+        const recommendationBadges = document.getElementById('recommendationBadges');
+        const generateReportBtn = document.getElementById('generateReportBtn');
+        const reportModal = new bootstrap.Modal(document.getElementById('reportModal'));
+        const submitReportBtn = document.getElementById('submitReportBtn');
+        const implementationModal = new bootstrap.Modal(document.getElementById('implementationModal'));
+        const implementationTitle = document.getElementById('implementationTitle');
+        const implementationContent = document.getElementById('implementationContent');
+        
+        // Navigation
+        const navLinks = document.querySelectorAll('.navbar-nav .nav-link');
+        const contentSections = document.querySelectorAll('.col-lg-9 > .card');
+        
+        navLinks.forEach((link, index) => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                
+                // Update nav links
+                navLinks.forEach(navLink => navLink.classList.remove('active'));
+                link.classList.add('active');
+                
+                // Show/hide content sections
+                contentSections.forEach(section => section.style.display = 'none');
+                contentSections[index].style.display = 'block';
+            });
+        });
+        
+        // Show loading indicator
+        function showLoading(message = 'Loading...') {
+            loadingMessage.textContent = message;
+            loadingIndicator.style.display = 'flex';
+        }
+        
+        // Hide loading indicator
+        function hideLoading() {
+            loadingIndicator.style.display = 'none';
+        }
+        
+        // Check task status
+        async function checkTaskStatus(taskId) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/task/${taskId}`);
+                if (!response.ok) {
+                    throw new Error(`Error: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                return data;
+            } catch (error) {
+                console.error('Error checking task status:', error);
+                return { status: 'failed', error: error.message };
+            }
+        }
+        
+        // Poll task until completed
+        async function pollTask(taskId, callback) {
+            showLoading('Processing request...');
+            
+            try {
+                let status = await checkTaskStatus(taskId);
+                
+                while (status.status === 'pending') {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    status = await checkTaskStatus(taskId);
+                }
+                
+                hideLoading();
+                
+                if (status.status === 'completed') {
+                    callback(status.result);
+                } else {
+                    alert(`Error: ${status.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                hideLoading();
+                alert(`Error: ${error.message}`);
+            }
+        }
+        
+        // Get confidence class
+        function getConfidenceClass(confidence) {
+            if (confidence >= 0.8) {
+                return 'confidence-high';
+            } else if (confidence >= 0.6) {
+                return 'confidence-medium';
+            } else {
+                return 'confidence-low';
+            }
+        }
+        
+        // Format percentage
+        function formatPercent(value) {
+            return `${(value * 100).toFixed(1)}%`;
+        }
+        
+        // Render optimization recommendations
+        function renderRecommendations(data) {
+            if (!data || !data.recommendations || data.recommendations.length === 0) {
+                recommendationsContent.innerHTML = `
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>
+                        No optimization recommendations found for this configuration.
+                    </div>
+                `;
+                recommendationBadges.innerHTML = '';
+                return;
+            }
+            
+            // Update badges
+            recommendationBadges.innerHTML = `
+                <span class="badge bg-${data.hardware_platform} hardware-badge me-2">${data.hardware_platform}</span>
+                <span class="badge bg-secondary">${data.model_name}</span>
+            `;
+            
+            // Render cards
+            let html = '';
+            
+            // Summary section
+            html += `
+                <div class="alert alert-primary mb-4">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <h5>${data.model_name}</h5>
+                            <p class="mb-0">Model Family: ${data.model_family || 'Unknown'}</p>
+                            <p class="mb-0">Current Precision: ${data.current_precision || 'fp32'}</p>
+                            ${data.batch_size ? `<p class="mb-0">Batch Size: ${data.batch_size}</p>` : ''}
+                        </div>
+                        <div class="col-md-4 text-end">
+                            <div class="mb-2">
+                                <span class="badge bg-${data.hardware_platform} hardware-badge">${data.hardware_platform}</span>
+                            </div>
+                            <p class="mb-0">Data Points: ${data.data_points}</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Recommendations
+            html += '<div class="row mb-4">';
+            data.recommendations.forEach((rec, index) => {
+                const confidenceClass = getConfidenceClass(rec.confidence);
+                const throughputImprovement = formatPercent(rec.expected_improvements.throughput_improvement);
+                const latencyReduction = formatPercent(rec.expected_improvements.latency_reduction);
+                const memoryReduction = formatPercent(rec.expected_improvements.memory_reduction);
+                
+                html += `
+                    <div class="col-md-6 mb-3">
+                        <div class="card optimization-card ${confidenceClass} h-100">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-start mb-3">
+                                    <h5 class="card-title">${index + 1}. ${rec.name}</h5>
+                                    <span class="badge bg-${data.hardware_platform} hardware-badge">${data.hardware_platform}</span>
+                                </div>
+                                <p class="card-text">${rec.description}</p>
+                                
+                                <div class="row mb-3">
+                                    <div class="col-4">
+                                        <div class="text-center">
+                                            <div class="metric-improvement">${throughputImprovement}</div>
+                                            <small>Throughput</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="text-center">
+                                            <div class="metric-reduction">${latencyReduction}</div>
+                                            <small>Latency</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="text-center">
+                                            <div class="metric-reduction">${memoryReduction}</div>
+                                            <small>Memory</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <span class="badge ${confidenceClass === 'confidence-high' ? 'bg-success' : confidenceClass === 'confidence-medium' ? 'bg-warning' : 'bg-danger'}">
+                                            ${(rec.confidence * 100).toFixed(0)}% Confidence
+                                        </span>
+                                    </div>
+                                    <button class="btn btn-sm btn-outline-primary view-implementation" data-rec-index="${index}">
+                                        Implementation Details
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            
+            recommendationsContent.innerHTML = html;
+            
+            // Add event listeners for implementation details buttons
+            document.querySelectorAll('.view-implementation').forEach(button => {
+                button.addEventListener('click', () => {
+                    const recIndex = parseInt(button.getAttribute('data-rec-index'));
+                    const rec = data.recommendations[recIndex];
+                    
+                    implementationTitle.textContent = rec.name;
+                    
+                    let configHtml = '';
+                    for (const [key, value] of Object.entries(rec.configuration)) {
+                        configHtml += `<div><strong>${key}</strong>: ${value}</div>`;
+                    }
+                    
+                    implementationContent.innerHTML = `
+                        <div class="mb-4">
+                            <h5>Description</h5>
+                            <p>${rec.description}</p>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <h5>Configuration Parameters</h5>
+                            <div class="card">
+                                <div class="card-body">
+                                    ${configHtml}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <h5>Implementation Guide</h5>
+                            <div class="card">
+                                <div class="card-body">
+                                    ${rec.implementation}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <h5>Expected Improvements</h5>
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <div class="card">
+                                        <div class="card-body text-center">
+                                            <h6>Throughput</h6>
+                                            <div class="display-6 text-success">+${formatPercent(rec.expected_improvements.throughput_improvement)}</div>
+                                            <div class="small text-muted">
+                                                ${rec.current_metrics.throughput ? `${rec.current_metrics.throughput.toFixed(2)} → ${rec.expected_improvements.improved_throughput.toFixed(2)} items/sec` : ''}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="card">
+                                        <div class="card-body text-center">
+                                            <h6>Latency</h6>
+                                            <div class="display-6 text-primary">-${formatPercent(rec.expected_improvements.latency_reduction)}</div>
+                                            <div class="small text-muted">
+                                                ${rec.current_metrics.latency ? `${rec.current_metrics.latency.toFixed(2)} → ${rec.expected_improvements.improved_latency.toFixed(2)} ms` : ''}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="card">
+                                        <div class="card-body text-center">
+                                            <h6>Memory</h6>
+                                            <div class="display-6 text-primary">-${formatPercent(rec.expected_improvements.memory_reduction)}</div>
+                                            <div class="small text-muted">
+                                                ${rec.current_metrics.memory_usage ? `${rec.current_metrics.memory_usage.toFixed(2)} → ${rec.expected_improvements.improved_memory.toFixed(2)} MB` : ''}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <h5>Confidence Score</h5>
+                            <div class="progress">
+                                <div class="progress-bar ${rec.confidence >= 0.8 ? 'bg-success' : rec.confidence >= 0.6 ? 'bg-warning' : 'bg-danger'}" 
+                                     role="progressbar" 
+                                     style="width: ${rec.confidence * 100}%;" 
+                                     aria-valuenow="${rec.confidence * 100}" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100">
+                                    ${(rec.confidence * 100).toFixed(0)}%
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    implementationModal.show();
+                });
+            });
+        }
+        
+        // Render performance analysis
+        function renderAnalysis(data) {
+            if (!data || data.data_points === 0) {
+                analysisContent.innerHTML = `
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>
+                        No performance data found for the selected model and hardware.
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = '';
+            
+            // Summary header
+            html += `
+                <div class="alert alert-success mb-4">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <h5>${data.model_name} on ${data.hardware_platform}</h5>
+                            <p class="mb-0">
+                                <span class="badge bg-${data.hardware_platform} hardware-badge me-2">${data.hardware_platform}</span>
+                                <span class="badge bg-secondary">${data.data_points} data points</span>
+                                <span class="badge bg-secondary">${data.time_range}</span>
+                            </p>
+                        </div>
+                        <div class="col-md-4 text-end">
+                            <p class="mb-0">Batch Sizes: ${data.batch_sizes.join(', ')}</p>
+                            <p class="mb-0">Precision Types: ${data.precision_types.join(', ')}</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Performance metrics
+            html += `
+                <div class="row mb-4">
+                    <div class="col-md-4">
+                        <div class="card h-100">
+                            <div class="card-header bg-success text-white">
+                                <i class="bi bi-speedometer2 me-2"></i>
+                                Throughput
+                            </div>
+                            <div class="card-body">
+                                <div class="text-center mb-3">
+                                    <h3>${data.throughput.mean ? data.throughput.mean.toFixed(2) : 'N/A'} items/sec</h3>
+                                    <p class="text-muted">Mean Throughput</p>
+                                </div>
+                                
+                                <table class="table table-sm">
+                                    <tbody>
+                                        <tr>
+                                            <td>Min</td>
+                                            <td class="text-end">${data.throughput.min ? data.throughput.min.toFixed(2) : 'N/A'}</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Max</td>
+                                            <td class="text-end">${data.throughput.max ? data.throughput.max.toFixed(2) : 'N/A'}</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Median</td>
+                                            <td class="text-end">${data.throughput.median ? data.throughput.median.toFixed(2) : 'N/A'}</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Std Dev</td>
+                                            <td class="text-end">${data.throughput.std_dev ? data.throughput.std_dev.toFixed(2) : 'N/A'}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <div class="card h-100">
+                            <div class="card-header bg-primary text-white">
+                                <i class="bi bi-clock me-2"></i>
+                                Latency
+                            </div>
+                            <div class="card-body">
+                                <div class="text-center mb-3">
+                                    <h3>${data.latency.mean ? data.latency.mean.toFixed(2) : 'N/A'} ms</h3>
+                                    <p class="text-muted">Mean Latency</p>
+                                </div>
+                                
+                                <table class="table table-sm">
+                                    <tbody>
+                                        <tr>
+                                            <td>Min</td>
+                                            <td class="text-end">${data.latency.min ? data.latency.min.toFixed(2) : 'N/A'}</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Max</td>
+                                            <td class="text-end">${data.latency.max ? data.latency.max.toFixed(2) : 'N/A'}</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Median</td>
+                                            <td class="text-end">${data.latency.median ? data.latency.median.toFixed(2) : 'N/A'}</td>
+                                        </tr>
+                                        <tr>
+                                            <td>P90</td>
+                                            <td class="text-end">${data.latency.p90 ? data.latency.p90.toFixed(2) : 'N/A'}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <div class="card h-100">
+                            <div class="card-header bg-info text-white">
+                                <i class="bi bi-memory me-2"></i>
+                                Memory Usage
+                            </div>
+                            <div class="card-body">
+                                <div class="text-center mb-3">
+                                    <h3>${data.memory_usage.mean ? data.memory_usage.mean.toFixed(2) : 'N/A'} MB</h3>
+                                    <p class="text-muted">Mean Memory Usage</p>
+                                </div>
+                                
+                                <table class="table table-sm">
+                                    <tbody>
+                                        <tr>
+                                            <td>Min</td>
+                                            <td class="text-end">${data.memory_usage.min ? data.memory_usage.min.toFixed(2) : 'N/A'}</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Max</td>
+                                            <td class="text-end">${data.memory_usage.max ? data.memory_usage.max.toFixed(2) : 'N/A'}</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Median</td>
+                                            <td class="text-end">${data.memory_usage.median ? data.memory_usage.median.toFixed(2) : 'N/A'}</td>
+                                        </tr>
+                                        <tr>
+                                            <td>P90</td>
+                                            <td class="text-end">${data.memory_usage.p90 ? data.memory_usage.p90.toFixed(2) : 'N/A'}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Correlations and charts if enough data points
+            if (data.data_points >= 3) {
+                html += `
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header bg-dark text-white">
+                                    <i class="bi bi-graph-up me-2"></i>
+                                    Performance Analysis
+                                </div>
+                                <div class="card-body">
+                                    <div class="alert alert-info mb-4">
+                                        ${data.correlation && data.correlation.batch_size_throughput ? 
+                                          `<p class="mb-1">Batch Size to Throughput Correlation: <strong>${data.correlation.batch_size_throughput.toFixed(2)}</strong>
+                                           ${data.correlation.batch_size_throughput > 0.5 ? 
+                                             ' - Increasing batch size significantly improves throughput.' : 
+                                             data.correlation.batch_size_throughput < -0.5 ?
+                                             ' - Increasing batch size negatively impacts throughput.' :
+                                             ' - Batch size has minimal impact on throughput.'}</p>` : ''}
+                                        
+                                        ${data.correlation && data.correlation.batch_size_latency ? 
+                                          `<p class="mb-1">Batch Size to Latency Correlation: <strong>${data.correlation.batch_size_latency.toFixed(2)}</strong>
+                                           ${data.correlation.batch_size_latency > 0.5 ? 
+                                             ' - Increasing batch size significantly increases latency.' : 
+                                             data.correlation.batch_size_latency < -0.5 ?
+                                             ' - Increasing batch size decreases latency (unusual).' :
+                                             ' - Batch size has minimal impact on latency.'}</p>` : ''}
+                                    </div>
+                                    
+                                    <div class="chart-container">
+                                        <canvas id="performanceChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Precision impact if available
+            if (data.precision_impact) {
+                html += `
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header bg-warning text-dark">
+                                    <i class="bi bi-lightbulb me-2"></i>
+                                    Precision Impact Analysis
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive">
+                                        <table class="table table-bordered">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th>Precision</th>
+                                                    <th>Data Points</th>
+                                                    <th>Throughput (items/sec)</th>
+                                                    <th>Latency (ms)</th>
+                                                    <th>Memory Usage (MB)</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                `;
+                
+                // Add rows for each precision
+                for (const [precision, metrics] of Object.entries(data.precision_impact.precision_metrics)) {
+                    html += `
+                        <tr>
+                            <td><strong>${precision}</strong></td>
+                            <td>${metrics.count}</td>
+                            <td>${metrics.throughput_mean ? metrics.throughput_mean.toFixed(2) : 'N/A'}</td>
+                            <td>${metrics.latency_mean ? metrics.latency_mean.toFixed(2) : 'N/A'}</td>
+                            <td>${metrics.memory_mean ? metrics.memory_mean.toFixed(2) : 'N/A'}</td>
+                        </tr>
+                    `;
+                }
+                
+                html += `
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    
+                                    <h5 class="mt-4">Precision Comparisons</h5>
+                                    <div class="row">
+                `;
+                
+                // Add comparison cards
+                data.precision_impact.comparisons.forEach(comparison => {
+                    const p1 = comparison.precision_1;
+                    const p2 = comparison.precision_2;
+                    
+                    let throughputChange = comparison.throughput_mean_relative_diff;
+                    let latencyChange = comparison.latency_mean_relative_diff;
+                    let memoryChange = comparison.memory_mean_relative_diff;
+                    
+                    html += `
+                        <div class="col-md-4">
+                            <div class="card mb-3">
+                                <div class="card-body">
+                                    <h6>${p1} → ${p2}</h6>
+                                    <div class="small text-muted mb-2">
+                                        Sample Size: ${comparison.sample_size.precision_1} vs ${comparison.sample_size.precision_2}
+                                    </div>
+                                    
+                                    <div class="mb-1 d-flex justify-content-between">
+                                        <span>Throughput:</span>
+                                        <span class="${throughputChange > 0 ? 'text-success' : 'text-danger'}">
+                                            ${throughputChange !== undefined ? (throughputChange > 0 ? '+' : '') + (throughputChange * 100).toFixed(1) + '%' : 'N/A'}
+                                        </span>
+                                    </div>
+                                    
+                                    <div class="mb-1 d-flex justify-content-between">
+                                        <span>Latency:</span>
+                                        <span class="${latencyChange < 0 ? 'text-success' : 'text-danger'}">
+                                            ${latencyChange !== undefined ? (latencyChange > 0 ? '+' : '') + (latencyChange * 100).toFixed(1) + '%' : 'N/A'}
+                                        </span>
+                                    </div>
+                                    
+                                    <div class="d-flex justify-content-between">
+                                        <span>Memory:</span>
+                                        <span class="${memoryChange < 0 ? 'text-success' : 'text-danger'}">
+                                            ${memoryChange !== undefined ? (memoryChange > 0 ? '+' : '') + (memoryChange * 100).toFixed(1) + '%' : 'N/A'}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                html += `
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            analysisContent.innerHTML = html;
+            
+            // Create performance chart if enough data points
+            if (data.data_points >= 3) {
+                setTimeout(() => {
+                    // Sample data for the chart (in a real implementation, this would come from the API)
+                    const ctx = document.getElementById('performanceChart').getContext('2d');
+                    const chart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: ['1', '4', '8', '16', '32', '64'],
+                            datasets: [
+                                {
+                                    label: 'Throughput (items/sec)',
+                                    data: generateSampleData(data.throughput.mean || 100, 6, 0.3, true),
+                                    borderColor: '#28a745',
+                                    backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                                    yAxisID: 'y',
+                                    fill: true
+                                },
+                                {
+                                    label: 'Latency (ms)',
+                                    data: generateSampleData(data.latency.mean || 10, 6, 0.2, false),
+                                    borderColor: '#007bff',
+                                    backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                                    yAxisID: 'y1',
+                                    fill: true
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                title: {
+                                    display: true,
+                                    text: 'Performance by Batch Size'
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    title: {
+                                        display: true,
+                                        text: 'Batch Size'
+                                    }
+                                },
+                                y: {
+                                    type: 'linear',
+                                    display: true,
+                                    position: 'left',
+                                    title: {
+                                        display: true,
+                                        text: 'Throughput (items/sec)'
+                                    }
+                                },
+                                y1: {
+                                    type: 'linear',
+                                    display: true,
+                                    position: 'right',
+                                    title: {
+                                        display: true,
+                                        text: 'Latency (ms)'
+                                    },
+                                    grid: {
+                                        drawOnChartArea: false
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }, 100);
+            }
+        }
+        
+        // Generate sample data for chart
+        function generateSampleData(baseValue, count, variability, increasing) {
+            const data = [];
+            let value = baseValue;
+            
+            for (let i = 0; i < count; i++) {
+                // Add some randomness
+                const randomFactor = 1 + (Math.random() * variability * 2 - variability);
+                
+                // Apply trend based on increasing flag
+                const trendFactor = increasing ?
+                    1 + (i * 0.2) : // Increasing trend
+                    1 + (i * 0.1);  // Slower increasing trend for latency
+                
+                value = baseValue * randomFactor * trendFactor;
+                data.push(value);
+            }
+            
+            return data;
+        }
+        
+        // Render optimization report
+        function renderReport(data) {
+            if (!data || !data.top_recommendations || data.top_recommendations.length === 0) {
+                reportsContent.innerHTML = `
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>
+                        No optimization recommendations found for the selected models and hardware.
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = '';
+            
+            // Summary header
+            html += `
+                <div class="alert alert-info mb-4">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <h5>Optimization Report</h5>
+                            <p class="mb-0">Generated: ${new Date(data.generated_at).toLocaleString()}</p>
+                            <p class="mb-0">Models: ${data.models}, Hardware Platforms: ${data.hardware_platforms}</p>
+                        </div>
+                        <div class="col-md-4 text-end">
+                            <button class="btn btn-sm btn-outline-primary" id="downloadReportBtn">
+                                <i class="bi bi-download me-2"></i>
+                                Download Report
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Top recommendations
+            html += `
+                <div class="card mb-4">
+                    <div class="card-header bg-primary text-white">
+                        <i class="bi bi-trophy me-2"></i>
+                        Top Optimization Recommendations
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Rank</th>
+                                        <th>Model</th>
+                                        <th>Hardware</th>
+                                        <th>Recommendation</th>
+                                        <th>Expected Improvement</th>
+                                        <th>Confidence</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+            `;
+            
+            // Add rows for top recommendations
+            data.top_recommendations.forEach((rec, index) => {
+                const throughputImprovement = rec.recommendation.expected_improvements.throughput_improvement;
+                const confidenceScore = rec.recommendation.confidence;
+                const confidenceClass = confidenceScore >= 0.8 ? 'bg-success' : confidenceScore >= 0.6 ? 'bg-warning' : 'bg-danger';
+                
+                html += `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td>${rec.model_name}</td>
+                        <td>
+                            <span class="badge bg-${rec.hardware_platform} hardware-badge">${rec.hardware_platform}</span>
+                        </td>
+                        <td>${rec.recommendation.name}</td>
+                        <td>
+                            <span class="metric-improvement">+${formatPercent(throughputImprovement)}</span>
+                        </td>
+                        <td>
+                            <span class="badge ${confidenceClass}">${(confidenceScore * 100).toFixed(0)}%</span>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Heatmap of recommendations by model and hardware
+            html += `
+                <div class="card mb-4">
+                    <div class="card-header bg-info text-white">
+                        <i class="bi bi-grid-3x3-gap me-2"></i>
+                        Recommendation Matrix
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-bordered">
+                                <thead>
+                                    <tr>
+                                        <th>Model / Hardware</th>
+            `;
+            
+            // Get unique hardware platforms from recommendations
+            const hardwarePlatforms = [...new Set(data.top_recommendations.map(rec => rec.hardware_platform))];
+            hardwarePlatforms.forEach(hw => {
+                html += `<th><span class="badge bg-${hw} hardware-badge">${hw}</span></th>`;
+            });
+            
+            html += `
+                                    </tr>
+                                </thead>
+                                <tbody>
+            `;
+            
+            // Get unique models from recommendations
+            const models = [...new Set(data.top_recommendations.map(rec => rec.model_name))];
+            models.forEach(model => {
+                html += `<tr><td>${model}</td>`;
+                
+                hardwarePlatforms.forEach(hw => {
+                    // Find recommendation for this model-hardware pair
+                    const rec = data.top_recommendations.find(r => r.model_name === model && r.hardware_platform === hw);
+                    
+                    if (rec) {
+                        const throughputImprovement = rec.recommendation.expected_improvements.throughput_improvement;
+                        const color = throughputImprovement >= 0.5 ? '#d4edda' : 
+                                    throughputImprovement >= 0.3 ? '#fff3cd' : '#f8d7da';
+                        
+                        html += `
+                            <td style="background-color: ${color}">
+                                <div class="small">${rec.recommendation.name}</div>
+                                <div class="metric-improvement">+${formatPercent(throughputImprovement)}</div>
+                            </td>
+                        `;
+                    } else {
+                        html += `<td class="text-muted">No data</td>`;
+                    }
+                });
+                
+                html += '</tr>';
+            });
+            
+            html += `
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            reportsContent.innerHTML = html;
+            
+            // Add event listener for download button
+            document.getElementById('downloadReportBtn').addEventListener('click', () => {
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `optimization-report-${new Date().toISOString().split('T')[0]}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            });
+        }
+        
+        // Event listeners
+        optimizationForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const modelName = document.getElementById('modelName').value.trim();
+            const hardwarePlatform = document.getElementById('hardwarePlatform').value;
+            const modelFamily = document.getElementById('modelFamily').value.trim() || null;
+            const batchSize = document.getElementById('batchSize').value.trim() ? parseInt(document.getElementById('batchSize').value) : null;
+            const precision = document.getElementById('precision').value;
+            
+            if (!modelName) {
+                alert('Please enter a model name');
+                return;
+            }
+            
+            showLoading('Getting optimization recommendations...');
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/recommendations`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model_name: modelName,
+                        hardware_platform: hardwarePlatform,
+                        model_family: modelFamily,
+                        batch_size: batchSize,
+                        current_precision: precision
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Error: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.task_id) {
+                    pollTask(data.task_id, renderRecommendations);
+                } else {
+                    hideLoading();
+                    alert('Error: No task ID returned');
+                }
+            } catch (error) {
+                hideLoading();
+                alert(`Error: ${error.message}`);
+            }
+        });
+        
+        analysisForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const modelName = document.getElementById('analysisModel').value.trim();
+            const hardwarePlatform = document.getElementById('analysisHardware').value;
+            const batchSize = document.getElementById('analysisBatchSize').value.trim() ? parseInt(document.getElementById('analysisBatchSize').value) : null;
+            const days = parseInt(document.getElementById('analysisDays').value);
+            
+            if (!modelName) {
+                alert('Please enter a model name');
+                return;
+            }
+            
+            showLoading('Analyzing performance data...');
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/analyze-performance`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model_name: modelName,
+                        hardware_platform: hardwarePlatform,
+                        batch_size: batchSize,
+                        days: days,
+                        limit: 100
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Error: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.task_id) {
+                    // Show analysis tab
+                    navLinks.forEach(navLink => navLink.classList.remove('active'));
+                    navLinks[1].classList.add('active');
+                    contentSections.forEach(section => section.style.display = 'none');
+                    contentSections[1].style.display = 'block';
+                    
+                    pollTask(data.task_id, renderAnalysis);
+                } else {
+                    hideLoading();
+                    alert('Error: No task ID returned');
+                }
+            } catch (error) {
+                hideLoading();
+                alert(`Error: ${error.message}`);
+            }
+        });
+        
+        generateReportBtn.addEventListener('click', () => {
+            reportModal.show();
+        });
+        
+        submitReportBtn.addEventListener('click', async () => {
+            // Get selected models
+            const modelNames = [];
+            if (document.getElementById('modelBert').checked) modelNames.push('bert-base-uncased');
+            if (document.getElementById('modelGpt2').checked) modelNames.push('gpt2');
+            if (document.getElementById('modelVit').checked) modelNames.push('vit-base-patch16-224');
+            if (document.getElementById('modelT5').checked) modelNames.push('t5-small');
+            if (document.getElementById('modelWhisper').checked) modelNames.push('openai/whisper-tiny');
+            
+            // Get selected hardware platforms
+            const hardwarePlatforms = [];
+            if (document.getElementById('hwCpu').checked) hardwarePlatforms.push('cpu');
+            if (document.getElementById('hwCuda').checked) hardwarePlatforms.push('cuda');
+            if (document.getElementById('hwRocm').checked) hardwarePlatforms.push('rocm');
+            if (document.getElementById('hwMps').checked) hardwarePlatforms.push('mps');
+            if (document.getElementById('hwOpenvino').checked) hardwarePlatforms.push('openvino');
+            if (document.getElementById('hwWebgpu').checked) hardwarePlatforms.push('webgpu');
+            
+            // Get precision
+            const precision = document.getElementById('reportPrecision').value;
+            
+            if (modelNames.length === 0) {
+                alert('Please select at least one model');
+                return;
+            }
+            
+            if (hardwarePlatforms.length === 0) {
+                alert('Please select at least one hardware platform');
+                return;
+            }
+            
+            reportModal.hide();
+            showLoading('Generating optimization report...');
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/generate-report`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model_names: modelNames,
+                        hardware_platforms: hardwarePlatforms,
+                        current_precision: precision
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Error: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.task_id) {
+                    // Show reports tab
+                    navLinks.forEach(navLink => navLink.classList.remove('active'));
+                    navLinks[2].classList.add('active');
+                    contentSections.forEach(section => section.style.display = 'none');
+                    contentSections[2].style.display = 'block';
+                    
+                    pollTask(data.task_id, renderReport);
+                } else {
+                    hideLoading();
+                    alert('Error: No task ID returned');
+                }
+            } catch (error) {
+                hideLoading();
+                alert(`Error: ${error.message}`);
+            }
+        });
+    </script>
+</body>
+</html>

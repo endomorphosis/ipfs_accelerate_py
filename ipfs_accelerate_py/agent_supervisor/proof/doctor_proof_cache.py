@@ -42,7 +42,6 @@ from ..analysis.content_identity_bridge import (
     is_digest_shaped,
     sha256_digest_label,
 )
-from .doctor_cache_state import DoctorCacheState
 from .formal_verification_cache import (
     CacheLookupStatus,
     CacheRejectionReason,
@@ -1386,9 +1385,14 @@ class DoctorProofCacheGate:
         self._prover_evidence_store = prover_evidence_store
         self._runtime_cas = runtime_cas
         self._lock = threading.RLock()
-        # Durable denial/dependency state shares the formal cache owner. Never
-        # restore process-local positive eligibility from serialized flags.
-        self._state = DoctorCacheState(cache)
+        # key_id -> quarantine reason
+        self._quarantine: dict[str, str] = {}
+        # key_id -> tombstone
+        self._tombstones: dict[str, DoctorCacheTombstone] = {}
+        # key_id -> set of receipt_ids observed (equivocation detection)
+        self._observed_receipts: dict[str, set[str]] = {}
+        # root_field:cid -> set of key_ids for descendant invalidation
+        self._root_index: dict[str, set[str]] = {}
         # diagnostic-only negative/timeout outcomes (never authoritative)
         self._diagnostics: dict[str, dict[str, Any]] = {}
 
@@ -1409,7 +1413,10 @@ class DoctorProofCacheGate:
         return key if isinstance(key, DoctorProofCacheKey) else DoctorProofCacheKey.from_dict(key)
 
     def _index_roots(self, key: DoctorProofCacheKey) -> None:
-        self._state.check(key)
+        with self._lock:
+            for field_name, cid in key.semantic_root_ids.items():
+                index_key = f"{field_name}:{cid}"
+                self._root_index.setdefault(index_key, set()).add(key.key_id)
 
     @staticmethod
     def _receipt_reasons(
@@ -1491,38 +1498,54 @@ class DoctorProofCacheGate:
     def _check_quarantine_tombstone(
         self, key: DoctorProofCacheKey
     ) -> DoctorCacheLookupResult | None:
-        state = self._state.check(key)
-        if "quarantine" in state:
-            audit = self._audit(
-                disposition=DoctorCacheDisposition.QUARANTINED,
-                stage=DoctorCacheStage.LOOKUP, key=key,
-                reason_codes=(state["quarantine"],),
-            )
-            return DoctorCacheLookupResult(
-                DoctorCacheDisposition.QUARANTINED, key, audit=audit,
-                reason_codes=audit.reason_codes, diagnostic=True,
-            )
-        if "tombstone" in state:
-            tombstone = DoctorCacheTombstone(**state["tombstone"])
-            audit = self._audit(
-                disposition=DoctorCacheDisposition.TOMBSTONED,
-                stage=DoctorCacheStage.LOOKUP, key=key,
-                reason_codes=(DoctorCacheReason.TOMBSTONED.value,),
-                details=tombstone.to_dict(),
-            )
-            return DoctorCacheLookupResult(
-                DoctorCacheDisposition.TOMBSTONED, key, audit=audit,
-                reason_codes=audit.reason_codes, diagnostic=True,
-            )
+        with self._lock:
+            if key.key_id in self._quarantine:
+                reason = self._quarantine[key.key_id]
+                audit = self._audit(
+                    disposition=DoctorCacheDisposition.QUARANTINED,
+                    stage=DoctorCacheStage.LOOKUP,
+                    key=key,
+                    reason_codes=(reason or DoctorCacheReason.EQUIVOCATION.value,),
+                )
+                return DoctorCacheLookupResult(
+                    DoctorCacheDisposition.QUARANTINED,
+                    key,
+                    audit=audit,
+                    reason_codes=audit.reason_codes,
+                    diagnostic=True,
+                )
+            if key.key_id in self._tombstones:
+                tombstone = self._tombstones[key.key_id]
+                audit = self._audit(
+                    disposition=DoctorCacheDisposition.TOMBSTONED,
+                    stage=DoctorCacheStage.LOOKUP,
+                    key=key,
+                    reason_codes=(DoctorCacheReason.TOMBSTONED.value,),
+                    details=tombstone.to_dict(),
+                )
+                return DoctorCacheLookupResult(
+                    DoctorCacheDisposition.TOMBSTONED,
+                    key,
+                    audit=audit,
+                    reason_codes=audit.reason_codes,
+                    diagnostic=True,
+                )
         return None
 
     def _record_observation(
         self, key: DoctorProofCacheKey, receipt: ProofReceipt
     ) -> str | None:
-        """Track identities durably; concurrent/restarted gates share refusals."""
-        state = self._state.observe(key, receipt.receipt_id, now_ms=self._now_ms(),
-            equivocation_reason=DoctorCacheReason.EQUIVOCATION.value)
-        return state.get("quarantine")
+        """Track receipt identities; return quarantine reason on equivocation."""
+
+        with self._lock:
+            observed = self._observed_receipts.setdefault(key.key_id, set())
+            rid = receipt.receipt_id
+            if observed and rid not in observed:
+                reason = DoctorCacheReason.EQUIVOCATION.value
+                self._quarantine[key.key_id] = reason
+                return reason
+            observed.add(rid)
+        return None
 
     def reconstruct_receipt(
         self,
@@ -1694,11 +1717,6 @@ class DoctorProofCacheGate:
                 reason_codes=audit.reason_codes,
                 diagnostic=True,
             )
-        # Source invalidation/quarantine may have raced the expensive receipt
-        # reconstruction. Linearize eligibility at this final owner read.
-        blocked = self._check_quarantine_tombstone(cache_key)
-        if blocked is not None:
-            return blocked
         revalidated = stage in {DoctorCacheStage.RENDER, DoctorCacheStage.COMMIT}
         reason_codes = (
             (DoctorCacheReason.REVALIDATED.value,)
@@ -1782,12 +1800,6 @@ class DoctorProofCacheGate:
                 reason_codes=reasons
                 or (DoctorCacheReason.PROVIDER_RESULT_INVALID.value,),
             )
-        # Adopt any pre-upgrade cached receipt through the normal verifier
-        # before recording a new identity. A restart must not hide equivocation.
-        previous = self.lookup(cache_key)
-        if previous.disposition in {DoctorCacheDisposition.QUARANTINED, DoctorCacheDisposition.TOMBSTONED}:
-            return DoctorCacheStoreResult(False, cache_key, reason_codes=previous.reason_codes,
-                                          audit=previous.audit)
         equiv = self._record_observation(cache_key, reconstructed)
         if equiv is not None:
             return DoctorCacheStoreResult(
@@ -1824,10 +1836,7 @@ class DoctorProofCacheGate:
                 receipt=reconstructed,
                 reason_codes=tuple(mapped) or (DoctorCacheReason.PROVIDER_RESULT_INVALID.value,),
             )
-        blocked = self._check_quarantine_tombstone(cache_key)
-        if blocked is not None:
-            return DoctorCacheStoreResult(False, cache_key, reason_codes=blocked.reason_codes,
-                                          audit=blocked.audit)
+        self._index_roots(cache_key)
         audit = self._audit(
             disposition=DoctorCacheDisposition.HIT,
             stage=DoctorCacheStage.LOOKUP,
@@ -1943,12 +1952,27 @@ class DoctorProofCacheGate:
                 "root_cid must be a non-empty string",
                 reason_code=DoctorCacheReason.IDENTITY_INVALID.value,
             )
-        tombstones = [DoctorCacheTombstone(**row) for row in self._state.invalidate(
-            root_field=root_field, root_cid=root_cid.strip(), reason=reason, now_ms=self._now_ms())]
+        index_key = f"{root_field}:{root_cid.strip()}"
+        now = self._now_ms()
+        tombstones: list[DoctorCacheTombstone] = []
         with self._lock:
-            for tombstone in tombstones:
-                self._diagnostics.pop(tombstone.key_id, None)
-        # Keep immutable positives for audit; durable denial state gates reuse.
+            key_ids = set(self._root_index.get(index_key, set()))
+            for key_id in key_ids:
+                tombstone = DoctorCacheTombstone(
+                    root_field=root_field,
+                    root_cid=root_cid.strip(),
+                    key_id=key_id,
+                    invalidated_at_ms=now,
+                    reason=reason,
+                )
+                self._tombstones[key_id] = tombstone
+                tombstones.append(tombstone)
+                # Drop diagnostics and observed receipts for the tombstoned key.
+                self._diagnostics.pop(key_id, None)
+                self._observed_receipts.pop(key_id, None)
+            self._root_index.pop(index_key, None)
+        # Best-effort delete from formal cache by scanning known key ids is not
+        # available without reverse maps; tombstones gate reuse locally.
         # Optionally notify RuntimeCAS if present.
         cas = self._runtime_cas
         if cas is not None:
@@ -1975,7 +1999,8 @@ class DoctorProofCacheGate:
                     "key_id must be non-empty",
                     reason_code=DoctorCacheReason.IDENTITY_INVALID.value,
                 )
-            self._state.quarantine(key_id, reason=reason, now_ms=self._now_ms())
+            with self._lock:
+                self._quarantine[key_id] = reason
             return DoctorCacheAuditReceipt(
                 disposition=DoctorCacheDisposition.QUARANTINED,
                 stage=DoctorCacheStage.QUARANTINE,
@@ -1984,7 +2009,8 @@ class DoctorProofCacheGate:
                 details={"quarantined": True},
             )
         cache_key = self._coerce_key(key)
-        self._state.quarantine(cache_key.key_id, reason=reason, now_ms=self._now_ms())
+        with self._lock:
+            self._quarantine[cache_key.key_id] = reason
         return self._audit(
             disposition=DoctorCacheDisposition.QUARANTINED,
             stage=DoctorCacheStage.QUARANTINE,
@@ -2000,14 +2026,18 @@ class DoctorProofCacheGate:
             key_id = key.strip()
         else:
             key_id = self._coerce_key(key).key_id
-        return "quarantine" in self._state.state_for_id(key_id)
+        with self._lock:
+            return key_id in self._quarantine
 
     def is_tombstoned(
         self, key: DoctorProofCacheKey | Mapping[str, Any] | str
     ) -> bool:
-        if not isinstance(key, str):
-            return "tombstone" in self._state.check(self._coerce_key(key))
-        return "tombstone" in self._state.state_for_id(key.strip())
+        if isinstance(key, str):
+            key_id = key.strip()
+        else:
+            key_id = self._coerce_key(key).key_id
+        with self._lock:
+            return key_id in self._tombstones
 
     def purge_expired(self) -> int:
         return self._cache.purge_expired()

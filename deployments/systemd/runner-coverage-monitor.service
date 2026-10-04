@@ -1,0 +1,33 @@
+[Unit]
+Description=GitHub Runner Coverage Monitor
+Documentation=https://github.com/endomorphosis/ipfs_accelerate_py
+After=network.target github-autoscaler.service
+Wants=github-autoscaler.service
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/%i/ipfs_accelerate_py
+
+# Run the monitor in daemon mode
+ExecStart=/home/%i/ipfs_accelerate_py/.github/scripts/monitor_runner_coverage.sh --daemon
+
+# Environment variables
+Environment="CHECK_INTERVAL=300"
+Environment="LOG_FILE=/var/log/runner-coverage-monitor.log"
+
+# Restart on failure
+Restart=on-failure
+RestartSec=60
+
+# Resource limits
+CPUQuota=10%
+MemoryMax=256M
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=runner-coverage-monitor
+
+[Install]
+WantedBy=default.target

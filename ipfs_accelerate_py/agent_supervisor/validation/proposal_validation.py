@@ -355,14 +355,9 @@ _ARCHIVE_MAGIC = (
     b"Rar!\x1a\x07",
 )
 _GENERATED_MARKERS_RE = re.compile(
-    r"(?im)^[^\S\r\n]*(?:[#/;*-]+[^\S\r\n]*)?(?:"
+    r"(?im)^\s*(?:[#/;*-]+\s*)?(?:"
     r"@generated\b|"
-    # A noun phrase in ordinary prose ("generated code effects are ...") is
-    # not a declaration that this file was generated. Require header syntax
-    # or an explicit generator/source after this otherwise ambiguous phrase.
-    r"generated\s+(?:file|code)\b"
-    r"(?=[^\S\r\n]*(?:$|[:;.!-])|[^\S\r\n]+(?:by|from)\b)|"
-    r"code\s+generated\b[^\r\n]{0,200}\bdo\s+not\s+edit\b|"
+    r"generated\s+(?:file|code)\b|"
     r"automatically\s+generated\b|"
     r"do\s+not\s+edit"
     r"(?:\s+(?:this|the)\s+(?:file|code))?\s*[.!]?\s*$|"
@@ -373,49 +368,6 @@ _GENERATED_MARKERS_RE = re.compile(
     r"(?:file|code)\b"
     r")"
 )
-def _has_generated_marker(source: str, path: str) -> bool:
-    """Keep declarations protected without interpreting a prose soft wrap as one.
-
-    Only ambiguous ``generated code/file: ...`` phrases inside an existing
-    plain-text paragraph can be continuations. Explicit generation warnings,
-    comments, headings, code fences and paragraph-start headers stay protected.
-    """
-    prose = PurePosixPath(path).suffix.lower() in {".md", ".rst", ".txt", ".tex"}
-    for match in _GENERATED_MARKERS_RE.finditer(source):
-        if not prose or re.fullmatch(r"generated\s+(?:file|code)", match.group().strip(), re.I) is None:
-            return True
-        start = source.rfind("\n", 0, match.start()) + 1
-        end = source.find("\n", match.end())
-        tail = source[match.end():end if end >= 0 else len(source)]
-        # Standalone declarations and by/from generator declarations are not
-        # noun-phrase continuations, even in prose documents.
-        if not re.match(r"[^\S\r\n]*[:;.!-][^\S\r\n]*\S", tail):
-            return True
-        prior = source[:start].rstrip("\n").rsplit("\n", 1)[-1]
-        if (not start or not prior or not prior[0].isalnum()
-                or prior.rstrip().endswith((".", ":", ";", "!", "?"))
-                or source[:start].endswith("\n\n")):
-            return True
-        fence = ""
-        for line in source[:start].split("\n"):
-            opening = re.match(r"^ {0,3}(`{3,}|~{3,})", line)
-            if opening:
-                token = opening.group(1)
-                if not fence:
-                    fence = token
-                elif token[0] == fence[0] and len(token) >= len(fence):
-                    fence = ""
-        if fence:
-            return True
-    return False
-
-
-def _git_text_lines(value: str) -> list[str]:
-    """Git counts LF-delimited lines; form feeds and Unicode separators are data."""
-    lines = value.split("\n")
-    return lines[:-1] if lines[-1] == "" else lines
-
-
 _VALIDATION_CONFIG_PATHS = (
     ".github/workflows/",
     "conftest.py",
@@ -744,7 +696,7 @@ def parse_unified_patch(
         raise ProposalValidationError("patch_text must be a non-empty string")
     if len(patch_text.encode("utf-8", errors="surrogatepass")) > max_bytes:
         raise ProposalValidationError("patch exceeds the byte bound")
-    lines = _git_text_lines(patch_text)
+    lines = patch_text.splitlines()
     files: list[ParsedPatchFile] = []
     index = 0
     while index < len(lines):
@@ -1103,7 +1055,6 @@ class ProposalValidationPolicy:
         ("mypy",),
     )
     allow_binary: bool = False
-    binary_artifact_paths: tuple[str, ...] = ()
     allow_secrets: bool = False
     allow_large_files: bool = False
     allow_generated: bool = False
@@ -1161,14 +1112,6 @@ class ProposalValidationPolicy:
             "generated_path_patterns",
         ):
             object.__setattr__(self, name, _strings(getattr(self, name)))
-        artifact_paths = _strings(self.binary_artifact_paths)
-        for path in artifact_paths:
-            if (not path.lower().endswith((".pdf", ".zip")) or path.startswith("/")
-                    or "\\" in path or any(c in path for c in "\x00\r\n*?[]")
-                    or any(part in {"", ".", ".."} for part in path.split("/"))
-                    or not self.path_is_in_scope(path)):
-                raise ProposalValidationError("binary artifact authority requires exact task-owned PDF/ZIP paths")
-        object.__setattr__(self, "binary_artifact_paths", artifact_paths)
         commands: list[tuple[str, ...]] = []
         for command in self.allowed_validation_commands:
             normalized = (
@@ -1262,11 +1205,8 @@ class ProposalValidationPolicy:
 
         return self.path_is_allowed(path) and self.path_is_task_owned(path)
 
-    def binary_path_is_authorized(self, path: str) -> bool:
-        return self.allow_binary or (path in self.binary_artifact_paths and self.path_is_in_scope(path))
-
     def _identity_payload(self) -> dict[str, Any]:
-        payload = {
+        return {
             "schema": PROPOSAL_VALIDATION_POLICY_SCHEMA,
             "allowed_paths": self.allowed_paths,
             "task_owned_paths": self.task_owned_paths,
@@ -1321,10 +1261,6 @@ class ProposalValidationPolicy:
             "logic_repair_expand_write_set": self.logic_repair_expand_write_set,
         }
 
-        if self.binary_artifact_paths:
-            payload["binary_artifact_paths"] = self.binary_artifact_paths
-        return payload
-
     def to_dict(self) -> dict[str, Any]:
         return {**self._identity_payload(), "policy_id": self.policy_id}
 
@@ -1371,7 +1307,6 @@ class ProposalValidationPolicy:
                 )
             ),
             allow_binary=payload.get("allow_binary", False),
-            binary_artifact_paths=tuple(payload.get("binary_artifact_paths") or ()),
             allow_secrets=payload.get("allow_secrets", False),
             allow_large_files=payload.get("allow_large_files", False),
             allow_generated=payload.get("allow_generated", False),
@@ -3473,10 +3408,10 @@ def _patch_content_matches(
             continue
         before_source = entry.before_source or ""
         after_source = entry.after_source or ""
-        before_lines = _git_text_lines(before_source)
+        before_lines = before_source.splitlines()
         result: list[str] = []
         cursor = 0
-        section_lines = _git_text_lines(section)
+        section_lines = section.splitlines()
         line_index = 0
         saw_hunk = False
         while line_index < len(section_lines):
@@ -3523,7 +3458,7 @@ def _patch_content_matches(
                 return False
         if saw_hunk:
             result.extend(before_lines[cursor:])
-            if result != _git_text_lines(after_source):
+            if result != after_source.splitlines():
                 return False
         elif before_source != after_source:
             return False
@@ -3745,14 +3680,6 @@ class ProposalValidator:
             + len((entry.after_source or "").encode("utf-8", errors="surrogatepass"))
             for entry in entries
         )
-        # Opaque local artifacts have no text sources; charge both byte sides.
-        patch_bytes += sum(
-            entry.metadata.get(side + "_size_bytes", 0)
-            for entry in entries if entry.binary
-            for side in ("before", "after")
-            if type(entry.metadata.get(side + "_size_bytes", 0)) is int
-            and entry.metadata.get(side + "_size_bytes", 0) > 0
-        )
         if patch_bytes > policy.max_patch_bytes:
             add(
                 ProposalFindingCode.PATCH_TOO_LARGE,
@@ -3877,7 +3804,7 @@ class ProposalValidator:
                     proposal.patch_text,
                     max_files=policy.max_diff_entries,
                     max_bytes=policy.max_patch_bytes,
-                    allow_binary=policy.allow_binary or bool(policy.binary_artifact_paths),
+                    allow_binary=policy.allow_binary,
                 )
             except ProposalValidationError as exc:
                 add(
@@ -3998,23 +3925,7 @@ class ProposalValidator:
                         "candidate path is outside the immutable task-owned scope",
                         path,
                     )
-            binary_allowed = policy.binary_path_is_authorized(entry.path)
-            if entry.binary and binary_allowed and not policy.allow_binary:
-                metadata = entry.metadata
-                required = ("after",) if not entry.old_path else ("before", "after")
-                valid_pdf = (entry.change_kind.value in {"add", "modify"}
-                             and entry.before_source is None and entry.after_source is None)
-                for side in required:
-                    valid_pdf = valid_pdf and (
-                        metadata.get(side + "_media_type") == ("application/pdf" if entry.path.lower().endswith(".pdf") else "application/zip")
-                        and type(metadata.get(side + "_size_bytes")) is int
-                        and 0 < metadata[side + "_size_bytes"] <= policy.max_file_bytes
-                        and re.fullmatch(r"[0-9a-f]{64}", str(metadata.get(side + "_sha256", ""))) is not None
-                    )
-                if not valid_pdf:
-                    add(ProposalFindingCode.BINARY_CHANGE_FORBIDDEN, ProposalGate.CONTENT,
-                        "scoped artifact requires locally collected bounded PDF/ZIP byte identities", entry.path)
-            if entry.binary and not binary_allowed:
+            if entry.binary and not policy.allow_binary:
                 add(
                     ProposalFindingCode.BINARY_CHANGE_FORBIDDEN,
                     ProposalGate.PATH,
@@ -4024,15 +3935,14 @@ class ProposalValidator:
             source_bytes = (entry.after_source or "").encode(
                 "utf-8", errors="surrogatepass"
             )
-            if not binary_allowed and _looks_binary(source_bytes):
+            if not policy.allow_binary and _looks_binary(source_bytes):
                 add(
                     ProposalFindingCode.BINARY_CHANGE_FORBIDDEN,
                     ProposalGate.CONTENT,
                     "binary candidate content requires explicit policy authority",
                     entry.path,
                 )
-            exact_zip = entry.path in policy.binary_artifact_paths and entry.path.lower().endswith(".zip") and entry.binary
-            if not (policy.allow_archives or exact_zip) and _looks_archive(entry.path, source_bytes):
+            if not policy.allow_archives and _looks_archive(entry.path, source_bytes):
                 add(
                     ProposalFindingCode.ARCHIVE_CHANGE_FORBIDDEN,
                     ProposalGate.CONTENT,
@@ -4106,7 +4016,7 @@ class ProposalValidator:
                         )
                         for pattern in policy.generated_path_patterns
                     )
-                    or _has_generated_marker(entry.after_source or "", entry.path)
+                    or _GENERATED_MARKERS_RE.search(entry.after_source or "")
                 )
             ):
                 add(

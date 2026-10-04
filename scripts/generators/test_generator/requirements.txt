@@ -1,0 +1,24 @@
+# Core dependencies
+pytest==7.4.3
+pytest-cov==4.1.0
+pytest-xdist==3.3.1
+
+# Mock dependencies - minimal versions 
+# These are used when MOCK_* environment variables are set
+torch==2.1.0  # Minimally required for imports but will be mocked
+transformers==4.36.0  # Minimally required for imports but will be mocked
+sentencepiece==0.1.99  # Minimally required for imports but will be mocked
+
+# Utility dependencies
+pyyaml==6.0.1
+tqdm==4.66.1
+numpy==1.24.3
+pillow==10.0.1
+
+# Logging and reporting
+rich==13.5.3
+matplotlib==3.7.3
+pandas==2.0.3
+
+# For integration with Distributed Testing Framework
+requests==2.31.0

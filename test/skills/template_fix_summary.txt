@@ -1,0 +1,11 @@
+Fixed template files:
+1. encoder_decoder_template.py - Fixed in previous session
+2. vision_template.py - Fixed in previous session
+3. speech_template.py - Fixed in current session
+
+Remaining templates to fix:
+1. multimodal_template.py
+2. vision_text_template.py
+3. minimal_template.py
+4. minimal_vision_template.py
+5. minimal_bert_template.py

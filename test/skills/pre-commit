@@ -1,0 +1,56 @@
+#!/bin/bash
+# Pre-commit hook to validate test generator and generated files
+# Install by copying to .git/hooks/pre-commit and making executable
+
+# Directory where the test suite is located
+SKILLS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+TEST_SUITE_PATH="$SKILLS_DIR/test_generator_test_suite.py"
+GENERATOR_PATH="$SKILLS_DIR/../test_generator.py"
+
+# Function to check if a file is being committed
+is_file_committed() {
+    local file=$1
+    git diff --cached --name-only | grep -q "$file"
+}
+
+# Check if the generator or test files are being modified
+if is_file_committed "test_generator.py" || \
+   is_file_committed "test_hf_*.py" || \
+   is_file_committed "test_generator_*.py"; then
+    
+    echo "🧪 Running test generator validation suite..."
+    
+    # Run the test suite
+    python "$TEST_SUITE_PATH"
+    RESULT=$?
+    
+    if [ $RESULT -ne 0 ]; then
+        echo "❌ Test generator validation failed. Please fix the issues before committing."
+        exit 1
+    fi
+    
+    echo "✅ Test generator validation passed."
+    
+    # Check syntax of generated files
+    echo "🔍 Checking syntax of generated test files..."
+    
+    # Find all test_hf_*.py files in staged changes
+    TEST_FILES=$(git diff --cached --name-only | grep "test_hf_.*\.py$")
+    
+    if [ -n "$TEST_FILES" ]; then
+        for file in $TEST_FILES; do
+            echo "Checking syntax: $file"
+            python -m py_compile "$file"
+            if [ $? -ne 0 ]; then
+                echo "❌ Syntax check failed for $file. Please fix the issues before committing."
+                exit 1
+            fi
+        done
+        echo "✅ All test files have valid syntax."
+    else
+        echo "ℹ️ No test files found in staged changes."
+    fi
+fi
+
+# Success
+exit 0

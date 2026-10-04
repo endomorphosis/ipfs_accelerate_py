@@ -35,7 +35,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     request_hash_observation_credential,
 )
 from test.api.causal_federation.test_typed_state_owner import _gateway, _install
-from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import build_server
+from test.api.test_agent_supervisor_quack_state_server import _real_database_server
 
 
 def _request(action: str = "claim", **fields: object) -> dict:
@@ -155,10 +155,7 @@ def test_unmigrated_owner_refuses_cache_without_creating_tables(owner) -> None:
 
 
 def test_broker_mints_only_hash_service_grant(tmp_path: Path, monkeypatch) -> None:
-    database = tmp_path / "control.duckdb"
-    _install(database)
-    server = build_server(database_path=database, state_dir=tmp_path / "quack-owner",
-                          store_id=str(database), port=0, secret_handle="handle:hash-broker-test")
+    server = _real_database_server(tmp_path)
     client = None
     try:
         server.start()

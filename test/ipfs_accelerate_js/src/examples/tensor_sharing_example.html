@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IPFS Accelerate - Tensor Sharing Example</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      line-height: 1.6;
+      padding: 20px;
+      max-width: 1000px;
+      margin: 0 auto;
+      color: #333;
+    }
+    h1 {
+      color: #1a73e8;
+      border-bottom: 2px solid #eee;
+      padding-bottom: 10px;
+    }
+    h2 {
+      color: #1a73e8;
+      margin-top: 30px;
+    }
+    pre {
+      background-color: #f5f5f5;
+      padding: 15px;
+      border-radius: 5px;
+      overflow-x: auto;
+      margin: 20px 0;
+    }
+    .info-box {
+      background-color: #e8f0fe;
+      border-left: 5px solid #1a73e8;
+      padding: 15px;
+      margin: 20px 0;
+      border-radius: 0 5px 5px 0;
+    }
+    .result-container {
+      margin-top: 20px;
+    }
+    button {
+      background-color: #1a73e8;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-right: 10px;
+    }
+    button:hover {
+      background-color: #0d62c9;
+    }
+    .output {
+      white-space: pre-wrap;
+      font-family: monospace;
+      font-size: 14px;
+    }
+    .code-sample {
+      background-color: #f8f9fa;
+      padding: 15px;
+      border-radius: 5px;
+      margin: 20px 0;
+    }
+    .memory-chart {
+      width: 100%;
+      height: 400px;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>IPFS Accelerate - Tensor Sharing Example</h1>
+  
+  <div class="info-box">
+    <p>This example demonstrates cross-model tensor sharing using the SharedTensor implementation from the IPFS Accelerate TypeScript SDK. It shows how multiple models can share tensors to optimize memory usage and improve performance.</p>
+  </div>
+  
+  <h2>Tensor Sharing Demo</h2>
+  
+  <div class="code-sample">
+    <p>The following code creates a TensorSharingManager and demonstrates how to share tensors between models:</p>
+    <pre><code>// Create a tensor sharing manager
+const manager = new TensorSharingManager(1024); // 1GB max memory
+
+// Register a BERT embedding tensor
+const bertEmbedding = manager.registerSharedTensor(
+  "bert_embedding",
+  [1, 768],  // [batch_size, embedding_size]
+  "cpu",
+  "bert-base-uncased",
+  null,      // No initial consumers
+  "float32"
+);
+
+// T5 model can use BERT embeddings
+const t5Model = "t5-base";
+const t5Embedding = manager.getSharedTensor("bert_embedding", t5Model);
+
+// Create a view of the BERT embedding for a smaller model
+const embeddingView = manager.createTensorView(
+  "bert_embedding",
+  "bert_embedding_half",
+  [0, 0],        // Start offset
+  [1, 384],      // Half the embedding size
+  "distilbert"   // Model using the view
+);
+
+// Share tensors with other models
+manager.shareTensorBetweenModels(
+  "bert_embedding",
+  "bert-base-uncased",
+  ["bart", "roberta"]
+);</code></pre>
+  </div>
+  
+  <div class="actions">
+    <button id="runDemo">Run Tensor Sharing Demo</button>
+    <button id="clearOutput">Clear Output</button>
+  </div>
+  
+  <div class="result-container">
+    <h3>Output:</h3>
+    <pre id="output" class="output"></pre>
+  </div>
+  
+  <h2>Memory Usage Visualization</h2>
+  <p>The chart below will show the memory usage before and after optimization:</p>
+  <div id="memoryChart" class="memory-chart"></div>
+  
+  <script type="module">
+    // Import the SDK and example
+    import { runTensorSharingExample } from './tensor_sharing_example.js';
+    
+    // Initialize output
+    const outputElement = document.getElementById('output');
+    
+    // Override console.log to also display in our output element
+    const originalLog = console.log;
+    console.log = function(...args) {
+      originalLog.apply(console, args);
+      outputElement.textContent += args.join(' ') + '\n';
+    };
+    
+    // Run demo button
+    document.getElementById('runDemo').addEventListener('click', async () => {
+      outputElement.textContent = '';
+      try {
+        const result = await runTensorSharingExample();
+        
+        // Create a simple bar chart showing memory usage
+        const memoryBefore = result.result.initial_memory_bytes / (1024 * 1024);
+        const memoryAfter = result.result.current_memory_bytes / (1024 * 1024);
+        
+        // Visualize memory usage (simplified implementation)
+        const chartEl = document.getElementById('memoryChart');
+        chartEl.innerHTML = `
+          <svg width="100%" height="100%" viewBox="0 0 500 400">
+            <!-- Before bar -->
+            <rect x="100" y="${400 - memoryBefore * 50}" width="100" height="${memoryBefore * 50}" fill="#4285F4"></rect>
+            <text x="150" y="${400 - memoryBefore * 50 - 10}" text-anchor="middle" fill="#333">${memoryBefore.toFixed(2)} MB</text>
+            <text x="150" y="380" text-anchor="middle" fill="#333">Before</text>
+            
+            <!-- After bar -->
+            <rect x="300" y="${400 - memoryAfter * 50}" width="100" height="${memoryAfter * 50}" fill="#34A853"></rect>
+            <text x="350" y="${400 - memoryAfter * 50 - 10}" text-anchor="middle" fill="#333">${memoryAfter.toFixed(2)} MB</text>
+            <text x="350" y="380" text-anchor="middle" fill="#333">After</text>
+            
+            <!-- Baseline -->
+            <line x1="50" y1="350" x2="450" y2="350" stroke="#ccc" stroke-width="1"></line>
+            
+            <!-- Y-axis labels -->
+            <text x="40" y="350" text-anchor="end" fill="#666">0 MB</text>
+            <text x="40" y="250" text-anchor="end" fill="#666">2 MB</text>
+            <text x="40" y="150" text-anchor="end" fill="#666">4 MB</text>
+            <text x="40" y="50" text-anchor="end" fill="#666">6 MB</text>
+            
+            <!-- Title -->
+            <text x="250" y="30" text-anchor="middle" font-weight="bold" fill="#333">Memory Usage Before and After Optimization</text>
+            
+            <!-- Reduction percentage -->
+            <text x="250" y="420" text-anchor="middle" fill="#333">Memory reduction: ${result.result.memory_reduction_percent.toFixed(2)}%</text>
+          </svg>
+        `;
+      } catch (error) {
+        console.error('Error running demo:', error);
+        outputElement.textContent += '\nError: ' + error.message;
+      }
+    });
+    
+    // Clear output button
+    document.getElementById('clearOutput').addEventListener('click', () => {
+      outputElement.textContent = '';
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fault Tolerance Validation Report</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-left: 5px solid #4CAF50;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 5px 10px;
+            background-color: #4CAF50;
+            color: white;
+            border-radius: 3px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .section {
+            margin-bottom: 30px;
+            border: 1px solid #e1e4e8;
+            border-radius: 5px;
+            padding: 20px;
+        }
+        .metrics-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .metric-card {
+            flex: 1 1 200px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            text-align: left;
+            padding: 12px 15px;
+            border-bottom: 1px solid #e1e4e8;
+        }
+        thead tr {
+            background-color: #f8f9fa;
+        }
+        tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        .success {
+            color: #4CAF50;
+        }
+        .warning {
+            color: #FF9800;
+        }
+        .failure {
+            color: #F44336;
+        }
+        .chart-container {
+            margin: 20px 0;
+            text-align: center;
+        }
+        .chart-container img {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #e1e4e8;
+            border-radius: 5px;
+        }
+        .strength {
+            color: #4CAF50;
+        }
+        .weakness {
+            color: #F44336;
+        }
+        .recommendation {
+            color: #2196F3;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Fault Tolerance Validation Report</h1>
+        <p>Generated: 2025-03-12 23:36:06</p>
+        <p>Overall Status: <span class="status-badge">passed</span></p>
+    </div>
+    
+    <div class="section">
+        <h2>Summary</h2>
+        <div class="metrics-container">
+            <div class="metric-card">
+                <h3>Success Rate</h3>
+                <div class="metric-value">100.0%</div>
+                <p>Tests passed/total</p>
+            </div>
+            <div class="metric-card">
+                <h3>Avg Recovery Time</h3>
+                <div class="metric-value">150.7ms</div>
+                <p>Average recovery time</p>
+            </div>
+            <div class="metric-card">
+                <h3>Scenarios Tested</h3>
+                <div class="metric-value">2</div>
+                <p>Total test scenarios</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="section">
+        <h2>Visualizations</h2>
+        
+        <h3>Recovery Time Comparison</h3>
+        <div class="chart-container">
+            <img src="assets/recovery_times.png" alt="Recovery Time Comparison">
+        </div>
+        
+        <h3>Success Rate Dashboard</h3>
+        <div class="chart-container">
+            <img src="assets/success_rates.png" alt="Success Rate Dashboard">
+        </div>
+        
+        <h3>Performance Impact</h3>
+        <div class="chart-container">
+            <img src="assets/performance_impact.png" alt="Performance Impact">
+        </div>
+    </div>
+    
+    <div class="section">
+        <h2>Scenario Results</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Scenario</th>
+                    <th>Status</th>
+                    <th>Recovery Time</th>
+                </tr>
+            </thead>
+            <tbody>
+                
+                <tr>
+                    <td>connection lost</td>
+                    <td class="success">
+                        passed
+                    </td>
+                    <td>
+                        
+                            100.6ms
+                        
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td>browser crash</td>
+                    <td class="success">
+                        passed
+                    </td>
+                    <td>
+                        
+                            200.9ms
+                        
+                    </td>
+                </tr>
+                
+            </tbody>
+        </table>
+    </div>
+    
+    
+    
+    <div class="section">
+        <h2>Test Configuration</h2>
+        <table>
+            <tr>
+                <th>Fault Tolerance Level</th>
+                <td>medium</td>
+            </tr>
+            <tr>
+                <th>Recovery Strategy</th>
+                <td>progressive</td>
+            </tr>
+            <tr>
+                <th>Model Manager</th>
+                <td>MockCrossBrowserModelShardingManager</td>
+            </tr>
+            <tr>
+                <th>Timestamp</th>
+                <td>2025-03-12T23:35:56.894398</td>
+            </tr>
+        </table>
+    </div>
+    
+    <footer>
+        <p>Generated by FaultToleranceVisualizer on 2025-03-12 23:36:06</p>
+    </footer>
+</body>
+</html>

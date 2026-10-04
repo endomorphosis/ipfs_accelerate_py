@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{{ title }} - Simulation Validation Framework{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
+    <style>
+        {% if theme == 'dark' %}
+        :root {
+            --bs-body-color: #e9ecef;
+            --bs-body-bg: #212529;
+            --bs-card-bg: #343a40;
+            --bs-navbar-color: rgba(255, 255, 255, 0.85);
+            --bs-navbar-hover-color: rgba(255, 255, 255, 0.95);
+            --bs-navbar-active-color: #fff;
+            --bs-table-color: #e9ecef;
+            --bs-table-bg: #343a40;
+            --bs-table-border-color: #495057;
+        }
+        .bg-light { background-color: #343a40 !important; }
+        .text-muted { color: #adb5bd !important; }
+        .card { border-color: #495057; }
+        .card-header { background-color: #343a40; }
+        .table { color: #e9ecef; }
+        .modal-content { background-color: #343a40; }
+        .dropdown-menu { background-color: #343a40; }
+        .dropdown-item { color: #e9ecef; }
+        .dropdown-item:hover { background-color: #495057; color: #fff; }
+        .dropdown-divider { border-color: #495057; }
+        .form-control { background-color: #495057; border-color: #6c757d; color: #e9ecef; }
+        .form-control:focus { background-color: #495057; color: #e9ecef; }
+        .form-select { background-color: #495057; border-color: #6c757d; color: #e9ecef; }
+        {% endif %}
+        
+        body {
+            padding-top: 56px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        main {
+            flex: 1;
+        }
+        
+        .sidebar {
+            position: sticky;
+            top: 56px;
+            height: calc(100vh - 56px);
+            padding-top: 1rem;
+            overflow-y: auto;
+        }
+        
+        .validation-card {
+            transition: transform 0.2s;
+        }
+        
+        .validation-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+        
+        .status-good {
+            color: #28a745 !important;
+        }
+        
+        .status-warning {
+            color: #ffc107 !important;
+        }
+        
+        .status-bad {
+            color: #dc3545 !important;
+        }
+        
+        /* Notifications dropdown */
+        .notification-indicator {
+            position: relative;
+        }
+        
+        .notification-badge {
+            position: absolute;
+            top: 0;
+            right: 0;
+            transform: translate(25%, -25%);
+            font-size: 0.75rem;
+        }
+        
+        .notification-dropdown {
+            width: 350px;
+            max-width: 350px;
+            max-height: 500px;
+            overflow-y: auto;
+            padding: 0;
+        }
+        
+        .notification-dropdown .dropdown-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .notification-item {
+            white-space: normal;
+            border-bottom: 1px solid var(--bs-border-color);
+        }
+        
+        .notification-item:last-child {
+            border-bottom: none;
+        }
+        
+        .notification-indicator:after {
+            display: none !important;
+        }
+        
+        /* Admin badge in navbar */
+        .admin-badge {
+            font-size: 0.65rem;
+            padding: 0.15rem 0.25rem;
+            margin-left: 0.25rem;
+            margin-top: -0.25rem;
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="{% if theme == 'dark' %}bg-dark text-light{% endif %}">
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg {% if theme == 'dark' %}navbar-dark bg-dark{% else %}navbar-light bg-light{% endif %} fixed-top">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{{ url_for('index') }}">
+                <i class="bi bi-bar-chart-line"></i> Simulation Validation Framework
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'index' %}active{% endif %}" href="{{ url_for('index') }}">
+                            <i class="bi bi-house"></i> Home
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'validation_results' %}active{% endif %}" href="{{ url_for('validation_results') }}">
+                            <i class="bi bi-clipboard-check"></i> Validation Results
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'validate' %}active{% endif %}" href="{{ url_for('validate') }}">
+                            <i class="bi bi-check-circle"></i> Run Validation
+                        </a>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-tools"></i> Tools
+                        </a>
+                        <ul class="dropdown-menu {% if theme == 'dark' %}dropdown-menu-dark{% endif %}">
+                            <li>
+                                <a class="dropdown-item" href="{{ url_for('calibrate') }}">
+                                    <i class="bi bi-sliders"></i> Calibration
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="{{ url_for('drift_detection') }}">
+                                    <i class="bi bi-graph-up"></i> Drift Detection
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="{{ url_for('parameter_discovery') }}">
+                                    <i class="bi bi-braces"></i> Parameter Discovery
+                                </a>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <a class="dropdown-item" href="{{ url_for('generate_report') }}">
+                                    <i class="bi bi-file-earmark-text"></i> Generate Report
+                                </a>
+                            </li>
+                        </ul>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
+                            <i class="bi bi-speedometer2"></i> Dashboard
+                        </a>
+                    </li>
+                    
+                    {% if is_authenticated %}
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'jobs' %}active{% endif %}" href="{{ url_for('jobs') }}">
+                            <i class="bi bi-cpu"></i> Jobs
+                        </a>
+                    </li>
+                    {% endif %}
+                    
+                    {% if is_authenticated and user_role == 'admin' %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-shield-check"></i> Admin
+                            <span class="badge bg-danger rounded-pill admin-badge">Admin</span>
+                        </a>
+                        <ul class="dropdown-menu {% if theme == 'dark' %}dropdown-menu-dark{% endif %}">
+                            <li>
+                                <a class="dropdown-item" href="{{ url_for('manage_users') }}">
+                                    <i class="bi bi-people"></i> Manage Users
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="{{ url_for('integrations') }}">
+                                    <i class="bi bi-gear-wide-connected"></i> Integrations
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="{{ url_for('register') }}">
+                                    <i class="bi bi-person-plus"></i> Register New User
+                                </a>
+                            </li>
+                        </ul>
+                    </li>
+                    {% endif %}
+                </ul>
+                
+                <ul class="navbar-nav ms-auto">
+                    {% if is_authenticated %}
+                    <!-- Notifications -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle notification-indicator" href="#" id="notificationsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-bell{% if unread_notifications > 0 %}-fill{% endif %}"></i>
+                            {% if unread_notifications > 0 %}
+                            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger notification-badge">
+                                {{ unread_notifications }}
+                                <span class="visually-hidden">unread notifications</span>
+                            </span>
+                            {% endif %}
+                        </a>
+                        <div class="dropdown-menu dropdown-menu-end notification-dropdown {% if theme == 'dark' %}dropdown-menu-dark{% endif %}" aria-labelledby="notificationsDropdown">
+                            <div class="dropdown-header">
+                                <span>Notifications</span>
+                                <a href="{{ url_for('notifications') }}" class="text-decoration-none">
+                                    <small>View All</small>
+                                </a>
+                            </div>
+                            
+                            <div id="notification-items">
+                                <!-- Notifications will be loaded via AJAX -->
+                                <div class="dropdown-item text-center">
+                                    <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                    <span class="ms-2">Loading notifications...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </li>
+                    
+                    <!-- User account dropdown -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-person-circle"></i>
+                            <span>{{ session.username }}</span>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end {% if theme == 'dark' %}dropdown-menu-dark{% endif %}" aria-labelledby="userDropdown">
+                            <li>
+                                <a class="dropdown-item" href="{{ url_for('profile') }}">
+                                    <i class="bi bi-person"></i> Profile
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="{{ url_for('preferences') }}">
+                                    <i class="bi bi-sliders"></i> Preferences
+                                </a>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <a class="dropdown-item" href="{{ url_for('logout') }}">
+                                    <i class="bi bi-box-arrow-right"></i> Logout
+                                </a>
+                            </li>
+                        </ul>
+                    </li>
+                    {% else %}
+                    <!-- Login button -->
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('login') }}">
+                            <i class="bi bi-box-arrow-in-right"></i> Login
+                        </a>
+                    </li>
+                    {% endif %}
+                    
+                    <!-- API link -->
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('api_status') }}" target="_blank">
+                            <i class="bi bi-code-slash"></i> API
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main content -->
+    <main class="container-fluid py-4">
+        <div class="row">
+            <!-- Optional sidebar -->
+            {% block sidebar %}{% endblock %}
+            
+            <!-- Content -->
+            <div class="{% block content_class %}col-md-12{% endblock %}">
+                <!-- Flash messages -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }}" role="alert">
+                                {{ message }}
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                
+                <!-- Page header -->
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h1 class="mb-0">{% block header %}{{ title }}{% endblock %}</h1>
+                    {% block header_buttons %}{% endblock %}
+                </div>
+                
+                <!-- Page content -->
+                {% block content %}{% endblock %}
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="py-3 mt-5 border-top {% if theme == 'dark' %}bg-dark text-light border-secondary{% endif %}">
+        <div class="container text-center">
+            <p class="mb-1">Simulation Validation Framework - Web UI</p>
+            <p class="text-muted mb-0">&copy; {{ now.year }} Your Organization</p>
+        </div>
+    </footer>
+
+    <!-- Bootstrap JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Common JavaScript -->
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        {% if is_authenticated %}
+        // Load notifications
+        const notificationItems = document.getElementById('notification-items');
+        if (notificationItems) {
+            fetch('{{ url_for("api_notifications") }}')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.notifications && data.notifications.length > 0) {
+                        let notificationsHtml = '';
+                        data.notifications.forEach(notification => {
+                            let iconClass = 'bi-info-circle';
+                            let textClass = 'text-info';
+                            
+                            if (notification.type === 'success') {
+                                iconClass = 'bi-check-circle';
+                                textClass = 'text-success';
+                            } else if (notification.type === 'warning') {
+                                iconClass = 'bi-exclamation-triangle';
+                                textClass = 'text-warning';
+                            } else if (notification.type === 'danger') {
+                                iconClass = 'bi-exclamation-circle';
+                                textClass = 'text-danger';
+                            }
+                            
+                            notificationsHtml += `
+                                <a href="{{ url_for('notifications') }}" class="dropdown-item notification-item">
+                                    <div class="d-flex align-items-center">
+                                        <div class="flex-shrink-0">
+                                            <i class="bi ${iconClass} ${textClass}"></i>
+                                        </div>
+                                        <div class="flex-grow-1 ms-2">
+                                            <div class="small text-truncate">${notification.message}</div>
+                                            <div class="small text-muted">${notification.created_at}</div>
+                                        </div>
+                                    </div>
+                                </a>
+                            `;
+                        });
+                        
+                        notificationItems.innerHTML = notificationsHtml;
+                    } else {
+                        notificationItems.innerHTML = `
+                            <div class="dropdown-item text-center py-3">
+                                <i class="bi bi-bell-slash text-muted"></i>
+                                <span class="text-muted ms-2">No unread notifications</span>
+                            </div>
+                        `;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading notifications:', error);
+                    notificationItems.innerHTML = `
+                        <div class="dropdown-item text-center py-3">
+                            <i class="bi bi-exclamation-triangle text-warning"></i>
+                            <span class="text-muted ms-2">Failed to load notifications</span>
+                        </div>
+                    `;
+                });
+        }
+        {% endif %}
+    });
+    </script>
+    
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

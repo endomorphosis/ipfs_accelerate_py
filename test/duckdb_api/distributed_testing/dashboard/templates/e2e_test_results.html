@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E2E Test Results - Monitoring Dashboard</title>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <link rel="stylesheet" href="/static/css/{{ theme }}.css">
+    <style>
+        .e2e-visualizations {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .visualization-container {
+            background-color: var(--card-bg);
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            overflow: hidden;
+        }
+        
+        .visualization-container h3 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: var(--heading-color);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+        }
+        
+        .test-selector {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: var(--card-bg);
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        
+        .test-selector select {
+            padding: 8px 12px;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+            background-color: var(--input-bg);
+            color: var(--text-color);
+            flex-grow: 1;
+        }
+        
+        .test-selector label {
+            font-weight: bold;
+            color: var(--text-color);
+        }
+        
+        .tab-container {
+            margin-bottom: 20px;
+        }
+        
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 20px;
+        }
+        
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: 1px solid var(--border-color);
+            border-bottom: none;
+            border-radius: 5px 5px 0 0;
+            margin-right: 5px;
+            background-color: var(--card-bg);
+            color: var(--text-color);
+        }
+        
+        .tab.active {
+            background-color: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+        
+        .tab-content {
+            display: none;
+            padding: 20px;
+            border: 1px solid var(--border-color);
+            border-radius: 0 0 5px 5px;
+            background-color: var(--card-bg);
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .visualization-frame {
+            width: 100%;
+            height: 800px;
+            border: none;
+        }
+        
+        .test-details {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: var(--card-bg);
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        
+        .test-details h3 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: var(--heading-color);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+        }
+        
+        .details-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 15px;
+        }
+        
+        .detail-item {
+            padding: 10px;
+            background-color: var(--bg-lighter);
+            border-radius: 4px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .detail-label {
+            font-size: 0.9em;
+            color: var(--text-muted);
+            margin-bottom: 5px;
+        }
+        
+        .detail-value {
+            font-weight: bold;
+            color: var(--text-color);
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.8em;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        
+        .status-success {
+            background-color: var(--success-color);
+            color: white;
+        }
+        
+        .status-failure {
+            background-color: var(--danger-color);
+            color: white;
+        }
+        
+        .no-tests-message {
+            text-align: center;
+            padding: 40px;
+            background-color: var(--card-bg);
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            color: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Dashboard Sidebar -->
+        {% include 'sidebar.html' %}
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="content-header">
+                <h1>End-to-End Test Results</h1>
+                <div class="header-controls">
+                    <div class="theme-toggle">
+                        <span>Theme:</span>
+                        <select id="themeSelector" onchange="changeTheme()">
+                            <option value="light" {% if theme == 'light' %}selected{% endif %}>Light</option>
+                            <option value="dark" {% if theme == 'dark' %}selected{% endif %}>Dark</option>
+                        </select>
+                    </div>
+                </div>
+            </header>
+
+            <div class="dashboard-content">
+                {% if tests %}
+                <div class="test-selector">
+                    <label for="test-select">Select Test:</label>
+                    <select id="test-select" onchange="loadTestResults()">
+                        {% for test in tests %}
+                        <option value="{{ test.id }}" {% if test.id == selected_test %}selected{% endif %}>
+                            {{ test.id }} ({{ test.timestamp }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="test-details">
+                    <h3>Test Details</h3>
+                    <div class="details-grid">
+                        <div class="detail-item">
+                            <span class="detail-label">Test ID</span>
+                            <span class="detail-value" id="test-id">{{ current_test.id }}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Timestamp</span>
+                            <span class="detail-value" id="test-timestamp">{{ current_test.timestamp }}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Workers</span>
+                            <span class="detail-value" id="test-workers">{{ current_test.configuration.num_workers }}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Duration</span>
+                            <span class="detail-value" id="test-duration">{{ current_test.configuration.test_duration }} seconds</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Hardware Profiles</span>
+                            <span class="detail-value" id="test-hardware">{{ current_test.configuration.hardware_profiles|join(', ') }}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Failures Injected</span>
+                            <span class="detail-value" id="test-failures">{{ 'Yes' if current_test.configuration.include_failures else 'No' }}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Status</span>
+                            <span class="detail-value">
+                                <span class="status-badge {{ 'status-success' if current_test.summary.overall_success else 'status-failure' }}" id="test-status">
+                                    {{ 'Success' if current_test.summary.overall_success else 'Failure' }}
+                                </span>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tab-container">
+                    <div class="tabs">
+                        <div class="tab active" onclick="openTab(event, 'summary')">Summary</div>
+                        <div class="tab" onclick="openTab(event, 'components')">Component Status</div>
+                        <div class="tab" onclick="openTab(event, 'timing')">Test Timing</div>
+                        <div class="tab" onclick="openTab(event, 'failures')">Fault Tolerance</div>
+                    </div>
+                    
+                    <div id="summary" class="tab-content active">
+                        <iframe id="summary-frame" class="visualization-frame" srcdoc="{{ visualizations.summary }}"></iframe>
+                    </div>
+                    
+                    <div id="components" class="tab-content">
+                        <iframe id="components-frame" class="visualization-frame" srcdoc="{{ visualizations.component }}"></iframe>
+                    </div>
+                    
+                    <div id="timing" class="tab-content">
+                        <iframe id="timing-frame" class="visualization-frame" srcdoc="{{ visualizations.timing }}"></iframe>
+                    </div>
+                    
+                    <div id="failures" class="tab-content">
+                        <iframe id="failures-frame" class="visualization-frame" srcdoc="{{ visualizations.failures }}"></iframe>
+                    </div>
+                </div>
+                {% else %}
+                <div class="no-tests-message">
+                    <h2>No End-to-End Test Results Available</h2>
+                    <p>Run the end-to-end testing framework to generate test results:</p>
+                    <pre>python -m duckdb_api.distributed_testing.tests.run_e2e_tests</pre>
+                </div>
+                {% endif %}
+            </div>
+        </main>
+    </div>
+
+    <script>
+        function openTab(evt, tabName) {
+            // Hide all tab content
+            var tabcontent = document.getElementsByClassName("tab-content");
+            for (var i = 0; i < tabcontent.length; i++) {
+                tabcontent[i].classList.remove("active");
+            }
+            
+            // Remove active class from all tabs
+            var tabs = document.getElementsByClassName("tab");
+            for (var i = 0; i < tabs.length; i++) {
+                tabs[i].classList.remove("active");
+            }
+            
+            // Show the current tab and add an "active" class to the button that opened the tab
+            document.getElementById(tabName).classList.add("active");
+            evt.currentTarget.classList.add("active");
+        }
+        
+        function loadTestResults() {
+            var testId = document.getElementById("test-select").value;
+            window.location.href = "/e2e-test-results/" + testId;
+        }
+        
+        function changeTheme() {
+            var theme = document.getElementById("themeSelector").value;
+            var url = new URL(window.location.href);
+            url.searchParams.set('theme', theme);
+            window.location.href = url.toString();
+        }
+    </script>
+</body>
+</html>

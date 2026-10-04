@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Standalone ViT Demo</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .upload-section {
+      border: 2px dashed #ccc;
+      padding: 20px;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    #preview {
+      max-width: 100%;
+      max-height: 300px;
+      margin-top: 10px;
+    }
+    .results {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    .progress-bar {
+      width: 100%;
+      height: 20px;
+      background-color: #f0f0f0;
+      border-radius: 5px;
+      margin-top: 5px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background-color: #4CAF50;
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+    .backend-info {
+      background-color: #f8f9fa;
+      padding: 10px;
+      border-radius: 5px;
+      margin-top: 20px;
+    }
+    .loading {
+      display: none;
+      margin-top: 20px;
+      text-align: center;
+    }
+    #error-message {
+      color: red;
+      margin-top: 10px;
+      display: none;
+    }
+    .result-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 5px;
+      border-bottom: 1px solid #eee;
+    }
+  </style>
+</head>
+<body>
+  <h1>Standalone Vision Transformer Demo</h1>
+  <p>This demo shows a Vision Transformer model running with hardware acceleration via the bundled UMD package.</p>
+  
+  <div class="upload-section" id="drop-area">
+    <p>Drop an image here or click to select</p>
+    <input type="file" id="file-input" accept="image/*" style="display: none;">
+    <button id="select-file">Select Image</button>
+    <div>
+      <img id="preview" style="display: none;">
+    </div>
+  </div>
+  
+  <div id="error-message"></div>
+  
+  <div class="loading" id="loading">
+    <p>Processing image...</p>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progress"></div>
+    </div>
+  </div>
+  
+  <div class="results" id="results" style="display: none;">
+    <h2>Classification Results</h2>
+    <div id="top-predictions"></div>
+    
+    <div class="backend-info">
+      <h3>Hardware Backend Information</h3>
+      <p id="backend-info"></p>
+      <p id="performance-info"></p>
+    </div>
+  </div>
+  
+  <!-- Load bundled ViT model -->
+  <script src="../../../dist/models/vit.umd.min.js"></script>
+  
+  <script>
+    // Define ImageNet classes (top 25 for brevity)
+    const IMAGENET_CLASSES = [
+      'tench', 'goldfish', 'great white shark', 'tiger shark', 'hammerhead shark',
+      'electric ray', 'stingray', 'rooster', 'hen', 'ostrich', 'brambling',
+      'goldfinch', 'house finch', 'junco', 'indigo bunting', 'American robin',
+      'bulbul', 'jay', 'magpie', 'chickadee', 'water ouzel', 'kite', 'bald eagle',
+      'vulture', 'great grey owl', /* ...more classes would go here */ 
+    ];
+
+    // Main application
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Get DOM elements
+      const fileInput = document.getElementById('file-input');
+      const selectFileButton = document.getElementById('select-file');
+      const dropArea = document.getElementById('drop-area');
+      const preview = document.getElementById('preview');
+      const loadingElement = document.getElementById('loading');
+      const resultsElement = document.getElementById('results');
+      const topPredictionsElement = document.getElementById('top-predictions');
+      const backendInfoElement = document.getElementById('backend-info');
+      const performanceInfoElement = document.getElementById('performance-info');
+      const progressElement = document.getElementById('progress');
+      const errorMessageElement = document.getElementById('error-message');
+      
+      // Create model and hardware instances
+      let model = null;
+      let hardware = null;
+      let isProcessing = false;
+      
+      // Check if bundle is loaded correctly
+      if (!window.IPFSAccelerateViT) {
+        showError('ViT bundle not loaded correctly. Check the script tag path.');
+        return;
+      }
+      
+      // Initialize hardware and model
+      try {
+        // Access the ViT model from the global namespace
+        const { createVitModel, getBrowserHardwareCapabilities, createWebGPUBackend, createWebNNBackend } = window.IPFSAccelerateViT;
+        
+        // Detect capabilities
+        const capabilities = await getBrowserHardwareCapabilities();
+        
+        // Display backend info
+        backendInfoElement.textContent = 
+          `Browser: ${capabilities.browser}, WebGPU: ${capabilities.webgpu ? 'Supported' : 'Not Supported'}, WebNN: ${capabilities.webnn ? 'Supported' : 'Not Supported'}`;
+        
+        // Create hardware backend
+        if (capabilities.webgpu) {
+          hardware = await createWebGPUBackend();
+        } else if (capabilities.webnn) {
+          hardware = await createWebNNBackend();
+        } else {
+          showError('WebGPU and WebNN are not supported in this browser. This demo requires hardware acceleration.');
+          return;
+        }
+        
+        await hardware.initialize();
+        
+        // Create model
+        model = createVitModel(hardware, {
+          modelId: 'google/vit-base-patch16-224',
+          useOptimizedOps: true
+        });
+        
+        // Initialize model
+        updateProgress(10);
+        await model.initialize();
+        updateProgress(100);
+        
+        console.log('ViT model initialized');
+      } catch (error) {
+        console.error('Error initializing:', error);
+        showError(`Error initializing: ${error instanceof Error ? error.message : String(error)}`);
+        return;
+      }
+      
+      // Set up event listeners
+      selectFileButton.addEventListener('click', () => {
+        fileInput.click();
+      });
+      
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) {
+          handleSelectedFile(e.target.files[0]);
+        }
+      });
+      
+      // Drag and drop handling
+      dropArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropArea.style.borderColor = '#2196F3';
+      });
+      
+      dropArea.addEventListener('dragleave', () => {
+        dropArea.style.borderColor = '#ccc';
+      });
+      
+      dropArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropArea.style.borderColor = '#ccc';
+        
+        if (e.dataTransfer?.files.length) {
+          handleSelectedFile(e.dataTransfer.files[0]);
+        }
+      });
+      
+      function handleSelectedFile(file) {
+        if (!file.type.startsWith('image/')) {
+          showError('Please select an image file.');
+          return;
+        }
+        
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          loadAndDisplayImage(e.target.result);
+        };
+        reader.readAsDataURL(file);
+      }
+      
+      function loadAndDisplayImage(url) {
+        // Create image element for processing
+        const img = new Image();
+        
+        img.onload = () => {
+          // Display the image
+          preview.src = url;
+          preview.style.display = 'block';
+          
+          // Process the image
+          processImage(img);
+        };
+        
+        img.onerror = () => {
+          showError('Error loading image. Try another image or check the URL.');
+        };
+        
+        img.src = url;
+      }
+      
+      async function processImage(imageElement) {
+        if (!model || isProcessing) {
+          return;
+        }
+        
+        try {
+          isProcessing = true;
+          
+          // Show loading indicator
+          loadingElement.style.display = 'block';
+          resultsElement.style.display = 'none';
+          
+          // Reset progress
+          updateProgress(0);
+          
+          // Preprocess image to 224x224 (ViT standard input size)
+          const imageData = preprocessImage(imageElement, 224, 224);
+          updateProgress(30);
+          
+          // Prepare input
+          const input = {
+            imageData: imageData,
+            width: 224,
+            height: 224,
+            isPreprocessed: false // We're providing raw pixel data (0-255)
+          };
+          
+          // Record start time for performance measurement
+          const startTime = performance.now();
+          
+          // Run inference
+          const result = await model.process(input);
+          updateProgress(90);
+          
+          // Calculate elapsed time
+          const elapsed = performance.now() - startTime;
+          
+          // Display results
+          displayResults(result, elapsed);
+          
+          // Hide loading indicator
+          loadingElement.style.display = 'none';
+          resultsElement.style.display = 'block';
+          
+          isProcessing = false;
+        } catch (error) {
+          console.error('Error processing image:', error);
+          showError(`Error processing image: ${error instanceof Error ? error.message : String(error)}`);
+          loadingElement.style.display = 'none';
+          isProcessing = false;
+        }
+      }
+      
+      function preprocessImage(image, targetWidth, targetHeight) {
+        const canvas = document.createElement('canvas');
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+        const ctx = canvas.getContext('2d');
+        
+        // Draw image with resize
+        ctx.drawImage(image, 0, 0, targetWidth, targetHeight);
+        
+        // Get image data (RGBA format)
+        const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
+        
+        // Convert to RGB format (remove alpha channel)
+        const rgbData = new Uint8Array(targetWidth * targetHeight * 3);
+        for (let i = 0; i < imageData.data.length / 4; i++) {
+          rgbData[i * 3] = imageData.data[i * 4]; // R
+          rgbData[i * 3 + 1] = imageData.data[i * 4 + 1]; // G
+          rgbData[i * 3 + 2] = imageData.data[i * 4 + 2]; // B
+        }
+        
+        return rgbData;
+      }
+      
+      function displayResults(result, elapsed) {
+        // Clear previous results
+        topPredictionsElement.innerHTML = '';
+        
+        // Get top 5 predictions
+        const indices = Array.from({ length: result.probabilities.length }, (_, i) => i);
+        const sortedIndices = indices
+          .sort((a, b) => result.probabilities[b] - result.probabilities[a])
+          .slice(0, 5);
+        
+        // Display top 5 predictions
+        sortedIndices.forEach(idx => {
+          const probability = result.probabilities[idx] * 100;
+          const className = idx < IMAGENET_CLASSES.length 
+            ? IMAGENET_CLASSES[idx] 
+            : `Class ${idx}`;
+          
+          const resultItem = document.createElement('div');
+          resultItem.className = 'result-item';
+          
+          const classLabel = document.createElement('div');
+          classLabel.textContent = className;
+          
+          const probabilityLabel = document.createElement('div');
+          probabilityLabel.textContent = `${probability.toFixed(2)}%`;
+          
+          const progressBar = document.createElement('div');
+          progressBar.className = 'progress-bar';
+          
+          const progressFill = document.createElement('div');
+          progressFill.className = 'progress-fill';
+          progressFill.style.width = `${probability}%`;
+          
+          progressBar.appendChild(progressFill);
+          
+          resultItem.appendChild(classLabel);
+          resultItem.appendChild(probabilityLabel);
+          topPredictionsElement.appendChild(resultItem);
+          topPredictionsElement.appendChild(progressBar);
+        });
+        
+        // Display performance information
+        performanceInfoElement.textContent = `Inference time: ${elapsed.toFixed(2)}ms, Backend: ${result.backend}`;
+      }
+      
+      function updateProgress(percent) {
+        progressElement.style.width = `${percent}%`;
+      }
+      
+      function showError(message) {
+        errorMessageElement.textContent = message;
+        errorMessageElement.style.display = 'block';
+        
+        // Hide after 5 seconds
+        setTimeout(() => {
+          errorMessageElement.style.display = 'none';
+        }, 5000);
+      }
+    });
+  </script>
+</body>
+</html>

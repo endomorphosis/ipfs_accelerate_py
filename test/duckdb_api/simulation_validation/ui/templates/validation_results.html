@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+
+{% block title %}Validation Results - {{ title }}{% endblock %}
+
+{% block header %}
+    Validation Results
+    <small class="text-muted">{{ total_count }} result{% if total_count != 1 %}s{% endif %}</small>
+{% endblock %}
+
+{% block header_buttons %}
+<div>
+    <a href="{{ url_for('validate') }}" class="btn btn-primary">
+        <i class="bi bi-plus"></i> New Validation
+    </a>
+    <a href="{{ url_for('generate_report') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-file-earmark-text"></i> Generate Report
+    </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Filters -->
+<div class="card mb-4 {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+    <div class="card-body">
+        <form method="get" action="{{ url_for('validation_results') }}">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label for="hardware_id" class="form-label">Hardware</label>
+                    <select class="form-select {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="hardware_id" name="hardware_id">
+                        <option value="">All Hardware</option>
+                        {% for hw in hardware_types %}
+                        <option value="{{ hw.id }}" {% if hw.id == hardware_id %}selected{% endif %}>{{ hw.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label for="model_id" class="form-label">Model</label>
+                    <select class="form-select {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="model_id" name="model_id">
+                        <option value="">All Models</option>
+                        {% for model in model_types %}
+                        <option value="{{ model.id }}" {% if model.id == model_id %}selected{% endif %}>{{ model.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-funnel"></i> Filter Results
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Results Table -->
+{% if results %}
+<div class="card {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table {% if theme == 'dark' %}table-dark{% endif %}">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Model</th>
+                        <th>Hardware</th>
+                        <th>Timestamp</th>
+                        <th>Batch Size</th>
+                        <th>Precision</th>
+                        <th>MAPE</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for result in results %}
+                    <tr>
+                        <td>{{ result.id }}</td>
+                        <td>{{ result.model_id }}</td>
+                        <td>{{ result.hardware_id }}</td>
+                        <td>{{ result.validation_timestamp }}</td>
+                        <td>{{ result.batch_size }}</td>
+                        <td>{{ result.precision }}</td>
+                        <td>
+                            {% if result.mape is defined %}
+                                {% if result.mape < 5 %}
+                                    <span class="status-good">{{ "%.2f"|format(result.mape) }}%</span>
+                                {% elif result.mape < 10 %}
+                                    <span class="status-warning">{{ "%.2f"|format(result.mape) }}%</span>
+                                {% else %}
+                                    <span class="status-bad">{{ "%.2f"|format(result.mape) }}%</span>
+                                {% endif %}
+                            {% else %}
+                                <span class="text-muted">N/A</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if result.status == "passed" %}
+                                <span class="badge bg-success">Passed</span>
+                            {% elif result.status == "warning" %}
+                                <span class="badge bg-warning text-dark">Warning</span>
+                            {% elif result.status == "failed" %}
+                                <span class="badge bg-danger">Failed</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Unknown</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('validation_details', validation_id=result.id) }}" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-eye"></i> View
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<div class="d-flex justify-content-center mt-4">
+    <nav aria-label="Validation results pagination">
+        <ul class="pagination">
+            <li class="page-item {% if page == 1 %}disabled{% endif %}">
+                <a class="page-link {% if theme == 'dark' %}bg-dark text-light border-secondary{% endif %}" 
+                   href="{{ url_for('validation_results', page=page-1, hardware_id=hardware_id, model_id=model_id) }}">
+                    <i class="bi bi-chevron-left"></i> Previous
+                </a>
+            </li>
+            
+            {% set start_page = [1, page - 2]|max %}
+            {% set end_page = [start_page + 4, total_pages]|min %}
+            {% set start_page = [end_page - 4, 1]|max %}
+            
+            {% for p in range(start_page, end_page + 1) %}
+            <li class="page-item {% if page == p %}active{% endif %}">
+                <a class="page-link {% if theme == 'dark' and page != p %}bg-dark text-light border-secondary{% endif %}" 
+                   href="{{ url_for('validation_results', page=p, hardware_id=hardware_id, model_id=model_id) }}">
+                    {{ p }}
+                </a>
+            </li>
+            {% endfor %}
+            
+            <li class="page-item {% if page == total_pages %}disabled{% endif %}">
+                <a class="page-link {% if theme == 'dark' %}bg-dark text-light border-secondary{% endif %}" 
+                   href="{{ url_for('validation_results', page=page+1, hardware_id=hardware_id, model_id=model_id) }}">
+                    Next <i class="bi bi-chevron-right"></i>
+                </a>
+            </li>
+        </ul>
+    </nav>
+</div>
+{% endif %}
+
+{% else %}
+<div class="alert alert-info" role="alert">
+    <i class="bi bi-info-circle"></i> No validation results found.
+    {% if hardware_id or model_id %}
+        <a href="{{ url_for('validation_results') }}" class="alert-link">Clear filters</a> to see all results.
+    {% else %}
+        <a href="{{ url_for('validate') }}" class="alert-link">Run a validation</a> to get started.
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}

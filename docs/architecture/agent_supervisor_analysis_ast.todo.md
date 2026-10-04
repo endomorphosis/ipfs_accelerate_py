@@ -6,7 +6,7 @@ tranche.
 
 ## ANALYSIS-AST-001 Build the canonical incremental AST evidence index
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: ast-evidence

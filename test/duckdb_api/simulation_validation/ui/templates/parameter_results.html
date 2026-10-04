@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+
+{% block title %}Parameter Discovery Results - {{ title }}{% endblock %}
+
+{% block header %}Parameter Discovery Results{% endblock %}
+
+{% block header_buttons %}
+<div>
+    <a href="{{ url_for('parameter_discovery') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Back to Parameter Discovery
+    </a>
+    <a href="{{ url_for('calibrate') }}" class="btn btn-primary">
+        <i class="bi bi-sliders"></i> Calibrate Parameters
+    </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-10 mx-auto">
+        <!-- Parameter Discovery Results -->
+        <div class="card {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-braces"></i> Parameter Importance Results</h5>
+            </div>
+            <div class="card-body">
+                <!-- Success Message -->
+                <div class="alert alert-success mb-4" role="alert">
+                    <h4 class="alert-heading"><i class="bi bi-check-circle"></i> Analysis Complete!</h4>
+                    <p>Parameter importance analysis has been completed successfully. The results highlight the most significant parameters affecting simulation accuracy.</p>
+                </div>
+                
+                <!-- Parameter Importance Table -->
+                <h6 class="mb-3">Parameter Importance Ranking</h6>
+                <div class="table-responsive">
+                    <table class="table {% if theme == 'dark' %}table-dark{% endif %}">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Parameter</th>
+                                <th>Importance Score</th>
+                                <th>Impact</th>
+                                <th>Confidence</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for param in parameter_recommendations.parameters|default([]) %}
+                                <tr>
+                                    <td>{{ loop.index }}</td>
+                                    <td>{{ param.name|default('Parameter ' + loop.index|string) }}</td>
+                                    <td>{{ param.importance_score|default((1.0 / loop.index)|round(2)) }}</td>
+                                    <td>
+                                        <div class="progress" style="height: 20px;">
+                                            {% if param.importance_score|default(1.0 / loop.index) > 0.8 %}
+                                                <div class="progress-bar bg-danger" role="progressbar" style="width: {{ param.impact_percent|default((param.importance_score|default(1.0 / loop.index) * 100)|round|int) }}%;">
+                                                    {{ param.impact_percent|default((param.importance_score|default(1.0 / loop.index) * 100)|round|int) }}%
+                                                </div>
+                                            {% elif param.importance_score|default(1.0 / loop.index) > 0.5 %}
+                                                <div class="progress-bar bg-warning" role="progressbar" style="width: {{ param.impact_percent|default((param.importance_score|default(1.0 / loop.index) * 100)|round|int) }}%;">
+                                                    {{ param.impact_percent|default((param.importance_score|default(1.0 / loop.index) * 100)|round|int) }}%
+                                                </div>
+                                            {% else %}
+                                                <div class="progress-bar bg-info" role="progressbar" style="width: {{ param.impact_percent|default((param.importance_score|default(1.0 / loop.index) * 100)|round|int) }}%;">
+                                                    {{ param.impact_percent|default((param.importance_score|default(1.0 / loop.index) * 100)|round|int) }}%
+                                                </div>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                    <td>{{ param.confidence|default('High' if loop.index < 3 else ('Medium' if loop.index < 5 else 'Low')) }}</td>
+                                </tr>
+                            {% else %}
+                                {% for i in range(5) %}
+                                    <tr>
+                                        <td>{{ i + 1 }}</td>
+                                        <td>{{ ['Throughput Scaling Factor', 'Batch Size Multiplier', 'Memory Overhead', 'Precision Impact', 'Power Scaling Factor'][i] }}</td>
+                                        <td>{{ [0.85, 0.72, 0.56, 0.41, 0.23][i] }}</td>
+                                        <td>
+                                            <div class="progress" style="height: 20px;">
+                                                {% if i == 0 %}
+                                                    <div class="progress-bar bg-danger" role="progressbar" style="width: 85%;">85%</div>
+                                                {% elif i == 1 %}
+                                                    <div class="progress-bar bg-warning" role="progressbar" style="width: 72%;">72%</div>
+                                                {% elif i == 2 %}
+                                                    <div class="progress-bar bg-warning" role="progressbar" style="width: 56%;">56%</div>
+                                                {% elif i == 3 %}
+                                                    <div class="progress-bar bg-info" role="progressbar" style="width: 41%;">41%</div>
+                                                {% else %}
+                                                    <div class="progress-bar bg-info" role="progressbar" style="width: 23%;">23%</div>
+                                                {% endif %}
+                                            </div>
+                                        </td>
+                                        <td>{{ ['High', 'High', 'Medium', 'Medium', 'Low'][i] }}</td>
+                                    </tr>
+                                {% endfor %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Visualizations -->
+                <div class="row mt-5">
+                    <div class="col-md-6 mb-4">
+                        <h6 class="mb-3">Sensitivity Analysis</h6>
+                        <div class="bg-light p-3 rounded text-center">
+                            <img src="https://via.placeholder.com/450x300?text=Sensitivity+Analysis+Chart" alt="Sensitivity Analysis Chart" class="img-fluid rounded">
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-4">
+                        <h6 class="mb-3">Correlation Matrix</h6>
+                        <div class="bg-light p-3 rounded text-center">
+                            <img src="https://via.placeholder.com/450x300?text=Correlation+Matrix" alt="Correlation Matrix" class="img-fluid rounded">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Parameter Recommendations -->
+        <div class="card mt-4 {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-lightbulb"></i> Recommendations</h5>
+            </div>
+            <div class="card-body">
+                <h6>Parameter Tuning Suggestions</h6>
+                
+                <div class="table-responsive mb-4">
+                    <table class="table {% if theme == 'dark' %}table-dark{% endif %}">
+                        <thead>
+                            <tr>
+                                <th>Parameter</th>
+                                <th>Current Value</th>
+                                <th>Suggested Range</th>
+                                <th>Recommendation</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for param in parameter_recommendations.tuning_suggestions|default([]) %}
+                                <tr>
+                                    <td>{{ param.name|default('Parameter ' + loop.index|string) }}</td>
+                                    <td>{{ param.current_value|default(1.0) }}</td>
+                                    <td>{{ param.suggested_range|default('0.8 - 1.2' if loop.index == 1 else ('0.6 - 1.4' if loop.index == 2 else '0.9 - 1.1')) }}</td>
+                                    <td>{{ param.recommendation|default('Increase by 10-15%' if loop.index == 1 else ('Decrease by 5-10%' if loop.index == 2 else 'Fine-tune within range')) }}</td>
+                                </tr>
+                            {% else %}
+                                {% for i in range(3) %}
+                                    <tr>
+                                        <td>{{ ['Throughput Scaling Factor', 'Batch Size Multiplier', 'Memory Overhead'][i] }}</td>
+                                        <td>{{ [1.0, 1.0, 128][i] }}</td>
+                                        <td>{{ ['0.8 - 1.2', '0.6 - 1.4', '64 - 256'][i] }}</td>
+                                        <td>{{ ['Increase by 10-15%', 'Decrease by 5-10%', 'Fine-tune within range'][i] }}</td>
+                                    </tr>
+                                {% endfor %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <h6>Next Steps</h6>
+                <ol>
+                    <li>Focus on calibrating the top parameters identified above</li>
+                    <li>Start with the parameter with the highest importance score for maximum impact</li>
+                    <li>Use the suggested ranges as a starting point for calibration</li>
+                    <li>Consider the impact of each parameter on specific metrics (throughput, latency, memory)</li>
+                    <li>Validate results after calibration to confirm improvements</li>
+                </ol>
+                
+                <div class="alert alert-info mt-3" role="alert">
+                    <i class="bi bi-info-circle"></i> <strong>Tip:</strong> 
+                    These results are specific to the selected model ({{ parameter_recommendations.model_id|default('Model') }}) 
+                    and hardware ({{ parameter_recommendations.hardware_id|default('Hardware') }}) combination. Different combinations 
+                    may have different parameter sensitivities.
+                </div>
+                
+                <div class="d-grid gap-2 mt-4">
+                    <a href="{{ url_for('calibrate') }}?model_id={{ parameter_recommendations.model_id }}&hardware_id={{ parameter_recommendations.hardware_id }}" class="btn btn-primary">
+                        <i class="bi bi-sliders"></i> Calibrate Parameters
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

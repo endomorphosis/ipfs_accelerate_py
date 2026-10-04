@@ -55,9 +55,7 @@ class SubmoduleHealth:
         if max_failures <= 0:
             max_failures = int(os.environ.get(_MAX_FAILURES_ENV, str(_DEFAULT_MAX_FAILURES)))
         if cooldown_seconds <= 0:
-            cooldown_seconds = float(
-                os.environ.get(_COOLDOWN_SECONDS_ENV, str(_DEFAULT_COOLDOWN_SECONDS))
-            )
+            cooldown_seconds = float(os.environ.get(_COOLDOWN_SECONDS_ENV, str(_DEFAULT_COOLDOWN_SECONDS)))
 
         if self.consecutive_failures < max_failures:
             return False
@@ -129,9 +127,7 @@ class DegradationState:
         """Return list of currently degraded submodule paths."""
         return [path for path, health in self.submodules.items() if health.is_degraded()]
 
-    def should_skip_task(
-        self, task_outputs: list[str], task_inputs: list[str] | None = None
-    ) -> str | None:
+    def should_skip_task(self, task_outputs: list[str], task_inputs: list[str] | None = None) -> str | None:
         """Check if a task should be skipped due to degraded submodules.
 
         Returns the degraded submodule path if the task should be skipped,
