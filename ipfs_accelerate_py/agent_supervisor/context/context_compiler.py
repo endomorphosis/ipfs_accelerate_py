@@ -25,6 +25,7 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from fractions import Fraction
+from types import MappingProxyType
 from typing import Any, ClassVar, Final
 
 from .context_contracts import (
@@ -194,6 +195,62 @@ VALUE_OF_INFORMATION_EVIDENCE_SCHEMA = (
 )
 EVIDENCE_VALUE_FIXTURE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/evidence-value-paired-fixture@1"
+)
+# DOEP-063: Accelerate owns operational ContextPack freshness and selection.
+# Datasets retains semantic identity; Kit retains durable bytes/current-root CAS.
+# This surface admits or rejects an already-built supervisor pack without minting
+# a second ContextPack identity or storage authority.
+SUPERVISOR_CONTEXT_PACK_SCHEMA = (
+    "ipfs_datasets_py/proof-context/supervisor-context-pack@1"
+)
+SUPERVISOR_CONTEXT_PACK_SCHEMA_VERSION = "supervisor-context-pack/v1"
+CONTEXT_PACK_FRESHNESS_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/context-pack-freshness@1"
+)
+CONTEXT_PACK_ADMISSION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/context-pack-admission@1"
+)
+ACCELERATE_CONTEXT_PACK_OWNERSHIP = MappingProxyType(
+    {
+        "canonical_semantic_identity": "ipfs_datasets_py",
+        "exact_bytes_cid_storage": "ipfs_kit_py",
+        "operational_admission": "ipfs_accelerate_py",
+    }
+)
+ACCELERATE_CONTEXT_PACK_FORBIDDEN_FIELDS = frozenset(
+    {
+        "authorization",
+        "authorization_decision",
+        "completion_authoritative",
+        "duckdb",
+        "ducklake",
+        "execution_admission",
+        "lease_id",
+        "policy",
+        "policy_id",
+        "policy_revision",
+        "receipt_bytes",
+        "storage_bytes",
+        "terminal_status",
+    }
+)
+SUPERVISOR_CONTEXT_PACK_REQUIRED_FIELDS = frozenset(
+    {
+        "capsule_cids",
+        "expansion_required",
+        "pack_cid",
+        "producer",
+        "repository_state_cid",
+        "required_source_cids",
+        "scanned_tree_oid",
+        "schema",
+        "schema_version",
+        "sufficiency_state",
+        "task_id",
+    }
+)
+REQUIRED_CONTEXT_PACK_SOURCE_KEYS = frozenset(
+    {"target_source", "surrounding_source", "test_source"}
 )
 CONTEXT_COMPILER_VERSION = 1
 MAX_DECISIONS = 4_096
@@ -7586,6 +7643,511 @@ def compile_retry_context(
     return result
 
 
+class ContextPackAdmissionError(ContextCompilationError):
+    """A supervisor ContextPack cannot be admitted for Accelerate execution."""
+
+
+class ContextPackFreshnessStatus(str, Enum):
+    """Operational freshness of one supervisor ContextPack against current bindings."""
+
+    CURRENT = "current"
+    STALE = "stale"
+    UNKNOWN = "unknown"
+
+
+class ContextPackAdmissionDisposition(str, Enum):
+    """Operational selection outcome for one supervisor ContextPack."""
+
+    ADMIT = "admit"
+    REJECT = "reject"
+    EXPAND_REQUIRED = "expand_required"
+
+
+def _supervisor_context_pack_payload(
+    pack: Mapping[str, Any] | Any,
+) -> dict[str, Any]:
+    """Normalize a datasets-owned supervisor pack into the closed wire view."""
+
+    if hasattr(pack, "to_dict") and callable(getattr(pack, "to_dict")):
+        payload = pack.to_dict()
+    elif isinstance(pack, Mapping):
+        payload = dict(pack)
+    else:
+        raise ContextPackAdmissionError(
+            "supervisor ContextPack must be a mapping or expose to_dict()"
+        )
+    if not isinstance(payload, Mapping):
+        raise ContextPackAdmissionError("supervisor ContextPack payload must be an object")
+    keys = set(payload)
+    forbidden = sorted(keys.intersection(ACCELERATE_CONTEXT_PACK_FORBIDDEN_FIELDS))
+    if forbidden:
+        raise ContextPackAdmissionError(
+            "supervisor ContextPack carries forbidden authority fields: "
+            + ", ".join(forbidden)
+        )
+    missing = sorted(SUPERVISOR_CONTEXT_PACK_REQUIRED_FIELDS - keys)
+    unknown = sorted(keys - SUPERVISOR_CONTEXT_PACK_REQUIRED_FIELDS)
+    if missing or unknown:
+        problems: list[str] = []
+        if missing:
+            problems.append(f"missing {', '.join(missing)}")
+        if unknown:
+            problems.append(f"unknown {', '.join(unknown)}")
+        raise ContextPackAdmissionError(
+            "supervisor ContextPack has " + "; ".join(problems)
+        )
+    if payload.get("schema") != SUPERVISOR_CONTEXT_PACK_SCHEMA:
+        raise ContextPackAdmissionError(
+            "supervisor ContextPack must use the datasets-owned schema"
+        )
+    if payload.get("schema_version") != SUPERVISOR_CONTEXT_PACK_SCHEMA_VERSION:
+        raise ContextPackAdmissionError(
+            "supervisor ContextPack schema_version is unsupported"
+        )
+    for name in (
+        "pack_cid",
+        "producer",
+        "repository_state_cid",
+        "scanned_tree_oid",
+        "sufficiency_state",
+        "task_id",
+    ):
+        value = payload.get(name)
+        if not isinstance(value, str) or not value.strip():
+            raise ContextPackAdmissionError(
+                f"supervisor ContextPack.{name} must be a non-empty string"
+            )
+    if not isinstance(payload.get("expansion_required"), bool):
+        raise ContextPackAdmissionError(
+            "supervisor ContextPack.expansion_required must be a bool"
+        )
+    sources = payload.get("required_source_cids")
+    if not isinstance(sources, Mapping):
+        raise ContextPackAdmissionError(
+            "supervisor ContextPack.required_source_cids must be an object"
+        )
+    if set(sources) != REQUIRED_CONTEXT_PACK_SOURCE_KEYS or any(
+        not isinstance(cid, str) or not cid.strip() for cid in sources.values()
+    ):
+        raise ContextPackAdmissionError(
+            "supervisor ContextPack must retain the exact required source CIDs"
+        )
+    capsules = payload.get("capsule_cids")
+    if isinstance(capsules, (str, bytes, bytearray)) or not isinstance(
+        capsules, Iterable
+    ):
+        raise ContextPackAdmissionError(
+            "supervisor ContextPack.capsule_cids must be a sequence"
+        )
+    capsule_list = list(capsules)
+    if any(not isinstance(cid, str) or not cid.strip() for cid in capsule_list):
+        raise ContextPackAdmissionError(
+            "supervisor ContextPack capsule CIDs must be non-empty strings"
+        )
+    return {
+        "capsule_cids": list(capsule_list),
+        "expansion_required": bool(payload["expansion_required"]),
+        "pack_cid": str(payload["pack_cid"]).strip(),
+        "producer": str(payload["producer"]).strip(),
+        "repository_state_cid": str(payload["repository_state_cid"]).strip(),
+        "required_source_cids": {
+            key: str(sources[key]).strip()
+            for key in sorted(REQUIRED_CONTEXT_PACK_SOURCE_KEYS)
+        },
+        "scanned_tree_oid": str(payload["scanned_tree_oid"]).strip(),
+        "schema": SUPERVISOR_CONTEXT_PACK_SCHEMA,
+        "schema_version": SUPERVISOR_CONTEXT_PACK_SCHEMA_VERSION,
+        "sufficiency_state": str(payload["sufficiency_state"]).strip(),
+        "task_id": str(payload["task_id"]).strip(),
+    }
+
+
+@dataclass(frozen=True)
+class ContextPackFreshnessAssessment:
+    """Fail-closed freshness judgment for one supervisor ContextPack."""
+
+    pack_cid: str
+    scanned_tree_oid: str
+    current_tree_oid: str
+    status: ContextPackFreshnessStatus
+    reason_codes: tuple[str, ...] = ()
+    durable_pack_cid: str | None = None
+    current_root_cid: str | None = None
+    schema: str = CONTEXT_PACK_FRESHNESS_SCHEMA
+    completion_authoritative: bool = False
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "pack_cid", _text(self.pack_cid, "pack_cid"))
+        object.__setattr__(
+            self, "scanned_tree_oid", _text(self.scanned_tree_oid, "scanned_tree_oid")
+        )
+        object.__setattr__(
+            self, "current_tree_oid", _text(self.current_tree_oid, "current_tree_oid")
+        )
+        status = (
+            self.status
+            if isinstance(self.status, ContextPackFreshnessStatus)
+            else ContextPackFreshnessStatus(str(self.status))
+        )
+        object.__setattr__(self, "status", status)
+        object.__setattr__(
+            self,
+            "reason_codes",
+            _strings(self.reason_codes, "reason_codes", maximum=64),
+        )
+        if self.durable_pack_cid is not None:
+            object.__setattr__(
+                self,
+                "durable_pack_cid",
+                _text(self.durable_pack_cid, "durable_pack_cid"),
+            )
+        if self.current_root_cid is not None:
+            object.__setattr__(
+                self,
+                "current_root_cid",
+                _text(self.current_root_cid, "current_root_cid"),
+            )
+        if self.schema != CONTEXT_PACK_FRESHNESS_SCHEMA:
+            raise ContextPackAdmissionError("unsupported context-pack freshness schema")
+        if self.completion_authoritative is not False:
+            raise ContextPackAdmissionError(
+                "context-pack freshness must not claim completion authority"
+            )
+
+    @property
+    def content_id(self) -> str:
+        return _canonical_digest(self.to_dict())
+
+    @property
+    def is_current(self) -> bool:
+        return self.status is ContextPackFreshnessStatus.CURRENT
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "completion_authoritative": False,
+            "current_root_cid": self.current_root_cid,
+            "current_tree_oid": self.current_tree_oid,
+            "durable_pack_cid": self.durable_pack_cid,
+            "pack_cid": self.pack_cid,
+            "reason_codes": list(self.reason_codes),
+            "scanned_tree_oid": self.scanned_tree_oid,
+            "schema": self.schema,
+            "status": self.status.value,
+        }
+
+
+@dataclass(frozen=True)
+class ContextPackSelectionDecision:
+    """Deterministic include/omit decision for one ContextPack reference."""
+
+    reference_id: str
+    kind: str
+    included: bool
+    reason: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "reference_id", _text(self.reference_id, "reference_id")
+        )
+        object.__setattr__(self, "kind", _text(self.kind, "kind"))
+        if not isinstance(self.included, bool):
+            raise ContextPackAdmissionError("included must be a boolean")
+        object.__setattr__(self, "reason", _text(self.reason, "reason"))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "included": self.included,
+            "kind": self.kind,
+            "reason": self.reason,
+            "reference_id": self.reference_id,
+        }
+
+
+@dataclass(frozen=True)
+class ContextPackAdmissionReceipt:
+    """Operational Accelerate admission of one datasets-owned ContextPack.
+
+    The receipt never mints a new semantic ``pack_cid``, never stores durable
+    bytes, and never terminalizes a task.  Supervisor acceptance remains a
+    separate fenced admission step.
+    """
+
+    pack_cid: str
+    task_id: str
+    repository_state_cid: str
+    scanned_tree_oid: str
+    current_tree_oid: str
+    freshness: ContextPackFreshnessAssessment
+    disposition: ContextPackAdmissionDisposition
+    selection_decisions: tuple[ContextPackSelectionDecision, ...]
+    selected_source_cids: Mapping[str, str]
+    selected_capsule_cids: tuple[str, ...]
+    reason_codes: tuple[str, ...] = ()
+    ownership: Mapping[str, str] = ACCELERATE_CONTEXT_PACK_OWNERSHIP
+    schema: str = CONTEXT_PACK_ADMISSION_SCHEMA
+    completion_authoritative: bool = False
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "pack_cid", _text(self.pack_cid, "pack_cid"))
+        object.__setattr__(self, "task_id", _text(self.task_id, "task_id"))
+        object.__setattr__(
+            self,
+            "repository_state_cid",
+            _text(self.repository_state_cid, "repository_state_cid"),
+        )
+        object.__setattr__(
+            self, "scanned_tree_oid", _text(self.scanned_tree_oid, "scanned_tree_oid")
+        )
+        object.__setattr__(
+            self, "current_tree_oid", _text(self.current_tree_oid, "current_tree_oid")
+        )
+        if not isinstance(self.freshness, ContextPackFreshnessAssessment):
+            raise ContextPackAdmissionError(
+                "freshness must be a ContextPackFreshnessAssessment"
+            )
+        disposition = (
+            self.disposition
+            if isinstance(self.disposition, ContextPackAdmissionDisposition)
+            else ContextPackAdmissionDisposition(str(self.disposition))
+        )
+        object.__setattr__(self, "disposition", disposition)
+        decisions = tuple(self.selection_decisions)
+        if any(
+            not isinstance(item, ContextPackSelectionDecision) for item in decisions
+        ):
+            raise ContextPackAdmissionError(
+                "selection_decisions must contain ContextPackSelectionDecision values"
+            )
+        object.__setattr__(self, "selection_decisions", decisions)
+        sources = {
+            _text(key, "selected_source_cids.key"): _text(
+                value, "selected_source_cids.value"
+            )
+            for key, value in dict(self.selected_source_cids).items()
+        }
+        object.__setattr__(self, "selected_source_cids", MappingProxyType(sources))
+        object.__setattr__(
+            self,
+            "selected_capsule_cids",
+            _strings(self.selected_capsule_cids, "selected_capsule_cids"),
+        )
+        object.__setattr__(
+            self,
+            "reason_codes",
+            _strings(self.reason_codes, "reason_codes", maximum=64),
+        )
+        ownership = MappingProxyType(
+            {
+                _text(key, "ownership.key"): _text(value, "ownership.value")
+                for key, value in dict(self.ownership).items()
+            }
+        )
+        if ownership != ACCELERATE_CONTEXT_PACK_OWNERSHIP:
+            raise ContextPackAdmissionError(
+                "context-pack admission must retain the cross-repository ownership map"
+            )
+        object.__setattr__(self, "ownership", ownership)
+        if self.schema != CONTEXT_PACK_ADMISSION_SCHEMA:
+            raise ContextPackAdmissionError("unsupported context-pack admission schema")
+        if self.completion_authoritative is not False:
+            raise ContextPackAdmissionError(
+                "context-pack admission must not claim completion authority"
+            )
+        if (
+            self.disposition is ContextPackAdmissionDisposition.ADMIT
+            and self.freshness.status is not ContextPackFreshnessStatus.CURRENT
+        ):
+            raise ContextPackAdmissionError(
+                "admitted ContextPacks must be assessed current"
+            )
+
+    @property
+    def content_id(self) -> str:
+        return _canonical_digest(self.to_dict())
+
+    @property
+    def admitted(self) -> bool:
+        return self.disposition is ContextPackAdmissionDisposition.ADMIT
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "completion_authoritative": False,
+            "current_tree_oid": self.current_tree_oid,
+            "disposition": self.disposition.value,
+            "freshness": self.freshness.to_dict(),
+            "ownership": dict(self.ownership),
+            "pack_cid": self.pack_cid,
+            "reason_codes": list(self.reason_codes),
+            "repository_state_cid": self.repository_state_cid,
+            "scanned_tree_oid": self.scanned_tree_oid,
+            "schema": self.schema,
+            "selected_capsule_cids": list(self.selected_capsule_cids),
+            "selected_source_cids": dict(self.selected_source_cids),
+            "selection_decisions": [
+                item.to_dict() for item in self.selection_decisions
+            ],
+            "task_id": self.task_id,
+        }
+
+
+def assess_context_pack_freshness(
+    pack: Mapping[str, Any] | Any,
+    *,
+    current_tree_oid: str,
+    current_root_cid: str | None = None,
+    durable_pack_cid: str | None = None,
+) -> ContextPackFreshnessAssessment:
+    """Compare a supervisor ContextPack against current tree and root bindings.
+
+    Datasets may refuse to mint a stale pack; Accelerate still re-checks the
+    pack against the live tree/root before operational admission so a durable
+    copy cannot be reused after the forest advances.
+    """
+
+    payload = _supervisor_context_pack_payload(pack)
+    current_tree = _text(current_tree_oid, "current_tree_oid")
+    durable = (
+        None
+        if durable_pack_cid in (None, "")
+        else _text(durable_pack_cid, "durable_pack_cid")
+    )
+    root = (
+        None
+        if current_root_cid in (None, "")
+        else _text(current_root_cid, "current_root_cid")
+    )
+    reasons: list[str] = []
+    if payload["scanned_tree_oid"] != current_tree:
+        reasons.append("scanned_tree_oid_mismatch")
+    if durable is not None and durable != payload["pack_cid"]:
+        reasons.append("durable_pack_cid_mismatch")
+    expected_root = durable if durable is not None else payload["pack_cid"]
+    if root is not None and root != expected_root:
+        reasons.append("current_root_mismatch")
+    status = (
+        ContextPackFreshnessStatus.STALE
+        if reasons
+        else ContextPackFreshnessStatus.CURRENT
+    )
+    if status is ContextPackFreshnessStatus.CURRENT:
+        reasons.append("bindings_current")
+    return ContextPackFreshnessAssessment(
+        pack_cid=payload["pack_cid"],
+        scanned_tree_oid=payload["scanned_tree_oid"],
+        current_tree_oid=current_tree,
+        status=status,
+        reason_codes=tuple(reasons),
+        durable_pack_cid=durable,
+        current_root_cid=root,
+    )
+
+
+def select_and_admit_context_pack(
+    pack: Mapping[str, Any] | Any,
+    *,
+    current_tree_oid: str,
+    current_root_cid: str | None = None,
+    durable_pack_cid: str | None = None,
+) -> ContextPackAdmissionReceipt:
+    """Select required ContextPack references and admit only current packs.
+
+    Required source CIDs are never deferred.  Capsule references remain selected
+    when the pack is current and sufficient; when expansion is still required
+    they are recorded as expansion candidates instead of silently admitting a
+    partial execution context.  Stale or insufficient packs are rejected.
+    """
+
+    payload = _supervisor_context_pack_payload(pack)
+    freshness = assess_context_pack_freshness(
+        payload,
+        current_tree_oid=current_tree_oid,
+        current_root_cid=current_root_cid,
+        durable_pack_cid=durable_pack_cid,
+    )
+    decisions: list[ContextPackSelectionDecision] = []
+    selected_sources: dict[str, str] = {}
+    selected_capsules: list[str] = []
+    reasons: list[str] = list(freshness.reason_codes)
+
+    for key in sorted(REQUIRED_CONTEXT_PACK_SOURCE_KEYS):
+        cid = payload["required_source_cids"][key]
+        decisions.append(
+            ContextPackSelectionDecision(
+                reference_id=key,
+                kind="required_source",
+                included=True,
+                reason="required",
+            )
+        )
+        selected_sources[key] = cid
+
+    sufficiency = str(payload["sufficiency_state"]).strip().lower()
+    expansion_required = bool(payload["expansion_required"])
+    if sufficiency in {"insufficient", "unknown"}:
+        reasons.append("insufficient_or_unknown_sufficiency")
+    if expansion_required:
+        reasons.append("expansion_required")
+
+    for index, capsule_cid in enumerate(payload["capsule_cids"]):
+        reference_id = f"capsule:{index}:{capsule_cid}"
+        if (
+            freshness.is_current
+            and sufficiency not in {"insufficient", "unknown"}
+            and not expansion_required
+        ):
+            decisions.append(
+                ContextPackSelectionDecision(
+                    reference_id=reference_id,
+                    kind="capsule",
+                    included=True,
+                    reason="ranked_fit",
+                )
+            )
+            selected_capsules.append(capsule_cid)
+        else:
+            decisions.append(
+                ContextPackSelectionDecision(
+                    reference_id=reference_id,
+                    kind="capsule",
+                    included=False,
+                    reason=(
+                        "stale_parent"
+                        if not freshness.is_current
+                        else "expansion_candidate"
+                    ),
+                )
+            )
+
+    if not freshness.is_current or sufficiency in {"insufficient", "unknown"}:
+        disposition = ContextPackAdmissionDisposition.REJECT
+        if not freshness.is_current:
+            reasons.append("stale_evidence_rejected")
+    elif expansion_required:
+        disposition = ContextPackAdmissionDisposition.EXPAND_REQUIRED
+    else:
+        disposition = ContextPackAdmissionDisposition.ADMIT
+        reasons.append("operationally_admitted")
+
+    # Stable unique reason ordering without dropping duplicates' meaning.
+    ordered_reasons = tuple(dict.fromkeys(reasons))
+    return ContextPackAdmissionReceipt(
+        pack_cid=payload["pack_cid"],
+        task_id=payload["task_id"],
+        repository_state_cid=payload["repository_state_cid"],
+        scanned_tree_oid=payload["scanned_tree_oid"],
+        current_tree_oid=freshness.current_tree_oid,
+        freshness=freshness,
+        disposition=disposition,
+        selection_decisions=tuple(decisions),
+        selected_source_cids=selected_sources,
+        selected_capsule_cids=tuple(selected_capsules),
+        reason_codes=ordered_reasons,
+    )
+
+
+admit_context_pack = select_and_admit_context_pack
+
+
 build_context_capsule = compile_context_capsule
 build_context_delta = compile_context_delta
 build_prefix_context = compile_prefix_context
@@ -7599,14 +8161,22 @@ render_prefix_stable_context = render_prefix_context
 
 
 __all__ = [
+    "ACCELERATE_CONTEXT_PACK_FORBIDDEN_FIELDS",
+    "ACCELERATE_CONTEXT_PACK_OWNERSHIP",
     "CONTEXT_COMPILATION_RECEIPT_SCHEMA",
     "CONTEXT_COMPILER_VERSION",
     "CONTEXT_DELTA_RECEIPT_SCHEMA",
     "CONTEXT_EVIDENCE_PRODUCERS",
+    "CONTEXT_PACK_ADMISSION_SCHEMA",
+    "CONTEXT_PACK_FRESHNESS_SCHEMA",
     "CONSERVATIVE_PREFIX_REUSE_BPS",
     "DEFAULT_DIVERSITY_PENALTY_BPS",
     "EVIDENCE_VALUE_FIXTURE_SCHEMA",
+    "REQUIRED_CONTEXT_PACK_SOURCE_KEYS",
     "RETRY_CONTEXT_CAPSULE_SCHEMA",
+    "SUPERVISOR_CONTEXT_PACK_REQUIRED_FIELDS",
+    "SUPERVISOR_CONTEXT_PACK_SCHEMA",
+    "SUPERVISOR_CONTEXT_PACK_SCHEMA_VERSION",
     "DELTA_RETRY_ACCEPTANCE_CRITERIA",
     "DELTA_RETRY_CONTEXT_EVIDENCE_SCHEMA",
     "DELTA_RETRY_EVIDENCE_ID",
@@ -7634,6 +8204,12 @@ __all__ = [
     "ContextCompilationResult",
     "ContextCompileResult",
     "ContextCompiler",
+    "ContextPackAdmissionDisposition",
+    "ContextPackAdmissionError",
+    "ContextPackAdmissionReceipt",
+    "ContextPackFreshnessAssessment",
+    "ContextPackFreshnessStatus",
+    "ContextPackSelectionDecision",
     "DecisionContextCompiler",
     "DecisionContextRetryResult",
     "ContextDeltaBudgetError",
@@ -7671,6 +8247,8 @@ __all__ = [
     "RetryContextResult",
     "ValueOfInformationEvidence",
     "ValueOfInformationPolicy",
+    "admit_context_pack",
+    "assess_context_pack_freshness",
     "build_text_context_references",
     "build_context_capsule",
     "build_context_delta",
@@ -7697,4 +8275,5 @@ __all__ = [
     "reconstruct_context",
     "reconstruct_context_capsule",
     "reconstruct_decision_context",
+    "select_and_admit_context_pack",
 ]
