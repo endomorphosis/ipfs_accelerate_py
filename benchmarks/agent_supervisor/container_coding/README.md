@@ -13,6 +13,13 @@ supervisor pilot records two official passes and one native-execution timeout,
 with source/checkpoint pins, token accounting, and readiness gaps for the rest
 of the suite. It is a selected-task pilot with a distinct resource/time profile.
 
+The [symbolic capability assessment](../../../docs/agent_supervisor/terminal_symbolic_capabilities.md)
+documents the full arm's per-task gap report, signed separation of generated
+harness support from program inputs, and bounded native progress diagnostics.
+Re-prepare trials to use the isolated Python structural validator. These changes
+are qualified with authored native repair cases; they do not supply new official
+Terminal-Bench scores or establish a baseline advantage.
+
 The [IntentIR planning improvement plan](../../../docs/architecture/TERMINAL_BENCH_INTENT_PLANNING_PLAN.md)
 traces the current public instruction entry point and defines requirements,
 symbolic planning, and admission milestones. The first local coverage milestone

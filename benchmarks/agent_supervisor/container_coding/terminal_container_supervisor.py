@@ -25,6 +25,7 @@ from benchmarks.agent_supervisor.container_coding import terminal_indexed_prepar
 from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile import (
     PROFILES, admission_environment, execution_budget, native_start_timeout_ms,
 )
+from benchmarks.agent_supervisor.container_coding.terminal_native_progress import NativeProgress
 from ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission import verify_local_benchmark_admission
 
 ROOT = Path("/opt/ipfs-supervisor")
@@ -450,6 +451,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
               "native_start_timeout_seconds": budget["native_start_seconds"],
               "production_activation": False, "benchmark_advantage_claimed": False,
               "phases": {}, "remaining_processes": None}
+    progress = NativeProgress(started=started)
+    report["native_progress"] = progress.report
     state.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     report_path = state.parent / (state.name + "-result.json")
 
@@ -617,6 +620,12 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         start_timeout = native_start_timeout_ms(resource_profile, remaining_work_seconds=remaining())
         report["native_start_timeout_ms"] = 20_000 if start_timeout is None else start_timeout
         report["native_stop_timeout_ms"] = 20_000
+        # Bind the daemon's implementation watchdog explicitly. Its ordinary
+        # 1800s default otherwise outlives this benchmark's work window. The
+        # outer work alarm remains the absolute deadline even during START.
+        implementation_timeout = (remaining() if provider_free_candidate
+                                  else min(360, remaining(25)))
+        report["implementation_timeout_seconds"] = implementation_timeout
         with open_existing_native_owner(
             database=state / "intent.duckdb", checkout=Path("/app"), state_dir=state / "owner",
             repository_id=verified["manifest"]["repository_cid"],
@@ -626,6 +635,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 state / "launch", admission=admission, server=owner.server, source=owner.source,
                 implement=True, implementation_command=command, context_bundle=bundle,
                 max_task_attempts=1, timeout_ms=20_000,
+                implementation_timeout_seconds=implementation_timeout,
                 **({"start_timeout_ms": start_timeout} if start_timeout is not None else {}),
                 lifetime_seconds=min(900, max(120, remaining() + max(60, reserved_cleanup_seconds))),
                 worker_worktree_root=WORKTREES, candidate_runner_argv=(str(VALIDATOR),),
@@ -649,15 +659,19 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                     task_state = owner.source.get_task(task.task_cid)
                     report["task_state"] = {"task_cid": task.task_cid, "status": task_state.status,
                                              "revision": task_state.revision}
+                    try:
+                        progress_stop = progress.sample(task=task_state, task_cid=task.task_cid,
+                            state=runtime.state, now=time.monotonic())
+                    except Exception:
+                        # Diagnostics cannot suppress native cleanup or turn a
+                        # reader failure into permission to settle/retry work.
+                        progress_stop = None
+                        report["native_progress_error"] = "observation_unavailable"
                     if task_state.status in {"completed", "failed", "blocked", "cancelled"}:
                         break
-                    heartbeat = runtime.state / "run/admitted_database_daemon_pass_heartbeat.json"
-                    try:
-                        reason = json.loads(heartbeat.read_text()).get("selection_idle_reason")
-                    except (OSError, ValueError):
-                        reason = None
-                    if reason == "expired_attempt_settlement_unavailable":
-                        report["unavailable_settlement"] = True
+                    if progress_stop:
+                        if progress_stop == "expired_attempt_settlement_unavailable":
+                            report["unavailable_settlement"] = True
                         break
                     time.sleep(.5)
                 report["observation"] = runtime.observe()
@@ -735,6 +749,10 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 "reason": "implementation_may_have_dispatched_without_a_final_router_receipt",
             }
         _final_context_audit(report, state=state, deadline=deadline)
+        try:
+            progress.finish(report)
+        except Exception:
+            report["native_progress_error"] = "final_observation_unavailable"
         report["seconds"] = time.monotonic() - started
         _write(report_path, report)
     return report

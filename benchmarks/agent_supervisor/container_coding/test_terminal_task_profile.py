@@ -121,7 +121,22 @@ def test_preparation_rejects_undeclared_source_or_unsafe_paths_before_state(tmp_
 
 def smoke(tmp_path, declared):
     (tmp_path / prep.SMOKE).write_text(profiles.task_profile_smoke(declared))
-    return subprocess.run(prep.ARGV, cwd=tmp_path, capture_output=True, timeout=10)
+    spec = profiles.task_profile_spec(declared, policy_cid="fixture")
+    argv = spec["validations"][0]["argv"]
+    assert argv == prep.ARGV
+    return subprocess.run(argv, cwd=tmp_path, capture_output=True, timeout=10)
+
+
+@pytest.mark.parametrize("name", ["ast.py", "json.py", "pathlib.py", "ast/__init__.py", "sitecustomize.py"])
+@pytest.mark.parametrize("valid", [True, False])
+def test_structural_smoke_cannot_import_candidate_modules(tmp_path, monkeypatch, name, valid):
+    shadow = tmp_path / name
+    shadow.parent.mkdir(parents=True, exist_ok=True)
+    shadow.write_text("open('EXECUTED', 'w').write('candidate import')\nraise RuntimeError('candidate import')\n")
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path))
+    (tmp_path / "result.py").write_text("pass\n" if valid else "def broken(:\n")
+    assert (smoke(tmp_path, profile(inputs=(name,))).returncode == 0) is valid
+    assert not (tmp_path / "EXECUTED").exists()
 
 
 def test_structural_smoke_parses_without_executing_candidate(tmp_path):

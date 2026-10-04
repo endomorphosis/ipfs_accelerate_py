@@ -43,7 +43,7 @@ PROVIDER = "codex_cli"
 REASONING = "high"
 INSTRUCTION = ".supervisor-instruction.md"
 SMOKE = ".supervisor-public-smoke.py"
-ARGV = ["python3", "-B", SMOKE]
+ARGV = ["python3", "-I", "-B", SMOKE]
 PUBLIC_SMOKE = '''"""Public syntax/report-shape check; no benchmark correctness authority."""
 import json
 from pathlib import Path

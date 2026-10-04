@@ -1,0 +1,1870 @@
+{
+  "base_accelerate_commit": "fc1d4057f65a52451bea6c9f0b26ea77125d8c9b",
+  "benchmark_advantage_claimed": false,
+  "case_identity": "Unique test-module basename and parameterized case name; XML classname retained because pytest package prefixes differ between selections.",
+  "controls": [
+    "Real signed public profile through Lean/Z3 local keyword repair, impact checks and isolated candidate transaction, zero model calls.",
+    "Real generic and header Doctor dispatch; unsupported inputs, external Python consumers, absent provers and secret-screen refusal retain residual handling.",
+    "Forged or changed support and source inputs cannot authorize mutation. Structural smoke ignores candidate import shadows and PYTHONPATH.",
+    "Large canonical smoke has an exact producer-derived byte bound; independent native pending-summary limits still reject oversized materialization.",
+    "Native runtime constructor signs explicit worker timeout; lifecycle doubles cover two-heartbeat exhausted/quarantined stop and STOP/cleanup preservation.",
+    "Frozen SecurityIR checkpoint inference, formula advice, index hydration and initial-context replay exercised with authored inputs."
+  ],
+  "dependency_audit": "Newer datasets changes affect opt-in training modules and a training storage ceiling. Exercised SecurityIR, Source384, formalization, catalog, and proof-resource owners are unchanged. This is not a test run against the newer datasets commit.",
+  "latest_case_outcomes": {
+    "test_admitted_runtime_launch_bounds::test_factory_rejects_unexecutable_start_stop_budget_before_state_creation[120000-AdmittedBenchmarkRuntime]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "test.api.test_admitted_runtime_launch_bounds"
+    },
+    "test_admitted_runtime_launch_bounds::test_factory_rejects_unexecutable_start_stop_budget_before_state_creation[120000-IsolatedBenchmarkRuntime]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "test.api.test_admitted_runtime_launch_bounds"
+    },
+    "test_admitted_runtime_launch_bounds::test_factory_rejects_unexecutable_start_stop_budget_before_state_creation[1999-AdmittedBenchmarkRuntime]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "test.api.test_admitted_runtime_launch_bounds"
+    },
+    "test_admitted_runtime_launch_bounds::test_factory_rejects_unexecutable_start_stop_budget_before_state_creation[1999-IsolatedBenchmarkRuntime]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "test.api.test_admitted_runtime_launch_bounds"
+    },
+    "test_admitted_runtime_launch_bounds::test_factory_rejects_unexecutable_start_stop_budget_before_state_creation[30000.0-AdmittedBenchmarkRuntime]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "test.api.test_admitted_runtime_launch_bounds"
+    },
+    "test_admitted_runtime_launch_bounds::test_factory_rejects_unexecutable_start_stop_budget_before_state_creation[30000.0-IsolatedBenchmarkRuntime]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "test.api.test_admitted_runtime_launch_bounds"
+    },
+    "test_admitted_runtime_launch_bounds::test_factory_rejects_unexecutable_start_stop_budget_before_state_creation[30001-AdmittedBenchmarkRuntime]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "test.api.test_admitted_runtime_launch_bounds"
+    },
+    "test_admitted_runtime_launch_bounds::test_factory_rejects_unexecutable_start_stop_budget_before_state_creation[30001-IsolatedBenchmarkRuntime]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "test.api.test_admitted_runtime_launch_bounds"
+    },
+    "test_admitted_runtime_launch_bounds::test_factory_rejects_unexecutable_start_stop_budget_before_state_creation[90000-AdmittedBenchmarkRuntime]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "test.api.test_admitted_runtime_launch_bounds"
+    },
+    "test_admitted_runtime_launch_bounds::test_factory_rejects_unexecutable_start_stop_budget_before_state_creation[90000-IsolatedBenchmarkRuntime]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "test.api.test_admitted_runtime_launch_bounds"
+    },
+    "test_admitted_runtime_launch_bounds::test_factory_rejects_unexecutable_start_stop_budget_before_state_creation[True-AdmittedBenchmarkRuntime]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "test.api.test_admitted_runtime_launch_bounds"
+    },
+    "test_admitted_runtime_launch_bounds::test_factory_rejects_unexecutable_start_stop_budget_before_state_creation[True-IsolatedBenchmarkRuntime]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "test.api.test_admitted_runtime_launch_bounds"
+    },
+    "test_admitted_runtime_launch_bounds::test_signed_git_configuration_overrides_repository_auto_maintenance['gc.auto'='1' 'gc.autoDetach'='true' 'maintenance.auto'='true'-False]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "test.api.test_admitted_runtime_launch_bounds"
+    },
+    "test_admitted_runtime_launch_bounds::test_signed_git_configuration_overrides_repository_auto_maintenance['gc.auto'='1' 'gc.autoDetach'='true' 'maintenance.auto'='true'-True]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "test.api.test_admitted_runtime_launch_bounds"
+    },
+    "test_admitted_runtime_launch_bounds::test_signed_git_configuration_overrides_repository_auto_maintenance[-False]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "test.api.test_admitted_runtime_launch_bounds"
+    },
+    "test_admitted_runtime_launch_bounds::test_signed_git_configuration_overrides_repository_auto_maintenance[-True]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "test.api.test_admitted_runtime_launch_bounds"
+    },
+    "test_agent_supervisor_doctor_repair_composition::test_cross_bound_or_self_asserted_inputs_rejected[consequence]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_agent_supervisor_doctor_repair_composition"
+    },
+    "test_agent_supervisor_doctor_repair_composition::test_cross_bound_or_self_asserted_inputs_rejected[impact_subject]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_agent_supervisor_doctor_repair_composition"
+    },
+    "test_agent_supervisor_doctor_repair_composition::test_cross_bound_or_self_asserted_inputs_rejected[proof_assertion]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_agent_supervisor_doctor_repair_composition"
+    },
+    "test_agent_supervisor_doctor_repair_composition::test_cross_bound_or_self_asserted_inputs_rejected[snapshot]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_agent_supervisor_doctor_repair_composition"
+    },
+    "test_agent_supervisor_doctor_repair_composition::test_failed_candidate_validator_rolls_back_before_ref_cas": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_agent_supervisor_doctor_repair_composition"
+    },
+    "test_agent_supervisor_doctor_repair_composition::test_omitted_or_opaque_inventory_rejected": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_agent_supervisor_doctor_repair_composition"
+    },
+    "test_agent_supervisor_doctor_repair_composition::test_real_provers_synthesis_impact_and_validated_ref_commit": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_agent_supervisor_doctor_repair_composition"
+    },
+    "test_agent_supervisor_doctor_repair_composition::test_source_drift_rejected_before_prover_or_mutation": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_agent_supervisor_doctor_repair_composition"
+    },
+    "test_agent_supervisor_doctor_repair_composition::test_truncated_diagnostic_scope_cannot_close_impact": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_agent_supervisor_doctor_repair_composition"
+    },
+    "test_doctor_dispatch_budget::test_driver_rejects_unbounded_or_wrong_profile_budget_before_side_effects[None-285.0]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_driver_rejects_unbounded_or_wrong_profile_budget_before_side_effects[None-301]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_driver_rejects_unbounded_or_wrong_profile_budget_before_side_effects[None-89]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_driver_rejects_unbounded_or_wrong_profile_budget_before_side_effects[None-True]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_driver_rejects_unbounded_or_wrong_profile_budget_before_side_effects[source384-5cpu-12gib@1-900]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_driver_rejects_unbounded_or_wrong_profile_budget_before_side_effects[source384-5cpu-16gib-extended@1-90.0]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_driver_rejects_unbounded_or_wrong_profile_budget_before_side_effects[source384-5cpu-16gib-extended@1-901]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_explicit_bounded_override_preserves_owner_identity_gate[None-300]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_explicit_bounded_override_preserves_owner_identity_gate[source384-5cpu-12gib@1-300]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_explicit_bounded_override_preserves_owner_identity_gate[source384-5cpu-16gib-extended@1-120]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_explicit_bounded_override_preserves_owner_identity_gate[source384-5cpu-16gib-extended@1-900]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs0-285-40-90-0-doctor_candidate]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs0-285-40-90-0-doctor_contract_candidate]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs0-285-40-90-0-model_router]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs0-285-40-90-1-doctor_candidate]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs0-285-40-90-1-doctor_contract_candidate]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs0-285-40-90-1-model_router]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs0-285-40-90-5-doctor_candidate]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs0-285-40-90-5-doctor_contract_candidate]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs0-285-40-90-5-model_router]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs0-285-40-90-None-doctor_candidate]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs0-285-40-90-None-doctor_contract_candidate]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs0-285-40-90-None-model_router]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs1-900-60-180-0-doctor_candidate]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs1-900-60-180-0-doctor_contract_candidate]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs1-900-60-180-0-model_router]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs1-900-60-180-1-doctor_candidate]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs1-900-60-180-1-doctor_contract_candidate]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs1-900-60-180-1-model_router]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs1-900-60-180-5-doctor_candidate]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs1-900-60-180-5-doctor_contract_candidate]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs1-900-60-180-5-model_router]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs1-900-60-180-None-doctor_candidate]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs1-900-60-180-None-doctor_contract_candidate]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs1-900-60-180-None-model_router]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_selected_budget_requires_matching_explicit_admission_environment[different-ledger]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_selected_budget_requires_matching_explicit_admission_environment[missing-ledger]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_selected_budget_requires_matching_explicit_admission_environment[missing-profile]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_selected_budget_requires_matching_explicit_admission_environment[undeclared-profile]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_selected_budget_requires_matching_explicit_admission_environment[wrong-profile]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_startup_diagnostic_failure_does_not_mask_start_failure_or_skip_stop": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_startup_metadata_projection_detaches_bounded_observations": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_startup_projection_refuses_raw_or_unbounded_metadata[count]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_startup_projection_refuses_raw_or_unbounded_metadata[phase]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_startup_projection_refuses_raw_or_unbounded_metadata[row_body]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_startup_projection_refuses_raw_or_unbounded_metadata[seconds]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_startup_projection_refuses_raw_or_unbounded_metadata[source_body]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_startup_projection_refuses_raw_or_unbounded_metadata[start_budget]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_startup_projection_refuses_raw_or_unbounded_metadata[status]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_dispatch_budget::test_startup_projection_refuses_raw_or_unbounded_metadata[too_many]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget"
+    },
+    "test_doctor_header_workflow::test_declared_output_coverage_required_without_implicit_report_generation[extra_output]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_header_workflow"
+    },
+    "test_doctor_header_workflow::test_declared_output_coverage_required_without_implicit_report_generation[undeclared_report_projection]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_header_workflow"
+    },
+    "test_doctor_header_workflow::test_explicit_report_projection_cannot_choose_undeclared_output": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_header_workflow"
+    },
+    "test_doctor_header_workflow::test_missing_prover_has_hydrated_residual_without_artifact_or_fabricated_receipt": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_header_workflow"
+    },
+    "test_doctor_header_workflow::test_real_dispatch_requires_explicit_profile_and_selects_contract_worker": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_header_workflow"
+    },
+    "test_doctor_header_workflow::test_report_projection_paths_are_closed[../escape.jsonl-/public]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_header_workflow"
+    },
+    "test_doctor_header_workflow::test_report_projection_paths_are_closed[.runtime/report.jsonl-/public]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_header_workflow"
+    },
+    "test_doctor_header_workflow::test_report_projection_paths_are_closed[/absolute.jsonl-/public]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_header_workflow"
+    },
+    "test_doctor_header_workflow::test_report_projection_paths_are_closed[report.jsonl-relative]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_header_workflow"
+    },
+    "test_doctor_header_workflow::test_signed_task_actual_proof_hydration_and_independent_validation[False]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_header_workflow"
+    },
+    "test_doctor_header_workflow::test_signed_task_actual_proof_hydration_and_independent_validation[True]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_header_workflow"
+    },
+    "test_doctor_header_workflow::test_source_or_task_drift_during_analysis_refuses_before_proof[source]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_header_workflow"
+    },
+    "test_doctor_header_workflow::test_source_or_task_drift_during_analysis_refuses_before_proof[task]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_header_workflow"
+    },
+    "test_doctor_residual_context::test_actual_router_consumes_semantic_and_residual_context_once[secret_analysis]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_residual_context"
+    },
+    "test_doctor_residual_context::test_actual_router_consumes_semantic_and_residual_context_once[unsupported]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_residual_context"
+    },
+    "test_doctor_residual_context::test_owner_rejects_residual_rebinding_before_publication[authority]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_residual_context"
+    },
+    "test_doctor_residual_context::test_owner_rejects_residual_rebinding_before_publication[goal]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_residual_context"
+    },
+    "test_doctor_residual_context::test_owner_rejects_residual_rebinding_before_publication[memory]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_residual_context"
+    },
+    "test_doctor_residual_context::test_owner_rejects_residual_rebinding_before_publication[scope]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_residual_context"
+    },
+    "test_doctor_residual_context::test_residual_context_refuses_tamper_and_foreign_or_stale_worker[artifact]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_residual_context"
+    },
+    "test_doctor_residual_context::test_residual_context_refuses_tamper_and_foreign_or_stale_worker[foreign]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_residual_context"
+    },
+    "test_doctor_residual_context::test_residual_context_refuses_tamper_and_foreign_or_stale_worker[prompt]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_residual_context"
+    },
+    "test_doctor_residual_context::test_residual_context_refuses_tamper_and_foreign_or_stale_worker[symlink]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_residual_context"
+    },
+    "test_doctor_residual_context::test_residual_context_refuses_tamper_and_foreign_or_stale_worker[task]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_residual_context"
+    },
+    "test_doctor_residual_context::test_residual_context_refuses_tamper_and_foreign_or_stale_worker[worker_source]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_residual_context"
+    },
+    "test_doctor_residual_context::test_typed_native_residual_capsule_keeps_scope_and_exact_historical_input": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_residual_context"
+    },
+    "test_doctor_residual_context::test_worker_launcher_exposes_only_complete_residual_flag_set": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_residual_context"
+    },
+    "test_doctor_source_partition::test_actual_external_python_consumer_stays_in_impact_frontier": {
+      "outcome": "passed",
+      "run": "partition-08",
+      "xml_classname": "api.test_doctor_source_partition"
+    },
+    "test_doctor_source_partition::test_any_signed_preimage_drift_refuses_before_proof[.supervisor-instruction.md]": {
+      "outcome": "passed",
+      "run": "partition-08",
+      "xml_classname": "api.test_doctor_source_partition"
+    },
+    "test_doctor_source_partition::test_any_signed_preimage_drift_refuses_before_proof[.supervisor-public-smoke.py]": {
+      "outcome": "passed",
+      "run": "partition-08",
+      "xml_classname": "api.test_doctor_source_partition"
+    },
+    "test_doctor_source_partition::test_any_signed_preimage_drift_refuses_before_proof[.supervisor-task-profile.json]": {
+      "outcome": "passed",
+      "run": "partition-08",
+      "xml_classname": "api.test_doctor_source_partition"
+    },
+    "test_doctor_source_partition::test_any_signed_preimage_drift_refuses_before_proof[answer.py]": {
+      "outcome": "passed",
+      "run": "partition-08",
+      "xml_classname": "api.test_doctor_source_partition"
+    },
+    "test_doctor_source_partition::test_caller_cannot_forge_partition_to_hide_program_or_validation": {
+      "outcome": "passed",
+      "run": "partition-08",
+      "xml_classname": "api.test_doctor_source_partition"
+    },
+    "test_doctor_source_partition::test_compatibility_exports_preserve_generated_profile_and_smoke_bytes": {
+      "outcome": "passed",
+      "run": "partition-08",
+      "xml_classname": "api.test_doctor_source_partition"
+    },
+    "test_doctor_source_partition::test_generated_support_allows_real_proof_and_isolated_candidate": {
+      "outcome": "passed",
+      "run": "partition-08",
+      "xml_classname": "api.test_doctor_source_partition"
+    },
+    "test_doctor_source_partition::test_large_valid_generated_smoke_is_bounded_by_its_exact_producer": {
+      "outcome": "passed",
+      "run": "partition-08",
+      "xml_classname": "api.test_doctor_source_partition"
+    },
+    "test_doctor_source_partition::test_real_noncode_inputs_are_not_silently_excluded[extra0]": {
+      "outcome": "passed",
+      "run": "partition-08",
+      "xml_classname": "api.test_doctor_source_partition"
+    },
+    "test_doctor_source_partition::test_real_noncode_inputs_are_not_silently_excluded[extra1]": {
+      "outcome": "passed",
+      "run": "partition-08",
+      "xml_classname": "api.test_doctor_source_partition"
+    },
+    "test_doctor_source_partition::test_signing_arbitrary_support_bytes_cannot_grant_harness_roles[duplicate_profile_key]": {
+      "outcome": "passed",
+      "run": "partition-08",
+      "xml_classname": "api.test_doctor_source_partition"
+    },
+    "test_doctor_source_partition::test_signing_arbitrary_support_bytes_cannot_grant_harness_roles[instruction_binding]": {
+      "outcome": "passed",
+      "run": "partition-08",
+      "xml_classname": "api.test_doctor_source_partition"
+    },
+    "test_doctor_source_partition::test_signing_arbitrary_support_bytes_cannot_grant_harness_roles[profile_scope]": {
+      "outcome": "passed",
+      "run": "partition-08",
+      "xml_classname": "api.test_doctor_source_partition"
+    },
+    "test_doctor_source_partition::test_signing_arbitrary_support_bytes_cannot_grant_harness_roles[smoke]": {
+      "outcome": "passed",
+      "run": "partition-08",
+      "xml_classname": "api.test_doctor_source_partition"
+    },
+    "test_doctor_source_partition::test_supported_partition_still_requires_actual_provers": {
+      "outcome": "passed",
+      "run": "partition-08",
+      "xml_classname": "api.test_doctor_source_partition"
+    },
+    "test_doctor_source_partition::test_terminal_dispatch_uses_real_candidate_and_reports_symbolic_capabilities": {
+      "outcome": "passed",
+      "run": "partition-08",
+      "xml_classname": "api.test_doctor_source_partition"
+    },
+    "test_doctor_task_workflow::test_actual_candidate_gate_failure_rolls_back_without_handoff": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_task_workflow"
+    },
+    "test_doctor_task_workflow::test_automatic_source_selection_real_proof_transaction_and_bound_handoff": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_task_workflow"
+    },
+    "test_doctor_task_workflow::test_failed_real_prover_never_starts_candidate_transaction": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_task_workflow"
+    },
+    "test_doctor_task_workflow::test_keyword_selection_is_unique_and_byte_offset_aware": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_task_workflow"
+    },
+    "test_doctor_task_workflow::test_missing_prover_emits_native_capability_gap_without_source_effect": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_task_workflow"
+    },
+    "test_doctor_task_workflow::test_optional_analysis_refusal_never_masks_other_integrity_failures[path_escape]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_task_workflow"
+    },
+    "test_doctor_task_workflow::test_optional_analysis_refusal_never_masks_other_integrity_failures[source_changed_during_screen]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_task_workflow"
+    },
+    "test_doctor_task_workflow::test_optional_analysis_refusal_never_masks_other_integrity_failures[stability]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_task_workflow"
+    },
+    "test_doctor_task_workflow::test_optional_analysis_refusal_never_masks_other_integrity_failures[task_changed_during_screen]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_task_workflow"
+    },
+    "test_doctor_task_workflow::test_real_secret_screen_remains_strict_but_optional_analysis_proposes_capability_gap": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_task_workflow"
+    },
+    "test_doctor_task_workflow::test_stale_source_or_task_refuses_before_proof_and_ref_movement[source]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_task_workflow"
+    },
+    "test_doctor_task_workflow::test_stale_source_or_task_refuses_before_proof_and_ref_movement[task]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_task_workflow"
+    },
+    "test_doctor_task_workflow::test_unsupported_emits_append_only_native_refill_without_effects[def process(amount):\\n    return amount\\n\\ndef answer():\\n    return process(amount=2)\\n-no_supported_keyword_mismatch]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_task_workflow"
+    },
+    "test_doctor_task_workflow::test_unsupported_emits_append_only_native_refill_without_effects[def process(amount=1, total=1):\\n    return amount + total\\n\\ndef answer():\\n    return process(count=2)\\n-ambiguous_supported_repairs]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_task_workflow"
+    },
+    "test_doctor_task_workflow::test_unsupported_emits_append_only_native_refill_without_effects[import os\\ndef process(amount):\\n    return amount\\n\\ndef answer():\\n    return process(count=2)\\n-unsupported_module_or_signature_shape]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_task_workflow"
+    },
+    "test_doctor_task_workflow::test_unwritable_external_consumer_retains_native_compilation_abstention": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_doctor_task_workflow"
+    },
+    "test_terminal_doctor_dispatch::test_driver_selects_before_owner_and_preserves_provider_accounting[full-doctor_candidate-False]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_terminal_doctor_dispatch"
+    },
+    "test_terminal_doctor_dispatch::test_driver_selects_before_owner_and_preserves_provider_accounting[full-model_router-False]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_terminal_doctor_dispatch"
+    },
+    "test_terminal_doctor_dispatch::test_driver_selects_before_owner_and_preserves_provider_accounting[full-model_router-True]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_terminal_doctor_dispatch"
+    },
+    "test_terminal_doctor_dispatch::test_driver_selects_before_owner_and_preserves_provider_accounting[no-index-model_router-False]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_terminal_doctor_dispatch"
+    },
+    "test_terminal_doctor_dispatch::test_publication_refuses_unsafe_directory_or_rebound_handoff[digest]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_terminal_doctor_dispatch"
+    },
+    "test_terminal_doctor_dispatch::test_publication_refuses_unsafe_directory_or_rebound_handoff[symlink]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_terminal_doctor_dispatch"
+    },
+    "test_terminal_doctor_dispatch::test_publication_refuses_unsafe_directory_or_rebound_handoff[writable]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_terminal_doctor_dispatch"
+    },
+    "test_terminal_doctor_dispatch::test_real_automatic_dispatch_publishes_only_candidate_handoff": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_terminal_doctor_dispatch"
+    },
+    "test_terminal_doctor_dispatch::test_real_residual_retains_model_route_and_native_successors[missing_prover]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_terminal_doctor_dispatch"
+    },
+    "test_terminal_doctor_dispatch::test_real_residual_retains_model_route_and_native_successors[unsupported]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_terminal_doctor_dispatch"
+    },
+    "test_terminal_doctor_dispatch::test_secret_guard_unavailability_retains_existing_signed_router_advisory": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "test.api.test_terminal_doctor_dispatch"
+    },
+    "test_terminal_implementation_budget::test_changed_watchdog_budget_refused_before_owner_reads": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_implementation_budget"
+    },
+    "test_terminal_implementation_budget::test_invalid_implementation_budget_refused_before_owner_or_state[-1]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_implementation_budget"
+    },
+    "test_terminal_implementation_budget::test_invalid_implementation_budget_refused_before_owner_or_state[0]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_implementation_budget"
+    },
+    "test_terminal_implementation_budget::test_invalid_implementation_budget_refused_before_owner_or_state[1.0]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_implementation_budget"
+    },
+    "test_terminal_implementation_budget::test_invalid_implementation_budget_refused_before_owner_or_state[301]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_implementation_budget"
+    },
+    "test_terminal_implementation_budget::test_invalid_implementation_budget_refused_before_owner_or_state[90]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_implementation_budget"
+    },
+    "test_terminal_implementation_budget::test_invalid_implementation_budget_refused_before_owner_or_state[False]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_implementation_budget"
+    },
+    "test_terminal_implementation_budget::test_invalid_implementation_budget_refused_before_owner_or_state[True]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_implementation_budget"
+    },
+    "test_terminal_implementation_budget::test_invalid_implementation_budget_refused_before_owner_or_state[nan]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_implementation_budget"
+    },
+    "test_terminal_implementation_budget::test_native_constructor_signs_explicit_worker_budget[300]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_implementation_budget"
+    },
+    "test_terminal_implementation_budget::test_native_constructor_signs_explicit_worker_budget[90]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_implementation_budget"
+    },
+    "test_terminal_implementation_budget::test_native_constructor_signs_explicit_worker_budget[None]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_implementation_budget"
+    },
+    "test_terminal_implementation_budget::test_observation_only_launch_cannot_carry_implementation_budget": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_implementation_budget"
+    },
+    "test_terminal_indexed_preparation::test_accepted_fixture_admission_survives_native_storage_failure": {
+      "outcome": "passed",
+      "run": "contracts-07",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation"
+    },
+    "test_terminal_indexed_preparation::test_authored_fixture_context_uses_real_native_admission_and_full_index": {
+      "outcome": "passed",
+      "run": "contracts-07",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation"
+    },
+    "test_terminal_indexed_preparation::test_intent_ablation_overrides_source_unit_intent_checkpoint_selection": {
+      "outcome": "passed",
+      "run": "contracts-07",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation"
+    },
+    "test_terminal_indexed_preparation::test_optional_source_unit_advice_reaches_only_bounded_planner_context[None]": {
+      "outcome": "passed",
+      "run": "contracts-07",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation"
+    },
+    "test_terminal_indexed_preparation::test_optional_source_unit_advice_reaches_only_bounded_planner_context[replay]": {
+      "outcome": "passed",
+      "run": "contracts-07",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation"
+    },
+    "test_terminal_indexed_preparation::test_optional_source_unit_advice_reaches_only_bounded_planner_context[summary_budget]": {
+      "outcome": "passed",
+      "run": "contracts-07",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation"
+    },
+    "test_terminal_indexed_preparation::test_optional_source_unit_advice_reaches_only_bounded_planner_context[tamper]": {
+      "outcome": "passed",
+      "run": "contracts-07",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation"
+    },
+    "test_terminal_indexed_preparation::test_planner_requires_external_worker_isolation_before_any_call": {
+      "outcome": "passed",
+      "run": "contracts-07",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation"
+    },
+    "test_terminal_indexed_preparation::test_prepare_preserves_original_dirty_bytes_and_signs_absent_report": {
+      "outcome": "passed",
+      "run": "contracts-07",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation"
+    },
+    "test_terminal_indexed_preparation::test_prepare_rejects_undeclared_or_preseeded_inputs[preseed]": {
+      "outcome": "passed",
+      "run": "contracts-07",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation"
+    },
+    "test_terminal_indexed_preparation::test_prepare_rejects_undeclared_or_preseeded_inputs[symlink]": {
+      "outcome": "passed",
+      "run": "contracts-07",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation"
+    },
+    "test_terminal_indexed_preparation::test_prepare_rejects_undeclared_or_preseeded_inputs[untracked]": {
+      "outcome": "passed",
+      "run": "contracts-07",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation"
+    },
+    "test_terminal_indexed_preparation::test_public_smoke_is_structural_and_not_an_oracle": {
+      "outcome": "passed",
+      "run": "contracts-07",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation"
+    },
+    "test_terminal_indexed_preparation::test_signed_task_cannot_omit_create_or_change_public_check": {
+      "outcome": "passed",
+      "run": "contracts-07",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation"
+    },
+    "test_terminal_indexed_preparation::test_source_family_flags_reach_preparation_with_intent_ablation_precedence[False]": {
+      "outcome": "passed",
+      "run": "contracts-07",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation"
+    },
+    "test_terminal_indexed_preparation::test_source_family_flags_reach_preparation_with_intent_ablation_precedence[True]": {
+      "outcome": "passed",
+      "run": "contracts-07",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation"
+    },
+    "test_terminal_indexed_preparation::test_tampered_public_query_cannot_reach_planner": {
+      "outcome": "passed",
+      "run": "contracts-07",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation"
+    },
+    "test_terminal_initial_context::test_actual_initial_indexes_reach_planner_then_reuse_with_admitted_world": {
+      "outcome": "passed",
+      "run": "contracts-07",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_initial_context"
+    },
+    "test_terminal_initial_context::test_actual_semantic_producer_normalizes_only_objective_not_public_multiline_query": {
+      "outcome": "passed",
+      "run": "contracts-07",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_initial_context"
+    },
+    "test_terminal_initial_context::test_canonical_native_cid_is_data_but_instruction_text_is_still_rejected": {
+      "outcome": "passed",
+      "run": "contracts-07",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_initial_context"
+    },
+    "test_terminal_initial_context::test_initial_evidence_drift_rejected_before_provider[descriptor]": {
+      "outcome": "passed",
+      "run": "contracts-07",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_initial_context"
+    },
+    "test_terminal_initial_context::test_initial_evidence_drift_rejected_before_provider[retrieval]": {
+      "outcome": "passed",
+      "run": "contracts-07",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_initial_context"
+    },
+    "test_terminal_initial_context::test_initial_evidence_drift_rejected_before_provider[source]": {
+      "outcome": "passed",
+      "run": "contracts-07",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_initial_context"
+    },
+    "test_terminal_initial_context::test_initial_evidence_drift_rejected_before_provider[world]": {
+      "outcome": "passed",
+      "run": "contracts-07",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_initial_context"
+    },
+    "test_terminal_initial_formula_boundary::test_frozen_formula_runtime_selection_reaches_actual_inference_and_replay": {
+      "outcome": "passed",
+      "run": "contracts-07",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_initial_formula_boundary"
+    },
+    "test_terminal_initial_formula_boundary::test_wrapper_preserves_native_selection_rejection_before_index_writes[selection0-frozen security context profile]": {
+      "outcome": "passed",
+      "run": "contracts-07",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_initial_formula_boundary"
+    },
+    "test_terminal_initial_formula_boundary::test_wrapper_preserves_native_selection_rejection_before_index_writes[selection1-selected formula decoder]": {
+      "outcome": "passed",
+      "run": "contracts-07",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_initial_formula_boundary"
+    },
+    "test_terminal_native_progress::test_completion_receipt_diagnostic_projection_keeps_ids_counts_and_closed_findings": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_driver_retains_stop_cleanup_and_incomplete_status_on_quiescence[completed]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_driver_retains_stop_cleanup_and_incomplete_status_on_quiescence[observation_failure]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_driver_retains_stop_cleanup_and_incomplete_status_on_quiescence[quarantine]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_exact_quiescence_requires_two_advancing_same_generation_passes[all_selectable_ready_tasks_reached_max_task_attempts]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_exact_quiescence_requires_two_advancing_same_generation_passes[unsettled_portal_failure_quarantine]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_expired_custody_retains_existing_early_stop": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_final_metadata_separates_provider_timeout_from_unattributed_timeout[native_execution]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_final_metadata_separates_provider_timeout_from_unattributed_timeout[planning]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_final_metadata_separates_provider_timeout_from_unattributed_timeout[prepare]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_malformed_heartbeat_never_terminates_or_exports_body[array]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_malformed_heartbeat_never_terminates_or_exports_body[birth]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_malformed_heartbeat_never_terminates_or_exports_body[boolean]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_malformed_heartbeat_never_terminates_or_exports_body[duplicate]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_malformed_heartbeat_never_terminates_or_exports_body[nonfinite]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_malformed_heartbeat_never_terminates_or_exports_body[oversized]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_malformed_heartbeat_never_terminates_or_exports_body[schema]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_malformed_heartbeat_never_terminates_or_exports_body[symlink]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_only_canonical_terminal_status_is_recorded_as_terminal[blocked]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_only_canonical_terminal_status_is_recorded_as_terminal[cancelled]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_only_canonical_terminal_status_is_recorded_as_terminal[completed]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_only_canonical_terminal_status_is_recorded_as_terminal[failed]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_quiescence_does_not_stitch_discontinuous_or_active_observations[active]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_quiescence_does_not_stitch_discontinuous_or_active_observations[claimed]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_quiescence_does_not_stitch_discontinuous_or_active_observations[generation]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_quiescence_does_not_stitch_discontinuous_or_active_observations[malformed]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_quiescence_does_not_stitch_discontinuous_or_active_observations[missing]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_quiescence_does_not_stitch_discontinuous_or_active_observations[regression]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_quiescence_does_not_stitch_discontinuous_or_active_observations[revision]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_quiescence_does_not_stitch_discontinuous_or_active_observations[write]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_transcript_is_bounded_and_retains_latest_task_state": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_transient_and_unknown_idle_reasons_never_stop_run[completion_evidence_unavailable]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_transient_and_unknown_idle_reasons_never_stop_run[custom-private-reason]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_transient_and_unknown_idle_reasons_never_stop_run[no_ready_tasks]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_transient_and_unknown_idle_reasons_never_stop_run[provider_capacity_backoff]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_native_progress::test_transient_and_unknown_idle_reasons_never_stop_run[task_fence_evidence_unavailable]": {
+      "outcome": "passed",
+      "run": "control-03",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_native_progress"
+    },
+    "test_terminal_symbolic_capabilities::test_complete_inventory_is_not_complete_semantics_or_proof": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_empty_and_created_source_remain_explicit_gaps": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_executable_presence_does_not_mean_a_proof_or_execution": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_header_profile_remains_local_scoped_and_separate_from_generic_operator": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_inconsistent_or_unbounded_inputs_refused[bad_effect]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_inconsistent_or_unbounded_inputs_refused[bad_prover_map]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_inconsistent_or_unbounded_inputs_refused[bad_stages]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_inconsistent_or_unbounded_inputs_refused[duplicate_task]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_inconsistent_or_unbounded_inputs_refused[extra_source]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_inconsistent_or_unbounded_inputs_refused[foreign_manifest]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_inconsistent_or_unbounded_inputs_refused[foreign_task]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_inconsistent_or_unbounded_inputs_refused[missing_proof_receipt]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_inconsistent_or_unbounded_inputs_refused[oversize_reason]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_inconsistent_or_unbounded_inputs_refused[stale_source]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_inconsistent_or_unbounded_inputs_refused[task_not_member]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_inconsistent_or_unbounded_inputs_refused[too_many_reasons]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_inconsistent_or_unbounded_inputs_refused[unsupported_schema]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_legacy_unpartitioned_manifest_does_not_invent_code_coverage": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_named_structural_validation_cannot_self_certify_arbitrary_argv": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_native_proof_report_is_observed_but_never_reverified": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_partition_cannot_hide_source_or_grant_authority[authority]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_partition_cannot_hide_source_or_grant_authority[cid]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_partition_cannot_hide_source_or_grant_authority[duplicate_program]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_partition_cannot_hide_source_or_grant_authority[duplicate_support]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_partition_cannot_hide_source_or_grant_authority[missing_program]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_partition_cannot_hide_source_or_grant_authority[overlap]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_partition_cannot_hide_source_or_grant_authority[profile_hash]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_partition_cannot_hide_source_or_grant_authority[wrong_role]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_partition_cannot_hide_source_or_grant_authority[wrong_support_hash]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_prover_absence_nonexecutable_and_directory_are_distinct": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_requested_header_profile_does_not_select_a_header_contract_in_generic_fallback": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_signed_envelope_identity_cannot_be_replaced_by_payload_identity[changed_signature]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_signed_envelope_identity_cannot_be_replaced_by_payload_identity[changed_signer]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_signed_envelope_identity_cannot_be_replaced_by_payload_identity[payload_cid]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_signed_envelope_identity_cannot_be_replaced_by_payload_identity[payload_only]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_unknown_result_text_is_not_exported_and_return_value_is_detached": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_symbolic_capabilities::test_unknown_validation_is_not_promoted_to_behavioral_check": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_symbolic_capabilities"
+    },
+    "test_terminal_task_profile::test_actual_generic_source_indexes_and_world_bind_task_inputs": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_empty_task_prepares_but_cannot_claim_source_indexes": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_native_modify_only_profile_remains_exact": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_native_prepare_load_preserves_sources_and_signs_exact_profile[False-False]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_native_prepare_load_preserves_sources_and_signs_exact_profile[False-True]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_native_prepare_load_preserves_sources_and_signs_exact_profile[True-False]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_oversize_planner_source_is_rejected_without_partial_scan": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_preparation_rejects_undeclared_source_or_unsafe_paths_before_state[ignored]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_preparation_rejects_undeclared_source_or_unsafe_paths_before_state[input_symlink]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_preparation_rejects_undeclared_source_or_unsafe_paths_before_state[inventory]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_preparation_rejects_undeclared_source_or_unsafe_paths_before_state[output_parent_symlink]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_preparation_rejects_undeclared_source_or_unsafe_paths_before_state[untracked]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_profile_closes_population_and_effect_contracts[absent_modify]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_profile_closes_population_and_effect_contracts[bad_media]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_profile_closes_population_and_effect_contracts[directory_overlap]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_profile_closes_population_and_effect_contracts[duplicate_input]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_profile_closes_population_and_effect_contracts[duplicate_output]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_profile_closes_population_and_effect_contracts[instruction]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_profile_closes_population_and_effect_contracts[present_create]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_profile_closes_population_and_effect_contracts[too_many_sources]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_profile_closes_population_and_effect_contracts[unknown]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_profile_normalizes_line_endings_without_rewording": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_profile_rejects_nonexact_or_reserved_paths[../x.py]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_profile_rejects_nonexact_or_reserved_paths[./x.py]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_profile_rejects_nonexact_or_reserved_paths[.git/config]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_profile_rejects_nonexact_or_reserved_paths[.runtime/a]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_profile_rejects_nonexact_or_reserved_paths[.supervisor-any]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_profile_rejects_nonexact_or_reserved_paths[/app/x.py]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_profile_rejects_nonexact_or_reserved_paths[a/../x.py]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_profile_rejects_nonexact_or_reserved_paths[a/.git/config]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_profile_rejects_nonexact_or_reserved_paths[a//x.py]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_profile_rejects_nonexact_or_reserved_paths[a\\\\b.py]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_profile_rejects_nonexact_or_reserved_paths[a\\nb.py]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_profile_rejects_nonexact_or_reserved_paths[x/*.py]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_profile_rejects_nonexact_or_reserved_paths[x?.py]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_structural_smoke_cannot_import_candidate_modules[False-ast.py]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_structural_smoke_cannot_import_candidate_modules[False-ast/__init__.py]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_structural_smoke_cannot_import_candidate_modules[False-json.py]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_structural_smoke_cannot_import_candidate_modules[False-pathlib.py]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_structural_smoke_cannot_import_candidate_modules[False-sitecustomize.py]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_structural_smoke_cannot_import_candidate_modules[True-ast.py]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_structural_smoke_cannot_import_candidate_modules[True-ast/__init__.py]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_structural_smoke_cannot_import_candidate_modules[True-json.py]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_structural_smoke_cannot_import_candidate_modules[True-pathlib.py]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_structural_smoke_cannot_import_candidate_modules[True-sitecustomize.py]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_structural_smoke_parses_without_executing_candidate": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_structural_smoke_rejects_missing_invalid_or_unbounded_outputs[fifo]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_structural_smoke_rejects_missing_invalid_or_unbounded_outputs[missing]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_structural_smoke_rejects_missing_invalid_or_unbounded_outputs[oversize]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_structural_smoke_rejects_missing_invalid_or_unbounded_outputs[parent_symlink]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_structural_smoke_rejects_missing_invalid_or_unbounded_outputs[symlink]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_structural_smoke_rejects_missing_invalid_or_unbounded_outputs[syntax]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_unsigned_preparation_changes_cannot_change_signed_task[profile]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_unsigned_preparation_changes_cannot_change_signed_task[remove_profile]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_unsigned_preparation_changes_cannot_change_signed_task[smoke]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_unsigned_preparation_changes_cannot_change_signed_task[spec]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    },
+    "test_terminal_task_profile::test_unsigned_preparation_changes_cannot_change_signed_task[worker_inputs]": {
+      "outcome": "passed",
+      "run": "partition-05",
+      "xml_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile"
+    }
+  },
+  "latest_distinct_outcomes": {
+    "errors": 0,
+    "failed": 0,
+    "passed": 316,
+    "skipped": 0
+  },
+  "limits": [
+    "Focused local qualification, not a complete repository test run.",
+    "316 distinct passing latest outcomes across the listed runs, not one monolithic invocation. Earlier long-profile fixture failures were corrected and the entire 17-case partition file rerun.",
+    "Preparation collection initially hit a tests-package collision. The recorded command explicitly imports and verifies the datasets fixture package before pytest.",
+    "No fresh Terminal-Bench execution, official reward, token comparison, whole-program proof, or baseline advantage is claimed.",
+    "No full live supervisor START/provider exchange in this qualification; real runtime construction and driver lifecycle doubles have separate scope."
+  ],
+  "new_benchmark_scores": false,
+  "preserved_parent_datasets_commit": "d466db01a32c419a765e5cef046991ddedc3c279",
+  "runs": [
+    {
+      "argv": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "-m",
+        "pytest",
+        "-q",
+        "-o",
+        "addopts=",
+        "-p",
+        "no:cacheprovider",
+        "-p",
+        "ipfs_accelerate_py.testing.pytest_ast_seal",
+        "--junitxml=/home/barberb/lift_coding/artifacts/terminal-symbolic-harness-20261004/partition-05.xml",
+        "test/api/test_doctor_source_partition.py",
+        "test/api/test_doctor_task_workflow.py",
+        "test/api/test_agent_supervisor_doctor_repair_composition.py",
+        "test/api/test_terminal_doctor_dispatch.py",
+        "test/api/test_doctor_residual_context.py",
+        "test/api/test_doctor_header_workflow.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_capabilities.py"
+      ],
+      "artifacts": {
+        "partition-05-command.json": {
+          "bytes": 3786,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-symbolic-harness-20261004/partition-05-command.json",
+          "sha256": "ad6bc4f4962f7ca9114d815375734c2f08a5c2506cfa2a057d73c90c59181b46"
+        },
+        "partition-05-exit.json": {
+          "bytes": 2440,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-symbolic-harness-20261004/partition-05-exit.json",
+          "sha256": "ab9065001939360045a664b946bb9a9591191e0681c1a3fe9715ed429d24c242"
+        },
+        "partition-05.log": {
+          "bytes": 158854,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-symbolic-harness-20261004/partition-05.log",
+          "sha256": "89d1e4a15f36255b345c381c25eabebebd4e2b1f98e191522faa10520897c303"
+        },
+        "partition-05.xml": {
+          "bytes": 37150,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-symbolic-harness-20261004/partition-05.xml",
+          "sha256": "89e484e9a80fd7433d1a14b92170171b423850e32c243bb3c1268f21edb2b2cd"
+        }
+      },
+      "environment_overrides": {
+        "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-symbolic-harness-20261004/partition-05-seal.duckdb",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/terminal-suite-publication-20261004:/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages"
+      },
+      "outcomes": {
+        "errors": 0,
+        "failed": 1,
+        "passed": 173,
+        "skipped": 0
+      },
+      "pytest_exit": 1,
+      "run": "partition-05",
+      "seconds": 183.94696441697306,
+      "sources_unchanged": true
+    },
+    {
+      "argv": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "-c",
+        "import pathlib,tests; assert pathlib.Path(tests.__file__).resolve()==pathlib.Path('/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004/tests/__init__.py'); import pytest,sys; raise SystemExit(pytest.main(sys.argv[1:]))",
+        "-q",
+        "-o",
+        "addopts=",
+        "-p",
+        "no:cacheprovider",
+        "-p",
+        "ipfs_accelerate_py.testing.pytest_ast_seal",
+        "--junitxml=/home/barberb/lift_coding/artifacts/terminal-symbolic-harness-20261004/contracts-07.xml",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_initial_formula_boundary.py",
+        "test/api/test_doctor_source_partition.py"
+      ],
+      "artifacts": {
+        "contracts-07-command.json": {
+          "bytes": 4336,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-symbolic-harness-20261004/contracts-07-command.json",
+          "sha256": "480fd90ae30573160abb3fd48f23ad48439857a18a7c0b732b9bb9b193619539"
+        },
+        "contracts-07-exit.json": {
+          "bytes": 2912,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-symbolic-harness-20261004/contracts-07-exit.json",
+          "sha256": "6a06c602ebaa1f0229667bc458bc6a7877de22a7950054267e9315a208262c45"
+        },
+        "contracts-07.log": {
+          "bytes": 60513,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-symbolic-harness-20261004/contracts-07.log",
+          "sha256": "f643a07912e3a61eae2702f5d54fdadb48ac136643aa4492eb58c2d174b88f16"
+        },
+        "contracts-07.xml": {
+          "bytes": 11398,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-symbolic-harness-20261004/contracts-07.xml",
+          "sha256": "122ab9a4c19be5612ec4838af30c889b5151a8c687cd9ba8f143029020198e56"
+        }
+      },
+      "environment_overrides": {
+        "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-symbolic-harness-20261004/contracts-07-seal.duckdb",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/terminal-suite-publication-20261004:/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages"
+      },
+      "outcomes": {
+        "errors": 0,
+        "failed": 1,
+        "passed": 43,
+        "skipped": 0
+      },
+      "pytest_exit": 1,
+      "run": "contracts-07",
+      "seconds": 108.32591395400232,
+      "sources_unchanged": true
+    },
+    {
+      "argv": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "-m",
+        "pytest",
+        "-q",
+        "-o",
+        "addopts=",
+        "-p",
+        "no:cacheprovider",
+        "-p",
+        "ipfs_accelerate_py.testing.pytest_ast_seal",
+        "--junitxml=/home/barberb/lift_coding/artifacts/terminal-symbolic-harness-20261004/partition-08.xml",
+        "test/api/test_doctor_source_partition.py"
+      ],
+      "artifacts": {
+        "partition-08-command.json": {
+          "bytes": 3357,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-symbolic-harness-20261004/partition-08-command.json",
+          "sha256": "bf18df54f3fc4b2411d7ee2f4db4b16259ee9d8a7c6c679600d894f963fded85"
+        },
+        "partition-08-exit.json": {
+          "bytes": 2439,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-symbolic-harness-20261004/partition-08-exit.json",
+          "sha256": "47e42d9b5bda7d48437521928e880fe8b8458cf2cefd17338c5a39c0e3d0f5c0"
+        },
+        "partition-08.log": {
+          "bytes": 30041,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-symbolic-harness-20261004/partition-08.log",
+          "sha256": "b621eb44d5fec08c3e7bf42d53fa436d235f9ce62748826ec8fa21a267f33dc9"
+        },
+        "partition-08.xml": {
+          "bytes": 2763,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-symbolic-harness-20261004/partition-08.xml",
+          "sha256": "21606d25ba6be15a5f78340684b5d22023e1ca20949755182488a98b27590022"
+        }
+      },
+      "environment_overrides": {
+        "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-symbolic-harness-20261004/partition-08-seal.duckdb",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/terminal-suite-publication-20261004:/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages"
+      },
+      "outcomes": {
+        "errors": 0,
+        "failed": 0,
+        "passed": 17,
+        "skipped": 0
+      },
+      "pytest_exit": 0,
+      "run": "partition-08",
+      "seconds": 47.83410588800325,
+      "sources_unchanged": true
+    },
+    {
+      "argv": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "-m",
+        "pytest",
+        "-q",
+        "-o",
+        "addopts=",
+        "-p",
+        "no:cacheprovider",
+        "-p",
+        "ipfs_accelerate_py.testing.pytest_ast_seal",
+        "--junitxml=/home/barberb/lift_coding/artifacts/terminal-symbolic-harness-native-20261004/control-03.xml",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_implementation_budget.py",
+        "benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py",
+        "test/api/test_admitted_runtime_launch_bounds.py"
+      ],
+      "artifacts": {
+        "control-03.json": {
+          "bytes": 5448,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-symbolic-harness-native-20261004/control-03.json",
+          "sha256": "37d3d4531fe618f29c9e671e3d055bd21d0aa8c254fdd436d9408320cd42c189"
+        },
+        "control-03.log": {
+          "bytes": 26340,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-symbolic-harness-native-20261004/control-03.log",
+          "sha256": "14d9514f2d3eda7de9bdf8a24b464f172550fb4766ca96dc8d3abf4c363e5b72"
+        },
+        "control-03.xml": {
+          "bytes": 23820,
+          "path": "/home/barberb/lift_coding/artifacts/terminal-symbolic-harness-native-20261004/control-03.xml",
+          "sha256": "97e977a63d52888a4a2114d2175b73eaf40a80dcf60373e433ed95a6ec51f246"
+        }
+      },
+      "environment_overrides": {
+        "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-symbolic-harness-native-20261004/control-03-seal.duckdb",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/terminal-suite-publication-20261004:/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages"
+      },
+      "outcomes": {
+        "errors": 0,
+        "failed": 0,
+        "passed": 115,
+        "skipped": 0
+      },
+      "pytest_exit": 0,
+      "run": "control-03",
+      "seconds": 35.581111669540405,
+      "sources_unchanged": true
+    }
+  ],
+  "schema": "terminal-symbolic-harness-qualification@1",
+  "tested_datasets_commit": "d5aaf256618c53b009695e8d5618436fba1c0419",
+  "tested_file_sha256": {
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "0732cbdeab49a9ff1ffc1ae839d3eddeb92e916d8da50ca1fb3a46bdae0945a2",
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": "8592439fa72e7b392b8e0650bf97ddbcaa605b00a9fbd1233d2af369b49d7cd3",
+    "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": "75a869c9a7b8ec3c9d367029f19aa248fabc9c3fdd4e23c8097d28bf2539e0e0",
+    "benchmarks/agent_supervisor/container_coding/terminal_native_progress.py": "1e034ca7e0baf5a14642b80b51c4b4bf422190f2621ceafdc47683cece016811",
+    "benchmarks/agent_supervisor/container_coding/terminal_symbolic_capabilities.py": "0a9d75e4e3d60643481f10670d27d51f1fee2e708b2d468842aeab4e46af4785",
+    "benchmarks/agent_supervisor/container_coding/terminal_task_profile.py": "55be491102186a80cf90de6572cd508c3d727a48603204ffa35cbb3ddd6e10ef",
+    "benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py": "81d3e56fb4acbf0d06e28a659f7f1bbb5044cdde0ce9f3185a3e6d54c5c23d8a",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_implementation_budget.py": "195412ba6895af6770d0982be6fd26b8af2affe62a0c15010cd1306e12ea51ad",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py": "3c7ddc0871e81dedd790ef09f493f25942165f63d86657f6ca7b33309be118a2",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py": "f21470f8c25299e7795b6b11ccfc31ccd58058bb44a760eaa03aab427ea5ac14",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_initial_formula_boundary.py": "929466ae783ec237fe4d476a8fd108f19181156437168e7cae739d12e21a5641",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py": "1131258194742df240e320cf79e010e6bc4d5edd1678f49188704b4383bb568a",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_capabilities.py": "cfef6cf5730e16746ec08dd02e94afb640b1546d0ab4f4d14462434fd22f0fbb",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py": "f1514851a591b142d32001550c056b635b3e95d802f06e66e1e187da38067d77",
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "4f14fb9da9115410a5aa8ecde82a4d78db151e120dfffffd6303b7a24796ab79",
+    "ipfs_accelerate_py/agent_supervisor/runtime/doctor_repair_composition.py": "3ceea14c09e49c5b917e7d065be141c335f118d294e758b220f33b235bb89a17",
+    "ipfs_accelerate_py/agent_supervisor/runtime/doctor_source_partition.py": "d00d44f26c3f955fd5ca36e4ff5814380b5341ed8e2832ff6f77ed4ef10a2783",
+    "ipfs_accelerate_py/agent_supervisor/runtime/doctor_task_workflow.py": "5f7aa180e14f4b9a5536ee671cfaeba10ada5753366194d3ca31e2873818f102",
+    "ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py": "d1a8a9df6e803058a499959c9a58bbb53e21fbf3b342949111880cdf0fcca7d1",
+    "test/api/test_admitted_runtime_launch_bounds.py": "455e9dba51ae6c6f555a83d997bcd79aa6cddd4021dccfb1fdf5708b5d0b414d",
+    "test/api/test_agent_supervisor_doctor_repair_composition.py": "b15d0a9a62463bd246d9cbcaa24639f8448255dc8bc92a7f34912da2f90ca20a",
+    "test/api/test_doctor_header_workflow.py": "0b6a3a05012f4e2d22f45216244fb5f4b889d24e5f0577d67c4e124270dd70ba",
+    "test/api/test_doctor_residual_context.py": "d36d3c064743f0972e738af13345e4008f3cf063d1bf804aac614244f1323a3b",
+    "test/api/test_doctor_source_partition.py": "b9c8b557591b43137482a1a52afa53901c5ee055ed2b6f7c2bafc1310ad40764",
+    "test/api/test_doctor_task_workflow.py": "de1027d24b52f51e6d0de16a64f3de6158e5519ff19b587efa0fc49a371520c6",
+    "test/api/test_terminal_doctor_dispatch.py": "56055bd98635af864e8ce80ff4b349d6051d87fe2d9faa5115cb436a28b813b5"
+  }
+}

@@ -46,6 +46,7 @@ from ..proof.deterministic_doctor_hammer import (
     DoctorReviewedTheorem,
 )
 from ..proof.formal_verification_contracts import content_identity
+from .doctor_source_partition import DoctorSourcePartition
 
 
 class DoctorCompositionError(ValueError):
@@ -398,6 +399,7 @@ class DoctorCompositionInputs:
     worktree_adapter: Any = None
     target_ref: str = ""
     base_ref: str = ""
+    source_partition: DoctorSourcePartition | None = None
 
     def __post_init__(self) -> None:
         for name, cls in (
@@ -461,27 +463,37 @@ class DoctorCompositionInputs:
         hashes = dict(self.source_hashes)
         if not hashes or len(hashes) > 256:
             raise DoctorCompositionError("source preimages must contain 1 to 256 paths")
+        support = set()
+        program_paths = set(hashes)
+        if self.source_partition is not None:
+            if type(self.source_partition) is not DoctorSourcePartition or self.worktree_adapter is None:
+                raise DoctorCompositionError("typed replayable source partition and adapter required")
+            self.source_partition.assert_current(self.worktree_adapter.repository_root)
+            support = {path for path, _, _ in self.source_partition.support_hashes}
+            program_paths = set(self.source_partition.program_paths)
+            if support & program_paths or support | program_paths != set(hashes):
+                raise DoctorCompositionError("partition must cover the complete source ledger")
         for path, digest in hashes.items():
             pure = PurePosixPath(path)
             if (
                 pure.is_absolute()
                 or ".." in pure.parts
                 or str(pure) != path
-                or pure.suffix != ".py"
+                or (pure.suffix != ".py" and path not in support)
             ):
                 raise DoctorCompositionError("source path escapes the checkout")
             if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
                 raise DoctorCompositionError("source hashes must be SHA256 hex digests")
         path = self.synthesis.proposal.edit_site.path
         full_text = self.synthesis.file_text
-        if path not in hashes or hashlib.sha256(full_text.encode()).hexdigest() != hashes[path]:
+        if path not in program_paths or hashlib.sha256(full_text.encode()).hexdigest() != hashes[path]:
             raise DoctorCompositionError("synthesis full preimage is not in the source ledger")
         site = self.synthesis.proposal.edit_site
         if full_text[site.span_start : site.span_end] != self.synthesis.span_text:
             raise DoctorCompositionError("edit span differs from the full source preimage")
         object.__setattr__(self, "source_hashes", MappingProxyType(hashes))
-        if set(graph_roots.included_roots) != set(hashes):
-            raise DoctorCompositionError("graph coverage must name the complete source ledger")
+        if set(graph_roots.included_roots) != program_paths:
+            raise DoctorCompositionError("graph coverage must name every admitted program input")
         if bool(self.target_ref) != (self.worktree_adapter is not None):
             raise DoctorCompositionError(
                 "transaction needs both an adapter and explicit target ref"
@@ -495,7 +507,18 @@ class DoctorCompositionInputs:
             raise DoctorCompositionError("composition snapshot changed")
         if "diagnostic_source_bound_reached" in evidence.notes:
             raise DoctorCompositionError("bounded diagnostic coverage cannot authorize composition")
-        if any(row.coverage_kind != "semantic_ast" for row in evidence.source_inventory):
+        program_paths = set(self.source_hashes)
+        support_kinds = {}
+        if self.source_partition is not None:
+            self.source_partition.assert_current(checkout_root)
+            program_paths = set(self.source_partition.program_paths)
+            support_kinds = {
+                name: {"instruction": "text_reference", "task_profile": "structured_data",
+                       "structural_smoke": "semantic_ast"}[role]
+                for name, role, _ in self.source_partition.support_hashes
+            }
+        if any(row.coverage_kind != support_kinds.get(row.path, "semantic_ast")
+               for row in evidence.source_inventory):
             raise DoctorCompositionError(
                 "opaque or non-semantic admitted inputs require frontier handling"
             )
@@ -505,7 +528,7 @@ class DoctorCompositionInputs:
         }
         # A graph's omitted input is a stale-evidence risk even if the edited
         # file did not change. Bind the complete native diagnostic input set.
-        if set(inventory) != set(self.source_hashes):
+        if len(inventory) != len(evidence.source_inventory) or set(inventory) != set(self.source_hashes):
             raise DoctorCompositionError("source ledger omits admitted inventory inputs")
         for path, digest in self.source_hashes.items():
             file = checkout_root / path
@@ -527,7 +550,7 @@ class DoctorCompositionInputs:
                     source=(checkout_root / path).read_text(encoding="utf-8"),
                     language="python",
                 )
-                for path in sorted(self.source_hashes)
+                for path in sorted(program_paths)
             ]
         )
         if rebuilt.graph_id != self.program_graph.graph_id:

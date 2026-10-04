@@ -231,6 +231,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
     def create(cls, directory: Path, *, admission, server, source,
                implement: bool = False, implementation_command: str = "",
                timeout_ms: int = 30_000, start_timeout_ms: int | None = None,
+               implementation_timeout_seconds: int | None = None,
                max_task_attempts: int = 1, context_bundle: dict | None = None,
                lifetime_seconds: int = 300, worker_worktree_root: Path | None = None,
                candidate_runner_argv=(), refresh_context_on_completion: bool = False,
@@ -243,6 +244,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
         arguments = dict(admission=admission, server=server, source=source, implement=implement,
             implementation_command=implementation_command, timeout_ms=timeout_ms,
             start_timeout_ms=start_timeout_ms,
+            implementation_timeout_seconds=implementation_timeout_seconds,
             max_task_attempts=max_task_attempts, context_bundle=context_bundle,
             lifetime_seconds=lifetime_seconds, worker_worktree_root=worker_worktree_root,
             candidate_runner_argv=candidate_runner_argv,
@@ -299,6 +301,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
     def _create(cls, directory: Path, *, admission, server, source,
                implement: bool = False, implementation_command: str = "",
                timeout_ms: int = 30_000, start_timeout_ms: int | None = None,
+               implementation_timeout_seconds: int | None = None,
                max_task_attempts: int = 1, context_bundle: dict | None = None,
                lifetime_seconds: int = 300, worker_worktree_root: Path | None = None,
                candidate_runner_argv=(), refresh_context_on_completion: bool = False,
@@ -339,6 +342,11 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             raise ValueError("coordination attempt cap must be in 1..10")
         if type(lifetime_seconds) is not int or not 120 <= lifetime_seconds <= 900:
             raise ValueError("signed launch lifetime_seconds must be in 120..900")
+        if implementation_timeout_seconds is not None and (
+                type(implementation_timeout_seconds) is not int
+                or not 1 <= implementation_timeout_seconds <= lifetime_seconds
+                or not implement):
+            raise ValueError("explicit implementation timeout requires live execution and an integer within the signed lifetime")
         proof_resource_environment = _bounded_proof_resource_environment()
         if start_timeout_ms is not None and (
                 type(start_timeout_ms) is not int or not 2_000 <= start_timeout_ms <= 120_000
@@ -424,6 +432,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             runtime.profile_dir, runtime.lifecycle_dir = Path(declared["profile_dir"]), Path(declared["lifecycle_dir"])
             runtime.local_profile, runtime.timeout_ms = profile, timeout_ms
             runtime.start_timeout_ms = start_timeout_ms
+            runtime.implementation_timeout_seconds = implementation_timeout_seconds
             runtime._startup_trace_lock = threading.Lock()
             runtime._startup_trace = []
             runtime._startup_trace_truncated = False
@@ -497,6 +506,8 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                 options += ["--task-context-bundle-artifact", runtime.context_bundle["artifact"],
                             "--task-context-bundle-sha256", runtime.context_bundle["sha256"]]
             options += ["--implement", "--implementation-command", implementation_command] if implement else ["--no-implement"]
+            if implementation_timeout_seconds is not None:
+                options += ["--implementation-timeout", str(implementation_timeout_seconds)]
             from ..todo_daemon.implementation_supervisor import parse_args
             parse_args(options)
             argv = (sys.executable, "-P", "-m",
@@ -549,6 +560,8 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             }
             if start_timeout_ms is not None:
                 runtime.manifest["start_timeout_ms"] = start_timeout_ms
+            if implementation_timeout_seconds is not None:
+                runtime.manifest["implementation_timeout_seconds"] = implementation_timeout_seconds
             if refresh_source384_on_completion:
                 runtime.manifest["context_refresh_policy"].update(
                     schema="admitted-context-refresh-policy@2",
@@ -921,6 +934,8 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
         from ..runtime.local_completion_bridge import verify_owner_local_benchmark_observation
         if self.manifest.get("start_timeout_ms") != self.start_timeout_ms:
             raise ValueError("admitted START budget differs from its signed launch")
+        if self.manifest.get("implementation_timeout_seconds") != getattr(self, "implementation_timeout_seconds", None):
+            raise ValueError("implementation timeout differs from its signed launch")
         if self.service._local_start_timeout_ms != self.start_timeout_ms:
             raise ValueError("local START service budget differs from its signed launch")
         if self.manifest.get("candidate_runner") is not None:

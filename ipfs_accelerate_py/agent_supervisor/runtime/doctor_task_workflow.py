@@ -48,6 +48,7 @@ from .doctor_repair_composition import (
     _keyword_rename_contract, _signature, composition_snapshot, operator_consequence_ref,
 )
 from .doctor_worktree_adapter import DoctorWorktreeAdapter
+from .doctor_source_partition import terminal_doctor_source_partition
 
 
 OPERATOR = "closed-local-keyword-rename@1"
@@ -283,16 +284,26 @@ def prepare_doctor_task_repair(
         return replace(prepared, report={**unavailable, "plan_refill": _refill(prepared, reasons)})
     reasons = []
     ledger = {row.path: row.content_digest.removeprefix("sha256:") for row in evidence.source_inventory}
-    if (any(row.coverage_kind != "semantic_ast" for row in evidence.source_inventory)
-            or set(ledger) != set(manifest["sources"])
+    if (len(ledger) != len(evidence.source_inventory) or set(ledger) != set(manifest["sources"])
             or "diagnostic_source_bound_reached" in evidence.notes):
         reasons.append("unsupported_or_incomplete_source_inventory")
     elif any(ledger[name] != manifest["sources"][name]["sha256"] for name in ledger):
         raise DoctorCompositionError("native Doctor inventory differs from signed source")
+    partition = terminal_doctor_source_partition(repository=root, admission=admission, task_cid=task_cid)
+    program_paths = tuple(sorted(ledger)) if partition is None else partition.program_paths
+    support_kinds = {} if partition is None else {
+        name: {"instruction": "text_reference", "task_profile": "structured_data",
+               "structural_smoke": "semantic_ast"}[role]
+        for name, role, _ in partition.support_hashes
+    }
+    if any(row.coverage_kind != support_kinds.get(row.path, "semantic_ast")
+           or (row.path not in support_kinds and not row.path.endswith(".py"))
+           for row in evidence.source_inventory):
+        reasons.append("unsupported_or_incomplete_source_inventory")
     selected = []
     for output in contract["task_spec"]["outputs"]:
         name = output["path"]
-        if output["effect"] != "modify" or name not in ledger or not name.endswith(".py"):
+        if output["effect"] != "modify" or name not in program_paths or not name.endswith(".py"):
             reasons.append("unsupported_output_effect_or_language")
             continue
         try:
@@ -306,6 +317,8 @@ def prepare_doctor_task_repair(
         "diagnostic_snapshot_id": evidence.snapshot.snapshot_id, "finding_count": len(evidence.findings),
         "source_hashes": ledger,
     }
+    if partition is not None:
+        report["source_partition"] = partition.observation()
     if reasons:
         _assert_task_current(prepared)
         return replace(prepared, report={**report, "status": "residual", "reason_codes": sorted(set(reasons)),
@@ -324,11 +337,12 @@ def prepare_doctor_task_repair(
     observed = evidence.snapshot.roots
     program_graph = ProgramDependencyGraph(ProgramGraphRoots(
         forest_id=observed.forest_id, tree_id=observed.tree_id, overlay_id=observed.overlay_id,
-        coverage_id=observed.file_root_id, included_roots=tuple(sorted(ledger)), toolchain_id=toolchain,
-    )).build([PathSource(path=name, source=(root / name).read_text(), language="python") for name in sorted(ledger)])
+        coverage_id=observed.file_root_id, included_roots=program_paths, toolchain_id=toolchain,
+    )).build([PathSource(path=name, source=(root / name).read_text(), language="python") for name in program_paths])
     base = manifest["baseline_commit"]
     roots = replace(observed, graph_id=program_graph.graph_id, toolchain_id=toolchain,
-        lease_id=content_identity({"task_cid": task_cid, "source": ledger, "candidate_ref": candidate_ref, "base": base}),
+        lease_id=content_identity({"task_cid": task_cid, "source": ledger, "candidate_ref": candidate_ref, "base": base,
+            **({"source_partition": partition.observation()["partition_cid"]} if partition is not None else {})}),
         translator_id="translator:" + OPERATOR)
     snapshot = composition_snapshot(evidence.snapshot, roots)
     expected = content_identity({"declaration": choice["declaration"], "source": ledger[choice["path"]]})
@@ -401,7 +415,7 @@ def prepare_doctor_task_repair(
         impact=DoctorImpactRequest(roots=roots, subject_symbol_id=choice["subject"], change_set_id=consequence,
             before_contract_ref=finding.observed_fact_refs[0], after_contract_ref=expected, evidence_refs=(finding.content_id,)),
         program_graph=program_graph, source_hashes=ledger, proof_scope=PROOF_SCOPE,
-        worktree_adapter=adapter, target_ref=candidate_ref, base_ref=base)
+        worktree_adapter=adapter, target_ref=candidate_ref, base_ref=base, source_partition=partition)
     _assert_task_current(prepared)
     runtime.bind_composition(inputs)
     return replace(prepared, inputs=inputs, report={**report, "status": "prepared", "reason_codes": [],

@@ -24,6 +24,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.doctor_task_workflow import (
 from ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission import verify_local_benchmark_admission
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import IntentRepository
 from ipfs_accelerate_py.agent_supervisor.validation.deterministic_doctor_policy import DeterministicDoctorPolicy
+from .terminal_symbolic_capabilities import assess_terminal_symbolic_capabilities
 
 
 def _installed_provers() -> tuple[Path, Path]:
@@ -125,6 +126,10 @@ def prepare_terminal_doctor_dispatch(*, repository: Path, state: Path,
                 "residual_work_proposals": 0, "artifact": contract_result["artifact"],
                 "sha256": contract_result["sha256"], "contract_workflow": contract_result,
                 "result_artifact": str(state / "doctor-header-workflow/result.json")}
+            dispatch["symbolic_capabilities"] = assess_terminal_symbolic_capabilities(
+                manifest=admission["manifest"], task_cid=task_cid,
+                task_spec=verified["manifest"]["tasks"][0], doctor_result=contract_result,
+                prover_paths={"lean": kernel, "z3": solver}, contract_profile=contract_profile)
             return dispatch
     candidate_ref = "refs/heads/doctor/terminal-" + uuid.uuid4().hex
     base = verified["manifest"]["baseline_commit"]
@@ -161,6 +166,10 @@ def prepare_terminal_doctor_dispatch(*, repository: Path, state: Path,
                         sha256=result["handoff_sha256"], candidate_commit=result["handoff"]["candidate_commit"])
     elif result["status"] != "residual":
         raise ValueError("Doctor returned an unsupported dispatch state")
+    dispatch["symbolic_capabilities"] = assess_terminal_symbolic_capabilities(
+        manifest=admission["manifest"], task_cid=task_cid,
+        task_spec=verified["manifest"]["tasks"][0], doctor_result=result,
+        prover_paths={"lean": kernel, "z3": solver}, contract_profile=contract_profile)
     with (state / "doctor-workflow-result.json").open("x") as stream:
         stream.write(json.dumps(result, sort_keys=True, indent=2) + "\n")
     return dispatch
