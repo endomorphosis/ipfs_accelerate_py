@@ -1681,7 +1681,7 @@ def create_static_dashboard(
                 <h2>Hardware Compatibility</h2>
                 
                 <div class="card-container">
-                    {"".join([f'<div class="card"><h3>{row["hardware_type"].upper()}</h3><p>{"✅ Available" if row["available"] else "❌ Not Available"}</p>{f"<p>{row.get("name", "")}</p>" if row["available"] else ""}</div>' for _, row in hardware_detection.drop_duplicates("hardware_type").iterrows()]) if not hardware_detection.empty else '<div class="card"><h3>No Hardware Data</h3><p>No hardware detection data available</p></div>'}
+                    {"".join([f'<div class="card"><h3>{row["hardware_type"].upper()}</h3><p>{"✅ Available" if row["available"] else "❌ Not Available"}</p>{f"<p>{row.get('name', '')}</p>" if row["available"] else ""}</div>' for _, row in hardware_detection.drop_duplicates("hardware_type").iterrows()]) if not hardware_detection.empty else '<div class="card"><h3>No Hardware Data</h3><p>No hardware detection data available</p></div>'}
                 </div>
                 
                 <div class="chart-container">
