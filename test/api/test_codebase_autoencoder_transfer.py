@@ -26,3 +26,4 @@ def test_task_security_nominations_are_bound_to_source_rows_targets_and_native_c
             block['target_vocabulary'][0] = 'effect:deny'
         with pytest.raises(ValueError, match='descriptor differs'):
             ae.validate_codebase_autoencoder(repository=joint_inputs['repository'], expected_receipt=altered)
+

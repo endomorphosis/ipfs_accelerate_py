@@ -7,11 +7,8 @@ verifier runs afterwards and remains outside this process's indexed context.
 from __future__ import annotations
 
 import argparse
-from collections import deque
-from contextlib import ExitStack
 import hashlib
 import json
-import math
 import os
 import re
 from pathlib import Path
@@ -22,11 +19,13 @@ import time
 import uuid
 
 from benchmarks.agent_supervisor.container_coding import terminal_indexed_preparation as preparation
-from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile import (
-    PROFILES, admission_environment, execution_budget, native_start_timeout_ms,
+from benchmarks.agent_supervisor.container_coding.native_quack_qualification import open_existing_native_owner
+from benchmarks.agent_supervisor.container_coding.terminal_doctor_dispatch import (
+    implementation_argv, prepare_terminal_doctor_dispatch,
 )
-from benchmarks.agent_supervisor.container_coding.terminal_native_progress import NativeProgress
+from ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime import AdmittedBenchmarkRuntime
 from ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission import verify_local_benchmark_admission
+from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import GROK_CODEX_EXECUTION_MODE
 
 ROOT = Path("/opt/ipfs-supervisor")
 ROUTER = ROOT / "bin/router-worker"
@@ -47,35 +46,6 @@ def _arm_cleanup_deadline(deadline: float) -> None:
     result before the caller's total deadline.
     """
     signal.setitimer(signal.ITIMER_REAL, max(.001, deadline - time.monotonic() - 2))
-
-
-def _project_native_startup(value):
-    """Keep startup timing diagnostic-only and exclude runtime/source bodies."""
-    fields = {"schema", "start_timeout_ms", "stop_timeout_ms", "bootstrap_wait_seconds",
-        "observations", "observations_truncated", "bootstrap_receipt_count", "bootstrap_error_count"}
-    if (type(value) is not dict or set(value) != fields
-            or type(value["schema"]) is not str or value["schema"] != "admitted-native-startup-observation@1"):
-        raise ValueError("closed native startup observation required")
-    if (type(value["start_timeout_ms"]) is not int or not 2000 <= value["start_timeout_ms"] <= 120000
-            or type(value["stop_timeout_ms"]) is not int or not 2000 <= value["stop_timeout_ms"] <= 30000
-            or type(value["bootstrap_wait_seconds"]) not in (int, float)
-            or not math.isfinite(value["bootstrap_wait_seconds"]) or not 2 <= value["bootstrap_wait_seconds"] <= 120
-            or type(value["observations_truncated"]) is not bool
-            or any(type(value[key]) is not int or not 0 <= value[key] <= 65535
-                for key in ("bootstrap_receipt_count", "bootstrap_error_count"))
-            or type(value["observations"]) is not list or len(value["observations"]) > 16):
-        raise ValueError("bounded native startup observation required")
-    observations = []
-    for row in value["observations"]:
-        if (type(row) is not dict or set(row) != {"phase", "status", "seconds"}
-                or type(row["phase"]) is not str or row["phase"] not in {
-                    "control_validation", "launch_validation", "bootstrap_validation"}
-                or type(row["status"]) is not str or row["status"] not in {"running", "completed", "failed"}
-                or type(row["seconds"]) not in (int, float) or not math.isfinite(row["seconds"])
-                or not 0 <= row["seconds"] <= 900):
-            raise ValueError("bounded startup phase observation required")
-        observations.append(dict(row))
-    return {**value, "observations": observations}
 
 
 def _router_reply(stdout: str) -> tuple[str, dict]:
@@ -135,65 +105,6 @@ def _native_diagnostics(state: Path) -> dict:
     return result
 
 
-def _failure_diagnostics(error: Exception, *, phase: str) -> dict:
-    """Observe a failure without exporting source, locals or exception chains.
-
-    These observations grant no authority and never change admission. Resource
-    values are a new sample at error handling, not the earlier lease decision.
-    A bounded traceback walk avoids source/linecache reads during unwinding.
-    """
-    result = {"error_phase": phase}
-    try:
-        frames = deque(maxlen=20)
-        current = error.__traceback__
-        walked = 0
-        while current is not None and walked < 256:
-            code = current.tb_frame.f_code
-            frames.append({"file": code.co_filename[:512],
-                           "function": code.co_name[:128], "line": current.tb_lineno})
-            current = current.tb_next
-            walked += 1
-        result["error_traceback"] = {"frames": list(frames),
-            "frames_walked": walked, "frames_omitted": walked - len(frames),
-            "walk_truncated": current is not None}
-    except Exception as diagnostic_error:
-        result["failure_traceback_error"] = type(diagnostic_error).__name__[:128]
-    try:
-        from ipfs_datasets_py.optimizers.logic_theorem_optimizer.proof_resource_safety import collect_proof_host_resources
-        from benchmarks.agent_supervisor.container_coding.terminal_resource_diagnostics import project_failure_resources
-        result["failure_resources"] = project_failure_resources(collect_proof_host_resources())
-    except Exception as diagnostic_error:
-        result["failure_resource_error"] = type(diagnostic_error).__name__[:128]
-    try:
-        from benchmarks.agent_supervisor.container_coding.terminal_resource_diagnostics import collect_failure_scheduler
-        result["failure_scheduler"] = collect_failure_scheduler()
-    except Exception:
-        result["failure_scheduler_error"] = "collection_unavailable"
-    try:
-        from benchmarks.agent_supervisor.container_coding.terminal_resource_diagnostics import collect_failure_admission
-        primary = error
-        seen = set()
-        for _ in range(8):
-            if not isinstance(primary, BaseException) or id(primary) in seen:
-                break
-            seen.add(id(primary))
-            observation = collect_failure_admission(primary)
-            result["failure_admission"] = observation
-            if observation.get("reason") != "no_native_admission_error":
-                break
-            primary = primary.__cause__
-    except Exception:
-        result["failure_admission_error"] = "collection_unavailable"
-    try:
-        from ipfs_accelerate_py.agent_supervisor.runtime.header_intent_applicability import project_header_checker_failure
-        diagnostic = project_header_checker_failure(error)
-        if diagnostic is not None:
-            result["failure_header_checker"] = diagnostic
-    except Exception:
-        result["failure_header_checker_error"] = "collection_unavailable"
-    return result
-
-
 def _final_context_audit(report: dict, *, state: Path, deadline: float) -> None:
     """Observe completed dispatch inputs after shutdown within remaining time."""
     if report.get("arm") != "full":
@@ -240,8 +151,7 @@ def _mark_initial_autoencoder_historical(report: dict) -> None:
     }
 
 
-def _refresh_completed_context(runtime, report: dict, *, deadline: float,
-                               work_deadline: float | None = None) -> None:
+def _refresh_completed_context(runtime, report: dict, *, deadline: float) -> None:
     """Spend only remaining post-STOP work time; retain finalization reserve."""
     if (report.get("arm") != "full" or report.get("task_state", {}).get("status") != "completed"
             or report.get("stop", {}).get("status") != "succeeded"
@@ -256,10 +166,7 @@ def _refresh_completed_context(runtime, report: dict, *, deadline: float,
             "initial_source_hashes": frozen["source_hashes"], "current_source_reuse_authority": False,
             "training_steps": 0, "provider_calls": 0, "download_calls": 0,
             "proof_authority": False, "completion_authority": False}
-    refresh_deadline = deadline - 15.
-    if work_deadline is not None:
-        refresh_deadline = min(refresh_deadline, work_deadline)
-    budget = max(0., refresh_deadline - time.monotonic())
+    budget = max(0., deadline - time.monotonic() - 15.)
     observation = {"status": "deferred", "budget_seconds": budget, "refresh_seconds": None,
         "completion_authority": False, "embedding_calls": None}
     report["post_publication_context"] = observation
@@ -380,8 +287,7 @@ def _security_runtime_inputs(*, security_checkpoint, security_checkpoint_manifes
         canonical_cve_manifest_sha256=canonical_cve_manifest_sha256)}
 
 
-def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
-        resource_profile: str | None = None,
+def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
         model_snapshot: Path | None = None, model_revision="",
         security_initializer: Path | None = None, canonical_cve_export: Path | None = None,
         canonical_cve_manifest_sha256: str | None = None,
@@ -389,49 +295,17 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         security_checkpoint_hub_descriptor: Path | None = None,
         formula_decoder_descriptor: Path | None = None, header_protocol_descriptor: Path | None = None,
         intent_checkpoint_descriptor: Path | None = None,
-        intent_action_384_config: Path | None = None,
-        source384_config: Path | None = None,
         intent_projection_request: Path | None = None,
         intent_projection_request_sha256: str | None = None,
         disable_intent_autoencoder: bool = False,
-        intent_requirement_contract: Path | None = None,
-        task_profile: Path | None = None) -> dict:
-    budget = execution_budget(resource_profile)
-    if timeout_seconds is None:
-        timeout_seconds = budget["driver_seconds"]
-    if (arm not in {"full", "no-index"} or type(timeout_seconds) is not int
-            or not 90 <= timeout_seconds <= max(300, budget["driver_seconds"])):
+        intent_requirement_contract: Path | None = None) -> dict:
+    if arm not in {"full", "no-index"} or not 90 <= timeout_seconds <= 300:
         raise ValueError("explicit bounded arm required")
-    reserved_cleanup_seconds = budget["cleanup_seconds"]
-    selected_admission = admission_environment(resource_profile)
-    if (any(os.environ.get(key) != value for key, value in selected_admission.items())
-            or (not selected_admission and os.environ.get("IPFS_DATASETS_PROOF_RESOURCE_PROFILE", ""))):
-        raise ValueError("declared benchmark admission profile differs from the selected environment")
     if arm != "full" and any(value is not None for value in (
             security_initializer, canonical_cve_export, canonical_cve_manifest_sha256,
             security_checkpoint, security_checkpoint_manifest_sha256, security_checkpoint_hub_descriptor,
-            formula_decoder_descriptor, header_protocol_descriptor, source384_config)):
-        raise ValueError("security training assets require the full indexed arm")
-    if source384_config is not None and any(value is not None for value in (
-            security_initializer, canonical_cve_export, canonical_cve_manifest_sha256,
-            security_checkpoint, security_checkpoint_manifest_sha256, security_checkpoint_hub_descriptor,
             formula_decoder_descriptor, header_protocol_descriptor)):
-        raise ValueError("Source384 pinned-parent and legacy security profiles are mutually exclusive")
-    generic_profile = None
-    if task_profile is not None:
-        from .terminal_task_profile import validate_task_profile
-        if (task_profile.is_symlink() or not task_profile.is_file()
-                or task_profile.resolve(strict=True) != task_profile or task_profile.stat().st_size > 65536):
-            raise ValueError("bounded canonical public task profile required")
-        generic_profile = validate_task_profile(json.loads(task_profile.read_text()),
-            instruction=instruction.read_text())
-        if any(value is not None for value in (
-                security_initializer, canonical_cve_export, canonical_cve_manifest_sha256)):
-            raise ValueError("generic benchmark tasks do not authorize training on task inputs")
-        if security_checkpoint is None and any(value is not None for value in (
-                security_checkpoint_manifest_sha256, security_checkpoint_hub_descriptor,
-                formula_decoder_descriptor, header_protocol_descriptor)):
-            raise ValueError("generic legacy decoder assets require an explicit frozen checkpoint")
+        raise ValueError("security training assets require the full indexed arm")
     if os.geteuid() != 1000 or not state.is_relative_to(ROOT / "state"):
         raise ValueError("container task must run as the deployed private supervisor owner")
     # Canonical files remain read-only to the model identity. The trusted
@@ -439,20 +313,13 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
     os.umask(0o022)
     started = time.monotonic()
     deadline = started + timeout_seconds
-    work_deadline = deadline - reserved_cleanup_seconds
+    work_deadline = deadline - 40
     report = {"schema": "terminal-admitted-supervisor-run@1", "arm": arm,
               "task_completed": False, "official_reward": None,
               "max_total_agent_seconds": timeout_seconds, "provider_invocations": [],
-              "reserved_cleanup_seconds": reserved_cleanup_seconds,
-              "work_cutoff_seconds": timeout_seconds - reserved_cleanup_seconds,
-              "resource_profile": resource_profile,
-              "proof_resource_profile": selected_admission.get("IPFS_DATASETS_PROOF_RESOURCE_PROFILE"),
-              "source384_timeout_seconds": budget["source384_seconds"],
-              "native_start_timeout_seconds": budget["native_start_seconds"],
+              "reserved_cleanup_seconds": 40, "work_cutoff_seconds": timeout_seconds - 40,
               "production_activation": False, "benchmark_advantage_claimed": False,
               "phases": {}, "remaining_processes": None}
-    progress = NativeProgress(started=started)
-    report["native_progress"] = progress.report
     state.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     report_path = state.parent / (state.name + "-result.json")
 
@@ -464,7 +331,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
 
     previous_alarm = signal.signal(signal.SIGALRM, budget_expired)
     previous_term = signal.signal(signal.SIGTERM, budget_expired)
-    signal.setitimer(signal.ITIMER_REAL, max(1, timeout_seconds - reserved_cleanup_seconds))
+    signal.setitimer(signal.ITIMER_REAL, max(1, timeout_seconds - 40))
 
     def remaining(reserve=0):
         value = int(work_deadline - time.monotonic() - reserve)
@@ -513,47 +380,33 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             raise RuntimeError("isolated planning router did not complete successfully")
         return {"text": text, "observation": receipt.get("usage", {}), "execution_receipt": receipt}
 
-    phase = "prepare"
-    replay_scope = ExitStack()
     try:
-        if selected_admission.get("IPFS_DATASETS_PROOF_RESOURCE_PROFILE") == "local-benchmark@1":
-            from ipfs_accelerate_py.agent_supervisor.runtime.header_intent_applicability import local_benchmark_applicability_budget
-            replay_scope.enter_context(local_benchmark_applicability_budget(deadline_monotonic=work_deadline))
         before = time.monotonic()
         try:
             prepared = preparation.prepare(repository=Path("/app"), instruction=instruction, state=state,
                 intent_checkpoint_descriptor=intent_checkpoint_descriptor,
-                intent_action_384_config=intent_action_384_config,
                 intent_projection_request=intent_projection_request,
                 intent_projection_request_sha256=intent_projection_request_sha256,
                 disable_intent_autoencoder=disable_intent_autoencoder,
-                intent_requirement_contract=intent_requirement_contract,
-                **({"task_profile": generic_profile} if generic_profile is not None else {}),
-                **({"resource_profile": resource_profile} if resource_profile is not None else {}))
+                intent_requirement_contract=intent_requirement_contract)
             report["intent_preplanning"] = prepared["intent_preplanning"]
         finally:
             report["phases"]["prepare_seconds"] = time.monotonic() - before
         if arm == "full":
-            phase = "initial_context"
             before = time.monotonic()
             try:
                 report["initial_context"] = preparation.initial_context(state=state,
                     model_snapshot=model_snapshot, model_revision=model_revision,
-                    **({"source384_config": source384_config, "train_autoencoder": False,
-                        "source384_timeout_seconds": min(budget["source384_seconds"], remaining())}
-                       if source384_config is not None else {"train_autoencoder": False}
-                       if generic_profile is not None and security_checkpoint is None
-                       else _security_runtime_inputs(security_checkpoint=security_checkpoint,
+                    **_security_runtime_inputs(security_checkpoint=security_checkpoint,
                         security_checkpoint_manifest_sha256=security_checkpoint_manifest_sha256,
                         security_checkpoint_hub_descriptor=security_checkpoint_hub_descriptor,
                         formula_decoder_descriptor=formula_decoder_descriptor,
                         header_protocol_descriptor=header_protocol_descriptor,
                         security_initializer=security_initializer,
                         canonical_cve_export=canonical_cve_export,
-                        canonical_cve_manifest_sha256=canonical_cve_manifest_sha256)))
+                        canonical_cve_manifest_sha256=canonical_cve_manifest_sha256))
             finally:
                 report["phases"]["initial_context_seconds"] = time.monotonic() - before
-        phase = "planning"
         before = time.monotonic()
         try:
             planned = preparation.plan(state=state, provider_callable=isolated_planner,
@@ -565,7 +418,6 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             raise RuntimeError("the model proposal did not pass independent admission")
         bundle = None
         if arm == "full":
-            phase = "context"
             before = time.monotonic()
             try:
                 context = preparation.context(state=state, model_snapshot=model_snapshot,
@@ -574,34 +426,21 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 report["phases"]["context_seconds"] = time.monotonic() - before
             report["context"] = context
             bundle = context["context_bundle"]
-        phase = "admission"
         admission = json.loads((state / "admission.json").read_text())
         verified = verify_local_benchmark_admission(admission, initial=True)
         task = verified["graph"].tasks[0]
         doctor = None
         if arm == "full":
-            phase = "doctor"
             before = time.monotonic()
             try:
-                # Keep execution-only imports out of the numerical indexing
-                # lifetime. Their loading remains inside the work deadline and
-                # the phase that needs them, including on import failure.
-                from benchmarks.agent_supervisor.container_coding.terminal_doctor_dispatch import prepare_terminal_doctor_dispatch
                 doctor = prepare_terminal_doctor_dispatch(repository=Path("/app"), state=state,
-                    admission=admission, task_cid=task.task_cid,
-                    contract_profile="wsgi-header-controls@1" if generic_profile is None else None)
+                    admission=admission, task_cid=task.task_cid, contract_profile="wsgi-header-controls@1")
             finally:
                 report["phases"]["doctor_seconds"] = time.monotonic() - before
             report["doctor_dispatch"] = doctor
-        phase = "implementation_setup"
-        from benchmarks.agent_supervisor.container_coding.terminal_doctor_dispatch import implementation_argv
         report["implementation_route"] = doctor["route"] if doctor is not None else "model_router"
-        # Candidate routes carry no provider timeout. Check the same work
-        # deadline without charging them the model route's unused reserve.
-        provider_free_candidate = report["implementation_route"] in {"doctor_candidate", "doctor_contract_candidate"}
         implementation = implementation_argv(router=ROUTER, model=preparation.MODEL,
-            reasoning=preparation.REASONING,
-            timeout=remaining() if provider_free_candidate else min(300, remaining(25)),
+            reasoning=preparation.REASONING, timeout=remaining(25),
             semantic_repository=Path("/app") if bundle is not None else None, doctor=doctor)
         if report["implementation_route"] == "model_router":
             from ipfs_accelerate_py.agent_supervisor.runtime.router_public_instruction import prepare_public_instruction_context
@@ -613,19 +452,6 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 "--public-instruction-sha256", instruction_context["sha256"],
                 "--public-instruction-task-cid", task.task_cid]
         command = shlex.join(implementation)
-        phase = "native_execution"
-        from benchmarks.agent_supervisor.container_coding.native_quack_qualification import open_existing_native_owner
-        from ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime import AdmittedBenchmarkRuntime
-        from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import GROK_CODEX_EXECUTION_MODE
-        start_timeout = native_start_timeout_ms(resource_profile, remaining_work_seconds=remaining())
-        report["native_start_timeout_ms"] = 20_000 if start_timeout is None else start_timeout
-        report["native_stop_timeout_ms"] = 20_000
-        # Bind the daemon's implementation watchdog explicitly. Its ordinary
-        # 1800s default otherwise outlives this benchmark's work window. The
-        # outer work alarm remains the absolute deadline even during START.
-        implementation_timeout = (remaining() if provider_free_candidate
-                                  else min(360, remaining(25)))
-        report["implementation_timeout_seconds"] = implementation_timeout
         with open_existing_native_owner(
             database=state / "intent.duckdb", checkout=Path("/app"), state_dir=state / "owner",
             repository_id=verified["manifest"]["repository_cid"],
@@ -634,14 +460,9 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             runtime = AdmittedBenchmarkRuntime.create(
                 state / "launch", admission=admission, server=owner.server, source=owner.source,
                 implement=True, implementation_command=command, context_bundle=bundle,
-                max_task_attempts=1, timeout_ms=20_000,
-                implementation_timeout_seconds=implementation_timeout,
-                **({"start_timeout_ms": start_timeout} if start_timeout is not None else {}),
-                lifetime_seconds=min(900, max(120, remaining() + max(60, reserved_cleanup_seconds))),
+                max_task_attempts=1, timeout_ms=20_000, lifetime_seconds=min(600, max(120, remaining() + 60)),
                 worker_worktree_root=WORKTREES, candidate_runner_argv=(str(VALIDATOR),),
                 refresh_context_on_completion=bundle is not None,
-                refresh_source384_on_completion=(source384_config is not None
-                    and selected_admission.get("IPFS_DATASETS_PROOF_RESOURCE_PROFILE") == "local-benchmark@1"),
                 published_retrieval_policy=("local-safetensors-symbols@1" if model_snapshot is not None
                     else "lexical-tfidf-symbols@1") if bundle is not None else None,
                 published_learned_artifacts=({
@@ -659,32 +480,24 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                     task_state = owner.source.get_task(task.task_cid)
                     report["task_state"] = {"task_cid": task.task_cid, "status": task_state.status,
                                              "revision": task_state.revision}
-                    try:
-                        progress_stop = progress.sample(task=task_state, task_cid=task.task_cid,
-                            state=runtime.state, now=time.monotonic())
-                    except Exception:
-                        # Diagnostics cannot suppress native cleanup or turn a
-                        # reader failure into permission to settle/retry work.
-                        progress_stop = None
-                        report["native_progress_error"] = "observation_unavailable"
                     if task_state.status in {"completed", "failed", "blocked", "cancelled"}:
                         break
-                    if progress_stop:
-                        if progress_stop == "expired_attempt_settlement_unavailable":
-                            report["unavailable_settlement"] = True
+                    heartbeat = runtime.state / "run/admitted_database_daemon_pass_heartbeat.json"
+                    try:
+                        reason = json.loads(heartbeat.read_text()).get("selection_idle_reason")
+                    except (OSError, ValueError):
+                        reason = None
+                    if reason == "expired_attempt_settlement_unavailable":
+                        report["unavailable_settlement"] = True
                         break
                     time.sleep(.5)
                 report["observation"] = runtime.observe()
             finally:
                 _arm_cleanup_deadline(deadline)
                 try:
-                    report["native_startup"] = _project_native_startup(runtime.startup_diagnostics())
-                except Exception:
-                    report["native_startup_error"] = "collection_unavailable"
-                try:
                     report["stop"] = runtime.stop().to_dict()
                     report["remaining_processes"] = len(runtime.process.snapshot(runtime.profile).members)
-                    _refresh_completed_context(runtime, report, deadline=deadline, work_deadline=work_deadline)
+                    _refresh_completed_context(runtime, report, deadline=deadline)
                 finally:
                     try:
                         report["native_diagnostics"] = _native_diagnostics(runtime.state)
@@ -698,15 +511,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         )
     except Exception as error:
         report["error"] = {"type": type(error).__name__, "message": str(error)[:2048]}
-        report["error_phase"] = phase
-        try:
-            report.update(_failure_diagnostics(error, phase=phase))
-        except Exception as diagnostic_error:
-            # Optional observation must never suppress the primary failure or
-            # prevent the existing cleanup and durable result publication.
-            report["failure_diagnostics_error"] = type(diagnostic_error).__name__[:128]
     finally:
-        replay_scope.close()
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, previous_alarm)
         signal.signal(signal.SIGTERM, previous_term)
@@ -749,10 +554,6 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 "reason": "implementation_may_have_dispatched_without_a_final_router_receipt",
             }
         _final_context_audit(report, state=state, deadline=deadline)
-        try:
-            progress.finish(report)
-        except Exception:
-            report["native_progress_error"] = "final_observation_unavailable"
         report["seconds"] = time.monotonic() - started
         _write(report_path, report)
     return report
@@ -763,8 +564,7 @@ def main():
     parser.add_argument("--instruction", type=Path, required=True)
     parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--arm", choices=["full", "no-index"], required=True)
-    parser.add_argument("--timeout-seconds", type=int)
-    parser.add_argument("--resource-profile", choices=PROFILES)
+    parser.add_argument("--timeout-seconds", type=int, default=285)
     parser.add_argument("--model-snapshot", type=Path)
     parser.add_argument("--model-revision", default="")
     parser.add_argument("--security-initializer", type=Path)
@@ -776,13 +576,10 @@ def main():
     parser.add_argument("--formula-decoder-descriptor", type=Path)
     parser.add_argument("--header-protocol-descriptor", type=Path)
     parser.add_argument("--intent-checkpoint-descriptor", type=Path)
-    parser.add_argument("--intent-action-384-config", type=Path)
-    parser.add_argument("--source384-config", type=Path)
     parser.add_argument("--intent-projection-request", type=Path)
     parser.add_argument("--intent-projection-request-sha256")
     parser.add_argument("--disable-intent-autoencoder", action="store_true")
     parser.add_argument("--intent-requirement-contract", type=Path)
-    parser.add_argument("--task-profile", type=Path)
     result = run(**vars(parser.parse_args()))
     print(json.dumps({key: result[key] for key in ("task_completed", "arm", "seconds", "provider_invocations")}))
     return 0 if result["task_completed"] else 1

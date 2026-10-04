@@ -237,7 +237,7 @@ def test_latest_observed_check_uses_native_sequence_with_same_second_and_bytes(s
         assert bool(missing) is fail
 
 
-def native_published_transition(scenario, tmp_path, owner, attempt, *, created_outputs=None, modified_outputs=None):
+def native_published_transition(scenario, tmp_path, owner, attempt, *, created_outputs=None):
     """Produce real Git/queue publication and native Portal observation proofs.
 
     No provider is dispatched: this exercises the publication/owner join with
@@ -276,13 +276,11 @@ def native_published_transition(scenario, tmp_path, owner, attempt, *, created_o
                                  task_header_prefix="## " + task.task_alias)[0]
         canonical = portal._identity_for_task(parsed)
         git("checkout", "-q", "-b", "implementation/local-check")
-        modifications = {"answer.py": "def answer():\n    return 2\n"} if modified_outputs is None else modified_outputs
-        for name, contents in modifications.items():
-            (root / name).write_text(contents)
+        (root / "answer.py").write_text("def answer():\n    return 2\n")
         for name, contents in (created_outputs or {}).items():
             (root / name).write_text(contents)
-        git("add", *modifications, *(created_outputs or {}))
-        git("commit", "-qm", "Repair declared output")
+        git("add", "answer.py", *(created_outputs or {}))
+        git("commit", "-qm", "Repair answer")
         implementation = git("rev-parse", "HEAD")
         git("checkout", "-q", branch)
         queue = MergeQueue(tmp_path / "merge-queue", target_repository_id=checkout_repository_id(root),

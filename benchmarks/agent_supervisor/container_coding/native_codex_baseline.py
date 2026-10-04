@@ -15,14 +15,10 @@ from importlib.metadata import version
 import inspect
 import json
 from pathlib import Path
-import re
 import shutil
-import stat
 import subprocess
 import sys
 import time
-
-from benchmarks.agent_supervisor.container_coding import benchmark_controls
 
 
 TASK = "fix-code-vulnerability"
@@ -47,85 +43,23 @@ def _hash(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _task_name(value: str) -> str:
-    """Accept one bounded dataset child name, never a path or glob."""
-    if type(value) is not str or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", value) is None:
-        raise ValueError("task must be a simple dataset child name")
-    return value
-
-
-def _task_path(dataset: Path, task_name: str) -> Path:
-    dataset = Path(dataset).absolute()
-    task = dataset / _task_name(task_name)
-    if (dataset.resolve(strict=True) != dataset or not dataset.is_dir()
-            or task.is_symlink() or not task.is_dir() or task.resolve(strict=True) != task):
-        raise ValueError("task must be a canonical non-symlink direct dataset child")
-    return task
-
-
-def _prepared_task(output: Path, prepared: dict, config: dict, *, job_prefix: str,
-                   task_name: str | None = None) -> Path:
-    """Recheck the selected task against the frozen Harbor configuration."""
-    selected = _task_name(prepared.get("task", TASK))
-    if task_name is not None and _task_name(task_name) != selected:
-        raise ValueError("requested task differs from the prepared task")
-    task = _task_path(Path(prepared["dataset"]), selected)
-    tasks = config.get("tasks")
-    if (_hash(output / "config.json") != prepared["config_sha256"]
-            or type(tasks) is not list or len(tasks) != 1 or type(tasks[0]) is not dict
-            or tasks[0].get("path") != str(task)
-            or config.get("job_name") != job_prefix + selected
-            or config.get("jobs_dir") != str(output / "jobs")):
-        raise ValueError("prepared task binding differs from the frozen configuration")
-    controls = prepared.get("comparison_controls")
-    if controls is not None and (not benchmark_controls.validate_controls(controls)
-            or controls["identity"]["task"] != selected):
-        raise ValueError("prepared task differs from the declared comparison controls")
-    return task
-
-
-def _trial_task_matches(result: dict, task: Path) -> bool | None:
-    """Do not turn absent historical trial identity into a matching task."""
-    import tomllib
-    public_config = tomllib.loads((task / "task.toml").read_text())
-    expected_name = (public_config.get("task") or {}).get("name", task.name)
-    config = result.get("config")
-    task_config = config.get("task") if type(config) is dict else None
-    observed = {"name": result.get("task_name"),
-                "path": task_config.get("path") if type(task_config) is dict else None}
-    expected = {"name": expected_name, "path": str(task)}
-    if any(value is not None and value != expected[key] for key, value in observed.items()):
-        return False
-    return True if all(value is not None for value in observed.values()) else None
-
-
 def _task_hashes(task: Path) -> dict:
     # Hash verifier inputs for integrity, but never inspect or send the oracle.
-    if not task.is_dir() or task.is_symlink() or task.resolve() != task:
-        raise ValueError("canonical regular task directory required")
     files = [task / "instruction.md", task / "task.toml"]
-    for name in ("environment", "tests"):
-        root = task / name
-        if not root.is_dir() or root.is_symlink():
-            raise ValueError("regular environment and verifier directories required")
-        for path in root.rglob("*"):
-            mode = path.lstat().st_mode
-            if path.is_symlink() or not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
-                raise ValueError("task input inventory cannot omit links or special files")
-            if stat.S_ISREG(mode):
-                files.append(path)
-    if any(path.is_symlink() or not stat.S_ISREG(path.lstat().st_mode)
-           or not path.resolve().is_relative_to(task) for path in files):
+    files += [
+        path
+        for name in ("environment", "tests")
+        for path in (task / name).rglob("*")
+        if path.is_file()
+    ]
+    if any(path.is_symlink() or not path.resolve().is_relative_to(task) for path in files):
         raise ValueError("task inputs must be local regular files")
     return {path.relative_to(task).as_posix(): _hash(path) for path in sorted(files)}
 
 
-def config_for(dataset: Path, output: Path, *, resource_profile=None, task_name: str = TASK) -> dict:
-    from .benchmark_resource_profile import apply_resource_profile, execution_budget
-    budget = execution_budget(resource_profile)
-    task_name = _task_name(task_name)
-    return apply_resource_profile({
-        "job_name": "native-codex-" + task_name,
+def config_for(dataset: Path, output: Path) -> dict:
+    return {
+        "job_name": "native-codex-" + TASK,
         "jobs_dir": str(output / "jobs"),
         "n_attempts": 1,
         "n_concurrent_trials": 1,
@@ -137,26 +71,23 @@ def config_for(dataset: Path, output: Path, *, resource_profile=None, task_name:
             {
                 "name": "codex",
                 "model_name": MODEL,
-                "override_timeout_sec": float(budget["harbor_seconds"]),
-                "max_timeout_sec": float(budget["harbor_seconds"]),
-                "override_setup_timeout_sec": 1800.0,
+                "override_timeout_sec": 300.0,
+                "max_timeout_sec": 300.0,
                 "kwargs": {"version": CLI_VERSION, "reasoning_effort": REASONING},
                 "env": {"CODEX_AUTH_JSON_PATH": str(Path.home() / ".codex/auth.json")},
             }
         ],
-        "tasks": [{"path": str(dataset / task_name)}],
-    }, resource_profile)
+        "tasks": [{"path": str(dataset / TASK)}],
+    }
 
 
-def prepare(*, dataset: Path, output: Path, harbor: Path | None = None, resource_profile=None,
-            task_name: str = TASK) -> dict:
+def prepare(*, dataset: Path, output: Path, harbor: Path | None = None) -> dict:
     from harbor.agents.factory import AgentFactory
     from harbor.agents.installed.codex import Codex
     from harbor.models.job.config import JobConfig
     from harbor.models.task.task import Task
 
     dataset = Path(dataset).resolve(strict=True)
-    task = _task_path(dataset, task_name)
     output = Path(output).absolute()
     if output.exists() or output.resolve() != output:
         raise ValueError("baseline preparation requires a fresh output directory")
@@ -169,11 +100,10 @@ def prepare(*, dataset: Path, output: Path, harbor: Path | None = None, resource
     observed = subprocess.check_output([cli, "--version"], text=True, timeout=15).strip()
     if observed != "codex-cli " + CLI_VERSION:
         raise ValueError("local Codex CLI does not match the independently pinned version")
-    original = Task(task)
+    original = Task(dataset / TASK)
     if original.has_steps:
         raise ValueError("baseline profile requires exactly one original task step")
-    config = JobConfig.model_validate(config_for(dataset, output, resource_profile=resource_profile,
-                                                 task_name=task_name), extra="forbid")
+    config = JobConfig.model_validate(config_for(dataset, output), extra="forbid")
     AgentFactory.run_preflight(config.agents[0])
     adapter = AgentFactory.create_agent_from_config(
         config.agents[0], logs_dir=output / "adapter-preflight"
@@ -187,7 +117,7 @@ def prepare(*, dataset: Path, output: Path, harbor: Path | None = None, resource
     auth = adapter._resolve_auth_json_path()
     if auth != Path.home() / ".codex/auth.json":
         raise ValueError("native auth resolver did not select the existing default auth file")
-    hashes = _task_hashes(task)
+    hashes = _task_hashes(dataset / TASK)
     output.mkdir(parents=True)
     wire = config.model_dump(mode="json", context={"redact_sensitive_env": False})
     _json(output / "config.json", wire)
@@ -195,16 +125,15 @@ def prepare(*, dataset: Path, output: Path, harbor: Path | None = None, resource
     dry = subprocess.run([*command, "--dry-run"], capture_output=True, text=True, timeout=60)
     (output / "native-dry-run.stdout").write_text(dry.stdout)
     (output / "native-dry-run.stderr").write_text(dry.stderr)
-    if _task_hashes(task) != hashes:
+    if _task_hashes(dataset / TASK) != hashes:
         raise ValueError("original task changed during baseline preflight")
     source_files = [Path(inspect.getfile(item)) for item in (Codex, AgentFactory, JobConfig, Task)]
     record = {
-        "resource_profile": resource_profile,
         "schema": "native-codex-harbor-baseline-preparation@1",
         "prepared": dry.returncode == 0,
         "native_dry_run_returncode": dry.returncode,
         "dataset": str(dataset),
-        "task": task_name,
+        "task": TASK,
         "task_input_sha256": hashes,
         "harbor_version": version("harbor"),
         "host_codex_version": observed,
@@ -212,14 +141,10 @@ def prepare(*, dataset: Path, output: Path, harbor: Path | None = None, resource
         "native_adapter_source_sha256": {str(path): _hash(path) for path in source_files},
         "config_sha256": _hash(output / "config.json"),
         "collector_source_sha256": _hash(Path(__file__)),
-        "controls_source_sha256": _hash(Path(benchmark_controls.__file__)),
-        "comparison_controls": benchmark_controls.build_controls(
-            wire, task_input_sha256=hashes, task=task_name, model=MODEL,
-            reasoning_effort=REASONING, cli_version=CLI_VERSION),
         "model": MODEL,
         "reasoning_effort": REASONING,
         "cli_version": CLI_VERSION,
-        "agent_timeout_seconds": wire["agents"][0]["override_timeout_sec"],
+        "agent_timeout_seconds": 300,
         "attempts": 1,
         "max_retries": 0,
         "concurrency": 1,
@@ -238,7 +163,7 @@ def prepare(*, dataset: Path, output: Path, harbor: Path | None = None, resource
         "usage": {name: None for name in TOKEN_FIELDS},
         "official_codex_config_reference": "https://learn.chatgpt.com/docs/config-file/config-reference",
         "notes": [
-            f"{wire['agents'][0]['override_timeout_sec']:g} seconds bounds the native agent execution phase; environment build, CLI install, and original verifier are measured separately.",
+            "300 seconds bounds the native agent execution phase; environment build, CLI install, and original verifier are measured separately.",
             "Container installation uses Harbor's native version pin and is not exercised by dry-run.",
             "This is one selected task and one trial, not a Terminal-Bench score or an advantage measurement.",
         ],
@@ -368,7 +293,7 @@ def _historical_redaction_literal(output: Path, prepared: dict) -> str | None:
     env = config["agents"][0].get("env", {})
     if env != {"CODEX_FORCE_AUTH_JSON": "1", "CODEX_AUTH_JSON_PATH": ""}:
         return None
-    task = tomllib.loads((_task_path(Path(prepared["dataset"]), prepared.get("task", TASK)) / "task.toml").read_text())
+    task = tomllib.loads((Path(prepared["dataset"]) / TASK / "task.toml").read_text())
     # These are the complete sources used by Harbor0.23.0's trial scrubber.
     if (prepared.get("harbor_version") != "0.23.0"
             or (config.get("verifier") or {}).get("env")
@@ -391,37 +316,30 @@ def _elapsed(record) -> float | None:
     ).total_seconds()
 
 
-def collect(output: Path, *, task_name: str | None = None) -> dict:
-    output = Path(output).absolute()
+def collect(output: Path) -> dict:
     prepared = json.loads((output / "preparation.json").read_text())
-    selected_config = json.loads((output / "config.json").read_text())
-    task = _prepared_task(output, prepared, selected_config, job_prefix="native-codex-", task_name=task_name)
-    task_name = task.name
-    from .benchmark_resource_profile import execution_budget
-    budget = execution_budget(prepared.get("resource_profile"))
     recovered = _historical_redaction_literal(output, prepared)
-    job = output / "jobs" / ("native-codex-" + task_name)
+    job = output / "jobs" / ("native-codex-" + TASK)
     rows = []
     for result_path in sorted(job.glob("*/result.json")):
         result = json.loads(_recover_known_literal(result_path.read_text(), recovered))
         config = result.get("config") or {}
         agent = config.get("agent") or {}
-        task_matches = _trial_task_matches(result, task)
         profile_matches = (
-            task_matches is True
+            result.get("task_name") == "terminal-bench/" + TASK
+            and (config.get("task") or {}).get("path") == str(Path(prepared["dataset"]) / TASK)
             and agent.get("name") == "codex"
             and not agent.get("import_path")
             and agent.get("model_name") == MODEL
             and agent.get("kwargs") == {"version": CLI_VERSION, "reasoning_effort": REASONING}
-            and agent.get("override_timeout_sec") == budget["harbor_seconds"]
-            and agent.get("max_timeout_sec") == budget["harbor_seconds"]
+            and agent.get("override_timeout_sec") == 300
+            and agent.get("max_timeout_sec") == 300
             and not (config.get("verifier") or {}).get("disable", True)
         )
         rows.append(
             {
                 "trial": result.get("trial_name"),
                 "task": result.get("task_name"),
-                "exact_trial_task_matches": task_matches,
                 "exact_trial_profile_matches": profile_matches,
                 "agent_info": result.get("agent_info"),
                 "reward": (result.get("verifier_result") or {}).get("rewards"),
@@ -436,7 +354,7 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                 "result_sha256": _hash(result_path),
             }
         )
-    integrity = _task_hashes(task) == prepared["task_input_sha256"]
+    integrity = _task_hashes(Path(prepared["dataset"]) / TASK) == prepared["task_input_sha256"]
     job_path = job / "result.json"
     job_stats = json.loads(job_path.read_text()).get("stats", {}) if job_path.is_file() else {}
     native_job_usage = {field: job_stats.get(key) for field, key in (
@@ -451,14 +369,11 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     )
     summary = {
         "schema": "native-codex-harbor-baseline-receipt@1",
-        "task": task_name,
+        "task": TASK,
         "model": MODEL,
         "reasoning_effort": REASONING,
         "cli_version": CLI_VERSION,
         "original_task_inputs_unchanged": integrity,
-        "comparison_controls": benchmark_controls.observe_controls(
-            prepared, json.loads((output / "config.json").read_text()),
-            current_task_hashes=_task_hashes(task)),
         "trial_count": len(rows),
         "trials": rows,
         "complete_single_trial_receipt": integrity
@@ -481,19 +396,14 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     return summary
 
 
-def execute(output: Path, *, task_name: str | None = None) -> dict:
-    output = Path(output).absolute()
+def execute(output: Path) -> dict:
     prepared = json.loads((output / "preparation.json").read_text())
-    config = json.loads((output / "config.json").read_text())
-    task = _prepared_task(output, prepared, config, job_prefix="native-codex-", task_name=task_name)
     if not prepared["prepared"] or _hash(output / "config.json") != prepared["config_sha256"]:
         raise ValueError("prepared native baseline configuration changed")
-    if _task_hashes(task) != prepared["task_input_sha256"]:
+    if _task_hashes(Path(prepared["dataset"]) / TASK) != prepared["task_input_sha256"]:
         raise ValueError("original benchmark task changed")
     if _hash(Path(__file__)) != prepared["collector_source_sha256"]:
         raise ValueError("prepared baseline driver changed")
-    if _hash(Path(benchmark_controls.__file__)) != prepared.get("controls_source_sha256"):
-        raise ValueError("prepared benchmark controls owner changed")
     if any(
         _hash(Path(path)) != digest
         for path, digest in prepared["native_adapter_source_sha256"].items()
@@ -524,20 +434,15 @@ def main():
     parser.add_argument("operation", choices=["prepare", "execute", "collect"])
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--dataset", type=Path)
-    parser.add_argument("--task", help="Dataset task name; prepare defaults to fix-code-vulnerability")
     parser.add_argument("--harbor", type=Path)
-    from .benchmark_resource_profile import PROFILES
-    parser.add_argument("--resource-profile", choices=PROFILES)
     args = parser.parse_args()
     output = args.output.absolute()
     if args.operation == "prepare":
         if args.dataset is None:
             parser.error("prepare requires --dataset")
-        result = prepare(dataset=args.dataset, output=output, harbor=args.harbor,
-                         resource_profile=args.resource_profile,
-                         task_name=TASK if args.task is None else args.task)
+        result = prepare(dataset=args.dataset, output=output, harbor=args.harbor)
     else:
-        result = {"execute": execute, "collect": collect}[args.operation](output, task_name=args.task)
+        result = {"execute": execute, "collect": collect}[args.operation](output)
     print(json.dumps(result, sort_keys=True, indent=2))
 
 

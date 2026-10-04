@@ -18,30 +18,14 @@ import shlex
 import stat
 import tarfile
 import time
-import zipfile
-from email.parser import BytesParser
 from pathlib import Path
-
-from ipfs_accelerate_py.agent_supervisor.runtime.source384_config import (
-    load_source384_config, validate_source384_config, validate_source384_assets,
-)
 
 ROOT = "/opt/ipfs-supervisor"
 PYTHON = ROOT + "/venv/bin/python"
-# UV 0.9.24 migrates a sibling `toolchains` directory when its selected
-# Python root is absent. Keep that legacy lookup away from shipped Lean.
-PYTHON_INSTALL_DIR = ROOT + "/python-runtime/python"
 CODEX_VERSION = "0.158.0"
 RUNTIME_PYTHON_VERSION = "3.12.12"
-TORCH_CPU_REQUIREMENT = "torch==2.13.0+cpu"
-TORCH_CPU_WHEEL_PREFIX = "runtime-wheels/torch-cpu/"
-TORCH_CPU_WHEEL_MAX_BYTES = 256 * 1024 * 1024
-TORCH_CPU_WHEEL_NAME = r"torch-2\.13\.0\+cpu-cp312-cp312-manylinux_2_28_(aarch64|x86_64)\.whl"
 BASE_REQUIREMENTS = (
     "duckdb==1.5.5",
-    # DuckDB's scalar binder retries failed optional pandas imports per value.
-    "pandas==3.0.2",
-    "numpy==1.26.4",
     "multiformats==0.3.1.post4",
     "requests==2.34.2",
     "anyio==4.14.2",
@@ -55,12 +39,6 @@ LEARNED_REQUIREMENTS = (
     "numpy==1.26.4",
 )
 SECURITY_TRAINING_REQUIREMENTS = ("numpy==1.26.4",)
-NATIVE_IMPORT_PROBE = """import json,sys,duckdb,numpy,pandas
-from ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime import AdmittedBenchmarkRuntime
-from ipfs_accelerate_py.agent_supervisor.todo_daemon.native_owner_bootstrap import NativeOwnerHeartbeat
-print(json.dumps({'python':sys.version.split()[0],'duckdb':duckdb.__version__,
- 'numpy':numpy.__version__,'pandas':pandas.__version__,'native_imports':True}))
-"""
 SECURITY_INITIALIZER_PATH = "models/security-code-initializer"
 SECURITY_INITIALIZER_DESCRIPTOR = "models/security-code-initializer.descriptor.json"
 SECURITY_CHECKPOINT_PATH = "models/security-autoencoder"
@@ -72,12 +50,6 @@ INTENT_CHECKPOINT_PATH = "models/intent-autoencoder/candidate.json"
 INTENT_ROUNDTRIP_PATH = "models/intent-autoencoder/manifest.json"
 INTENT_CHECKPOINT_DESCRIPTOR = "models/intent-autoencoder.descriptor.json"
 INTENT_PROJECTION_REQUEST_PATH = "models/intent-projection-request.json"
-INTENT_ACTION_384_PATH = "models/intent-action-384/checkpoint.json"
-INTENT_ACTION_384_CONFIG = "models/intent-action-384/config.json"
-INTENT_ACTION_384_EMBEDDING = "models/intent-action-384/models--thenlper--gte-small/snapshots/"
-SOURCE384_PATH = "models/source384/checkpoint.json"
-SOURCE384_CONFIG = "models/source384/config.json"
-SOURCE384_EMBEDDING = "models/source384/models--thenlper--gte-small/snapshots/"
 CANONICAL_CVE_PATH = "training/canonical-cve"
 
 INPUT_SNAPSHOT = r"""
@@ -122,104 +94,6 @@ def _portable_asset_bytes(path: Path, *, expected_sha256: str, maximum: int) -> 
             or hashlib.sha256(raw).hexdigest() != expected_sha256):
         raise ValueError("portable asset changed after validation")
     return raw
-
-
-def _torch_cpu_wheel_metadata(raw: bytes, name: str) -> None:
-    """Validate the selected wheel's package/version and exact supported tag."""
-    match = re.fullmatch(TORCH_CPU_WHEEL_NAME, name)
-    if match is None:
-        raise ValueError("exact CPython 3.12 CPU Torch wheel filename required")
-    prefix = "torch-2.13.0+cpu.dist-info/"
-    try:
-        with zipfile.ZipFile(io.BytesIO(raw)) as wheel:
-            members = wheel.infolist()
-            metadata = []
-            for leaf in ("METADATA", "WHEEL"):
-                found = [row for row in members if row.filename == prefix + leaf]
-                if len(found) != 1 or not 0 < found[0].file_size <= 65536:
-                    raise ValueError("bounded unique Torch wheel metadata required")
-                metadata.append(BytesParser().parsebytes(wheel.read(found[0])))
-    except (zipfile.BadZipFile, RuntimeError, KeyError) as exc:
-        raise ValueError("valid pinned Torch wheel metadata required") from exc
-    package, tags = metadata
-    if (package.get_all("Name") != ["torch"] or package.get_all("Version") != ["2.13.0+cpu"]
-            or tags.get_all("Wheel-Version") != ["1.0"]
-            or tags.get_all("Root-Is-Purelib") != ["false"]
-            or tags.get_all("Tag") != ["cp312-cp312-manylinux_2_28_" + match.group(1)]):
-        raise ValueError("Torch wheel package, version or platform metadata differs")
-
-
-def _torch_cpu_wheel_assets(path, expected_sha256):
-    if (path is None) != (expected_sha256 is None):
-        raise ValueError("Torch CPU wheel path and independent SHA-256 must be paired")
-    if path is None:
-        return [], None
-    if type(expected_sha256) is not str or re.fullmatch(r"[0-9a-f]{64}", expected_sha256) is None:
-        raise ValueError("independent Torch wheel SHA-256 required")
-    path = Path(path)
-    if re.fullmatch(TORCH_CPU_WHEEL_NAME, path.name) is None:
-        raise ValueError("exact CPython 3.12 CPU Torch wheel filename required")
-    raw = _portable_asset_bytes(path, expected_sha256=expected_sha256, maximum=TORCH_CPU_WHEEL_MAX_BYTES)
-    _torch_cpu_wheel_metadata(raw, path.name)
-    name = TORCH_CPU_WHEEL_PREFIX + path.name
-    binding = dict(schema="terminal-torch-cpu-wheel@1", path=name, bytes=len(raw),
-        sha256=expected_sha256, requirement=TORCH_CPU_REQUIREMENT)
-    return [(name, raw)], binding
-
-
-def validate_torch_cpu_wheel_binding(manifest):
-    """Bind explicit wheel selection to exactly one inventory member."""
-    binding = manifest.get("torch_cpu_wheel")
-    files = manifest.get("files", [])
-    if type(files) is not list or any(type(row) is not dict or type(row.get("path")) is not str for row in files):
-        raise ValueError("runtime archive inventory required")
-    selected = [row for row in files if row["path"].startswith(TORCH_CPU_WHEEL_PREFIX)]
-    if binding is None:
-        if selected:
-            raise ValueError("Torch wheel inventory lacks its explicit selection")
-        return None
-    if (type(binding) is not dict or set(binding) != {"schema", "path", "bytes", "sha256", "requirement"}
-            or binding["schema"] != "terminal-torch-cpu-wheel@1"
-            or type(binding["path"]) is not str
-            or re.fullmatch(re.escape(TORCH_CPU_WHEEL_PREFIX) + TORCH_CPU_WHEEL_NAME, binding["path"]) is None
-            or type(binding["sha256"]) is not str or re.fullmatch(r"[0-9a-f]{64}", binding["sha256"]) is None
-            or type(binding["bytes"]) is not int or not 0 < binding["bytes"] <= TORCH_CPU_WHEEL_MAX_BYTES
-            or binding["requirement"] != TORCH_CPU_REQUIREMENT
-            or manifest.get("torch_cpu_requirement") != TORCH_CPU_REQUIREMENT):
-        raise ValueError("closed pinned Torch CPU wheel selection required")
-    if len({row["path"] for row in files}) != len(files):
-        raise ValueError("duplicate runtime archive member")
-    if (len(selected) != 1 or any(selected[0].get(key) != binding[key] for key in ("path", "bytes", "sha256"))
-            or type(selected[0].get("bytes")) is not int):
-        raise ValueError("Torch wheel inventory missing or changed")
-    return binding
-
-
-def verify_torch_cpu_wheel_archive(archive, manifest):
-    binding = validate_torch_cpu_wheel_binding(manifest)
-    # The empty selection is closed too: a tar member cannot hide from inventory.
-    _verify_model_archive(archive, manifest, TORCH_CPU_WHEEL_PREFIX)
-    return binding
-
-
-def verify_extracted_torch_cpu_wheel(path, expected_sha256, expected_bytes):
-    """Recheck actual extracted bytes and interpreter compatibility before pip."""
-    import platform
-    import sys
-
-    _, binding = _torch_cpu_wheel_assets(path, expected_sha256)
-    if (binding is None or binding["bytes"] != expected_bytes or type(expected_bytes) is not int
-            or sys.implementation.name != "cpython" or sys.version_info[:2] != (3, 12)
-            or re.fullmatch(TORCH_CPU_WHEEL_NAME, Path(path).name).group(1) != platform.machine()):
-        raise ValueError("extracted Torch wheel or interpreter platform differs")
-    return binding
-
-
-def _torch_cpu_wheel_probe(binding):
-    return ("import json; from benchmarks.agent_supervisor.container_coding.terminal_deployment "
-        "import verify_extracted_torch_cpu_wheel; print(json.dumps(verify_extracted_torch_cpu_wheel("
-        + repr(ROOT + "/" + binding["path"]) + "," + repr(binding["sha256"]) + ","
-        + repr(binding["bytes"]) + "),sort_keys=True))")
 
 
 def _load_initializer_descriptor(path: Path) -> dict:
@@ -352,233 +226,6 @@ def _intent_checkpoint_assets(descriptor):
         "mode": mode, "runtime_training_steps": 0,
         "runtime_download_calls": 0, "source_training_data_included": False}
 
-
-
-def load_intent_action_384_config(path: Path) -> dict:
-    """Read an explicitly selected bounded JSON file with no duplicate keys."""
-    from ipfs_accelerate_py.agent_supervisor.runtime.intent_384_advisor import _config
-    path = Path(path).absolute()
-    if path.resolve(strict=True) != path or not path.is_file() or path.stat().st_size > 32768:
-        raise ValueError("bounded canonical local Intent384 config required")
-    raw = _portable_asset_bytes(path, expected_sha256=_sha(path), maximum=32768)
-    def unique(pairs):
-        value = {}
-        for key, item in pairs:
-            if key in value:
-                raise ValueError("duplicate Intent384 config field")
-            value[key] = item
-        return value
-    def nonfinite(value):
-        raise ValueError("nonfinite Intent384 config value")
-    return _config(json.loads(raw, object_pairs_hook=unique, parse_constant=nonfinite))
-
-
-def _intent_action_384_assets(config):
-    """Capture shared Intent weights and the exact offline GTE inference assets."""
-    if config is None:
-        return [], None
-    from ipfs_accelerate_py.agent_supervisor.runtime.intent_384_advisor import _config
-    from ipfs_datasets_py.logic.formalization.autoencoder import structured_source_384 as structured
-    from ipfs_datasets_py.optimizers.logic_theorem_optimizer import autoencoder_embedding_runtime as embedding
-    config = _config(config)
-    if config["embedding_snapshot_path"] is None:
-        raise ValueError("Intent384 packaging requires an explicit local embedding snapshot")
-    checkpoint = Path(config["checkpoint_path"])
-    payload = _portable_asset_bytes(checkpoint, expected_sha256=config["checkpoint_sha256"],
-        maximum=structured.MAX_BYTES)
-    structured.load_checkpoint(checkpoint, expected_sha256=config["checkpoint_sha256"], expected_domain="intent_ir")
-    snapshot, manifest = embedding._snapshot_assets(config["embedding_snapshot_path"])
-    embedding_path = INTENT_ACTION_384_EMBEDDING + embedding.PINNED_REVISION
-    assets = [(INTENT_ACTION_384_PATH, payload)]
-    for item in manifest:
-        # Native validation permits only the exact cached model/blob targets.
-        # Capture resolved regular bytes; the container needs no host symlinks.
-        assets.append((embedding_path + "/" + item["name"],
-            _portable_asset_bytes((snapshot / item["name"]).resolve(strict=True),
-                expected_sha256=item["sha256"], maximum=item["bytes"])))
-    if embedding._snapshot_assets(snapshot)[1] != manifest or _sha(checkpoint) != config["checkpoint_sha256"]:
-        raise ValueError("Intent384 assets changed during packaging")
-    relocated = {**config, "checkpoint_path": ROOT + "/" + INTENT_ACTION_384_PATH,
-        "embedding_snapshot_path": ROOT + "/" + embedding_path}
-    raw = json.dumps(relocated, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
-    assets.append((INTENT_ACTION_384_CONFIG, raw))
-    binding = {"schema": "terminal-intent-action-384-assets@1", "path": INTENT_ACTION_384_PATH,
-        "config_path": INTENT_ACTION_384_CONFIG, "config": relocated,
-        "config_sha256": hashlib.sha256(raw).hexdigest(), "checkpoint_sha256": config["checkpoint_sha256"],
-        "embedding_path": embedding_path, "embedding_revision": embedding.PINNED_REVISION,
-        "embedding_assets": manifest, "mode": "frozen_source_audited_action_384_inference",
-        "runtime_training_steps": 0, "runtime_download_calls": 0, "source_training_data_included": False}
-    return assets, binding
-
-
-def validate_intent_action_384_binding(manifest):
-    """Check fixed relocated paths and every model member against native pins."""
-    binding = manifest.get("intent_action_384")
-    if binding is None:
-        return None
-    from ipfs_accelerate_py.agent_supervisor.runtime.intent_384_advisor import _config
-    from ipfs_datasets_py.optimizers.logic_theorem_optimizer import autoencoder_embedding_runtime as embedding
-    fields = {"schema", "path", "config_path", "config", "config_sha256", "checkpoint_sha256",
-        "embedding_path", "embedding_revision", "embedding_assets", "mode", "runtime_training_steps",
-        "runtime_download_calls", "source_training_data_included"}
-    if type(binding) is not dict or set(binding) != fields:
-        raise ValueError("closed Intent384 deployment binding required")
-    config = _config(binding["config"])
-    embedding_path = INTENT_ACTION_384_EMBEDDING + embedding.PINNED_REVISION
-    expected = [{"name": name, "sha256": sha, "bytes": size}
-        for name, (size, sha) in sorted(embedding._PINNED_ASSETS.items())]
-    raw = json.dumps(config, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
-    if (binding["schema"] != "terminal-intent-action-384-assets@1"
-            or binding["path"] != INTENT_ACTION_384_PATH or binding["config_path"] != INTENT_ACTION_384_CONFIG
-            or config["checkpoint_path"] != ROOT + "/" + INTENT_ACTION_384_PATH
-            or binding["checkpoint_sha256"] != config["checkpoint_sha256"]
-            or config["embedding_snapshot_path"] != ROOT + "/" + embedding_path
-            or binding["embedding_path"] != embedding_path or binding["embedding_revision"] != embedding.PINNED_REVISION
-            or binding["embedding_assets"] != expected
-            or binding["config_sha256"] != hashlib.sha256(raw).hexdigest()
-            or binding["mode"] != "frozen_source_audited_action_384_inference"
-            or type(binding["runtime_training_steps"]) is not int or binding["runtime_training_steps"] != 0
-            or type(binding["runtime_download_calls"]) is not int or binding["runtime_download_calls"] != 0
-            or binding["source_training_data_included"] is not False):
-        raise ValueError("Intent384 deployment identity or asset pins differ")
-    files = manifest.get("files")
-    if type(files) is not list or any(type(row) is not dict or type(row.get("path")) is not str for row in files):
-        raise ValueError("Intent384 archive inventory required")
-    by_path = {row["path"]: row for row in files}
-    if len(by_path) != len(files):
-        raise ValueError("duplicate runtime archive member")
-    wanted = [(INTENT_ACTION_384_PATH, config["checkpoint_sha256"], None),
-        (INTENT_ACTION_384_CONFIG, binding["config_sha256"], len(raw))]
-    wanted += [(embedding_path + "/" + row["name"], row["sha256"], row["bytes"]) for row in expected]
-    if {name for name in by_path if name.startswith("models/intent-action-384/")} != {row[0] for row in wanted}:
-        raise ValueError("unexpected Intent384 archive member")
-    for name, digest, size in wanted:
-        row = by_path.get(name, {})
-        if (row.get("sha256") != digest or type(row.get("bytes")) is not int
-                or row["bytes"] <= 0 or (size is not None and row["bytes"] != size)):
-            raise ValueError("Intent384 archive member missing or changed")
-    return binding
-
-
-def _source384_assets(config):
-    """Transport exact shared parent bytes; never train, download or add task sources."""
-    if config is None:
-        return [], None
-    from ipfs_datasets_py.logic.formalization.autoencoder import structured_source_384 as structured
-    from ipfs_datasets_py.optimizers.logic_theorem_optimizer import autoencoder_embedding_runtime as embedding
-    config = validate_source384_assets(config)
-    checkpoint = Path(config["checkpoint_path"])
-    payload = _portable_asset_bytes(checkpoint, expected_sha256=config["checkpoint_sha256"], maximum=structured.MAX_BYTES)
-    snapshot, manifest = embedding._snapshot_assets(config["embedding_snapshot"])
-    embedding_path = SOURCE384_EMBEDDING + embedding.PINNED_REVISION
-    assets = [(SOURCE384_PATH, payload)]
-    for item in manifest:
-        assets.append((embedding_path + "/" + item["name"],
-            _portable_asset_bytes((snapshot / item["name"]).resolve(strict=True),
-                expected_sha256=item["sha256"], maximum=item["bytes"])))
-    if (embedding._snapshot_assets(snapshot)[1] != manifest
-            or _portable_asset_bytes(checkpoint, expected_sha256=config["checkpoint_sha256"],
-                                     maximum=structured.MAX_BYTES) != payload):
-        raise ValueError("Source384 assets changed during packaging")
-    relocated = {**config, "checkpoint_path": ROOT + "/" + SOURCE384_PATH,
-                 "embedding_snapshot": ROOT + "/" + embedding_path}
-    raw = json.dumps(relocated, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
-    assets.append((SOURCE384_CONFIG, raw))
-    return assets, dict(schema="terminal-source384-assets@1", config=relocated,
-        config_path=SOURCE384_CONFIG, config_sha256=hashlib.sha256(raw).hexdigest(),
-        source_training_data_included=False)
-
-
-def validate_source384_binding(manifest):
-    """Validate relocated selection and the entire selected archive inventory."""
-    binding = manifest.get("source384")
-    if binding is None:
-        return None
-    if (type(binding) is not dict or set(binding) != {"schema", "config", "config_path", "config_sha256", "source_training_data_included"}
-            or binding["schema"] != "terminal-source384-assets@1"
-            or binding["config_path"] != SOURCE384_CONFIG or binding["source_training_data_included"] is not False):
-        raise ValueError("closed Source384 deployment binding required")
-    config = validate_source384_config(binding["config"])
-    embedding_path = SOURCE384_EMBEDDING + config["embedding_revision"]
-    raw = json.dumps(config, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
-    if (config["checkpoint_path"] != ROOT + "/" + SOURCE384_PATH
-            or config["embedding_snapshot"] != ROOT + "/" + embedding_path
-            or binding["config_sha256"] != hashlib.sha256(raw).hexdigest()):
-        raise ValueError("Source384 relocated identity differs")
-    files = manifest.get("files")
-    if type(files) is not list or any(type(row) is not dict or type(row.get("path")) is not str for row in files):
-        raise ValueError("Source384 archive inventory required")
-    by_path = {row["path"]: row for row in files}
-    if len(by_path) != len(files):
-        raise ValueError("duplicate runtime archive member")
-    wanted = [(SOURCE384_PATH, config["checkpoint_sha256"], None), (SOURCE384_CONFIG, binding["config_sha256"], len(raw))]
-    wanted += [(embedding_path + "/" + row["name"], row["sha256"], row["bytes"]) for row in config["embedding_assets"]]
-    if {name for name in by_path if name.startswith("models/source384/")} != {row[0] for row in wanted}:
-        raise ValueError("unexpected Source384 archive member")
-    from ipfs_datasets_py.logic.formalization.autoencoder import structured_source_384 as structured
-    for name, digest, size in wanted:
-        row = by_path.get(name, {})
-        if (row.get("sha256") != digest or type(row.get("bytes")) is not int or row["bytes"] <= 0
-                or (size is not None and row["bytes"] != size)
-                or (name == SOURCE384_PATH and row["bytes"] > structured.MAX_BYTES)):
-            raise ValueError("Source384 archive member missing or changed")
-    if any(manifest.get(key) is not None for key in ("security_initializer", "canonical_cve_training",
-            "security_checkpoint", "formula_decoder", "header_protocol")):
-        raise ValueError("Source384 and legacy Security model selections are mutually exclusive")
-    return binding
-
-
-def verify_source384_archive(archive: Path, manifest: dict):
-    if validate_source384_binding(manifest) is not None:
-        _verify_model_archive(archive, manifest, "models/source384/")
-
-
-def _source384_header_checker_probe(binding):
-    """Verify the selected runtime-installed binary; never infer or update its pin."""
-    if binding is None or binding["config"].get("header_applicability") is None:
-        return None
-    expected = binding["config"]["header_applicability"]
-    # JSON data is a Python string literal here; the command caller uses shlex.
-    return (
-        "import json\n"
-        "from ipfs_accelerate_py.agent_supervisor.runtime.header_intent_applicability import resolve_header_checker\n"
-        "profile=json.loads(" + repr(json.dumps(expected, sort_keys=True, allow_nan=False)) + ")\n"
-        "print(json.dumps(resolve_header_checker(profile),sort_keys=True))\n"
-    )
-
-
-def verify_intent_action_384_archive(archive: Path, manifest: dict):
-    """Check selected inert model bytes before uploading the runtime archive."""
-    binding = validate_intent_action_384_binding(manifest)
-    if binding is None:
-        return
-    _verify_model_archive(archive, manifest, "models/intent-action-384/")
-
-
-def _verify_model_archive(archive, manifest, prefix):
-    """Shared regular-member verifier for both closed portable model selections."""
-    wanted = {row["path"]: row for row in manifest["files"]
-              if row["path"].startswith(prefix)}
-    observed = set()
-    with tarfile.open(archive, "r:gz") as bundle:
-        for member in bundle:
-            if not member.name.startswith(prefix):
-                continue
-            row = wanted.get(member.name)
-            if (row is None or member.name in observed or not member.isfile()
-                    or member.size != row["bytes"]):
-                raise ValueError("unexpected or changed portable model archive member")
-            observed.add(member.name)
-            digest = hashlib.sha256()
-            count = 0
-            with bundle.extractfile(member) as stream:
-                for block in iter(lambda: stream.read(1024 * 1024), b""):
-                    count += len(block)
-                    digest.update(block)
-            if count != row["bytes"] or digest.hexdigest() != row["sha256"]:
-                raise ValueError("portable model archive member digest differs")
-    if observed != set(wanted):
-        raise ValueError("portable model archive member missing")
 
 def _intent_projection_request_assets(request, checkpoint):
     """Transport one inert, task-bound request; runtime verifies its candidate."""
@@ -735,32 +382,11 @@ def build_runtime_archive(
     header_protocol: dict | None = None,
     intent_checkpoint: dict | None = None,
     intent_projection_request: dict | None = None,
-    intent_action_384_config: dict | None = None,
-    source384_config: dict | None = None,
-    torch_cpu_wheel: Path | None = None,
-    torch_cpu_wheel_sha256: str | None = None,
-    setup_cache_policy: str | None = None,
 ) -> dict:
     """Package only source/code assets and explicitly selected native runtimes."""
     output = Path(output).absolute()
     if output.exists() or output.resolve() != output:
         raise ValueError("fresh runtime archive directory required")
-    if setup_cache_policy is not None:
-        import platform
-        from .terminal_setup_cache_advice import POLICY
-        if (setup_cache_policy != POLICY or platform.machine() != "aarch64"
-                or source384_config is None or model_snapshot is not None
-                or any(value is not None for value in (intent_checkpoint,
-                    intent_projection_request, intent_action_384_config))):
-            raise ValueError("setup cache policy requires the supported regular Source384-only aarch64 layout")
-    if (torch_cpu_wheel is None) != (torch_cpu_wheel_sha256 is None):
-        raise ValueError("Torch CPU wheel path and independent SHA-256 must be paired")
-    if source384_config is not None and any(value is not None for value in (
-            security_initializer, canonical_cve_export, canonical_cve_manifest_sha256,
-            security_checkpoint, security_checkpoint_manifest_sha256, security_checkpoint_hub_descriptor,
-            security_checkpoint_cache, formula_decoder, header_protocol)):
-        raise ValueError("Source384 and legacy Security model selections are mutually exclusive")
-    source384_assets, source384_binding = _source384_assets(source384_config)
     frozen_selected = any(value is not None for value in (security_checkpoint,
         security_checkpoint_manifest_sha256, security_checkpoint_hub_descriptor, security_checkpoint_cache))
     if frozen_selected and any(value is not None for value in (
@@ -777,9 +403,6 @@ def build_runtime_archive(
         security_initializer=security_initializer, canonical_cve_export=canonical_cve_export,
         canonical_cve_manifest_sha256=canonical_cve_manifest_sha256)
     security_training_selected = bool(portable_assets)
-    if intent_action_384_config is not None and any(value is not None for value in (intent_checkpoint, intent_projection_request)):
-        raise ValueError("Intent384 and legacy Intent model selections are mutually exclusive")
-    intent_action_assets, intent_action_binding = _intent_action_384_assets(intent_action_384_config)
     intent_assets, intent_binding = _intent_checkpoint_assets(intent_checkpoint)
     intent_request_assets, intent_request_binding = _intent_projection_request_assets(
         intent_projection_request, intent_checkpoint)
@@ -787,13 +410,6 @@ def build_runtime_archive(
     portable_assets.extend(formula_assets)
     portable_assets.extend(intent_assets)
     portable_assets.extend(intent_request_assets)
-    portable_assets.extend(intent_action_assets)
-    portable_assets.extend(source384_assets)
-    torch_required = bool(model_snapshot or portable_assets)
-    if torch_cpu_wheel is not None and not torch_required:
-        raise ValueError("Torch wheel requires an already selected Torch runtime feature")
-    torch_assets, torch_binding = _torch_cpu_wheel_assets(torch_cpu_wheel, torch_cpu_wheel_sha256)
-    portable_assets.extend(torch_assets)
     security_bindings["security_checkpoint"] = checkpoint_binding
     if formula_binding is not None:
         security_bindings["formula_decoder"] = formula_binding
@@ -803,12 +419,6 @@ def build_runtime_archive(
         security_bindings["intent_checkpoint"] = intent_binding
     if intent_request_binding is not None:
         security_bindings["intent_projection_request"] = intent_request_binding
-    if intent_action_binding is not None:
-        security_bindings["intent_action_384"] = intent_action_binding
-    if source384_binding is not None:
-        security_bindings["source384"] = source384_binding
-    if torch_binding is not None:
-        security_bindings["torch_cpu_wheel"] = torch_binding
     output.mkdir(parents=True)
     files = []
 
@@ -908,9 +518,7 @@ def build_runtime_archive(
         "files": inventory,
         "base_requirements": list(BASE_REQUIREMENTS),
         "learned_requirements": list(LEARNED_REQUIREMENTS) if model_snapshot else [],
-        "torch_cpu_requirement": TORCH_CPU_REQUIREMENT if torch_required else "",
-        "intent_action_384_requirements": list(LEARNED_REQUIREMENTS) if intent_action_binding is not None else [],
-        "source384_requirements": list(LEARNED_REQUIREMENTS) if source384_binding is not None else [],
+        "torch_cpu_requirement": "torch==2.13.0+cpu" if model_snapshot or portable_assets else "",
         "security_training_requirements": list(SECURITY_TRAINING_REQUIREMENTS) if security_training_selected else [],
         "security_inference_requirements": list(SECURITY_TRAINING_REQUIREMENTS) if checkpoint_binding is not None else [],
         **security_bindings,
@@ -921,17 +529,7 @@ def build_runtime_archive(
         "task_inputs_in_archive": intent_request_binding is not None,
         **({"task_modeling_premises_included": True} if intent_request_binding is not None else {}),
     }
-    validate_intent_action_384_binding(manifest)
-    validate_source384_binding(manifest)
-    validate_torch_cpu_wheel_binding(manifest)
-    if setup_cache_policy is not None:
-        from .terminal_setup_cache_advice import binding_for_manifest
-        manifest["setup_cache"] = binding_for_manifest(manifest, setup_cache_policy)
     (output / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
-    if setup_cache_policy is not None:
-        from .terminal_setup_cache_advice import select_setup_cache
-        selection = select_setup_cache(output, setup_cache_policy)
-        (output / "setup-cache-selection.json").write_text(json.dumps(selection, indent=2, sort_keys=True) + "\n")
     return manifest
 
 
@@ -942,22 +540,14 @@ async def deploy_supervisor(
     output: Path,
     auth_json: Path | None = None,
     install_codex: bool = True,
-    setup_cache_selection: dict | None = None,
-    isolated_uv_bootstrap: bool = False,
 ) -> dict:
     """Use actual Harbor exec/upload APIs; does not call any model or verifier."""
-    from .terminal_setup_cache_advice import validate_setup_cache_selection, validate_setup_cache_prerequisites
-    validate_setup_cache_selection(archive_dir, setup_cache_selection)
-    validate_setup_cache_prerequisites(setup_cache_selection, install_codex=install_codex, auth_json=auth_json)
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
     manifest = json.loads((Path(archive_dir) / "manifest.json").read_text())
     archive = Path(archive_dir) / "runtime.tar.gz"
     if _sha(archive) != manifest["archive_sha256"]:
         raise ValueError("runtime archive changed")
-    torch_binding = verify_torch_cpu_wheel_archive(archive, manifest)
-    verify_intent_action_384_archive(archive, manifest)
-    verify_source384_archive(archive, manifest)
     started = time.monotonic()
     steps = []
 
@@ -1003,58 +593,38 @@ async def deploy_supervisor(
     )
     # Native supervisor contracts use Python 3.12 (including hashable
     # mappingproxy defaults); keep the original task interpreter untouched.
-    if type(isolated_uv_bootstrap) is not bool:
-        raise ValueError("isolated uv bootstrap selection must be boolean")
-    uv_command = "uv"
-    uv_install = "python3 -m pip install --no-cache-dir uv==0.9.24"
-    if isolated_uv_bootstrap:
-        uv_command = ROOT + "/bootstrap/bin/uv"
-        uv_install = ("python3 -m venv " + ROOT + "/bootstrap && " + ROOT
-                      + "/bootstrap/bin/python -m pip install --no-cache-dir uv==0.9.24")
     await execute(
         "python-runtime-install",
-        uv_install + " && UV_PYTHON_INSTALL_DIR=" + PYTHON_INSTALL_DIR + " " + uv_command
-        + " python install " + RUNTIME_PYTHON_VERSION,
+        "python3 -m pip install --no-cache-dir uv==0.9.24 && "
+        "UV_PYTHON_INSTALL_DIR=" + ROOT + "/python uv python install " + RUNTIME_PYTHON_VERSION,
         timeout=300,
     )
     await execute(
         "python-create",
         "UV_PYTHON_INSTALL_DIR="
-        + PYTHON_INSTALL_DIR
-        + " " + uv_command + " venv --python "
+        + ROOT
+        + "/python uv venv --python "
         + RUNTIME_PYTHON_VERSION
         + " --seed "
         + ROOT
         + "/venv",
     )
     if manifest.get("torch_cpu_requirement") or manifest["learned_requirements"]:
-        torch_target = TORCH_CPU_REQUIREMENT
-        if torch_binding is not None:
-            torch_target = ROOT + "/" + torch_binding["path"]
-            await execute("torch-cpu-wheel-verify", PYTHON + " -P -c " + shlex.quote(_torch_cpu_wheel_probe(torch_binding)),
-                env=runtime_environment())
         await execute(
             "torch-cpu-install",
             PYTHON
-            + " -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "
-            + shlex.quote(torch_target),
+            + " -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.13.0+cpu",
             timeout=600,
         )
     requirements = manifest["base_requirements"] + [
         item for item in manifest["learned_requirements"] if not item.startswith("torch==")
     ] + manifest.get("security_training_requirements", []) + manifest.get("security_inference_requirements", [])
-    requirements += manifest.get("intent_action_384_requirements", [])
-    requirements += manifest.get("source384_requirements", [])
     requirements = list(dict.fromkeys(requirements))
     await execute(
         "python-install",
         PYTHON + " -m pip install --no-cache-dir " + shlex.join(requirements),
         timeout=600,
     )
-    checker_probe = _source384_header_checker_probe(validate_source384_binding(manifest))
-    if checker_probe is not None:
-        await execute("source384-header-checker", PYTHON + " -P -c " + shlex.quote(checker_probe),
-            env=runtime_environment(), timeout=30)
     await execute(
         "account-create",
         f"useradd --create-home --home-dir {ROOT}/home --shell /bin/bash supervisor && "
@@ -1122,11 +692,16 @@ print(duckdb.__version__,platform)
             )
     finally:
         environment.default_user = old_default
+    probe = """import json,sys,duckdb
+from ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime import AdmittedBenchmarkRuntime
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.native_owner_bootstrap import NativeOwnerHeartbeat
+print(json.dumps({'python':sys.version.split()[0],'duckdb':duckdb.__version__,'native_imports':True}))
+"""
     imported = json.loads(
         (
             await execute(
                 "native-imports",
-                PYTHON + " -P -c " + shlex.quote(NATIVE_IMPORT_PROBE),
+                PYTHON + " -P -c " + shlex.quote(probe),
                 user="supervisor",
                 env=runtime_environment(),
             )
@@ -1185,48 +760,10 @@ async def qualify_original_container(
     auth_json: Path | None = None,
     install_codex: bool = True,
     keep_container: bool = False,
-    resource_profile: str | None = None,
-    source384_context: bool = False,
-    source384_warm_recovery: str | None = None,
-    intent_requirement_contract: Path | None = None,
-    setup_cache_selection: dict | None = None,
 ) -> dict:
     from harbor.environments.docker.docker import DockerEnvironment
     from harbor.models.task.task import Task
     from harbor.models.trial.paths import TrialPaths
-    from .terminal_source384_qualification import resource_options, observe_resources, qualify_context
-    from .benchmark_resource_profile import PROFILES
-
-    options = resource_options(resource_profile)
-    from .terminal_source384_warm_recovery import validate_selection
-    validate_selection(resource_profile, source384_warm_recovery)
-    if source384_warm_recovery is not None and source384_context is not True:
-        raise ValueError("warm recovery requires Source384 qualification")
-    if type(source384_context) is not bool:
-        raise ValueError("Source384 context qualification switch must be boolean")
-    manifest = json.loads((Path(archive_dir) / "manifest.json").read_text())
-    verify_torch_cpu_wheel_archive(Path(archive_dir) / "runtime.tar.gz", manifest)
-    if source384_context and (resource_profile not in PROFILES or validate_source384_binding(manifest) is None):
-        raise ValueError("Source384 qualification requires pinned assets and the explicit common profile")
-
-    from .full_supervisor_benchmark import (
-        load_intent_requirements_for_instruction, validate_header_planning_selection,
-    )
-    requirements = load_intent_requirements_for_instruction(intent_requirement_contract,
-        Path(task_dir).resolve(strict=True) / "instruction.md")
-    binding = validate_source384_binding(manifest)
-    if (requirements is not None or (binding and binding["config"].get("header_applicability"))) and not source384_context:
-        raise ValueError("reviewed intent qualification requires Source384 context")
-    validate_header_planning_selection(binding, requirements, "full")
-
-    from .terminal_setup_cache_advice import (
-        validate_setup_cache_selection, validate_setup_cache_prerequisites, apply_setup_cache_advice,
-    )
-    validate_setup_cache_selection(archive_dir, setup_cache_selection)
-    validate_setup_cache_prerequisites(setup_cache_selection, install_codex=install_codex,
-        auth_json=auth_json, resource_profile=resource_profile)
-    if setup_cache_selection is not None and not source384_context:
-        raise ValueError("selected cache qualification requires the complete Source384 context")
 
     task = Task(task_dir)
     output = Path(output)
@@ -1240,58 +777,19 @@ async def qualify_original_container(
         trial_paths=trial,
         task_env_config=task.config.environment,
         keep_containers=keep_container,
-        **options,
     )
-    selected = resource_profile is not None or source384_context
-    report = dict(schema="terminal-original-container-profile-qualification@1", qualified=False,
-        resource_profile=resource_profile, source384_requested=source384_context,
-        provider_calls=0, official_verifier_executed=False, benchmark_result=False)
     try:
         await environment.start(force_build=True)
-        deployment = await deploy_supervisor(
+        return await deploy_supervisor(
             environment,
             archive_dir=archive_dir,
             output=output / "deployment",
             auth_json=auth_json,
             install_codex=install_codex,
-            **({"setup_cache_selection": setup_cache_selection} if setup_cache_selection is not None else {}),
         )
-        if setup_cache_selection is not None:
-            from .container_worker_deployment import deploy_worker_boundary
-            boundary = output / "worker-boundary"
-            await deploy_worker_boundary(environment, output=boundary)
-            report["setup_cache"] = await apply_setup_cache_advice(environment,
-                archive_dir=archive_dir, expected=setup_cache_selection,
-                boundary_output=boundary, output=output / "setup-cache", resource_profile=resource_profile)
-        if not selected:
-            return deployment
-        report["deployment"] = deployment
-        if resource_profile is not None:
-            report["resources_before"] = await observe_resources(environment, output=output, profile=resource_profile)
-        if source384_context:
-            report["source384"] = await qualify_context(environment, task_dir=task_dir,
-                output=output, manifest=manifest, profile=resource_profile,
-                **({"source384_warm_recovery": source384_warm_recovery} if source384_warm_recovery is not None else {}),
-                **({"intent_requirement_contract": requirements} if requirements is not None else {}))
-            signed = report["source384"]["signed_source_hashes"]
-            if any(signed.get(name) != row["sha256"] for name, row in deployment["original_inputs"]["files"].items()):
-                raise ValueError("Source384 qualification did not consume the complete original container sources")
-            report["original_container_sources_consumed"] = True
-            final_resources = output / "final-resources"
-            final_resources.mkdir()
-            report["resources_after"] = await observe_resources(environment, output=final_resources, profile=resource_profile)
-        report["qualified"] = True
-        return report
-    except BaseException as exc:
-        report.update(error_type=type(exc).__name__, error=str(exc)[:2048])
-        raise
     finally:
-        try:
-            if selected:
-                (output / "qualification.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
-        finally:
-            if not keep_container:
-                await environment.stop(delete=True)
+        if not keep_container:
+            await environment.stop(delete=True)
 
 
 def main():
@@ -1302,12 +800,6 @@ def main():
         build.add_argument("--" + name, type=Path, required=True)
     build.add_argument("--lean-toolchain", type=Path)
     build.add_argument("--model-snapshot", type=Path)
-    build.add_argument("--torch-cpu-wheel", type=Path, help="Local pinned CPython 3.12 Torch CPU wheel")
-    build.add_argument("--torch-cpu-wheel-sha256", help="Independent SHA-256 of the selected Torch CPU wheel")
-    build.add_argument("--source384-config", type=Path, help="Pinned offline shared Source384 parent configuration")
-    from .terminal_setup_cache_advice import POLICIES, read_selection
-    build.add_argument("--setup-cache-policy", choices=POLICIES,
-        help="Explicit pinned setup advice after worker-boundary installation")
     build.add_argument("--security-initializer", type=Path, help="independently admitted host fork descriptor JSON")
     build.add_argument("--canonical-cve-export", type=Path)
     build.add_argument("--canonical-cve-manifest-sha256")
@@ -1319,8 +811,6 @@ def main():
         help="pinned four-file frozen formula package descriptor; requires frozen security checkpoint")
     build.add_argument("--header-protocol-descriptor", type=Path,
         help="explicit reviewed header protocol; requires formula decoder")
-    build.add_argument("--intent-action-384-config", type=Path,
-        help="Explicit local shared Intent384 checkpoint and pinned GTE snapshot config")
     build.add_argument("--intent-checkpoint-descriptor", type=Path,
         help="pinned shared Intent structural or semantic roundtrip checkpoint descriptor")
     build.add_argument("--intent-projection-request", type=Path,
@@ -1331,17 +821,6 @@ def main():
     deploy.add_argument("--auth-json", type=Path)
     deploy.add_argument("--no-codex", action="store_true")
     deploy.add_argument("--keep-container", action="store_true")
-    from .benchmark_resource_profile import PROFILES
-    deploy.add_argument("--resource-profile", choices=PROFILES,
-        help="Explicit common limits; default retains original task resources")
-    deploy.add_argument("--setup-cache-selection", type=Path,
-        help="Independently retained closed policy and manifest SHA selection")
-    deploy.add_argument("--intent-requirement-contract", type=Path,
-        help="Reviewed public-instruction mapping for Source384 header qualification")
-    deploy.add_argument("--source384-context", action="store_true",
-        help="Qualify actual pinned Source384 prepare/initial-context/replay without provider calls")
-    deploy.add_argument("--source384-warm-recovery", choices=["source384-warm-admission-recovery@1"],
-        help="Explicit bounded validation-only memory-admission recovery during qualification")
     args = parser.parse_args()
     if args.command == "bundle":
         result = build_runtime_archive(
@@ -1352,9 +831,6 @@ def main():
             extension_dir=args.extension_dir,
             lean_toolchain=args.lean_toolchain,
             model_snapshot=args.model_snapshot,
-            torch_cpu_wheel=args.torch_cpu_wheel,
-            torch_cpu_wheel_sha256=args.torch_cpu_wheel_sha256,
-            setup_cache_policy=args.setup_cache_policy,
             security_initializer=(_load_initializer_descriptor(args.security_initializer)
                                   if args.security_initializer else None),
             canonical_cve_export=args.canonical_cve_export,
@@ -1368,9 +844,6 @@ def main():
                              if args.formula_decoder_descriptor else None),
             header_protocol=(_load_initializer_descriptor(args.header_protocol_descriptor)
                              if args.header_protocol_descriptor else None),
-            intent_action_384_config=(load_intent_action_384_config(args.intent_action_384_config)
-                                     if args.intent_action_384_config else None),
-            source384_config=(load_source384_config(args.source384_config) if args.source384_config else None),
             intent_checkpoint=(_load_initializer_descriptor(args.intent_checkpoint_descriptor)
                                if args.intent_checkpoint_descriptor else None),
             intent_projection_request=(_load_initializer_descriptor(args.intent_projection_request)
@@ -1388,11 +861,6 @@ def main():
                 auth_json=args.auth_json,
                 install_codex=not args.no_codex,
                 keep_container=args.keep_container,
-                resource_profile=args.resource_profile,
-                source384_context=args.source384_context,
-                source384_warm_recovery=args.source384_warm_recovery,
-                intent_requirement_contract=args.intent_requirement_contract,
-                setup_cache_selection=(read_selection(args.setup_cache_selection) if args.setup_cache_selection else None),
             )
         )
         print(

@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import errno
 import hashlib
-import math
 import importlib.util
 import json
 import os
@@ -90,67 +89,6 @@ _DECLARED_OUTPUT_EFFECT_FIELDS: Final[frozenset[str]] = frozenset(
 _MAX_ACCEPTED_SOURCE_EVENT_BYTES: Final[int] = 64 * 1024 * 1024
 _MAX_ACCEPTED_SOURCE_EVENT_LINES: Final[int] = 65_536
 _MAX_ATTEMPT_CONTROL_BYTES: Final[int] = 4 * 1024 * 1024
-SOURCE384_RESOURCE_DEFERRAL_REASON = "source384_resource_admission_deferred"
-
-
-def _source384_admission(value: Any) -> dict[str, Any]:
-    """Detach only bounded primary-gate diagnostics, never admission authority."""
-    reasons = {"proof_memory_reservation_required", "proof_memory_headroom", "proof_pid_headroom",
-        "proof_memory_stall", "proof_cpu_stall", "proof_io_stall", "proof_resource_telemetry_unknown",
-        "pressure_telemetry_unknown", "memory_pressure", "swap_pressure", "gpu_telemetry_unknown",
-        "gpu_memory_telemetry_unknown", "gpu_memory_pressure"}
-    def number(item, *, integer=False, nullable=False):
-        if item is None and nullable:
-            return None
-        if type(item) not in ((int,) if integer else (int, float)) or not math.isfinite(item) or not 0 <= item <= 2**53 - 1:
-            raise ValueError("invalid Source384 admission scalar")
-        return item
-    def reason(item):
-        if item is not None and (type(item) is not str or item not in reasons):
-            raise ValueError("unknown Source384 admission reason")
-        return item
-    if (type(value) is not dict or set(value) != {"schema", "scope", "complete_admission_decision", "primary_gate", "last_sample", "terminal"}
-            or value["schema"] != "resource-admission-observation@1" or value["scope"] != "proof_primary_gate"
-            or value["complete_admission_decision"] is not False or value["terminal"] != "timeout"):
-        raise ValueError("native Source384 admission timeout observation required")
-    gate, sample = value["primary_gate"], value["last_sample"]
-    if gate is not None:
-        if (type(gate) is not dict or set(gate) != {"status", "observed_at", "reason", "backoff_until"}
-                or gate["status"] not in {"passed", "refused", "backoff"}):
-            raise ValueError("invalid Source384 primary gate")
-        gate = dict(status=gate["status"], observed_at=number(gate["observed_at"]),
-                    reason=reason(gate["reason"]), backoff_until=number(gate["backoff_until"], nullable=True))
-    if sample is not None:
-        fields = {"observed_at", "host", "reserved_root_memory_mb", "additional_request_memory_mb", "thresholds", "reason"}
-        if type(sample) is not dict or set(sample) not in (fields, fields | {"pressure_sources"}):
-            raise ValueError("invalid Source384 admission sample")
-        # Optional path-free pressure attribution is omitted; these are the
-        # actual aggregate scalars used by this request's primary gate.
-        host, thresholds = sample["host"], sample["thresholds"]
-        stalls = {"memory_stall_percent", "cpu_stall_percent", "io_stall_percent"}
-        if host is not None:
-            if type(host) is not dict or set(host) != stalls | {"available_memory_mb"}:
-                raise ValueError("invalid Source384 host sample")
-            host = {key: number(item, integer=key == "available_memory_mb") for key, item in host.items()}
-        if type(thresholds) is not dict or set(thresholds) != stalls | {"memory_headroom_mb"}:
-            raise ValueError("invalid Source384 admission thresholds")
-        sample = dict(observed_at=number(sample["observed_at"]), host=host,
-            reserved_root_memory_mb=number(sample["reserved_root_memory_mb"], integer=True, nullable=True),
-            additional_request_memory_mb=number(sample["additional_request_memory_mb"], integer=True, nullable=True),
-            thresholds={key: number(item, integer=key == "memory_headroom_mb") for key, item in thresholds.items()},
-            reason=reason(sample["reason"]))
-    return dict(schema=value["schema"], scope=value["scope"], complete_admission_decision=False,
-                primary_gate=gate, last_sample=sample, terminal="timeout")
-
-
-def _source384_deferral(value: Any) -> dict[str, Any]:
-    fields = {"schema", "phase", "task_id", "task_cid", "context_sha256", "admission"}
-    if (type(value) is not dict or set(value) != fields or value["schema"] != "source384-context-no-dispatch@1"
-            or value["phase"] != "prompt_context"
-            or any(type(value[key]) is not str or not value[key] or len(value[key]) > 4096 for key in ("task_id", "task_cid"))
-            or type(value["context_sha256"]) is not str or not re.fullmatch(r"[0-9a-f]{64}", value["context_sha256"])):
-        raise ValueError("exact Source384 pre-dispatch receipt required")
-    return {**value, "admission": _source384_admission(value["admission"])}
 
 
 class DatabasePortalBridgeError(RuntimeError):
@@ -190,15 +128,6 @@ class DatabasePortalBridgeDeferred(DatabasePortalBridgeError):
         # database authority need not infer retry semantics from prose.
         self.attempt_consumed = False
         self.provider_dispatched = False
-
-
-class DatabasePortalSource384Deferred(DatabasePortalBridgeDeferred):
-    """One exact callback returned before context/workspace/provider effects."""
-
-    def __init__(self, *, result: Mapping[str, Any], identity: Mapping[str, Any]):
-        receipt = _source384_deferral(result.get("implementation", {}).get("source384_resource_deferral"))
-        super().__init__(SOURCE384_RESOURCE_DEFERRAL_REASON, backoff_seconds=5, result=result)
-        self.no_dispatch = {"context": receipt, "identity": dict(identity)}
 
 
 class DatabasePortalCandidateRetry(DatabasePortalBridgeError):
@@ -1770,9 +1699,6 @@ def _bounded_portal_result(result: Mapping[str, Any]) -> dict[str, Any]:
             )
             if key in implementation
         }
-        if "source384_resource_deferral" in implementation:
-            summary["implementation"]["source384_resource_deferral"] = _source384_deferral(
-                implementation["source384_resource_deferral"])
         validation = implementation.get("validation_result")
         if isinstance(validation, Mapping) and validation.get("passed") is False:
             from ..validation.proposal_validation import ProposalFindingCode
@@ -11197,15 +11123,6 @@ class DatabasePortalExecutionBridge:
                     isinstance(implementation, Mapping)
                     and self._pre_dispatch_deferral(implementation)
                 ):
-                    if implementation.get("reason") == SOURCE384_RESOURCE_DEFERRAL_REASON:
-                        receipt = _source384_deferral(implementation.get("source384_resource_deferral"))
-                        if (receipt["task_id"] != binding["task_alias"]
-                                or receipt["task_cid"] != str(attempt.task_cid)
-                                or implementation.get("backoff_seconds") != 5):
-                            raise DatabasePortalBridgeError("Source384 deferral differs from the exact Portal task")
-                        raise DatabasePortalSource384Deferred(result=summary, identity={
-                            key: getattr(attempt, key) for key in ("attempt_id", "task_cid", "owner_session_id",
-                                "claim_id", "lease_id", "fencing_token", "fence_epoch")})
                     backoff_seconds = implementation.get("backoff_seconds", 300)
                     if (
                         type(backoff_seconds) is not int

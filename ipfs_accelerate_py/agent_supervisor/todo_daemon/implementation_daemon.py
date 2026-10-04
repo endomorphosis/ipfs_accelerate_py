@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-from contextvars import ContextVar
 import base64
 import fcntl
 import fnmatch
@@ -1198,13 +1197,15 @@ class CrashFenceReconciler:
                 )
                 if trusted and trusted.get("cleared"):
                     return trusted
-                # A clean path at HEAD is not, by itself, recovery authority.
-                # In particular, clearing a database-Portal fence here would
-                # discard the evidence needed by the bridge to publish its
-                # exact Quack retry/CAS receipt.  Clean forward control-plane
-                # updates are admitted while the live task and its immutable
-                # database projection are still available; every historical
-                # shared-checkout incident remains operator gated.
+                head_clean = (
+                    daemon._auto_clear_shared_checkout_incident_when_head_clean(
+                        incident,
+                        incident_path=incident_path,
+                        active_path=active_path,
+                    )
+                )
+                if head_clean and head_clean.get("cleared"):
+                    return head_clean
         fence_present = False
         try:
             fence_present = incident_path.exists() or active_path.exists()
@@ -3804,9 +3805,6 @@ class ImplementationDiagnosticReceipt:
         return result
 
 
-_source384_callback_deadline = ContextVar("source384_callback_deadline", default=None)
-
-
 class ImplementationRetryDeferred(RuntimeError):
     """A typed retry lifecycle stop raised before provider dispatch."""
 
@@ -3814,18 +3812,6 @@ class ImplementationRetryDeferred(RuntimeError):
         super().__init__(reason)
         self.reason = reason
         self.backoff_seconds = backoff_seconds
-
-
-class Source384ResourceDeferred(ImplementationRetryDeferred):
-    """Native resource refusal before a nominated context can be dispatched."""
-
-    def __init__(self, *, admission, task_id, task_cid, context_sha256):
-        from .database_portal_bridge import SOURCE384_RESOURCE_DEFERRAL_REASON, _source384_deferral
-        super().__init__(SOURCE384_RESOURCE_DEFERRAL_REASON, backoff_seconds=5)
-        self.receipt = _source384_deferral(dict(schema="source384-context-no-dispatch@1",
-            phase="prompt_context", task_id=task_id, task_cid=task_cid,
-            context_sha256=context_sha256, admission=admission))
-        self.admission = self.receipt["admission"]
 
 
 class WorktreeSubmoduleInitializationDeferred(ImplementationRetryDeferred):
@@ -6598,370 +6584,6 @@ class PortalImplementationDaemon:
             "commits": commits,
         }
 
-    def _database_forward_update_attempt_identity(
-        self,
-        task: PortalTask,
-    ) -> dict[str, Any]:
-        """Return exact DuckDB attempt identity for a disposable projection.
-
-        Markdown is never task authority here.  A database Portal projection
-        is usable only after its immutable bytes and attempt binding verify;
-        the returned record is identity evidence and grants no completion or
-        policy authority.
-        """
-
-        canonical_task_key = str(task.canonical_task_key or "").strip()
-        canonical_task_cid = str(task.canonical_task_cid or "").strip()
-        if not canonical_task_key or not canonical_task_cid:
-            return {}
-        if self.todo_path.name != "task-projection.md":
-            return {}
-        try:
-            # Lazy import avoids making the bridge/Portal dependency cyclic at
-            # module import time.
-            from .database_portal_bridge import (
-                verify_database_portal_attempt_projection,
-            )
-
-            verified = verify_database_portal_attempt_projection(
-                self.todo_path,
-                expected_task_alias=task.task_id,
-                expected_task_cid=canonical_task_cid,
-                allowed_root=self.todo_path.parent,
-            )
-        except (OSError, RuntimeError, ValueError):
-            return {}
-        if (
-            verified.get("verified") is not True
-            or verified.get("authoritative_task_store") != "duckdb"
-            or verified.get("projection_authority") is not False
-            or verified.get("task_alias") != task.task_id
-            or verified.get("task_cid") != canonical_task_cid
-            or verified.get("canonical_task_key") != canonical_task_key
-            or not str(verified.get("binding_id") or "")
-        ):
-            return {}
-        return {
-            key: verified[key]
-            for key in (
-                "authoritative_task_store",
-                "projection_authority",
-                "task_alias",
-                "task_cid",
-                "canonical_task_key",
-                "binding_id",
-                "attempt_id",
-                "claim_id",
-                "owner_session_id",
-                "lease_id",
-                "goal_cid",
-                "plan_cid",
-                "task_revision",
-                "attempt_number",
-                "fencing_token",
-                "fence_epoch",
-                "projection_immutable_digest",
-                "landed_completion_recovery_seed_id",
-            )
-            if key in verified
-        }
-
-    def _protected_path_git_blob_identity(
-        self,
-        *,
-        commit: str,
-        relative: str,
-    ) -> dict[str, Any]:
-        """Return one exact tracked regular-file identity, or no evidence."""
-
-        if (
-            re.fullmatch(r"[0-9a-f]{40,64}", commit) is None
-            or not relative
-            or relative.startswith(("/", "\\"))
-            or "\\" in relative
-            or "\0" in relative
-            or ".." in PurePosixPath(relative).parts
-        ):
-            return {}
-        try:
-            tree = subprocess.run(
-                ["git", "ls-tree", "-z", commit, "--", relative],
-                cwd=self.repo_root,
-                capture_output=True,
-                check=False,
-            )
-        except OSError:
-            return {}
-        entries = [entry for entry in tree.stdout.split(b"\0") if entry]
-        if tree.returncode != 0 or len(entries) != 1:
-            return {}
-        try:
-            metadata, encoded_path = entries[0].split(b"\t", 1)
-            mode, kind, object_id = metadata.decode("ascii").split(" ", 2)
-            decoded_path = encoded_path.decode("utf-8")
-        except (UnicodeDecodeError, ValueError):
-            return {}
-        if (
-            decoded_path != relative
-            or kind != "blob"
-            or mode not in {"100644", "100755"}
-            or re.fullmatch(r"[0-9a-f]{40,64}", object_id) is None
-        ):
-            return {}
-        try:
-            blob = subprocess.run(
-                ["git", "cat-file", "blob", object_id],
-                cwd=self.repo_root,
-                capture_output=True,
-                check=False,
-            )
-        except OSError:
-            return {}
-        if blob.returncode != 0:
-            return {}
-        return {
-            "commit": commit,
-            "path": relative,
-            "git_mode": mode,
-            "blob_id": object_id,
-            "sha256": hashlib.sha256(blob.stdout).hexdigest(),
-            "size": len(blob.stdout),
-        }
-
-    def _authorized_clean_forward_protected_path_update(
-        self,
-        *,
-        task: PortalTask,
-        workspace_path: Path,
-        before: Mapping[str, Mapping[str, Any]],
-        after: Mapping[str, Mapping[str, Any]],
-        mutations: Sequence[Mapping[str, Any]],
-    ) -> dict[str, Any]:
-        """Admit one exact clean, strict-forward protected source update.
-
-        This is deliberately a live-fence exception, not crash recovery.  It
-        requires the immutable DuckDB attempt projection, an isolated provider
-        workspace whose protected bytes did not change, task output exclusion,
-        and stable Git evidence that every observed before/after byte is the
-        tracked byte at the old/current commits.  Any dirty, rewritten,
-        projection-less, provider-scoped, or output-overlapping change keeps
-        the ordinary operator-clearance path.
-        """
-
-        try:
-            workspace = workspace_path.resolve(strict=True)
-            repo_root = self.repo_root.resolve(strict=True)
-            worktree_root = self.worktree_root.resolve(strict=True)
-            workspace.relative_to(worktree_root)
-        except (OSError, RuntimeError, ValueError):
-            return {}
-        if workspace == repo_root or not mutations:
-            return {}
-        attempt_identity = self._database_forward_update_attempt_identity(task)
-        if not attempt_identity:
-            return {}
-        mutated_paths = sorted(
-            {
-                str(item.get("path") or "")
-                for item in mutations
-                if isinstance(item, Mapping)
-                and str(item.get("path") or "")
-            }
-        )
-        if (
-            not mutated_paths
-            or any(
-                not isinstance(item, Mapping)
-                or str(item.get("scope") or "") != "shared_checkout"
-                or str(item.get("change") or "") != "content_changed"
-                or str(item.get("path") or "") not in mutated_paths
-                for item in mutations
-            )
-            or task_implementation_protected_path_conflicts(
-                task,
-                mutated_paths,
-            )
-        ):
-            return {}
-        configured = set(self.implementation_protected_paths)
-        if not set(mutated_paths).issubset(configured):
-            return {}
-        before_workspace = before.get("workspace")
-        after_workspace = after.get("workspace")
-        before_shared = before.get("shared_checkout")
-        after_shared = after.get("shared_checkout")
-        if not all(
-            isinstance(value, Mapping)
-            for value in (
-                before_workspace,
-                after_workspace,
-                before_shared,
-                after_shared,
-            )
-        ):
-            return {}
-        assert isinstance(before_workspace, Mapping)
-        assert isinstance(after_workspace, Mapping)
-        assert isinstance(before_shared, Mapping)
-        assert isinstance(after_shared, Mapping)
-        if (
-            before_workspace.get("root") != str(workspace)
-            or after_workspace.get("root") != str(workspace)
-            or before_shared.get("root") != str(repo_root)
-            or after_shared.get("root") != str(repo_root)
-        ):
-            return {}
-        before_workspace_paths = before_workspace.get("paths")
-        after_workspace_paths = after_workspace.get("paths")
-        before_shared_paths = before_shared.get("paths")
-        after_shared_paths = after_shared.get("paths")
-        if not all(
-            isinstance(value, Mapping)
-            for value in (
-                before_workspace_paths,
-                after_workspace_paths,
-                before_shared_paths,
-                after_shared_paths,
-            )
-        ):
-            return {}
-        assert isinstance(before_workspace_paths, Mapping)
-        assert isinstance(after_workspace_paths, Mapping)
-        assert isinstance(before_shared_paths, Mapping)
-        assert isinstance(after_shared_paths, Mapping)
-        if (
-            set(map(str, before_workspace_paths)) != configured
-            or set(map(str, after_workspace_paths)) != configured
-            or before_workspace_paths != after_workspace_paths
-            or set(map(str, before_shared_paths)) != configured
-            or set(map(str, after_shared_paths)) != configured
-        ):
-            return {}
-        before_head = str(before_shared.get("git_head") or "")
-        after_head = str(after_shared.get("git_head") or "")
-        if (
-            re.fullmatch(r"[0-9a-f]{40,64}", before_head) is None
-            or re.fullmatch(r"[0-9a-f]{40,64}", after_head) is None
-            or before_head == after_head
-        ):
-            return {}
-        try:
-            ancestry = subprocess.run(
-                ["git", "merge-base", "--is-ancestor", before_head, after_head],
-                cwd=repo_root,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            first_head = self._implementation_protected_git_head(repo_root)
-            first_status = subprocess.run(
-                ["git", "status", "--porcelain=v1", "--untracked-files=all"],
-                cwd=repo_root,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-        except OSError:
-            return {}
-        if (
-            ancestry.returncode != 0
-            or first_head != after_head
-            or first_status.returncode != 0
-            or str(first_status.stdout or "").strip()
-        ):
-            return {}
-        path_evidence: list[dict[str, Any]] = []
-        mutation_by_path = {
-            str(item.get("path") or ""): item
-            for item in mutations
-            if isinstance(item, Mapping)
-        }
-        for relative in mutated_paths:
-            mutation = mutation_by_path.get(relative)
-            before_identity = (
-                mutation.get("before")
-                if isinstance(mutation, Mapping)
-                and isinstance(mutation.get("before"), Mapping)
-                else None
-            )
-            after_identity = (
-                mutation.get("after")
-                if isinstance(mutation, Mapping)
-                and isinstance(mutation.get("after"), Mapping)
-                else None
-            )
-            old_blob = self._protected_path_git_blob_identity(
-                commit=before_head,
-                relative=relative,
-            )
-            current_blob = self._protected_path_git_blob_identity(
-                commit=after_head,
-                relative=relative,
-            )
-            if (
-                not isinstance(before_identity, Mapping)
-                or not isinstance(after_identity, Mapping)
-                or before_identity != before_shared_paths.get(relative)
-                or after_identity != after_shared_paths.get(relative)
-                or before_identity.get("state") != "present"
-                or after_identity.get("state") != "present"
-                or before_identity.get("kind") != "regular_file"
-                or after_identity.get("kind") != "regular_file"
-                or old_blob.get("sha256") != before_identity.get("sha256")
-                or old_blob.get("size") != before_identity.get("size")
-                or current_blob.get("sha256") != after_identity.get("sha256")
-                or current_blob.get("size") != after_identity.get("size")
-            ):
-                return {}
-            path_evidence.append(
-                {
-                    "path": relative,
-                    "before_blob_id": old_blob["blob_id"],
-                    "before_sha256": old_blob["sha256"],
-                    "after_blob_id": current_blob["blob_id"],
-                    "after_sha256": current_blob["sha256"],
-                }
-            )
-        # Close the Git/path evidence window.  The caller additionally repeats
-        # the complete protected snapshot before releasing its verification
-        # lock.
-        second_head = self._implementation_protected_git_head(repo_root)
-        try:
-            second_status = subprocess.run(
-                ["git", "status", "--porcelain=v1", "--untracked-files=all"],
-                cwd=repo_root,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-        except OSError:
-            return {}
-        if (
-            second_head != after_head
-            or second_status.returncode != 0
-            or str(second_status.stdout or "").strip()
-        ):
-            return {}
-        try:
-            after_tree = self._run_git(
-                ["rev-parse", "--verify", f"{after_head}^{{tree}}"],
-                cwd=repo_root,
-            ).stdout.strip()
-        except (OSError, RuntimeError):
-            return {}
-        return {
-            "history_kind": "clean_strict_forward_protected_source_update",
-            "before_head": before_head,
-            "after_head": after_head,
-            "after_tree": after_tree,
-            "protected_paths": mutated_paths,
-            "path_evidence": path_evidence,
-            "task_output_scope_excluded": True,
-            "workspace_protected_paths_unchanged": True,
-            "shared_checkout_clean": True,
-            "database_attempt_identity": attempt_identity,
-        }
-
     def _acquire_implementation_protected_verification_lock(
         self,
         *,
@@ -8278,16 +7900,6 @@ class PortalImplementationDaemon:
                 after=after,
                 mutations=mutations,
             )
-            if not concurrent_update and task is not None:
-                concurrent_update = (
-                    self._authorized_clean_forward_protected_path_update(
-                        task=task,
-                        workspace_path=workspace_path,
-                        before=comparison_before,
-                        after=after,
-                        mutations=mutations,
-                    )
-                )
             if concurrent_update:
                 self._record_event(
                     "implementation_protected_path_concurrent_update_accepted",
@@ -8385,16 +7997,6 @@ class PortalImplementationDaemon:
                         mutations=mutations,
                     )
                 )
-                if not concurrent_update and task is not None:
-                    concurrent_update = (
-                        self._authorized_clean_forward_protected_path_update(
-                            task=task,
-                            workspace_path=workspace_path,
-                            before=comparison_before,
-                            after=after,
-                            mutations=mutations,
-                        )
-                    )
             confirmed_after = self._implementation_protected_path_snapshot(
                 comparison_workspace
             )
@@ -21094,32 +20696,20 @@ class PortalImplementationDaemon:
                 result["active_task_cleared"] = owns_idle_projection
                 self._record_event("implementation_retry_deferred", result)
             finally:
-                resource_paths = [path for path, _metadata in acquired_resource_claims]
-                resources_released = self._release_implementation_resource_claims(
+                self._release_implementation_resource_claims(
                     acquired_resource_claims
                 )
                 acquired_resource_claims = []
-                task_released = self._release_implementation_task_claim(
+                if not self._release_implementation_task_claim(
                     task_claim_path,
                     task_claim_metadata,
-                )
-                if not task_released:
+                ):
                     logger.warning(
                         "Refusing to remove implementation task claim no "
                         "longer owned by this attempt: %s",
                         task_claim_path,
                     )
                 acquired_task_claim = False
-                if type(exc) is Source384ResourceDeferred:
-                    # A retained protected fence or foreign claim is not a
-                    # completed no-effect cleanup, even if release returned True.
-                    if (resources_released is not True or task_released is not True
-                            or task_claim_path.exists() or task_claim_path.is_symlink()
-                            or any(path.exists() or path.is_symlink() for path in resource_paths)):
-                        raise RuntimeError("Source384 no-dispatch cleanup was not completed") from exc
-            if type(exc) is Source384ResourceDeferred:
-                result.update(deferred=True, provider_call_allowed=False,
-                              source384_resource_deferral=dict(exc.receipt))
             return result
         except BaseException:
             try:
@@ -62216,61 +61806,24 @@ class PortalImplementationDaemon:
             "IMPLEMENTATION_DAEMON_COMMAND."
         )
 
-    def _task_metadata_snapshot(
-        self, task: PortalTask, *, include_context: bool = False,
-    ) -> Mapping[str, str]:
-        """Copy one task's metadata and optionally validate its live nomination."""
+    def _task_metadata_value(self, task: PortalTask, *keys: str) -> str:
         normalized = {
             str(key).strip().lower().replace("_", " "): str(value).strip()
             for key, value in task.metadata.items()
         }
         bundle = getattr(self, "_task_context_nomination_bundle", None)
-        if include_context and bundle is not None:
-            from ..runtime.task_context_bundle import load_task_context_nomination
-            from .database_portal_bridge import _source384_admission
-            deadline = _source384_callback_deadline.get()
-            options = {}
-            if deadline is not None:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    raise TimeoutError("Source384 original callback deadline expired")
-                options["source384_timeout_seconds"] = min(90.0, remaining)
-            task_cid = normalized.get("database task cid") or task.canonical_task_cid
-            try:
+        if bundle is not None:
+            from ..runtime.task_context_bundle import KEYS, load_task_context_nomination
+
+            if any(str(key).strip().lower().replace("_", " ") in KEYS for key in keys):
                 nominations = load_task_context_nomination(
                     repository=self.repo_root, artifact=bundle["artifact"],
                     expected_sha256=bundle["sha256"], task_id=task.task_id,
-                    task_cid=task_cid, **options,
+                    task_cid=normalized.get("database task cid") or task.canonical_task_cid,
                 )
-            except Exception as exc:
-                try:
-                    from ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler import LeaseTimeoutError
-                except ImportError:
-                    raise exc
-                if (deadline is None or type(exc) is not LeaseTimeoutError
-                        or deadline is not None and time.monotonic() >= deadline
-                        or getattr(self, "implementation_cancelled", None) is not None and self._implementation_cancel_requested()):
-                    raise
-                try:
-                    admission = _source384_admission(getattr(exc, "admission_observation", None))
-                except (ValueError, TypeError, KeyError):
-                    raise exc
-                raise Source384ResourceDeferred(admission=admission, task_id=task.task_id,
-                    task_cid=task_cid, context_sha256=bundle["sha256"]) from exc
-            if deadline is not None and time.monotonic() >= deadline:
-                raise TimeoutError("Source384 original callback deadline expired")
-            if any(key in normalized and normalized[key] != value for key, value in nominations.items()):
-                raise ValueError("launch context nomination conflicts with task metadata")
-            normalized.update(nominations)
-        return MappingProxyType(normalized)
-
-    def _task_metadata_value(self, task: PortalTask, *keys: str) -> str:
-        include_context = False
-        if getattr(self, "_task_context_nomination_bundle", None) is not None:
-            from ..runtime.task_context_bundle import KEYS
-
-            include_context = any(str(key).strip().lower().replace("_", " ") in KEYS for key in keys)
-        normalized = self._task_metadata_snapshot(task, include_context=include_context)
+                if any(key in normalized and normalized[key] != value for key, value in nominations.items()):
+                    raise ValueError("launch context nomination conflicts with task metadata")
+                normalized.update(nominations)
         for key in keys:
             value = normalized.get(str(key).strip().lower().replace("_", " "))
             if value:
@@ -64450,12 +64003,10 @@ class PortalImplementationDaemon:
 
     def _world_implementation_references(
         self, task: PortalTask, *, repository_id: str, tree_id: str,
-        semantic_references: tuple = (), context_metadata: Mapping[str, str] | None = None,
+        semantic_references: tuple = (),
     ) -> tuple:
         """Consume a sealed world observation without conferring authority."""
-        metadata = (self._task_metadata_snapshot(task, include_context=True)
-                    if context_metadata is None else context_metadata)
-        artifact = str(metadata.get("world context artifact") or "")
+        artifact = str(self._task_metadata_value(task, "world context artifact") or "")
         if not artifact:
             return ()
         from ..semantic_state.intent_world_snapshot import (
@@ -64470,9 +64021,9 @@ class PortalImplementationDaemon:
             raise ValueError("world context artifact escapes repository")
         context = load_intent_world_context(
             artifact=path,
-            expected_sha256=str(metadata.get("world context sha256") or ""),
+            expected_sha256=str(self._task_metadata_value(task, "world context sha256") or ""),
             task_id=task.task_id,
-            repository_id=str(metadata.get("world context repository") or ""),
+            repository_id=str(self._task_metadata_value(task, "world context repository") or ""),
             intent=getattr(self, "_world_intent_repository", None),
         )
         if semantic_references:
@@ -64531,18 +64082,15 @@ class PortalImplementationDaemon:
 
     def _code_retrieval_implementation_references(
         self, task: PortalTask, *, repository_id: str, tree_id: str,
-        context_metadata: Mapping[str, str] | None = None,
     ) -> tuple:
-        metadata = (self._task_metadata_snapshot(task, include_context=True)
-                    if context_metadata is None else context_metadata)
-        artifact = metadata.get("code retrieval artifact")
+        artifact = self._task_metadata_value(task, "code retrieval artifact")
         if not artifact:
             return ()
         from ..runtime.code_retrieval_context import load_code_retrieval_context
 
         text = load_code_retrieval_context(
             repository=self.repo_root, artifact=str(artifact), task_id=task.task_id,
-            expected_sha256=str(metadata.get("code retrieval sha256") or ""),
+            expected_sha256=str(self._task_metadata_value(task, "code retrieval sha256") or ""),
         )
         return build_text_context_references(
             text, reference_prefix="code-retrieval", kind="code-retrieval-context",
@@ -64551,13 +64099,10 @@ class PortalImplementationDaemon:
         )
 
     def _semantic_implementation_references(
-        self, task: PortalTask, attempt: int, *, repository_id: str, tree_id: str,
-        context_metadata: Mapping[str, str] | None = None,
+        self, task: PortalTask, attempt: int, *, repository_id: str, tree_id: str
     ) -> tuple:
         """Resolve source-bound evidence on every dispatch, including retries."""
-        metadata = (self._task_metadata_snapshot(task, include_context=True)
-                    if context_metadata is None else context_metadata)
-        artifact = metadata.get("semantic context artifact")
+        artifact = self._task_metadata_value(task, "semantic context artifact")
         if not artifact:
             return ()
         from ..runtime.semantic_context_runtime import (
@@ -64567,10 +64112,10 @@ class PortalImplementationDaemon:
             validate_semantic_worker_nomination,
         )
 
-        digest = str(metadata.get("semantic context sha256") or "")
+        digest = str(self._task_metadata_value(task, "semantic context sha256") or "")
         request = dict(repository=self.repo_root, artifact=str(artifact),
                        expected_sha256=digest, task_id=task.task_id)
-        refresh = str(metadata.get("semantic context refresh") or "").strip().lower() in {"true", "1", "yes"}
+        refresh = str(self._task_metadata_value(task, "semantic context refresh") or "").strip().lower() in {"true", "1", "yes"}
         cache_key = (str(self.repo_root), task.task_id, str(artifact), digest)
         cache = getattr(self, "_semantic_context_resolutions", {})
         resolved = cache.get(cache_key) if refresh else None
@@ -64637,12 +64182,10 @@ class PortalImplementationDaemon:
             )
         retry_evidence = parent_capsule.evidence
         semantic_changed = False
-        context_metadata = self._task_metadata_snapshot(task, include_context=True)
         semantic_references = ()
-        if context_metadata.get("semantic context artifact"):
+        if self._task_metadata_value(task, "semantic context artifact"):
             semantic_references = self._semantic_implementation_references(
                 task, attempt, repository_id=repository_id, tree_id=tree_id,
-                context_metadata=context_metadata,
             )
             previous_semantic = tuple(item for item in retry_evidence if item.kind == "semantic-context")
             if previous_semantic != tuple(semantic_references):
@@ -64651,12 +64194,11 @@ class PortalImplementationDaemon:
                     *(item for item in retry_evidence if item.kind != "semantic-context"),
                     *semantic_references,
                 )
-        if context_metadata.get("world context artifact"):
+        if self._task_metadata_value(task, "world context artifact"):
             # Compare world and source evidence from this same dispatch, after
             # refresh; HEAD alone cannot detect dirty source changes.
             current_world = self._world_implementation_references(
                 task, repository_id=repository_id, tree_id=tree_id,
-                context_metadata=context_metadata,
                 semantic_references=semantic_references,
             )
             old_world = tuple(item for item in retry_evidence if item.kind == "intent-world-context")
@@ -64666,10 +64208,9 @@ class PortalImplementationDaemon:
                     *(item for item in retry_evidence if item.kind != "intent-world-context"),
                     *current_world,
                 )
-        if context_metadata.get("code retrieval artifact"):
+        if self._task_metadata_value(task, "code retrieval artifact"):
             current_retrieval = self._code_retrieval_implementation_references(
                 task, repository_id=repository_id, tree_id=tree_id,
-                context_metadata=context_metadata,
             )
             old_retrieval = tuple(item for item in retry_evidence if item.kind == "code-retrieval-context")
             if old_retrieval != tuple(current_retrieval):
@@ -65513,23 +65054,17 @@ class PortalImplementationDaemon:
                     )
                 ),
             )
-        # One live nomination per construction; no cross-dispatch cache.
-        # Each artifact consumer still performs its independent source checks.
-        context_metadata = self._task_metadata_snapshot(task, include_context=True)
         semantic_references = self._semantic_implementation_references(
             task, attempt, repository_id=repository_id, tree_id=tree_id,
-            context_metadata=context_metadata,
         )
         evidence = (
             *evidence,
             *semantic_references,
             *self._code_retrieval_implementation_references(
                 task, repository_id=repository_id, tree_id=tree_id,
-                context_metadata=context_metadata,
             ),
             *self._world_implementation_references(
                 task, repository_id=repository_id, tree_id=tree_id,
-                context_metadata=context_metadata,
                 semantic_references=semantic_references,
             ),
         )
@@ -70246,8 +69781,6 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError("close_task_source must be boolean")
         self.process_instance_id = process_instance_id or _database_daemon_new_id("process")
         self._typed_quack_authority_binding = None
-        self._source384_retry_deadline_ms = None
-        self._source384_retry_deadline_monotonic = None
         from ..task_sources.typed_database_task_source import TypedDatabaseTaskSource
 
         if state_owner_bootstrap_credentials is not None or type(task_source) is TypedDatabaseTaskSource:
@@ -70268,14 +69801,6 @@ class DatabaseImplementationDaemon:
                 ))
             except Exception as exc:
                 raise DatabaseImplementationAuthorityError("typed owner bootstrap binding mismatch") from exc
-            # This exact connection was just verified by the typed source.
-            # Capture its initial signed grant expiry; renewal cannot widen it.
-            connection = getattr(getattr(getattr(task_source, "_client", None), "_adapter", None), "raw", None)
-            grant = getattr(connection, "grant", None)
-            expiry = grant.get("expires_at") if isinstance(grant, Mapping) else None
-            if type(expiry) is int and expiry > 0:
-                self._source384_retry_deadline_ms = expiry
-                self._source384_retry_deadline_monotonic = time.monotonic() + max(0.0, expiry / 1000 - time.time())
             self.coordination_path, self.execution_path = _database_daemon_quack_sidecar_paths(
                 self.database_path, coordination_path=coordination_path,
                 execution_path=self.execution_path,
@@ -73790,97 +73315,20 @@ class DatabaseImplementationDaemon:
             attempt, idempotency_key=idempotency_key, provider_fn=provider_fn,
         )
 
-    @staticmethod
-    def _source384_retry_identity(attempt: DatabaseTaskAttempt) -> dict[str, Any]:
-        return {name: getattr(attempt, name) for name in (
-            "attempt_id", "task_cid", "owner_session_id", "claim_id", "lease_id", "fencing_token", "fence_epoch")}
+    def _run_provider_impl(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        idempotency_key: str = "",
+        provider_fn: Callable[["DatabaseTaskAttempt"], Mapping[str, Any]] | None = None,
+    ) -> tuple[DatabaseTaskAttempt, Mapping[str, Any], bool]:
+        """Run provider work once per attempt idempotency key.
 
-    def _source384_remaining_seconds(self, attempt: DatabaseTaskAttempt) -> float:
-        self._shutdown_boundary()
-        attempt = self._owned_running_attempt(attempt)
-        expiry = getattr(self, "_source384_retry_deadline_ms", None)
-        monotonic_expiry = getattr(self, "_source384_retry_deadline_monotonic", None)
-        if (self._typed_quack_authority_binding is None or type(expiry) is not int
-                or type(monotonic_expiry) not in (int, float) or not math.isfinite(monotonic_expiry)):
-            raise DatabaseImplementationAuthorityError("Source384 retry lacks its original native grant expiry")
-        remaining = min((min(expiry, attempt.started_at_ms + self.lease_ms) - self._now_ms()) / 1000,
-                        monotonic_expiry - time.monotonic())
-        if remaining <= 0:
-            raise TimeoutError("Source384 original attempt or run deadline expired")
-        return remaining
+        Returns ``(attempt, result, duplicated)`` where ``duplicated`` is True
+        when a prior committed provider invocation was replayed.
+        """
 
-    def _require_source384_retry_state(self, attempt, receipt, key, *, ready=True):
-        from .database_portal_bridge import DatabasePortalBridgeDeferred, SOURCE384_RESOURCE_DEFERRAL_REASON, _source384_deferral
-        attempt = self._owned_running_attempt(attempt)
         self._protect_attempt_write(attempt)
-        self._require_provider_admission(attempt)
-        self._source384_remaining_seconds(attempt)
-        identity = self._source384_retry_identity(attempt)
-        fields = {*identity, "schema", "callback_state", "provider_effect_state", "reason", "process_instance_id",
-                  "retry_deadline_ms", "retry_not_before_ms", "retry_count", "context", "execution_phase", "execution_revision"}
-        deadline = min(self._source384_retry_deadline_ms, attempt.started_at_ms + self.lease_ms)
-        if (type(receipt) is not dict or set(receipt) != fields
-                or receipt["schema"] != "database-source384-no-dispatch-retry@1"
-                or receipt["callback_state"] != "not_dispatched" or receipt["provider_effect_state"] != "not_started"
-                or receipt["reason"] != SOURCE384_RESOURCE_DEFERRAL_REASON
-                or receipt["process_instance_id"] != self.process_instance_id
-                or key != f"provider:{attempt.attempt_id}"
-                or any(type(receipt[name]) is not type(value) or receipt[name] != value for name, value in identity.items())
-                or type(receipt["retry_deadline_ms"]) is not int or receipt["retry_deadline_ms"] != deadline
-                or type(receipt["retry_not_before_ms"]) is not int or not 0 <= receipt["retry_not_before_ms"] < deadline
-                or type(receipt["retry_count"]) is not int or not 1 <= receipt["retry_count"] <= 16
-                or (attempt.committed_phase, attempt.revision) not in {(ATTEMPT_PHASE_CLAIMED, 1), (ATTEMPT_PHASE_CONTEXT, 2)}
-                or receipt["execution_phase"] != attempt.committed_phase
-                or type(receipt["execution_revision"]) is not int or receipt["execution_revision"] != attempt.revision
-                or self.effect_claim_recorded(attempt.attempt_id, idempotency_key=f"effect:{attempt.attempt_id}") is not None):
-            raise DatabaseImplementationAuthorityError("Source384 no-dispatch retry binding differs")
-        context = _source384_deferral(receipt["context"])
-        if context["task_id"] != attempt.task_alias or context["task_cid"] != attempt.task_cid:
-            raise DatabaseImplementationAuthorityError("Source384 retry context belongs to another task")
-        if ready and self._now_ms() < receipt["retry_not_before_ms"]:
-            raise DatabasePortalBridgeDeferred(SOURCE384_RESOURCE_DEFERRAL_REASON, backoff_seconds=5,
-                                              result={"source384_resource_retry": receipt})
-
-    def _settle_source384_resource_deferral(self, attempt, *, failure, idempotency_key, previous=None):
-        from .database_portal_bridge import DatabasePortalSource384Deferred, SOURCE384_RESOURCE_DEFERRAL_REASON, _source384_deferral
-        attempt = self._owned_running_attempt(attempt)
-        self._protect_attempt_write(attempt)
-        self._require_provider_admission(attempt)
-        remaining = self._source384_remaining_seconds(attempt)
-        identity = self._source384_retry_identity(attempt)
-        context = _source384_deferral(getattr(failure, "no_dispatch", {}).get("context"))
-        if (type(failure) is not DatabasePortalSource384Deferred or failure.attempt_consumed is not False
-                or failure.provider_dispatched is not False or failure.backoff_seconds != 5
-                or failure.no_dispatch.get("identity") != identity
-                or context["task_cid"] != attempt.task_cid or context["task_id"] != attempt.task_alias
-                or idempotency_key != f"provider:{attempt.attempt_id}"
-                or remaining <= 5):
-            raise DatabaseImplementationAuthorityError("Source384 deferral lacks exact live no-dispatch custody")
-        if previous is not None:
-            self._require_source384_retry_state(attempt, previous, idempotency_key, ready=False)
-            if previous["context"]["context_sha256"] != context["context_sha256"]:
-                raise DatabaseImplementationAuthorityError("Source384 retry context nomination changed")
-        count = 1 if previous is None else previous["retry_count"] + 1
-        receipt = dict(schema="database-source384-no-dispatch-retry@1", **identity,
-            callback_state="not_dispatched", provider_effect_state="not_started",
-            reason=SOURCE384_RESOURCE_DEFERRAL_REASON, process_instance_id=self.process_instance_id,
-            retry_deadline_ms=min(self._source384_retry_deadline_ms, attempt.started_at_ms + self.lease_ms),
-            retry_not_before_ms=self._now_ms() + 5000, retry_count=count, context=context,
-            execution_phase=attempt.committed_phase, execution_revision=attempt.revision)
-        self._require_source384_retry_state(attempt, receipt, idempotency_key, ready=False)
-        expected = dict(schema="database-portal-callback-intent@1", callback_state="started_outcome_unknown",
-                        provider_effect_state="unknown_may_have_started",
-                        **{key: value for key, value in identity.items() if key != "owner_session_id"})
-        changed = self._require_connection().execute(
-            "UPDATE provider_invocations SET result_json = ?, recorded_at_ms = ? WHERE attempt_id = ? AND idempotency_key = ? AND result_json = ? AND owner_session_id = ? AND task_cid = ? RETURNING invocation_id",
-            [_database_daemon_json(receipt), self._now_ms(), attempt.attempt_id, idempotency_key,
-             _database_daemon_json(expected), self.owner_session_id, attempt.task_cid]).fetchone()
-        if changed is None:
-            raise DatabaseImplementationAuthorityError("Source384 callback intent changed before no-dispatch settlement")
-        self._record_event("source384_resource_retry_deferred", attempt_id=attempt.attempt_id,
-                           task_cid=attempt.task_cid, body=receipt)
-
-    def _require_provider_admission(self, attempt: DatabaseTaskAttempt) -> None:
         if self._typed_quack_authority_binding is not None:
             from ..task_sources.typed_state_owner import TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
 
@@ -73902,30 +73350,10 @@ class DatabaseImplementationDaemon:
                 or binding != self._control_claim_binding(claim, task)
             ):
                 raise DatabaseImplementationAuthorityError("provider requires exact owner-admitted task and control binding")
-
-    def _run_provider_impl(
-        self,
-        attempt: DatabaseTaskAttempt,
-        *,
-        idempotency_key: str = "",
-        provider_fn: Callable[["DatabaseTaskAttempt"], Mapping[str, Any]] | None = None,
-    ) -> tuple[DatabaseTaskAttempt, Mapping[str, Any], bool]:
-        """Run provider work once per attempt idempotency key.
-
-        Returns ``(attempt, result, duplicated)`` where ``duplicated`` is True
-        when a prior committed provider invocation was replayed.
-        """
-
-        self._protect_attempt_write(attempt)
-        self._require_provider_admission(attempt)
         key = str(idempotency_key or f"provider:{attempt.attempt_id}").strip()
         prior = self.provider_invocation_recorded(
             attempt.attempt_id, idempotency_key=key
         )
-        retry_prior = None
-        if prior is not None and prior.get("schema") == "database-source384-no-dispatch-retry@1":
-            self._require_source384_retry_state(attempt, prior, key)
-            retry_prior, prior = prior, None
         if prior is not None:
             if prior.get("callback_state") == "started_outcome_unknown":
                 from .database_portal_bridge import DatabasePortalBridgeDeferred
@@ -73960,8 +73388,6 @@ class DatabaseImplementationDaemon:
         from .native_doctor_callback import require_declared_callback
 
         require_declared_callback(self, attempt, callback)
-        if retry_prior is not None and callback != self._provider_fn:
-            raise DatabaseImplementationAuthorityError("Source384 retry cannot replace its declared callback")
         if callback is None:
             if self.require_real_execution:
                 raise DatabaseImplementationAuthorityError(
@@ -73981,46 +73407,29 @@ class DatabaseImplementationDaemon:
                 # Commit dispatch intent before entering the native bridge.
                 # A candidate refusal is diagnostic evidence, not proof that
                 # this callback's external effects have settled.
-                intent = {
-                    "schema": "database-portal-callback-intent@1",
-                    "callback_state": "started_outcome_unknown",
-                    "provider_effect_state": "unknown_may_have_started",
-                    **{name: value for name, value in self._source384_retry_identity(attempt).items()
-                       if name != "owner_session_id"},
-                }
-                if retry_prior is not None:
-                    changed = self._require_connection().execute(
-                        "UPDATE provider_invocations SET result_json = ?, recorded_at_ms = ? WHERE attempt_id = ? AND idempotency_key = ? AND result_json = ? AND owner_session_id = ? AND task_cid = ? RETURNING invocation_id",
-                        [_database_daemon_json(intent), self._now_ms(), attempt.attempt_id, key,
-                         _database_daemon_json(retry_prior), self.owner_session_id, attempt.task_cid]).fetchone()
-                    if changed is None:
-                        raise DatabaseImplementationAuthorityError("Source384 retry callback changed")
-                else:
-                    self._require_connection().execute(
-                        """INSERT INTO provider_invocations(
-                            invocation_id, attempt_id, task_cid, idempotency_key,
-                            owner_session_id, recorded_at_ms, result_json
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                        [_database_daemon_new_id("provider"), attempt.attempt_id,
-                         attempt.task_cid, key, self.owner_session_id, self._now_ms(),
-                         _database_daemon_json(intent)],
-                    )
-            elif retry_prior is not None:
-                raise DatabaseImplementationAuthorityError("Source384 retry requires the native Portal bridge")
-            token = None
-            if type(getattr(callback, "__self__", None)) is DatabasePortalExecutionBridge and self._source384_retry_deadline_ms is not None:
-                remaining = self._source384_remaining_seconds(attempt)
-                token = _source384_callback_deadline.set(time.monotonic() + remaining)
-            try:
-                result = dict(self._run_with_attempt_heartbeat(attempt, lambda: callback(attempt)))
-            except Exception as exc:
-                from .database_portal_bridge import DatabasePortalSource384Deferred
-                if type(exc) is DatabasePortalSource384Deferred and type(getattr(callback, "__self__", None)) is DatabasePortalExecutionBridge:
-                    self._settle_source384_resource_deferral(attempt, failure=exc, idempotency_key=key, previous=retry_prior)
-                raise
-            finally:
-                if token is not None:
-                    _source384_callback_deadline.reset(token)
+                self._require_connection().execute(
+                    """INSERT INTO provider_invocations(
+                        invocation_id, attempt_id, task_cid, idempotency_key,
+                        owner_session_id, recorded_at_ms, result_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    [_database_daemon_new_id("provider"), attempt.attempt_id,
+                     attempt.task_cid, key, self.owner_session_id, self._now_ms(),
+                     _database_daemon_json({
+                         "schema": "database-portal-callback-intent@1",
+                         "callback_state": "started_outcome_unknown",
+                         "provider_effect_state": "unknown_may_have_started",
+                         "attempt_id": attempt.attempt_id, "task_cid": attempt.task_cid,
+                         "claim_id": attempt.claim_id, "lease_id": attempt.lease_id,
+                         "fencing_token": int(attempt.fencing_token),
+                         "fence_epoch": int(attempt.fence_epoch),
+                     })],
+                )
+            result = dict(
+                self._run_with_attempt_heartbeat(
+                    attempt,
+                    lambda: callback(attempt),
+                )
+            )
         if self.require_real_execution and not _unapplied_router_proposal(result) and (
             str(result.get("status") or "").strip().lower() in {"", "noop"}
             or result.get("accepted") is not True
@@ -76306,16 +75715,6 @@ class DatabaseImplementationDaemon:
 
             if isinstance(exc, DatabasePortalBridgeDeferred):
                 reason = str(exc)
-                from .database_portal_bridge import SOURCE384_RESOURCE_DEFERRAL_REASON
-                if reason == SOURCE384_RESOURCE_DEFERRAL_REASON:
-                    key = f"provider:{attempt.attempt_id}"
-                    receipt = self.provider_invocation_recorded(attempt.attempt_id, idempotency_key=key)
-                    self._require_source384_retry_state(attempt, receipt, key, ready=False)
-                    self._renew_attempt_lease(attempt)
-                    return {"resumed": True, "deferred": True, "reason": reason,
-                            "attempt_id": attempt.attempt_id, "task_alias": attempt.task_alias,
-                            "status": "running", "attempt_consumed": False, "provider_dispatched": False,
-                            "backoff_seconds": 5, "source384_resource_retry": receipt}
                 if reason != _RECOVERABLE_PROTECTED_PATH_PORTAL_FAILURE_REASON:
                     # Grok/Codex is still in flight. Keep the exact running
                     # attempt so the next pass can accept the same projection
@@ -77424,22 +76823,11 @@ TodoImplementationDaemon = PortalImplementationDaemon
 
 
 def main(argv: list[str] | None = None) -> None:
-    from ..runtime.process_security import harden_state_authority_process
-    harden_state_authority_process()
     args = parse_args(argv)
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    # This watchdog is armed only in the launched native daemon entrypoint,
-    # never when a model-hosting parent imports this module. Startup can wait
-    # inside owner RPC or portal construction before the first live heartbeat;
-    # retain its child stack without relaxing the lifecycle health deadline.
-    native_startup_watchdog = args.state_owner_bootstrap_fd != -1
-    if native_startup_watchdog:
-        import faulthandler
-        faulthandler.dump_traceback_later(10, repeat=True)
-        logger.info("Native owner startup stage: main entered")
     if args.llm_merge_resolver_command:
         os.environ[LLM_MERGE_RESOLVER_COMMAND_ENV] = args.llm_merge_resolver_command
     if args.llm_merge_resolver_timeout_seconds is not None:
@@ -77473,11 +76861,7 @@ def main(argv: list[str] | None = None) -> None:
 
     if use_database_daemon:
         from .native_owner_bootstrap import database_owner_bootstrap_kwargs
-        if native_startup_watchdog:
-            logger.info("Native owner startup stage: bootstrap starting")
         owner_bootstrap = database_owner_bootstrap_kwargs(args, program)
-        if native_startup_watchdog:
-            logger.info("Native owner startup stage: bootstrap attached")
         authority_mode = (
             program.authority_mode
             if program is not None
@@ -77516,8 +76900,6 @@ def main(argv: list[str] | None = None) -> None:
             **owner_bootstrap,
         )
         from ..runtime.native_dispatch_drain import from_native_admission
-        if native_startup_watchdog:
-            logger.info("Native owner startup stage: database daemon constructed")
         daemon._native_dispatch_control = from_native_admission(
             admission=_IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION,
             repo_root=REPO_ROOT,
@@ -77531,8 +76913,6 @@ def main(argv: list[str] | None = None) -> None:
                 _IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION
             ),
         )
-        if native_startup_watchdog:
-            logger.info("Native owner startup stage: portal execution bound")
     else:
         if args.state_owner_bootstrap_fd != -1 or args.state_owner_client_id:
             raise ValueError("native owner bootstrap cannot enter the legacy daemon")
@@ -77606,9 +76986,6 @@ def main(argv: list[str] | None = None) -> None:
             credentials=owner_bootstrap["state_owner_bootstrap_credentials"],
             state_dir=Path(args.state_dir), state_prefix=str(args.state_prefix),
         ).start()
-        if native_startup_watchdog:
-            logger.info("Native owner startup stage: live heartbeat published")
-            faulthandler.cancel_dump_traceback_later()
     handlers_installed = threading.current_thread() is threading.main_thread()
     previous_term: Any = None
     previous_int: Any = None

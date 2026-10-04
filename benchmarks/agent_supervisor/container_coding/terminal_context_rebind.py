@@ -16,7 +16,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission
 from ipfs_accelerate_py.agent_supervisor.runtime.code_retrieval_context import load_code_retrieval_context
 from ipfs_accelerate_py.agent_supervisor.runtime.semantic_context_runtime import load_semantic_worker_context
 from ipfs_accelerate_py.agent_supervisor.runtime.task_context_bundle import (
-    load_task_context_selection, write_task_context_bundle,
+    load_task_context_nomination, write_task_context_bundle,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import QuackStateServer
 from ipfs_accelerate_py.agent_supervisor.semantic_state.datasets_adapter import IpfsDatasetsSemanticStateProvider
@@ -52,9 +52,8 @@ def rebind_full_context(*, prepared_state: Path, admission: dict,
     if original.get("task_cid") != task_spec.task_cid:
         raise ValueError("original context belongs to another canonical task")
     bundle = original["context_bundle"]
-    selected_context = load_task_context_selection(repository=root, artifact=bundle["artifact"],
+    metadata = load_task_context_nomination(repository=root, artifact=bundle["artifact"],
         expected_sha256=bundle["sha256"], task_cid=task_spec.task_cid, task_id=task_spec.task_key)
-    metadata = dict(selected_context["metadata"])
 
     def source_contexts():
         semantic_text = load_semantic_worker_context(repository=root,
@@ -106,10 +105,6 @@ def rebind_full_context(*, prepared_state: Path, admission: dict,
     world = persist_intent_world_snapshot(capture, output=output / "world", task_id=task_spec.task_key)
     if source_contexts() != (semantic, retrieval):
         raise ValueError("source context changed during native world capture")
-    if load_task_context_selection(repository=root, artifact=bundle["artifact"],
-            expected_sha256=bundle["sha256"], task_cid=task_spec.task_cid,
-            task_id=task_spec.task_key) != selected_context:
-        raise ValueError("selected context changed during native world capture")
     with server._lock:
         if server.identity != identity:
             raise ValueError("native owner changed during capture persistence")
@@ -138,8 +133,6 @@ def rebind_full_context(*, prepared_state: Path, admission: dict,
         "new_embedding_calls": 0, "text_generation_calls": 0,
         "execution_authority": False, "completion_authority": False,
         "canonical_task_mutated": False, "seconds": time.monotonic() - started}
-    if "source384_context" in selected_context:
-        result["source384_context"] = selected_context["source384_context"]
     result["context_bundle"] = write_task_context_bundle(repository=root, prepared=[result],
         output=output / "context-bundle.json")
     prep._write(output / "result.json", result)

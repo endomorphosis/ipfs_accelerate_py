@@ -15,8 +15,6 @@ import json
 import math
 from pathlib import Path
 
-from benchmarks.agent_supervisor.container_coding.benchmark_controls import compare_controls
-
 BASELINE = "native-codex-harbor-baseline-receipt@1"
 SUPERVISOR = "terminal-full-supervisor-receipt@1"
 TOKENS = ("input_tokens", "cached_input_tokens", "output_tokens", "total_tokens")
@@ -27,7 +25,7 @@ EMBEDDING_COUNTERS = ("local_embedding_calls", "local_embedding_texts",
                       "remote_embedding_calls", "text_generation_calls")
 LABELS = {
     "native-codex": "Native Codex harness",
-    "no-index": "Supervisor: no indexed context",
+    "no-index": "Supervisor: same planner, no context bundle",
     "full": "Supervisor: full indexed context",
 }
 
@@ -411,8 +409,6 @@ def _aggregate(rows):
 def collect(*, baseline: Path, supervisors: list[Path]) -> dict:
     sources, rows, seen = [], [], {}
     profile = None
-    baseline_controls = None
-    baseline_integrity = None
     for index, path in enumerate([baseline, *supervisors]):
         path = Path(path).resolve(strict=True)
         raw = path.read_bytes()
@@ -423,8 +419,6 @@ def collect(*, baseline: Path, supervisors: list[Path]) -> dict:
         if receipt.get("schema") != expected:
             raise ValueError("comparison requires native baseline and supervisor receipts")
         if not index:
-            baseline_controls = receipt.get("comparison_controls")
-            baseline_integrity = _boolean(receipt.get("original_task_inputs_unchanged"))
             profile = tuple(
                 receipt.get(key) for key in ("task", "model", "reasoning_effort", "cli_version")
             )
@@ -448,29 +442,12 @@ def collect(*, baseline: Path, supervisors: list[Path]) -> dict:
             ):
                 raise ValueError("retained native trial identity required")
             row = _trial(receipt, trial, source=source)
-            row["reported_identity_matches"] = (
+            row["comparison_profile_matches"] = (
                 tuple(
                     receipt.get(key) for key in ("task", "model", "reasoning_effort", "cli_version")
                 )
                 == profile
             )
-            row["declared_controls_comparison"] = compare_controls(
-                baseline_controls, receipt.get("comparison_controls"))
-            row["comparison_profile_matches"] = row["declared_controls_comparison"]["matches"]
-            declared_identity = _mapping(_mapping(_mapping(receipt.get("comparison_controls")).get("declared")).get("identity"))
-            row["declaration_identity_matches_report"] = (
-                all(declared_identity.get(key) == receipt.get(key) for key in
-                    ("task", "model", "reasoning_effort", "cli_version")) if declared_identity else None)
-            if row["declaration_identity_matches_report"] is False:
-                row["comparison_profile_matches"] = False
-            if not row["reported_identity_matches"] or receipt.get("original_task_inputs_unchanged") is False:
-                row["comparison_profile_matches"] = False
-            if baseline_integrity is False:
-                row["comparison_profile_matches"] = False
-            elif row["comparison_profile_matches"] is True and (
-                baseline_integrity is not True or receipt.get("original_task_inputs_unchanged") is not True
-            ):
-                row["comparison_profile_matches"] = None
             identity = (row["arm"], row["task"], row["trial"])
             previous = seen.get(identity)
             if previous:
@@ -503,9 +480,6 @@ def collect(*, baseline: Path, supervisors: list[Path]) -> dict:
             if any(row["arm"] == arm for row in unsuccessful)
         },
         "benchmark_advantage_claimed": False,
-        "all_declared_controls_match": bool(rows) and all(
-            row["comparison_profile_matches"] is True for row in rows),
-        "runtime_control_enforcement_verified": False,
         "causal_claim": False,
         "unknown_fields_are_zero": False,
         "cached_tokens_are_already_in_input": True,
@@ -513,7 +487,7 @@ def collect(*, baseline: Path, supervisors: list[Path]) -> dict:
         "dollar_cost_basis": "reported provider cost only; Harbor estimates excluded",
         "notes": [
             "Every supplied retained trial is shown, including setup aborts and unsuccessful planning or coding.",
-            "No-index runs the native supervisor without an indexed context bundle; planning strategies may differ between workflows.",
+            "No-index uses the same supervisor planner and native task machinery, without a context bundle.",
             "Native task completion and the independent original verifier reward are separate outcomes.",
             "Known subtotals preserve observed failed-call costs when complete usage is unavailable.",
             "Interrupted sessions and legacy receipts without explicit native session completion evidence have unknown complete totals; their observed cumulative counters are lower bounds.",
@@ -522,7 +496,6 @@ def collect(*, baseline: Path, supervisors: list[Path]) -> dict:
             "Prepared context, reported wire measurements, and independently reconstructed model inputs are separate observations; bytes do not establish token savings.",
             "Native session cumulative totals are counted once; cached input is never added to input again.",
             "A single-task pilot does not establish efficiency, parallelism, or benchmark superiority.",
-            "Matching declarations cover task bytes, timeouts, retries, resources and concurrency; they do not establish runtime enforcement. Legacy preparations without frozen controls remain unknown.",
         ],
     }
 
@@ -563,13 +536,6 @@ def markdown(comparison: dict) -> str:
             row["outcome"],
         ]
         lines.append("| " + " | ".join(_cell(value) for value in values) + " |")
-    lines += ["", "Declared controls are checked separately from reported model identity. A match is a configuration comparison, not runtime enforcement or campaign qualification.", "",
-              "| Trial | Reported identity matches | Declared controls match | Differences |",
-              "|---|---|---|---|"]
-    for row in comparison["rows"]:
-        lines.append("| " + " | ".join(_cell(value) for value in (
-            row["trial"], row["reported_identity_matches"], row["comparison_profile_matches"],
-            ", ".join(row["declared_controls_comparison"]["differences"]))) + " |")
     lines += [
         "",
         "Unsuccessful attempt costs are retained separately. Values below are observed subtotals; unknown calls or counters can make the actual total larger.",
@@ -589,7 +555,7 @@ def markdown(comparison: dict) -> str:
         "",
         "Cached input is already included in input. Missing values remain unknown. Provider-reported dollar costs are unavailable when shown as null in JSON; estimated Harbor costs are excluded.",
         "",
-        "No-index runs the native supervisor without an indexed context bundle; planning strategies may differ between workflows. Setup, agent execution, and verification remain separate timings.",
+        "No-index retains the same planner and native supervisor, with no context bundle. Setup, agent execution, and verification remain separate timings.",
     ]
     supervised = [row for row in comparison["rows"] if row["native_completion_applicable"]]
     calls = [(row, call) for row in supervised for call in row["invocations"]]
