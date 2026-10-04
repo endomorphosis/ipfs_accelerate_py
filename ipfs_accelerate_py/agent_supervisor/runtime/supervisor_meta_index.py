@@ -12,15 +12,21 @@ from __future__ import annotations
 
 import json
 import os
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from threading import get_ident
 from typing import Any, Mapping, Sequence
 
 SCHEMA = "ipfs_accelerate_py/supervisor-meta-index@1"
 INTERFACE = "SupervisorMetaIndex@1"
 ENV_DUCKDB = "IPFS_ACCELERATE_META_INDEX_DUCKDB"
 ENV_DUCKLAKE = "IPFS_ACCELERATE_META_INDEX_DUCKLAKE"
+_PUBLIC_REPLAY_OWNER: ContextVar[tuple[int, int] | None] = ContextVar(
+    "supervisor_meta_public_replay_owner", default=None
+)
 
 CATALOG_KINDS = frozenset(
     {
@@ -976,7 +982,24 @@ class SupervisorMetaIndex:
         }
 
 
+@contextmanager
+def public_replay_without_metadata():
+    """Keep public native replay from opening a configured metadata owner.
+
+    Tokens preserve nested scopes and reset after errors. Thread binding also
+    isolates explicitly copied contexts; PID binding prevents a forked child
+    from inheriting its parent's suppression of ordinary owner activation.
+    """
+    token = _PUBLIC_REPLAY_OWNER.set((os.getpid(), get_ident()))
+    try:
+        yield
+    finally:
+        _PUBLIC_REPLAY_OWNER.reset(token)
+
+
 def _active() -> SupervisorMetaIndex | None:
+    if _PUBLIC_REPLAY_OWNER.get() == (os.getpid(), get_ident()):
+        return None
     return SupervisorMetaIndex.from_env()
 
 
