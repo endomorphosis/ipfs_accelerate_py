@@ -66,10 +66,7 @@ def _evidence() -> GroundingEvidence:
 def _plan() -> VoiceResponsePlan:
     return VoiceResponsePlan(
         template_id="food-help-v2",
-        template=(
-            "{program} can help. Call {phone}. "
-            "[source](ipfs://bafy-food-current) [1]"
-        ),
+        template=("{program} can help. Call {phone}. [source](ipfs://bafy-food-current) [1]"),
         slots=(
             GroundedSlot("program", "Community Food Network", ("food-current",)),
             GroundedSlot("phone", "503-555-0111", ("food-current",)),
@@ -121,9 +118,10 @@ def test_prompt_parts_are_canonical_and_do_not_mutate_caller_data() -> None:
 
 
 def test_spoken_normalization_removes_citations_but_keeps_human_text() -> None:
-    assert normalize_spoken_text(
-        "Call 211 [1]. [source](https://example.test/a) ipfs://bafy"
-    ) == "Call 211."
+    assert (
+        normalize_spoken_text("Call 211 [1]. [source](https://example.test/a) ipfs://bafy")
+        == "Call 211."
+    )
     with pytest.raises(VoiceGroundingValidationError):
         normalize_spoken_text("[source](https://example.test/only)")
 
@@ -146,9 +144,7 @@ def test_full_router_turn_is_stt_retrieval_rendering_tts_and_provenance() -> Non
     )
 
     assert result.status == "completed"
-    assert result.response_text == (
-        "Community Food Network can help. Call 503-555-0111."
-    )
+    assert result.response_text == ("Community Food Network can help. Call 503-555-0111.")
     assert result.audio == b"RIFF-fake-abby"
     assert [trace.stage for trace in result.traces] == [
         "transcription",

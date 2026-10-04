@@ -30,9 +30,7 @@ def _read_duckdb(path: Path, max_records: int) -> Any:
     connection = None
     try:
         connection = duckdb.connect(str(path), read_only=True)
-        cursor = connection.execute(
-            "SELECT * FROM model_metadata LIMIT ?", [max_records + 1]
-        )
+        cursor = connection.execute("SELECT * FROM model_metadata LIMIT ?", [max_records + 1])
         columns = tuple(item[0] for item in cursor.description)
         rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
     except Exception as exc:

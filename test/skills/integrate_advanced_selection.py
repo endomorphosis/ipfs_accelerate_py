@@ -23,11 +23,12 @@ from pathlib import Path
 from datetime import datetime
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 # Constants
 CURRENT_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
+
 
 def load_module_from_path(module_name, file_path):
     """Dynamically load a module from a file path."""
@@ -40,38 +41,41 @@ def load_module_from_path(module_name, file_path):
         logger.error(f"Error loading module {module_name} from {file_path}: {e}")
         return None
 
+
 def update_generator_with_advanced_selection():
     """Update the test generator to use advanced model selection."""
     generator_file = CURRENT_DIR / "test_generator_fixed.py"
-    
+
     try:
-        with open(generator_file, 'r') as f:
+        with open(generator_file, "r") as f:
             generator_code = f.read()
-        
+
         # Check if advanced integration already exists
         if "from advanced_model_selection import" in generator_code:
             logger.info("Advanced model selection integration already exists in test generator")
             return True
-        
+
         # Find the existing get_model_from_registry function
         func_start = generator_code.find("def get_model_from_registry(model_type):")
         if func_start == -1:
             logger.error("Could not find get_model_from_registry function in generator code")
             return False
-        
+
         # Find the end of the function
-        func_end = generator_code.find("# Forward declarations for indentation fixing functions", func_start)
+        func_end = generator_code.find(
+            "# Forward declarations for indentation fixing functions", func_start
+        )
         if func_end == -1:
             # Fallback: find the next function
             func_end = generator_code.find("def ", func_start + 10)
             # If still not found, assume it ends before the next major section
             if func_end == -1:
                 func_end = generator_code.find("# Constants", func_start)
-        
+
         if func_end == -1:
             logger.error("Could not determine end of get_model_from_registry function")
             return False
-        
+
         # Create the enhanced function with advanced model selection
         enhanced_function = """
 # Advanced model selection integration
@@ -127,10 +131,10 @@ def get_model_from_registry(model_type, task=None, hardware_profile=None, max_si
     # For unknown models, use a heuristic approach
     return f"{model_type}-base" if "-base" not in model_type else model_type
 """
-        
+
         # Replace the existing function with the enhanced version
         updated_code = generator_code[:func_start] + enhanced_function + generator_code[func_end:]
-        
+
         # Update the argument parser to accept advanced options
         main_func_start = updated_code.find("def main():")
         if main_func_start != -1:
@@ -147,20 +151,26 @@ def get_model_from_registry(model_type, task=None, hardware_profile=None, max_si
     parser.add_argument("--max-size", type=int, help="Maximum model size in MB")
     parser.add_argument("--framework", type=str, help="Framework compatibility")
 """
-                    updated_code = updated_code[:add_args_end] + advanced_args + updated_code[add_args_end:]
+                    updated_code = (
+                        updated_code[:add_args_end] + advanced_args + updated_code[add_args_end:]
+                    )
                     logger.info("Added advanced command-line options to main function")
                 else:
-                    logger.warning("Could not find parser.parse_args() call, skipping advanced args")
+                    logger.warning(
+                        "Could not find parser.parse_args() call, skipping advanced args"
+                    )
             else:
                 logger.warning("Could not find argument parser setup, skipping advanced args")
         else:
             logger.warning("Could not find main function, skipping advanced args")
-        
+
         # Update the generate_test_file function to use advanced options
-        generate_func = updated_code.find("def generate_test_file(model_family, output_dir=\".\"):")
+        generate_func = updated_code.find('def generate_test_file(model_family, output_dir="."):')
         if generate_func != -1:
             # Find the call to get_model_from_registry
-            model_lookup = updated_code.find("default_model = get_model_from_registry(model_family)", generate_func)
+            model_lookup = updated_code.find(
+                "default_model = get_model_from_registry(model_family)", generate_func
+            )
             if model_lookup != -1:
                 # Replace with the enhanced version that passes task/hardware args
                 enhanced_lookup = """    # Get default model with advanced options from args if available
@@ -178,32 +188,32 @@ def get_model_from_registry(model_type, task=None, hardware_profile=None, max_si
         )
     else:
         default_model = get_model_from_registry(model_family)"""
-                
+
                 updated_code = updated_code.replace(
-                    "default_model = get_model_from_registry(model_family)",
-                    enhanced_lookup
+                    "default_model = get_model_from_registry(model_family)", enhanced_lookup
                 )
                 logger.info("Updated generate_test_file function to use advanced options")
             else:
                 logger.warning("Could not find get_model_from_registry call in generate_test_file")
         else:
             logger.warning("Could not find generate_test_file function")
-        
+
         # Write the updated code back
-        with open(generator_file, 'w') as f:
+        with open(generator_file, "w") as f:
             f.write(updated_code)
-        
+
         logger.info(f"Updated {generator_file} with advanced model selection")
         return True
-        
+
     except Exception as e:
         logger.error(f"Error updating generator with advanced selection: {e}")
         return False
 
+
 def update_test_script():
     """Create a script to test the advanced features."""
     test_script_file = CURRENT_DIR / "test_model_lookup_advanced.py"
-    
+
     try:
         # Create a simple test script
         script_content = """#!/usr/bin/env python3
@@ -338,33 +348,36 @@ def main():
 if __name__ == "__main__":
     sys.exit(main())
 """
-        
-        with open(test_script_file, 'w') as f:
+
+        with open(test_script_file, "w") as f:
             f.write(script_content)
-        
+
         # Make the script executable
         os.chmod(test_script_file, 0o755)
-        
+
         logger.info(f"Created test script: {test_script_file}")
         return True
-        
+
     except Exception as e:
         logger.error(f"Error creating test script: {e}")
         return False
 
+
 def update_advanced_selection_with_lookup():
     """Update advanced_model_selection.py to better integrate with find_models.py."""
     advanced_selection_file = CURRENT_DIR / "advanced_model_selection.py"
-    
+
     try:
-        with open(advanced_selection_file, 'r') as f:
+        with open(advanced_selection_file, "r") as f:
             advanced_code = f.read()
-        
+
         # Check if integration already exists
         if "from find_models import get_recommended_default_model" in advanced_code:
-            logger.info("Integration with find_models.py already exists in advanced_model_selection.py")
+            logger.info(
+                "Integration with find_models.py already exists in advanced_model_selection.py"
+            )
             return True
-        
+
         # Create the integration code
         integration_code = """
 # Integration with find_models.py
@@ -377,17 +390,21 @@ except ImportError:
     logger.warning("find_models.py not available, using built-in API query")
     find_models_query = None
 """
-        
+
         # Insert the integration after imports
         imports_end = advanced_code.find("# Configure logging")
         if imports_end != -1:
-            updated_code = advanced_code[:imports_end] + integration_code + advanced_code[imports_end:]
-            
+            updated_code = (
+                advanced_code[:imports_end] + integration_code + advanced_code[imports_end:]
+            )
+
             # Update query_huggingface_api to leverage find_models.py if available
-            query_func_start = updated_code.find("def query_huggingface_api(model_type, limit=10, task=None, size_mb=None, framework=None):")
+            query_func_start = updated_code.find(
+                "def query_huggingface_api(model_type, limit=10, task=None, size_mb=None, framework=None):"
+            )
             if query_func_start != -1:
                 query_func_end = updated_code.find("def ", query_func_start + 10)
-                
+
                 # Create enhanced query function
                 enhanced_query = """def query_huggingface_api(model_type, limit=10, task=None, size_mb=None, framework=None):
     \"\"\"Query the HuggingFace API for models with advanced filtering.\"\"\"
@@ -491,20 +508,30 @@ def task_matches_model(model, task):
     
     return False
 """
-                
+
                 # Replace the existing function with the enhanced version
                 if query_func_end != -1:
-                    updated_code = updated_code[:query_func_start] + enhanced_query + updated_code[query_func_end:]
+                    updated_code = (
+                        updated_code[:query_func_start]
+                        + enhanced_query
+                        + updated_code[query_func_end:]
+                    )
                 else:
                     # Find the next section if function end not found
-                    next_section = updated_code.find("def estimate_model_size(model_info):", query_func_start)
+                    next_section = updated_code.find(
+                        "def estimate_model_size(model_info):", query_func_start
+                    )
                     if next_section != -1:
-                        updated_code = updated_code[:query_func_start] + enhanced_query + updated_code[next_section:]
-                
+                        updated_code = (
+                            updated_code[:query_func_start]
+                            + enhanced_query
+                            + updated_code[next_section:]
+                        )
+
                 # Write the updated code back
-                with open(advanced_selection_file, 'w') as f:
+                with open(advanced_selection_file, "w") as f:
                     f.write(updated_code)
-                
+
                 logger.info(f"Updated {advanced_selection_file} with find_models.py integration")
                 return True
             else:
@@ -513,15 +540,16 @@ def task_matches_model(model, task):
         else:
             logger.error("Could not find appropriate insertion point for imports")
             return False
-            
+
     except Exception as e:
         logger.error(f"Error updating advanced_model_selection.py: {e}")
         return False
 
+
 def create_github_workflow():
     """Create a GitHub Actions workflow for model registry updates."""
     workflow_file = CURRENT_DIR / "github-workflow-model-lookup.yml"
-    
+
     try:
         workflow_content = """name: Update Model Registry
 
@@ -642,21 +670,22 @@ jobs:
           path: test/skills/test_output/
           retention-days: 7
 """
-        
-        with open(workflow_file, 'w') as f:
+
+        with open(workflow_file, "w") as f:
             f.write(workflow_content)
-        
+
         logger.info(f"Created GitHub Actions workflow: {workflow_file}")
         return True
-        
+
     except Exception as e:
         logger.error(f"Error creating GitHub Actions workflow: {e}")
         return False
 
+
 def create_documentation():
     """Create documentation for the advanced model selection system."""
     docs_file = CURRENT_DIR / "MODEL_LOOKUP_ADVANCED_README.md"
-    
+
     try:
         docs_content = """# Advanced Model Selection for HuggingFace Test Generator
 
@@ -828,59 +857,65 @@ When developing the system:
 2. Verify integration with `python test_model_lookup_advanced.py`
 3. Update documentation when adding new features
 """
-        
-        with open(docs_file, 'w') as f:
+
+        with open(docs_file, "w") as f:
             f.write(docs_content)
-        
+
         logger.info(f"Created documentation: {docs_file}")
         return True
-        
+
     except Exception as e:
         logger.error(f"Error creating documentation: {e}")
         return False
 
+
 def main():
     """Main entry point."""
-    parser = argparse.ArgumentParser(description="Integrate advanced model selection with test generator")
+    parser = argparse.ArgumentParser(
+        description="Integrate advanced model selection with test generator"
+    )
     parser.add_argument("--dry-run", action="store_true", help="Show changes without applying them")
-    
+
     args = parser.parse_args()
-    
+
     if args.dry_run:
         logger.info("Running in dry-run mode, no changes will be applied")
-    
+
     # Update advanced_model_selection.py to integrate with find_models.py
     if not args.dry_run:
         success = update_advanced_selection_with_lookup()
         if not success:
-            logger.error("Failed to update advanced_model_selection.py with find_models.py integration")
-    
+            logger.error(
+                "Failed to update advanced_model_selection.py with find_models.py integration"
+            )
+
     # Update test_generator_fixed.py to use advanced model selection
     if not args.dry_run:
         success = update_generator_with_advanced_selection()
         if not success:
             logger.error("Failed to update test_generator_fixed.py with advanced model selection")
-    
+
     # Create test script
     if not args.dry_run:
         success = update_test_script()
         if not success:
             logger.error("Failed to create test script")
-    
+
     # Create GitHub workflow
     if not args.dry_run:
         success = create_github_workflow()
         if not success:
             logger.error("Failed to create GitHub workflow")
-    
+
     # Create documentation
     if not args.dry_run:
         success = create_documentation()
         if not success:
             logger.error("Failed to create documentation")
-    
+
     logger.info("Integration completed successfully")
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

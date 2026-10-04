@@ -78,15 +78,16 @@ import torch
 import numpy as np
 from transformers import VideoLlavaForConditionalGeneration, VideoLlavaProcessor
 
+
 def read_video_pyav(container, indices):
-    '''
+    """
     Decode the video with PyAV decoder.
     Args:
         container (`av.container.input.InputContainer`): PyAV container.
         indices (`List[int]`): List of frame indices to decode.
     Returns:
         result (np.ndarray): np array of decoded frames of shape (num_frames, height, width, 3).
-    '''
+    """
     frames = []
     container.seek(0)
     start_index = indices[0]
@@ -98,12 +99,17 @@ def read_video_pyav(container, indices):
             frames.append(frame)
     return np.stack([x.to_ndarray(format="rgb24") for x in frames])
 
+
 # Load the model in half-precision
-model = VideoLlavaForConditionalGeneration.from_pretrained("LanguageBind/Video-LLaVA-7B-hf", torch_dtype=torch.float16, device_map="auto")
+model = VideoLlavaForConditionalGeneration.from_pretrained(
+    "LanguageBind/Video-LLaVA-7B-hf", torch_dtype=torch.float16, device_map="auto"
+)
 processor = VideoLlavaProcessor.from_pretrained("LanguageBind/Video-LLaVA-7B-hf")
 
 # Load the video as an np.arrau, sampling uniformly 8 frames
-video_path = hf_hub_download(repo_id="raushan-testing-hf/videos-test", filename="sample_demo_1.mp4", repo_type="dataset")
+video_path = hf_hub_download(
+    repo_id="raushan-testing-hf/videos-test", filename="sample_demo_1.mp4", repo_type="dataset"
+)
 container = av.open(video_path)
 total_frames = container.streams.video[0].frames
 indices = np.arange(0, total_frames, total_frames / 8).astype(int)
@@ -142,7 +148,6 @@ inputs = processor(text=prompt, images=image, videos=clip, padding=True, return_
 # Generate
 generate_ids = model.generate(**inputs, max_length=50)
 processor.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True)
-
 ```
 
 ## Model optimization
@@ -174,7 +179,9 @@ quantization_config = BitsAndBytesConfig(
     bnb_4bit_compute_dtype=torch.float16,
 )
 
-model = VideoLlavaForConditionalGeneration.from_pretrained("LanguageBind/Video-LLaVA-7B-hf", quantization_config=quantization_config, device_map="auto")
+model = VideoLlavaForConditionalGeneration.from_pretrained(
+    "LanguageBind/Video-LLaVA-7B-hf", quantization_config=quantization_config, device_map="auto"
+)
 ```
 
 
@@ -196,8 +203,8 @@ To load and run a model using Flash Attention-2, simply add `attn_implementation
 from transformers import VideoLlavaForConditionalGeneration
 
 model = VideoLlavaForConditionalGeneration.from_pretrained(
-    "LanguageBind/Video-LLaVA-7B-hf", 
-    torch_dtype=torch.float16, 
+    "LanguageBind/Video-LLaVA-7B-hf",
+    torch_dtype=torch.float16,
     attn_implementation="flash_attention_2",
 ).to(0)
 ```

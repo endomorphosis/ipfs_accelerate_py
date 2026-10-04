@@ -60,9 +60,7 @@ PROOF_CARRYING_DECISION_SCHEMA: Final = (
 PROOF_CARRYING_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/proof-carrying-evidence@1"
 )
-PROOF_CARRYING_RESULT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/proof-carrying-result@1"
-)
+PROOF_CARRYING_RESULT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/proof-carrying-result@1"
 DEFAULT_STATE_FILENAME: Final = "proof_carrying_workflow.json"
 DEFAULT_DATABASE_FILENAME: Final = "proof_carrying_workflow.duckdb"
 _UNKNOWN_SCOPE: Final = "scope:unknown"
@@ -215,9 +213,7 @@ def _canonical_json(value: Any) -> str:
 
 
 def _digest(value: Any) -> str:
-    return "sha256:" + hashlib.sha256(
-        _canonical_json(value).encode("utf-8")
-    ).hexdigest()
+    return "sha256:" + hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
 
 
 def _strict_mapping(value: Any, *, field_name: str) -> dict[str, Any]:
@@ -226,9 +222,7 @@ def _strict_mapping(value: Any, *, field_name: str) -> dict[str, Any]:
     try:
         decoded = json.loads(_canonical_json(value))
     except (TypeError, ValueError) as exc:
-        raise WorkflowConfigurationError(
-            f"{field_name} must contain strict JSON values"
-        ) from exc
+        raise WorkflowConfigurationError(f"{field_name} must contain strict JSON values") from exc
     if not isinstance(decoded, dict):
         raise WorkflowConfigurationError(f"{field_name} must be an object")
     return decoded
@@ -243,9 +237,7 @@ def _private_field_path(value: Any, path: str = "$") -> str:
             nested = _private_field_path(item, f"{path}.{key}")
             if nested:
                 return nested
-    elif isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         for index, item in enumerate(value):
             nested = _private_field_path(item, f"{path}[{index}]")
             if nested:
@@ -262,15 +254,7 @@ def _strings(value: Any) -> tuple[str, ...]:
         values = value
     else:
         values = (value,)
-    return tuple(
-        sorted(
-            {
-                str(item).strip()
-                for item in values
-                if str(item).strip()
-            }
-        )
-    )
+    return tuple(sorted({str(item).strip() for item in values if str(item).strip()}))
 
 
 def _assurance(value: Any) -> AssuranceLevel:
@@ -304,9 +288,7 @@ class ProofCarryingPlannerConfig:
             isinstance(self.max_model_context_bytes, bool)
             or self.max_model_context_bytes < 4 * 1024
         ):
-            raise WorkflowConfigurationError(
-                "max_model_context_bytes must be at least 4096"
-            )
+            raise WorkflowConfigurationError("max_model_context_bytes must be at least 4096")
         object.__setattr__(
             self,
             "required_plan_assurance",
@@ -345,9 +327,7 @@ class ProofCarryingPlannerConfig:
         return cls(
             max_workers=payload.get("max_workers", 4),
             maximum_repairs=payload.get("maximum_repairs", 2),
-            max_model_context_bytes=payload.get(
-                "max_model_context_bytes", 256 * 1024
-            ),
+            max_model_context_bytes=payload.get("max_model_context_bytes", 256 * 1024),
             required_plan_assurance=payload.get(
                 "required_plan_assurance", AssuranceLevel.CANDIDATE
             ),
@@ -356,9 +336,7 @@ class ProofCarryingPlannerConfig:
             allow_test_fallback=payload.get("allow_test_fallback", True),
             enable_zkp=payload.get("enable_zkp", True),
             enabled_lanes=tuple(payload.get("enabled_lanes") or tuple(ProverLane)),
-            validation_bounds=ValidationBounds.from_dict(
-                payload.get("validation_bounds") or {}
-            ),
+            validation_bounds=ValidationBounds.from_dict(payload.get("validation_bounds") or {}),
         )
 
 
@@ -394,9 +372,7 @@ class ChangedScope:
             payload = {**payload, **nested}
         return cls(
             paths=_strings(
-                payload.get("changed_paths")
-                or payload.get("paths")
-                or payload.get("allowed_paths")
+                payload.get("changed_paths") or payload.get("paths") or payload.get("allowed_paths")
             ),
             ast_scope_ids=_strings(
                 payload.get("changed_ast_scope_ids")
@@ -405,8 +381,7 @@ class ChangedScope:
                 or payload.get("symbols")
             ),
             shared_resources=_strings(
-                payload.get("shared_resources")
-                or payload.get("exclusive_resources")
+                payload.get("shared_resources") or payload.get("exclusive_resources")
             ),
         )
 
@@ -428,12 +403,8 @@ class WorkflowEvidence:
         object.__setattr__(self, "role", EvidenceRole(self.role))
         object.__setattr__(self, "verdict", EvidenceVerdict(self.verdict))
         object.__setattr__(self, "assurance", _assurance(self.assurance))
-        object.__setattr__(
-            self, "authoritative_for", _strings(self.authoritative_for)
-        )
-        object.__setattr__(
-            self, "artifact", _strict_mapping(self.artifact, field_name="artifact")
-        )
+        object.__setattr__(self, "authoritative_for", _strings(self.authoritative_for))
+        object.__setattr__(self, "artifact", _strict_mapping(self.artifact, field_name="artifact"))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -523,12 +494,8 @@ class WorkflowNode:
         object.__setattr__(self, "status", WorkflowNodeStatus(self.status))
         object.__setattr__(self, "depends_on", _strings(self.depends_on))
         object.__setattr__(self, "scopes", _strings(self.scopes))
-        object.__setattr__(
-            self, "shared_resources", _strings(self.shared_resources)
-        )
-        object.__setattr__(
-            self, "output", _strict_mapping(self.output, field_name="node output")
-        )
+        object.__setattr__(self, "shared_resources", _strings(self.shared_resources))
+        object.__setattr__(self, "output", _strict_mapping(self.output, field_name="node output"))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -674,9 +641,7 @@ class _PairedWorkflowStore:
             self.root = supplied
             self.json_path = supplied / DEFAULT_STATE_FILENAME
         self.duckdb_path = self.json_path.with_name(DEFAULT_DATABASE_FILENAME)
-        self.lock_path = self.json_path.with_name(
-            f".{self.json_path.name}.workflow.lock"
-        )
+        self.lock_path = self.json_path.with_name(f".{self.json_path.name}.workflow.lock")
         self.root.mkdir(parents=True, exist_ok=True)
         self._thread_lock = threading.RLock()
 
@@ -713,13 +678,16 @@ class _PairedWorkflowStore:
 
     def write(self, state: Mapping[str, Any]) -> dict[str, Any]:
         projected = self._with_digest(state)
-        encoded = json.dumps(
-            projected,
-            sort_keys=True,
-            indent=2,
-            ensure_ascii=False,
-            allow_nan=False,
-        ) + "\n"
+        encoded = (
+            json.dumps(
+                projected,
+                sort_keys=True,
+                indent=2,
+                ensure_ascii=False,
+                allow_nan=False,
+            )
+            + "\n"
+        )
         try:
             import duckdb  # type: ignore
         except ImportError as exc:  # pragma: no cover - dependency is tested elsewhere
@@ -814,9 +782,7 @@ class _PairedWorkflowStore:
 
     def read(self) -> dict[str, Any]:
         if not self.json_path.is_file() or not self.duckdb_path.is_file():
-            raise WorkflowPersistenceError(
-                "both JSON and DuckDB workflow artifacts are required"
-            )
+            raise WorkflowPersistenceError("both JSON and DuckDB workflow artifacts are required")
         try:
             import duckdb  # type: ignore
         except ImportError as exc:  # pragma: no cover
@@ -829,8 +795,7 @@ class _PairedWorkflowStore:
                 connection = duckdb.connect(str(self.duckdb_path), read_only=True)
                 try:
                     row = connection.execute(
-                        "SELECT artifact_digest, snapshot_json "
-                        "FROM workflow_snapshot"
+                        "SELECT artifact_digest, snapshot_json FROM workflow_snapshot"
                     ).fetchone()
                     decision_rows = connection.execute(
                         "SELECT decision_json FROM workflow_decisions ORDER BY sequence"
@@ -856,16 +821,10 @@ class _PairedWorkflowStore:
             or claimed != str(row[0])
             or _canonical_json(json_state) != _canonical_json(database_state)
         ):
-            raise WorkflowPersistenceError(
-                "JSON and DuckDB workflow projections disagree"
-            )
+            raise WorkflowPersistenceError("JSON and DuckDB workflow projections disagree")
         decisions = [json.loads(item[0]) for item in decision_rows]
-        if _canonical_json(decisions) != _canonical_json(
-            json_state.get("decisions") or []
-        ):
-            raise WorkflowPersistenceError(
-                "JSON and DuckDB decision projections disagree"
-            )
+        if _canonical_json(decisions) != _canonical_json(json_state.get("decisions") or []):
+            raise WorkflowPersistenceError("JSON and DuckDB decision projections disagree")
         return json_state
 
 
@@ -890,14 +849,10 @@ class ProofCarryingPlanner:
         scope_verifier: Callable[[Mapping[str, Any]], Any] | None = None,
     ) -> None:
         if artifact_path is not None and state_path is not None:
-            raise WorkflowConfigurationError(
-                "provide artifact_path or state_path, not both"
-            )
+            raise WorkflowConfigurationError("provide artifact_path or state_path, not both")
         durable_path = artifact_path if artifact_path is not None else state_path
         if durable_path is None:
-            raise WorkflowConfigurationError(
-                "artifact_path or state_path is required"
-            )
+            raise WorkflowConfigurationError("artifact_path or state_path is required")
         self.store = _PairedWorkflowStore(durable_path)
         supplied_config = config or ProofCarryingPlannerConfig()
         self.config = (
@@ -915,9 +870,7 @@ class ProofCarryingPlanner:
             scope_verify=scope_verifier or base.scope_verify,
         )
         self.compiler = compiler or FormalPlanCompiler()
-        self.validator = validator or FormalPlanValidator(
-            self.config.validation_bounds
-        )
+        self.validator = validator or FormalPlanValidator(self.config.validation_bounds)
         if source is None:
             if not self.store.exists():
                 raise WorkflowConfigurationError(
@@ -927,14 +880,10 @@ class ProofCarryingPlanner:
             self.source = _strict_mapping(
                 persisted.get("source") or {}, field_name="persisted source"
             )
-            persisted_config = ProofCarryingPlannerConfig.from_dict(
-                persisted.get("config") or {}
-            )
+            persisted_config = ProofCarryingPlannerConfig.from_dict(persisted.get("config") or {})
             if config is None:
                 self.config = persisted_config
-                self.validator = validator or FormalPlanValidator(
-                    self.config.validation_bounds
-                )
+                self.validator = validator or FormalPlanValidator(self.config.validation_bounds)
             elif self.config.to_dict() != persisted_config.to_dict():
                 raise WorkflowConfigurationError(
                     "restart config does not match persisted workflow config"
@@ -976,17 +925,11 @@ class ProofCarryingPlanner:
             status=WorkflowStatus(state["status"]),
             source=state["source"],
             config=ProofCarryingPlannerConfig.from_dict(state["config"]),
-            nodes=tuple(
-                WorkflowNode.from_dict(item) for item in state.get("nodes", [])
-            ),
+            nodes=tuple(WorkflowNode.from_dict(item) for item in state.get("nodes", [])),
             decisions=tuple(
-                WorkflowDecision.from_dict(item)
-                for item in state.get("decisions", [])
+                WorkflowDecision.from_dict(item) for item in state.get("decisions", [])
             ),
-            evidence=tuple(
-                WorkflowEvidence.from_dict(item)
-                for item in state.get("evidence", [])
-            ),
+            evidence=tuple(WorkflowEvidence.from_dict(item) for item in state.get("evidence", [])),
             artifact_digest=str(state["artifact_digest"]),
             json_path=store.json_path,
             duckdb_path=store.duckdb_path,
@@ -1111,9 +1054,7 @@ class ProofCarryingPlanner:
         increment_attempt: bool = False,
     ) -> WorkflowNode:
         nodes = self._state.setdefault("nodes", [])
-        existing = next(
-            (item for item in nodes if item.get("node_id") == spec.node_id), None
-        )
+        existing = next((item for item in nodes if item.get("node_id") == spec.node_id), None)
         if (
             existing is not None
             and status is WorkflowNodeStatus.PENDING
@@ -1157,11 +1098,7 @@ class ProofCarryingPlanner:
         return record
 
     def _node(self, node_id: str) -> WorkflowNode:
-        item = next(
-            value
-            for value in self._state.get("nodes", [])
-            if value["node_id"] == node_id
-        )
+        item = next(value for value in self._state.get("nodes", []) if value["node_id"] == node_id)
         return WorkflowNode.from_dict(item)
 
     def _add_evidence(
@@ -1218,14 +1155,12 @@ class ProofCarryingPlanner:
             result = _strict_mapping(value.to_dict(), field_name="adapter output")
         else:
             raise TypeError(
-                "workflow adapters must return a mapping, boolean, "
-                "to_dict object, or None"
+                "workflow adapters must return a mapping, boolean, to_dict object, or None"
             )
         private_path = _private_field_path(result)
         if private_path:
             raise WorkflowConfigurationError(
-                "adapter output contains backend-private material at "
-                f"{private_path}"
+                f"adapter output contains backend-private material at {private_path}"
             )
         return result
 
@@ -1235,10 +1170,7 @@ class ProofCarryingPlanner:
         if isinstance(explicit, bool):
             return explicit
         status = str(
-            output.get("status")
-            or output.get("verdict")
-            or output.get("outcome")
-            or ""
+            output.get("status") or output.get("verdict") or output.get("outcome") or ""
         ).lower()
         return status in {
             "accepted",
@@ -1272,19 +1204,13 @@ class ProofCarryingPlanner:
                     "recompiled plan identity differs from persisted plan"
                 )
             return True
-        self._upsert_node(
-            spec, WorkflowNodeStatus.RUNNING, increment_attempt=True
-        )
+        self._upsert_node(spec, WorkflowNodeStatus.RUNNING, increment_attempt=True)
         self._persist()
         accepted = (
             self._compilation.status is CompilationStatus.COMPILED
             and self._compilation.plan is not None
         )
-        status = (
-            WorkflowNodeStatus.ACCEPTED
-            if accepted
-            else WorkflowNodeStatus.REJECTED
-        )
+        status = WorkflowNodeStatus.ACCEPTED if accepted else WorkflowNodeStatus.REJECTED
         output = self._compilation.to_dict()
         self._state["compilation"] = output
         self._state["plan_id"] = self._compilation.plan_id
@@ -1332,9 +1258,7 @@ class ProofCarryingPlanner:
                 or metadata.get("changed_ast_scope_ids")
             ),
             "shared_resources": (
-                record.get("shared_resources")
-                or record.get("exclusive_resources")
-                or ()
+                record.get("shared_resources") or record.get("exclusive_resources") or ()
             ),
         }
         return ChangedScope.from_mapping(combined)
@@ -1391,7 +1315,8 @@ class ProofCarryingPlanner:
         kernel_dependencies = tuple(
             spec.node_id
             for spec in proof_specs
-            if spec.kind in {
+            if spec.kind
+            in {
                 WorkflowNodeKind.LEAN_KERNEL,
                 WorkflowNodeKind.COQ_KERNEL,
             }
@@ -1403,9 +1328,7 @@ class ProofCarryingPlanner:
                     WorkflowNodeKind.ZKP_ATTESTATION,
                     depends_on=kernel_dependencies or ("plan:compile",),
                     lane=ProverLane.ZKP.value,
-                    scope=ChangedScope(
-                        shared_resources=("resource:cryptographic-prover",)
-                    ),
+                    scope=ChangedScope(shared_resources=("resource:cryptographic-prover",)),
                 )
             )
         for spec in proof_specs:
@@ -1413,17 +1336,14 @@ class ProofCarryingPlanner:
             self._upsert_node(spec)
 
         merge_by_task = {
-            task.task_id: f"task:{task.task_id}:merge"
-            for task in self._compilation.plan.tasks
+            task.task_id: f"task:{task.task_id}:merge" for task in self._compilation.plan.tasks
         }
         for task in self._compilation.plan.tasks:
             scope = self._task_scope(task)
             implementation_id = f"task:{task.task_id}:implement"
             scope_id = f"task:{task.task_id}:scope"
             merge_id = merge_by_task[task.task_id]
-            dependencies = ("plan:verify",) + tuple(
-                merge_by_task[item] for item in task.depends_on
-            )
+            dependencies = ("plan:verify",) + tuple(merge_by_task[item] for item in task.depends_on)
             specs = (
                 _NodeSpec(
                     implementation_id,
@@ -1480,9 +1400,7 @@ class ProofCarryingPlanner:
 
     def _formal_task(self, task_id: str) -> Any:
         assert self._compilation is not None and self._compilation.plan is not None
-        return next(
-            item for item in self._compilation.plan.tasks if item.task_id == task_id
-        )
+        return next(item for item in self._compilation.plan.tasks if item.task_id == task_id)
 
     @staticmethod
     def _compact_context_value(
@@ -1502,9 +1420,9 @@ class ProofCarryingPlanner:
             if len(encoded) <= max_string_bytes:
                 return value
             suffix = "...<truncated>"
-            kept = encoded[
-                : max(0, max_string_bytes - len(suffix.encode("utf-8")))
-            ].decode("utf-8", errors="ignore")
+            kept = encoded[: max(0, max_string_bytes - len(suffix.encode("utf-8")))].decode(
+                "utf-8", errors="ignore"
+            )
             return kept + suffix
         if isinstance(value, Mapping):
             return {
@@ -1513,13 +1431,9 @@ class ProofCarryingPlanner:
                     depth=depth + 1,
                     max_string_bytes=max_string_bytes,
                 )
-                for key, item in sorted(
-                    value.items(), key=lambda pair: str(pair[0])
-                )[:128]
+                for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))[:128]
             }
-        if isinstance(value, Sequence) and not isinstance(
-            value, (str, bytes, bytearray)
-        ):
+        if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
             return [
                 ProofCarryingPlanner._compact_context_value(
                     item,
@@ -1579,11 +1493,7 @@ class ProofCarryingPlanner:
                 bounded["dependencies"] = {
                     str(key): {
                         "output_digest": _digest(value),
-                        "status": (
-                            value.get("status", "")
-                            if isinstance(value, Mapping)
-                            else ""
-                        ),
+                        "status": (value.get("status", "") if isinstance(value, Mapping) else ""),
                     }
                     for key, value in sorted(dependencies.items())
                 }
@@ -1623,9 +1533,7 @@ class ProofCarryingPlanner:
         return bounded
 
     def _context(self, spec: _NodeSpec) -> dict[str, Any]:
-        dependencies = {
-            item: self._node(item).output for item in spec.depends_on
-        }
+        dependencies = {item: self._node(item).output for item in spec.depends_on}
         context: dict[str, Any] = {
             "workflow_id": self.workflow_id,
             "plan_id": self._state.get("plan_id", ""),
@@ -1713,10 +1621,7 @@ class ProofCarryingPlanner:
     def _path_within(actual: str, declared: str) -> bool:
         actual_path = actual.replace("\\", "/").strip("/")
         declared_path = declared.replace("\\", "/").strip("/")
-        return (
-            actual_path == declared_path
-            or actual_path.startswith(f"{declared_path}/")
-        )
+        return actual_path == declared_path or actual_path.startswith(f"{declared_path}/")
 
     def _built_in_scope_check(
         self, declared: ChangedScope, actual: ChangedScope
@@ -1803,13 +1708,7 @@ class ProofCarryingPlanner:
         events: list[dict[str, Any]] = []
         sequence = 0
         origin = datetime(2024, 1, 1, tzinfo=timezone.utc)
-        for task_id in sorted(
-            {
-                spec.task_id
-                for spec in self._specs.values()
-                if spec.task_id
-            }
-        ):
+        for task_id in sorted({spec.task_id for spec in self._specs.values() if spec.task_id}):
             merge_id = f"task:{task_id}:merge"
             if merge_id not in self._specs:
                 continue
@@ -1832,30 +1731,21 @@ class ProofCarryingPlanner:
                         "type": event_type,
                         "task_id": task_id,
                         "lane_id": "proof-carrying",
-                        "repository_tree_id": self.source.get(
-                            "repository_tree_id", "tree:unknown"
-                        ),
+                        "repository_tree_id": self.source.get("repository_tree_id", "tree:unknown"),
                         "policy_id": TemporalMonitorPolicy().policy_id,
                         "restart_epoch": self.workflow_id,
                         "sequence": sequence,
                         "timestamp": timestamp.isoformat().replace("+00:00", "Z"),
-                        "status": (
-                            "completed"
-                            if event_type == "task_completed"
-                            else "succeeded"
-                        ),
+                        "status": ("completed" if event_type == "task_completed" else "succeeded"),
                         "proof_verified": event_type == "proof_verified",
                         "expires_at": (
-                            (timestamp + timedelta(minutes=5))
-                            .isoformat()
-                            .replace("+00:00", "Z")
+                            (timestamp + timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
                             if event_type == "lease_acquired"
                             else None
                         ),
                         "resource_id": (
                             f"workflow:{task_id}"
-                            if event_type
-                            in {"resource_acquired", "resource_released"}
+                            if event_type in {"resource_acquired", "resource_released"}
                             else None
                         ),
                     }
@@ -1868,8 +1758,7 @@ class ProofCarryingPlanner:
             events,
             config=TemporalMonitorConfig(out_of_order_window_seconds=0),
             now=(
-                datetime(2024, 1, 1, tzinfo=timezone.utc)
-                + timedelta(seconds=len(events) + 1)
+                datetime(2024, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=len(events) + 1)
             ).isoformat(),
         )
         output = {
@@ -1878,9 +1767,7 @@ class ProofCarryingPlanner:
             "runtime_observation_only": True,
             "proved": False,
             "report": report.to_dict(),
-            "counterexamples": [
-                item.to_dict() for item in report.counterexamples
-            ],
+            "counterexamples": [item.to_dict() for item in report.counterexamples],
         }
         if self.adapters.monitor is not None:
             external = self._adapter_output(
@@ -1889,9 +1776,7 @@ class ProofCarryingPlanner:
                         **self._context(spec),
                         "events": events,
                         "built_in_report": report.to_dict(),
-                        "repair_round": len(
-                            self._state.get("repaired_counterexample_ids", [])
-                        ),
+                        "repair_round": len(self._state.get("repaired_counterexample_ids", [])),
                     }
                 )
             )
@@ -1910,11 +1795,11 @@ class ProofCarryingPlanner:
                     if isinstance(item, Mapping)
                 ],
             ]
-            if (
-                external.get("violated") is True
-                or str(external.get("status") or "").lower()
-                in {"violated", "rejected", "counterexample"}
-            ):
+            if external.get("violated") is True or str(external.get("status") or "").lower() in {
+                "violated",
+                "rejected",
+                "counterexample",
+            }:
                 output["accepted"] = False
                 output["status"] = "violated"
             elif self._accepted(external):
@@ -1963,9 +1848,7 @@ class ProofCarryingPlanner:
                         return True
         return False
 
-    def _dependency_state(
-        self, spec: _NodeSpec
-    ) -> tuple[bool, tuple[str, ...]]:
+    def _dependency_state(self, spec: _NodeSpec) -> tuple[bool, tuple[str, ...]]:
         missing: list[str] = []
         for dependency in spec.depends_on:
             node = self._node(dependency)
@@ -1995,14 +1878,10 @@ class ProofCarryingPlanner:
             spec.kind is WorkflowNodeKind.CODEX_IMPLEMENTATION
             and not self._required_assurance_satisfied()
         ):
-            missing.append(
-                f"assurance:{self.config.required_plan_assurance.value}"
-            )
+            missing.append(f"assurance:{self.config.required_plan_assurance.value}")
         return not missing, tuple(missing)
 
-    def _record_node_evidence(
-        self, spec: _NodeSpec, output: Mapping[str, Any]
-    ) -> None:
+    def _record_node_evidence(self, spec: _NodeSpec, output: Mapping[str, Any]) -> None:
         accepted = self._accepted(output)
         unavailable = self._unavailable(output)
         verdict = (
@@ -2062,11 +1941,7 @@ class ProofCarryingPlanner:
                 and output.get("simulated") is not True
                 and output.get("binding_verified") is True
             )
-            assurance = (
-                AssuranceLevel.ATTESTED
-                if cryptographic
-                else AssuranceLevel.UNVERIFIED
-            )
+            assurance = AssuranceLevel.ATTESTED if cryptographic else AssuranceLevel.UNVERIFIED
             authoritative = cryptographic
             authoritative_for = ("proof_receipt_attestation",) if cryptographic else ()
         elif spec.kind is WorkflowNodeKind.TEST_FALLBACK:
@@ -2164,8 +2039,7 @@ class ProofCarryingPlanner:
                 pending = [
                     self._specs[node.node_id]
                     for node in (
-                        WorkflowNode.from_dict(item)
-                        for item in self._state.get("nodes", [])
+                        WorkflowNode.from_dict(item) for item in self._state.get("nodes", [])
                     )
                     if node.status is WorkflowNodeStatus.PENDING
                     and node.node_id in self._specs
@@ -2174,19 +2048,13 @@ class ProofCarryingPlanner:
                 active_nodes = [self._node(spec.node_id) for spec in running.values()]
                 launch_specs: list[_NodeSpec] = []
                 for spec in sorted(pending, key=lambda item: item.node_id):
-                    if (
-                        len(running) + len(launch_specs)
-                        >= self.config.max_workers
-                    ):
+                    if len(running) + len(launch_specs) >= self.config.max_workers:
                         break
                     ready, _ = self._dependency_state(spec)
                     if not ready:
                         continue
                     candidate = self._node(spec.node_id)
-                    if any(
-                        self._scope_conflict(candidate, active)
-                        for active in active_nodes
-                    ):
+                    if any(self._scope_conflict(candidate, active) for active in active_nodes):
                         continue
                     self._upsert_node(
                         spec,
@@ -2220,12 +2088,8 @@ class ProofCarryingPlanner:
                         future = executor.submit(self._execute_spec, spec)
                         running[future] = spec
                 if running:
-                    completed, _ = wait(
-                        tuple(running), return_when=FIRST_COMPLETED
-                    )
-                    for future in sorted(
-                        completed, key=lambda item: running[item].node_id
-                    ):
+                    completed, _ = wait(tuple(running), return_when=FIRST_COMPLETED)
+                    for future in sorted(completed, key=lambda item: running[item].node_id):
                         spec = running.pop(future)
                         try:
                             output = future.result()
@@ -2258,27 +2122,18 @@ class ProofCarryingPlanner:
     @staticmethod
     def _counterexample_id(counterexample: Mapping[str, Any]) -> str:
         claimed = str(
-            counterexample.get("counterexample_id")
-            or counterexample.get("id")
-            or ""
+            counterexample.get("counterexample_id") or counterexample.get("id") or ""
         ).strip()
         return claimed or _digest(counterexample)
 
     def _focused_repair_context(
         self, counterexample: Mapping[str, Any], repair_round: int
     ) -> dict[str, Any]:
-        task_id = str(
-            counterexample.get("task_id")
-            or counterexample.get("subject_id")
-            or ""
-        )
+        task_id = str(counterexample.get("task_id") or counterexample.get("subject_id") or "")
         if not task_id:
             merged = [
                 node.task_id
-                for node in (
-                    WorkflowNode.from_dict(item)
-                    for item in self._state.get("nodes", [])
-                )
+                for node in (WorkflowNode.from_dict(item) for item in self._state.get("nodes", []))
                 if node.kind is WorkflowNodeKind.MERGE
                 and node.status is WorkflowNodeStatus.ACCEPTED
             ]
@@ -2291,17 +2146,19 @@ class ProofCarryingPlanner:
             and any(item.task_id == task_id for item in self._compilation.plan.tasks)
             else ChangedScope()
         )
-        return self._bounded_context({
-            "workflow_id": self.workflow_id,
-            "plan_id": self._state.get("plan_id", ""),
-            "repair_round": repair_round,
-            "task_id": task_id,
-            "counterexample_id": self._counterexample_id(counterexample),
-            "counterexample": _canonical_value(counterexample),
-            "focus_scope": scope.to_dict(),
-            "bounded_context": True,
-            "repository_wide_analysis": False,
-        })
+        return self._bounded_context(
+            {
+                "workflow_id": self.workflow_id,
+                "plan_id": self._state.get("plan_id", ""),
+                "repair_round": repair_round,
+                "task_id": task_id,
+                "counterexample_id": self._counterexample_id(counterexample),
+                "counterexample": _canonical_value(counterexample),
+                "focus_scope": scope.to_dict(),
+                "bounded_context": True,
+                "repository_wide_analysis": False,
+            }
+        )
 
     def _repair_counterexamples(self) -> None:
         monitor = self._node("runtime:monitor")
@@ -2311,10 +2168,7 @@ class ProofCarryingPlanner:
             for item in output.get("counterexamples") or ()
             if isinstance(item, Mapping)
         ]
-        known = {
-            self._counterexample_id(item)
-            for item in self._state.get("counterexamples", [])
-        }
+        known = {self._counterexample_id(item) for item in self._state.get("counterexamples", [])}
         for item in counterexamples:
             if self._counterexample_id(item) not in known:
                 self._state.setdefault("counterexamples", []).append(item)
@@ -2355,9 +2209,7 @@ class ProofCarryingPlanner:
                 repaired.add(counterexample_id)
                 continue
             self._state["status"] = WorkflowStatus.REPAIRING.value
-            self._upsert_node(
-                spec, WorkflowNodeStatus.RUNNING, increment_attempt=True
-            )
+            self._upsert_node(spec, WorkflowNodeStatus.RUNNING, increment_attempt=True)
             self._decision(
                 kind="counterexample_repair_dispatch",
                 node_id=node_id,
@@ -2386,8 +2238,7 @@ class ProofCarryingPlanner:
             actual = ChangedScope.from_mapping(repair)
             scope_accepted, violations = self._built_in_scope_check(scope, actual)
             validation_passed = (
-                repair.get("validation_passed") is True
-                or repair.get("tests_passed") is True
+                repair.get("validation_passed") is True or repair.get("tests_passed") is True
             )
             accepted = (
                 self._accepted(repair)
@@ -2427,11 +2278,7 @@ class ProofCarryingPlanner:
             }
             self._upsert_node(
                 spec,
-                (
-                    WorkflowNodeStatus.ACCEPTED
-                    if accepted
-                    else WorkflowNodeStatus.REJECTED
-                ),
+                (WorkflowNodeStatus.ACCEPTED if accepted else WorkflowNodeStatus.REJECTED),
                 output=repair_output,
                 reason="" if accepted else "focused repair was not admitted",
             )
@@ -2468,9 +2315,7 @@ class ProofCarryingPlanner:
             self._finish_node(monitor_spec, next_output, error)
             new_items = [
                 _strict_mapping(item, field_name="counterexample")
-                for item in self._node("runtime:monitor").output.get(
-                    "counterexamples", ()
-                )
+                for item in self._node("runtime:monitor").output.get("counterexamples", ())
                 if isinstance(item, Mapping)
             ]
             for item in new_items:
@@ -2494,8 +2339,7 @@ class ProofCarryingPlanner:
             and (
                 "plan_admission" in item.get("authoritative_for", [])
                 or "formal_proof" in item.get("authoritative_for", [])
-                or "proof_receipt_attestation"
-                in item.get("authoritative_for", [])
+                or "proof_receipt_attestation" in item.get("authoritative_for", [])
             )
         ]
         highest = max(levels, key=lambda item: item.rank, default=AssuranceLevel.UNVERIFIED)
@@ -2504,25 +2348,16 @@ class ProofCarryingPlanner:
     def _finalize(self) -> ProofCarryingWorkflowResult:
         nodes = tuple(
             sorted(
-                (
-                    WorkflowNode.from_dict(item)
-                    for item in self._state.get("nodes", [])
-                ),
+                (WorkflowNode.from_dict(item) for item in self._state.get("nodes", [])),
                 key=lambda item: item.node_id,
             )
         )
-        merges = [
-            item
-            for item in nodes
-            if item.kind is WorkflowNodeKind.MERGE
-        ]
+        merges = [item for item in nodes if item.kind is WorkflowNodeKind.MERGE]
         monitor = next(
             (item for item in nodes if item.kind is WorkflowNodeKind.RUNTIME_MONITOR),
             None,
         )
-        compilation_accepted = self._node(
-            "plan:compile"
-        ).status is WorkflowNodeStatus.ACCEPTED
+        compilation_accepted = self._node("plan:compile").status is WorkflowNodeStatus.ACCEPTED
         validation_accepted = (
             "plan:verify" in self._specs
             and self._node("plan:verify").status is WorkflowNodeStatus.ACCEPTED
@@ -2549,9 +2384,10 @@ class ProofCarryingPlanner:
             status = WorkflowStatus.BLOCKED
             rationale = "required merge, monitoring, repair, or assurance evidence is absent"
         self._state["status"] = status.value
-        if not self._state.get("decisions") or self._state["decisions"][-1].get(
-            "kind"
-        ) != "workflow_finalization":
+        if (
+            not self._state.get("decisions")
+            or self._state["decisions"][-1].get("kind") != "workflow_finalization"
+        ):
             self._decision(
                 kind="workflow_finalization",
                 node_id="workflow",
@@ -2570,15 +2406,13 @@ class ProofCarryingPlanner:
         else:
             self._persist()
         evidence = tuple(
-            WorkflowEvidence.from_dict(item)
-            for item in self._state.get("evidence", [])
+            WorkflowEvidence.from_dict(item) for item in self._state.get("evidence", [])
         )
         authoritative_assurance = max(
             (
                 item.assurance
                 for item in evidence
-                if item.authoritative
-                and item.verdict is EvidenceVerdict.ACCEPTED
+                if item.authoritative and item.verdict is EvidenceVerdict.ACCEPTED
             ),
             key=lambda item: item.rank,
             default=AssuranceLevel.UNVERIFIED,
@@ -2587,29 +2421,20 @@ class ProofCarryingPlanner:
             workflow_id=self.workflow_id,
             status=status,
             plan_id=str(self._state.get("plan_id") or ""),
-            compilation_status=str(
-                self._state.get("compilation", {}).get("status") or ""
-            ),
-            validation_status=str(
-                self._state.get("validation", {}).get("status") or ""
-            ),
+            compilation_status=str(self._state.get("compilation", {}).get("status") or ""),
+            validation_status=str(self._state.get("validation", {}).get("status") or ""),
             nodes=nodes,
             decisions=tuple(
-                WorkflowDecision.from_dict(item)
-                for item in self._state.get("decisions", [])
+                WorkflowDecision.from_dict(item) for item in self._state.get("decisions", [])
             ),
             evidence=evidence,
             merged_task_ids=tuple(
                 sorted(
-                    item.task_id
-                    for item in merges
-                    if item.status is WorkflowNodeStatus.ACCEPTED
+                    item.task_id for item in merges if item.status is WorkflowNodeStatus.ACCEPTED
                 )
             ),
             counterexamples=tuple(self._state.get("counterexamples", [])),
-            repaired_counterexample_ids=tuple(
-                self._state.get("repaired_counterexample_ids", [])
-            ),
+            repaired_counterexample_ids=tuple(self._state.get("repaired_counterexample_ids", [])),
             authoritative_assurance=authoritative_assurance,
             json_path=self.store.json_path,
             duckdb_path=self.store.duckdb_path,
@@ -2627,11 +2452,10 @@ class ProofCarryingPlanner:
         self._state["status"] = WorkflowStatus.RUNNING.value
         self._persist()
         self._run_graph()
-        if (
-            "runtime:monitor" in self._specs
-            and self._node("runtime:monitor").status
-            in {WorkflowNodeStatus.REJECTED, WorkflowNodeStatus.FAILED}
-        ):
+        if "runtime:monitor" in self._specs and self._node("runtime:monitor").status in {
+            WorkflowNodeStatus.REJECTED,
+            WorkflowNodeStatus.FAILED,
+        }:
             self._repair_counterexamples()
         return self._finalize()
 

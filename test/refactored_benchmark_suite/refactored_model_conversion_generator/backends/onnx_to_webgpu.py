@@ -15,31 +15,31 @@ from ..core.registry import register_converter
 
 logger = logging.getLogger(__name__)
 
-@register_converter(source_format='onnx', target_format='webgpu')
+
+@register_converter(source_format="onnx", target_format="webgpu")
 class OnnxToWebGPUConverter(ModelConverter):
     """
     Converter for ONNX models to WebGPU format.
     """
-    
+
     def _get_source_format(self) -> str:
         """Get source format."""
-        return 'onnx'
-        
+        return "onnx"
+
     def _get_target_format(self) -> str:
         """Get target format."""
-        return 'webgpu'
-        
+        return "webgpu"
+
     def _get_supported_model_types(self) -> List[str]:
         """Get supported model types."""
-        return [
-            'bert', 'vit', 'resnet', 'mobilenet', 'efficientnet', 'whisper'
-        ]
-        
-    def _execute_conversion(self, model_path: str, output_path: str, 
-                          model_type: Optional[str] = None, **kwargs) -> ConversionResult:
+        return ["bert", "vit", "resnet", "mobilenet", "efficientnet", "whisper"]
+
+    def _execute_conversion(
+        self, model_path: str, output_path: str, model_type: Optional[str] = None, **kwargs
+    ) -> ConversionResult:
         """
         Convert ONNX model to WebGPU format.
-        
+
         Args:
             model_path: Path to the ONNX model
             output_path: Path to save the WebGPU model
@@ -49,62 +49,77 @@ class OnnxToWebGPUConverter(ModelConverter):
                 - use_shader_cache: Whether to use shader caching
                 - browser_targets: List of target browsers ('chrome', 'firefox', 'safari', 'edge')
                 - wgsl_code_path: Optional path to save generated WGSL shader code
-                
+
         Returns:
             ConversionResult with conversion details
         """
         try:
             # Create output directory if needed
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            
+
             # Get conversion options
-            precision = kwargs.get('precision', 'default')
-            use_shader_cache = kwargs.get('use_shader_cache', True)
-            browser_targets = kwargs.get('browser_targets', ['chrome', 'firefox', 'safari', 'edge'])
-            wgsl_code_path = kwargs.get('wgsl_code_path', None)
-            
+            precision = kwargs.get("precision", "default")
+            use_shader_cache = kwargs.get("use_shader_cache", True)
+            browser_targets = kwargs.get("browser_targets", ["chrome", "firefox", "safari", "edge"])
+            wgsl_code_path = kwargs.get("wgsl_code_path", None)
+
             # Validate precision option
-            valid_precisions = ['default', 'float16', 'int8', '8bit', '4bit', '3bit', '2bit']
+            valid_precisions = ["default", "float16", "int8", "8bit", "4bit", "3bit", "2bit"]
             if precision not in valid_precisions:
                 logger.warning(f"Unsupported precision: {precision}. Using default instead.")
-                precision = 'default'
-                
+                precision = "default"
+
             # Search for existing quantization work if using ultra-low precision
-            if precision in ['4bit', '3bit', '2bit']:
+            if precision in ["4bit", "3bit", "2bit"]:
                 logger.info(f"Using ultra-low precision: {precision}")
                 if model_type:
                     # For model-specific ultra-low precision, search for existing work
-                    logger.info(f"Searching for existing {precision} quantization for {model_type} models")
-            
+                    logger.info(
+                        f"Searching for existing {precision} quantization for {model_type} models"
+                    )
+
             # Load model metadata if available
             metadata = {}
-            metadata_path = model_path + '.json'
+            metadata_path = model_path + ".json"
             if os.path.exists(metadata_path):
                 try:
-                    with open(metadata_path, 'r') as f:
+                    with open(metadata_path, "r") as f:
                         metadata = json.load(f)
                 except Exception as e:
                     self.logger.warning(f"Error loading model metadata: {e}")
-            
+
             # Create WebGPU model
             return self._create_webgpu_model(
-                model_path, output_path, model_type, precision, 
-                use_shader_cache, browser_targets, wgsl_code_path, metadata
+                model_path,
+                output_path,
+                model_type,
+                precision,
+                use_shader_cache,
+                browser_targets,
+                wgsl_code_path,
+                metadata,
             )
-            
+
         except Exception as e:
             self.logger.error(f"Error converting ONNX model to WebGPU: {e}", exc_info=True)
             return ConversionResult(
-                success=False,
-                error=f"Error converting ONNX model to WebGPU: {e}"
+                success=False, error=f"Error converting ONNX model to WebGPU: {e}"
             )
-    
-    def _create_webgpu_model(self, model_path: str, output_path: str, model_type: Optional[str],
-                          precision: str, use_shader_cache: bool, browser_targets: List[str],
-                          wgsl_code_path: Optional[str], original_metadata: Dict[str, Any]) -> ConversionResult:
+
+    def _create_webgpu_model(
+        self,
+        model_path: str,
+        output_path: str,
+        model_type: Optional[str],
+        precision: str,
+        use_shader_cache: bool,
+        browser_targets: List[str],
+        wgsl_code_path: Optional[str],
+        original_metadata: Dict[str, Any],
+    ) -> ConversionResult:
         """
         Create WebGPU model from ONNX model.
-        
+
         Args:
             model_path: Path to the ONNX model
             output_path: Path to save the WebGPU model
@@ -114,7 +129,7 @@ class OnnxToWebGPUConverter(ModelConverter):
             browser_targets: List of target browsers
             wgsl_code_path: Optional path to save generated WGSL shader code
             original_metadata: Original model metadata
-            
+
         Returns:
             ConversionResult with conversion details
         """
@@ -122,106 +137,110 @@ class OnnxToWebGPUConverter(ModelConverter):
             # Check if ONNX model exists
             if not os.path.exists(model_path):
                 raise FileNotFoundError(f"ONNX model not found: {model_path}")
-            
+
             # Check if we can import onnx
             try:
                 import onnx
                 import numpy as np
             except ImportError:
                 raise ImportError("ONNX and NumPy libraries are required for WebGPU conversion")
-                
+
             # Load ONNX model
             self.logger.info(f"Loading ONNX model: {model_path}")
             model = onnx.load(model_path)
-            
+
             # Validate model
             onnx.checker.check_model(model)
-            
+
             # Generate WGSL shader code for the model operations
             shader_code = self._generate_wgsl_shaders(model, model_type, precision)
-            
+
             # Save WGSL shader code if path provided
             if wgsl_code_path:
-                with open(wgsl_code_path, 'w') as f:
+                with open(wgsl_code_path, "w") as f:
                     f.write(shader_code)
                 self.logger.info(f"Saved WGSL shader code to {wgsl_code_path}")
-            
+
             # Create a JavaScript module that loads the model in WebGPU
             js_code = self._generate_webgpu_js_module(
-                model_path, model, model_type, precision, 
-                use_shader_cache, browser_targets, shader_code
+                model_path,
+                model,
+                model_type,
+                precision,
+                use_shader_cache,
+                browser_targets,
+                shader_code,
             )
-            
+
             # Save the JavaScript module
-            with open(output_path, 'w') as f:
+            with open(output_path, "w") as f:
                 f.write(js_code)
-                
+
             # Save original ONNX model alongside WebGPU model
-            onnx_output_path = os.path.join(os.path.dirname(output_path), 
-                                       os.path.basename(model_path))
+            onnx_output_path = os.path.join(
+                os.path.dirname(output_path), os.path.basename(model_path)
+            )
             if model_path != onnx_output_path:
                 import shutil
+
                 shutil.copy(model_path, onnx_output_path)
-                
+
             # Save JSON metadata for the model
             conversion_metadata = {
-                'source_format': self.source_format,
-                'target_format': self.target_format,
-                'model_type': model_type,
-                'precision': precision,
-                'use_shader_cache': use_shader_cache,
-                'browser_targets': browser_targets,
-                'wgsl_code_path': wgsl_code_path,
-                'inputs': self._get_model_inputs(model),
-                'outputs': self._get_model_outputs(model),
-                'onnx_path': onnx_output_path,
-                'original_metadata': original_metadata
+                "source_format": self.source_format,
+                "target_format": self.target_format,
+                "model_type": model_type,
+                "precision": precision,
+                "use_shader_cache": use_shader_cache,
+                "browser_targets": browser_targets,
+                "wgsl_code_path": wgsl_code_path,
+                "inputs": self._get_model_inputs(model),
+                "outputs": self._get_model_outputs(model),
+                "onnx_path": onnx_output_path,
+                "original_metadata": original_metadata,
             }
-            
+
             # Save metadata alongside model
-            metadata_path = output_path + '.json'
-            with open(metadata_path, 'w') as f:
+            metadata_path = output_path + ".json"
+            with open(metadata_path, "w") as f:
                 json.dump(conversion_metadata, f, indent=2)
-                
+
             return ConversionResult(
                 success=True,
                 output_path=output_path,
                 format=self.target_format,
-                metadata=conversion_metadata
+                metadata=conversion_metadata,
             )
-            
+
         except Exception as e:
             self.logger.error(f"Error creating WebGPU model: {e}", exc_info=True)
-            return ConversionResult(
-                success=False,
-                error=f"Error creating WebGPU model: {e}"
-            )
-    
+            return ConversionResult(success=False, error=f"Error creating WebGPU model: {e}")
+
     def _generate_wgsl_shaders(self, model, model_type: Optional[str], precision: str) -> str:
         """
         Generate WGSL shader code for the model operations.
-        
+
         Args:
             model: ONNX model
             model_type: Type of model (e.g., 'bert', 'vit')
             precision: Model precision ('default', 'float16', 'int8', '4bit')
-            
+
         Returns:
             WGSL shader code
         """
-        # This is a simplified implementation that would generate WGSL shader code 
+        # This is a simplified implementation that would generate WGSL shader code
         # for common neural network operations like convolution, matmul, etc.
-        # A real implementation would be much more complex and would analyze the 
+        # A real implementation would be much more complex and would analyze the
         # ONNX graph to generate optimized WGSL shaders.
-        
+
         # For demonstration purposes, we'll just return a template shader that includes
         # some common operations for the given model type and precision.
-        
+
         # Define precision type
-        precision_type = 'f32'
-        if precision == 'float16':
-            precision_type = 'f16'
-        
+        precision_type = "f32"
+        if precision == "float16":
+            precision_type = "f16"
+
         # Basic shader header
         shader_header = f"""// WebGPU WGSL Shaders for {model_type} model
 // Generated by IPFS Accelerate Model Conversion Generator
@@ -239,41 +258,41 @@ struct ComputeShaderInput {{
 }};
 
 """
-        
+
         # Generate specific shaders based on model type and operations found in the model
         operation_shaders = []
-        
+
         # Extract all operations from the model
         operations = set()
         for node in model.graph.node:
             operations.add(node.op_type)
-        
+
         # Generate shaders for common operations
-        if 'MatMul' in operations:
+        if "MatMul" in operations:
             operation_shaders.append(self._generate_matmul_shader(precision_type))
-            
-        if 'Conv' in operations:
+
+        if "Conv" in operations:
             operation_shaders.append(self._generate_conv_shader(precision_type))
-            
-        if any(op in operations for op in ['Relu', 'Sigmoid', 'Tanh']):
+
+        if any(op in operations for op in ["Relu", "Sigmoid", "Tanh"]):
             operation_shaders.append(self._generate_activation_shaders(precision_type, operations))
-            
-        if 'Softmax' in operations:
+
+        if "Softmax" in operations:
             operation_shaders.append(self._generate_softmax_shader(precision_type))
-            
+
         # Add model-type specific shaders
-        if model_type == 'bert':
+        if model_type == "bert":
             operation_shaders.append(self._generate_bert_specific_shaders(precision_type))
-        elif model_type == 'vit':
+        elif model_type == "vit":
             operation_shaders.append(self._generate_vit_specific_shaders(precision_type))
-            
+
         # Add special ultra-low precision quantization shaders if needed
-        if precision in ['4bit', '3bit', '2bit']:
+        if precision in ["4bit", "3bit", "2bit"]:
             operation_shaders.append(self._generate_ultra_low_precision_shaders(precision))
-        
+
         # Combine all shaders
         return shader_header + "\n\n".join(operation_shaders)
-    
+
     def _generate_matmul_shader(self, precision_type: str) -> str:
         """Generate MatMul shader."""
         return f"""@group(0) @binding(0) var<storage, read> inputA : Matrix;
@@ -303,7 +322,7 @@ fn matmul(in: ComputeShaderInput) {{
   let out_idx = row * N + col;
   output.values[out_idx] = sum;
 }}"""
-    
+
     def _generate_conv_shader(self, precision_type: str) -> str:
         """Generate Convolution shader."""
         return f"""@group(0) @binding(0) var<storage, read> input : array<{precision_type}>;
@@ -354,14 +373,16 @@ fn conv2d(in: ComputeShaderInput) {{
   let output_idx = n * K * P * Q + k * P * Q + p * Q + q;
   output[output_idx] = sum;
 }}"""
-    
+
     def _generate_activation_shaders(self, precision_type: str, operations: set) -> str:
         """Generate activation function shaders."""
-        shaders = [f"""@group(0) @binding(0) var<storage, read> input : array<{precision_type}>;
+        shaders = [
+            f"""@group(0) @binding(0) var<storage, read> input : array<{precision_type}>;
 @group(0) @binding(1) var<storage, read_write> output : array<{precision_type}>;
-@group(0) @binding(2) var<uniform> length : u32;"""]
-        
-        if 'Relu' in operations:
+@group(0) @binding(2) var<uniform> length : u32;"""
+        ]
+
+        if "Relu" in operations:
             shaders.append(f"""
 @compute @workgroup_size(256)
 fn relu(in: ComputeShaderInput) {{
@@ -372,8 +393,8 @@ fn relu(in: ComputeShaderInput) {{
   
   output[idx] = max(input[idx], 0.0);
 }}""")
-        
-        if 'Sigmoid' in operations:
+
+        if "Sigmoid" in operations:
             shaders.append(f"""
 @compute @workgroup_size(256)
 fn sigmoid(in: ComputeShaderInput) {{
@@ -384,8 +405,8 @@ fn sigmoid(in: ComputeShaderInput) {{
   
   output[idx] = 1.0 / (1.0 + exp(-input[idx]));
 }}""")
-        
-        if 'Tanh' in operations:
+
+        if "Tanh" in operations:
             shaders.append(f"""
 @compute @workgroup_size(256)
 fn tanh(in: ComputeShaderInput) {{
@@ -396,9 +417,9 @@ fn tanh(in: ComputeShaderInput) {{
   
   output[idx] = tanh(input[idx]);
 }}""")
-        
+
         return "\n".join(shaders)
-    
+
     def _generate_softmax_shader(self, precision_type: str) -> str:
         """Generate Softmax shader."""
         return f"""@group(0) @binding(0) var<storage, read> input : array<{precision_type}>;
@@ -437,7 +458,7 @@ fn softmax(in: ComputeShaderInput) {{
     output[val_idx] = output[val_idx] / sum;
   }}
 }}"""
-    
+
     def _generate_bert_specific_shaders(self, precision_type: str) -> str:
         """Generate BERT-specific shaders."""
         return f"""@group(0) @binding(0) var<storage, read> qkv : array<{precision_type}>;
@@ -479,7 +500,7 @@ fn self_attention(in: ComputeShaderInput) {{
   let attn_idx = batch_id * num_heads * seq_length * seq_length + head_id * seq_length * seq_length + seq_i * seq_length + seq_j;
   attention[attn_idx] = dot_product;
 }}"""
-    
+
     def _generate_vit_specific_shaders(self, precision_type: str) -> str:
         """Generate ViT-specific shaders."""
         return f"""@group(0) @binding(0) var<storage, read> patches : array<{precision_type}>;
@@ -508,26 +529,26 @@ fn patch_embedding(in: ComputeShaderInput) {{
     embedded_patches[patch_offset + d] = patches[patch_offset + d] + pos_embeddings[patch_id * embedding_dim + d];
   }}
 }}"""
-    
+
     def _generate_ultra_low_precision_shaders(self, precision: str) -> str:
         """
         Generate ultra-low precision quantization shaders.
-        
+
         Args:
             precision: Precision level ('4bit', '3bit', '2bit')
-            
+
         Returns:
             WGSL shader code for the specified precision
         """
-        if precision == '4bit':
+        if precision == "4bit":
             return self._generate_4bit_quantization_shaders()
-        elif precision == '3bit':
+        elif precision == "3bit":
             return self._generate_3bit_quantization_shaders()
-        elif precision == '2bit':
+        elif precision == "2bit":
             return self._generate_2bit_quantization_shaders()
         else:
             return self._generate_4bit_quantization_shaders()  # Default to 4-bit
-            
+
     def _generate_4bit_quantization_shaders(self) -> str:
         """Generate 4-bit quantization shaders."""
         return """// 4-bit quantization support
@@ -804,13 +825,20 @@ fn get_precision_for_layer(layer_idx: u32) -> u32 {
   // Default to fp32
   return 32;
 }"""
-    
-    def _generate_webgpu_js_module(self, model_path: str, onnx_model, model_type: Optional[str],
-                                 precision: str, use_shader_cache: bool,
-                                 browser_targets: List[str], shader_code: str) -> str:
+
+    def _generate_webgpu_js_module(
+        self,
+        model_path: str,
+        onnx_model,
+        model_type: Optional[str],
+        precision: str,
+        use_shader_cache: bool,
+        browser_targets: List[str],
+        shader_code: str,
+    ) -> str:
         """
         Generate JavaScript module that loads the model in WebGPU.
-        
+
         Args:
             model_path: Path to the ONNX model
             onnx_model: Loaded ONNX model
@@ -819,14 +847,14 @@ fn get_precision_for_layer(layer_idx: u32) -> u32 {
             use_shader_cache: Whether to use shader caching
             browser_targets: List of target browsers
             shader_code: Generated WGSL shader code
-            
+
         Returns:
             JavaScript module code
         """
         # Get model inputs and outputs
         inputs = self._get_model_inputs(onnx_model)
         outputs = self._get_model_outputs(onnx_model)
-        
+
         # Create a JavaScript model loader for WebGPU
         js_template = """
 /**
@@ -1416,38 +1444,38 @@ export default {
   modelConfig
 };
 """
-        
+
         # Format the template
         model_name = os.path.splitext(os.path.basename(model_path))[0]
-        
+
         formatted_js = js_template.format(
             model_name=model_name,
-            model_type=model_type or 'unknown',
+            model_type=model_type or "unknown",
             precision=precision,
-            use_shader_cache='true' if use_shader_cache else 'false',
+            use_shader_cache="true" if use_shader_cache else "false",
             browser_targets=json.dumps(browser_targets),
             inputs=json.dumps(inputs, indent=2),
             outputs=json.dumps(outputs, indent=2),
             model_path_basename=os.path.basename(model_path),
-            shader_code=shader_code.replace('`', '\\`')
+            shader_code=shader_code.replace("`", "\\`"),
         )
-        
+
         return formatted_js
-    
+
     def _get_model_inputs(self, model) -> Dict[str, Dict[str, Any]]:
         """
         Get model input information.
-        
+
         Args:
             model: ONNX model
-            
+
         Returns:
             Dictionary of input name to input information
         """
         inputs = {}
         for input_info in model.graph.input:
             name = input_info.name
-            
+
             # Extract shape information
             shape = []
             if input_info.type.tensor_type.shape:
@@ -1457,32 +1485,29 @@ export default {
                         shape.append(-1)
                     else:
                         shape.append(dim.dim_value)
-            
+
             # Extract type information
             elem_type = input_info.type.tensor_type.elem_type
             type_name = self._get_onnx_type_name(elem_type)
-            
-            inputs[name] = {
-                'shape': shape,
-                'type': type_name
-            }
-            
+
+            inputs[name] = {"shape": shape, "type": type_name}
+
         return inputs
-    
+
     def _get_model_outputs(self, model) -> Dict[str, Dict[str, Any]]:
         """
         Get model output information.
-        
+
         Args:
             model: ONNX model
-            
+
         Returns:
             Dictionary of output name to output information
         """
         outputs = {}
         for output_info in model.graph.output:
             name = output_info.name
-            
+
             # Extract shape information
             shape = []
             if output_info.type.tensor_type.shape:
@@ -1492,72 +1517,72 @@ export default {
                         shape.append(-1)
                     else:
                         shape.append(dim.dim_value)
-            
+
             # Extract type information
             elem_type = output_info.type.tensor_type.elem_type
             type_name = self._get_onnx_type_name(elem_type)
-            
-            outputs[name] = {
-                'shape': shape,
-                'type': type_name
-            }
-            
+
+            outputs[name] = {"shape": shape, "type": type_name}
+
         return outputs
-    
+
     def _get_onnx_type_name(self, elem_type: int) -> str:
         """
         Get ONNX type name from element type.
-        
+
         Args:
             elem_type: ONNX element type
-            
+
         Returns:
             Type name
         """
         try:
             from onnx import TensorProto
+
             type_map = {
-                TensorProto.FLOAT: 'float32',
-                TensorProto.UINT8: 'uint8',
-                TensorProto.INT8: 'int8',
-                TensorProto.UINT16: 'uint16',
-                TensorProto.INT16: 'int16',
-                TensorProto.INT32: 'int32',
-                TensorProto.INT64: 'int64',
-                TensorProto.BOOL: 'bool',
-                TensorProto.FLOAT16: 'float16',
-                TensorProto.DOUBLE: 'float64',
-                TensorProto.COMPLEX64: 'complex64',
-                TensorProto.COMPLEX128: 'complex128',
-                TensorProto.STRING: 'string'
+                TensorProto.FLOAT: "float32",
+                TensorProto.UINT8: "uint8",
+                TensorProto.INT8: "int8",
+                TensorProto.UINT16: "uint16",
+                TensorProto.INT16: "int16",
+                TensorProto.INT32: "int32",
+                TensorProto.INT64: "int64",
+                TensorProto.BOOL: "bool",
+                TensorProto.FLOAT16: "float16",
+                TensorProto.DOUBLE: "float64",
+                TensorProto.COMPLEX64: "complex64",
+                TensorProto.COMPLEX128: "complex128",
+                TensorProto.STRING: "string",
             }
-            return type_map.get(elem_type, f'unknown_{elem_type}')
+            return type_map.get(elem_type, f"unknown_{elem_type}")
         except ImportError:
             # Fallback type mapping
             type_map = {
-                1: 'float32',
-                2: 'uint8',
-                3: 'int8',
-                4: 'uint16',
-                5: 'int16',
-                6: 'int32',
-                7: 'int64',
-                9: 'bool',
-                10: 'float16',
-                11: 'float64',
-                14: 'complex64',
-                15: 'complex128'
+                1: "float32",
+                2: "uint8",
+                3: "int8",
+                4: "uint16",
+                5: "int16",
+                6: "int32",
+                7: "int64",
+                9: "bool",
+                10: "float16",
+                11: "float64",
+                14: "complex64",
+                15: "complex128",
             }
-            return type_map.get(elem_type, f'unknown_{elem_type}')
-            
-    def validate_model(self, model_path: str, model_type: Optional[str] = None) -> Tuple[bool, Optional[str]]:
+            return type_map.get(elem_type, f"unknown_{elem_type}")
+
+    def validate_model(
+        self, model_path: str, model_type: Optional[str] = None
+    ) -> Tuple[bool, Optional[str]]:
         """
         Validate an ONNX model before conversion to WebGPU.
-        
+
         Args:
             model_path: Path to the ONNX model
             model_type: Type of model (e.g., 'bert', 'vit')
-            
+
         Returns:
             Tuple of (valid, error_message)
         """
@@ -1565,21 +1590,22 @@ export default {
             # Check if file exists
             if not os.path.exists(model_path):
                 return False, f"Model file not found: {model_path}"
-                
+
             # Try to load ONNX model
             try:
                 import onnx
+
                 model = onnx.load(model_path)
                 onnx.checker.check_model(model)
-                
+
                 # WebGPU has potential limitations for large models
                 model_size = os.path.getsize(model_path) / (1024 * 1024)  # Size in MB
                 if model_size > 500:
                     return False, f"Model size ({model_size:.2f} MB) may be too large for WebGPU"
-                
+
                 return True, None
             except Exception as e:
                 return False, f"Error validating ONNX model: {e}"
-                
+
         except ImportError as e:
             return False, f"Missing required dependencies: {e}"

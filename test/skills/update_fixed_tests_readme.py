@@ -1,4 +1,4 @@
-#\!/usr/bin/env python3
+# \!/usr/bin/env python3
 """
 Update the README.md file in the fixed_tests directory with accurate information.
 
@@ -19,42 +19,59 @@ import logging
 from datetime import datetime
 
 # Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
 
 def count_models_by_architecture():
     """Count models by architecture type."""
     # Define architecture types for model mapping
     ARCHITECTURE_TYPES = {
-        "encoder-only": ["bert", "distilbert", "roberta", "electra", "albert", "camembert", "xlm-roberta"],
-        "decoder-only": ["gpt2", "gpt-j", "gptj", "gpt-neo", "gpt_neo", "gpt_neox", "bloom", "llama", "opt"],
+        "encoder-only": [
+            "bert",
+            "distilbert",
+            "roberta",
+            "electra",
+            "albert",
+            "camembert",
+            "xlm-roberta",
+        ],
+        "decoder-only": [
+            "gpt2",
+            "gpt-j",
+            "gptj",
+            "gpt-neo",
+            "gpt_neo",
+            "gpt_neox",
+            "bloom",
+            "llama",
+            "opt",
+        ],
         "encoder-decoder": ["t5", "bart", "pegasus", "mbart", "mt5"],
         "vision": ["vit", "swin", "deit", "beit", "convnext"],
         "speech": ["wav2vec2", "hubert", "whisper"],
-        "multimodal": ["llava", "clip", "blip"]
+        "multimodal": ["llava", "clip", "blip"],
     }
-    
+
     # Get all test files
     fixed_tests_dir = "fixed_tests"
     test_files = glob.glob(os.path.join(fixed_tests_dir, "test_hf_*.py"))
-    
+
     # Count models by architecture
     counts = {arch: 0 for arch in ARCHITECTURE_TYPES}
     model_lists = {arch: [] for arch in ARCHITECTURE_TYPES}
-    
+
     for test_file in test_files:
         model_name = os.path.basename(test_file)[8:-3]  # Extract from test_hf_MODEL.py
-        
+
         for arch, models in ARCHITECTURE_TYPES.items():
             if any(model in model_name.lower() for model in models):
                 counts[arch] += 1
                 model_lists[arch].append(model_name)
                 break
-                
+
     return counts, model_lists
+
 
 def get_latest_changes():
     """Get the latest changes from git log."""
@@ -74,24 +91,25 @@ def get_latest_changes():
         logger.error(f"Error getting latest changes: {e}")
         return "\n1. Updated model test files with proper indentation\n2. Fixed syntax issues in test files\n"
 
+
 def update_readme():
     """Update the README.md in the fixed_tests directory."""
     try:
         fixed_tests_dir = "fixed_tests"
         readme_path = os.path.join(fixed_tests_dir, "README.md")
-        
+
         # Count models by architecture
         arch_counts, model_lists = count_models_by_architecture()
         total_models = sum(arch_counts.values())
-        
+
         # Get all test files
         test_files = glob.glob(os.path.join(fixed_tests_dir, "test_hf_*.py"))
         test_files = [os.path.basename(f) for f in test_files]
         test_files.sort()
-        
+
         # Get latest changes
         latest_changes = get_latest_changes()
-        
+
         # Create README content
         readme_content = f"""# Fixed HuggingFace Test Files
 
@@ -103,12 +121,12 @@ Current testing coverage:
 
 | Category | Architecture | Models Tested | Status |
 |----------|--------------|---------------|--------|
-| text-encoders | encoder_only | {', '.join(model_lists['encoder-only'])} | ✅ 100% pass |
-| text-decoders | decoder_only | {', '.join(model_lists['decoder-only'])} | ✅ 100% pass |
-| text-encoder-decoders | encoder_decoder | {', '.join(model_lists['encoder-decoder'])} | ✅ 100% pass |
-| vision | encoder_only | {', '.join(model_lists['vision'])} | ✅ 100% pass |
-| audio | encoder_only | {', '.join(model_lists['speech'])} | ✅ 100% pass |
-| multimodal | encoder_decoder | {', '.join(model_lists['multimodal'])} | ✅ 100% pass |
+| text-encoders | encoder_only | {", ".join(model_lists["encoder-only"])} | ✅ 100% pass |
+| text-decoders | decoder_only | {", ".join(model_lists["decoder-only"])} | ✅ 100% pass |
+| text-encoder-decoders | encoder_decoder | {", ".join(model_lists["encoder-decoder"])} | ✅ 100% pass |
+| vision | encoder_only | {", ".join(model_lists["vision"])} | ✅ 100% pass |
+| audio | encoder_only | {", ".join(model_lists["speech"])} | ✅ 100% pass |
+| multimodal | encoder_decoder | {", ".join(model_lists["multimodal"])} | ✅ 100% pass |
 
 All tests successful on CPU hardware platform. Testing is underway for additional hardware platforms (CUDA, ROCm, MPS, OpenVINO, Qualcomm, WebNN, WebGPU).
 
@@ -122,7 +140,7 @@ All tests successful on CPU hardware platform. Testing is underway for additiona
 
 The following core model tests have been fixed:
 
-{chr(10).join([f"{i+1}. `{test_file}`" for i, test_file in enumerate(test_files)])}
+{chr(10).join([f"{i + 1}. `{test_file}`" for i, test_file in enumerate(test_files)])}
 
 ## Architecture Templates
 
@@ -251,26 +269,28 @@ For more details on mock detection enhancements, see [MOCK_DETECTION_README.md](
 
 This work is part of Priority #2 from CLAUDE.md: "Comprehensive HuggingFace Model Testing (300+ classes)"
 """
-        
+
         # Write the README file
-        with open(readme_path, 'w') as f:
+        with open(readme_path, "w") as f:
             f.write(readme_content)
-            
+
         logger.info(f"Updated README.md in {fixed_tests_dir} with {total_models} models")
         return True
-        
+
     except Exception as e:
         logger.error(f"Error updating README.md: {e}")
         return False
 
+
 def main():
     """Main entry point."""
     success = update_readme()
-    
+
     if success:
         print("✅ Successfully updated README.md")
     else:
         print("❌ Failed to update README.md")
+
 
 if __name__ == "__main__":
     main()

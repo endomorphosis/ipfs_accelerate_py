@@ -96,34 +96,31 @@ Creating a plugin involves extending the base `Plugin` class and implementing it
 ```python
 from plugin_architecture import Plugin, PluginType, HookType
 
+
 class MyCustomPlugin(Plugin):
     """Custom plugin example."""
-    
+
     def __init__(self):
         """Initialize the plugin."""
-        super().__init__(
-            name="MyCustomPlugin",
-            version="1.0.0",
-            plugin_type=PluginType.CUSTOM
-        )
-        
+        super().__init__(name="MyCustomPlugin", version="1.0.0", plugin_type=PluginType.CUSTOM)
+
         # Register hooks
         self.register_hook(HookType.TASK_COMPLETED, self.on_task_completed)
         self.register_hook(HookType.WORKER_FAILED, self.on_worker_failed)
-    
+
     async def initialize(self, coordinator) -> bool:
         """Initialize the plugin with the coordinator reference."""
         self.coordinator = coordinator
         return True
-    
+
     async def shutdown(self) -> bool:
         """Shutdown the plugin."""
         return True
-    
+
     async def on_task_completed(self, task_id: str, result: Any):
         """Handle task completed event."""
         print(f"Task {task_id} completed with result: {result}")
-    
+
     async def on_worker_failed(self, worker_id: str, error: str):
         """Handle worker failed event."""
         print(f"Worker {worker_id} failed: {error}")

@@ -40,10 +40,10 @@ except ImportError:
 try:
     import sys
     import os
-    
+
     # Add the parent directory to the path to import from top-level module
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-    
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
     from ipfs_accelerate_py import ipfs_accelerate_py, get_instance
 except ImportError:
     # Fall back to original implementation if it exists
@@ -54,9 +54,10 @@ except ImportError:
         # Create stub if neither is available
         def ipfs_accelerate_py(*args, **kwargs):
             raise NotImplementedError("IPFS Accelerate Python is not available")
-        
+
         def get_instance():
             raise NotImplementedError("IPFS Accelerate Python is not available")
+
 
 # Export all components
 export = {
@@ -66,8 +67,15 @@ export = {
     "ipfs_accelerate_py": ipfs_accelerate_py,
     "worker": worker,
     "ipfs_multiformats_py": ipfs_multiformats_py,
-    "get_instance": get_instance
+    "get_instance": get_instance,
 }
 
-__all__ = ['ipfs_accelerate_py', 'get_instance', 'backends', 'config', 
-           'install_depends', 'worker', 'ipfs_multiformats_py']
+__all__ = [
+    "ipfs_accelerate_py",
+    "get_instance",
+    "backends",
+    "config",
+    "install_depends",
+    "worker",
+    "ipfs_multiformats_py",
+]

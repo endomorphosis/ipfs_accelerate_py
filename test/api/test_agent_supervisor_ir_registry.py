@@ -91,11 +91,7 @@ def _reference_for_payload(
 
 
 def _support_for(reference: PinnedArtifactRef, family: IRFamily) -> IRSchemaSupport:
-    return next(
-        item
-        for item in SUPPORTED_IR_SCHEMAS
-        if item.matches(reference, family)
-    )
+    return next(item for item in SUPPORTED_IR_SCHEMAS if item.matches(reference, family))
 
 
 def test_default_capability_discovery_is_complete_canonical_and_side_effect_free() -> None:
@@ -111,9 +107,7 @@ def test_default_capability_discovery_is_complete_canonical_and_side_effect_free
     assert all(set(item.families) == set(IRFamily) for item in capabilities)
     assert all(set(item.operations) == set(IROperation) for item in capabilities)
     assert {item.family for item in registry.supported_schemas()} == set(IRFamily)
-    assert registry.supported_schemas("intent") == registry.supported_schemas(
-        IRFamily.INTENT
-    )
+    assert registry.supported_schemas("intent") == registry.supported_schemas(IRFamily.INTENT)
 
     record = capabilities[1].to_dict()
     assert record["schema"] == IR_CAPABILITY_SCHEMA
@@ -237,16 +231,12 @@ def test_schema_version_and_family_are_verified_against_reference_and_request() 
     wrong_family = registry.load(_request(reference, IRFamily.LEGAL))
     assert wrong_family.status is IRLoadStatus.UNSUPPORTED
 
-    payload = json.loads(
-        deterministic_ir_fixture(IRFamily.INTENT)[1].decode("utf-8")
-    )
+    payload = json.loads(deterministic_ir_fixture(IRFamily.INTENT)[1].decode("utf-8"))
     payload["schema"] = "intent-ir@future"
     mismatched_reference, encoded = _reference_for_payload(payload)
     mismatch_registry = IRRegistry()
     mismatch_registry.register_local_artifact(mismatched_reference, encoded)
-    mismatch = mismatch_registry.load(
-        _request(mismatched_reference, IRFamily.INTENT)
-    )
+    mismatch = mismatch_registry.load(_request(mismatched_reference, IRFamily.INTENT))
     assert mismatch.status is IRLoadStatus.UNSUPPORTED
 
     unsupported_reference, unsupported_bytes = deterministic_ir_fixture(
@@ -255,12 +245,8 @@ def test_schema_version_and_family_are_verified_against_reference_and_request() 
         schema_version="2",
     )
     unsupported_registry = IRRegistry()
-    unsupported_registry.register_local_artifact(
-        unsupported_reference, unsupported_bytes
-    )
-    unsupported = unsupported_registry.load(
-        _request(unsupported_reference, IRFamily.INTENT)
-    )
+    unsupported_registry.register_local_artifact(unsupported_reference, unsupported_bytes)
+    unsupported = unsupported_registry.load(_request(unsupported_reference, IRFamily.INTENT))
     assert unsupported.status is IRLoadStatus.UNSUPPORTED
     assert unsupported.fail_closed
 
@@ -312,9 +298,7 @@ def test_every_declared_failure_state_is_typed_and_required_inputs_fail_closed(
     updates: dict[str, object],
     expected: IRLoadStatus,
 ) -> None:
-    registry, reference, _ = _registered_fixture(
-        IRFamily.LEGAL, updates=updates
-    )
+    registry, reference, _ = _registered_fixture(IRFamily.LEGAL, updates=updates)
     result = registry.load(_request(reference, IRFamily.LEGAL))
 
     assert result.status is expected
@@ -331,9 +315,7 @@ def test_every_declared_failure_state_is_typed_and_required_inputs_fail_closed(
 
 def test_optional_failures_remain_typed_but_do_not_claim_fail_closed() -> None:
     reference, _ = deterministic_ir_fixture(IRFamily.IR_CORE)
-    result = IRRegistry().load(
-        _request(reference, IRFamily.IR_CORE, required=False)
-    )
+    result = IRRegistry().load(_request(reference, IRFamily.IR_CORE, required=False))
 
     assert result.status is IRLoadStatus.UNAVAILABLE
     assert result.successful is False
@@ -361,9 +343,7 @@ def test_producer_configuration_provenance_and_authority_are_exact() -> None:
         wrong_producer_ref,
         producer_id="producer:pinned",
     )
-    producer_result = wrong_producer_registry.load(
-        _request(forged_ref, IRFamily.SECURITY)
-    )
+    producer_result = wrong_producer_registry.load(_request(forged_ref, IRFamily.SECURITY))
     assert producer_result.status is IRLoadStatus.QUARANTINED
 
     authority_registry, authority_ref, authority_bytes = _registered_fixture(
@@ -372,9 +352,7 @@ def test_producer_configuration_provenance_and_authority_are_exact() -> None:
         reference_authority=ReferenceAuthority.ADVISORY,
     )
     assert authority_ref.verify_canonical_bytes(authority_bytes)
-    authority_result = authority_registry.load(
-        _request(authority_ref, IRFamily.SECURITY)
-    )
+    authority_result = authority_registry.load(_request(authority_ref, IRFamily.SECURITY))
     assert authority_result.status is IRLoadStatus.QUARANTINED
     assert authority_result.failure is not None
     assert "authority exceeds" in authority_result.failure.reason
@@ -382,9 +360,7 @@ def test_producer_configuration_provenance_and_authority_are_exact() -> None:
 
 def test_canonical_bytes_cid_and_digest_are_reverified_on_every_provider_load() -> None:
     reference, encoded = deterministic_ir_fixture(IRFamily.INTENT)
-    alternate = encoded.replace(
-        b'"span_id":"span:0"', b'"span_id":"span:1"'
-    )
+    alternate = encoded.replace(b'"span_id":"span:0"', b'"span_id":"span:1"')
     assert len(alternate) == len(encoded)
     assert canonical_artifact_bytes(json.loads(alternate)) == alternate
     registry = IRRegistry()
@@ -470,9 +446,7 @@ def test_request_byte_count_depth_and_text_bounds_are_typed(
     expected_fragment: str,
 ) -> None:
     registry, reference, _ = _registered_fixture(IRFamily.IR_CORE)
-    result = registry.load(
-        _request(reference, IRFamily.IR_CORE, bounds=bounds)
-    )
+    result = registry.load(_request(reference, IRFamily.IR_CORE, bounds=bounds))
 
     assert result.status is IRLoadStatus.BOUNDS
     assert result.failure is not None
@@ -623,9 +597,7 @@ def test_async_provider_is_typed_unavailable_for_sync_and_supported_async() -> N
 
     assert synchronous.status is IRLoadStatus.UNAVAILABLE
     assert synchronous.failure is not None
-    assert synchronous.failure.details == (
-        "provider:async: asynchronous loader",
-    )
+    assert synchronous.failure.details == ("provider:async: asynchronous loader",)
     assert asynchronous.status is IRLoadStatus.VERIFIED
 
 
@@ -656,9 +628,7 @@ def test_analysis_transport_only_locates_then_exact_bytes_are_reverified() -> No
                 ),
             )
 
-    def resolve(
-        location: MappingProxyType, request: IRLoadRequest
-    ) -> bytes:
+    def resolve(location: MappingProxyType, request: IRLoadRequest) -> bytes:
         resolver_calls.append(location)
         assert request.reference == reference
         return encoded
@@ -685,9 +655,7 @@ def test_analysis_transport_only_locates_then_exact_bytes_are_reverified() -> No
     )
 
     assert result.status is IRLoadStatus.VERIFIED
-    assert result.require_artifact().declared_authority is (
-        IRDeclaredAuthority.VERIFIED
-    )
+    assert result.require_artifact().declared_authority is (IRDeclaredAuthority.VERIFIED)
     assert len(transport_requests) == 1
     assert len(resolver_calls) == 1
     assert "content" not in resolver_calls[0]
@@ -712,8 +680,10 @@ def test_malformed_registry_contracts_raise_instead_of_becoming_provider_outcome
         IRRegistry().load(reference)  # type: ignore[arg-type]
 
 
-def test_fresh_interpreter_import_and_discovery_import_no_optional_provider_and_start_no_process() -> None:
-    script = r'''
+def test_fresh_interpreter_import_and_discovery_import_no_optional_provider_and_start_no_process() -> (
+    None
+):
+    script = r"""
 import builtins
 import importlib
 import json
@@ -772,7 +742,7 @@ print(json.dumps({
     ),
     "process_events": events,
 }))
-'''
+"""
     completed = subprocess.run(
         [sys.executable, "-c", script],
         cwd=Path(__file__).resolve().parents[2],

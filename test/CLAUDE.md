@@ -662,20 +662,18 @@ from refactored_test_suite.api.api_client import ApiClient
 
 # Generate a model implementation
 generator_client = ApiClient(base_url="http://localhost:8001")
-gen_response = generator_client.run_operation("generate_model", {
-    "model_name": "bert-base-uncased",
-    "hardware": ["cpu", "cuda"]
-})
+gen_response = generator_client.run_operation(
+    "generate_model", {"model_name": "bert-base-uncased", "hardware": ["cpu", "cuda"]}
+)
 
 # Wait for generation to complete
 model_info = generator_client.monitor_operation(gen_response["operation_id"])
 
 # Run tests on the generated model
 test_client = ApiClient(base_url="http://localhost:8002")
-test_response = test_client.run_operation("run_test", {
-    "model_path": model_info["file_path"],
-    "test_type": "comprehensive"
-})
+test_response = test_client.run_operation(
+    "run_test", {"model_path": model_info["file_path"], "test_type": "comprehensive"}
+)
 
 # Wait for tests to complete
 test_results = test_client.monitor_operation(test_response["operation_id"])
@@ -683,15 +681,18 @@ test_results = test_client.monitor_operation(test_response["operation_id"])
 # If tests pass, run benchmarks
 if test_results["status"] == "passed":
     benchmark_client = ApiClient(base_url="http://localhost:8003")
-    bench_response = benchmark_client.run_operation("run_benchmark", {
-        "model_path": model_info["file_path"],
-        "hardware": ["cpu", "cuda"],
-        "batch_sizes": [1, 8, 32]
-    })
-    
+    bench_response = benchmark_client.run_operation(
+        "run_benchmark",
+        {
+            "model_path": model_info["file_path"],
+            "hardware": ["cpu", "cuda"],
+            "batch_sizes": [1, 8, 32],
+        },
+    )
+
     # Wait for benchmarks to complete
     bench_results = benchmark_client.monitor_operation(bench_response["operation_id"])
-    
+
     # Print summary
     print(f"Model: {model_info['model_name']}")
     print(f"Tests: {test_results['status']}")

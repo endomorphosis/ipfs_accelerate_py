@@ -1,4 +1,4 @@
-#\!/usr/bin/env python3
+# \!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 """
@@ -27,99 +27,101 @@ from typing import Dict, List, Any, Optional, Union, Tuple
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("verify_database")
 
 # Try to import DuckDB and related dependencies
 try:
     import duckdb
+
     HAVE_DUCKDB = True
     logger.info("DuckDB support enabled for verification")
 except ImportError:
     HAVE_DUCKDB = False
     logger.error("DuckDB not installed. Please install with: pip install duckdb")
 
+
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="Verify database integration")
-    parser.add_argument("--db-path", default="./benchmark_db.duckdb", 
-                        help="Path to DuckDB database")
-    parser.add_argument("--verbose", action="store_true", 
-                        help="Enable verbose output")
+    parser.add_argument(
+        "--db-path", default="./benchmark_db.duckdb", help="Path to DuckDB database"
+    )
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
     return parser.parse_args()
+
 
 def verify_database_connection(db_path: str) -> Tuple[bool, Optional[duckdb.DuckDBPyConnection]]:
     """Verify database connection and schema.
-    
+
     Args:
         db_path: Path to DuckDB database
-        
+
     Returns:
         Tuple of (success, connection)
     """
     logger.info(f"Verifying database connection to {db_path}")
-    
+
     try:
         # Test connection
         conn = duckdb.connect(db_path)
         logger.info("Database connection successful")
-        
+
         # Check if required tables exist
         required_tables = [
-            "models", 
-            "hardware_platforms", 
-            "test_results", 
-            "performance_results", 
-            "hardware_compatibility", 
+            "models",
+            "hardware_platforms",
+            "test_results",
+            "performance_results",
+            "hardware_compatibility",
             "power_metrics",
             "cross_platform_compatibility",
             "ipfs_acceleration_results",
             "p2p_network_metrics",
-            "webgpu_metrics"
+            "webgpu_metrics",
         ]
-        
+
         existing_tables = conn.execute("PRAGMA show_tables").fetchdf()
-        existing_table_names = existing_tables['name'].tolist()
-        
+        existing_table_names = existing_tables["name"].tolist()
+
         missing_tables = [table for table in required_tables if table not in existing_table_names]
-        
+
         if missing_tables:
             logger.warning(f"Missing tables: {', '.join(missing_tables)}")
             return False, None
         else:
             logger.info("All required tables exist")
-        
+
         return True, conn
     except Exception as e:
         logger.error(f"Database connection failed: {e}")
         traceback.print_exc()
         return False, None
 
+
 def verify_model_storage(conn: duckdb.DuckDBPyConnection) -> bool:
     """Verify model storage.
-    
+
     Args:
         conn: Database connection
-        
+
     Returns:
         True if verification passed, False otherwise
     """
     logger.info("Verifying model storage")
-    
+
     try:
         # Create a test model
         model_name = "test-model"
         model_family = "test-family"
         model_type = "test-type"
-        
+
         # Check if the model already exists
         result = conn.execute(
-            "SELECT model_id FROM models WHERE model_name = ?", 
-            [model_name]
+            "SELECT model_id FROM models WHERE model_name = ?", [model_name]
         ).fetchone()
-        
+
         if result:
             model_id = result[0]
             logger.info(f"Model already exists with ID: {model_id}")
@@ -127,65 +129,67 @@ def verify_model_storage(conn: duckdb.DuckDBPyConnection) -> bool:
             # Get the next model_id
             max_id_result = conn.execute("SELECT MAX(model_id) FROM models").fetchone()
             next_id = 1 if max_id_result[0] is None else max_id_result[0] + 1
-            
+
             # Insert the model
             conn.execute(
                 """
                 INSERT INTO models (model_id, model_name, model_family, model_type, model_size, parameters_million, added_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                [next_id, model_name, model_family, model_type, "test", 1.0, datetime.now()]
+                [next_id, model_name, model_family, model_type, "test", 1.0, datetime.now()],
             )
-            
+
             # Get the model ID
             result = conn.execute(
-                "SELECT model_id FROM models WHERE model_name = ?", 
-                [model_name]
+                "SELECT model_id FROM models WHERE model_name = ?", [model_name]
             ).fetchone()
-            
+
             if result:
                 model_id = result[0]
                 logger.info(f"Created model with ID: {model_id}")
             else:
                 logger.error("Failed to create model")
                 return False
-        
+
         return True
     except Exception as e:
         logger.error(f"Model storage verification failed: {e}")
         traceback.print_exc()
         return False
 
+
 def verify_hardware_storage(conn: duckdb.DuckDBPyConnection) -> bool:
     """Verify hardware storage.
-    
+
     Args:
         conn: Database connection
-        
+
     Returns:
         True if verification passed, False otherwise
     """
     logger.info("Verifying hardware storage")
-    
+
     try:
         # Create a test hardware platform
         hardware_type = "test-hardware"
         device_name = "Test Device"
-        
+
         # Check if the hardware already exists
         result = conn.execute(
-            "SELECT hardware_id FROM hardware_platforms WHERE hardware_type = ? AND device_name = ?", 
-            [hardware_type, device_name]
+            "SELECT hardware_id FROM hardware_platforms WHERE hardware_type = ? AND device_name = ?",
+            [hardware_type, device_name],
         ).fetchone()
-        
+
         if result:
             hardware_id = result[0]
             logger.info(f"Hardware already exists with ID: {hardware_id}")
         else:
             # Get the next hardware_id
-            max_id_result = conn.execute("SELECT MAX(hardware_id) FROM hardware_platforms").fetchone()
+            max_id_result = conn.execute(
+                "SELECT MAX(hardware_id) FROM hardware_platforms"
+            ).fetchone()
             next_id = 1 if max_id_result[0] is None else max_id_result[0] + 1
-            
+
             # Insert the hardware
             conn.execute(
                 """
@@ -195,66 +199,65 @@ def verify_hardware_storage(conn: duckdb.DuckDBPyConnection) -> bool:
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                [next_id, hardware_type, device_name, 4, 8.0, "1.0", "fp32", 32, datetime.now()]
+                [next_id, hardware_type, device_name, 4, 8.0, "1.0", "fp32", 32, datetime.now()],
             )
-            
+
             # Get the hardware ID
             result = conn.execute(
-                "SELECT hardware_id FROM hardware_platforms WHERE hardware_type = ? AND device_name = ?", 
-                [hardware_type, device_name]
+                "SELECT hardware_id FROM hardware_platforms WHERE hardware_type = ? AND device_name = ?",
+                [hardware_type, device_name],
             ).fetchone()
-            
+
             if result:
                 hardware_id = result[0]
                 logger.info(f"Created hardware with ID: {hardware_id}")
             else:
                 logger.error("Failed to create hardware")
                 return False
-        
+
         return True
     except Exception as e:
         logger.error(f"Hardware storage verification failed: {e}")
         traceback.print_exc()
         return False
 
+
 def verify_test_result_storage(conn: duckdb.DuckDBPyConnection) -> Tuple[bool, Optional[int]]:
     """Verify test result storage.
-    
+
     Args:
         conn: Database connection
-        
+
     Returns:
         Tuple of (success, test_id)
     """
     logger.info("Verifying test result storage")
-    
+
     try:
         # Get model and hardware IDs
         model_result = conn.execute(
-            "SELECT model_id FROM models WHERE model_name = ?", 
-            ["test-model"]
+            "SELECT model_id FROM models WHERE model_name = ?", ["test-model"]
         ).fetchone()
-        
+
         hardware_result = conn.execute(
-            "SELECT hardware_id FROM hardware_platforms WHERE hardware_type = ?", 
-            ["test-hardware"]
+            "SELECT hardware_id FROM hardware_platforms WHERE hardware_type = ?", ["test-hardware"]
         ).fetchone()
-        
+
         if not model_result or not hardware_result:
             logger.error("Failed to get model or hardware ID")
             return False, None
-            
+
         model_id = model_result[0]
         hardware_id = hardware_result[0]
-        
+
         # Get the next test_id
         max_id_result = conn.execute("SELECT MAX(id) FROM test_results").fetchone()
         next_id = 1 if max_id_result[0] is None else max_id_result[0] + 1
-        
+
         # Insert test result
         now = datetime.now()
         test_date = now.strftime("%Y-%m-%d")
-        
+
         conn.execute(
             """
             INSERT INTO test_results (
@@ -265,29 +268,31 @@ def verify_test_result_storage(conn: duckdb.DuckDBPyConnection) -> Tuple[bool, O
             """,
             [
                 next_id,
-                now, test_date, 
+                now,
+                test_date,
                 "success",
                 "verification",
-                model_id, hardware_id,
+                model_id,
+                hardware_id,
                 "local",
                 True,
                 None,
                 1.234,
                 567.89,
-                json.dumps({"test_info": "Verification test"})
-            ]
+                json.dumps({"test_info": "Verification test"}),
+            ],
         )
-        
+
         # Get the test ID
         result = conn.execute(
             """
             SELECT id FROM test_results 
             WHERE model_id = ? AND hardware_id = ? 
             ORDER BY timestamp DESC LIMIT 1
-            """, 
-            [model_id, hardware_id]
+            """,
+            [model_id, hardware_id],
         ).fetchone()
-        
+
         if result:
             test_id = result[0]
             logger.info(f"Created test result with ID: {test_id}")
@@ -300,27 +305,30 @@ def verify_test_result_storage(conn: duckdb.DuckDBPyConnection) -> Tuple[bool, O
         traceback.print_exc()
         return False, None
 
-def verify_ipfs_acceleration_storage(conn: duckdb.DuckDBPyConnection, test_id: int, model_id: int) -> Tuple[bool, Optional[int]]:
+
+def verify_ipfs_acceleration_storage(
+    conn: duckdb.DuckDBPyConnection, test_id: int, model_id: int
+) -> Tuple[bool, Optional[int]]:
     """Verify IPFS acceleration results storage.
-    
+
     Args:
         conn: Database connection
         test_id: Test ID
         model_id: Model ID
-        
+
     Returns:
         Tuple of (success, ipfs_result_id)
     """
     logger.info("Verifying IPFS acceleration results storage")
-    
+
     try:
         # Get the next ipfs_result_id
         max_id_result = conn.execute("SELECT MAX(id) FROM ipfs_acceleration_results").fetchone()
         next_id = 1 if max_id_result[0] is None else max_id_result[0] + 1
-        
+
         # Insert IPFS acceleration result
         now = datetime.now()
-        
+
         conn.execute(
             """
             INSERT INTO ipfs_acceleration_results (
@@ -332,7 +340,8 @@ def verify_ipfs_acceleration_storage(conn: duckdb.DuckDBPyConnection, test_id: i
             """,
             [
                 next_id,
-                test_id, model_id,
+                test_id,
+                model_id,
                 "QmTestCIDForIPFSAccelerationVerification",
                 "p2p",
                 45.67,
@@ -341,20 +350,20 @@ def verify_ipfs_acceleration_storage(conn: duckdb.DuckDBPyConnection, test_id: i
                 0.85,
                 0.78,
                 78.9,
-                now
-            ]
+                now,
+            ],
         )
-        
+
         # Get the IPFS result ID
         result = conn.execute(
             """
             SELECT id FROM ipfs_acceleration_results 
             WHERE test_id = ? 
             ORDER BY test_timestamp DESC LIMIT 1
-            """, 
-            [test_id]
+            """,
+            [test_id],
         ).fetchone()
-        
+
         if result:
             ipfs_result_id = result[0]
             logger.info(f"Created IPFS acceleration result with ID: {ipfs_result_id}")
@@ -367,26 +376,29 @@ def verify_ipfs_acceleration_storage(conn: duckdb.DuckDBPyConnection, test_id: i
         traceback.print_exc()
         return False, None
 
-def verify_p2p_network_metrics_storage(conn: duckdb.DuckDBPyConnection, ipfs_result_id: int) -> bool:
+
+def verify_p2p_network_metrics_storage(
+    conn: duckdb.DuckDBPyConnection, ipfs_result_id: int
+) -> bool:
     """Verify P2P network metrics storage.
-    
+
     Args:
         conn: Database connection
         ipfs_result_id: IPFS result ID
-        
+
     Returns:
         True if verification passed, False otherwise
     """
     logger.info("Verifying P2P network metrics storage")
-    
+
     try:
         # Get the next p2p_id
         max_id_result = conn.execute("SELECT MAX(id) FROM p2p_network_metrics").fetchone()
         next_id = 1 if max_id_result[0] is None else max_id_result[0] + 1
-        
+
         # Insert P2P network metrics
         now = datetime.now()
-        
+
         conn.execute(
             """
             INSERT INTO p2p_network_metrics (
@@ -412,19 +424,19 @@ def verify_p2p_network_metrics_storage(conn: duckdb.DuckDBPyConnection, ipfs_res
                 0.78,
                 "good",
                 "good",
-                now
-            ]
+                now,
+            ],
         )
-        
+
         # Verify the record was created
         result = conn.execute(
             """
             SELECT id FROM p2p_network_metrics 
             WHERE ipfs_result_id = ?
-            """, 
-            [ipfs_result_id]
+            """,
+            [ipfs_result_id],
         ).fetchone()
-        
+
         if result:
             p2p_id = result[0]
             logger.info(f"Created P2P network metrics record with ID: {p2p_id}")
@@ -437,26 +449,27 @@ def verify_p2p_network_metrics_storage(conn: duckdb.DuckDBPyConnection, ipfs_res
         traceback.print_exc()
         return False
 
+
 def verify_webgpu_metrics_storage(conn: duckdb.DuckDBPyConnection, test_id: int) -> bool:
     """Verify WebGPU metrics storage.
-    
+
     Args:
         conn: Database connection
         test_id: Test ID
-        
+
     Returns:
         True if verification passed, False otherwise
     """
     logger.info("Verifying WebGPU metrics storage")
-    
+
     try:
         # Get the next webgpu_id
         max_id_result = conn.execute("SELECT MAX(id) FROM webgpu_metrics").fetchone()
         next_id = 1 if max_id_result[0] is None else max_id_result[0] + 1
-        
+
         # Insert WebGPU metrics
         now = datetime.now()
-        
+
         conn.execute(
             """
             INSERT INTO webgpu_metrics (
@@ -482,19 +495,19 @@ def verify_webgpu_metrics_storage(conn: duckdb.DuckDBPyConnection, test_id: int)
                 56.78,
                 "256x1x1",
                 0.91,
-                now
-            ]
+                now,
+            ],
         )
-        
+
         # Verify the record was created
         result = conn.execute(
             """
             SELECT id FROM webgpu_metrics 
             WHERE test_id = ?
-            """, 
-            [test_id]
+            """,
+            [test_id],
         ).fetchone()
-        
+
         if result:
             webgpu_id = result[0]
             logger.info(f"Created WebGPU metrics record with ID: {webgpu_id}")
@@ -507,17 +520,18 @@ def verify_webgpu_metrics_storage(conn: duckdb.DuckDBPyConnection, test_id: int)
         traceback.print_exc()
         return False
 
+
 def verify_report_generation(conn: duckdb.DuckDBPyConnection) -> bool:
     """Verify report generation by checking if data is available for reports.
-    
+
     Args:
         conn: Database connection
-        
+
     Returns:
         True if verification passed, False otherwise
     """
     logger.info("Verifying report generation capability")
-    
+
     try:
         # Check if there's data for different report types
         report_queries = {
@@ -525,29 +539,31 @@ def verify_report_generation(conn: duckdb.DuckDBPyConnection) -> bool:
             "IPFS Acceleration": "SELECT COUNT(*) FROM ipfs_acceleration_results",
             "P2P Network": "SELECT COUNT(*) FROM p2p_network_metrics",
             "WebGPU Metrics": "SELECT COUNT(*) FROM webgpu_metrics",
-            "Hardware Compatibility": "SELECT COUNT(*) FROM hardware_compatibility"
+            "Hardware Compatibility": "SELECT COUNT(*) FROM hardware_compatibility",
         }
-        
+
         for report_name, query in report_queries.items():
             result = conn.execute(query).fetchone()
             count = result[0] if result else 0
-            
+
             logger.info(f"{report_name} report: {count} records available")
-            
+
         # Add some test data to ensure reports can be generated
         try:
             # Get model and hardware IDs for test data
             model_result = conn.execute("SELECT model_id FROM models LIMIT 1").fetchone()
-            hardware_result = conn.execute("SELECT hardware_id FROM hardware_platforms LIMIT 1").fetchone()
-            
+            hardware_result = conn.execute(
+                "SELECT hardware_id FROM hardware_platforms LIMIT 1"
+            ).fetchone()
+
             if model_result and hardware_result:
                 model_id = model_result[0]
                 hardware_id = hardware_result[0]
-                
+
                 # Get the next performance_id
                 max_id_result = conn.execute("SELECT MAX(id) FROM performance_results").fetchone()
                 next_id = 1 if max_id_result[0] is None else max_id_result[0] + 1
-                
+
                 # Add performance test data
                 conn.execute(
                     """
@@ -561,88 +577,96 @@ def verify_report_generation(conn: duckdb.DuckDBPyConnection) -> bool:
                     """,
                     [
                         next_id,
-                        model_id, hardware_id,
-                        8, 128,
-                        12.34, 11.1, 13.3, 15.5,
-                        123.45, 456.78, 10.5,
-                        11.76, datetime.now()
-                    ]
+                        model_id,
+                        hardware_id,
+                        8,
+                        128,
+                        12.34,
+                        11.1,
+                        13.3,
+                        15.5,
+                        123.45,
+                        456.78,
+                        10.5,
+                        11.76,
+                        datetime.now(),
+                    ],
                 )
-                
+
                 logger.info("Added test performance data for report generation")
         except Exception as e:
             logger.warning(f"Could not add test data for reports: {e}")
             # Continue verification even if we couldn't add test data
-        
+
         return True
     except Exception as e:
         logger.error(f"Report generation verification failed: {e}")
         traceback.print_exc()
         return False
 
+
 def verify_database_integration(args):
     """Verify database integration.
-    
+
     Args:
         args: Command line arguments
-        
+
     Returns:
         True if all verifications passed, False otherwise
     """
     # Set logging level
     if args.verbose:
         logger.setLevel(logging.DEBUG)
-    
+
     # Verify dependencies
     if not HAVE_DUCKDB:
         logger.error("Missing dependencies, cannot proceed with verification")
         return False
-    
+
     # Verify database connection
     success, conn = verify_database_connection(args.db_path)
     if not success or conn is None:
         return False
-    
+
     # Verify model storage
     model_success = verify_model_storage(conn)
-    
+
     # Verify hardware storage
     hardware_success = verify_hardware_storage(conn)
-    
+
     # Verify test result storage
     test_result_success, test_id = verify_test_result_storage(conn)
-    
+
     # Get model ID for IPFS test
     model_result = conn.execute(
-        "SELECT model_id FROM models WHERE model_name = ?", 
-        ["test-model"]
+        "SELECT model_id FROM models WHERE model_name = ?", ["test-model"]
     ).fetchone()
     model_id = model_result[0] if model_result else None
-    
+
     # Verify IPFS acceleration storage
     ipfs_success, ipfs_result_id = False, None
     if test_result_success and test_id is not None and model_id is not None:
         ipfs_success, ipfs_result_id = verify_ipfs_acceleration_storage(conn, test_id, model_id)
     else:
         logger.error("Skipping IPFS acceleration verification due to missing test ID or model ID")
-    
+
     # Verify P2P network metrics storage
     p2p_success = False
     if ipfs_success and ipfs_result_id is not None:
         p2p_success = verify_p2p_network_metrics_storage(conn, ipfs_result_id)
     else:
         logger.error("Skipping P2P network metrics verification due to missing IPFS result ID")
-    
+
     # Verify WebGPU metrics storage
     webgpu_success = False
     if test_result_success and test_id is not None:
         webgpu_success = verify_webgpu_metrics_storage(conn, test_id)
     else:
         logger.error("Skipping WebGPU metrics verification due to missing test ID")
-    
+
     # Verify report generation
     report_success = verify_report_generation(conn)
-    
+
     # Print summary
     verifications = [
         ("Model Storage", model_success),
@@ -651,30 +675,34 @@ def verify_database_integration(args):
         ("IPFS Acceleration Storage", ipfs_success),
         ("P2P Network Metrics Storage", p2p_success),
         ("WebGPU Metrics Storage", webgpu_success),
-        ("Report Generation", report_success)
+        ("Report Generation", report_success),
     ]
-    
+
     logger.info("\nVerification Summary:")
     all_passed = True
-    
+
     for name, result in verifications:
         status = "PASSED" if result else "FAILED"
         logger.info(f"  {name}: {status}")
         all_passed = all_passed and result
-    
+
     if all_passed:
         logger.info("\nAll verifications passed. Database integration is working correctly.")
-        logger.info("Phase 16 requirements for IPFS acceleration and P2P metrics have been completed successfully.")
+        logger.info(
+            "Phase 16 requirements for IPFS acceleration and P2P metrics have been completed successfully."
+        )
     else:
         logger.error("\nSome verifications failed. Please check the logs for details.")
-    
+
     return all_passed
+
 
 def main():
     """Main function."""
     args = parse_args()
     success = verify_database_integration(args)
     return 0 if success else 1
+
 
 if __name__ == "__main__":
     sys.exit(main())

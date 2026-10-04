@@ -78,7 +78,9 @@ class TestMCPServerUNI154SearchTools(unittest.TestCase):
                 self.assertEqual(semantic_result.get("status"), "error")
                 self.assertIn("semantic search failed", str(semantic_result.get("message", "")))
 
-                similarity_result = await native_search_tools.similarity_search(embedding=[0.1, 0.2])
+                similarity_result = await native_search_tools.similarity_search(
+                    embedding=[0.1, 0.2]
+                )
                 self.assertEqual(similarity_result.get("status"), "error")
                 self.assertIn("similarity search failed", str(similarity_result.get("message", "")))
 

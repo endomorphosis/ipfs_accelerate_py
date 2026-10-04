@@ -127,7 +127,9 @@ class _RecordingModelManager:
         return {"model_id": model_id}
 
     def mark_model_used(self, model_id, inference_cid=None, run_id=None):
-        self._log.record("model_manager.mark_model_used", model_id=model_id, inference_cid=inference_cid)
+        self._log.record(
+            "model_manager.mark_model_used", model_id=model_id, inference_cid=inference_cid
+        )
         return True
 
 
@@ -172,9 +174,7 @@ def _make_server(monkeypatch, backend_instance, log: _CallLog, *, tmp_path):
         backend_type=BackendType.API,
         name="ordering-backend",
         instance=backend_instance,
-        capabilities=BackendCapabilities(
-            supported_tasks={"text-generation"}, protocols={"http"}
-        ),
+        capabilities=BackendCapabilities(supported_tasks={"text-generation"}, protocols={"http"}),
         endpoint="http://ordering.test.invalid",
     )
 
@@ -222,7 +222,9 @@ def test_e2e_inference_success_call_chain_ordering(monkeypatch, tmp_path):
             json={"model": "ordering-model", "prompt": "hello"},
         )
 
-    assert response.status_code == 200, f"Unexpected status: {response.status_code} — {response.text}"
+    assert response.status_code == 200, (
+        f"Unexpected status: {response.status_code} — {response.text}"
+    )
 
     names = log.op_names()
 
@@ -241,9 +243,9 @@ def test_e2e_inference_success_call_chain_ordering(monkeypatch, tmp_path):
     assert log.index("storage.store.input") < log.index("storage.store.output"), (
         "input store must precede output store"
     )
-    assert log.index("storage.store.output") < log.index("datasets.log_event.inference_completed"), (
-        "output store must precede audit log"
-    )
+    assert log.index("storage.store.output") < log.index(
+        "datasets.log_event.inference_completed"
+    ), "output store must precede audit log"
     assert log.index("datasets.log_event.inference_completed") < log.index(
         "datasets.track_provenance.inference"
     ), "audit log must precede provenance"
@@ -286,7 +288,9 @@ def test_e2e_inference_failure_call_chain_ordering(monkeypatch, tmp_path):
     # Failure-path storage and audit steps must have fired
     assert "storage.store.input" in names, "input store not recorded on failure path"
     assert "datasets.log_event.inference_failed" in names, "inference_failed log_event not recorded"
-    assert "datasets.track_provenance.inference_failed" in names, "inference_failed provenance not recorded"
+    assert "datasets.track_provenance.inference_failed" in names, (
+        "inference_failed provenance not recorded"
+    )
 
     # mark_model_used must NOT be called on the failure path
     assert "model_manager.mark_model_used" not in names, (
@@ -353,8 +357,12 @@ def test_e2e_model_load_failure_call_chain_ordering(monkeypatch, tmp_path):
     names = log.op_names()
 
     assert "model_manager.add_model_with_ipfs_storage" in names, "add_model not called"
-    assert "datasets.log_event.model_load_failed" in names, "model_load_failed log_event not recorded"
-    assert "datasets.track_provenance.model_load_failed" in names, "model_load_failed provenance not recorded"
+    assert "datasets.log_event.model_load_failed" in names, (
+        "model_load_failed log_event not recorded"
+    )
+    assert "datasets.track_provenance.model_load_failed" in names, (
+        "model_load_failed provenance not recorded"
+    )
 
     assert log.index("model_manager.add_model_with_ipfs_storage") < log.index(
         "datasets.log_event.model_load_failed"
@@ -402,7 +410,9 @@ def test_e2e_model_load_success_call_chain_ordering(monkeypatch, tmp_path):
             json={"model_id": "test-model", "hardware": "cpu"},
         )
 
-    assert response.status_code == 200, f"Expected 200, got {response.status_code} — {response.text}"
+    assert response.status_code == 200, (
+        f"Expected 200, got {response.status_code} — {response.text}"
+    )
 
     names = log.op_names()
 

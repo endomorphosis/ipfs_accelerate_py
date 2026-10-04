@@ -222,9 +222,7 @@ def test_semantic_stage_context_reaches_final_prompt_without_authority(
     prompt = json.loads(context.to_prompt())
 
     # Exact duplicate records are collapsed without losing distinct provenance.
-    assert [item["hint_id"] for item in prompt["untrusted_semantic_hints"]] == [
-        "semantic-a"
-    ]
+    assert [item["hint_id"] for item in prompt["untrusted_semantic_hints"]] == ["semantic-a"]
     hint = prompt["untrusted_semantic_hints"][0]
     assert hint["semantic_context"] == semantic_context
     assert hint["trust"] == ContextTrust.UNTRUSTED_SUGGESTION.value
@@ -234,15 +232,9 @@ def test_semantic_stage_context_reaches_final_prompt_without_authority(
     assert hint["usable_as_proof_evidence"] is False
     assert hint["usable_as_failure_evidence"] is False
     assert prompt["semantic_hint_policy"]["semantic_guidance_only"] is True
-    assert all(
-        item["failure_id"] != "semantic-a"
-        for item in prompt["compact_failures"]
-    )
+    assert all(item["failure_id"] != "semantic-a" for item in prompt["compact_failures"])
     assert context.omitted["untrusted_semantic_hints"] == 0
-    assert (
-        context.prompt_sha256
-        == hashlib.sha256(context.to_prompt().encode("utf-8")).hexdigest()
-    )
+    assert context.prompt_sha256 == hashlib.sha256(context.to_prompt().encode("utf-8")).hexdigest()
     assert LeanstralProofContext.from_json(context.to_prompt()) == context
 
     changed_entry = replace(
@@ -333,9 +325,10 @@ def test_realistic_ten_kib_semantic_hint_is_fully_included(tmp_path: Path) -> No
     assert len(context.untrusted_semantic_hints) == 1
     assert context.untrusted_semantic_hints[0].byte_count > 10_002
     assert context.omitted["untrusted_semantic_hints"] == 0
-    assert json.loads(context.to_prompt())["untrusted_semantic_hints"][0][
-        "semantic_context"
-    ] == hint.fields
+    assert (
+        json.loads(context.to_prompt())["untrusted_semantic_hints"][0]["semantic_context"]
+        == hint.fields
+    )
 
 
 def test_legacy_v1_prompt_without_semantic_hints_deserializes(
@@ -343,9 +336,7 @@ def test_legacy_v1_prompt_without_semantic_hints_deserializes(
 ) -> None:
     context = build_leanstral_proof_context(_capsule(tmp_path), _theorem())
     legacy = context.to_dict()
-    legacy["schema"] = (
-        "ipfs_accelerate_py.agent_supervisor.leanstral-proof-context@1"
-    )
+    legacy["schema"] = "ipfs_accelerate_py.agent_supervisor.leanstral-proof-context@1"
     legacy["instruction"] = (
         "Prove the fixed Lean theorem or decompose it into proof subgoals. "
         "Use only allowed_premises and trusted_prior_receipts as checked "
@@ -354,9 +345,7 @@ def test_legacy_v1_prompt_without_semantic_hints_deserializes(
     )
     legacy.pop("untrusted_semantic_hints")
     legacy.pop("semantic_hint_policy")
-    legacy["limits"]["schema"] = (
-        "ipfs_accelerate_py.agent_supervisor.leanstral-prompt-limits@1"
-    )
+    legacy["limits"]["schema"] = "ipfs_accelerate_py.agent_supervisor.leanstral-prompt-limits@1"
     for name in (
         "max_semantic_hints",
         "max_semantic_hint_bytes",
@@ -452,9 +441,7 @@ def test_provider_builds_prompt_and_accepts_only_bound_output(tmp_path: Path) ->
             }
         )
 
-    result = LeanstralProofProvider(llm_generate=generate).prove(
-        _request(capsule, theorem)
-    )
+    result = LeanstralProofProvider(llm_generate=generate).prove(_request(capsule, theorem))
 
     assert calls[0][0]["fixed_theorem"]["theorem_id"] == theorem.theorem_id
     assert calls[0][1]["max_new_tokens"] == 512
@@ -479,9 +466,7 @@ def test_provider_builds_prompt_and_accepts_only_bound_output(tmp_path: Path) ->
         {"allowed_premises": ["invented"]},
     ],
 )
-def test_response_cannot_mutate_fixed_theorem_fields(
-    tmp_path: Path, mutation: dict
-) -> None:
+def test_response_cannot_mutate_fixed_theorem_fields(tmp_path: Path, mutation: dict) -> None:
     capsule = _capsule(tmp_path)
     theorem = _theorem()
     response = {
@@ -491,9 +476,7 @@ def test_response_cannot_mutate_fixed_theorem_fields(
         "proof_text": "by exact premise_1",
         **mutation,
     }
-    provider = LeanstralProofProvider(
-        llm_generate=lambda *_args, **_kwargs: json.dumps(response)
-    )
+    provider = LeanstralProofProvider(llm_generate=lambda *_args, **_kwargs: json.dumps(response))
 
     result = dispatch_provider_request(provider, _request(capsule, theorem))
 
@@ -516,9 +499,9 @@ def test_decomposition_is_schema_checked_and_stays_unverified(tmp_path: Path) ->
         }
     )
 
-    result = LeanstralProofProvider(
-        llm_generate=lambda *_args, **_kwargs: response
-    ).prove(_request(capsule, theorem))
+    result = LeanstralProofProvider(llm_generate=lambda *_args, **_kwargs: response).prove(
+        _request(capsule, theorem)
+    )
 
     assert result["proposal_kind"] == "decomposition"
     assert [item["subgoal_id"] for item in result["decomposition"]] == ["s1", "s2"]

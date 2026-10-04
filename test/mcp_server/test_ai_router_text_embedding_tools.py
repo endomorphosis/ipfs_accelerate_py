@@ -50,15 +50,9 @@ def _records(
     labels: Tuple[Tuple[str, str], ...] = (),
 ) -> Tuple[Any, ...]:
     output_modality = (
-        Modality.EMBEDDING
-        if operation is Operation.EMBEDDING_GENERATE
-        else Modality.TEXT
+        Modality.EMBEDDING if operation is Operation.EMBEDDING_GENERATE else Modality.TEXT
     )
-    operations = (
-        (operation, Operation.BATCH)
-        if max_batch_size is not None
-        else (operation,)
-    )
+    operations = (operation, Operation.BATCH) if max_batch_size is not None else (operation,)
     capability = CapabilityDescriptor(
         operations=operations,
         input_modalities=(Modality.TEXT,),
@@ -108,9 +102,7 @@ def _records(
 def _snapshot(*groups: Iterable[Any]) -> CatalogSnapshot:
     records = tuple(item for group in groups for item in group)
     return CatalogSnapshot(
-        providers=tuple(
-            item for item in records if isinstance(item, ProviderDescriptor)
-        ),
+        providers=tuple(item for item in records if isinstance(item, ProviderDescriptor)),
         models=tuple(item for item in records if isinstance(item, ModelDescriptor)),
         bindings=tuple(item for item in records if isinstance(item, RouterBinding)),
     )
@@ -202,10 +194,7 @@ def test_registration_is_cold_bounded_and_includes_compatibility_aliases(
     embedding_schema = registry.tools["embeddings_generate"]["input_schema"]
     assert text_schema["additionalProperties"] is False
     assert text_schema["properties"]["timeout"]["maximum"] == 120.0
-    assert (
-        embedding_schema["properties"]["texts"]["maxItems"]
-        == text_embedding.MAX_INPUT_ITEMS
-    )
+    assert embedding_schema["properties"]["texts"]["maxItems"] == text_embedding.MAX_INPUT_ITEMS
     assert (
         embedding_schema["properties"]["dimensions"]["maximum"]
         == text_embedding.MAX_EMBEDDING_DIMENSIONS
@@ -427,9 +416,7 @@ def test_fallback_is_confined_to_candidates_from_captured_revision(
     )
 
     blocked = _run(text_embedding.llm_generate("hello"))
-    allowed = _run(
-        text_embedding.llm_generate("hello", allow_fallback=True)
-    )
+    allowed = _run(text_embedding.llm_generate("hello", allow_fallback=True))
 
     assert blocked["error"]["code"] == "fallback_boundary_exceeded"
     assert allowed["status"] == "success"
@@ -444,9 +431,7 @@ def test_fallback_is_confined_to_candidates_from_captured_revision(
         effective_provider_name="not-in-catalog",
         effective_model_name="unknown",
     )
-    escaped = _run(
-        text_embedding.llm_generate("hello", allow_fallback=True)
-    )
+    escaped = _run(text_embedding.llm_generate("hello", allow_fallback=True))
     assert escaped["error"]["code"] == "fallback_boundary_exceeded"
 
 
@@ -487,9 +472,7 @@ def test_batch_text_dimension_output_and_streaming_bounds_fail_closed(
     monkeypatch.setattr(text_embedding.llm_router, "generate_text", fake_text)
 
     global_batch = _run(
-        text_embedding.embeddings_generate(
-            ["x"] * (text_embedding.MAX_INPUT_ITEMS + 1)
-        )
+        text_embedding.embeddings_generate(["x"] * (text_embedding.MAX_INPUT_ITEMS + 1))
     )
     catalog_batch = _run(
         text_embedding.embeddings_generate(
@@ -539,7 +522,7 @@ def test_timeout_cancellation_and_provider_errors_are_safe(
     monkeypatch.setattr(
         text_embedding.llm_router,
         "generate_text",
-        lambda *args, **kwargs: (time.sleep(0.05) or "late"),
+        lambda *args, **kwargs: time.sleep(0.05) or "late",
     )
     timed_out = _run(
         text_embedding.llm_generate(
@@ -554,9 +537,7 @@ def test_timeout_cancellation_and_provider_errors_are_safe(
         raise RuntimeError("Bearer provider-private-secret")
 
     monkeypatch.setattr(text_embedding.llm_router, "generate_text", raises_secret)
-    failed = _run(
-        text_embedding.llm_generate("hello", provider="text-provider")
-    )
+    failed = _run(text_embedding.llm_generate("hello", provider="text-provider"))
     assert failed["error"]["code"] == "router_error"
     assert failed["error"]["cause"] == "RuntimeError"
     assert "provider-private-secret" not in json.dumps(failed)
@@ -607,9 +588,7 @@ def test_compatibility_aliases_delegate_to_canonical_functions(
     monkeypatch.setattr(text_embedding, "llm_generate", fake_llm)
     monkeypatch.setattr(text_embedding, "embeddings_generate", fake_embeddings)
 
-    text_result = _run(
-        text_embedding.generate_text("hello", model="auto", timeout=4)
-    )
+    text_result = _run(text_embedding.generate_text("hello", model="auto", timeout=4))
     batch_result = _run(
         text_embedding.generate_embeddings(
             ["one", "two"],

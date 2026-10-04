@@ -48,12 +48,16 @@ class TestMCPServerUNI161LogicTools(unittest.TestCase):
         async def _run() -> None:
             invalid_format = await logic_tools.tdfol_parse(text="forall x P(x)", format="")
             self.assertEqual(invalid_format.get("success"), False)
-            self.assertIn("'format' must be a non-empty string", str(invalid_format.get("error", "")))
+            self.assertIn(
+                "'format' must be a non-empty string", str(invalid_format.get("error", ""))
+            )
 
             with patch.dict(
                 logic_tools._API,
                 {
-                    "tdfol_parse": lambda **_: (_ for _ in ()).throw(RuntimeError("parse exploded")),
+                    "tdfol_parse": lambda **_: (_ for _ in ()).throw(
+                        RuntimeError("parse exploded")
+                    ),
                 },
                 clear=False,
             ):
@@ -70,14 +74,18 @@ class TestMCPServerUNI161LogicTools(unittest.TestCase):
                 source_format="",
             )
             self.assertEqual(invalid_source.get("success"), False)
-            self.assertIn("'source_format' must be a non-empty string", str(invalid_source.get("error", "")))
+            self.assertIn(
+                "'source_format' must be a non-empty string", str(invalid_source.get("error", ""))
+            )
 
             invalid_target = await logic_tools.tdfol_convert(
                 formula="forall x P(x)",
                 target_format="",
             )
             self.assertEqual(invalid_target.get("success"), False)
-            self.assertIn("'target_format' must be a non-empty string", str(invalid_target.get("error", "")))
+            self.assertIn(
+                "'target_format' must be a non-empty string", str(invalid_target.get("error", ""))
+            )
 
         anyio.run(_run)
 
@@ -88,7 +96,9 @@ class TestMCPServerUNI161LogicTools(unittest.TestCase):
                 axioms=["A", ""],
             )
             self.assertEqual(invalid_axioms.get("success"), False)
-            self.assertIn("'axioms' must be a list of non-empty strings", str(invalid_axioms.get("error", "")))
+            self.assertIn(
+                "'axioms' must be a list of non-empty strings", str(invalid_axioms.get("error", ""))
+            )
 
             invalid_timeout = await logic_tools.tdfol_prove(
                 formula="forall x P(x)",
@@ -103,7 +113,9 @@ class TestMCPServerUNI161LogicTools(unittest.TestCase):
             with patch.dict(
                 logic_tools._API,
                 {
-                    "tdfol_prove": lambda **_: (_ for _ in ()).throw(RuntimeError("prove exploded")),
+                    "tdfol_prove": lambda **_: (_ for _ in ()).throw(
+                        RuntimeError("prove exploded")
+                    ),
                 },
                 clear=False,
             ):
@@ -155,7 +167,9 @@ class TestMCPServerUNI161LogicTools(unittest.TestCase):
 
             invalid_parse = await logic_tools.cec_parse(text="acts(agent)", language="")
             self.assertEqual(invalid_parse.get("success"), False)
-            self.assertIn("'language' must be a non-empty string", str(invalid_parse.get("error", "")))
+            self.assertIn(
+                "'language' must be a non-empty string", str(invalid_parse.get("error", ""))
+            )
 
             invalid_validate = await logic_tools.cec_validate_formula(formula="")
             self.assertEqual(invalid_validate.get("success"), False)

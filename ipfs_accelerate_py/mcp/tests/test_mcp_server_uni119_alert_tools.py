@@ -40,7 +40,9 @@ class TestMCPServerUNI119AlertTools(unittest.TestCase):
         register_native_alert_tools(manager)
         by_name = {c["name"]: c for c in manager.calls}
         self.assertEqual(
-            by_name["list_alert_rules"]["input_schema"]["properties"]["enabled_only"].get("default"),
+            by_name["list_alert_rules"]["input_schema"]["properties"]["enabled_only"].get(
+                "default"
+            ),
             False,
         )
         self.assertEqual(by_name["remove_alert_rule"]["input_schema"]["required"], ["rule_id"])

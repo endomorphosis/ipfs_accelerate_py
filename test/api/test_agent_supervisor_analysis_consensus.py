@@ -82,9 +82,7 @@ def _claim(
             },
         ),
         proposal_only=(
-            kind is not AnalysisProducerKind.LOCAL
-            if proposal_only is None
-            else proposal_only
+            kind is not AnalysisProducerKind.LOCAL if proposal_only is None else proposal_only
         ),
         confidence_millionths=confidence,
         validates_claim_id=validates_claim_id,
@@ -109,9 +107,7 @@ def _receipt(
 
 def test_agreement_is_canonical_and_preserves_full_compact_provenance() -> None:
     local = _claim(AnalysisProducerKind.LOCAL, "same", confidence=1)
-    datasets = _claim(
-        AnalysisProducerKind.DATASETS, "same", confidence=999_999
-    )
+    datasets = _claim(AnalysisProducerKind.DATASETS, "same", confidence=999_999)
 
     receipt = _receipt(local, datasets)
     restored = AnalysisConsensusReceipt.from_dict(receipt.to_dict())
@@ -147,9 +143,7 @@ def test_unresolved_disagreement_retains_uncertainty_and_selects_nothing() -> No
     )
 
     assert receipt.outcome is AnalysisConsensusOutcome.DISAGREEMENT
-    assert receipt.resolution is (
-        AnalysisConsensusResolution.EXPLICIT_UNCERTAINTY
-    )
+    assert receipt.resolution is (AnalysisConsensusResolution.EXPLICIT_UNCERTAINTY)
     assert receipt.selected_claim is None
     assert receipt.residual_uncertainty
 
@@ -178,25 +172,17 @@ def test_disagreement_selection_requires_an_explicit_deterministic_rule(
     )
 
     assert receipt.outcome is AnalysisConsensusOutcome.DISAGREEMENT
-    assert receipt.resolution is (
-        AnalysisConsensusResolution.DETERMINISTIC_POLICY
-    )
+    assert receipt.resolution is (AnalysisConsensusResolution.DETERMINISTIC_POLICY)
     assert receipt.selected_claim is not None
     assert receipt.selected_claim.producer_kind is selected_kind
 
 
 def test_confidence_changes_neither_agreement_nor_deterministic_selection() -> None:
     local = _claim(AnalysisProducerKind.LOCAL, "left", confidence=0)
-    remote_low = _claim(
-        AnalysisProducerKind.DATASETS, "right", confidence=1
-    )
-    remote_high = replace(
-        remote_low, confidence_millionths=1_000_000, claim_id=""
-    )
+    remote_low = _claim(AnalysisProducerKind.DATASETS, "right", confidence=1)
+    remote_high = replace(remote_low, confidence_millionths=1_000_000, claim_id="")
     policy = AnalysisConsensusPolicy(
-        disagreement_policy=(
-            DeterministicDisagreementPolicy.LEXICOGRAPHIC_CLAIM_ID
-        )
+        disagreement_policy=(DeterministicDisagreementPolicy.LEXICOGRAPHIC_CLAIM_ID)
     )
 
     low = _receipt(local, remote_low, policy=policy)
@@ -209,10 +195,7 @@ def test_confidence_changes_neither_agreement_nor_deterministic_selection() -> N
     assert low.outcome is high.outcome is AnalysisConsensusOutcome.DISAGREEMENT
     assert low.selected_claim is not None
     assert high.selected_claim is not None
-    assert (
-        low.selected_claim.producer_kind
-        is high.selected_claim.producer_kind
-    )
+    assert low.selected_claim.producer_kind is high.selected_claim.producer_kind
     assert not low.completion_authority
     assert not high.completion_authority
 
@@ -221,9 +204,7 @@ def test_forged_deterministic_resolution_must_match_declared_policy() -> None:
     local = _claim(AnalysisProducerKind.LOCAL, "left")
     datasets = _claim(AnalysisProducerKind.DATASETS, "right")
 
-    with pytest.raises(
-        AnalysisConsensusError, match="must match the declared policy"
-    ):
+    with pytest.raises(AnalysisConsensusError, match="must match the declared policy"):
         AnalysisConsensusReceipt(
             repository_id="repository:fixture",
             tree_id=TREE,
@@ -251,17 +232,13 @@ def test_independent_validation_requires_a_third_producer() -> None:
     receipt = _receipt(local, datasets, validator_claim=validator)
 
     assert receipt.outcome is AnalysisConsensusOutcome.INDEPENDENT_VALIDATION
-    assert receipt.resolution is (
-        AnalysisConsensusResolution.INDEPENDENT_VALIDATOR
-    )
+    assert receipt.resolution is (AnalysisConsensusResolution.INDEPENDENT_VALIDATOR)
     assert receipt.selected_claim_id == datasets.claim_id
     assert not receipt.is_completion_evidence
 
     same_producer = replace(
         validator,
-        provenance=replace(
-            validator.provenance, producer_id=local.provenance.producer_id
-        ),
+        provenance=replace(validator.provenance, producer_id=local.provenance.producer_id),
         claim_id="",
     )
     unresolved = _receipt(local, datasets, validator_claim=same_producer)
@@ -319,9 +296,7 @@ def test_partial_stale_and_inconclusive_results_are_never_selected(
 
 
 def test_proposal_only_claims_cannot_gain_completion_authority_by_agreement() -> None:
-    local = _claim(
-        AnalysisProducerKind.LOCAL, "same", proposal_only=True
-    )
+    local = _claim(AnalysisProducerKind.LOCAL, "same", proposal_only=True)
     datasets = _claim(AnalysisProducerKind.DATASETS, "same")
     receipt = _receipt(local, datasets)
 
@@ -346,14 +321,10 @@ def test_receipt_bounds_and_heavy_payload_rejection() -> None:
             verdict="local",
             status=AnalysisClaimStatus.CONCLUSIVE,
             provenance=_provenance(AnalysisProducerKind.LOCAL),
-            evidence_references=(
-                {"reference_id": "evidence:heavy", "source_text": "x" * 10},
-            ),
+            evidence_references=({"reference_id": "evidence:heavy", "source_text": "x" * 10},),
         )
 
-    small_policy = AnalysisConsensusPolicy(
-        max_receipt_bytes=1024, max_reference_bytes=512
-    )
+    small_policy = AnalysisConsensusPolicy(max_receipt_bytes=1024, max_reference_bytes=512)
     with pytest.raises(AnalysisConsensusError, match="max_receipt_bytes"):
         _receipt(
             _claim(
@@ -402,10 +373,7 @@ def test_pipeline_cold_and_warm_results_restore_the_same_consensus_receipt(
     assert cold.consensus_receipt is not None
     assert warm.consensus_receipt is not None
     assert cold.consensus_receipt.equivalent_to(warm.consensus_receipt)
-    assert (
-        cold.to_dict()["consensus_receipt"]
-        == warm.to_dict()["consensus_receipt"]
-    )
+    assert cold.to_dict()["consensus_receipt"] == warm.to_dict()["consensus_receipt"]
     assert cold.consensus_receipt.fallback_explicit
     assert cold.consensus_receipt.serialized_byte_count <= (
         cold.consensus_receipt.policy.max_receipt_bytes
@@ -448,10 +416,7 @@ def test_joined_uncached_partial_result_retains_the_same_receipt(
         assert entered.wait(5)
         follower = executor.submit(pipeline.analyze, request)
         deadline = time.monotonic() + 5
-        while (
-            pipeline.coordinator.metrics().followers < 1
-            and time.monotonic() < deadline
-        ):
+        while pipeline.coordinator.metrics().followers < 1 and time.monotonic() < deadline:
             time.sleep(0.001)
         assert pipeline.coordinator.metrics().followers == 1
         release.set()
@@ -464,6 +429,4 @@ def test_joined_uncached_partial_result_retains_the_same_receipt(
     assert all(item.consensus_receipt is not None for item in results)
     assert results[0].consensus_receipt is not None
     assert results[1].consensus_receipt is not None
-    assert results[0].consensus_receipt.equivalent_to(
-        results[1].consensus_receipt
-    )
+    assert results[0].consensus_receipt.equivalent_to(results[1].consensus_receipt)

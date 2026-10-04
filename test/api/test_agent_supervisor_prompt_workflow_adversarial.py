@@ -27,9 +27,7 @@ def test_every_required_adversarial_fixture_is_non_compensable():
     assert report.passed
 
     target = next(
-        receipt
-        for receipt in benchmark.receipts
-        if receipt.adversarial_fixture is not None
+        receipt for receipt in benchmark.receipts if receipt.adversarial_fixture is not None
     )
     escaped = PromptWorkflowBenchmark(
         tuple(
@@ -48,10 +46,7 @@ def test_every_required_adversarial_fixture_is_non_compensable():
     )
     failed = recompute_prompt_workflow_gate(escaped)
     assert not failed.passed
-    assert (
-        f"adversarial-escape:{target.adversarial_fixture.value}"
-        in failed.failure_codes
-    )
+    assert f"adversarial-escape:{target.adversarial_fixture.value}" in failed.failure_codes
 
 
 def test_missing_fixture_and_secret_emission_cannot_be_averaged_away():
@@ -60,16 +55,12 @@ def test_missing_fixture_and_secret_emission_cannot_be_averaged_away():
         tuple(
             receipt
             for receipt in benchmark.receipts
-            if receipt.adversarial_fixture
-            is not REQUIRED_ADVERSARIAL_FIXTURES[0]
+            if receipt.adversarial_fixture is not REQUIRED_ADVERSARIAL_FIXTURES[0]
         )
     )
     report = recompute_prompt_workflow_gate(omitted)
     assert not report.passed
-    assert any(
-        code.startswith("missing-adversarial-fixture:")
-        for code in report.failure_codes
-    )
+    assert any(code.startswith("missing-adversarial-fixture:") for code in report.failure_codes)
 
     target = next(
         receipt
@@ -91,10 +82,7 @@ def test_missing_fixture_and_secret_emission_cannot_be_averaged_away():
     assert not leak_report.passed
     assert not leak_report.secret_hygiene_passed
     assert "secret-hygiene" in leak_report.failure_codes
-    assert (
-        f"adversarial-escape:{AdversarialFixture.SECRET_LEAK.value}"
-        in leak_report.failure_codes
-    )
+    assert f"adversarial-escape:{AdversarialFixture.SECRET_LEAK.value}" in leak_report.failure_codes
 
 
 def test_scope_policy_authority_completion_and_sql_cases_are_required():
@@ -122,11 +110,7 @@ def test_scope_policy_authority_completion_and_sql_cases_are_required():
     }
     assert required.issubset(present)
     for fixture in required:
-        receipt = next(
-            item
-            for item in benchmark.receipts
-            if item.adversarial_fixture is fixture
-        )
+        receipt = next(item for item in benchmark.receipts if item.adversarial_fixture is fixture)
         assert receipt.metrics.escape_count == 0
         assert receipt.metrics.terminal_result in {
             TerminalOutcome.REJECTED.value,

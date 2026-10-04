@@ -252,11 +252,7 @@ from ipfs_accelerate_py.github_cli.cache import configure_cache
 import tempfile
 
 # Create cache without P2P
-cache = configure_cache(
-    cache_dir=tempfile.mkdtemp(),
-    enable_p2p=False,
-    enable_persistence=False
-)
+cache = configure_cache(cache_dir=tempfile.mkdtemp(), enable_p2p=False, enable_persistence=False)
 
 # Test operations
 cache.put("test", {"data": "value"}, ttl=300)
@@ -281,22 +277,14 @@ from pathlib import Path
 cache_dir = Path.home() / ".cache" / "test_cache"
 cache_dir.mkdir(parents=True, exist_ok=True)
 
-cache = configure_cache(
-    cache_dir=str(cache_dir),
-    enable_p2p=False,
-    enable_persistence=True
-)
+cache = configure_cache(cache_dir=str(cache_dir), enable_p2p=False, enable_persistence=True)
 
 # Test operations
 cache.put("persistent", {"data": "saved"}, ttl=300)
 cache.shutdown()
 
 # Reload
-cache2 = configure_cache(
-    cache_dir=str(cache_dir),
-    enable_p2p=False,
-    enable_persistence=True
-)
+cache2 = configure_cache(cache_dir=str(cache_dir), enable_p2p=False, enable_persistence=True)
 result = cache2.get("persistent")
 print(f"✅ Persistence works: {result}")
 

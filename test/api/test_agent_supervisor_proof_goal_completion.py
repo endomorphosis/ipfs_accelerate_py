@@ -102,9 +102,7 @@ def _receipt(
         policy_id="policy:critical-proof",
         resource_budget=ResourceBudget(wall_time_ms=30_000),
         verdict=verdict,
-        evidence=evidence
-        if evidence is not None
-        else (_kernel_evidence(obligation),),
+        evidence=evidence if evidence is not None else (_kernel_evidence(obligation),),
         provider_id="provider:untrusted",
         provider_claimed_assurance=provider_claimed_assurance,
         freshness=freshness,
@@ -266,9 +264,7 @@ def test_embedded_receipt_and_summary_tampering_are_rejected() -> None:
 def test_parent_aggregates_and_rejects_stale_descendant_proof_requirement() -> None:
     obligation = _obligation()
     child_evidence = _completion_evidence(_receipt(obligation), obligation)
-    child_result = validate_completion_evidence(
-        child_evidence, repository_tree=TREE, now=NOW
-    )
+    child_result = validate_completion_evidence(child_evidence, repository_tree=TREE, now=NOW)
     assert child_result.valid is True
     # Exercise the persisted decision shape consumed by parent aggregation.
     requirement = {
@@ -302,9 +298,10 @@ def test_parent_aggregates_and_rejects_stale_descendant_proof_requirement() -> N
     assert child_check.passed is False
     assert child_check.reason_code == "child_proof_stale"
     assert child_check.evidence["proof_requirements"] == [requirement]
-    assert child_check.evidence["unsatisfied_proof_requirements"][0][
-        "failure_codes"
-    ] == ["child_proof_stale", "child_required_assurance_not_satisfied"]
+    assert child_check.evidence["unsatisfied_proof_requirements"][0]["failure_codes"] == [
+        "child_proof_stale",
+        "child_required_assurance_not_satisfied",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -361,9 +358,7 @@ def test_parent_cannot_hide_nonqualifying_nested_descendant_proof(
 
     assert child_check.passed is False
     assert child_check.reason_code == expected_code
-    assert child_check.evidence["unsatisfied_proof_requirements"][0]["goal_id"] == (
-        "G11.S7.1.1"
-    )
+    assert child_check.evidence["unsatisfied_proof_requirements"][0]["goal_id"] == ("G11.S7.1.1")
 
 
 def test_legacy_assurance_claim_is_readable_but_never_optimistically_upgraded() -> None:
@@ -623,8 +618,7 @@ def test_cached_receipt_for_old_tree_cannot_cover_fresh_obligation_set() -> None
     assert decision.satisfied_obligation_ids == ()
     assert "receipt_not_required_by_fresh_obligation_set" in decision.reason_codes
     assert any(
-        "receipt_not_required_by_fresh_obligation_set"
-        in result["reason_codes"]
+        "receipt_not_required_by_fresh_obligation_set" in result["reason_codes"]
         for result in decision.receipt_results
     )
 
@@ -633,8 +627,7 @@ def test_fresh_fully_bound_code_receipt_verifies_provisional_goal() -> None:
     manifest = _fresh_implementation_manifest()
     binding = manifest.binding
     receipts = tuple(
-        _bound_code_receipt(obligation, binding)
-        for obligation in manifest.obligations
+        _bound_code_receipt(obligation, binding) for obligation in manifest.obligations
     )
 
     decision = evaluate_code_proof_goal_completion(
@@ -651,9 +644,7 @@ def test_fresh_fully_bound_code_receipt_verifies_provisional_goal() -> None:
     assert set(decision.satisfied_obligation_ids) == set(manifest.obligation_ids)
     assert decision.unsatisfied_obligation_ids == ()
     assert all(result["valid"] is True for result in decision.receipt_results)
-    assert {
-        result["binding_id"] for result in decision.receipt_results
-    } == {binding.binding_id}
+    assert {result["binding_id"] for result in decision.receipt_results} == {binding.binding_id}
 
 
 @pytest.mark.parametrize(

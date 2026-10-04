@@ -153,13 +153,13 @@ Tests use `unittest.mock` to isolate components:
 
 ```python
 # Mock database
-with patch('coordinator.duckdb.connect') as mock_db:
+with patch("coordinator.duckdb.connect") as mock_db:
     # Configure mock
     mock_db.return_value.execute.return_value = mock_result
-    
+
     # Test with mocked database
     result = function_under_test()
-    
+
     # Verify interactions with mock
     mock_db.assert_called_once()
 ```

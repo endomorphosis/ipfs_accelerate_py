@@ -42,8 +42,7 @@ EXPECTED_OPERATIONS = {
     "voice_synthesize",
 }
 EXPECTED_INTERFACE_CID = (
-    "cidv1-sha256-13e0f0a7b9d8cae9b5d0ca0d5d4c1c0e"
-    "ea392e2225b5e5e3f05aa272bbf7315d"
+    "cidv1-sha256-13e0f0a7b9d8cae9b5d0ca0d5d4c1c0eea392e2225b5e5e3f05aa272bbf7315d"
 )
 
 
@@ -72,18 +71,12 @@ def _local_mcp_input_schemas() -> dict[str, dict]:
     register_native_model_tools(collector)
     register_text_embedding(collector)
     register_native_vision_voice_tools(collector)
-    return {
-        name: collector.schemas[name]
-        for name in EXPECTED_OPERATIONS
-    }
+    return {name: collector.schemas[name] for name in EXPECTED_OPERATIONS}
 
 
 def _methods() -> dict[str, dict]:
     descriptor = build_ai_catalog_v1_descriptor()
-    return {
-        method["operation"]: method
-        for method in descriptor["methods"]
-    }
+    return {method["operation"]: method for method in descriptor["methods"]}
 
 
 def _walk_schemas(value: object):
@@ -103,8 +96,7 @@ def test_descriptor_covers_local_mcp_operations_and_schemas_exactly() -> None:
     assert set(methods) == EXPECTED_OPERATIONS
     assert input_schemas == _local_mcp_input_schemas()
     assert all(
-        method["input_schema"] == input_schemas[operation]
-        for operation, method in methods.items()
+        method["input_schema"] == input_schemas[operation] for operation, method in methods.items()
     )
 
 
@@ -112,9 +104,7 @@ def test_authorities_are_separate_and_fail_closed() -> None:
     methods = _methods()
     grouped = {
         authority: {
-            name
-            for name, method in methods.items()
-            if method["required_authority"] == authority
+            name for name, method in methods.items() if method["required_authority"] == authority
         }
         for authority in (
             AI_CATALOG_READ_AUTHORITY,
@@ -129,9 +119,7 @@ def test_authorities_are_separate_and_fail_closed() -> None:
         "model_catalog_resolve",
         "model_catalog_health",
     }
-    assert grouped[AI_CATALOG_REFRESH_AUTHORITY] == {
-        "model_catalog_refresh"
-    }
+    assert grouped[AI_CATALOG_REFRESH_AUTHORITY] == {"model_catalog_refresh"}
     assert grouped[AI_CATALOG_INVOKE_AUTHORITY] == {
         "llm_generate",
         "embeddings_generate",
@@ -145,10 +133,13 @@ def test_authorities_are_separate_and_fail_closed() -> None:
             "model_catalog_refresh",
             [AI_CATALOG_READ_AUTHORITY],
         )
-    assert authorize_ai_catalog_operation(
-        "model_catalog_refresh",
-        [AI_CATALOG_REFRESH_AUTHORITY],
-    )["operation"] == "model_catalog_refresh"
+    assert (
+        authorize_ai_catalog_operation(
+            "model_catalog_refresh",
+            [AI_CATALOG_REFRESH_AUTHORITY],
+        )["operation"]
+        == "model_catalog_refresh"
+    )
 
 
 def test_revisions_pagination_and_streaming_are_explicit() -> None:
@@ -167,22 +158,15 @@ def test_revisions_pagination_and_streaming_are_explicit() -> None:
             "supported": False,
             "mode": "buffered",
             "request_field": (
-                "stream"
-                if method["required_authority"]
-                == AI_CATALOG_INVOKE_AUTHORITY
-                else None
+                "stream" if method["required_authority"] == AI_CATALOG_INVOKE_AUTHORITY else None
             ),
             "max_chunks_field": (
                 "max_stream_chunks"
-                if method["required_authority"]
-                == AI_CATALOG_INVOKE_AUTHORITY
+                if method["required_authority"] == AI_CATALOG_INVOKE_AUTHORITY
                 else None
             ),
             "max_chunks": (
-                1_024
-                if method["required_authority"]
-                == AI_CATALOG_INVOKE_AUTHORITY
-                else 0
+                1_024 if method["required_authority"] == AI_CATALOG_INVOKE_AUTHORITY else 0
             ),
         }
 
@@ -208,29 +192,16 @@ def test_every_schema_collection_and_free_string_is_bounded() -> None:
             }
         ):
             declared = schema.get("type")
-            types = (
-                declared if isinstance(declared, list) else [declared]
-            )
+            types = declared if isinstance(declared, list) else [declared]
             if "array" in types:
                 assert "maxItems" in schema
-            if (
-                "object" in types
-                and schema.get("additionalProperties")
-                not in (False, None)
-            ):
+            if "object" in types and schema.get("additionalProperties") not in (False, None):
                 assert "maxProperties" in schema
-            if (
-                "string" in types
-                and "enum" not in schema
-                and "const" not in schema
-            ):
+            if "string" in types and "enum" not in schema and "const" not in schema:
                 # Policy scalar unions inherit the transport-wide ceiling.
                 assert (
                     "maxLength" in schema
-                    or descriptor["transport_bounds"][
-                        "max_json_string_bytes"
-                    ]
-                    > 0
+                    or descriptor["transport_bounds"]["max_json_string_bytes"] > 0
                 )
 
 
@@ -250,28 +221,20 @@ def test_descriptor_round_trip_and_cid_are_stable() -> None:
 
     assert decoded == descriptor
     assert canonicalize_descriptor(decoded) == encoded
-    assert compute_interface_cid(decoded) == compute_interface_cid(
+    assert compute_interface_cid(decoded) == compute_interface_cid(descriptor)
+    assert compute_interface_cid(build_ai_catalog_v1_descriptor()) == compute_interface_cid(
         descriptor
     )
-    assert compute_interface_cid(
-        build_ai_catalog_v1_descriptor()
-    ) == compute_interface_cid(descriptor)
     assert compute_interface_cid(descriptor) == EXPECTED_INTERFACE_CID
 
 
 def test_incompatible_schema_edit_changes_interface_cid() -> None:
     descriptor = build_ai_catalog_v1_descriptor()
     changed = copy.deepcopy(descriptor)
-    method = next(
-        item
-        for item in changed["methods"]
-        if item["operation"] == "llm_generate"
-    )
+    method = next(item for item in changed["methods"] if item["operation"] == "llm_generate")
     method["input_schema"]["properties"]["prompt"]["maxLength"] -= 1
 
-    assert compute_interface_cid(changed) != compute_interface_cid(
-        descriptor
-    )
+    assert compute_interface_cid(changed) != compute_interface_cid(descriptor)
 
 
 def test_existing_descriptor_cid_and_registry_behavior_are_unchanged() -> None:
@@ -289,13 +252,10 @@ def test_existing_descriptor_cid_and_registry_behavior_are_unchanged() -> None:
         requires=["mcp++/profile-a-idl"],
     )
     assert compute_interface_cid(legacy) == (
-        "cidv1-sha256-d23d0398e133eeaa32156b6fb77f3e12"
-        "a56c81ec471159c33bb3914c9d4cf263"
+        "cidv1-sha256-d23d0398e133eeaa32156b6fb77f3e12a56c81ec471159c33bb3914c9d4cf263"
     )
 
-    registry = InterfaceDescriptorRegistry(
-        ["mcp++/profile-a-idl"]
-    )
+    registry = InterfaceDescriptorRegistry(["mcp++/profile-a-idl"])
     legacy_cid = registry.register_descriptor(legacy)
     catalog_cid = registry.register_ai_catalog_v1()
     assert registry.get_descriptor(legacy_cid)["name"] == "legacy"
@@ -313,36 +273,23 @@ def test_unknown_version_and_operation_include_upgrade_metadata() -> None:
         payload = caught.value.to_dict()
         assert payload["success"] is False
         assert payload["error"]["code"] == code
-        assert (
-            payload["upgrade"]["latest_version"]
-            == AI_CATALOG_VERSION
-        )
-        assert (
-            payload["upgrade"]["schema_revision"]
-            == AI_CATALOG_SCHEMA_REVISION
-        )
-        assert payload["upgrade"]["interface_cid"].startswith(
-            "cidv1-sha256-"
-        )
-        assert set(
-            payload["upgrade"]["supported_operations"]
-        ) == EXPECTED_OPERATIONS
+        assert payload["upgrade"]["latest_version"] == AI_CATALOG_VERSION
+        assert payload["upgrade"]["schema_revision"] == AI_CATALOG_SCHEMA_REVISION
+        assert payload["upgrade"]["interface_cid"].startswith("cidv1-sha256-")
+        assert set(payload["upgrade"]["supported_operations"]) == EXPECTED_OPERATIONS
 
 
 def test_registry_requires_explicit_catalog_registration() -> None:
-    registry = InterfaceDescriptorRegistry(
-        ["mcp++/profile-a-idl"]
-    )
+    registry = InterfaceDescriptorRegistry(["mcp++/profile-a-idl"])
     with pytest.raises(InterfaceUpgradeRequired) as caught:
-        registry.resolve_ai_catalog_operation(
-            "model_catalog_health"
-        )
+        registry.resolve_ai_catalog_operation("model_catalog_health")
     assert caught.value.code == "interface_not_registered"
 
     registry.register_ai_catalog_v1()
-    assert registry.resolve_ai_catalog_operation(
-        "model_catalog_health"
-    )["operation"] == "model_catalog_health"
+    assert (
+        registry.resolve_ai_catalog_operation("model_catalog_health")["operation"]
+        == "model_catalog_health"
+    )
 
 
 @pytest.mark.parametrize(
@@ -391,9 +338,7 @@ def test_validation_accepts_round_tripped_bounded_request() -> None:
         "max_stream_chunks": 4,
     }
     round_tripped = json.loads(json.dumps(request))
-    assert validate_ai_catalog_payload(
-        "embeddings_generate", round_tripped
-    ) == request
+    assert validate_ai_catalog_payload("embeddings_generate", round_tripped) == request
 
 
 def _success_envelope(**payload: object) -> dict:
@@ -526,11 +471,14 @@ def test_success_output_records_round_trip(
     operation: str,
     payload: dict,
 ) -> None:
-    assert validate_ai_catalog_payload(
-        operation,
-        json.loads(json.dumps(payload)),
-        direction="output",
-    ) == payload
+    assert (
+        validate_ai_catalog_payload(
+            operation,
+            json.loads(json.dumps(payload)),
+            direction="output",
+        )
+        == payload
+    )
 
 
 def test_error_output_records_round_trip_for_every_operation() -> None:
@@ -548,11 +496,14 @@ def test_error_output_records_round_trip_for_every_operation() -> None:
         "error_type": "invalid_request",
     }
     for operation in EXPECTED_OPERATIONS:
-        assert validate_ai_catalog_payload(
-            operation,
-            payload,
-            direction="output",
-        ) == payload
+        assert (
+            validate_ai_catalog_payload(
+                operation,
+                payload,
+                direction="output",
+            )
+            == payload
+        )
 
 
 def test_media_integrity_and_finite_bounds_fail_closed() -> None:
@@ -581,9 +532,7 @@ def test_media_integrity_and_finite_bounds_fail_closed() -> None:
     )
 
     with pytest.raises(IDLValidationError):
-        validate_ai_catalog_payload(
-            "multimodal_generate", bad_inline
-        )
+        validate_ai_catalog_payload("multimodal_generate", bad_inline)
     with pytest.raises(IDLValidationError):
         validate_ai_catalog_payload(
             "voice_synthesize",
@@ -611,9 +560,7 @@ def test_nested_json_keys_pixels_duplicates_and_response_bytes_are_bounded() -> 
         ],
     }
     with pytest.raises(IDLValidationError):
-        validate_ai_catalog_payload(
-            "multimodal_generate", oversized_image
-        )
+        validate_ai_catalog_payload("multimodal_generate", oversized_image)
 
     with pytest.raises(IDLValidationError, match="unique"):
         validate_ai_catalog_payload(
@@ -638,9 +585,7 @@ def test_nested_json_keys_pixels_duplicates_and_response_bytes_are_bounded() -> 
             direction="output",
         )
 
-    bad_key_output = _success_envelope(
-        health={"k" * 257: True}
-    )
+    bad_key_output = _success_envelope(health={"k" * 257: True})
     with pytest.raises(IDLValidationError):
         validate_ai_catalog_payload(
             "model_catalog_health",
@@ -677,10 +622,7 @@ def test_malformed_versions_have_bounded_upgrade_metadata(
             version=bad_version,  # type: ignore[arg-type]
         )
     upgrade = caught.value.to_dict()["upgrade"]
-    assert (
-        len(upgrade["requested_version"].encode("utf-8"))
-        <= 256
-    )
+    assert len(upgrade["requested_version"].encode("utf-8")) <= 256
     assert upgrade["supported_versions"] == [AI_CATALOG_VERSION]
 
 

@@ -132,11 +132,7 @@ def _bounded_timeout(value: Any) -> float:
 
 
 def _bounded_output_limit(value: Any) -> int:
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, int)
-        or not 1 <= value <= MAX_OUTPUT_BYTES
-    ):
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= MAX_OUTPUT_BYTES:
         raise _RequestError(
             "invalid_request",
             "max_output_bytes is outside the supported range.",
@@ -391,8 +387,12 @@ def _resolve_candidates(
             schema_version=schema_version,
             catalog_revision=revision,
         )
-    return snapshot, schema_version, revision, candidates, int(
-        getattr(resolution, "total_candidates", len(candidates))
+    return (
+        snapshot,
+        schema_version,
+        revision,
+        candidates,
+        int(getattr(resolution, "total_candidates", len(candidates))),
     )
 
 
@@ -411,16 +411,13 @@ def _receipt(
     dimensions: Optional[int] = None,
 ) -> Dict[str, Any]:
     candidate_ids = [
-        str(getattr(item.binding, "binding_id", ""))
-        for item in candidates[:MAX_RECEIPT_CANDIDATES]
+        str(getattr(item.binding, "binding_id", "")) for item in candidates[:MAX_RECEIPT_CANDIDATES]
     ]
     return {
         "schema_version": AI_ROUTER_RECEIPT_SCHEMA_VERSION,
         "catalog_revision": revision,
         "operation": operation,
-        "selected_binding_id": str(
-            getattr(selected.binding, "binding_id", "")
-        ),
+        "selected_binding_id": str(getattr(selected.binding, "binding_id", "")),
         "candidate_binding_ids": candidate_ids,
         "candidate_count": min(max(total_candidates, len(candidates)), 1_000),
         "candidate_count_truncated": total_candidates > len(candidate_ids),
@@ -482,8 +479,7 @@ def _select_effective_candidate(
     effective = matches[0] if matches else None
     trace_fallback = bool(trace.get("fallback_used", False))
     fallback_used = trace_fallback or (
-        effective is not None
-        and effective.binding.binding_id != selected.binding.binding_id
+        effective is not None and effective.binding.binding_id != selected.binding.binding_id
     )
     if effective is None or (fallback_used and not allow_fallback):
         raise _RequestError(
@@ -521,16 +517,8 @@ async def _invoke_with_timeout(callback: Any, timeout: float) -> Tuple[Any, Dict
             )
         if inspect.isawaitable(result):
             result = await result
-            deferred_trace = (
-                deferred_trace_getter()
-                if callable(deferred_trace_getter)
-                else {}
-            )
-            trace = (
-                dict(deferred_trace)
-                if isinstance(deferred_trace, Mapping)
-                else {}
-            )
+            deferred_trace = deferred_trace_getter() if callable(deferred_trace_getter) else {}
+            trace = dict(deferred_trace) if isinstance(deferred_trace, Mapping) else {}
         return result, trace
 
 
@@ -636,17 +624,13 @@ async def llm_generate(
             device=device_value,
         )
         selected = candidates[0]
-        catalog_input_limit = _candidate_limit(
-            selected, _TEXT_OPERATION, "max_input_bytes"
-        )
+        catalog_input_limit = _candidate_limit(selected, _TEXT_OPERATION, "max_input_bytes")
         if catalog_input_limit is not None and input_bytes > catalog_input_limit:
             raise _RequestError(
                 "input_limit_exceeded",
                 "prompt exceeds the selected service input limit.",
             )
-        catalog_output_limit = _candidate_limit(
-            selected, _TEXT_OPERATION, "max_output_bytes"
-        )
+        catalog_output_limit = _candidate_limit(selected, _TEXT_OPERATION, "max_output_bytes")
         if catalog_output_limit is not None:
             output_limit = min(output_limit, catalog_output_limit)
         invocation_provider = _invocation_provider(selected)
@@ -745,10 +729,7 @@ def _normalize_vectors(
     vectors: List[List[float]] = []
     dimension: Optional[int] = None
     for vector in value:
-        if (
-            isinstance(vector, (str, bytes, Mapping))
-            or not isinstance(vector, Sequence)
-        ):
+        if isinstance(vector, (str, bytes, Mapping)) or not isinstance(vector, Sequence):
             raise _RequestError(
                 "invalid_router_output",
                 "The embeddings router returned a malformed vector.",
@@ -779,10 +760,7 @@ def _normalize_vectors(
             )
         vectors.append(normalized)
     resolved_dimension = int(dimension or 0)
-    if (
-        expected_dimensions is not None
-        and resolved_dimension != expected_dimensions
-    ):
+    if expected_dimensions is not None and resolved_dimension != expected_dimensions:
         raise _RequestError(
             "dimension_mismatch",
             "The embeddings router returned an unexpected dimension.",
@@ -843,25 +821,19 @@ async def embeddings_generate(
             device=device_value,
         )
         selected = candidates[0]
-        catalog_batch_limit = _candidate_limit(
-            selected, _EMBEDDING_OPERATION, "max_batch_size"
-        )
+        catalog_batch_limit = _candidate_limit(selected, _EMBEDDING_OPERATION, "max_batch_size")
         if catalog_batch_limit is not None and len(text_values) > catalog_batch_limit:
             raise _RequestError(
                 "input_limit_exceeded",
                 "texts exceed the selected service batch limit.",
             )
-        catalog_input_limit = _candidate_limit(
-            selected, _EMBEDDING_OPERATION, "max_input_bytes"
-        )
+        catalog_input_limit = _candidate_limit(selected, _EMBEDDING_OPERATION, "max_input_bytes")
         if catalog_input_limit is not None and input_bytes > catalog_input_limit:
             raise _RequestError(
                 "input_limit_exceeded",
                 "texts exceed the selected service input limit.",
             )
-        catalog_output_limit = _candidate_limit(
-            selected, _EMBEDDING_OPERATION, "max_output_bytes"
-        )
+        catalog_output_limit = _candidate_limit(selected, _EMBEDDING_OPERATION, "max_output_bytes")
         if catalog_output_limit is not None:
             output_limit = min(output_limit, catalog_output_limit)
         declared_dimensions = _candidate_limit(
@@ -880,9 +852,7 @@ async def embeddings_generate(
             if dimensions_value is not None:
                 kwargs["dimensions"] = dimensions_value
             value = embeddings_router.embed_texts(text_values, **kwargs)
-            return value, getattr(
-                embeddings_router, "get_last_embedding_trace", None
-            )
+            return value, getattr(embeddings_router, "get_last_embedding_trace", None)
 
         raw_vectors, trace = await _invoke_with_timeout(call, timeout_value)
         vectors, dimension, output_bytes = _normalize_vectors(

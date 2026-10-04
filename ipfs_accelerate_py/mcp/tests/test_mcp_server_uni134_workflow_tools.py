@@ -56,7 +56,9 @@ class TestMCPServerUNI134WorkflowTools(unittest.TestCase):
         self.assertEqual(enhanced_batch_schema["properties"]["operation_type"].get("minLength"), 1)
 
         enhanced_pipeline_schema = by_name["enhanced_data_pipeline"]["input_schema"]
-        self.assertEqual(enhanced_pipeline_schema["properties"]["pipeline_config"].get("minProperties"), 1)
+        self.assertEqual(
+            enhanced_pipeline_schema["properties"]["pipeline_config"].get("minProperties"), 1
+        )
 
     def test_create_template_rejects_empty_template(self) -> None:
         async def _run() -> None:
@@ -186,7 +188,9 @@ class TestMCPServerUNI134WorkflowTools(unittest.TestCase):
         async def _run() -> None:
             result = await enhanced_workflow_management(action="create")
             self.assertEqual(result.get("status"), "error")
-            self.assertIn("workflow_definition must be a non-empty object", str(result.get("error", "")))
+            self.assertIn(
+                "workflow_definition must be a non-empty object", str(result.get("error", ""))
+            )
 
         anyio.run(_run)
 
@@ -241,7 +245,9 @@ class TestMCPServerUNI134WorkflowTools(unittest.TestCase):
 
         anyio.run(_run)
 
-    def test_workflow_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+    def test_workflow_wrappers_infer_error_status_from_contradictory_delegate_payloads(
+        self,
+    ) -> None:
         async def _contradictory_failure(**_: object) -> dict:
             return {"status": "success", "success": False, "error": "delegate failed"}
 

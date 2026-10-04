@@ -51,7 +51,7 @@ firefox_audio_prefs = {
     "browser_optimized": True,
     "compute_shaders": True,
     "firefox_optimization": True,
-    "workgroup_size": "256x1x1"
+    "workgroup_size": "256x1x1",
 }
 
 # Load Whisper model with Firefox optimizations
@@ -59,7 +59,7 @@ whisper_model = pool.get_model(
     "audio",
     "openai/whisper-tiny",
     constructor=lambda: create_whisper_model(),
-    hardware_preferences=firefox_audio_prefs
+    hardware_preferences=firefox_audio_prefs,
 )
 
 # Use the optimized model
@@ -79,7 +79,7 @@ audio_config = {
     "browser": "firefox",
     "workgroup_size": "256x1x1",  # Firefox-optimized configuration
     "enable_advanced_compute": True,
-    "detect_browser": True  # Automatically detect Firefox
+    "detect_browser": True,  # Automatically detect Firefox
 }
 
 # Create Firefox-optimized processor
@@ -111,11 +111,10 @@ Based on these findings, we recommend:
    ```python
    # Example of extending to vision models
    from fixed_web_platform.webgpu_vision_compute_shaders import optimize_vision_for_firefox
-   
-   vision_processor = optimize_vision_for_firefox({
-       "model_name": "vit-base-patch16-224",
-       "workgroup_size": "256x1x1"
-   })
+
+   vision_processor = optimize_vision_for_firefox(
+       {"model_name": "vit-base-patch16-224", "workgroup_size": "256x1x1"}
+   )
    ```
 
 2. **Investigating Firefox's efficient approach to GPU memory management**:

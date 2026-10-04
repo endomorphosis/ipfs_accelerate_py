@@ -34,18 +34,12 @@ GOAL_DEVELOPMENT_CONTRACT_VERSION = 1
 CONTRACT_VERSION = GOAL_DEVELOPMENT_CONTRACT_VERSION
 SCHEMA_VERSION = GOAL_DEVELOPMENT_CONTRACT_VERSION
 
-GOAL_DEVELOPMENT_POLICY_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/goal-development-policy@1"
-)
-GOAL_DEVELOPMENT_REQUEST_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/goal-development-request@1"
-)
+GOAL_DEVELOPMENT_POLICY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/goal-development-policy@1"
+GOAL_DEVELOPMENT_REQUEST_SCHEMA = "ipfs_accelerate_py/agent-supervisor/goal-development-request@1"
 GOAL_DECOMPOSITION_PROPOSAL_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/goal-decomposition-proposal@1"
 )
-GOAL_DECOMPOSITION_DRAFT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/goal-decomposition-draft@1"
-)
+GOAL_DECOMPOSITION_DRAFT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/goal-decomposition-draft@1"
 GOAL_DEVELOPMENT_PROPOSAL_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/goal-development-proposal-receipt@1"
 )
@@ -137,9 +131,7 @@ def _strings(
         source: Iterable[Any] = ()
     elif isinstance(values, str):
         source = (values,)
-    elif isinstance(values, Sequence) and not isinstance(
-        values, (bytes, bytearray, memoryview)
-    ):
+    elif isinstance(values, Sequence) and not isinstance(values, (bytes, bytearray, memoryview)):
         source = values
     else:
         raise ContractValidationError(f"{field_name} must be a sequence of strings")
@@ -161,9 +153,7 @@ def _enum(value: Any, enum_type: type[Enum], *, field_name: str) -> Any:
         return enum_type(str(raw))
     except (TypeError, ValueError) as exc:
         allowed = ", ".join(item.value for item in enum_type)
-        raise ContractValidationError(
-            f"{field_name} must be one of: {allowed}"
-        ) from exc
+        raise ContractValidationError(f"{field_name} must be one of: {allowed}") from exc
 
 
 def _positive_int(value: Any, *, field_name: str) -> int:
@@ -174,27 +164,19 @@ def _positive_int(value: Any, *, field_name: str) -> int:
 
 def _nonnegative_int(value: Any, *, field_name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ContractValidationError(
-            f"{field_name} must be a non-negative integer"
-        )
+        raise ContractValidationError(f"{field_name} must be a non-negative integer")
     return value
 
 
 def _schema_and_version(payload: Mapping[str, Any], expected_schema: str) -> None:
     if not isinstance(payload, Mapping):
-        raise ContractValidationError(
-            "goal-development contract payload must be an object"
-        )
+        raise ContractValidationError("goal-development contract payload must be an object")
     schema = payload.get("schema")
     if schema not in (None, "", expected_schema):
-        raise ContractValidationError(
-            f"unsupported schema {schema!r}; expected {expected_schema}"
-        )
+        raise ContractValidationError(f"unsupported schema {schema!r}; expected {expected_schema}")
     version = payload.get("contract_version", payload.get("schema_version"))
     if version not in (None, GOAL_DEVELOPMENT_CONTRACT_VERSION):
-        raise ContractValidationError(
-            "unsupported goal-development contract version"
-        )
+        raise ContractValidationError("unsupported goal-development contract version")
 
 
 def _reject_unknown(
@@ -274,9 +256,7 @@ class GoalDevelopmentPolicy(GoalDevelopmentContract):
     allow_new_assumptions: bool = False
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "mode", _enum(self.mode, GoalDevelopmentMode, field_name="mode")
-        )
+        object.__setattr__(self, "mode", _enum(self.mode, GoalDevelopmentMode, field_name="mode"))
         for name in (
             "max_depth",
             "max_breadth",
@@ -284,9 +264,7 @@ class GoalDevelopmentPolicy(GoalDevelopmentContract):
             "max_bytes",
             "max_tokens",
         ):
-            object.__setattr__(
-                self, name, _positive_int(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _positive_int(getattr(self, name), field_name=name))
         if not isinstance(self.allow_new_assumptions, bool):
             raise ContractValidationError("allow_new_assumptions must be a boolean")
         if self.allow_new_assumptions:
@@ -351,20 +329,14 @@ class GoalDevelopmentPolicy(GoalDevelopmentContract):
             max_depth=payload.get("max_depth", DEFAULT_MAX_DECOMPOSITION_DEPTH),
             max_breadth=payload.get(
                 "max_breadth",
-                payload.get(
-                    "max_breadth_per_parent", DEFAULT_MAX_DECOMPOSITION_BREADTH
-                ),
+                payload.get("max_breadth_per_parent", DEFAULT_MAX_DECOMPOSITION_BREADTH),
             ),
             max_proposals=payload.get(
                 "max_proposals",
                 payload.get("max_count", DEFAULT_MAX_DECOMPOSITION_PROPOSALS),
             ),
-            max_bytes=payload.get(
-                "max_bytes", DEFAULT_MAX_DECOMPOSITION_BYTES
-            ),
-            max_tokens=payload.get(
-                "max_tokens", DEFAULT_MAX_DECOMPOSITION_TOKENS
-            ),
+            max_bytes=payload.get("max_bytes", DEFAULT_MAX_DECOMPOSITION_BYTES),
+            max_tokens=payload.get("max_tokens", DEFAULT_MAX_DECOMPOSITION_TOKENS),
             allow_new_assumptions=payload.get("allow_new_assumptions", False),
         )
         _claimed_identity(
@@ -428,9 +400,7 @@ class GoalDevelopmentRequest(GoalDevelopmentContract):
             "scope_ids",
             _strings(self.scope_ids, field_name="scope_ids", required=True),
         )
-        object.__setattr__(
-            self, "mode", _enum(self.mode, GoalDevelopmentMode, field_name="mode")
-        )
+        object.__setattr__(self, "mode", _enum(self.mode, GoalDevelopmentMode, field_name="mode"))
         object.__setattr__(
             self,
             "repair_draft_id",
@@ -441,20 +411,10 @@ class GoalDevelopmentRequest(GoalDevelopmentContract):
             "vocabulary_version",
             _positive_int(self.vocabulary_version, field_name="vocabulary_version"),
         )
-        if (
-            self.mode is GoalDevelopmentMode.REPAIR_ONLY
-            and not self.repair_draft_id
-        ):
-            raise ContractValidationError(
-                "repair_only requests must bind the draft being repaired"
-            )
-        if (
-            self.mode is not GoalDevelopmentMode.REPAIR_ONLY
-            and self.repair_draft_id
-        ):
-            raise ContractValidationError(
-                "repair_draft_id is only valid in repair_only mode"
-            )
+        if self.mode is GoalDevelopmentMode.REPAIR_ONLY and not self.repair_draft_id:
+            raise ContractValidationError("repair_only requests must bind the draft being repaired")
+        if self.mode is not GoalDevelopmentMode.REPAIR_ONLY and self.repair_draft_id:
+            raise ContractValidationError("repair_draft_id is only valid in repair_only mode")
 
     @property
     def request_id(self) -> str:
@@ -528,9 +488,7 @@ class GoalDevelopmentRequest(GoalDevelopmentContract):
             ),
             satisfaction_formula_id=payload.get("satisfaction_formula_id", ""),
             assumption_ids=tuple(payload.get("assumption_ids") or ()),
-            evidence_requirement_ids=tuple(
-                payload.get("evidence_requirement_ids") or ()
-            ),
+            evidence_requirement_ids=tuple(payload.get("evidence_requirement_ids") or ()),
             vocabulary_profile_id=payload.get("vocabulary_profile_id", ""),
             vocabulary_version=payload.get("vocabulary_version", 0),
             repository_tree_id=payload.get("repository_tree_id", ""),
@@ -652,9 +610,7 @@ class GoalDecompositionProposal(GoalDevelopmentContract):
             parent_id=payload.get("parent_id", ""),
             satisfaction_formula_id=payload.get("satisfaction_formula_id", ""),
             assumption_ids=tuple(payload.get("assumption_ids") or ()),
-            evidence_requirement_ids=tuple(
-                payload.get("evidence_requirement_ids") or ()
-            ),
+            evidence_requirement_ids=tuple(payload.get("evidence_requirement_ids") or ()),
             scope_ids=tuple(payload.get("scope_ids") or ()),
             depends_on=tuple(payload.get("depends_on") or ()),
             title=payload.get("title", ""),
@@ -669,9 +625,7 @@ class GoalDecompositionProposal(GoalDevelopmentContract):
 
 
 def _proposals(values: Any) -> tuple[GoalDecompositionProposal, ...]:
-    if isinstance(values, (str, bytes, bytearray, memoryview)) or not isinstance(
-        values, Sequence
-    ):
+    if isinstance(values, (str, bytes, bytearray, memoryview)) or not isinstance(values, Sequence):
         raise ContractValidationError("proposals must be a sequence")
     result: list[GoalDecompositionProposal] = []
     for value in values:
@@ -722,17 +676,11 @@ class GoalDecompositionDraft(GoalDevelopmentContract):
         )
         normalized = _proposals(self.proposals)
         object.__setattr__(self, "proposals", normalized)
-        supplied_tokens = _nonnegative_int(
-            self.token_count, field_name="token_count"
-        )
+        supplied_tokens = _nonnegative_int(self.token_count, field_name="token_count")
         measured_tokens = estimate_context_tokens(
-            canonical_json_bytes([item.to_dict() for item in normalized]).decode(
-                "utf-8"
-            )
+            canonical_json_bytes([item.to_dict() for item in normalized]).decode("utf-8")
         )
-        object.__setattr__(
-            self, "token_count", max(supplied_tokens, measured_tokens)
-        )
+        object.__setattr__(self, "token_count", max(supplied_tokens, measured_tokens))
         self._validate_graph_and_bounds()
 
     def _validate_graph_and_bounds(self) -> None:
@@ -747,9 +695,7 @@ class GoalDecompositionDraft(GoalDevelopmentContract):
         allowed_parents = known_ids | {root_id}
         for proposal in self.proposals:
             if proposal.proposal_id == root_id:
-                raise ContractValidationError(
-                    "draft cannot mutate or replace the frozen root goal"
-                )
+                raise ContractValidationError("draft cannot mutate or replace the frozen root goal")
             if proposal.parent_id not in allowed_parents:
                 raise ContractValidationError(
                     f"proposal {proposal.proposal_id} has an unknown parent"
@@ -759,22 +705,14 @@ class GoalDecompositionDraft(GoalDevelopmentContract):
                 raise ContractValidationError(
                     f"proposal {proposal.proposal_id} has unknown dependencies"
                 )
-            if not set(proposal.assumption_ids).issubset(
-                self.request.assumption_ids
-            ):
-                raise ContractValidationError(
-                    "proposal introduces a hidden or new assumption"
-                )
+            if not set(proposal.assumption_ids).issubset(self.request.assumption_ids):
+                raise ContractValidationError("proposal introduces a hidden or new assumption")
             if not set(proposal.evidence_requirement_ids).issubset(
                 self.request.evidence_requirement_ids
             ):
-                raise ContractValidationError(
-                    "proposal changes the frozen evidence requirements"
-                )
+                raise ContractValidationError("proposal changes the frozen evidence requirements")
             if not set(proposal.scope_ids).issubset(self.request.scope_ids):
-                raise ContractValidationError(
-                    "proposal escapes the frozen development scope"
-                )
+                raise ContractValidationError("proposal escapes the frozen development scope")
 
         state: dict[str, int] = {}
         depths: dict[str, int] = {}
@@ -787,11 +725,7 @@ class GoalDecompositionDraft(GoalDevelopmentContract):
                 return depths[proposal_id]
             state[proposal_id] = 1
             proposal = by_id[proposal_id]
-            value = (
-                1
-                if proposal.parent_id == root_id
-                else depth(proposal.parent_id) + 1
-            )
+            value = 1 if proposal.parent_id == root_id else depth(proposal.parent_id) + 1
             state[proposal_id] = 2
             depths[proposal_id] = value
             return value
@@ -805,9 +739,7 @@ class GoalDecompositionDraft(GoalDevelopmentContract):
         def visit_dependency(proposal_id: str) -> None:
             marker = dependency_state.get(proposal_id, 0)
             if marker == 1:
-                raise ContractValidationError(
-                    "proposal dependency graph must be acyclic"
-                )
+                raise ContractValidationError("proposal dependency graph must be acyclic")
             if marker == 2:
                 return
             dependency_state[proposal_id] = 1
@@ -1074,22 +1006,16 @@ class GoalDevelopmentProposalReceipt(GoalDevelopmentContract):
             "vocabulary_version",
             _positive_int(self.vocabulary_version, field_name="vocabulary_version"),
         )
-        object.__setattr__(
-            self, "mode", _enum(self.mode, GoalDevelopmentMode, field_name="mode")
-        )
+        object.__setattr__(self, "mode", _enum(self.mode, GoalDevelopmentMode, field_name="mode"))
         object.__setattr__(
             self,
             "decision",
             _enum(self.decision, GoalProposalDecision, field_name="decision"),
         )
         if self.decision is GoalProposalDecision.ACCEPTED and not self.proposal_ids:
-            raise ContractValidationError(
-                "accepted proposal receipts must identify proposals"
-            )
+            raise ContractValidationError("accepted proposal receipts must identify proposals")
         if self.decision is GoalProposalDecision.REJECTED and not self.reason_codes:
-            raise ContractValidationError(
-                "rejected proposal receipts must contain reason codes"
-            )
+            raise ContractValidationError("rejected proposal receipts must contain reason codes")
 
     @classmethod
     def for_draft(
@@ -1207,9 +1133,7 @@ class GoalDevelopmentProposalReceipt(GoalDevelopmentContract):
         )
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "GoalDevelopmentProposalReceipt":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "GoalDevelopmentProposalReceipt":
         _schema_and_version(payload, cls.SCHEMA)
         _validate_false_claims(payload, artifact_name="goal proposal receipt")
         allowed = {
@@ -1246,9 +1170,7 @@ class GoalDevelopmentProposalReceipt(GoalDevelopmentContract):
             "content_id",
         }
         _reject_unknown(payload, allowed, artifact_name="goal proposal receipt")
-        if payload.get(
-            "authority", GoalDevelopmentAuthority.DETERMINISTIC_VALIDATOR.value
-        ) not in (
+        if payload.get("authority", GoalDevelopmentAuthority.DETERMINISTIC_VALIDATOR.value) not in (
             GoalDevelopmentAuthority.DETERMINISTIC_VALIDATOR,
             GoalDevelopmentAuthority.DETERMINISTIC_VALIDATOR.value,
         ):
@@ -1257,9 +1179,7 @@ class GoalDevelopmentProposalReceipt(GoalDevelopmentContract):
             AssuranceLevel.UNVERIFIED,
             AssuranceLevel.UNVERIFIED.value,
         ):
-            raise ContractValidationError(
-                "goal proposal receipt cannot claim proof assurance"
-            )
+            raise ContractValidationError("goal proposal receipt cannot claim proof assurance")
         result = cls(
             request_id=payload.get("request_id", ""),
             draft_id=payload.get("draft_id", ""),
@@ -1267,9 +1187,7 @@ class GoalDevelopmentProposalReceipt(GoalDevelopmentContract):
             root_goal_content_id=payload.get("root_goal_content_id", ""),
             satisfaction_formula_id=payload.get("satisfaction_formula_id", ""),
             assumption_ids=tuple(payload.get("assumption_ids") or ()),
-            evidence_requirement_ids=tuple(
-                payload.get("evidence_requirement_ids") or ()
-            ),
+            evidence_requirement_ids=tuple(payload.get("evidence_requirement_ids") or ()),
             vocabulary_profile_id=payload.get("vocabulary_profile_id", ""),
             vocabulary_version=payload.get("vocabulary_version", 0),
             repository_tree_id=payload.get("repository_tree_id", ""),
@@ -1356,9 +1274,7 @@ class GoalDevelopmentAdmissionReceipt(GoalDevelopmentContract):
             "vocabulary_version",
             _positive_int(self.vocabulary_version, field_name="vocabulary_version"),
         )
-        object.__setattr__(
-            self, "mode", _enum(self.mode, GoalDevelopmentMode, field_name="mode")
-        )
+        object.__setattr__(self, "mode", _enum(self.mode, GoalDevelopmentMode, field_name="mode"))
         object.__setattr__(
             self,
             "decision",
@@ -1370,13 +1286,9 @@ class GoalDevelopmentAdmissionReceipt(GoalDevelopmentContract):
                     "only auto_safe mode can produce an admission receipt"
                 )
             if not self.proposal_ids:
-                raise ContractValidationError(
-                    "admission must identify admitted proposals"
-                )
+                raise ContractValidationError("admission must identify admitted proposals")
             if not self.authoritative_receipt_ids:
-                raise ContractValidationError(
-                    "auto_safe admission requires authoritative receipts"
-                )
+                raise ContractValidationError("auto_safe admission requires authoritative receipts")
             if self.reason_codes:
                 raise ContractValidationError(
                     "an admitted decision cannot contain rejection reasons"
@@ -1387,9 +1299,7 @@ class GoalDevelopmentAdmissionReceipt(GoalDevelopmentContract):
                     "non-admission cannot claim authoritative admission receipts"
                 )
             if not self.reason_codes:
-                raise ContractValidationError(
-                    "non-admission decisions must contain reason codes"
-                )
+                raise ContractValidationError("non-admission decisions must contain reason codes")
         if (
             self.mode
             in {
@@ -1420,9 +1330,7 @@ class GoalDevelopmentAdmissionReceipt(GoalDevelopmentContract):
         reason_codes: Sequence[str] = (),
     ) -> "GoalDevelopmentAdmissionReceipt":
         if not isinstance(receipt, GoalDevelopmentProposalReceipt):
-            raise ContractValidationError(
-                "receipt must be GoalDevelopmentProposalReceipt"
-            )
+            raise ContractValidationError("receipt must be GoalDevelopmentProposalReceipt")
         if (
             decision is GoalAdmissionDecision.ADMITTED
             and receipt.decision is not GoalProposalDecision.ACCEPTED
@@ -1471,15 +1379,11 @@ class GoalDevelopmentAdmissionReceipt(GoalDevelopmentContract):
     def proof_assurance(self) -> AssuranceLevel:
         return AssuranceLevel.UNVERIFIED
 
-    def validate_proposal_receipt(
-        self, receipt: GoalDevelopmentProposalReceipt
-    ) -> None:
+    def validate_proposal_receipt(self, receipt: GoalDevelopmentProposalReceipt) -> None:
         """Fail unless this decision is bound to the exact proposal receipt."""
 
         if not isinstance(receipt, GoalDevelopmentProposalReceipt):
-            raise ContractValidationError(
-                "receipt must be GoalDevelopmentProposalReceipt"
-            )
+            raise ContractValidationError("receipt must be GoalDevelopmentProposalReceipt")
         expected = (
             receipt.request_id,
             receipt.draft_id,
@@ -1518,13 +1422,8 @@ class GoalDevelopmentAdmissionReceipt(GoalDevelopmentContract):
             raise ContractValidationError(
                 "admission receipt does not match the frozen proposal bindings"
             )
-        if (
-            self.admitted
-            and receipt.decision is not GoalProposalDecision.ACCEPTED
-        ):
-            raise ContractValidationError(
-                "an admission receipt cannot admit a rejected proposal"
-            )
+        if self.admitted and receipt.decision is not GoalProposalDecision.ACCEPTED:
+            raise ContractValidationError("an admission receipt cannot admit a rejected proposal")
 
     def _payload(self) -> dict[str, Any]:
         return self._versioned(
@@ -1560,9 +1459,7 @@ class GoalDevelopmentAdmissionReceipt(GoalDevelopmentContract):
         )
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "GoalDevelopmentAdmissionReceipt":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "GoalDevelopmentAdmissionReceipt":
         _schema_and_version(payload, cls.SCHEMA)
         _validate_false_claims(
             payload,
@@ -1604,9 +1501,7 @@ class GoalDevelopmentAdmissionReceipt(GoalDevelopmentContract):
             "content_id",
         }
         _reject_unknown(payload, allowed, artifact_name="goal admission receipt")
-        if payload.get(
-            "authority", GoalDevelopmentAuthority.SUPERVISOR_ADMISSION.value
-        ) not in (
+        if payload.get("authority", GoalDevelopmentAuthority.SUPERVISOR_ADMISSION.value) not in (
             GoalDevelopmentAuthority.SUPERVISOR_ADMISSION,
             GoalDevelopmentAuthority.SUPERVISOR_ADMISSION.value,
         ):
@@ -1615,9 +1510,7 @@ class GoalDevelopmentAdmissionReceipt(GoalDevelopmentContract):
             AssuranceLevel.UNVERIFIED,
             AssuranceLevel.UNVERIFIED.value,
         ):
-            raise ContractValidationError(
-                "goal admission receipt cannot claim proof assurance"
-            )
+            raise ContractValidationError("goal admission receipt cannot claim proof assurance")
         result = cls(
             request_id=payload.get("request_id", ""),
             draft_id=payload.get("draft_id", ""),
@@ -1626,9 +1519,7 @@ class GoalDevelopmentAdmissionReceipt(GoalDevelopmentContract):
             root_goal_content_id=payload.get("root_goal_content_id", ""),
             satisfaction_formula_id=payload.get("satisfaction_formula_id", ""),
             assumption_ids=tuple(payload.get("assumption_ids") or ()),
-            evidence_requirement_ids=tuple(
-                payload.get("evidence_requirement_ids") or ()
-            ),
+            evidence_requirement_ids=tuple(payload.get("evidence_requirement_ids") or ()),
             vocabulary_profile_id=payload.get("vocabulary_profile_id", ""),
             vocabulary_version=payload.get("vocabulary_version", 0),
             repository_tree_id=payload.get("repository_tree_id", ""),
@@ -1636,19 +1527,13 @@ class GoalDevelopmentAdmissionReceipt(GoalDevelopmentContract):
             policy_digest=payload.get("policy_digest", ""),
             mode=payload.get("mode", GoalDevelopmentMode.OFF),
             admitter_id=payload.get("admitter_id", ""),
-            decision=payload.get(
-                "decision", GoalAdmissionDecision.NOT_ADMITTED
-            ),
+            decision=payload.get("decision", GoalAdmissionDecision.NOT_ADMITTED),
             proposal_ids=tuple(payload.get("proposal_ids") or ()),
-            authoritative_receipt_ids=tuple(
-                payload.get("authoritative_receipt_ids") or ()
-            ),
+            authoritative_receipt_ids=tuple(payload.get("authoritative_receipt_ids") or ()),
             reason_codes=tuple(payload.get("reason_codes") or ()),
         )
         if payload.get("admitted") not in (None, result.admitted):
-            raise ContractValidationError(
-                "goal admission decision does not match admitted claim"
-            )
+            raise ContractValidationError("goal admission decision does not match admitted claim")
         _claimed_identity(
             payload,
             result.receipt_id,

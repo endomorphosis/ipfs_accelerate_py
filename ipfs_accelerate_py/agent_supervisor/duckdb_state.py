@@ -44,9 +44,7 @@ class DuckDBRow(Mapping[str, Any]):
     def __init__(self, columns: Iterable[str], values: Iterable[Any]) -> None:
         self._columns = tuple(str(column) for column in columns)
         self._values = tuple(values)
-        self._positions = {
-            column: index for index, column in enumerate(self._columns)
-        }
+        self._positions = {column: index for index, column in enumerate(self._columns)}
 
     def __getitem__(self, key: str | int) -> Any:
         if isinstance(key, int):
@@ -71,8 +69,7 @@ class DuckDBCursor:
         self.rowcount = -1
         if (
             dml
-            and
-            len(self._columns) == 1
+            and len(self._columns) == 1
             and self._columns[0].lower() == "count"
             and len(self._rows) == 1
             and isinstance(self._rows[0][0], int)
@@ -88,10 +85,7 @@ class DuckDBCursor:
         return DuckDBRow(self._columns, values)
 
     def fetchall(self) -> list[DuckDBRow]:
-        rows = [
-            DuckDBRow(self._columns, values)
-            for values in self._rows[self._offset :]
-        ]
+        rows = [DuckDBRow(self._columns, values) for values in self._rows[self._offset :]]
         self._offset = len(self._rows)
         return rows
 
@@ -128,9 +122,7 @@ def exclusive_file_lock(
                 break
             except BlockingIOError:
                 if time.monotonic() >= deadline:
-                    raise TimeoutError(
-                        f"timed out acquiring DuckDB process lock: {lock_path}"
-                    )
+                    raise TimeoutError(f"timed out acquiring DuckDB process lock: {lock_path}")
                 time.sleep(0.01)
         yield
     finally:
@@ -173,26 +165,18 @@ def resolve_duckdb_path(
     suffix = supplied.suffix.lower()
     if suffix in {".sqlite", ".sqlite3", ".db"}:
         target = supplied.with_suffix(".duckdb")
-        legacy = (
-            None
-            if strict_duckdb_only
-            else supplied if is_sqlite_database(supplied) else None
-        )
+        legacy = None if strict_duckdb_only else supplied if is_sqlite_database(supplied) else None
         return target, legacy
     if suffix == ".duckdb":
         if strict_duckdb_only:
             return supplied, None
         legacy_candidate = supplied.with_suffix(".sqlite3")
-        return supplied, (
-            legacy_candidate if is_sqlite_database(legacy_candidate) else None
-        )
+        return supplied, (legacy_candidate if is_sqlite_database(legacy_candidate) else None)
     target = supplied / default_filename
     if strict_duckdb_only:
         return target, None
     legacy_candidate = supplied / legacy_filename
-    return target, (
-        legacy_candidate if is_sqlite_database(legacy_candidate) else None
-    )
+    return target, (legacy_candidate if is_sqlite_database(legacy_candidate) else None)
 
 
 class DuckDBConnection:
@@ -210,9 +194,7 @@ class DuckDBConnection:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if is_sqlite_database(self.path):
-            raise ValueError(
-                f"legacy SQLite database must be migrated before opening: {self.path}"
-            )
+            raise ValueError(f"legacy SQLite database must be migrated before opening: {self.path}")
         self._transaction_active = False
         self._transaction_on_context = bool(transaction_on_context)
         self._context_depth = 0
@@ -363,9 +345,7 @@ def initialize_duckdb_database(
     table_names: Sequence[str],
     legacy_sqlite_path: Path | str | None = None,
     timeout_seconds: float = DEFAULT_LOCK_TIMEOUT_SECONDS,
-    value_transform: (
-        Callable[[str, str, Any], Any] | None
-    ) = None,
+    value_transform: (Callable[[str, str, Any], Any] | None) = None,
 ) -> None:
     """Initialize a store and idempotently import a legacy SQLite database."""
 
@@ -394,15 +374,16 @@ def initialize_duckdb_database(
             """
         )
         connection.executescript(schema_sql)
-        migration_key = (
-            f"sqlite_migration:{legacy.resolve()}" if legacy is not None else ""
-        )
+        migration_key = f"sqlite_migration:{legacy.resolve()}" if legacy is not None else ""
         migrated = False
         if migration_key:
-            migrated = connection.execute(
-                "SELECT 1 FROM agent_supervisor_store_metadata WHERE key=?",
-                (migration_key,),
-            ).fetchone() is not None
+            migrated = (
+                connection.execute(
+                    "SELECT 1 FROM agent_supervisor_store_metadata WHERE key=?",
+                    (migration_key,),
+                ).fetchone()
+                is not None
+            )
         if legacy is not None and not migrated:
             source = sqlite3.connect(
                 f"file:{legacy.resolve()}?mode=ro",
@@ -422,9 +403,7 @@ def initialize_duckdb_database(
                         continue
                     columns = [
                         str(row[1])
-                        for row in source.execute(
-                            f'PRAGMA table_info("{table_name}")'
-                        ).fetchall()
+                        for row in source.execute(f'PRAGMA table_info("{table_name}")').fetchall()
                     ]
                     if not columns:
                         continue
@@ -434,9 +413,7 @@ def initialize_duckdb_database(
                         f'INSERT INTO "{table_name}" ({quoted_columns}) '
                         f"VALUES ({placeholders}) ON CONFLICT DO NOTHING"
                     )
-                    cursor = source.execute(
-                        f'SELECT {quoted_columns} FROM "{table_name}"'
-                    )
+                    cursor = source.execute(f'SELECT {quoted_columns} FROM "{table_name}"')
                     while True:
                         rows = cursor.fetchmany(256)
                         if not rows:

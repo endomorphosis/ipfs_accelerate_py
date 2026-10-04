@@ -189,7 +189,11 @@ def _is_meta_tensor_copy_error(exc: BaseException) -> bool:
 def _rebuild_textgen_pipeline_on_cpu(*, requested_model: str) -> object:
     """Rebuild text-generation pipeline on CPU after a CUDA/meta initialization failure."""
 
-    global _HF_TEXTGEN_PIPELINE, _HF_TEXTGEN_MODEL_ID, _HF_TEXTGEN_MODEL_BYTES, _HF_TEXTGEN_KV_BYTES_PER_TOKEN_PER_BATCH
+    global \
+        _HF_TEXTGEN_PIPELINE, \
+        _HF_TEXTGEN_MODEL_ID, \
+        _HF_TEXTGEN_MODEL_BYTES, \
+        _HF_TEXTGEN_KV_BYTES_PER_TOKEN_PER_BATCH
 
     # Pin local worker fallback to CPU for subsequent minimal_hf generations.
     os.environ["IPFS_ACCELERATE_PY_TASK_WORKER_HF_DEVICE"] = "cpu"
@@ -590,7 +594,11 @@ def _hf_estimate_max_batch_size(
     # Reserve some slack for Python/runtime overhead.
     try:
         reserve_raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_TEXTGEN_BATCH_RESERVE_MB")
-        reserve_bytes = int(float(reserve_raw) * 1024 * 1024) if reserve_raw is not None else (512 * 1024 * 1024)
+        reserve_bytes = (
+            int(float(reserve_raw) * 1024 * 1024)
+            if reserve_raw is not None
+            else (512 * 1024 * 1024)
+        )
     except Exception:
         reserve_bytes = 512 * 1024 * 1024
     reserve_bytes = max(0, reserve_bytes)
@@ -690,7 +698,11 @@ def _hf_estimate_max_batch_size_encoder(
 
     try:
         reserve_raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_HF_MEM_RESERVE_MB")
-        reserve_mb = int(float(reserve_raw)) if reserve_raw is not None else (1024 if kind == "cuda" else 2048)
+        reserve_mb = (
+            int(float(reserve_raw))
+            if reserve_raw is not None
+            else (1024 if kind == "cuda" else 2048)
+        )
     except Exception:
         reserve_mb = 1024 if kind == "cuda" else 2048
     reserve_bytes = max(0, int(reserve_mb)) * 1024 * 1024
@@ -768,7 +780,11 @@ def _hf_estimate_max_batch_size_encoder(
 def _hf_get_textgen_pipeline(*, requested_model: str) -> object:
     """Get or create the cached HF text-generation pipeline."""
 
-    global _HF_TEXTGEN_PIPELINE, _HF_TEXTGEN_MODEL_ID, _HF_TEXTGEN_MODEL_BYTES, _HF_TEXTGEN_KV_BYTES_PER_TOKEN_PER_BATCH
+    global \
+        _HF_TEXTGEN_PIPELINE, \
+        _HF_TEXTGEN_MODEL_ID, \
+        _HF_TEXTGEN_MODEL_BYTES, \
+        _HF_TEXTGEN_KV_BYTES_PER_TOKEN_PER_BATCH
 
     from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline  # type: ignore
 
@@ -806,7 +822,9 @@ def _hf_get_textgen_pipeline(*, requested_model: str) -> object:
                         }
                         # Remove None entries for older transformers.
                         model_kwargs = {k: v for k, v in model_kwargs.items() if v is not None}
-                        model = AutoModelForCausalLM.from_pretrained(requested_model, **model_kwargs)
+                        model = AutoModelForCausalLM.from_pretrained(
+                            requested_model, **model_kwargs
+                        )
                         # When sharded, do not let pipeline relocate the model.
                         device_arg = -1
                     except Exception:
@@ -840,7 +858,11 @@ def _hf_get_textgen_pipeline(*, requested_model: str) -> object:
 def _hf_get_text2text_pipeline(*, requested_model: str) -> object:
     """Get or create the cached HF text2text-generation pipeline."""
 
-    global _HF_TEXT2TEXT_PIPELINE, _HF_TEXT2TEXT_MODEL_ID, _HF_TEXT2TEXT_MODEL_BYTES, _HF_TEXT2TEXT_KV_BYTES_PER_TOKEN_PER_BATCH
+    global \
+        _HF_TEXT2TEXT_PIPELINE, \
+        _HF_TEXT2TEXT_MODEL_ID, \
+        _HF_TEXT2TEXT_MODEL_BYTES, \
+        _HF_TEXT2TEXT_KV_BYTES_PER_TOKEN_PER_BATCH
 
     from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, pipeline  # type: ignore
 
@@ -899,7 +921,11 @@ def _hf_get_text2text_pipeline(*, requested_model: str) -> object:
 def _hf_get_textcls_pipeline(*, requested_model: str) -> object:
     """Get or create the cached HF text-classification pipeline."""
 
-    global _HF_TEXTCLS_PIPELINE, _HF_TEXTCLS_MODEL_ID, _HF_TEXTCLS_MODEL_BYTES, _HF_TEXTCLS_ACT_BYTES_PER_TOKEN_PER_BATCH
+    global \
+        _HF_TEXTCLS_PIPELINE, \
+        _HF_TEXTCLS_MODEL_ID, \
+        _HF_TEXTCLS_MODEL_BYTES, \
+        _HF_TEXTCLS_ACT_BYTES_PER_TOKEN_PER_BATCH
 
     from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipeline  # type: ignore
 
@@ -930,7 +956,9 @@ def _hf_get_textcls_pipeline(*, requested_model: str) -> object:
                             "low_cpu_mem_usage": True,
                         }
                         kwargs = {k: v for k, v in kwargs.items() if v is not None}
-                        model = AutoModelForSequenceClassification.from_pretrained(requested_model, **kwargs)
+                        model = AutoModelForSequenceClassification.from_pretrained(
+                            requested_model, **kwargs
+                        )
                         device_arg = -1
                     except Exception:
                         model = None
@@ -953,12 +981,22 @@ def _hf_get_textcls_pipeline(*, requested_model: str) -> object:
 def _hf_get_embed_components(*, requested_model: str) -> tuple[object, object]:
     """Get or create cached (tokenizer, model) for embeddings."""
 
-    global _HF_EMBED_MODEL, _HF_EMBED_TOKENIZER, _HF_EMBED_MODEL_ID, _HF_EMBED_MODEL_BYTES, _HF_EMBED_ACT_BYTES_PER_TOKEN_PER_BATCH, _HF_EMBED_CUDA_FALLBACK_WARNED
+    global \
+        _HF_EMBED_MODEL, \
+        _HF_EMBED_TOKENIZER, \
+        _HF_EMBED_MODEL_ID, \
+        _HF_EMBED_MODEL_BYTES, \
+        _HF_EMBED_ACT_BYTES_PER_TOKEN_PER_BATCH, \
+        _HF_EMBED_CUDA_FALLBACK_WARNED
 
     from transformers import AutoModel, AutoTokenizer  # type: ignore
 
     with _HF_EMBED_LOCK:
-        if _HF_EMBED_MODEL is None or _HF_EMBED_TOKENIZER is None or _HF_EMBED_MODEL_ID != requested_model:
+        if (
+            _HF_EMBED_MODEL is None
+            or _HF_EMBED_TOKENIZER is None
+            or _HF_EMBED_MODEL_ID != requested_model
+        ):
             tok = AutoTokenizer.from_pretrained(requested_model)
             pref = _hf_device_pref()
             if pref.startswith("cuda:"):
@@ -1027,12 +1065,17 @@ def _hf_current_embed_runtime_info() -> dict[str, str]:
     return {"model": model_id, "device": device}
 
 
-def _hf_textgen(prompt: str, *, model_name: str | None, max_new_tokens: int, temperature: float) -> str:
+def _hf_textgen(
+    prompt: str, *, model_name: str | None, max_new_tokens: int, temperature: float
+) -> str:
     """Minimal local text-generation without importing ipfs_accelerate_py core."""
 
     global _HF_TEXTGEN_PIPELINE, _HF_TEXTGEN_MODEL_ID
 
-    requested_model = str(model_name or os.environ.get("IPFS_ACCELERATE_PY_LLM_MODEL") or "gpt2").strip() or "gpt2"
+    requested_model = (
+        str(model_name or os.environ.get("IPFS_ACCELERATE_PY_LLM_MODEL") or "gpt2").strip()
+        or "gpt2"
+    )
     safe_max_new = max(1, min(int(max_new_tokens or 128), 1024))
     temp = float(temperature) if temperature is not None else 0.2
 
@@ -1044,9 +1087,7 @@ def _hf_textgen(prompt: str, *, model_name: str | None, max_new_tokens: int, tem
         ) from exc
     except RecursionError as exc:
         origin = _transformers_spec_origin()
-        hint = (
-            f" (origin={origin})" if origin else ""
-        )
+        hint = f" (origin={origin})" if origin else ""
         raise RuntimeError(
             "failed to import transformers (RecursionError) for minimal text-generation"
             + hint
@@ -1063,7 +1104,9 @@ def _hf_textgen(prompt: str, *, model_name: str | None, max_new_tokens: int, tem
                     f"(original={type(exc).__name__}: {exc})"
                 ) from fallback_exc
         else:
-            raise RuntimeError(f"minimal text-generation failed: {type(exc).__name__}: {exc}") from exc
+            raise RuntimeError(
+                f"minimal text-generation failed: {type(exc).__name__}: {exc}"
+            ) from exc
 
     # Pipeline calls are not guaranteed thread-safe; guard the call.
     with _HF_TEXTGEN_LOCK:
@@ -1098,7 +1141,10 @@ def _hf_textgen_batch(
     if not prompts:
         return []
 
-    requested_model = str(model_name or os.environ.get("IPFS_ACCELERATE_PY_LLM_MODEL") or "gpt2").strip() or "gpt2"
+    requested_model = (
+        str(model_name or os.environ.get("IPFS_ACCELERATE_PY_LLM_MODEL") or "gpt2").strip()
+        or "gpt2"
+    )
     safe_max_new = max(1, min(int(max_new_tokens or 128), 1024))
     temp = float(temperature) if temperature is not None else 0.2
 
@@ -1110,9 +1156,7 @@ def _hf_textgen_batch(
         ) from exc
     except RecursionError as exc:
         origin = _transformers_spec_origin()
-        hint = (
-            f" (origin={origin})" if origin else ""
-        )
+        hint = f" (origin={origin})" if origin else ""
         raise RuntimeError(
             "failed to import transformers (RecursionError) for minimal text-generation"
             + hint
@@ -1129,7 +1173,9 @@ def _hf_textgen_batch(
                     f"(original={type(exc).__name__}: {exc})"
                 ) from fallback_exc
         else:
-            raise RuntimeError(f"minimal text-generation failed: {type(exc).__name__}: {exc}") from exc
+            raise RuntimeError(
+                f"minimal text-generation failed: {type(exc).__name__}: {exc}"
+            ) from exc
 
     with _HF_TEXTGEN_LOCK:
         out = gen(
@@ -1154,7 +1200,10 @@ def _hf_textgen_batch(
         return texts
 
     # Unexpected shape; fall back to per-prompt.
-    return [_hf_textgen(p, model_name=requested_model, max_new_tokens=safe_max_new, temperature=temp) for p in prompts]
+    return [
+        _hf_textgen(p, model_name=requested_model, max_new_tokens=safe_max_new, temperature=temp)
+        for p in prompts
+    ]
 
 
 def _hf_textgen_batch_auto(
@@ -1170,7 +1219,10 @@ def _hf_textgen_batch_auto(
     if not prompts:
         return ([], 0)
 
-    requested_model = str(model_name or os.environ.get("IPFS_ACCELERATE_PY_LLM_MODEL") or "gpt2").strip() or "gpt2"
+    requested_model = (
+        str(model_name or os.environ.get("IPFS_ACCELERATE_PY_LLM_MODEL") or "gpt2").strip()
+        or "gpt2"
+    )
     safe_max_new = max(1, min(int(max_new_tokens or 128), 1024))
     temp = float(temperature) if temperature is not None else 0.2
 
@@ -1187,7 +1239,9 @@ def _hf_textgen_batch_auto(
                 if callable(ids):
                     n = len(tokenizer.encode(str(p or "")))
                 else:
-                    n = len(tokenizer(str(p or ""), add_special_tokens=False).get("input_ids") or [])
+                    n = len(
+                        tokenizer(str(p or ""), add_special_tokens=False).get("input_ids") or []
+                    )
                 if n > max_prompt_tokens:
                     max_prompt_tokens = n
         except Exception:
@@ -1237,7 +1291,10 @@ def _hf_text2text_batch_auto(
     if not prompts:
         return ([], 0)
 
-    requested_model = str(model_name or os.environ.get("IPFS_ACCELERATE_PY_LLM_MODEL") or "t5-small").strip() or "t5-small"
+    requested_model = (
+        str(model_name or os.environ.get("IPFS_ACCELERATE_PY_LLM_MODEL") or "t5-small").strip()
+        or "t5-small"
+    )
     safe_max_new = max(1, min(int(max_new_tokens or 128), 1024))
     temp = float(temperature) if temperature is not None else 0.2
 
@@ -1257,7 +1314,9 @@ def _hf_text2text_batch_auto(
                 if callable(ids):
                     n = len(tokenizer.encode(str(p or "")))
                 else:
-                    n = len(tokenizer(str(p or ""), add_special_tokens=False).get("input_ids") or [])
+                    n = len(
+                        tokenizer(str(p or ""), add_special_tokens=False).get("input_ids") or []
+                    )
                 if n > max_prompt_tokens:
                     max_prompt_tokens = n
         except Exception:
@@ -1293,7 +1352,9 @@ def _hf_text2text_batch_auto(
                     or getattr(cfg, "n_layer", None)
                     or 0
                 )
-                hidden = int(getattr(cfg, "d_model", None) or getattr(cfg, "hidden_size", None) or 0)
+                hidden = int(
+                    getattr(cfg, "d_model", None) or getattr(cfg, "hidden_size", None) or 0
+                )
                 if layers <= 0:
                     layers = 12
                 if hidden <= 0:
@@ -1316,14 +1377,20 @@ def _hf_text2text_batch_auto(
         if avail > 0:
             try:
                 frac_raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_HF_MEM_FRACTION")
-                frac = float(frac_raw) if frac_raw is not None else (0.75 if kind == "cuda" else 0.60)
+                frac = (
+                    float(frac_raw) if frac_raw is not None else (0.75 if kind == "cuda" else 0.60)
+                )
             except Exception:
                 frac = 0.75 if kind == "cuda" else 0.60
             frac = max(0.05, min(0.95, float(frac)))
 
             try:
                 reserve_raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_HF_MEM_RESERVE_MB")
-                reserve_mb = int(float(reserve_raw)) if reserve_raw is not None else (1024 if kind == "cuda" else 2048)
+                reserve_mb = (
+                    int(float(reserve_raw))
+                    if reserve_raw is not None
+                    else (1024 if kind == "cuda" else 2048)
+                )
             except Exception:
                 reserve_mb = 1024 if kind == "cuda" else 2048
             reserve_bytes = max(0, int(reserve_mb)) * 1024 * 1024
@@ -1351,7 +1418,9 @@ def _hf_text2text_batch_auto(
     if isinstance(out, list):
         for item in out:
             if isinstance(item, dict):
-                texts.append(str(item.get("generated_text") or item.get("text") or item.get("output") or ""))
+                texts.append(
+                    str(item.get("generated_text") or item.get("text") or item.get("output") or "")
+                )
             else:
                 texts.append(str(item))
     else:
@@ -1368,7 +1437,10 @@ def _hf_textcls_batch_auto(
     if not texts:
         return ([], 0)
 
-    requested_model = str(model_name or "distilbert-base-uncased-finetuned-sst-2-english").strip() or "distilbert-base-uncased-finetuned-sst-2-english"
+    requested_model = (
+        str(model_name or "distilbert-base-uncased-finetuned-sst-2-english").strip()
+        or "distilbert-base-uncased-finetuned-sst-2-english"
+    )
 
     try:
         clf = _hf_get_textcls_pipeline(requested_model=requested_model)
@@ -1386,7 +1458,9 @@ def _hf_textcls_batch_auto(
                 if callable(ids):
                     n = len(tokenizer.encode(str(t or "")))
                 else:
-                    n = len(tokenizer(str(t or ""), add_special_tokens=False).get("input_ids") or [])
+                    n = len(
+                        tokenizer(str(t or ""), add_special_tokens=False).get("input_ids") or []
+                    )
                 if n > max_seq_len:
                     max_seq_len = n
         except Exception:
@@ -1425,7 +1499,10 @@ def _hf_embed_batch_auto(
     if not texts:
         return ([], 0)
 
-    requested_model = str(model_name or "sentence-transformers/all-MiniLM-L6-v2").strip() or "sentence-transformers/all-MiniLM-L6-v2"
+    requested_model = (
+        str(model_name or "sentence-transformers/all-MiniLM-L6-v2").strip()
+        or "sentence-transformers/all-MiniLM-L6-v2"
+    )
 
     try:
         tok, model = _hf_get_embed_components(requested_model=requested_model)
@@ -1506,7 +1583,9 @@ def _extract_text(value: Any) -> str:
     return str(value)
 
 
-def _run_text_generation(task: Dict[str, Any], *, accelerate_instance: object | None = None) -> Dict[str, Any]:
+def _run_text_generation(
+    task: Dict[str, Any], *, accelerate_instance: object | None = None
+) -> Dict[str, Any]:
     model_name = str(task.get("model_name") or "")
     payload = task.get("payload") or {}
     prompt = payload.get("prompt") if isinstance(payload, dict) else payload
@@ -1526,12 +1605,19 @@ def _run_text_generation(task: Dict[str, Any], *, accelerate_instance: object | 
 
                 data = {
                     "prompt": str(prompt or ""),
-                    "max_new_tokens": int(payload.get("max_new_tokens") or payload.get("max_tokens") or 128),
+                    "max_new_tokens": int(
+                        payload.get("max_new_tokens") or payload.get("max_tokens") or 128
+                    ),
                     "temperature": float(payload.get("temperature") or 0.2),
                 }
 
                 async def _do_infer() -> Any:
-                    result = infer(model_name or None, data, endpoint=endpoint_hint, endpoint_type=endpoint_type_hint)
+                    result = infer(
+                        model_name or None,
+                        data,
+                        endpoint=endpoint_hint,
+                        endpoint_type=endpoint_type_hint,
+                    )
                     if inspect.isawaitable(result):
                         return await result
                     return result
@@ -1589,7 +1675,9 @@ def _run_text_generation(task: Dict[str, Any], *, accelerate_instance: object | 
         return {"text": str(text)}
 
 
-def _run_text2text_generation(task: Dict[str, Any], *, accelerate_instance: object | None = None) -> Dict[str, Any]:
+def _run_text2text_generation(
+    task: Dict[str, Any], *, accelerate_instance: object | None = None
+) -> Dict[str, Any]:
     model_name = str(task.get("model_name") or "")
     payload = task.get("payload") or {}
     prompt = _extract_hf_input_text(payload)
@@ -1608,7 +1696,12 @@ def _run_text2text_generation(task: Dict[str, Any], *, accelerate_instance: obje
                 data.setdefault("prompt", str(prompt or ""))
 
                 async def _do_infer() -> Any:
-                    result = infer(model_name or None, data, endpoint=endpoint_hint, endpoint_type=endpoint_type_hint)
+                    result = infer(
+                        model_name or None,
+                        data,
+                        endpoint=endpoint_hint,
+                        endpoint_type=endpoint_type_hint,
+                    )
                     if inspect.isawaitable(result):
                         return await result
                     return result
@@ -1620,11 +1713,17 @@ def _run_text2text_generation(task: Dict[str, Any], *, accelerate_instance: obje
         except Exception:
             pass
 
-    max_new_tokens = int(payload.get("max_new_tokens") or payload.get("max_tokens") or 128) if isinstance(payload, dict) else 128
+    max_new_tokens = (
+        int(payload.get("max_new_tokens") or payload.get("max_tokens") or 128)
+        if isinstance(payload, dict)
+        else 128
+    )
     temperature = float(payload.get("temperature") or 0.2) if isinstance(payload, dict) else 0.2
 
     if not _minimal_hf_enabled():
-        raise RuntimeError("text2text-generation requires accelerate_instance or minimal HF enabled")
+        raise RuntimeError(
+            "text2text-generation requires accelerate_instance or minimal HF enabled"
+        )
 
     texts, _used = _hf_text2text_batch_auto(
         [str(prompt or "")],
@@ -1636,7 +1735,9 @@ def _run_text2text_generation(task: Dict[str, Any], *, accelerate_instance: obje
     return {"text": str(texts[0] if texts else "")}
 
 
-def _run_embedding(task: Dict[str, Any], *, accelerate_instance: object | None = None) -> Dict[str, Any]:
+def _run_embedding(
+    task: Dict[str, Any], *, accelerate_instance: object | None = None
+) -> Dict[str, Any]:
     model_name = str(task.get("model_name") or "")
     payload = task.get("payload") or {}
     diagnostics = _embedding_diagnostics_enabled()
@@ -1658,7 +1759,12 @@ def _run_embedding(task: Dict[str, Any], *, accelerate_instance: object | None =
                 data.setdefault("text", _extract_hf_input_text(payload))
 
                 async def _do_infer() -> Any:
-                    result = infer(model_name or None, data, endpoint=endpoint_hint, endpoint_type=endpoint_type_hint)
+                    result = infer(
+                        model_name or None,
+                        data,
+                        endpoint=endpoint_hint,
+                        endpoint_type=endpoint_type_hint,
+                    )
                     if inspect.isawaitable(result):
                         return await result
                     return result
@@ -1681,10 +1787,7 @@ def _run_embedding(task: Dict[str, Any], *, accelerate_instance: object | None =
         except Exception as exc:
             accel_path_error = f"{type(exc).__name__}: {exc}"
             if diagnostics:
-                print(
-                    "[worker:embedding] backend=accelerate_infer error="
-                    f"{accel_path_error}"
-                )
+                print(f"[worker:embedding] backend=accelerate_infer error={accel_path_error}")
 
     if require_accel and not accel_path_available:
         raise RuntimeError("embedding requires accelerate_instance.infer (strict mode enabled)")
@@ -1695,7 +1798,9 @@ def _run_embedding(task: Dict[str, Any], *, accelerate_instance: object | None =
         raise RuntimeError("embedding requires accelerate_instance or minimal HF enabled")
 
     text = _extract_hf_input_text(payload)
-    vecs, _used = _hf_embed_batch_auto([str(text or "")], model_name=(model_name or None), requested_batch_max=1)
+    vecs, _used = _hf_embed_batch_auto(
+        [str(text or "")], model_name=(model_name or None), requested_batch_max=1
+    )
     emb = vecs[0] if vecs else []
     info = _hf_current_embed_runtime_info()
     if diagnostics:
@@ -1716,7 +1821,9 @@ def _run_embedding(task: Dict[str, Any], *, accelerate_instance: object | None =
     return out
 
 
-def _run_text_classification(task: Dict[str, Any], *, accelerate_instance: object | None = None) -> Dict[str, Any]:
+def _run_text_classification(
+    task: Dict[str, Any], *, accelerate_instance: object | None = None
+) -> Dict[str, Any]:
     model_name = str(task.get("model_name") or "")
     payload = task.get("payload") or {}
     text = _extract_hf_input_text(payload)
@@ -1734,7 +1841,12 @@ def _run_text_classification(task: Dict[str, Any], *, accelerate_instance: objec
                 data.setdefault("text", str(text or ""))
 
                 async def _do_infer() -> Any:
-                    result = infer(model_name or None, data, endpoint=endpoint_hint, endpoint_type=endpoint_type_hint)
+                    result = infer(
+                        model_name or None,
+                        data,
+                        endpoint=endpoint_hint,
+                        endpoint_type=endpoint_type_hint,
+                    )
                     if inspect.isawaitable(result):
                         return await result
                     return result
@@ -1749,11 +1861,15 @@ def _run_text_classification(task: Dict[str, Any], *, accelerate_instance: objec
     if not _minimal_hf_enabled():
         raise RuntimeError("text-classification requires accelerate_instance or minimal HF enabled")
 
-    out, _used = _hf_textcls_batch_auto([str(text or "")], model_name=(model_name or None), requested_batch_max=1)
+    out, _used = _hf_textcls_batch_auto(
+        [str(text or "")], model_name=(model_name or None), requested_batch_max=1
+    )
     return {"result": out[0] if isinstance(out, list) and out else out}
 
 
-def _run_hf_pipeline(task: Dict[str, Any], *, accelerate_instance: object | None = None) -> Dict[str, Any]:
+def _run_hf_pipeline(
+    task: Dict[str, Any], *, accelerate_instance: object | None = None
+) -> Dict[str, Any]:
     model_name = str(task.get("model_name") or "")
     payload = task.get("payload") or {}
     if not isinstance(payload, dict):
@@ -1775,7 +1891,12 @@ def _run_hf_pipeline(task: Dict[str, Any], *, accelerate_instance: object | None
                 data.setdefault("pipeline_task", pipeline_task)
 
                 async def _do_infer() -> Any:
-                    result = infer(model_name or None, data, endpoint=endpoint_hint, endpoint_type=endpoint_type_hint)
+                    result = infer(
+                        model_name or None,
+                        data,
+                        endpoint=endpoint_hint,
+                        endpoint_type=endpoint_type_hint,
+                    )
                     if inspect.isawaitable(result):
                         return await result
                     return result
@@ -1808,12 +1929,16 @@ def _run_hf_pipeline(task: Dict[str, Any], *, accelerate_instance: object | None
     return {"result": out}
 
 
-def _run_tool_call(task: Dict[str, Any], *, accelerate_instance: object | None = None) -> Dict[str, Any]:
+def _run_tool_call(
+    task: Dict[str, Any], *, accelerate_instance: object | None = None
+) -> Dict[str, Any]:
     payload = task.get("payload") or {}
     if not isinstance(payload, dict):
         raise ValueError("tool.call payload must be a dict")
 
-    tool_name = str(payload.get("tool") or payload.get("tool_name") or payload.get("name") or "").strip()
+    tool_name = str(
+        payload.get("tool") or payload.get("tool_name") or payload.get("name") or ""
+    ).strip()
     if not tool_name:
         raise ValueError("tool.call missing tool name")
     args = payload.get("args") or payload.get("arguments") or payload.get("params") or {}
@@ -1850,17 +1975,23 @@ def _run_tool_call(task: Dict[str, Any], *, accelerate_instance: object | None =
 
 
 def _run_shell(task: Dict[str, Any]) -> Dict[str, Any]:
-    allow = str(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_SHELL") or "").strip().lower() in {
+    allow = str(
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_SHELL") or ""
+    ).strip().lower() in {
         "1",
         "true",
         "yes",
         "on",
     }
     if not allow:
-        raise RuntimeError("shell task_type disabled (set IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_SHELL=1)")
+        raise RuntimeError(
+            "shell task_type disabled (set IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_SHELL=1)"
+        )
 
     if not _docker_tasks_enabled():
-        raise RuntimeError("shell requires docker (set IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_DOCKER=1)")
+        raise RuntimeError(
+            "shell requires docker (set IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_DOCKER=1)"
+        )
 
     payload = task.get("payload") or {}
     if not isinstance(payload, dict):
@@ -2063,8 +2194,12 @@ def _stream_subprocess(
         except Exception:
             pass
 
-    t_out = threading.Thread(target=_pump, args=(proc.stdout,), kwargs={"stream_name": "stdout"}, daemon=True)
-    t_err = threading.Thread(target=_pump, args=(proc.stderr,), kwargs={"stream_name": "stderr"}, daemon=True)
+    t_out = threading.Thread(
+        target=_pump, args=(proc.stdout,), kwargs={"stream_name": "stdout"}, daemon=True
+    )
+    t_err = threading.Thread(
+        target=_pump, args=(proc.stderr,), kwargs={"stream_name": "stderr"}, daemon=True
+    )
     t_out.start()
     t_err.start()
 
@@ -2251,7 +2386,14 @@ def _compute_supported_task_types(
     if _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI")):
         base_defaults.extend(["llm.generate", "llm_generate"])
     if _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_MULTIMODAL", "1")):
-        base_defaults.extend(["multimodal-generation", "multimodal_generation", "vision-generation", "vision_generation"])
+        base_defaults.extend(
+            [
+                "multimodal-generation",
+                "multimodal_generation",
+                "vision-generation",
+                "vision_generation",
+            ]
+        )
     # Voice handlers are always executable: providers and optional HTTP clients
     # are resolved lazily by voice_jobs.executor when a claimed job runs.
     base_defaults.extend(VOICE_TASK_TYPES)
@@ -2260,14 +2402,18 @@ def _compute_supported_task_types(
     # Add tool.call only when we can actually execute it, and only when the
     # task types weren't explicitly overridden via env (where the user likely
     # wants an exact allowlist).
-    if (not _task_types_overridden_via_env()) and _accelerate_supports_tool_call(accelerate_instance):
+    if (not _task_types_overridden_via_env()) and _accelerate_supports_tool_call(
+        accelerate_instance
+    ):
         out.extend(["tool.call", "tool"])
 
     return normalize_task_types(out, expand_aliases=True)
 
 
 def _worker_mesh_enabled() -> bool:
-    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_MESH") or os.environ.get("IPFS_DATASETS_PY_TASK_WORKER_MESH")
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_MESH") or os.environ.get(
+        "IPFS_DATASETS_PY_TASK_WORKER_MESH"
+    )
     if raw is None:
         return False
     return str(raw).strip().lower() in {"1", "true", "yes", "on"}
@@ -2302,27 +2448,27 @@ def _expected_session_tag() -> str:
 
 
 def _mesh_filter_peers_by_session() -> bool:
-        """Whether mesh peer discovery should filter peers by their *service* session tag.
+    """Whether mesh peer discovery should filter peers by their *service* session tag.
 
-        Default is False.
+    Default is False.
 
-        Rationale:
-            - A task's required session is enforced at claim-time using the payload's
-                `session_id`.
-            - Filtering peers by the remote service's configured session can prevent
-                draining session-bound tasks that were enqueued on the "wrong" machine.
+    Rationale:
+        - A task's required session is enforced at claim-time using the payload's
+            `session_id`.
+        - Filtering peers by the remote service's configured session can prevent
+            draining session-bound tasks that were enqueued on the "wrong" machine.
 
-        Env:
-            - IPFS_ACCELERATE_PY_TASK_WORKER_MESH_FILTER_PEERS_BY_SESSION (compat:
-                IPFS_DATASETS_PY_TASK_WORKER_MESH_FILTER_PEERS_BY_SESSION)
-        """
+    Env:
+        - IPFS_ACCELERATE_PY_TASK_WORKER_MESH_FILTER_PEERS_BY_SESSION (compat:
+            IPFS_DATASETS_PY_TASK_WORKER_MESH_FILTER_PEERS_BY_SESSION)
+    """
 
-        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_MESH_FILTER_PEERS_BY_SESSION")
-        if raw is None:
-                raw = os.environ.get("IPFS_DATASETS_PY_TASK_WORKER_MESH_FILTER_PEERS_BY_SESSION")
-        if raw is None:
-                return False
-        return _truthy(str(raw))
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_MESH_FILTER_PEERS_BY_SESSION")
+    if raw is None:
+        raw = os.environ.get("IPFS_DATASETS_PY_TASK_WORKER_MESH_FILTER_PEERS_BY_SESSION")
+    if raw is None:
+        return False
+    return _truthy(str(raw))
 
 
 def _task_required_session(task_payload: object) -> str:
@@ -2405,7 +2551,11 @@ def _chat_cache_get_transcript(chat_session_id: str) -> str | None:
     if not sid:
         return None
     try:
-        from ipfs_accelerate_py.p2p_tasks.cache_store import DiskTTLCache, cache_enabled, default_cache_dir
+        from ipfs_accelerate_py.p2p_tasks.cache_store import (
+            DiskTTLCache,
+            cache_enabled,
+            default_cache_dir,
+        )
 
         if not cache_enabled():
             return None
@@ -2420,7 +2570,9 @@ def _chat_cache_get_transcript(chat_session_id: str) -> str | None:
     return None
 
 
-def _chat_cache_append_turn(*, chat_session_id: str, user_prompt: str, assistant_text: str, ttl_s: float | None = None) -> None:
+def _chat_cache_append_turn(
+    *, chat_session_id: str, user_prompt: str, assistant_text: str, ttl_s: float | None = None
+) -> None:
     sid = str(chat_session_id or "").strip()
     if not sid:
         return
@@ -2428,7 +2580,11 @@ def _chat_cache_append_turn(*, chat_session_id: str, user_prompt: str, assistant
     if not turn:
         return
     try:
-        from ipfs_accelerate_py.p2p_tasks.cache_store import DiskTTLCache, cache_enabled, default_cache_dir
+        from ipfs_accelerate_py.p2p_tasks.cache_store import (
+            DiskTTLCache,
+            cache_enabled,
+            default_cache_dir,
+        )
 
         if not cache_enabled():
             return
@@ -2440,11 +2596,15 @@ def _chat_cache_append_turn(*, chat_session_id: str, user_prompt: str, assistant
             prior_text = str(prior.get("text") or "")
         elif isinstance(prior, str):
             prior_text = prior
-        merged = (prior_text.strip() + "\n\n" + turn).strip() if str(prior_text or "").strip() else turn
+        merged = (
+            (prior_text.strip() + "\n\n" + turn).strip() if str(prior_text or "").strip() else turn
+        )
 
         # Prevent unbounded growth; keep the last ~64KB of transcript.
         try:
-            max_chars = int(float(os.environ.get("IPFS_ACCELERATE_PY_TASK_CHAT_HISTORY_MAX_CHARS") or 65536))
+            max_chars = int(
+                float(os.environ.get("IPFS_ACCELERATE_PY_TASK_CHAT_HISTORY_MAX_CHARS") or 65536)
+            )
         except Exception:
             max_chars = 65536
         max_chars = max(4096, min(max_chars, 1024 * 1024))
@@ -2497,7 +2657,9 @@ def _copilot_session_controls_allowed(
     if not sticky_text:
         raise RuntimeError("copilot session continuity requires sticky_worker_id")
     if assigned and sticky_text != assigned:
-        raise RuntimeError("copilot session continuity requires sticky_worker_id to match assigned_worker")
+        raise RuntimeError(
+            "copilot session continuity requires sticky_worker_id to match assigned_worker"
+        )
 
     local = str(local_session or "").strip()
     if local:
@@ -2508,12 +2670,10 @@ def _copilot_session_controls_allowed(
             raise RuntimeError("copilot session continuity requires matching session_id")
 
     if wants_continue and not wants_resume:
-        allow = (
-            str(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ALLOW_COPILOT_CONTINUE_WITHOUT_RESUME") or "")
-            .strip()
-            .lower()
-            in {"1", "true", "yes", "on"}
-        )
+        allow = str(
+            os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ALLOW_COPILOT_CONTINUE_WITHOUT_RESUME")
+            or ""
+        ).strip().lower() in {"1", "true", "yes", "on"}
         if not allow:
             raise RuntimeError(
                 "copilot_cli disallows continue_session without resume_session_id "
@@ -2595,7 +2755,16 @@ def _allowed_multimodal_providers() -> set[str]:
     if not parts:
         return {"openai", "openrouter", "codex_cli", "codex", "gemini_cli", "gemini_py"}
     if "*" in parts or "all" in parts:
-        return {"openai", "openrouter", "codex_cli", "codex", "gemini_cli", "gemini_py", "claude_code", "claude_py"}
+        return {
+            "openai",
+            "openrouter",
+            "codex_cli",
+            "codex",
+            "gemini_cli",
+            "gemini_py",
+            "claude_code",
+            "claude_py",
+        }
     return set(parts)
 
 
@@ -2613,7 +2782,10 @@ def _default_multimodal_provider() -> str:
     # metadata after a service reinstall.
     if any(os.environ.get(name) for name in ("OPENAI_API_KEY", "OPENAI_KEY", "OPENAI_TOKEN")):
         return "openai"
-    if any(os.environ.get(name) for name in ("OPENROUTER_API_KEY", "IPFS_DATASETS_PY_OPENROUTER_API_KEY")):
+    if any(
+        os.environ.get(name)
+        for name in ("OPENROUTER_API_KEY", "IPFS_DATASETS_PY_OPENROUTER_API_KEY")
+    ):
         return "openrouter"
     if shutil.which("codex"):
         return "codex_cli"
@@ -2650,17 +2822,32 @@ def _run_llm_generate(task: Dict[str, Any]) -> Dict[str, Any]:
     provider_raw = payload.get("provider")
     provider = str(provider_raw or "copilot_cli").strip().lower() or "copilot_cli"
     provider_explicit = isinstance(provider_raw, str) and bool(str(provider_raw).strip())
-    model_name = str(task.get("model_name") or payload.get("model") or payload.get("model_name") or "").strip() or None
+    model_name = (
+        str(
+            task.get("model_name") or payload.get("model") or payload.get("model_name") or ""
+        ).strip()
+        or None
+    )
 
     # For generic llm.generate jobs that do not explicitly request a provider,
     # default to local text-generation so GPT-2 batches do not depend on
     # copilot_cli tooling (e.g. missing `npx` on workers).
     if not provider_explicit:
-        local_default = str(
-            os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_LLM_GENERATE_DEFAULT_PROVIDER")
-            or "local_text_generation"
-        ).strip().lower()
-        if local_default in {"local", "local_text_generation", "minimal_hf", "text-generation", "text_generation"}:
+        local_default = (
+            str(
+                os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_LLM_GENERATE_DEFAULT_PROVIDER")
+                or "local_text_generation"
+            )
+            .strip()
+            .lower()
+        )
+        if local_default in {
+            "local",
+            "local_text_generation",
+            "minimal_hf",
+            "text-generation",
+            "text_generation",
+        }:
             fallback = _run_text_generation(task, accelerate_instance=None)
             text = str((fallback or {}).get("text") or "")
             session_id = _expected_session_tag()
@@ -2702,31 +2889,40 @@ def _run_llm_generate(task: Dict[str, Any]) -> Dict[str, Any]:
             assigned_worker_id=str(task.get("assigned_worker") or "").strip(),
         )
     else:
-        if (isinstance(payload.get("resume_session_id"), str) and str(payload.get("resume_session_id") or "").strip()) or bool(
-            payload.get("continue_session", False)
-        ):
-            raise RuntimeError("resume_session_id/continue_session only supported for provider='copilot_cli'")
-
-
+        if (
+            isinstance(payload.get("resume_session_id"), str)
+            and str(payload.get("resume_session_id") or "").strip()
+        ) or bool(payload.get("continue_session", False)):
+            raise RuntimeError(
+                "resume_session_id/continue_session only supported for provider='copilot_cli'"
+            )
 
     if provider == "copilot_cli":
-        allow = str(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI") or "").strip().lower() in {
+        allow = str(
+            os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI") or ""
+        ).strip().lower() in {
             "1",
             "true",
             "yes",
             "on",
         }
         if not allow:
-            raise RuntimeError("copilot_cli tasks disabled (set IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI=1)")
+            raise RuntimeError(
+                "copilot_cli tasks disabled (set IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI=1)"
+            )
 
     # Forward known safe flags.
     kwargs: Dict[str, Any] = {}
-    allow_paths = str(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ALLOW_LLM_PATH_ARGS") or "").strip().lower() in {
+    allow_paths = str(
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ALLOW_LLM_PATH_ARGS") or ""
+    ).strip().lower() in {
         "1",
         "true",
         "yes",
         "on",
-    } or str(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ALLOW_COPILOT_PATH_ARGS") or "").strip().lower() in {
+    } or str(
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ALLOW_COPILOT_PATH_ARGS") or ""
+    ).strip().lower() in {
         "1",
         "true",
         "yes",
@@ -2762,7 +2958,12 @@ def _run_llm_generate(task: Dict[str, Any]) -> Dict[str, Any]:
         if k in payload:
             # Path-like args can alter account/config state or write files.
             # Require an explicit opt-in on the worker.
-            if not allow_paths and k in {"trace_jsonl_path", "trace_dir", "copilot_config_dir", "copilot_log_dir"}:
+            if not allow_paths and k in {
+                "trace_jsonl_path",
+                "trace_dir",
+                "copilot_config_dir",
+                "copilot_log_dir",
+            }:
                 raise RuntimeError(
                     f"llm.generate disallows '{k}' unless IPFS_ACCELERATE_PY_TASK_WORKER_ALLOW_LLM_PATH_ARGS=1"
                 )
@@ -2787,7 +2988,9 @@ def _run_llm_generate(task: Dict[str, Any]) -> Dict[str, Any]:
     text = ""
     for _try_provider in _provider_fallback_chain:
         try:
-            text = llm_router.generate_text(str(prompt or ""), model_name=model_name, provider=_try_provider, **kwargs)
+            text = llm_router.generate_text(
+                str(prompt or ""), model_name=model_name, provider=_try_provider, **kwargs
+            )
             effective_provider = _try_provider
             provider_error = ""
             break
@@ -2857,16 +3060,25 @@ def _run_multimodal_generation(task: Dict[str, Any]) -> Dict[str, Any]:
     if provider is not None and provider not in _allowed_multimodal_providers():
         raise RuntimeError(f"multimodal-generation provider not allowed: {provider}")
 
-    model_name = str(task.get("model_name") or payload.get("model") or payload.get("model_name") or "").strip() or None
+    model_name = (
+        str(
+            task.get("model_name") or payload.get("model") or payload.get("model_name") or ""
+        ).strip()
+        or None
+    )
     image_urls = [str(url) for url in payload.get("image_urls") or [] if str(url or "").strip()]
-    image_data_urls = [str(url) for url in payload.get("image_data_urls") or [] if str(url or "").strip()]
+    image_data_urls = [
+        str(url) for url in payload.get("image_data_urls") or [] if str(url or "").strip()
+    ]
     all_image_urls = image_urls + image_data_urls
 
     additional_text_blocks = payload.get("additional_text_blocks")
     if isinstance(additional_text_blocks, str):
         additional_blocks = [additional_text_blocks]
     elif isinstance(additional_text_blocks, (list, tuple)):
-        additional_blocks = [str(item) for item in additional_text_blocks if str(item or "").strip()]
+        additional_blocks = [
+            str(item) for item in additional_text_blocks if str(item or "").strip()
+        ]
     else:
         additional_blocks = []
 
@@ -2981,7 +3193,9 @@ def _start_mesh_discovery_thread(
 
         while not stop.is_set():
             try:
-                discovered = discover_peers_via_mdns_sync(timeout_s=1.0, limit=int(max_peers), exclude_self=True)
+                discovered = discover_peers_via_mdns_sync(
+                    timeout_s=1.0, limit=int(max_peers), exclude_self=True
+                )
             except Exception:
                 discovered = []
 
@@ -3105,7 +3319,10 @@ def run_worker(
                 import sys
                 import traceback
 
-                print(f"ipfs_accelerate_py worker: failed to start p2p task service: {exc}", file=sys.stderr)
+                print(
+                    f"ipfs_accelerate_py worker: failed to start p2p task service: {exc}",
+                    file=sys.stderr,
+                )
                 traceback.print_exc()
 
         t = threading.Thread(
@@ -3160,8 +3377,10 @@ def run_worker(
 
         payload = {
             "workflow_id": workflow_id,
-            "task_id": str(lineage.get("task_id") or "").strip() or str(task_dict.get("task_id") or "").strip(),
-            "model_id": str(lineage.get("model_id") or "").strip() or str(task_dict.get("model_name") or "").strip(),
+            "task_id": str(lineage.get("task_id") or "").strip()
+            or str(task_dict.get("task_id") or "").strip(),
+            "model_id": str(lineage.get("model_id") or "").strip()
+            or str(task_dict.get("model_name") or "").strip(),
             "worker_id": str(worker_id),
             "session_id": str(local_session or ""),
             "status": "completed" if level == "INFO" else "failed",
@@ -3175,7 +3394,9 @@ def run_worker(
         except Exception:
             pass
 
-    def _emit_backend_routing_failure(task_dict: Dict[str, Any], error: str, *, required: bool) -> None:
+    def _emit_backend_routing_failure(
+        task_dict: Dict[str, Any], error: str, *, required: bool
+    ) -> None:
         lineage = _extract_lineage(task_dict)
         workflow_id = str(lineage.get("workflow_id") or "").strip()
         if not workflow_id:
@@ -3184,13 +3405,19 @@ def run_worker(
         if manager is None:
             return
 
-        event_type = "workflow_task_failed_backend_routing" if required else "workflow_backend_routing_degraded"
+        event_type = (
+            "workflow_task_failed_backend_routing"
+            if required
+            else "workflow_backend_routing_degraded"
+        )
         level = "ERROR" if required else "WARNING"
 
         payload = {
             "workflow_id": workflow_id,
-            "task_id": str(lineage.get("task_id") or "").strip() or str(task_dict.get("task_id") or "").strip(),
-            "model_id": str(lineage.get("model_id") or "").strip() or str(task_dict.get("model_name") or "").strip(),
+            "task_id": str(lineage.get("task_id") or "").strip()
+            or str(task_dict.get("task_id") or "").strip(),
+            "model_id": str(lineage.get("model_id") or "").strip()
+            or str(task_dict.get("model_name") or "").strip(),
             "worker_id": str(worker_id),
             "session_id": str(local_session or ""),
             "status": "failed" if required else "degraded",
@@ -3255,7 +3482,10 @@ def run_worker(
                 continue
 
             # Allow per-task opt-out.
-            if payload.get("session_failover") is False or payload.get("disable_session_failover") is True:
+            if (
+                payload.get("session_failover") is False
+                or payload.get("disable_session_failover") is True
+            ):
                 continue
 
             try:
@@ -3309,7 +3539,9 @@ def run_worker(
             }
 
             try:
-                new_tid = queue.submit(task_type=str(ttype), model_name=str(model_name), payload=new_payload)
+                new_tid = queue.submit(
+                    task_type=str(ttype), model_name=str(model_name), payload=new_payload
+                )
             except Exception:
                 continue
 
@@ -3399,11 +3631,19 @@ def run_worker(
         if task_id:
             lineage["task_id"] = task_id
 
-        model_id = str(lineage.get("model_id") or task_dict.get("model_name") or payload.get("model_id") or "").strip()
+        model_id = str(
+            lineage.get("model_id") or task_dict.get("model_name") or payload.get("model_id") or ""
+        ).strip()
         if model_id:
             lineage["model_id"] = model_id
 
-        for key in ("backend_id", "output_cid", "provenance_cid", "persistence_policy", "provenance_policy"):
+        for key in (
+            "backend_id",
+            "output_cid",
+            "provenance_cid",
+            "persistence_policy",
+            "provenance_policy",
+        ):
             if key in lineage and lineage.get(key) is not None:
                 continue
             if key in payload and payload.get(key) is not None:
@@ -3433,7 +3673,9 @@ def run_worker(
         env_required = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_REQUIRE_BACKEND_MANAGER")
         return _truthy(env_required)
 
-    def _with_lineage_result(task_dict: Dict[str, Any], result: Dict[str, Any] | None) -> Dict[str, Any]:
+    def _with_lineage_result(
+        task_dict: Dict[str, Any], result: Dict[str, Any] | None
+    ) -> Dict[str, Any]:
         base = dict(result) if isinstance(result, dict) else {}
         lineage = _extract_lineage(task_dict)
         current = base.get("lineage")
@@ -3442,7 +3684,14 @@ def run_worker(
             if value is None:
                 continue
             merged_lineage.setdefault(key, value)
-            if key in {"workflow_id", "task_id", "model_id", "backend_id", "output_cid", "provenance_cid"}:
+            if key in {
+                "workflow_id",
+                "task_id",
+                "model_id",
+                "backend_id",
+                "output_cid",
+                "provenance_cid",
+            }:
                 base.setdefault(key, value)
         if merged_lineage:
             base["lineage"] = merged_lineage
@@ -3545,7 +3794,9 @@ def run_worker(
 
         route_raw = payload.get("dispatch_via_backend_manager")
         if route_raw is None:
-            route_raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ROUTE_VIA_BACKEND_MANAGER", "1")
+            route_raw = os.environ.get(
+                "IPFS_ACCELERATE_PY_TASK_WORKER_ROUTE_VIA_BACKEND_MANAGER", "1"
+            )
         if not _truthy(str(route_raw)):
             return None
 
@@ -3556,14 +3807,20 @@ def run_worker(
 
             backend_manager = get_backend_manager()
         except Exception:
-            _emit_backend_routing_failure(task_dict, "backend_manager_unavailable", required=required)
+            _emit_backend_routing_failure(
+                task_dict, "backend_manager_unavailable", required=required
+            )
             return None
 
         if backend_manager is None:
-            _emit_backend_routing_failure(task_dict, "backend_manager_unavailable", required=required)
+            _emit_backend_routing_failure(
+                task_dict, "backend_manager_unavailable", required=required
+            )
             return None
 
-        model_name = str(task_dict.get("model_name") or payload.get("model") or payload.get("model_id") or "").strip()
+        model_name = str(
+            task_dict.get("model_name") or payload.get("model") or payload.get("model_id") or ""
+        ).strip()
         inputs = _extract_backend_inputs(task_type=task_type, payload=payload)
         preferred_types = _extract_backend_preferred_types(payload)
         required_protocols = _extract_backend_required_protocols(payload)
@@ -3595,7 +3852,14 @@ def run_worker(
         merged_lineage = dict(existing_lineage) if isinstance(existing_lineage, dict) else {}
         for key, value in lineage.items():
             merged_lineage.setdefault(key, value)
-            if key in {"workflow_id", "task_id", "model_id", "backend_id", "output_cid", "provenance_cid"}:
+            if key in {
+                "workflow_id",
+                "task_id",
+                "model_id",
+                "backend_id",
+                "output_cid",
+                "provenance_cid",
+            }:
                 result.setdefault(key, value)
         if merged_lineage:
             result["lineage"] = merged_lineage
@@ -3608,7 +3872,9 @@ def run_worker(
 
         if _backend_manager_required(task_payload):
             if not bool(task_payload.get("_backend_manager_routing_event_emitted")):
-                _emit_backend_routing_failure(task_payload, "backend_manager_routing_required", required=True)
+                _emit_backend_routing_failure(
+                    task_payload, "backend_manager_routing_required", required=True
+                )
             raise RuntimeError("backend_manager_routing_required")
 
         ttype = canonical_task_type(task_payload.get("task_type"))
@@ -3625,14 +3891,22 @@ def run_worker(
         enable_shell_raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_SHELL") or ""
         allow = str(enable_shell_raw).strip().lower() in {"1", "true", "yes", "on"}
         if not allow:
-            raise RuntimeError("shell task_type disabled (set IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_SHELL=1)")
+            raise RuntimeError(
+                "shell task_type disabled (set IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_SHELL=1)"
+            )
 
         if not _docker_tasks_enabled():
-            raise RuntimeError("shell requires docker (set IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_DOCKER=1)")
+            raise RuntimeError(
+                "shell requires docker (set IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_DOCKER=1)"
+            )
 
         task_id = str(task_dict.get("task_id") or "")
         argv = payload.get("argv")
-        if not isinstance(argv, list) or not argv or not all(isinstance(x, str) and x for x in argv):
+        if (
+            not isinstance(argv, list)
+            or not argv
+            or not all(isinstance(x, str) and x for x in argv)
+        ):
             raise ValueError("shell payload.argv must be a non-empty list[str]")
 
         timeout_s = payload.get("timeout_s")
@@ -3642,7 +3916,9 @@ def run_worker(
             timeout_v = None
 
         image = (
-            str(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_SHELL_IMAGE") or "ubuntu:22.04").strip()
+            str(
+                os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_SHELL_IMAGE") or "ubuntu:22.04"
+            ).strip()
             or "ubuntu:22.04"
         )
         cmd_str = shlex.join([str(x) for x in argv])
@@ -3672,12 +3948,16 @@ def run_worker(
         stderr = str(getattr(res, "stderr", "") or "")
         for line in stdout.splitlines():
             try:
-                queue.update(task_id=task_id, status="running", append_log=line, log_stream="stdout")
+                queue.update(
+                    task_id=task_id, status="running", append_log=line, log_stream="stdout"
+                )
             except Exception:
                 pass
         for line in stderr.splitlines():
             try:
-                queue.update(task_id=task_id, status="running", append_log=line, log_stream="stderr")
+                queue.update(
+                    task_id=task_id, status="running", append_log=line, log_stream="stderr"
+                )
             except Exception:
                 pass
 
@@ -3731,7 +4011,9 @@ def run_worker(
                 )
             except Exception:
                 pass
-            result = _stream_subprocess(argv=argv, task_id=task_id, queue=queue, timeout_s=timeout_v)
+            result = _stream_subprocess(
+                argv=argv, task_id=task_id, queue=queue, timeout_s=timeout_v
+            )
             try:
                 queue.update(
                     task_id=task_id,
@@ -3794,7 +4076,13 @@ def run_worker(
                     queue.update(
                         task_id=task_id,
                         status="running",
-                        result_patch={"progress": {"phase": "running", "heartbeat_ts": time.time(), "image": image}},
+                        result_patch={
+                            "progress": {
+                                "phase": "running",
+                                "heartbeat_ts": time.time(),
+                                "image": image,
+                            }
+                        },
                     )
                 except Exception:
                     pass
@@ -3822,12 +4110,16 @@ def run_worker(
         stderr = str(getattr(res, "stderr", "") or "")
         for line in stdout.splitlines():
             try:
-                queue.update(task_id=task_id, status="running", append_log=line, log_stream="stdout")
+                queue.update(
+                    task_id=task_id, status="running", append_log=line, log_stream="stdout"
+                )
             except Exception:
                 pass
         for line in stderr.splitlines():
             try:
-                queue.update(task_id=task_id, status="running", append_log=line, log_stream="stderr")
+                queue.update(
+                    task_id=task_id, status="running", append_log=line, log_stream="stderr"
+                )
             except Exception:
                 pass
         if getattr(res, "error_message", None):
@@ -3874,7 +4166,9 @@ def run_worker(
             raise ValueError("docker.github task missing payload.repo_url")
 
         branch = str(payload.get("branch") or "main")
-        dockerfile_path = str(payload.get("dockerfile_path") or payload.get("dockerfile") or "Dockerfile")
+        dockerfile_path = str(
+            payload.get("dockerfile_path") or payload.get("dockerfile") or "Dockerfile"
+        )
         context_path = str(payload.get("context_path") or payload.get("context") or ".")
 
         command = _maybe_split_argv(payload.get("command") or payload.get("cmd"))
@@ -3920,7 +4214,9 @@ def run_worker(
             queue.update(
                 task_id=task_id,
                 status="running",
-                result_patch={"progress": {"phase": "building", "ts": time.time(), "repo_url": repo_url}},
+                result_patch={
+                    "progress": {"phase": "building", "ts": time.time(), "repo_url": repo_url}
+                },
             )
         except Exception:
             pass
@@ -3973,12 +4269,16 @@ def run_worker(
         stderr = str(getattr(res, "stderr", "") or "")
         for line in stdout.splitlines():
             try:
-                queue.update(task_id=task_id, status="running", append_log=line, log_stream="stdout")
+                queue.update(
+                    task_id=task_id, status="running", append_log=line, log_stream="stdout"
+                )
             except Exception:
                 pass
         for line in stderr.splitlines():
             try:
-                queue.update(task_id=task_id, status="running", append_log=line, log_stream="stderr")
+                queue.update(
+                    task_id=task_id, status="running", append_log=line, log_stream="stderr"
+                )
             except Exception:
                 pass
         if getattr(res, "error_message", None):
@@ -3995,7 +4295,9 @@ def run_worker(
             queue.update(
                 task_id=task_id,
                 status="running",
-                result_patch={"progress": {"phase": "exited", "ts": time.time(), "repo_url": repo_url}},
+                result_patch={
+                    "progress": {"phase": "exited", "ts": time.time(), "repo_url": repo_url}
+                },
             )
         except Exception:
             pass
@@ -4023,13 +4325,17 @@ def run_worker(
     )
 
     mesh_enabled = bool(_worker_mesh_enabled()) if mesh is None else bool(mesh)
-    mesh_refresh = float(_worker_mesh_refresh_s()) if mesh_refresh_s is None else float(mesh_refresh_s)
+    mesh_refresh = (
+        float(_worker_mesh_refresh_s()) if mesh_refresh_s is None else float(mesh_refresh_s)
+    )
     mesh_claim_interval = (
         float(_worker_mesh_claim_interval_s())
         if mesh_claim_interval_s is None
         else float(mesh_claim_interval_s)
     )
-    mesh_peers_limit = int(_worker_mesh_max_peers()) if mesh_max_peers is None else int(mesh_max_peers)
+    mesh_peers_limit = (
+        int(_worker_mesh_max_peers()) if mesh_max_peers is None else int(mesh_max_peers)
+    )
 
     # Mesh discovery state.
     mesh_stop = threading.Event()
@@ -4199,7 +4505,9 @@ def run_worker(
         except Exception:
             return
 
-    def _stamp_result_meta(*, result: Dict[str, Any] | None, assigned_worker: str | None = None) -> Dict[str, Any] | None:
+    def _stamp_result_meta(
+        *, result: Dict[str, Any] | None, assigned_worker: str | None = None
+    ) -> Dict[str, Any] | None:
         if not isinstance(result, dict):
             return result
         out = dict(result)
@@ -4218,7 +4526,9 @@ def run_worker(
             out["session_id"] = sid
         return out
 
-    def _complete_local_task(*, task_id: str, ok: bool, result: Dict[str, Any] | None, error: str | None) -> None:
+    def _complete_local_task(
+        *, task_id: str, ok: bool, result: Dict[str, Any] | None, error: str | None
+    ) -> None:
         # If this is a proxy task (claimed from a peer by the orchestrator),
         # also complete the *remote* task.
         proxy: dict[str, object] | None = None
@@ -4240,7 +4550,9 @@ def run_worker(
             proxy = None
             task_payload = {"task_id": str(task_id), "payload": {}}
 
-        final_result = _with_lineage_result(task_payload, result if isinstance(result, dict) else None)
+        final_result = _with_lineage_result(
+            task_payload, result if isinstance(result, dict) else None
+        )
         if not ok:
             final_result = _failure_result(task_payload, str(error or "unknown error"))
 
@@ -4266,7 +4578,12 @@ def run_worker(
         try:
             if ok:
                 queue.complete(task_id=str(task_id), status="completed", result=final_result)
-                _emit_workflow_event(task_dict=task_payload, event_type="workflow_task_completed", level="INFO", result=final_result)
+                _emit_workflow_event(
+                    task_dict=task_payload,
+                    event_type="workflow_task_completed",
+                    level="INFO",
+                    result=final_result,
+                )
             else:
                 queue.complete(
                     task_id=str(task_id),
@@ -4304,7 +4621,9 @@ def run_worker(
         except Exception:
             ttype0 = ""
 
-        def _complete_one(*, tid: str, ok: bool, res: Dict[str, Any] | None, err: str | None) -> None:
+        def _complete_one(
+            *, tid: str, ok: bool, res: Dict[str, Any] | None, err: str | None
+        ) -> None:
             if mesh:
                 if remote is None:
                     return
@@ -4336,7 +4655,9 @@ def run_worker(
                 _complete_local_task(task_id=tid, ok=ok, result=res, error=err)
 
         # text-generation batching (minimal HF only)
-        tb_cap = _parse_batch_cap(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_TEXTGEN_BATCH_MAX"), default=4)
+        tb_cap = _parse_batch_cap(
+            os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_TEXTGEN_BATCH_MAX"), default=4
+        )
         tb_limit = 64 if tb_cap <= 0 else max(1, min(int(tb_cap), 64))
         can_textgen_batch = (
             ttype0 in {"text-generation", "text_generation", "generation"}
@@ -4351,14 +4672,22 @@ def run_worker(
         if can_textgen_batch:
             text_tasks: list[Dict[str, Any]] = []
             for t in batch_tasks[:tb_limit]:
-                if str(t.get("task_type") or "").strip().lower() not in {"text-generation", "text_generation", "generation"}:
+                if str(t.get("task_type") or "").strip().lower() not in {
+                    "text-generation",
+                    "text_generation",
+                    "generation",
+                }:
                     break
                 text_tasks.append(t)
 
             def _params(t: Dict[str, Any]) -> tuple[str, int, float]:
                 payload = t.get("payload") if isinstance(t.get("payload"), dict) else {}
                 model = str(t.get("model_name") or "")
-                mx = int((payload or {}).get("max_new_tokens") or (payload or {}).get("max_tokens") or 128)
+                mx = int(
+                    (payload or {}).get("max_new_tokens")
+                    or (payload or {}).get("max_tokens")
+                    or 128
+                )
                 temp = float((payload or {}).get("temperature") or 0.2)
                 return (model, mx, temp)
 
@@ -4387,7 +4716,9 @@ def run_worker(
                     return list(batch_tasks[used:])
 
         # text2text-generation batching (minimal HF only)
-        t2t_cap = _parse_batch_cap(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_TEXT2TEXT_BATCH_MAX"), default=8)
+        t2t_cap = _parse_batch_cap(
+            os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_TEXT2TEXT_BATCH_MAX"), default=8
+        )
         t2t_limit = 64 if t2t_cap <= 0 else max(1, min(int(t2t_cap), 64))
         can_t2t_batch = (
             ttype0 in {"text2text-generation", "text2text_generation"}
@@ -4398,14 +4729,21 @@ def run_worker(
         if can_t2t_batch:
             t2t_tasks: list[Dict[str, Any]] = []
             for t in batch_tasks[:t2t_limit]:
-                if str(t.get("task_type") or "").strip().lower() not in {"text2text-generation", "text2text_generation"}:
+                if str(t.get("task_type") or "").strip().lower() not in {
+                    "text2text-generation",
+                    "text2text_generation",
+                }:
                     break
                 t2t_tasks.append(t)
 
             def _t2t_params(t: Dict[str, Any]) -> tuple[str, int, float]:
                 payload = t.get("payload") if isinstance(t.get("payload"), dict) else {}
                 model = str(t.get("model_name") or "")
-                mx = int((payload or {}).get("max_new_tokens") or (payload or {}).get("max_tokens") or 128)
+                mx = int(
+                    (payload or {}).get("max_new_tokens")
+                    or (payload or {}).get("max_tokens")
+                    or 128
+                )
                 temp = float((payload or {}).get("temperature") or 0.2)
                 return (model, mx, temp)
 
@@ -4434,7 +4772,9 @@ def run_worker(
                     return list(batch_tasks[used:])
 
         # text-classification batching (minimal HF only)
-        cls_cap = _parse_batch_cap(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_TEXTCLS_BATCH_MAX"), default=16)
+        cls_cap = _parse_batch_cap(
+            os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_TEXTCLS_BATCH_MAX"), default=16
+        )
         cls_limit = 64 if cls_cap <= 0 else max(1, min(int(cls_cap), 64))
         can_cls_batch = (
             ttype0 in {"text-classification", "text_classification"}
@@ -4445,7 +4785,10 @@ def run_worker(
         if can_cls_batch:
             cls_tasks: list[Dict[str, Any]] = []
             for t in batch_tasks[:cls_limit]:
-                if str(t.get("task_type") or "").strip().lower() not in {"text-classification", "text_classification"}:
+                if str(t.get("task_type") or "").strip().lower() not in {
+                    "text-classification",
+                    "text_classification",
+                }:
                     break
                 cls_tasks.append(t)
 
@@ -4475,7 +4818,9 @@ def run_worker(
                     return list(batch_tasks[used:])
 
         # embedding batching (minimal HF only)
-        emb_cap = _parse_batch_cap(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_EMBED_BATCH_MAX"), default=16)
+        emb_cap = _parse_batch_cap(
+            os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_EMBED_BATCH_MAX"), default=16
+        )
         emb_limit = 64 if emb_cap <= 0 else max(1, min(int(emb_cap), 64))
         can_emb_batch = (
             ttype0 in {"embedding", "embeddings", "text-embedding", "text_embedding"}
@@ -4513,14 +4858,18 @@ def run_worker(
                         if not tid:
                             continue
                         emb = list(vec) if isinstance(vec, list) else []
-                        _complete_one(tid=tid, ok=True, res={"embedding": emb, "dim": int(len(emb))}, err=None)
+                        _complete_one(
+                            tid=tid, ok=True, res={"embedding": emb, "dim": int(len(emb))}, err=None
+                        )
 
                     return list(batch_tasks[used:])
 
         return list(batch_tasks)
 
     # Local batch-claim (homogeneous) to enable micro-batching.
-    local_claim_cap = _parse_batch_cap(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_LOCAL_CLAIM_BATCH"), default=16)
+    local_claim_cap = _parse_batch_cap(
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_LOCAL_CLAIM_BATCH"), default=16
+    )
     try:
         local_claim_n = int(local_claim_cap) if int(local_claim_cap) > 0 else 1
     except Exception:
@@ -4567,7 +4916,9 @@ def run_worker(
                         # Nothing we can do.
                         continue
 
-                    if not _session_allows_task(task_payload=remote_task.get("payload"), local_session=local_session):
+                    if not _session_allows_task(
+                        task_payload=remote_task.get("payload"), local_session=local_session
+                    ):
                         # Best-effort: release and skip.
                         try:
                             from ipfs_accelerate_py.p2p_tasks.client import release_task_sync
@@ -4587,7 +4938,9 @@ def run_worker(
                     batch_tasks = [remote_task] + _pop_prefetched(remote)
 
                     # Micro-batch a homogeneous prefix when safe and enabled.
-                    batch_tasks = _microbatch_and_complete(batch_tasks=batch_tasks, mesh=True, remote=remote)
+                    batch_tasks = _microbatch_and_complete(
+                        batch_tasks=batch_tasks, mesh=True, remote=remote
+                    )
 
                     for t in batch_tasks:
                         tid = str(t.get("task_id") or "").strip()
@@ -4608,7 +4961,12 @@ def run_worker(
                             if isinstance(result, dict):
                                 # Ensure mesh executions are attributable.
                                 result = dict(result)
-                                result = _stamp_result_meta(result=result, assigned_worker=str(t.get("assigned_worker") or worker_id).strip())
+                                result = _stamp_result_meta(
+                                    result=result,
+                                    assigned_worker=str(
+                                        t.get("assigned_worker") or worker_id
+                                    ).strip(),
+                                )
                                 progress = result.get("progress")
                                 if not isinstance(progress, dict):
                                     progress = {}
@@ -4623,7 +4981,9 @@ def run_worker(
                             ok = False
                             error = str(exc)
                             result = _failure_result(task_payload, error)
-                        _complete_mesh_task(remote=remote, task_id=tid, ok=ok, result=result, error=error)
+                        _complete_mesh_task(
+                            remote=remote, task_id=tid, ok=ok, result=result, error=error
+                        )
                     if once:
                         return 0
                     continue
@@ -4654,9 +5014,15 @@ def run_worker(
                 for t in claimed_local:
                     if t is None:
                         continue
-                    if not _session_allows_task(task_payload=t.payload, local_session=local_session):
+                    if not _session_allows_task(
+                        task_payload=t.payload, local_session=local_session
+                    ):
                         try:
-                            queue.release(task_id=str(t.task_id), worker_id=str(worker_id), reason="session_mismatch")
+                            queue.release(
+                                task_id=str(t.task_id),
+                                worker_id=str(worker_id),
+                                reason="session_mismatch",
+                            )
                         except Exception:
                             pass
                         continue
@@ -4670,7 +5036,9 @@ def run_worker(
                         }
                     )
 
-                batch_tasks_local = _microbatch_and_complete(batch_tasks=batch_tasks_local, mesh=False, remote=None)
+                batch_tasks_local = _microbatch_and_complete(
+                    batch_tasks=batch_tasks_local, mesh=False, remote=None
+                )
 
                 for t in batch_tasks_local:
                     tid = str(t.get("task_id") or "").strip()
@@ -4690,7 +5058,10 @@ def run_worker(
                         result = _execute_task_payload(task_payload)
                         if isinstance(result, dict):
                             result = dict(result)
-                            result = _stamp_result_meta(result=result, assigned_worker=str(t.get("assigned_worker") or worker_id).strip())
+                            result = _stamp_result_meta(
+                                result=result,
+                                assigned_worker=str(t.get("assigned_worker") or worker_id).strip(),
+                            )
                             progress = result.get("progress")
                             if not isinstance(progress, dict):
                                 progress = {}
@@ -4712,9 +5083,15 @@ def run_worker(
 
             task = claimed_local[0]
 
-            if task is not None and not _session_allows_task(task_payload=task.payload, local_session=local_session):
+            if task is not None and not _session_allows_task(
+                task_payload=task.payload, local_session=local_session
+            ):
                 try:
-                    queue.release(task_id=str(task.task_id), worker_id=str(worker_id), reason="session_mismatch")
+                    queue.release(
+                        task_id=str(task.task_id),
+                        worker_id=str(worker_id),
+                        reason="session_mismatch",
+                    )
                 except Exception:
                     pass
                 if once:
@@ -4760,7 +5137,9 @@ def run_worker(
             except Exception:
                 pass
 
-            hb_thread = threading.Thread(target=_task_hb, name=f"task_hb[{task.task_id}]", daemon=True)
+            hb_thread = threading.Thread(
+                target=_task_hb, name=f"task_hb[{task.task_id}]", daemon=True
+            )
             hb_thread.start()
 
             result: Dict[str, Any] | None = None
@@ -4775,7 +5154,9 @@ def run_worker(
             }
             try:
                 result = _execute_task_payload(task_payload)
-                result = _stamp_result_meta(result=result, assigned_worker=str(task.assigned_worker or worker_id).strip())
+                result = _stamp_result_meta(
+                    result=result, assigned_worker=str(task.assigned_worker or worker_id).strip()
+                )
                 status = "completed"
             except Exception as exc:
                 status = "failed"
@@ -4791,7 +5172,12 @@ def run_worker(
 
             if status == "completed":
                 queue.complete(task_id=task.task_id, status="completed", result=result or {})
-                _emit_workflow_event(task_dict=task_payload, event_type="workflow_task_completed", level="INFO", result=result)
+                _emit_workflow_event(
+                    task_dict=task_payload,
+                    event_type="workflow_task_completed",
+                    level="INFO",
+                    result=result,
+                )
             else:
                 queue.complete(
                     task_id=task.task_id,
@@ -4927,7 +5313,9 @@ def run_autoscaled_workers(
     def _start_one(*, idx: int, start_service: bool) -> None:
         wid = _make_id(idx)
 
-        mesh_for_worker = mesh if start_service else (mesh_children if mesh_children is not None else mesh)
+        mesh_for_worker = (
+            mesh if start_service else (mesh_children if mesh_children is not None else mesh)
+        )
         if bool(use_processes):
             cmd: list[str] = [
                 sys.executable,
@@ -5051,7 +5439,9 @@ def run_autoscaled_workers(
                 while not remote_stop.is_set() and (stop_event is None or not stop_event.is_set()):
                     peers: list[RemoteQueue] = []
                     try:
-                        peers = discover_peers_via_mdns_sync(timeout_s=1.0, limit=limit, exclude_self=True)
+                        peers = discover_peers_via_mdns_sync(
+                            timeout_s=1.0, limit=limit, exclude_self=True
+                        )
                     except Exception:
                         peers = []
 
@@ -5065,7 +5455,11 @@ def run_autoscaled_workers(
                             continue
                         if not (isinstance(resp, dict) and resp.get("ok")):
                             continue
-                        if expected_session and filter_peer_session and str(resp.get("session") or "").strip() != expected_session:
+                        if (
+                            expected_session
+                            and filter_peer_session
+                            and str(resp.get("session") or "").strip() != expected_session
+                        ):
                             continue
 
                         queue_info = resp.get("queue")
@@ -5114,7 +5508,9 @@ def run_autoscaled_workers(
                 break
 
             try:
-                pending_local = int(q.count(status="queued", task_types=list(supported_for_workers or [])))
+                pending_local = int(
+                    q.count(status="queued", task_types=list(supported_for_workers or []))
+                )
             except Exception:
                 pending_local = 0
 
@@ -5141,7 +5537,11 @@ def run_autoscaled_workers(
             with workers_lock:
                 current = (len(procs) if bool(use_processes) else 0) + len(workers)
             if desired < current:
-                if idle_s <= 0.0 or (last_nonzero_ts and (now - last_nonzero_ts) >= idle_s) or pending == 0:
+                if (
+                    idle_s <= 0.0
+                    or (last_nonzero_ts and (now - last_nonzero_ts) >= idle_s)
+                    or pending == 0
+                ):
                     _stop_extra(desired)
             elif desired > current:
                 for i in range(current, desired):
@@ -5215,7 +5615,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     parser.add_argument("--poll-interval-s", dest="poll_interval_s", type=float, default=0.5)
     parser.add_argument("--once", action="store_true", help="Process at most one task")
-    parser.add_argument("--p2p-service", dest="p2p_service", action="store_true", help="Start a local libp2p TaskQueue RPC service")
+    parser.add_argument(
+        "--p2p-service",
+        dest="p2p_service",
+        action="store_true",
+        help="Start a local libp2p TaskQueue RPC service",
+    )
     parser.add_argument(
         "--no-p2p-service",
         dest="p2p_service",
@@ -5229,7 +5634,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         help="TCP port for libp2p service (default: env or 9710)",
     )
     parser.add_argument("--mesh", dest="mesh", action="store_true", help="Enable mDNS mesh mode")
-    parser.add_argument("--no-mesh", dest="mesh", action="store_false", help="Disable mDNS mesh mode")
+    parser.add_argument(
+        "--no-mesh", dest="mesh", action="store_false", help="Disable mDNS mesh mode"
+    )
     parser.add_argument(
         "--mesh-refresh-s",
         type=float,
@@ -5372,17 +5779,25 @@ def main(argv: Optional[list[str]] = None) -> int:
             return float(default)
 
     if autoscale_enabled:
-        min_w = int(args.autoscale_min) if args.autoscale_min is not None else _env_int(
-            "IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MIN", 1
+        min_w = (
+            int(args.autoscale_min)
+            if args.autoscale_min is not None
+            else _env_int("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MIN", 1)
         )
-        max_w = int(args.autoscale_max) if args.autoscale_max is not None else _env_int(
-            "IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MAX", 4
+        max_w = (
+            int(args.autoscale_max)
+            if args.autoscale_max is not None
+            else _env_int("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MAX", 4)
         )
-        poll_s = float(args.autoscale_poll_s) if args.autoscale_poll_s is not None else _env_float(
-            "IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_POLL_S", 2.0
+        poll_s = (
+            float(args.autoscale_poll_s)
+            if args.autoscale_poll_s is not None
+            else _env_float("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_POLL_S", 2.0)
         )
-        idle_s = float(args.autoscale_idle_s) if args.autoscale_idle_s is not None else _env_float(
-            "IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_IDLE_S", 30.0
+        idle_s = (
+            float(args.autoscale_idle_s)
+            if args.autoscale_idle_s is not None
+            else _env_float("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_IDLE_S", 30.0)
         )
         remote_default = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE"))
         remote_refresh_s = (
@@ -5395,7 +5810,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             if args.autoscale_remote_max_peers is not None
             else _env_int("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE_MAX_PEERS", 10)
         )
-        mesh_children_default = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MESH_CHILDREN"))
+        mesh_children_default = _truthy(
+            os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MESH_CHILDREN")
+        )
         proc_default = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_PROCESSES"))
 
         if args.autoscale_remote is None:

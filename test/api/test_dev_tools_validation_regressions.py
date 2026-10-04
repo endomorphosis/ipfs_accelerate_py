@@ -144,4 +144,8 @@ def test_resolve_cli_command_falls_back_to_module(monkeypatch, tmp_path):
     monkeypatch.setattr(validate_setup, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(validate_setup.shutil, "which", lambda _name: None)
 
-    assert validate_setup._resolve_cli_command() == [validate_setup.sys.executable, "-m", "ipfs_accelerate_py.cli_entry"]
+    assert validate_setup._resolve_cli_command() == [
+        validate_setup.sys.executable,
+        "-m",
+        "ipfs_accelerate_py.cli_entry",
+    ]

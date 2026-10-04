@@ -15,6 +15,7 @@ This guide provides solutions for common issues encountered when implementing te
 def to_valid_identifier(text):
     return text.replace("-", "_")
 
+
 # Usage
 model_type = "gpt-j"
 valid_name = to_valid_identifier(model_type)  # "gpt_j"
@@ -27,18 +28,15 @@ valid_name = to_valid_identifier(model_type)  # "gpt_j"
 **Solution**: Create a mapping of model types to their proper capitalization formats.
 
 ```python
-CLASS_NAME_CAPITALIZATION = {
-    "gpt-j": "GPTJ",
-    "gpt-neo": "GPTNeo",
-    "xlm-roberta": "XLMRoBERTa"
-}
+CLASS_NAME_CAPITALIZATION = {"gpt-j": "GPTJ", "gpt-neo": "GPTNeo", "xlm-roberta": "XLMRoBERTa"}
+
 
 def get_class_name_capitalization(model_type):
     if model_type.lower() in CLASS_NAME_CAPITALIZATION:
         return CLASS_NAME_CAPITALIZATION[model_type.lower()]
     # Default handling for unknown models
-    parts = model_type.split('-')
-    return ''.join(part.capitalize() for part in parts)
+    parts = model_type.split("-")
+    return "".join(part.capitalize() for part in parts)
 ```
 
 ### 3. Incorrect Registry Names
@@ -63,7 +61,7 @@ GPT_J_MODELS_REGISTRY = { ... }
 
 ```python
 # Incorrect
-model_class = transformers.GPT-JLMHeadModel
+model_class = transformers.GPT - JLMHeadModel
 
 # Correct
 model_class = transformers.GPTJLMHeadModel
@@ -115,12 +113,12 @@ def get_architecture_type(model_type):
 
 ```python
 def verify_syntax(file_path):
-    with open(file_path, 'r') as f:
+    with open(file_path, "r") as f:
         content = f.read()
-    
+
     try:
         # Try to compile the code
-        compile(content, file_path, 'exec')
+        compile(content, file_path, "exec")
         return True
     except SyntaxError as e:
         print(f"Syntax error in {file_path}: {e}")
@@ -146,6 +144,7 @@ def get_test_file_name(model_type):
 ```python
 import py_compile
 
+
 def check_file_syntax(file_path):
     try:
         py_compile.compile(file_path, doraise=True)
@@ -161,10 +160,11 @@ def check_file_syntax(file_path):
 ```python
 import re
 
+
 def check_for_hyphenated_names(file_path):
-    with open(file_path, 'r') as f:
+    with open(file_path, "r") as f:
         content = f.read()
-    
+
     # Check for class definitions with hyphens
     class_matches = re.findall(r"class\s+Test(\w+)-(\w+)Models", content)
     if class_matches:
@@ -172,9 +172,9 @@ def check_for_hyphenated_names(file_path):
         for match in class_matches:
             class_name = f"Test{match[0]}-{match[1]}Models"
             print(f"  - {class_name}")
-    
+
     # Check for registry variables with hyphens
-    var_matches = re.findall(r'(\w+)-(\w+)_MODELS_REGISTRY\s*=', content)
+    var_matches = re.findall(r"(\w+)-(\w+)_MODELS_REGISTRY\s*=", content)
     if var_matches:
         print(f"Found variable with hyphen in {file_path}:")
         for match in var_matches:

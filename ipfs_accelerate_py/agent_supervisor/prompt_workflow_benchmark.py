@@ -129,22 +129,12 @@ class TerminalOutcome(str, Enum):
     HEALTHY = "healthy"
 
 
-REQUIRED_TASK_SOURCES: Final[tuple[TaskSourceBackend, ...]] = tuple(
-    TaskSourceBackend
-)
+REQUIRED_TASK_SOURCES: Final[tuple[TaskSourceBackend, ...]] = tuple(TaskSourceBackend)
 REQUIRED_PLANNING_MODES: Final[tuple[PlanningMode, ...]] = tuple(PlanningMode)
-REQUIRED_TRANSPORTS: Final[tuple[TransportSurface, ...]] = tuple(
-    TransportSurface
-)
-REQUIRED_CHAOS_BOUNDARIES: Final[tuple[ChaosBoundary, ...]] = tuple(
-    ChaosBoundary
-)
-REQUIRED_ADVERSARIAL_FIXTURES: Final[tuple[AdversarialFixture, ...]] = tuple(
-    AdversarialFixture
-)
-REQUIRED_OPTIONAL_DEPENDENCIES: Final[tuple[OptionalDependency, ...]] = tuple(
-    OptionalDependency
-)
+REQUIRED_TRANSPORTS: Final[tuple[TransportSurface, ...]] = tuple(TransportSurface)
+REQUIRED_CHAOS_BOUNDARIES: Final[tuple[ChaosBoundary, ...]] = tuple(ChaosBoundary)
+REQUIRED_ADVERSARIAL_FIXTURES: Final[tuple[AdversarialFixture, ...]] = tuple(AdversarialFixture)
+REQUIRED_OPTIONAL_DEPENDENCIES: Final[tuple[OptionalDependency, ...]] = tuple(OptionalDependency)
 
 SAFE_ADVERSARIAL_TERMINALS: Final[frozenset[str]] = frozenset(
     {
@@ -189,9 +179,7 @@ def _canonical_bytes(value: Any) -> bytes:
             allow_nan=False,
         ).encode("utf-8")
     except (TypeError, ValueError) as exc:
-        raise PromptWorkflowBenchmarkError(
-            "benchmark evidence must be canonical JSON"
-        ) from exc
+        raise PromptWorkflowBenchmarkError("benchmark evidence must be canonical JSON") from exc
 
 
 def _identity(value: Any) -> str:
@@ -203,9 +191,7 @@ def _load_json(value: str | bytes | bytearray, name: str) -> Any:
         result: dict[str, Any] = {}
         for key, item in pairs:
             if key in result:
-                raise PromptWorkflowBenchmarkError(
-                    f"{name} contains duplicate JSON key {key!r}"
-                )
+                raise PromptWorkflowBenchmarkError(f"{name} contains duplicate JSON key {key!r}")
             result[key] = item
         return result
 
@@ -221,9 +207,7 @@ def _load_json(value: str | bytes | bytearray, name: str) -> Any:
 
 def _text(value: Any, name: str, *, maximum: int = 512) -> str:
     if not isinstance(value, str) or not value or value != value.strip():
-        raise PromptWorkflowBenchmarkError(
-            f"{name} must be non-empty canonical text"
-        )
+        raise PromptWorkflowBenchmarkError(f"{name} must be non-empty canonical text")
     if "\x00" in value or len(value.encode("utf-8")) > maximum:
         raise PromptWorkflowBenchmarkError(f"{name} is unsafe or too large")
     return value
@@ -239,9 +223,7 @@ def _code(value: Any, name: str) -> str:
 def _content_id(value: Any, name: str) -> str:
     result = _text(value, name, maximum=71)
     if not _CONTENT_ID.fullmatch(result):
-        raise PromptWorkflowBenchmarkError(
-            f"{name} must be a lowercase sha256 content ID"
-        )
+        raise PromptWorkflowBenchmarkError(f"{name} must be a lowercase sha256 content ID")
     return result
 
 
@@ -307,13 +289,9 @@ class FrozenPromptFixtureIdentity:
             "capability_revision",
             "partition_id",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, maximum=512)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, maximum=512))
         for name in ("prompt_cid", "scan_cid", "plan_root_cid"):
-            object.__setattr__(
-                self, name, _content_id(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _content_id(getattr(self, name), name))
 
     @property
     def identity_id(self) -> str:
@@ -354,17 +332,13 @@ class PromptWorkflowMetrics:
             "admitted_task_cids",
             _ids(self.admitted_task_cids, "admitted_task_cids"),
         )
-        object.__setattr__(
-            self, "ready_task_cids", _ids(self.ready_task_cids, "ready_task_cids")
-        )
+        object.__setattr__(self, "ready_task_cids", _ids(self.ready_task_cids, "ready_task_cids"))
         object.__setattr__(
             self,
             "accepted_effect_ids",
             _ids(self.accepted_effect_ids, "accepted_effect_ids"),
         )
-        object.__setattr__(
-            self, "terminal_result", _code(self.terminal_result, "terminal_result")
-        )
+        object.__setattr__(self, "terminal_result", _code(self.terminal_result, "terminal_result"))
         for name in (
             "model_calls",
             "provider_input_tokens",
@@ -379,28 +353,21 @@ class PromptWorkflowMetrics:
         ):
             object.__setattr__(self, name, _integer(getattr(self, name), name))
         if not set(self.ready_task_cids).issubset(self.admitted_task_cids):
-            raise PromptWorkflowBenchmarkError(
-                "ready tasks must be a subset of admitted tasks"
-            )
+            raise PromptWorkflowBenchmarkError("ready tasks must be a subset of admitted tasks")
 
     @property
     def total_tokens(self) -> int:
         return self.provider_input_tokens + self.provider_output_tokens
 
     def to_dict(self) -> dict[str, Any]:
-        payload = {
-            name: _plain(getattr(self, name))
-            for name in self.__dataclass_fields__
-        }
+        payload = {name: _plain(getattr(self, name)) for name in self.__dataclass_fields__}
         payload["total_tokens"] = self.total_tokens
         return payload
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "PromptWorkflowMetrics":
         fields = set(cls.__dataclass_fields__)
-        if not fields.issubset(value) or set(value).difference(
-            fields | {"total_tokens"}
-        ):
+        if not fields.issubset(value) or set(value).difference(fields | {"total_tokens"}):
             raise PromptWorkflowBenchmarkError("invalid metrics fields")
         return cls(**{name: value[name] for name in fields})
 
@@ -439,22 +406,16 @@ class PromptWorkflowProducerReceipt:
             "task_source",
             _enum(self.task_source, TaskSourceBackend, "task_source"),
         )
-        object.__setattr__(
-            self, "transport", _enum(self.transport, TransportSurface, "transport")
-        )
+        object.__setattr__(self, "transport", _enum(self.transport, TransportSurface, "transport"))
         if not isinstance(self.metrics, PromptWorkflowMetrics):
-            raise PromptWorkflowBenchmarkError(
-                "metrics must be PromptWorkflowMetrics"
-            )
+            raise PromptWorkflowBenchmarkError("metrics must be PromptWorkflowMetrics")
         object.__setattr__(
             self,
             "source_receipt_ids",
             _ids(self.source_receipt_ids, "source_receipt_ids"),
         )
         if not self.source_receipt_ids:
-            raise PromptWorkflowBenchmarkError(
-                "producer observation requires source receipts"
-            )
+            raise PromptWorkflowBenchmarkError("producer observation requires source receipts")
         if self.adversarial_fixture is not None:
             object.__setattr__(
                 self,
@@ -487,27 +448,19 @@ class PromptWorkflowProducerReceipt:
                     "optional_dependency",
                 ),
             )
-        if not isinstance(self.degraded_local, bool) or not isinstance(
-            self.lazy_discovery, bool
-        ):
-            raise PromptWorkflowBenchmarkError(
-                "degraded_local and lazy_discovery must be boolean"
-            )
+        if not isinstance(self.degraded_local, bool) or not isinstance(self.lazy_discovery, bool):
+            raise PromptWorkflowBenchmarkError("degraded_local and lazy_discovery must be boolean")
         if self.degraded_local:
             object.__setattr__(
                 self,
                 "deterministic_replay_id",
-                _content_id(
-                    self.deterministic_replay_id, "deterministic_replay_id"
-                ),
+                _content_id(self.deterministic_replay_id, "deterministic_replay_id"),
             )
         elif self.deterministic_replay_id:
             object.__setattr__(
                 self,
                 "deterministic_replay_id",
-                _content_id(
-                    self.deterministic_replay_id, "deterministic_replay_id"
-                ),
+                _content_id(self.deterministic_replay_id, "deterministic_replay_id"),
             )
         for name in ("projection_cid", "run_cid", "rescue_plan_cid"):
             value = getattr(self, name)
@@ -528,9 +481,7 @@ class PromptWorkflowProducerReceipt:
                 "producer receipt may carry at most one intervention class"
             )
         if self.chaos_boundary is not None and self.fault_outcome is None:
-            raise PromptWorkflowBenchmarkError(
-                "chaos boundary requires a fault outcome"
-            )
+            raise PromptWorkflowBenchmarkError("chaos boundary requires a fault outcome")
 
     @property
     def receipt_id(self) -> str:
@@ -555,22 +506,14 @@ class PromptWorkflowProducerReceipt:
             "metrics": self.metrics.to_dict(),
             "source_receipt_ids": list(self.source_receipt_ids),
             "adversarial_fixture": (
-                self.adversarial_fixture.value
-                if self.adversarial_fixture is not None
-                else None
+                self.adversarial_fixture.value if self.adversarial_fixture is not None else None
             ),
             "chaos_boundary": (
-                self.chaos_boundary.value
-                if self.chaos_boundary is not None
-                else None
+                self.chaos_boundary.value if self.chaos_boundary is not None else None
             ),
-            "fault_outcome": (
-                self.fault_outcome.value if self.fault_outcome is not None else None
-            ),
+            "fault_outcome": (self.fault_outcome.value if self.fault_outcome is not None else None),
             "optional_dependency": (
-                self.optional_dependency.value
-                if self.optional_dependency is not None
-                else None
+                self.optional_dependency.value if self.optional_dependency is not None else None
             ),
             "degraded_local": self.degraded_local,
             "deterministic_replay_id": self.deterministic_replay_id,
@@ -584,9 +527,7 @@ class PromptWorkflowProducerReceipt:
         return payload
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "PromptWorkflowProducerReceipt":
+    def from_dict(cls, value: Mapping[str, Any]) -> "PromptWorkflowProducerReceipt":
         allowed = {
             "schema",
             "version",
@@ -614,9 +555,7 @@ class PromptWorkflowProducerReceipt:
             value.get("schema") != PROMPT_WORKFLOW_PRODUCER_RECEIPT_SCHEMA
             or value.get("version") != PROMPT_WORKFLOW_BENCHMARK_VERSION
         ):
-            raise PromptWorkflowBenchmarkError(
-                "unsupported producer receipt schema"
-            )
+            raise PromptWorkflowBenchmarkError("unsupported producer receipt schema")
         result = cls(
             identity=FrozenPromptFixtureIdentity.from_dict(value["identity"]),
             planning_mode=value["planning_mode"],
@@ -643,9 +582,7 @@ class PromptWorkflowProducerReceipt:
         return _canonical_bytes(self.to_dict()).decode("utf-8")
 
     @classmethod
-    def from_json(
-        cls, value: str | bytes | bytearray
-    ) -> "PromptWorkflowProducerReceipt":
+    def from_json(cls, value: str | bytes | bytearray) -> "PromptWorkflowProducerReceipt":
         return cls.from_dict(_load_json(value, "producer receipt"))
 
 
@@ -659,22 +596,13 @@ class PromptWorkflowBenchmark:
     def __post_init__(self) -> None:
         receipts = tuple(self.receipts)
         if not receipts or len(receipts) > MAX_RECEIPTS:
-            raise PromptWorkflowBenchmarkError(
-                "benchmark receipt population is empty or unbounded"
-            )
-        if any(
-            not isinstance(item, PromptWorkflowProducerReceipt)
-            for item in receipts
-        ):
-            raise PromptWorkflowBenchmarkError(
-                "benchmark contains non-producer receipts"
-            )
+            raise PromptWorkflowBenchmarkError("benchmark receipt population is empty or unbounded")
+        if any(not isinstance(item, PromptWorkflowProducerReceipt) for item in receipts):
+            raise PromptWorkflowBenchmarkError("benchmark contains non-producer receipts")
         receipt_ids = [item.receipt_id for item in receipts]
         if len(receipt_ids) != len(set(receipt_ids)):
             raise PromptWorkflowBenchmarkError("duplicate producer receipt")
-        object.__setattr__(
-            self, "receipts", tuple(sorted(receipts, key=lambda r: r.receipt_id))
-        )
+        object.__setattr__(self, "receipts", tuple(sorted(receipts, key=lambda r: r.receipt_id)))
         if self.requirement_id != PROMPT_WORKFLOW_BENCHMARK_REQUIREMENT_ID:
             raise PromptWorkflowBenchmarkError("wrong benchmark requirement")
 
@@ -711,8 +639,7 @@ class PromptWorkflowBenchmark:
             raise PromptWorkflowBenchmarkError("unsupported benchmark schema")
         result = cls(
             receipts=tuple(
-                PromptWorkflowProducerReceipt.from_dict(item)
-                for item in value["receipts"]
+                PromptWorkflowProducerReceipt.from_dict(item) for item in value["receipts"]
             ),
             requirement_id=value["requirement_id"],
         )
@@ -724,9 +651,7 @@ class PromptWorkflowBenchmark:
         return _canonical_bytes(self.to_dict()).decode("utf-8")
 
     @classmethod
-    def from_json(
-        cls, value: str | bytes | bytearray
-    ) -> "PromptWorkflowBenchmark":
+    def from_json(cls, value: str | bytes | bytearray) -> "PromptWorkflowBenchmark":
         return cls.from_dict(_load_json(value, "prompt workflow benchmark"))
 
 
@@ -768,9 +693,7 @@ class PromptWorkflowGateReport:
 
     def __post_init__(self) -> None:
         _content_id(self.benchmark_id, "benchmark_id")
-        object.__setattr__(
-            self, "failure_codes", tuple(sorted(set(self.failure_codes)))
-        )
+        object.__setattr__(self, "failure_codes", tuple(sorted(set(self.failure_codes))))
         encoded = _canonical_bytes(self.to_dict(include_report_id=False))
         if len(encoded) > MAX_REPORT_BYTES:
             raise PromptWorkflowBenchmarkError("gate report exceeds byte bound")
@@ -791,10 +714,7 @@ class PromptWorkflowGateReport:
         payload = {
             "schema": PROMPT_WORKFLOW_GATE_REPORT_SCHEMA,
             "version": PROMPT_WORKFLOW_BENCHMARK_VERSION,
-            **{
-                name: _plain(getattr(self, name))
-                for name in self.__dataclass_fields__
-            },
+            **{name: _plain(getattr(self, name)) for name in self.__dataclass_fields__},
             "authoritative": False,
             "completion_authoritative": False,
         }
@@ -814,9 +734,7 @@ class PromptWorkflowGateReport:
     ) -> "PromptWorkflowGateReport":
         replayed = recompute_prompt_workflow_gate(benchmark)
         if _canonical_bytes(value) != _canonical_bytes(replayed.to_dict()):
-            raise PromptWorkflowBenchmarkError(
-                "gate report does not match producer receipt replay"
-            )
+            raise PromptWorkflowBenchmarkError("gate report does not match producer receipt replay")
         return replayed
 
     @classmethod
@@ -838,19 +756,13 @@ def recompute_prompt_workflow_gate(
     """Replay the complete paired/adversarial/chaos population from receipts."""
 
     if not isinstance(benchmark, PromptWorkflowBenchmark):
-        raise PromptWorkflowBenchmarkError(
-            "benchmark must be PromptWorkflowBenchmark"
-        )
+        raise PromptWorkflowBenchmarkError("benchmark must be PromptWorkflowBenchmark")
 
     paired = [r for r in benchmark.receipts if r.is_paired_path]
-    adversarial = [
-        r for r in benchmark.receipts if r.adversarial_fixture is not None
-    ]
+    adversarial = [r for r in benchmark.receipts if r.adversarial_fixture is not None]
     chaos = [r for r in benchmark.receipts if r.chaos_boundary is not None]
     degraded = [
-        r
-        for r in benchmark.receipts
-        if r.optional_dependency is not None or r.degraded_local
+        r for r in benchmark.receipts if r.optional_dependency is not None or r.degraded_local
     ]
     failures: list[str] = []
 
@@ -869,9 +781,7 @@ def recompute_prompt_workflow_gate(
     transport_parity = True
 
     for identity_id, population in fixtures.items():
-        by_key = {
-            (r.planning_mode, r.task_source, r.transport): r for r in population
-        }
+        by_key = {(r.planning_mode, r.task_source, r.transport): r for r in population}
         if len(by_key) != len(population):
             failures.append(f"duplicate-paired-observation:{identity_id}")
         expected_keys = {
@@ -895,46 +805,25 @@ def recompute_prompt_workflow_gate(
             task_sources_passed.add(receipt.task_source.value)
             planning_modes_passed.add(receipt.planning_mode.value)
             transports_passed.add(receipt.transport.value)
-            if (
-                receipt.metrics.admitted_task_cids
-                != reference.metrics.admitted_task_cids
-            ):
+            if receipt.metrics.admitted_task_cids != reference.metrics.admitted_task_cids:
                 task_cid_parity = False
-            if (
-                receipt.metrics.ready_task_cids
-                != reference.metrics.ready_task_cids
-            ):
+            if receipt.metrics.ready_task_cids != reference.metrics.ready_task_cids:
                 ready_parity = False
-            if (
-                receipt.metrics.accepted_effect_ids
-                != reference.metrics.accepted_effect_ids
-            ):
+            if receipt.metrics.accepted_effect_ids != reference.metrics.accepted_effect_ids:
                 effect_parity = False
-            if (
-                receipt.metrics.terminal_result
-                != reference.metrics.terminal_result
-            ):
+            if receipt.metrics.terminal_result != reference.metrics.terminal_result:
                 terminal_parity = False
             if receipt.metrics.escape_count or receipt.metrics.secret_bytes_emitted:
                 transport_parity = False
-                failures.append(
-                    f"paired-escape:{identity_id}:{receipt.transport.value}"
-                )
+                failures.append(f"paired-escape:{identity_id}:{receipt.transport.value}")
             # Model path may spend model calls; deterministic must not.
             if (
                 receipt.planning_mode is PlanningMode.DETERMINISTIC
                 and receipt.metrics.model_calls != 0
             ):
-                failures.append(
-                    f"deterministic-model-call:{identity_id}:{receipt.transport.value}"
-                )
-            if (
-                receipt.planning_mode is PlanningMode.MODEL
-                and receipt.metrics.model_calls < 1
-            ):
-                failures.append(
-                    f"model-path-without-call:{identity_id}:{receipt.transport.value}"
-                )
+                failures.append(f"deterministic-model-call:{identity_id}:{receipt.transport.value}")
+            if receipt.planning_mode is PlanningMode.MODEL and receipt.metrics.model_calls < 1:
+                failures.append(f"model-path-without-call:{identity_id}:{receipt.transport.value}")
 
     if not task_cid_parity:
         failures.append("task-cid-parity")
@@ -949,9 +838,7 @@ def recompute_prompt_workflow_gate(
         pass
     if set(task_sources_passed) != {item.value for item in REQUIRED_TASK_SOURCES}:
         failures.append("incomplete-task-source-coverage")
-    if set(planning_modes_passed) != {
-        item.value for item in REQUIRED_PLANNING_MODES
-    }:
+    if set(planning_modes_passed) != {item.value for item in REQUIRED_PLANNING_MODES}:
         failures.append("incomplete-planning-mode-coverage")
     if set(transports_passed) != {item.value for item in REQUIRED_TRANSPORTS}:
         failures.append("incomplete-transport-coverage")
@@ -986,19 +873,12 @@ def recompute_prompt_workflow_gate(
         boundary = receipt.chaos_boundary
         assert boundary is not None
         boundary_counts[boundary] += 1
-        outcome = (
-            receipt.fault_outcome.value
-            if receipt.fault_outcome is not None
-            else ""
-        )
+        outcome = receipt.fault_outcome.value if receipt.fault_outcome is not None else ""
         terminal = receipt.metrics.terminal_result
         if (
             receipt.metrics.escape_count
             or outcome not in {item.value for item in FaultOutcome}
-            or (
-                terminal not in SAFE_CHAOS_TERMINALS
-                and outcome not in SAFE_CHAOS_TERMINALS
-            )
+            or (terminal not in SAFE_CHAOS_TERMINALS and outcome not in SAFE_CHAOS_TERMINALS)
         ):
             failures.append(f"chaos-escape:{boundary.value}")
         else:
@@ -1030,8 +910,7 @@ def recompute_prompt_workflow_gate(
             }
         ):
             failures.append(
-                "optional-dependency-escape:"
-                + (dep.value if dep is not None else "unknown")
+                "optional-dependency-escape:" + (dep.value if dep is not None else "unknown")
             )
         elif dep is not None:
             dep_passed.add(dep.value)
@@ -1040,12 +919,9 @@ def recompute_prompt_workflow_gate(
             failures.append(f"missing-optional-dependency:{dep.value}")
     deterministic_degraded_passed = set(dep_passed) == {
         item.value for item in REQUIRED_OPTIONAL_DEPENDENCIES
-    } and not any(
-        code.startswith("optional-dependency-escape:") for code in failures
-    )
+    } and not any(code.startswith("optional-dependency-escape:") for code in failures)
     if not deterministic_degraded_passed and not any(
-        code.startswith("optional-dependency")
-        or code.startswith("deterministic-local")
+        code.startswith("optional-dependency") or code.startswith("deterministic-local")
         for code in failures
     ):
         failures.append("deterministic-local-degraded-operation")
@@ -1115,8 +991,7 @@ def recompute_prompt_workflow_gate(
         effect_parity_passed=effect_parity,
         terminal_parity_passed=terminal_parity,
         transport_parity_passed=transport_parity
-        and set(transports_passed)
-        == {item.value for item in REQUIRED_TRANSPORTS},
+        and set(transports_passed) == {item.value for item in REQUIRED_TRANSPORTS},
         adversarial_passed=adversarial_passed,
         chaos_passed=chaos_passed,
         bounds_passed=bounds_passed,
@@ -1135,9 +1010,7 @@ def verify_prompt_workflow_gate_report(
     if not isinstance(report, PromptWorkflowGateReport):
         return False
     replayed = recompute_prompt_workflow_gate(benchmark)
-    return _canonical_bytes(report.to_dict()) == _canonical_bytes(
-        replayed.to_dict()
-    )
+    return _canonical_bytes(report.to_dict()) == _canonical_bytes(replayed.to_dict())
 
 
 def _cid(label: str) -> str:
@@ -1183,9 +1056,7 @@ def build_frozen_prompt_workflow_benchmark(
     projection_cid = _cid(f"projection:{label}")
     run_cid = _cid(f"run:{label}")
 
-    def paired_metrics(
-        *, planning_mode: PlanningMode
-    ) -> PromptWorkflowMetrics:
+    def paired_metrics(*, planning_mode: PlanningMode) -> PromptWorkflowMetrics:
         model_calls = 1 if planning_mode is PlanningMode.MODEL else 0
         input_tokens = 120 if planning_mode is PlanningMode.MODEL else 0
         output_tokens = 40 if planning_mode is PlanningMode.MODEL else 0
@@ -1260,12 +1131,8 @@ def build_frozen_prompt_workflow_benchmark(
                 planning_mode=PlanningMode.DETERMINISTIC,
                 task_source=TaskSourceBackend.BOTH,
                 transport=TransportSurface.PYTHON,
-                metrics=replace(
-                    adversarial_metrics, terminal_result=terminal
-                ),
-                source_receipt_ids=(
-                    _cid(f"source:{label}:adversarial:{fixture.value}"),
-                ),
+                metrics=replace(adversarial_metrics, terminal_result=terminal),
+                source_receipt_ids=(_cid(f"source:{label}:adversarial:{fixture.value}"),),
                 adversarial_fixture=fixture,
                 lazy_discovery=True,
             )
@@ -1292,9 +1159,7 @@ def build_frozen_prompt_workflow_benchmark(
                 metrics=PromptWorkflowMetrics(
                     admitted_task_cids=admitted,
                     ready_task_cids=ready,
-                    accepted_effect_ids=(
-                        effects if outcome is not FaultOutcome.QUARANTINE else ()
-                    ),
+                    accepted_effect_ids=(effects if outcome is not FaultOutcome.QUARANTINE else ()),
                     terminal_result=terminal,
                     model_calls=0,
                     provider_input_tokens=0,
@@ -1305,16 +1170,12 @@ def build_frozen_prompt_workflow_benchmark(
                     materialization_latency_ms=10,
                     recovery_latency_ms=15,
                 ),
-                source_receipt_ids=(
-                    _cid(f"source:{label}:chaos:{boundary.value}"),
-                ),
+                source_receipt_ids=(_cid(f"source:{label}:chaos:{boundary.value}"),),
                 chaos_boundary=boundary,
                 fault_outcome=outcome,
                 run_cid=run_cid if outcome is not FaultOutcome.QUARANTINE else "",
                 rescue_plan_cid=(
-                    _cid(f"rescue:{label}:{boundary.value}")
-                    if "rescue" in boundary.value
-                    else ""
+                    _cid(f"rescue:{label}:{boundary.value}") if "rescue" in boundary.value else ""
                 ),
                 lazy_discovery=True,
             )
@@ -1354,9 +1215,7 @@ def build_frozen_prompt_workflow_benchmark(
                     admitted_task_cids=admitted
                     if terminal != TerminalOutcome.FAIL_CLOSED.value
                     else (),
-                    ready_task_cids=ready
-                    if terminal != TerminalOutcome.FAIL_CLOSED.value
-                    else (),
+                    ready_task_cids=ready if terminal != TerminalOutcome.FAIL_CLOSED.value else (),
                     accepted_effect_ids=()
                     if terminal == TerminalOutcome.FAIL_CLOSED.value
                     else effects[:1],
@@ -1370,14 +1229,10 @@ def build_frozen_prompt_workflow_benchmark(
                     materialization_latency_ms=5,
                     recovery_latency_ms=0,
                 ),
-                source_receipt_ids=(
-                    _cid(f"source:{label}:degraded:{dependency.value}"),
-                ),
+                source_receipt_ids=(_cid(f"source:{label}:degraded:{dependency.value}"),),
                 optional_dependency=dependency,
                 degraded_local=True,
-                deterministic_replay_id=_cid(
-                    f"local-replay:{dependency.value}:{terminal}"
-                ),
+                deterministic_replay_id=_cid(f"local-replay:{dependency.value}:{terminal}"),
                 lazy_discovery=True,
             )
         )

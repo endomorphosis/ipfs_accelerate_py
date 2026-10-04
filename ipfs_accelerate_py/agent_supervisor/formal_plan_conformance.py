@@ -43,32 +43,20 @@ FORMAL_PLAN_CONFORMANCE_SCHEMA: Final = (
 CONFORMANCE_BINDING_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/formal-plan-conformance-binding@1"
 )
-EXECUTION_EVENT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/canonical-execution-event@1"
-)
+EXECUTION_EVENT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/canonical-execution-event@1"
 COMPLETION_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/formal-completion-evidence@1"
 )
-COMPLETION_POLICY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/formal-completion-policy@1"
-)
-GOAL_COMPLETION_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/formal-goal-completion@1"
-)
+COMPLETION_POLICY_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/formal-completion-policy@1"
+GOAL_COMPLETION_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/formal-goal-completion@1"
 POST_MERGE_COMPLETION_ADMISSION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/post-merge-completion-admission@1"
 )
-CONFORMANCE_REPLAY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/formal-conformance-replay@1"
-)
+CONFORMANCE_REPLAY_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/formal-conformance-replay@1"
 STRICT_VALIDATION_OBJECTIVE_ID: Final = "ASI-G040"
 STRICT_VALIDATION_OBJECTIVE_REVISION: Final = "ASI-G040@asi-089"
-STRICT_VALIDATION_COMPLETION_ANALYZER_VERSION: Final = (
-    "strict-validation-completion@1"
-)
-STRICT_VALIDATION_COMPLETION_CONFIGURATION_REVISION: Final = (
-    "strict-validation-completion-policy@1"
-)
+STRICT_VALIDATION_COMPLETION_ANALYZER_VERSION: Final = "strict-validation-completion@1"
+STRICT_VALIDATION_COMPLETION_CONFIGURATION_REVISION: Final = "strict-validation-completion-policy@1"
 STRICT_VALIDATION_REQUIRED_EXHAUSTIVE_RECEIPTS: Final = 2
 STRICT_VALIDATION_PRODUCING_TASK_IDS: Final[tuple[str, ...]] = (
     "ASI-010",
@@ -348,9 +336,7 @@ class ConformanceBinding:
                 self, name, _text(getattr(self, name), field_name=name, required=True)
             )
         for name in ("goal_id", "toolchain_id"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
         for name in ("ast_scope_ids", "premise_ids", "counterexample_ids"):
             object.__setattr__(self, name, _strings(getattr(self, name)))
 
@@ -390,13 +376,9 @@ class ConformanceBinding:
             goal_id=payload.get("goal_id", payload.get("objective_id", "")),
             plan_id=payload.get("plan_id", ""),
             policy_id=payload.get("policy_id", ""),
-            repository_tree_id=payload.get(
-                "repository_tree_id", payload.get("tree_id", "")
-            ),
+            repository_tree_id=payload.get("repository_tree_id", payload.get("tree_id", "")),
             toolchain_id=payload.get("toolchain_id", ""),
-            ast_scope_ids=tuple(
-                payload.get("ast_scope_ids", payload.get("ast_ids", ())) or ()
-            ),
+            ast_scope_ids=tuple(payload.get("ast_scope_ids", payload.get("ast_ids", ())) or ()),
             premise_ids=tuple(payload.get("premise_ids") or ()),
             counterexample_ids=tuple(payload.get("counterexample_ids") or ()),
         )
@@ -414,9 +396,7 @@ class ConformanceBinding:
 class CompletionPolicy:
     """Configured, independent evidence and transition requirements."""
 
-    required_evidence: tuple[CompletionEvidenceKind, ...] = tuple(
-        CompletionEvidenceKind
-    )
+    required_evidence: tuple[CompletionEvidenceKind, ...] = tuple(CompletionEvidenceKind)
     max_age_seconds: Mapping[str, float | int | str | None] = field(default_factory=dict)
     allow_overridden: bool = False
     allow_superseded: bool = False
@@ -454,11 +434,7 @@ class CompletionPolicy:
                 raise ConformanceValidationError(
                     f"max_age_seconds[{kind}] must be non-negative or null"
                 )
-            ages[kind] = (
-                int(numeric)
-                if numeric.is_integer()
-                else format(numeric, ".15g")
-            )
+            ages[kind] = int(numeric) if numeric.is_integer() else format(numeric, ".15g")
         object.__setattr__(self, "max_age_seconds", dict(sorted(ages.items())))
         for name in (
             "allow_overridden",
@@ -505,16 +481,13 @@ class CompletionPolicy:
     def from_dict(cls, payload: Mapping[str, Any]) -> "CompletionPolicy":
         result = cls(
             required_evidence=tuple(
-                payload.get("required_evidence", payload.get("required_kinds", ()))
-                or ()
+                payload.get("required_evidence", payload.get("required_kinds", ())) or ()
             ),
             max_age_seconds=payload.get("max_age_seconds") or {},
             allow_overridden=payload.get("allow_overridden", False),
             allow_superseded=payload.get("allow_superseded", False),
             require_artifact_id=payload.get("require_artifact_id", True),
-            require_current_freshness=payload.get(
-                "require_current_freshness", True
-            ),
+            require_current_freshness=payload.get("require_current_freshness", True),
             require_exact_binding=payload.get("require_exact_binding", True),
             metadata=payload.get("metadata") or {},
         )
@@ -542,21 +515,11 @@ def binding_for_plan(
     """Create the exact semantic binding used by a completion evaluation."""
 
     return ConformanceBinding(
-        goal_id=(
-            goal_id
-            or (
-                plan.goals[0].goal_id
-                if len(plan.goals) == 1
-                else ""
-            )
-        ),
+        goal_id=(goal_id or (plan.goals[0].goal_id if len(plan.goals) == 1 else "")),
         plan_id=plan.plan_id,
         policy_id=policy.policy_id,
         repository_tree_id=repository_tree_id or plan.repository_tree_id,
-        toolchain_id=(
-            toolchain_id
-            or str(policy.metadata.get("toolchain_id") or "").strip()
-        ),
+        toolchain_id=(toolchain_id or str(policy.metadata.get("toolchain_id") or "").strip()),
         ast_scope_ids=tuple(ast_scope_ids),
         premise_ids=tuple(premise_ids),
         counterexample_ids=tuple(counterexample_ids),
@@ -598,9 +561,7 @@ class CanonicalExecutionEvent:
             "plan_id",
             "repository_tree_id",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
         if self.authorized is not None and not isinstance(self.authorized, bool):
             raise ConformanceValidationError("authorized must be boolean or null")
         object.__setattr__(self, "provenance_ids", _strings(self.provenance_ids))
@@ -658,9 +619,7 @@ class CanonicalExecutionEvent:
         # matching still works without manufacturing a second identifier.
         result = cls(
             event_id=event_id,
-            task_id=payload.get(
-                "task_id", payload.get("work_item_id", payload.get("task", ""))
-            ),
+            task_id=payload.get("task_id", payload.get("work_item_id", payload.get("task", ""))),
             kind=payload.get(
                 "kind",
                 payload.get(
@@ -683,19 +642,11 @@ class CanonicalExecutionEvent:
             ),
             plan_event_id=plan_event_id,
             status=payload.get("status", ""),
-            authorized=payload.get(
-                "authorized", payload.get("authorization_granted", None)
-            ),
-            overrides_event_id=payload.get(
-                "overrides_event_id", payload.get("overrides", "")
-            ),
-            supersedes_event_id=payload.get(
-                "supersedes_event_id", payload.get("supersedes", "")
-            ),
+            authorized=payload.get("authorized", payload.get("authorization_granted", None)),
+            overrides_event_id=payload.get("overrides_event_id", payload.get("overrides", "")),
+            supersedes_event_id=payload.get("supersedes_event_id", payload.get("supersedes", "")),
             plan_id=payload.get("plan_id", payload.get("accepted_plan_id", "")),
-            repository_tree_id=payload.get(
-                "repository_tree_id", payload.get("tree_id", "")
-            ),
+            repository_tree_id=payload.get("repository_tree_id", payload.get("tree_id", "")),
             provenance_ids=tuple(
                 payload.get("provenance_ids", payload.get("receipt_ids", ())) or ()
             ),
@@ -709,9 +660,7 @@ class CanonicalExecutionEvent:
         return result
 
     @classmethod
-    def from_json(
-        cls, payload: str | bytes | bytearray
-    ) -> "CanonicalExecutionEvent":
+    def from_json(cls, payload: str | bytes | bytearray) -> "CanonicalExecutionEvent":
         return cls.from_dict(json.loads(payload))
 
 
@@ -729,13 +678,9 @@ class TransitionFinding:
     reason: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "disposition", TransitionDisposition(self.disposition)
-        )
+        object.__setattr__(self, "disposition", TransitionDisposition(self.disposition))
         for name in ("expected_event_id", "observed_event_id", "task_id", "reason"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
 
     @property
     def finding_id(self) -> str:
@@ -832,7 +777,9 @@ class PlanConformanceResult:
     invalidation_causes: tuple[InvalidationCause, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "plan_id", _text(self.plan_id, field_name="plan_id", required=True))
+        object.__setattr__(
+            self, "plan_id", _text(self.plan_id, field_name="plan_id", required=True)
+        )
         if not isinstance(self.binding, ConformanceBinding):
             object.__setattr__(self, "binding", ConformanceBinding.from_dict(self.binding))
         object.__setattr__(self, "verdict", ConformanceVerdict(self.verdict))
@@ -840,9 +787,7 @@ class PlanConformanceResult:
             self,
             "findings",
             tuple(
-                item
-                if isinstance(item, TransitionFinding)
-                else TransitionFinding.from_dict(item)
+                item if isinstance(item, TransitionFinding) else TransitionFinding.from_dict(item)
                 for item in self.findings
             ),
         )
@@ -939,8 +884,7 @@ class PlanConformanceResult:
             binding=ConformanceBinding.from_dict(payload.get("binding") or {}),
             verdict=payload.get("verdict", ConformanceVerdict.INCOMPLETE),
             findings=tuple(
-                TransitionFinding.from_dict(item)
-                for item in payload.get("findings", ())
+                TransitionFinding.from_dict(item) for item in payload.get("findings", ())
             ),
             expected_event_ids=tuple(payload.get("expected_event_ids") or ()),
             observed_event_ids=tuple(payload.get("observed_event_ids") or ()),
@@ -968,13 +912,9 @@ def _canonical_events(
     event_ids: set[str] = set()
     for item in normalized:
         if item.execution_event_id in identities:
-            raise ConformanceValidationError(
-                f"duplicate execution event: {item.event_id}"
-            )
+            raise ConformanceValidationError(f"duplicate execution event: {item.event_id}")
         if item.event_id in event_ids:
-            raise ConformanceValidationError(
-                f"duplicate execution event_id: {item.event_id}"
-            )
+            raise ConformanceValidationError(f"duplicate execution event_id: {item.event_id}")
         identities.add(item.execution_event_id)
         event_ids.add(item.event_id)
     return tuple(sorted(normalized, key=lambda item: (item.sequence, item.event_id)))
@@ -1028,15 +968,9 @@ class FormalPlanConformanceEvaluator:
             goal_id=goal_id or binding.goal_id,
             toolchain_id=toolchain_id or binding.toolchain_id,
             ast_scope_ids=(
-                tuple(ast_scope_ids)
-                if ast_scope_ids is not None
-                else binding.ast_scope_ids
+                tuple(ast_scope_ids) if ast_scope_ids is not None else binding.ast_scope_ids
             ),
-            premise_ids=(
-                tuple(premise_ids)
-                if premise_ids is not None
-                else binding.premise_ids
-            ),
+            premise_ids=(tuple(premise_ids) if premise_ids is not None else binding.premise_ids),
             counterexample_ids=(
                 tuple(counterexample_ids)
                 if counterexample_ids is not None
@@ -1049,9 +983,7 @@ class FormalPlanConformanceEvaluator:
             invalidations.extend(changed_bindings(prior.binding, binding))
 
         observed = _canonical_events(events)
-        expected = tuple(
-            sorted(plan.events, key=lambda item: (item.logical_time, item.event_id))
-        )
+        expected = tuple(sorted(plan.events, key=lambda item: (item.logical_time, item.event_id)))
         expected_by_id = {item.event_id: item for item in expected}
         expected_index = {item.event_id: index for index, item in enumerate(expected)}
         task_actors = {item.task_id: set(item.actor_ids) for item in plan.tasks}
@@ -1072,12 +1004,8 @@ class FormalPlanConformanceEvaluator:
                     disposition=disposition,
                     expected_event_id=planned.event_id if planned else "",
                     observed_event_id=actual.event_id if actual else "",
-                    task_id=(
-                        planned.task_id if planned else (actual.task_id if actual else "")
-                    ),
-                    expected_index=(
-                        expected_index.get(planned.event_id) if planned else None
-                    ),
+                    task_id=(planned.task_id if planned else (actual.task_id if actual else "")),
+                    expected_index=(expected_index.get(planned.event_id) if planned else None),
                     observed_index=observed_position,
                     reason=reason,
                 )
@@ -1271,8 +1199,7 @@ class FormalPlanConformanceEvaluator:
                 continue
 
             if (
-                actual.kind == EventKind.FAILED.value
-                or actual_status in _FAIL_VERDICTS
+                actual.kind == EventKind.FAILED.value or actual_status in _FAIL_VERDICTS
             ) and planned.kind is not EventKind.FAILED:
                 matched_expected[planned.event_id] = actual
                 add(
@@ -1420,25 +1347,17 @@ class FormalCompletionEvidence:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "kind", _evidence_kind(self.kind))
-        object.__setattr__(self, "goal_id", _text(self.goal_id, field_name="goal_id", required=True))
+        object.__setattr__(
+            self, "goal_id", _text(self.goal_id, field_name="goal_id", required=True)
+        )
         object.__setattr__(self, "artifact_id", _text(self.artifact_id, field_name="artifact_id"))
         if not isinstance(self.binding, ConformanceBinding):
-            object.__setattr__(
-                self, "binding", ConformanceBinding.from_dict(self.binding)
-            )
-        object.__setattr__(
-            self, "observed_at", _timestamp(self.observed_at, required=True)
-        )
+            object.__setattr__(self, "binding", ConformanceBinding.from_dict(self.binding))
+        object.__setattr__(self, "observed_at", _timestamp(self.observed_at, required=True))
         object.__setattr__(self, "expires_at", _timestamp(self.expires_at))
-        object.__setattr__(
-            self, "verdict", _enum_value(self.verdict).replace("-", "_")
-        )
-        object.__setattr__(
-            self, "freshness", _enum_value(self.freshness).replace("-", "_")
-        )
-        object.__setattr__(
-            self, "provider_id", _text(self.provider_id, field_name="provider_id")
-        )
+        object.__setattr__(self, "verdict", _enum_value(self.verdict).replace("-", "_"))
+        object.__setattr__(self, "freshness", _enum_value(self.freshness).replace("-", "_"))
+        object.__setattr__(self, "provider_id", _text(self.provider_id, field_name="provider_id"))
         object.__setattr__(self, "metadata", _mapping(self.metadata))
         actual = content_identity(self._identity_payload())
         if self.evidence_id and self.evidence_id != actual:
@@ -1480,21 +1399,15 @@ class FormalCompletionEvidence:
             binding_payload = {
                 "plan_id": payload.get("plan_id", ""),
                 "policy_id": payload.get("policy_id", ""),
-                "repository_tree_id": payload.get(
-                    "repository_tree_id", payload.get("tree_id", "")
-                ),
-                "ast_scope_ids": payload.get(
-                    "ast_scope_ids", payload.get("ast_ids", ())
-                ),
+                "repository_tree_id": payload.get("repository_tree_id", payload.get("tree_id", "")),
+                "ast_scope_ids": payload.get("ast_scope_ids", payload.get("ast_ids", ())),
                 "premise_ids": payload.get("premise_ids", ()),
                 "counterexample_ids": payload.get("counterexample_ids", ()),
             }
         verdict: Any = payload.get("verdict", payload.get("status", ""))
         if "passed" in payload:
             verdict = "passed" if payload.get("passed") is True else "failed"
-        freshness: Any = payload.get(
-            "freshness", payload.get("freshness_status", "current")
-        )
+        freshness: Any = payload.get("freshness", payload.get("freshness_status", "current"))
         if isinstance(freshness, Mapping):
             if freshness.get("invalidated") is True or freshness.get("stale") is True:
                 freshness = "invalidated"
@@ -1503,9 +1416,7 @@ class FormalCompletionEvidence:
             else:
                 freshness = freshness.get("status", "unknown")
         result = cls(
-            kind=payload.get(
-                "kind", payload.get("evidence_kind", payload.get("lane", ""))
-            ),
+            kind=payload.get("kind", payload.get("evidence_kind", payload.get("lane", ""))),
             goal_id=payload.get(
                 "goal_id", payload.get("subject_id", payload.get("objective_id", ""))
             ),
@@ -1536,9 +1447,7 @@ class FormalCompletionEvidence:
         return result
 
     @classmethod
-    def from_json(
-        cls, payload: str | bytes | bytearray
-    ) -> "FormalCompletionEvidence":
+    def from_json(cls, payload: str | bytes | bytearray) -> "FormalCompletionEvidence":
         return cls.from_dict(json.loads(payload))
 
 
@@ -1595,9 +1504,7 @@ class CompletionEvidenceResult:
     @property
     def missing_kinds(self) -> tuple[CompletionEvidenceKind, ...]:
         return tuple(
-            item.kind
-            for item in self.checks
-            if item.status is EvidenceCheckStatus.MISSING
+            item.kind for item in self.checks if item.status is EvidenceCheckStatus.MISSING
         )
 
     @property
@@ -1620,9 +1527,7 @@ class CompletionEvidenceResult:
         result = cls(
             policy_id=str(payload.get("policy_id", "")),
             binding_id=str(payload.get("binding_id", "")),
-            checks=tuple(
-                EvidenceCheck.from_dict(item) for item in payload.get("checks", ())
-            ),
+            checks=tuple(EvidenceCheck.from_dict(item) for item in payload.get("checks", ())),
         )
         if payload.get("result_id") and payload["result_id"] != result.result_id:
             raise ConformanceValidationError("evidence result identity mismatch")
@@ -1649,9 +1554,7 @@ def evaluate_completion_evidence(
     )
     checks: list[EvidenceCheck] = []
     for kind in policy.required_evidence:
-        candidates = [
-            item for item in normalized if item.kind is kind and item.goal_id == goal_id
-        ]
+        candidates = [item for item in normalized if item.kind is kind and item.goal_id == goal_id]
         if not candidates:
             checks.append(
                 EvidenceCheck(
@@ -1665,9 +1568,7 @@ def evaluate_completion_evidence(
         statuses: list[tuple[EvidenceCheckStatus, str, FormalCompletionEvidence]] = []
         for item in candidates:
             if policy.require_exact_binding and item.binding != binding:
-                causes = ", ".join(
-                    cause.value for cause in changed_bindings(item.binding, binding)
-                )
+                causes = ", ".join(cause.value for cause in changed_bindings(item.binding, binding))
                 statuses.append(
                     (
                         EvidenceCheckStatus.INVALIDATED,
@@ -1702,10 +1603,7 @@ def evaluate_completion_evidence(
             }
             expired = bool(item.expires_at and _epoch(item.expires_at) < now_epoch)
             max_age = policy.max_age_for(kind)
-            too_old = bool(
-                max_age is not None
-                and now_epoch - _epoch(item.observed_at) > max_age
-            )
+            too_old = bool(max_age is not None and now_epoch - _epoch(item.observed_at) > max_age)
             future = _epoch(item.observed_at) > now_epoch
             if (
                 stale_marker
@@ -1725,20 +1623,10 @@ def evaluate_completion_evidence(
                     )
                 )
                 continue
-            statuses.append(
-                (EvidenceCheckStatus.SATISFIED, "fresh passing evidence", item)
-            )
+            statuses.append((EvidenceCheckStatus.SATISFIED, "fresh passing evidence", item))
 
-        passing = [
-            item
-            for item in statuses
-            if item[0] is EvidenceCheckStatus.SATISFIED
-        ]
-        rejected = [
-            item
-            for item in statuses
-            if item[0] is not EvidenceCheckStatus.SATISFIED
-        ]
+        passing = [item for item in statuses if item[0] is EvidenceCheckStatus.SATISFIED]
+        rejected = [item for item in statuses if item[0] is not EvidenceCheckStatus.SATISFIED]
         if passing and not rejected:
             checks.append(
                 EvidenceCheck(
@@ -1809,9 +1697,7 @@ class CompletionAdmissionGate:
             _text(self.validation_policy_id, field_name="validation_policy_id"),
         )
         object.__setattr__(self, "reason_codes", _strings(self.reason_codes))
-        object.__setattr__(
-            self, "code_proof_result_ids", _strings(self.code_proof_result_ids)
-        )
+        object.__setattr__(self, "code_proof_result_ids", _strings(self.code_proof_result_ids))
         object.__setattr__(
             self,
             "proof_candidate_receipt_ids",
@@ -1822,9 +1708,7 @@ class CompletionAdmissionGate:
                 "admitted completion gate cannot contain rejection reasons"
             )
         if not self.admitted and not self.reason_codes:
-            raise ConformanceValidationError(
-                "rejected completion gate requires a reason"
-            )
+            raise ConformanceValidationError("rejected completion gate requires a reason")
 
     @property
     def gate_id(self) -> str:
@@ -1842,9 +1726,7 @@ class CompletionAdmissionGate:
         if self.code_proof_result_ids:
             payload["code_proof_result_ids"] = self.code_proof_result_ids
         if self.proof_candidate_receipt_ids:
-            payload["proof_candidate_receipt_ids"] = (
-                self.proof_candidate_receipt_ids
-            )
+            payload["proof_candidate_receipt_ids"] = self.proof_candidate_receipt_ids
         if include_id:
             payload["gate_id"] = self.gate_id
         return payload
@@ -1854,24 +1736,14 @@ class CompletionAdmissionGate:
         result = cls(
             admitted=payload.get("admitted", False),
             proposal_receipt_id=str(payload.get("proposal_receipt_id") or ""),
-            validation_dag_receipt_id=str(
-                payload.get("validation_dag_receipt_id") or ""
-            ),
-            validation_policy_id=str(
-                payload.get("validation_policy_id") or ""
-            ),
-            code_proof_result_ids=tuple(
-                payload.get("code_proof_result_ids") or ()
-            ),
-            proof_candidate_receipt_ids=tuple(
-                payload.get("proof_candidate_receipt_ids") or ()
-            ),
+            validation_dag_receipt_id=str(payload.get("validation_dag_receipt_id") or ""),
+            validation_policy_id=str(payload.get("validation_policy_id") or ""),
+            code_proof_result_ids=tuple(payload.get("code_proof_result_ids") or ()),
+            proof_candidate_receipt_ids=tuple(payload.get("proof_candidate_receipt_ids") or ()),
             reason_codes=tuple(payload.get("reason_codes") or ()),
         )
         if payload.get("gate_id") and payload["gate_id"] != result.gate_id:
-            raise ConformanceValidationError(
-                "completion admission gate identity mismatch"
-            )
+            raise ConformanceValidationError("completion admission gate identity mismatch")
         return result
 
 
@@ -1922,9 +1794,7 @@ class PostMergeCompletionAdmissionGate:
                 "admitted post-merge gate cannot contain rejection reasons"
             )
         if not self.admitted and not self.reason_codes:
-            raise ConformanceValidationError(
-                "rejected post-merge gate requires a reason"
-            )
+            raise ConformanceValidationError("rejected post-merge gate requires a reason")
 
     @property
     def receipt_id(self) -> str:
@@ -1946,17 +1816,13 @@ class PostMergeCompletionAdmissionGate:
         payload = {
             "schema": POST_MERGE_COMPLETION_ADMISSION_SCHEMA,
             "admitted": self.admitted,
-            "post_merge_evidence_receipt_id": (
-                self.post_merge_evidence_receipt_id
-            ),
+            "post_merge_evidence_receipt_id": (self.post_merge_evidence_receipt_id),
             "revalidated_receipt_id": self.revalidated_receipt_id,
             "evidence_graph_id": self.evidence_graph_id,
             "repository_id": self.repository_id,
             "merged_tree_id": self.merged_tree_id,
             "merge_commit_id": self.merge_commit_id,
-            "covered_acceptance_criteria": (
-                self.covered_acceptance_criteria
-            ),
+            "covered_acceptance_criteria": (self.covered_acceptance_criteria),
             "reason_codes": self.reason_codes,
         }
         if include_id:
@@ -1969,12 +1835,8 @@ class PostMergeCompletionAdmissionGate:
         payload: Mapping[str, Any],
     ) -> "PostMergeCompletionAdmissionGate":
         if not isinstance(payload, Mapping):
-            raise ConformanceValidationError(
-                "post-merge completion admission must be a mapping"
-            )
-        schema = str(
-            payload.get("schema") or POST_MERGE_COMPLETION_ADMISSION_SCHEMA
-        )
+            raise ConformanceValidationError("post-merge completion admission must be a mapping")
+        schema = str(payload.get("schema") or POST_MERGE_COMPLETION_ADMISSION_SCHEMA)
         if schema != POST_MERGE_COMPLETION_ADMISSION_SCHEMA:
             raise ConformanceValidationError(
                 f"unsupported post-merge completion admission schema: {schema}"
@@ -1982,28 +1844,18 @@ class PostMergeCompletionAdmissionGate:
         result = cls(
             admitted=payload.get("admitted", False),
             post_merge_evidence_receipt_id=str(
-                payload.get("post_merge_evidence_receipt_id")
-                or payload.get("receipt_id")
-                or ""
+                payload.get("post_merge_evidence_receipt_id") or payload.get("receipt_id") or ""
             ),
-            revalidated_receipt_id=str(
-                payload.get("revalidated_receipt_id") or ""
-            ),
+            revalidated_receipt_id=str(payload.get("revalidated_receipt_id") or ""),
             evidence_graph_id=str(
-                payload.get("evidence_graph_id")
-                or payload.get("graph_id")
-                or ""
+                payload.get("evidence_graph_id") or payload.get("graph_id") or ""
             ),
             repository_id=str(payload.get("repository_id") or ""),
             merged_tree_id=str(
-                payload.get("merged_tree_id")
-                or payload.get("repository_tree_id")
-                or ""
+                payload.get("merged_tree_id") or payload.get("repository_tree_id") or ""
             ),
             merge_commit_id=str(
-                payload.get("merge_commit_id")
-                or payload.get("merge_commit")
-                or ""
+                payload.get("merge_commit_id") or payload.get("merge_commit") or ""
             ),
             covered_acceptance_criteria=tuple(
                 payload.get("covered_acceptance_criteria")
@@ -2013,9 +1865,7 @@ class PostMergeCompletionAdmissionGate:
             reason_codes=tuple(payload.get("reason_codes") or ()),
         )
         if payload.get("gate_id") and payload["gate_id"] != result.gate_id:
-            raise ConformanceValidationError(
-                "post-merge completion admission identity mismatch"
-            )
+            raise ConformanceValidationError("post-merge completion admission identity mismatch")
         return result
 
 
@@ -2095,9 +1945,7 @@ def evaluate_post_merge_completion_admission(
     except ConformanceValidationError:
         raise
     except (TypeError, ValueError) as exc:
-        raise ConformanceValidationError(
-            f"invalid post-merge evidence receipt: {exc}"
-        ) from exc
+        raise ConformanceValidationError(f"invalid post-merge evidence receipt: {exc}") from exc
 
     reasons = list(verified.reason_codes)
     receipt_criteria = tuple(verified.acceptance_criteria)
@@ -2110,10 +1958,7 @@ def evaluate_post_merge_completion_admission(
 
     if verified.merged_tree_id != current_tree:
         reasons.append("post_merge_tree_mismatch")
-    if (
-        expected_repository
-        and verified.repository_id != expected_repository
-    ):
+    if expected_repository and verified.repository_id != expected_repository:
         reasons.append("post_merge_repository_mismatch")
     if expected_commit and verified.merge_commit_id != expected_commit:
         reasons.append("post_merge_commit_mismatch")
@@ -2151,9 +1996,7 @@ def evaluate_post_merge_completion_admission(
 # Compatibility names for callers that describe the same boundary as a gate
 # or verifier rather than an admission evaluation.
 PostMergeCompletionGate = PostMergeCompletionAdmissionGate
-verify_post_merge_completion_admission = (
-    evaluate_post_merge_completion_admission
-)
+verify_post_merge_completion_admission = evaluate_post_merge_completion_admission
 
 
 def evaluate_completion_admission(
@@ -2236,15 +2079,11 @@ def evaluate_completion_admission(
         elif dag.proposal_receipt_id != proposal_receipt_id:
             reasons.append("validation_dag_proposal_mismatch")
         if proposal_result is not None and (
-            dag.repository_tree_id
-            != proposal_result.proposal.repository_tree_id
+            dag.repository_tree_id != proposal_result.proposal.repository_tree_id
             or dag.objective_id != proposal_result.proposal.objective_id
         ):
             reasons.append("validation_dag_authority_mismatch")
-        if (
-            expected_validation_policy_id
-            and dag.policy_id != expected_validation_policy_id
-        ):
+        if expected_validation_policy_id and dag.policy_id != expected_validation_policy_id:
             reasons.append("validation_dag_policy_mismatch")
         if not dag.nodes:
             reasons.append("validation_dag_empty")
@@ -2277,9 +2116,7 @@ def evaluate_completion_admission(
                 else CodeProofReceiptBindingResult.from_dict(item)
             )
         except (TypeError, ValueError) as exc:
-            raise ConformanceValidationError(
-                f"invalid code-proof binding result: {exc}"
-            ) from exc
+            raise ConformanceValidationError(f"invalid code-proof binding result: {exc}") from exc
         normalized_proof_results.append(result)
 
     revalidated_result_ids: set[str] = set()
@@ -2288,12 +2125,8 @@ def evaluate_completion_admission(
         try:
             obligation_set = (
                 implementation_obligations
-                if isinstance(
-                    implementation_obligations, ImplementationObligationSet
-                )
-                else ImplementationObligationSet.from_dict(
-                    implementation_obligations
-                )
+                if isinstance(implementation_obligations, ImplementationObligationSet)
+                else ImplementationObligationSet.from_dict(implementation_obligations)
             )
         except (TypeError, ValueError) as exc:
             raise ConformanceValidationError(
@@ -2311,20 +2144,11 @@ def evaluate_completion_admission(
             if (
                 binding.proposal_validation_receipt_id != proposal_receipt_id
                 or binding.proposal_accepted is not True
-                or binding.accepted_plan_id
-                != proposal_result.proposal.accepted_plan_id
-                or binding.repository_id
-                != proposal_result.proposal.repository_id
-                or binding.repository_tree_id
-                != proposal_result.proposal.repository_tree_id
-                or (
-                    dag_receipt_id
-                    and binding.validation_dag_receipt_id != dag_receipt_id
-                )
-                or (
-                    validation_policy_id
-                    and binding.validation_policy_id != validation_policy_id
-                )
+                or binding.accepted_plan_id != proposal_result.proposal.accepted_plan_id
+                or binding.repository_id != proposal_result.proposal.repository_id
+                or binding.repository_tree_id != proposal_result.proposal.repository_tree_id
+                or (dag_receipt_id and binding.validation_dag_receipt_id != dag_receipt_id)
+                or (validation_policy_id and binding.validation_policy_id != validation_policy_id)
                 or (
                     validation_dag is not None
                     and binding.repository_tree_id != dag.repository_tree_id
@@ -2333,17 +2157,11 @@ def evaluate_completion_admission(
                 reasons.append("code_proof_authority_chain_mismatch")
         for item in proof_receipts:
             try:
-                receipt = (
-                    item
-                    if isinstance(item, ProofReceipt)
-                    else ProofReceipt.from_dict(item)
-                )
+                receipt = item if isinstance(item, ProofReceipt) else ProofReceipt.from_dict(item)
                 revalidated = validate_code_proof_receipt_bindings(
                     receipt,
                     obligation_set,
-                    required_assurance=AssuranceLevel(
-                        required_code_assurance
-                    ),
+                    required_assurance=AssuranceLevel(required_code_assurance),
                 )
                 normalized_proof_results.append(revalidated)
                 revalidated_result_ids.add(revalidated.result_id)
@@ -2355,9 +2173,7 @@ def evaluate_completion_admission(
     # Stable de-duplication allows callers to retain a diagnostic result while
     # also supplying the canonical receipt needed for positive authority.
     normalized_proof_results = list(
-        {
-            result.result_id: result for result in normalized_proof_results
-        }.values()
+        {result.result_id: result for result in normalized_proof_results}.values()
     )
     valid_obligation_ids: set[str] = set()
     for result in normalized_proof_results:
@@ -2367,8 +2183,7 @@ def evaluate_completion_admission(
             reasons.append("code_proof_candidate_only")
         if (
             result.authoritative_verdict is not ProofVerdict.PROVED
-            or result.authoritative_assurance.rank
-            < AssuranceLevel.KERNEL_VERIFIED.rank
+            or result.authoritative_assurance.rank < AssuranceLevel.KERNEL_VERIFIED.rank
         ):
             reasons.append("code_proof_not_authoritative")
         if not result.valid:
@@ -2381,10 +2196,7 @@ def evaluate_completion_admission(
             # obligation set may create positive proof authority.
             reasons.append("code_proof_unverified_summary")
     proof_required = proof_boundary_requested or bool(
-        required
-        and proposal_result is not None
-        and proposal_result.accepted
-        and dag_passed
+        required and proposal_result is not None and proposal_result.accepted and dag_passed
     )
     if proof_required:
         if obligation_set is None or not proof_receipts:
@@ -2424,9 +2236,7 @@ def evaluate_transitive_impact_admission_closure(
         proposal_validation,
         validation_dag,
     ):
-        raise ConformanceValidationError(
-            "validation DAG is not a closed transitive-impact witness"
-        )
+        raise ConformanceValidationError("validation DAG is not a closed transitive-impact witness")
     gate = evaluate_completion_admission(
         proposal_validation=proposal_validation,
         validation_dag=validation_dag,
@@ -2454,9 +2264,7 @@ def evaluate_strict_validation_completion(
     coverage: Any = None,
     analyzer_health: Any = None,
     exhaustion_quorum: Any = None,
-    required_exhaustive_receipts: int = (
-        STRICT_VALIDATION_REQUIRED_EXHAUSTIVE_RECEIPTS
-    ),
+    required_exhaustive_receipts: int = (STRICT_VALIDATION_REQUIRED_EXHAUSTIVE_RECEIPTS),
     now: Any = None,
     freshness_seconds: float = 3600.0,
     clock_skew_seconds: float = 300.0,
@@ -2478,8 +2286,7 @@ def evaluate_strict_validation_completion(
     if (
         isinstance(required_exhaustive_receipts, bool)
         or not isinstance(required_exhaustive_receipts, int)
-        or required_exhaustive_receipts
-        != STRICT_VALIDATION_REQUIRED_EXHAUSTIVE_RECEIPTS
+        or required_exhaustive_receipts != STRICT_VALIDATION_REQUIRED_EXHAUSTIVE_RECEIPTS
     ):
         raise ValueError(
             "required_exhaustive_receipts must equal the configured "
@@ -2489,11 +2296,7 @@ def evaluate_strict_validation_completion(
         ("freshness_seconds", freshness_seconds),
         ("clock_skew_seconds", clock_skew_seconds),
     ):
-        if (
-            isinstance(value, bool)
-            or not isinstance(value, (int, float))
-            or float(value) < 0
-        ):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or float(value) < 0:
             raise ValueError(f"{name} must be a non-negative number")
 
     def payload(value: Any) -> dict[str, Any]:
@@ -2510,21 +2313,14 @@ def evaluate_strict_validation_completion(
         return " ".join(str(value or "").strip().lower().split())
 
     def normalized_gate(value: Any) -> str:
-        return (
-            normalized(value)
-            .replace("/", "_")
-            .replace("-", "_")
-            .replace(" ", "_")
-        )
+        return normalized(value).replace("/", "_").replace("-", "_").replace(" ", "_")
 
     def parsed_datetime(value: Any) -> datetime | None:
         if isinstance(value, datetime):
             result = value
         elif isinstance(value, str) and value.strip():
             try:
-                result = datetime.fromisoformat(
-                    value.strip().replace("Z", "+00:00")
-                )
+                result = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
             except ValueError:
                 return None
         else:
@@ -2552,12 +2348,8 @@ def evaluate_strict_validation_completion(
         "tree_id": repository_tree,
         "objective_id": STRICT_VALIDATION_OBJECTIVE_ID,
         "objective_revision": STRICT_VALIDATION_OBJECTIVE_REVISION,
-        "analyzer_version": (
-            STRICT_VALIDATION_COMPLETION_ANALYZER_VERSION
-        ),
-        "configuration_revision": (
-            STRICT_VALIDATION_COMPLETION_CONFIGURATION_REVISION
-        ),
+        "analyzer_version": (STRICT_VALIDATION_COMPLETION_ANALYZER_VERSION),
+        "configuration_revision": (STRICT_VALIDATION_COMPLETION_CONFIGURATION_REVISION),
     }
     terminal_states = frozenset(
         {
@@ -2573,8 +2365,7 @@ def evaluate_strict_validation_completion(
 
     producer_values = [payload(item) for item in producing_tasks]
     producer_ids = [
-        str(item.get("task_id", item.get("id", "")) or "").strip()
-        for item in producer_values
+        str(item.get("task_id", item.get("id", "")) or "").strip() for item in producer_values
     ]
     producer_population_complete = bool(
         repository_id
@@ -2583,27 +2374,21 @@ def evaluate_strict_validation_completion(
         and set(producer_ids) == set(STRICT_VALIDATION_PRODUCING_TASK_IDS)
         and len(producer_ids) == len(STRICT_VALIDATION_PRODUCING_TASK_IDS)
         and all(
-            normalized(item.get("status", item.get("state", "")))
-            in terminal_states
+            normalized(item.get("status", item.get("state", ""))) in terminal_states
             for item in producer_values
         )
     )
 
     child_values = [payload(item) for item in child_goals]
     child_ids = [
-        str(item.get("goal_id", item.get("id", "")) or "").strip()
-        for item in child_values
+        str(item.get("goal_id", item.get("id", "")) or "").strip() for item in child_values
     ]
 
     def child_current(child: Mapping[str, Any]) -> bool:
         gate_value = child.get("completion_gate", child.get("gate"))
         gate = gate_value if isinstance(gate_value, Mapping) else {}
         evaluated_value = gate.get("evaluated_evidence")
-        evaluated = (
-            evaluated_value
-            if isinstance(evaluated_value, Mapping)
-            else {}
-        )
+        evaluated = evaluated_value if isinstance(evaluated_value, Mapping) else {}
         validations = evaluated.get("validation_evidence")
         proof_requirements = child.get(
             "proof_requirements",
@@ -2619,8 +2404,7 @@ def evaluate_strict_validation_completion(
                 and item.get("valid", item.get("verified")) is True
                 and isinstance(item.get("evidence"), Mapping)
                 and item["evidence"].get("repository_id") == repository_id
-                and item["evidence"].get("repository_tree")
-                == repository_tree
+                and item["evidence"].get("repository_tree") == repository_tree
                 for item in validations
             )
         )
@@ -2707,42 +2491,27 @@ def evaluate_strict_validation_completion(
             proposal_receipt = proposal_validation
         elif isinstance(proposal_validation, Mapping):
             if "proposal" in proposal_validation:
-                proposal_result = ProposalValidationResult.from_dict(
-                    proposal_validation
-                )
+                proposal_result = ProposalValidationResult.from_dict(proposal_validation)
                 proposal_receipt = proposal_result.receipt
             else:
                 proposal_result = None
-                proposal_receipt = ProposalValidationReceipt.from_dict(
-                    proposal_validation
-                )
+                proposal_receipt = ProposalValidationReceipt.from_dict(proposal_validation)
         else:
             raise ValueError("proposal validation is missing")
-        proposal_gate_evidence = dict(
-            proposal_receipt.proposal_gate_evidence
-        )
+        proposal_gate_evidence = dict(proposal_receipt.proposal_gate_evidence)
         proposal_gates = proposal_gate_evidence.get("gates")
-        proposal_gates = (
-            proposal_gates if isinstance(proposal_gates, Mapping) else {}
-        )
-        proposal_gate_kinds = {
-            normalized_gate(name) for name in proposal_gates
-        }
+        proposal_gates = proposal_gates if isinstance(proposal_gates, Mapping) else {}
+        proposal_gate_kinds = {normalized_gate(name) for name in proposal_gates}
         proposal_complete = bool(
             proposal_receipt.accepted
-            and (
-                proposal_result is None
-                or proposal_result.accepted
-            )
+            and (proposal_result is None or proposal_result.accepted)
             and proposal_receipt.repository_tree_id == repository_tree
-            and proposal_receipt.objective_id
-            in STRICT_VALIDATION_CHILD_GOAL_IDS
+            and proposal_receipt.objective_id in STRICT_VALIDATION_CHILD_GOAL_IDS
             and proposal_gate_evidence.get("all_owned_gates_passed") is True
             and proposal_gate_evidence.get("completion_authoritative") is False
             and proposal_gate_kinds == proposal_owned
             and all(
-                isinstance(value, Mapping)
-                and value.get("passed") is True
+                isinstance(value, Mapping) and value.get("passed") is True
                 for value in proposal_gates.values()
             )
         )
@@ -2760,20 +2529,15 @@ def evaluate_strict_validation_completion(
                 validation_projection,
                 StrictValidationDAGCompletionEvidence,
             )
-            else StrictValidationDAGCompletionEvidence.from_dict(
-                payload(validation_projection)
-            )
+            else StrictValidationDAGCompletionEvidence.from_dict(payload(validation_projection))
         )
         scheduler_payload = scheduler_evidence.to_dict()
         scheduler_gate_kinds = {
-            normalized_gate(item)
-            for item in scheduler_evidence.scheduler_gate_kinds
+            normalized_gate(item) for item in scheduler_evidence.scheduler_gate_kinds
         }
         validation_projection_complete = bool(
-            scheduler_evidence.objective_id
-            == STRICT_VALIDATION_OBJECTIVE_ID
-            and scheduler_evidence.child_objective_id
-            in STRICT_VALIDATION_CHILD_GOAL_IDS
+            scheduler_evidence.objective_id == STRICT_VALIDATION_OBJECTIVE_ID
+            and scheduler_evidence.child_objective_id in STRICT_VALIDATION_CHILD_GOAL_IDS
             and scheduler_evidence.repository_tree_id == repository_tree
             and scheduler_evidence.operational_receipt_id
             and scheduler_evidence.evidence_id
@@ -2796,17 +2560,12 @@ def evaluate_strict_validation_completion(
                 proof_projection,
                 StrictValidationProofCompletionEvidence,
             )
-            else StrictValidationProofCompletionEvidence.from_dict(
-                payload(proof_projection)
-            )
+            else StrictValidationProofCompletionEvidence.from_dict(payload(proof_projection))
         )
-        proof_gate_kinds = {
-            normalized_gate(item) for item in proof_evidence.gate_kinds
-        }
+        proof_gate_kinds = {normalized_gate(item) for item in proof_evidence.gate_kinds}
         proof_projection_complete = bool(
             proof_evidence.objective_id == STRICT_VALIDATION_OBJECTIVE_ID
-            and proof_evidence.child_objective_id
-            in STRICT_VALIDATION_CHILD_GOAL_IDS
+            and proof_evidence.child_objective_id in STRICT_VALIDATION_CHILD_GOAL_IDS
             and proof_evidence.repository_id == repository_id
             and proof_evidence.repository_tree_id == repository_tree
             and proof_evidence.operational_receipt_id
@@ -2826,19 +2585,13 @@ def evaluate_strict_validation_completion(
         == set(STRICT_VALIDATION_GATE_KINDS)
     )
 
-    expected_criteria = {
-        normalized(item) for item in STRICT_VALIDATION_ACCEPTANCE_CRITERIA
-    }
+    expected_criteria = {normalized(item) for item in STRICT_VALIDATION_ACCEPTANCE_CRITERIA}
     evidence_values = [payload(item) for item in evidence]
     receipt_ids_by_criterion: dict[str, set[str]] = {}
     evidence_criteria: list[str] = []
     for record in evidence_values:
         source_value = record.get("evidence", record)
-        source = (
-            dict(source_value)
-            if isinstance(source_value, Mapping)
-            else record
-        )
+        source = dict(source_value) if isinstance(source_value, Mapping) else record
         criterion = normalized(
             source.get(
                 "acceptance_criterion",
@@ -2857,9 +2610,7 @@ def evaluate_strict_validation_completion(
             or ""
         ).strip()
         if criterion and receipt_id:
-            receipt_ids_by_criterion.setdefault(criterion, set()).add(
-                receipt_id
-            )
+            receipt_ids_by_criterion.setdefault(criterion, set()).add(receipt_id)
     evidence_population_complete = bool(
         len(evidence_values) == len(expected_criteria)
         and len(evidence_criteria) == len(set(evidence_criteria))
@@ -2912,20 +2663,11 @@ def evaluate_strict_validation_completion(
         )
         if isinstance(raw, str):
             raw = (raw,)
-        if not (
-            isinstance(raw, Sequence)
-            and not isinstance(raw, (str, bytes, bytearray))
-        ):
+        if not (isinstance(raw, Sequence) and not isinstance(raw, (str, bytes, bytearray))):
             return set()
-        return {
-            str(item or "").strip()
-            for item in raw
-            if str(item or "").strip()
-        }
+        return {str(item or "").strip() for item in raw if str(item or "").strip()}
 
-    row_keys = [
-        row_criterion(row) for row in rows if isinstance(row, Mapping)
-    ]
+    row_keys = [row_criterion(row) for row in rows if isinstance(row, Mapping)]
     coverage_bound = bool(
         evidence_population_complete
         and coverage_value.get("verified") is True
@@ -2937,8 +2679,7 @@ def evaluate_strict_validation_completion(
             isinstance(row, Mapping)
             and implementation_bound(row)
             and len(validation_ids(row)) == 1
-            and validation_ids(row)
-            == receipt_ids_by_criterion.get(row_criterion(row), set())
+            and validation_ids(row) == receipt_ids_by_criterion.get(row_criterion(row), set())
             for row in rows
         )
     )
@@ -2958,11 +2699,7 @@ def evaluate_strict_validation_completion(
 
     health_value = payload(analyzer_health)
     health_binding_value = health_value.get("binding")
-    health_binding = (
-        dict(health_binding_value)
-        if isinstance(health_binding_value, Mapping)
-        else {}
-    )
+    health_binding = dict(health_binding_value) if isinstance(health_binding_value, Mapping) else {}
     health_valid = bool(
         all(expected_binding.values())
         and health_binding == expected_binding
@@ -2981,27 +2718,16 @@ def evaluate_strict_validation_completion(
     members_value = quorum_value.get("members")
     members = members_value if isinstance(members_value, list) else []
     quorum_binding_value = quorum_value.get("binding")
-    quorum_binding = (
-        dict(quorum_binding_value)
-        if isinstance(quorum_binding_value, Mapping)
-        else {}
-    )
+    quorum_binding = dict(quorum_binding_value) if isinstance(quorum_binding_value, Mapping) else {}
 
     def independent_member_field(name: str) -> bool:
         values = [
-            str(member.get(name) or "").strip()
-            for member in members
-            if isinstance(member, Mapping)
+            str(member.get(name) or "").strip() for member in members if isinstance(member, Mapping)
         ]
-        return bool(
-            len(values) == len(members)
-            and all(values)
-            and len(values) == len(set(values))
-        )
+        return bool(len(values) == len(members) and all(values) and len(values) == len(set(values)))
 
     quorum_valid = bool(
-        quorum_value.get("required_members")
-        == STRICT_VALIDATION_REQUIRED_EXHAUSTIVE_RECEIPTS
+        quorum_value.get("required_members") == STRICT_VALIDATION_REQUIRED_EXHAUSTIVE_RECEIPTS
         and quorum_value.get("member_count") == len(members)
         and len(members) == STRICT_VALIDATION_REQUIRED_EXHAUSTIVE_RECEIPTS
         and quorum_value.get("satisfied") is True
@@ -3068,7 +2794,9 @@ class FormalGoalCompletionDecision:
     completion_admission: CompletionAdmissionGate | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "goal_id", _text(self.goal_id, field_name="goal_id", required=True))
+        object.__setattr__(
+            self, "goal_id", _text(self.goal_id, field_name="goal_id", required=True)
+        )
         object.__setattr__(self, "previous_state", normalize_goal_state(self.previous_state))
         object.__setattr__(self, "state", normalize_goal_state(self.state))
         if not isinstance(self.conformance, PlanConformanceResult):
@@ -3083,9 +2811,7 @@ class FormalGoalCompletionDecision:
                 "evidence_result",
                 CompletionEvidenceResult.from_dict(self.evidence_result),
             )
-        object.__setattr__(
-            self, "evaluated_at", _timestamp(self.evaluated_at, required=True)
-        )
+        object.__setattr__(self, "evaluated_at", _timestamp(self.evaluated_at, required=True))
         object.__setattr__(self, "reason_codes", _strings(self.reason_codes))
         object.__setattr__(
             self,
@@ -3130,9 +2856,7 @@ class FormalGoalCompletionDecision:
             "plan_consistency": self.plan_consistency,
         }
         if self.completion_admission is not None:
-            payload["completion_admission_gate_id"] = (
-                self.completion_admission.gate_id
-            )
+            payload["completion_admission_gate_id"] = self.completion_admission.gate_id
         return payload
 
     def to_dict(self) -> dict[str, Any]:
@@ -3163,9 +2887,7 @@ class FormalGoalCompletionDecision:
             goal_id=payload.get("goal_id", ""),
             previous_state=payload.get("previous_state", GoalState.ACTIVE),
             state=payload.get("state", GoalState.PROVISIONALLY_COMPLETE),
-            conformance=PlanConformanceResult.from_dict(
-                payload.get("conformance") or {}
-            ),
+            conformance=PlanConformanceResult.from_dict(payload.get("conformance") or {}),
             evidence_result=CompletionEvidenceResult.from_dict(
                 payload.get("evidence_result") or {}
             ),
@@ -3179,9 +2901,7 @@ class FormalGoalCompletionDecision:
         return result
 
     @classmethod
-    def from_json(
-        cls, payload: str | bytes | bytearray
-    ) -> "FormalGoalCompletionDecision":
+    def from_json(cls, payload: str | bytes | bytearray) -> "FormalGoalCompletionDecision":
         return cls.from_dict(json.loads(payload))
 
 
@@ -3348,7 +3068,9 @@ class ConformanceReplayPacket:
     stored_decision: FormalGoalCompletionDecision | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "goal_id", _text(self.goal_id, field_name="goal_id", required=True))
+        object.__setattr__(
+            self, "goal_id", _text(self.goal_id, field_name="goal_id", required=True)
+        )
         if not isinstance(self.plan, FormalWorkPlan):
             object.__setattr__(self, "plan", FormalWorkPlan.from_dict(self.plan))
         object.__setattr__(self, "events", _canonical_events(self.events))
@@ -3468,9 +3190,7 @@ class ConformanceReplayPacket:
             "prior_conformance": (
                 self.prior_conformance.to_dict() if self.prior_conformance else None
             ),
-            "stored_decision": (
-                self.stored_decision.to_dict() if self.stored_decision else None
-            ),
+            "stored_decision": (self.stored_decision.to_dict() if self.stored_decision else None),
         }
 
     def to_json(self) -> str:
@@ -3486,8 +3206,7 @@ class ConformanceReplayPacket:
                 for index, item in enumerate(payload.get("events", ()))
             ),
             evidence=tuple(
-                FormalCompletionEvidence.from_dict(item)
-                for item in payload.get("evidence", ())
+                FormalCompletionEvidence.from_dict(item) for item in payload.get("evidence", ())
             ),
             policy=CompletionPolicy.from_dict(payload.get("policy") or {}),
             binding=ConformanceBinding.from_dict(payload.get("binding") or {}),
@@ -3659,12 +3378,10 @@ def read_conformance_evidence(path: Path | str) -> ConformanceReplayPacket:
             "payload_json FROM formal_conformance_packets ORDER BY packet_id"
         ).fetchall()
         event_rows = connection.execute(
-            "SELECT payload_json FROM formal_conformance_events "
-            "ORDER BY sequence, event_id"
+            "SELECT payload_json FROM formal_conformance_events ORDER BY sequence, event_id"
         ).fetchall()
         evidence_rows = connection.execute(
-            "SELECT payload_json FROM formal_completion_evidence "
-            "ORDER BY evidence_id"
+            "SELECT payload_json FROM formal_completion_evidence ORDER BY evidence_id"
         ).fetchall()
     finally:
         connection.close()
@@ -3680,25 +3397,18 @@ def read_conformance_evidence(path: Path | str) -> ConformanceReplayPacket:
         packet.plan.plan_id,
         packet.policy.policy_id,
         packet.binding.binding_id,
-        (
-            (packet.stored_decision or packet.evaluate()).conformance.verdict.value
-        ),
+        ((packet.stored_decision or packet.evaluate()).conformance.verdict.value),
     )
     if tuple(indexed[:6]) != expected_index:
         raise ConformanceValidationError(
             "DuckDB conformance packet indexes do not match canonical payload"
         )
-    stored_events = tuple(
-        CanonicalExecutionEvent.from_json(row[0]) for row in event_rows
-    )
-    stored_evidence = tuple(
-        FormalCompletionEvidence.from_json(row[0]) for row in evidence_rows
-    )
-    if (
-        tuple(item.execution_event_id for item in stored_events)
-        != tuple(item.execution_event_id for item in packet.events)
-        or tuple(item.evidence_id for item in stored_evidence)
-        != tuple(item.evidence_id for item in packet.evidence)
+    stored_events = tuple(CanonicalExecutionEvent.from_json(row[0]) for row in event_rows)
+    stored_evidence = tuple(FormalCompletionEvidence.from_json(row[0]) for row in evidence_rows)
+    if tuple(item.execution_event_id for item in stored_events) != tuple(
+        item.execution_event_id for item in packet.events
+    ) or tuple(item.evidence_id for item in stored_evidence) != tuple(
+        item.evidence_id for item in packet.evidence
     ):
         raise ConformanceValidationError(
             "DuckDB conformance projections do not match canonical payload"
@@ -3734,9 +3444,7 @@ class PlanConformanceEvidenceStore:
         *,
         include_decision: bool = True,
     ) -> Path:
-        return write_conformance_evidence(
-            self.path, packet, include_decision=include_decision
-        )
+        return write_conformance_evidence(self.path, packet, include_decision=include_decision)
 
     save = write
 
@@ -3745,12 +3453,8 @@ class PlanConformanceEvidenceStore:
 
     load = read
 
-    def replay(
-        self, *, verify_stored: bool = True
-    ) -> FormalGoalCompletionDecision:
-        return replay_conformance_evidence(
-            self.path, verify_stored=verify_stored
-        )
+    def replay(self, *, verify_stored: bool = True) -> FormalGoalCompletionDecision:
+        return replay_conformance_evidence(self.path, verify_stored=verify_stored)
 
 
 replay_plan_conformance = replay_conformance_evidence

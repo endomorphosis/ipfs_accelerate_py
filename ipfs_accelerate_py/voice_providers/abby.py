@@ -51,9 +51,7 @@ _SECRET_PATTERN = re.compile(
     r"(?:api[_-]?key|token|authorization|secret)\s*[=:]\s*)"
     r"[^\s,;\"']+"
 )
-_QUERY_SECRET_PATTERN = re.compile(
-    r"(?i)([?&](?:api[_-]?key|token|access_token|secret)=)[^&#\s]+"
-)
+_QUERY_SECRET_PATTERN = re.compile(r"(?i)([?&](?:api[_-]?key|token|access_token|secret)=)[^&#\s]+")
 
 
 def _safe_error_text(
@@ -68,11 +66,7 @@ def _safe_error_text(
     message = _QUERY_SECRET_PATTERN.sub(r"\1[redacted]", message)
     for sensitive in sensitive_values:
         if isinstance(sensitive, bytes):
-            sample = (
-                sensitive
-                if len(sensitive) <= 8192
-                else sensitive[:4096] + sensitive[-4096:]
-            )
+            sample = sensitive if len(sensitive) <= 8192 else sensitive[:4096] + sensitive[-4096:]
             decoded = sample.decode("utf-8", errors="ignore")
             fragments = re.findall(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{7,}", decoded)
         else:
@@ -133,9 +127,7 @@ class HTTPRequest:
         object.__setattr__(
             self,
             "headers",
-            MappingProxyType(
-                {str(key): str(value) for key, value in dict(self.headers).items()}
-            ),
+            MappingProxyType({str(key): str(value) for key, value in dict(self.headers).items()}),
         )
 
 
@@ -155,10 +147,7 @@ class HTTPResponse:
             self,
             "headers",
             MappingProxyType(
-                {
-                    str(key).lower(): str(value)
-                    for key, value in dict(self.headers).items()
-                }
+                {str(key).lower(): str(value) for key, value in dict(self.headers).items()}
             ),
         )
 
@@ -226,14 +215,10 @@ class AbbyResiliencePolicy:
         for name, value in numeric.items():
             object.__setattr__(self, name, value)
         object.__setattr__(self, "max_retries", int(self.max_retries))
-        object.__setattr__(
-            self, "circuit_failure_threshold", int(self.circuit_failure_threshold)
-        )
+        object.__setattr__(self, "circuit_failure_threshold", int(self.circuit_failure_threshold))
 
     @classmethod
-    def from_environment(
-        cls, *, operation: str, default_timeout: float
-    ) -> "AbbyResiliencePolicy":
+    def from_environment(cls, *, operation: str, default_timeout: float) -> "AbbyResiliencePolicy":
         """Build policy from common and operation-specific Abby settings."""
         prefix = f"IPFS_ACCELERATE_PY_ABBY_{operation.upper()}"
 
@@ -367,9 +352,7 @@ class AbbyCircuitOpenError(AbbyProviderError):
 def _safe_endpoint(endpoint: str) -> str:
     parsed = urllib.parse.urlsplit(str(endpoint))
     if parsed.scheme and parsed.netloc:
-        return urllib.parse.urlunsplit(
-            (parsed.scheme, parsed.netloc, parsed.path, "", "")
-        )
+        return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
     return _safe_error_text(endpoint, limit=160)
 
 
@@ -473,9 +456,7 @@ class _ResilientHTTPProvider:
         self._transport = transport or _urllib_transport
         self._sleeper = sleeper
         self._clock = clock
-        self._circuits = {
-            endpoint: _CircuitBreaker(policy, clock) for endpoint in self.endpoints
-        }
+        self._circuits = {endpoint: _CircuitBreaker(policy, clock) for endpoint in self.endpoints}
         self.last_receipt: Optional[AbbyProviderReceipt] = None
 
     @property
@@ -620,7 +601,7 @@ class _ResilientHTTPProvider:
                     delay = min(
                         self.policy.max_backoff_seconds,
                         self.policy.backoff_seconds
-                        * (self.policy.backoff_multiplier ** attempt_index),
+                        * (self.policy.backoff_multiplier**attempt_index),
                     )
                     if delay > 0:
                         self._sleeper(delay)
@@ -663,9 +644,7 @@ def _json_mapping(response: HTTPResponse, *, provider: str) -> Mapping[str, obje
     return value
 
 
-def _nested_value(
-    value: object, keys: Sequence[str], *, max_depth: int = 8
-) -> Optional[object]:
+def _nested_value(value: object, keys: Sequence[str], *, max_depth: int = 8) -> Optional[object]:
     if max_depth < 0:
         return None
     if isinstance(value, Mapping):
@@ -684,9 +663,7 @@ def _nested_value(
             "chunks",
         ):
             if container in value:
-                candidate = _nested_value(
-                    value[container], keys, max_depth=max_depth - 1
-                )
+                candidate = _nested_value(value[container], keys, max_depth=max_depth - 1)
                 if candidate is not None:
                     return candidate
     elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
@@ -728,9 +705,7 @@ class IndexTTSHTTPProvider(_ResilientHTTPProvider):
         super().__init__(
             endpoints,
             policy=policy
-            or AbbyResiliencePolicy.from_environment(
-                operation="indextts", default_timeout=45.0
-            ),
+            or AbbyResiliencePolicy.from_environment(operation="indextts", default_timeout=45.0),
             transport=transport,
             sleeper=sleeper,
             clock=clock,
@@ -740,12 +715,8 @@ class IndexTTSHTTPProvider(_ResilientHTTPProvider):
         self.default_model = str(default_model or "").strip()
 
     @classmethod
-    def from_environment(
-        cls, **overrides: object
-    ) -> "IndexTTSHTTPProvider":
-        configured = _split_urls(
-            os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_URLS", "")
-        )
+    def from_environment(cls, **overrides: object) -> "IndexTTSHTTPProvider":
+        configured = _split_urls(os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_URLS", ""))
         if not configured:
             configured = _normalized_urls(
                 (
@@ -775,9 +746,7 @@ class IndexTTSHTTPProvider(_ResilientHTTPProvider):
 
     def _configuration_identity(self) -> object:
         token_digest = (
-            hashlib.sha256(self._token.encode("utf-8")).hexdigest()[:12]
-            if self._token
-            else ""
+            hashlib.sha256(self._token.encode("utf-8")).hexdigest()[:12] if self._token else ""
         )
         return (self.default_model, token_digest, self._bill_to)
 
@@ -874,9 +843,7 @@ class IndexTTSHTTPProvider(_ResilientHTTPProvider):
                         code="invalid_remote_response",
                     )
                 return audio
-            audio_url = _nested_value(
-                value, ("audioUrl", "audio_url", "download_url", "url")
-            )
+            audio_url = _nested_value(value, ("audioUrl", "audio_url", "download_url", "url"))
             if isinstance(audio_url, str) and audio_url.strip():
                 resolved = urllib.parse.urljoin(endpoint + "/", audio_url.strip())
                 source = urllib.parse.urlsplit(endpoint)
@@ -893,11 +860,7 @@ class IndexTTSHTTPProvider(_ResilientHTTPProvider):
                         resolved,
                         {
                             "Accept": "audio/*, application/octet-stream",
-                            **(
-                                {"Authorization": "Bearer " + self._token}
-                                if self._token
-                                else {}
-                            ),
+                            **({"Authorization": "Bearer " + self._token} if self._token else {}),
                         },
                     ),
                     self.policy.timeout_seconds,
@@ -1003,9 +966,7 @@ class HuggingFaceWhisperHTTPProvider(_ResilientHTTPProvider):
         super().__init__(
             endpoints,
             policy=policy
-            or AbbyResiliencePolicy.from_environment(
-                operation="whisper", default_timeout=45.0
-            ),
+            or AbbyResiliencePolicy.from_environment(operation="whisper", default_timeout=45.0),
             transport=transport,
             sleeper=sleeper,
             clock=clock,
@@ -1015,12 +976,8 @@ class HuggingFaceWhisperHTTPProvider(_ResilientHTTPProvider):
         self.default_model = str(default_model or "").strip()
 
     @classmethod
-    def from_environment(
-        cls, **overrides: object
-    ) -> "HuggingFaceWhisperHTTPProvider":
-        configured = _split_urls(
-            os.getenv("IPFS_ACCELERATE_PY_ABBY_WHISPER_URLS", "")
-        )
+    def from_environment(cls, **overrides: object) -> "HuggingFaceWhisperHTTPProvider":
+        configured = _split_urls(os.getenv("IPFS_ACCELERATE_PY_ABBY_WHISPER_URLS", ""))
         if not configured:
             base = os.getenv(
                 "IPFS_ACCELERATE_PY_ABBY_WHISPER_BASE_URL",
@@ -1053,9 +1010,7 @@ class HuggingFaceWhisperHTTPProvider(_ResilientHTTPProvider):
 
     def _configuration_identity(self) -> object:
         token_digest = (
-            hashlib.sha256(self._token.encode("utf-8")).hexdigest()[:12]
-            if self._token
-            else ""
+            hashlib.sha256(self._token.encode("utf-8")).hexdigest()[:12] if self._token else ""
         )
         return (self.default_model, token_digest, self._bill_to)
 
@@ -1103,9 +1058,7 @@ class HuggingFaceWhisperHTTPProvider(_ResilientHTTPProvider):
         if not selected_model:
             raise ValueError("Whisper model name is required")
         selected_content_type = str(
-            content_type
-            or mimetypes.guess_type(path or "")[0]
-            or "audio/wav"
+            content_type or mimetypes.guess_type(path or "")[0] or "audio/wav"
         ).strip()
 
         def request_factory(endpoint: str) -> HTTPRequest:

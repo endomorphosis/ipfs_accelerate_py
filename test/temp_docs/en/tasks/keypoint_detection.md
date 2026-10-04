@@ -29,6 +29,7 @@ For this tutorial, we will use [SuperPoint](../model_doc/superpoint.md), a found
 
 ```python
 from transformers import AutoImageProcessor, SuperPointForKeypointDetection
+
 processor = AutoImageProcessor.from_pretrained("magic-leap-community/superpoint")
 model = SuperPointForKeypointDetection.from_pretrained("magic-leap-community/superpoint")
 ```
@@ -52,9 +53,13 @@ import requests
 import cv2
 
 
-url_image_1 = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/bee.jpg"
+url_image_1 = (
+    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/bee.jpg"
+)
 image_1 = Image.open(requests.get(url_image_1, stream=True).raw)
-url_image_2 = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/cats.png"
+url_image_2 = (
+    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/cats.png"
+)
 image_2 = Image.open(requests.get(url_image_2, stream=True).raw)
 
 images = [image_1, image_2]
@@ -63,7 +68,7 @@ images = [image_1, image_2]
 We can now process our inputs and infer.
 
 ```python
-inputs = processor(images,return_tensors="pt").to(model.device, model.dtype)
+inputs = processor(images, return_tensors="pt").to(model.device, model.dtype)
 outputs = model(**inputs)
 ```
 
@@ -121,24 +126,18 @@ import matplotlib.pyplot as plt
 import torch
 
 for i in range(len(images)):
-  keypoints = outputs[i]["keypoints"]
-  scores = outputs[i]["scores"]
-  descriptors = outputs[i]["descriptors"]
-  keypoints = outputs[i]["keypoints"].detach().numpy()
-  scores = outputs[i]["scores"].detach().numpy()
-  image = images[i]
-  image_width, image_height = image.size
+    keypoints = outputs[i]["keypoints"]
+    scores = outputs[i]["scores"]
+    descriptors = outputs[i]["descriptors"]
+    keypoints = outputs[i]["keypoints"].detach().numpy()
+    scores = outputs[i]["scores"].detach().numpy()
+    image = images[i]
+    image_width, image_height = image.size
 
-  plt.axis('off')
-  plt.imshow(image)
-  plt.scatter(
-      keypoints[:, 0],
-      keypoints[:, 1],
-      s=scores * 100,
-      c='cyan',
-      alpha=0.4
-  )
-  plt.show()
+    plt.axis("off")
+    plt.imshow(image)
+    plt.scatter(keypoints[:, 0], keypoints[:, 1], s=scores * 100, c="cyan", alpha=0.4)
+    plt.show()
 ```
 
 Below you can see the outputs.

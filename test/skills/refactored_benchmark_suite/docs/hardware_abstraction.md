@@ -154,23 +154,24 @@ To add support for a new hardware platform:
 ```python
 from hardware.base import HardwareBackend
 
+
 class NewHardwareBackend(HardwareBackend):
     name = "new_hardware"
-    
+
     @classmethod
     def is_available(cls) -> bool:
         # Implement availability check
         return False
-    
+
     @classmethod
     def get_info(cls) -> Dict[str, Any]:
         # Implement info retrieval
         return {"available": cls.is_available()}
-    
+
     def initialize(self) -> Any:
         # Implement initialization
         return None
-    
+
     def cleanup(self) -> None:
         # Implement cleanup
         pass

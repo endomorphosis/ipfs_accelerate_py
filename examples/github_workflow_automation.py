@@ -25,7 +25,7 @@ def main():
     print("GitHub Workflow Queue Management Example")
     print("=" * 80)
     print()
-    
+
     # Step 1: Initialize GitHub CLI
     print("Step 1: Initializing GitHub CLI...")
     try:
@@ -37,7 +37,7 @@ def main():
         print("  1. GitHub CLI is installed (gh)")
         print("  2. You are authenticated (gh auth login)")
         return 1
-    
+
     # Check authentication
     print("\nStep 2: Checking authentication...")
     auth_status = gh.get_auth_status()
@@ -47,7 +47,7 @@ def main():
         print("✗ Not authenticated with GitHub")
         print("  Run: gh auth login")
         return 1
-    
+
     # Step 3: List recent repositories (optional)
     print("\nStep 3: Listing repositories...")
     repos = gh.list_repos(limit=5)
@@ -57,44 +57,46 @@ def main():
         name = repo["name"]
         updated = repo["updatedAt"]
         print(f"  - {owner}/{name} (updated: {updated})")
-    
+
     # Step 4: Create workflow queues
     print("\nStep 4: Creating workflow queues for repos updated in last day...")
     queue_mgr = WorkflowQueue(gh)
-    
+
     # Get repos with recent activity
     recent_repos = queue_mgr.get_repos_with_recent_activity(since_days=1)
     print(f"✓ Found {len(recent_repos)} repositories with recent activity")
-    
+
     if not recent_repos:
         print("\nNo repositories with recent activity found.")
         print("This example requires repositories that were updated in the last 24 hours.")
         return 0
-    
+
     # Create queues for these repos
     queues = queue_mgr.create_workflow_queues(since_days=1)
     print(f"✓ Created workflow queues for {len(queues)} repositories")
-    
+
     # Display queue statistics
     print("\nWorkflow Queue Statistics:")
     print("-" * 80)
     total_workflows = 0
     total_running = 0
     total_failed = 0
-    
+
     for repo, workflows in queues.items():
         running = sum(1 for w in workflows if w.get("status") == "in_progress")
-        failed = sum(1 for w in workflows if w.get("conclusion") in ["failure", "timed_out", "cancelled"])
-        
+        failed = sum(
+            1 for w in workflows if w.get("conclusion") in ["failure", "timed_out", "cancelled"]
+        )
+
         total_workflows += len(workflows)
         total_running += running
         total_failed += failed
-        
+
         print(f"\n{repo}:")
         print(f"  Total workflows: {len(workflows)}")
         print(f"  Running: {running}")
         print(f"  Failed: {failed}")
-        
+
         # Show some workflow details
         if workflows:
             print("  Recent workflows:")
@@ -103,24 +105,24 @@ def main():
                 conclusion = workflow.get("conclusion", "pending")
                 name = workflow.get("workflowName", workflow.get("name", "Unknown"))
                 print(f"    - {name}: {status}/{conclusion}")
-    
+
     print("\n" + "-" * 80)
     print(f"Total: {total_workflows} workflows ({total_running} running, {total_failed} failed)")
-    
+
     # Step 5: Provision runners
     print("\nStep 5: Provisioning self-hosted runners...")
     runner_mgr = RunnerManager(gh)
-    
+
     # Get system capacity
     cores = runner_mgr.get_system_cores()
     print(f"✓ System has {cores} CPU cores")
-    
+
     # Provision runners (limit to available cores)
     print(f"\nProvisioning up to {cores} runners based on workflow load...")
     provisioning = runner_mgr.provision_runners_for_queue(queues, max_runners=cores)
-    
+
     print(f"✓ Provisioned {len(provisioning)} runner registration tokens")
-    
+
     # Display provisioning results
     print("\nProvisioning Results:")
     print("-" * 80)
@@ -134,28 +136,28 @@ def main():
         else:
             print(f"\n✗ {repo}:")
             print(f"  Error: {status.get('error', 'Unknown error')}")
-    
+
     # Step 6: Save results
     print("\nStep 6: Saving results to JSON files...")
-    
+
     # Save workflow queues
     with open("/tmp/workflow_queues.json", "w") as f:
         json.dump(queues, f, indent=2, default=str)
     print("✓ Saved workflow queues to /tmp/workflow_queues.json")
-    
+
     # Save provisioning results
     with open("/tmp/runner_tokens.json", "w") as f:
         # Don't save full tokens for security
         sanitized = {
             repo: {
                 **status,
-                "token": status.get("token", "")[:20] + "..." if status.get("token") else None
+                "token": status.get("token", "")[:20] + "..." if status.get("token") else None,
             }
             for repo, status in provisioning.items()
         }
         json.dump(sanitized, f, indent=2)
     print("✓ Saved provisioning results to /tmp/runner_tokens.json")
-    
+
     # Summary
     print("\n" + "=" * 80)
     print("Summary")
@@ -172,7 +174,7 @@ def main():
     print("   - /tmp/workflow_queues.json")
     print("   - /tmp/runner_tokens.json")
     print()
-    
+
     return 0
 
 

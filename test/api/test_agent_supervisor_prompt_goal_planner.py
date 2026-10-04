@@ -234,29 +234,20 @@ def test_provider_request_is_canonical_body_free_bounded_and_handle_only() -> No
         },
         constraint_summaries={
             "allowed_paths": ["pkg"],
-            "protected_paths": [
-                "docs/architecture/agent_supervisor_self_improvement.todo.md"
-            ],
+            "protected_paths": ["docs/architecture/agent_supervisor_self_improvement.todo.md"],
             "policy_roots": [request.policy_root],
         },
     )
     payload = json.loads(prompt)
 
-    assert prompt == json.dumps(
-        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    )
+    assert prompt == json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     assert payload["schema"] == PROMPT_GOAL_PROVIDER_REQUEST_SCHEMA
     assert payload["response_schema"]["$id"] == PROMPT_GOAL_PROPOSAL_SCHEMA
     assert payload["response_schema"]["additionalProperties"] is False
     assert payload["response_schema"]["properties"]["goals"]["maxItems"] == (
         request.budget.max_goals
     )
-    assert (
-        payload["response_schema"]["definitions"]["task"][
-            "additionalProperties"
-        ]
-        is False
-    )
+    assert payload["response_schema"]["definitions"]["task"]["additionalProperties"] is False
     assert payload["request_core"]["request_cid"] == request.request_cid
     assert payload["request_core"]["scan_cid"] == scan.scan_cid
     assert payload["constraints"]["completion_authoritative"] is False
@@ -290,9 +281,7 @@ def test_strict_provider_graph_compiles_local_dependencies_to_canonical_cids() -
         request.legal_ir_root,
         request.security_ir_root,
     }
-    assert PromptGoalGraph.from_json(graph.to_json()).plan_root_cid == (
-        graph.plan_root_cid
-    )
+    assert PromptGoalGraph.from_json(graph.to_json()).plan_root_cid == (graph.plan_root_cid)
 
 
 def test_provider_success_emits_complete_hash_only_receipt() -> None:
@@ -453,9 +442,7 @@ def test_prose_wrappers_duplicate_keys_cycles_and_protected_paths_are_rejected()
     protected["tasks"] = [
         {
             **protected["tasks"][0],
-            "scope_paths": [
-                "pkg/agent_supervisor_self_improvement.todo.md"
-            ],
+            "scope_paths": ["pkg/agent_supervisor_self_improvement.todo.md"],
             "outputs": [
                 {
                     "path": "pkg/agent_supervisor_self_improvement.todo.md",
@@ -463,9 +450,7 @@ def test_prose_wrappers_duplicate_keys_cycles_and_protected_paths_are_rejected()
                     "media_type": "text/markdown",
                 }
             ],
-            "predicted_files": [
-                "pkg/agent_supervisor_self_improvement.todo.md"
-            ],
+            "predicted_files": ["pkg/agent_supervisor_self_improvement.todo.md"],
         }
     ]
     config = PromptGoalPlannerConfig(
@@ -571,15 +556,11 @@ def test_policy_disabled_path_is_provider_free_and_deterministic() -> None:
     [
         (lambda _prompt: "not-json", "malformed"),
         (
-            lambda _prompt: (_ for _ in ()).throw(
-                ModuleNotFoundError("llm_router unavailable")
-            ),
+            lambda _prompt: (_ for _ in ()).throw(ModuleNotFoundError("llm_router unavailable")),
             "unavailable",
         ),
         (
-            lambda _prompt: (_ for _ in ()).throw(
-                RuntimeError("llm_router child timed out")
-            ),
+            lambda _prompt: (_ for _ in ()).throw(RuntimeError("llm_router child timed out")),
             "timeout",
         ),
     ],
@@ -635,34 +616,23 @@ def test_fallback_is_schema_equivalent_and_bounded_under_tenfold_irrelevant_grow
         max_selected_evidence=4,
     )
 
-    small_prompt = build_prompt_goal_provider_request(
-        request, small, config=config
-    )
-    large_prompt = build_prompt_goal_provider_request(
-        request, large, config=config
-    )
-    small_graph = deterministic_prompt_goal_graph(
-        request, small, config=config
-    )
-    large_graph = deterministic_prompt_goal_graph(
-        request, large, config=config
-    )
+    small_prompt = build_prompt_goal_provider_request(request, small, config=config)
+    large_prompt = build_prompt_goal_provider_request(request, large, config=config)
+    small_graph = deterministic_prompt_goal_graph(request, small, config=config)
+    large_graph = deterministic_prompt_goal_graph(request, large, config=config)
 
     assert len(small_prompt.encode()) <= config.max_provider_request_bytes
     assert len(large_prompt.encode()) <= config.max_provider_request_bytes
     assert len(large_prompt) <= len(small_prompt) + 256
     assert len(json.loads(large_prompt)["evidence_handles"]) <= 4
     assert (
-        json.loads(small_prompt)["evidence_handles"]
-        == json.loads(large_prompt)["evidence_handles"]
+        json.loads(small_prompt)["evidence_handles"] == json.loads(large_prompt)["evidence_handles"]
     )
     assert PromptGoalGraph.from_json(small_graph.to_json())
     assert PromptGoalGraph.from_json(large_graph.to_json())
     assert small_graph.root_goal.objective == large_graph.root_goal.objective
     assert small_graph.tasks[0].objective == large_graph.tasks[0].objective
-    assert small_graph.tasks[0].predicted_files == (
-        large_graph.tasks[0].predicted_files
-    )
+    assert small_graph.tasks[0].predicted_files == (large_graph.tasks[0].predicted_files)
 
 
 def test_constraint_command_allowlist_is_exact_when_pinned() -> None:
@@ -670,9 +640,7 @@ def test_constraint_command_allowlist_is_exact_when_pinned() -> None:
     scan = _scan(request)
     constraints = {
         "allowed_paths": ["pkg"],
-        "validation_commands": [
-            ["python", "-m", "pytest", "pkg/tests", "-q"]
-        ],
+        "validation_commands": [["python", "-m", "pytest", "pkg/tests", "-q"]],
     }
     accepted = parse_prompt_goal_graph(
         _encoded_proposal(scan),

@@ -62,10 +62,10 @@ To enable dashboard integration, use the following constructor parameters:
 ```python
 connector = ValidationVisualizerDBConnector(
     db_integration=db_integration,  # Optional, will create one if not provided
-    visualizer=visualizer,          # Optional, will create one if not provided
-    dashboard_integration=True,     # Enable dashboard integration
+    visualizer=visualizer,  # Optional, will create one if not provided
+    dashboard_integration=True,  # Enable dashboard integration
     dashboard_url="http://dashboard.example.com/api",  # Dashboard API URL
-    dashboard_api_key="your_api_key_here"             # API key for authentication
+    dashboard_api_key="your_api_key_here",  # API key for authentication
 )
 ```
 
@@ -75,7 +75,7 @@ You can also use the simplified constructor with just the dashboard information:
 connector = ValidationVisualizerDBConnector(
     dashboard_integration=True,
     dashboard_url="http://localhost:8080/dashboard",
-    dashboard_api_key="your_api_key"
+    dashboard_api_key="your_api_key",
 )
 ```
 
@@ -93,8 +93,8 @@ result = connector.create_dashboard_panel_from_db(
     dashboard_id="my_dashboard",
     panel_title="MAPE Comparison",
     refresh_interval=60,  # Refresh every 60 seconds
-    width=6,              # Width in grid units
-    height=4              # Height in grid units
+    width=6,  # Width in grid units
+    height=4,  # Height in grid units
 )
 
 # Check result
@@ -120,7 +120,7 @@ mape_panel = connector.create_dashboard_panel_from_db(
     model_type="bert-base-uncased",
     metric="throughput_items_per_second",
     dashboard_id="performance_dashboard",
-    panel_title="BERT GPU Throughput MAPE"
+    panel_title="BERT GPU Throughput MAPE",
 )
 
 # Create a hardware heatmap panel
@@ -129,7 +129,7 @@ heatmap_panel = connector.create_dashboard_panel_from_db(
     model_type="bert-base-uncased",
     metric="average_latency_ms",
     dashboard_id="performance_dashboard",
-    panel_title="BERT Latency Across Hardware"
+    panel_title="BERT Latency Across Hardware",
 )
 
 # Create a time series panel
@@ -139,7 +139,7 @@ time_series_panel = connector.create_dashboard_panel_from_db(
     model_type="bert-base-uncased",
     metric="throughput_mape",
     dashboard_id="performance_dashboard",
-    panel_title="BERT GPU MAPE Over Time"
+    panel_title="BERT GPU MAPE Over Time",
 )
 ```
 
@@ -155,14 +155,14 @@ result = connector.create_comprehensive_monitoring_dashboard(
     dashboard_title="BERT GPU Monitoring Dashboard",
     dashboard_description="Comprehensive monitoring of BERT model on RTX 3080",
     refresh_interval=60,  # Default refresh interval for panels
-    include_panels=[      # List of panel types to include
+    include_panels=[  # List of panel types to include
         "mape_comparison",
         "hardware_heatmap",
         "time_series",
-        "simulation_vs_hardware", 
+        "simulation_vs_hardware",
         "drift_detection",
-        "calibration_effectiveness"
-    ]
+        "calibration_effectiveness",
+    ],
 )
 
 # Access the dashboard URL
@@ -180,7 +180,7 @@ The comprehensive dashboard creates a visually integrated view with optimized la
 hardware_dashboard = connector.create_comprehensive_monitoring_dashboard(
     dashboard_title="Hardware Comparison Dashboard",
     include_panels=["hardware_heatmap", "simulation_vs_hardware"],
-    refresh_interval=300  # 5 minutes
+    refresh_interval=300,  # 5 minutes
 )
 
 # Create a dashboard focused on drift detection
@@ -189,7 +189,7 @@ drift_dashboard = connector.create_comprehensive_monitoring_dashboard(
     model_type="bert-base-uncased",
     dashboard_title="BERT GPU Drift Monitoring",
     include_panels=["drift_detection", "time_series", "calibration_effectiveness"],
-    refresh_interval=600  # 10 minutes
+    refresh_interval=600,  # 10 minutes
 )
 
 # Create a dashboard for a specific model family
@@ -197,7 +197,7 @@ model_dashboard = connector.create_comprehensive_monitoring_dashboard(
     model_type="vit-base-patch16-224",
     dashboard_title="ViT Model Family Dashboard",
     include_panels=["mape_comparison", "hardware_heatmap"],
-    refresh_interval=1800  # 30 minutes
+    refresh_interval=1800,  # 30 minutes
 )
 ```
 
@@ -216,9 +216,9 @@ result = connector.set_up_real_time_monitoring(
         "throughput_mape": 15.0,  # Alert if MAPE exceeds 15%
         "latency_mape": 15.0,
         "memory_mape": 20.0,
-        "power_mape": 25.0
+        "power_mape": 25.0,
     },
-    dashboard_id="my_dashboard"  # Add monitoring panels to existing dashboard
+    dashboard_id="my_dashboard",  # Add monitoring panels to existing dashboard
 )
 
 print(f"Monitoring job created: {result['monitoring_job_id']}")
@@ -234,7 +234,7 @@ This creates time series panels for each monitored metric and configures alerts 
 dashboard_result = connector.create_comprehensive_monitoring_dashboard(
     hardware_type="gpu_rtx3080",
     model_type="bert-base-uncased",
-    dashboard_title="BERT GPU Real-Time Monitoring"
+    dashboard_title="BERT GPU Real-Time Monitoring",
 )
 
 # Set up different monitoring configurations
@@ -245,7 +245,7 @@ throughput_monitoring = connector.set_up_real_time_monitoring(
     metrics=["throughput_mape"],
     monitoring_interval=300,  # 5 minutes
     alert_thresholds={"throughput_mape": 10.0},  # Lower threshold for high priority
-    dashboard_id=dashboard_result["dashboard_id"]
+    dashboard_id=dashboard_result["dashboard_id"],
 )
 
 # 2. Memory and power monitoring with lower priority (checked every 15 minutes)
@@ -255,7 +255,7 @@ resource_monitoring = connector.set_up_real_time_monitoring(
     metrics=["memory_mape", "power_mape"],
     monitoring_interval=900,  # 15 minutes
     alert_thresholds={"memory_mape": 20.0, "power_mape": 25.0},
-    dashboard_id=dashboard_result["dashboard_id"]
+    dashboard_id=dashboard_result["dashboard_id"],
 )
 
 # 3. Drift monitoring for long-term trends (checked hourly)
@@ -265,7 +265,7 @@ drift_monitoring = connector.set_up_real_time_monitoring(
     metrics=["overall_accuracy_score"],
     monitoring_interval=3600,  # 1 hour
     alert_thresholds={"overall_accuracy_score": 15.0},
-    dashboard_id=dashboard_result["dashboard_id"]
+    dashboard_id=dashboard_result["dashboard_id"],
 )
 
 # Print next check times
@@ -327,7 +327,7 @@ The dashboard integration includes robust error handling:
 connector = ValidationVisualizerDBConnector(
     dashboard_integration=True,
     dashboard_url="http://dashboard.example.com/api",
-    dashboard_api_key="your_api_key"
+    dashboard_api_key="your_api_key",
 )
 
 # Check connection status
@@ -337,7 +337,7 @@ if not connector.dashboard_connected:
     local_viz_path = connector.create_comprehensive_dashboard_from_db(
         hardware_type="gpu_rtx3080",
         model_type="bert-base-uncased",
-        output_path="./local_dashboard.html"
+        output_path="./local_dashboard.html",
     )
     print(f"Local dashboard created at: {local_viz_path}")
 else:
@@ -345,7 +345,7 @@ else:
     result = connector.create_comprehensive_monitoring_dashboard(
         hardware_type="gpu_rtx3080",
         model_type="bert-base-uncased",
-        dashboard_title="BERT GPU Monitoring Dashboard"
+        dashboard_title="BERT GPU Monitoring Dashboard",
     )
     print(f"Dashboard created at: {result['url']}")
 ```
@@ -376,7 +376,7 @@ The dashboard integration is designed to be lightweight and efficient:
 connector.create_comprehensive_monitoring_dashboard(
     dashboard_title="Simulation Drift Monitoring Dashboard",
     include_panels=["drift_detection", "time_series"],
-    refresh_interval=300  # 5 minutes
+    refresh_interval=300,  # 5 minutes
 )
 ```
 
@@ -387,7 +387,7 @@ connector.create_comprehensive_monitoring_dashboard(
 connector.create_comprehensive_monitoring_dashboard(
     model_type="bert-base-uncased",
     dashboard_title="BERT Model Accuracy Dashboard",
-    include_panels=["hardware_heatmap", "mape_comparison"]
+    include_panels=["hardware_heatmap", "mape_comparison"],
 )
 ```
 
@@ -397,7 +397,7 @@ connector.create_comprehensive_monitoring_dashboard(
 # Create a dashboard comparing simulation accuracy across hardware
 connector.create_comprehensive_monitoring_dashboard(
     dashboard_title="Hardware Simulation Accuracy Comparison",
-    include_panels=["hardware_heatmap", "simulation_vs_hardware"]
+    include_panels=["hardware_heatmap", "simulation_vs_hardware"],
 )
 ```
 
@@ -408,7 +408,7 @@ connector.create_comprehensive_monitoring_dashboard(
 connector.create_comprehensive_monitoring_dashboard(
     dashboard_title="Simulation Calibration Effectiveness",
     include_panels=["calibration_effectiveness", "time_series"],
-    refresh_interval=3600  # 1 hour
+    refresh_interval=3600,  # 1 hour
 )
 ```
 
@@ -423,7 +423,7 @@ for family in model_families:
         model_type=f"{family}-base",
         dashboard_title=f"{family.upper()} Model Family Dashboard",
         include_panels=["mape_comparison", "hardware_heatmap", "drift_detection"],
-        refresh_interval=1800  # 30 minutes
+        refresh_interval=1800,  # 30 minutes
     )
 ```
 
@@ -438,12 +438,12 @@ def test_simulation_vs_hardware():
     connector = ValidationVisualizerDBConnector(
         dashboard_integration=True,
         dashboard_url="http://localhost:8080/dashboard",
-        dashboard_api_key="test_api_key"
+        dashboard_api_key="test_api_key",
     )
-    
+
     # Run test
     test_results = run_simulation_hardware_comparison()
-    
+
     # Create dashboard panel with results
     panel_result = connector.create_dashboard_panel_from_db(
         panel_type="simulation_vs_hardware",
@@ -451,13 +451,13 @@ def test_simulation_vs_hardware():
         model_type="bert-base-uncased",
         metric="throughput_items_per_second",
         dashboard_id="test_results_dashboard",
-        panel_title="Test: Simulation vs Hardware Comparison"
+        panel_title="Test: Simulation vs Hardware Comparison",
     )
-    
+
     # Verify test results and dashboard creation
     assert test_results["accuracy"] > 0.9, "Simulation accuracy below threshold"
     assert panel_result["status"] == "success", "Failed to create dashboard panel"
-    
+
     return panel_result["panel_id"]
 ```
 

@@ -139,7 +139,14 @@ def _seed_repo(tmp_path: Path) -> tuple[Path, Path, Path]:
 """,
         encoding="utf-8",
     )
-    _git(repo, "add", "todo.md", "objective-heap.md", "src/runtime_router.py", "docs/runtime_notes.md")
+    _git(
+        repo,
+        "add",
+        "todo.md",
+        "objective-heap.md",
+        "src/runtime_router.py",
+        "docs/runtime_notes.md",
+    )
     _git(repo, "commit", "-m", "seed objective heap")
     return repo, objective_path, todo_path
 
@@ -183,9 +190,7 @@ def test_goal_heap_parser_preserves_wrapped_fields_across_rewrite():
         "tests/integration/benchmarks/logic_pipeline/test_source_orchestration.py -q"
     )
     assert "production children enforce" in goal.fields["acceptance"]
-    assert goal.fields["gap_task"].endswith(
-        "pass the complete source-safe regression suite."
-    )
+    assert goal.fields["gap_task"].endswith("pass the complete source-safe regression suite.")
 
     rewritten = rewrite_goal_fields(
         objective_text,
@@ -207,9 +212,7 @@ def test_goal_heap_parser_preserves_wrapped_fields_across_rewrite():
         },
     )
     replaced_goal = parse_goal_heap(replaced)[0]
-    assert replaced_goal.fields["goal"] == (
-        "Use the reviewed replacement boundary."
-    )
+    assert replaced_goal.fields["goal"] == ("Use the reviewed replacement boundary.")
     assert "actual environment" not in replaced_goal.fields["goal"]
 
 
@@ -223,8 +226,12 @@ def test_objective_graph_scanner_uses_ast_and_embedding_evidence(tmp_path):
     assert finding.goal_id == "VAIOS-G000"
     assert finding.bundle_key == "objective/ops/root"
     assert finding.missing_evidence == ["missing_meta_glasses_contract"]
-    assert finding.present_evidence["CapabilityRouter.dispatch_task"] == ["src/runtime_router.py (ast)"]
-    assert finding.present_evidence["meta glasses terminal router"][0].startswith("docs/runtime_notes.md (embedding:")
+    assert finding.present_evidence["CapabilityRouter.dispatch_task"] == [
+        "src/runtime_router.py (ast)"
+    ]
+    assert finding.present_evidence["meta glasses terminal router"][0].startswith(
+        "docs/runtime_notes.md (embedding:"
+    )
 
 
 def test_evidence_index_streams_each_direct_source_before_reading_the_next(
@@ -316,12 +323,15 @@ def test_objective_scanner_excludes_sensitive_root_without_reading_it(
     )
     _git(repo, "commit", "-m", "seed private objective evidence")
 
-    assert scan_objective_gaps(
-        repo,
-        objective_path=objective_path,
-        max_findings=1,
-        embedding_min_score=2.0,
-    ) == []
+    assert (
+        scan_objective_gaps(
+            repo,
+            objective_path=objective_path,
+            max_findings=1,
+            embedding_min_score=2.0,
+        )
+        == []
+    )
 
     original_read_text = Path.read_text
     original_read_bytes = Path.read_bytes
@@ -370,9 +380,7 @@ def test_objective_scanner_excludes_sensitive_root_without_reading_it(
 
     assert [finding.goal_id for finding in dataset_findings] == ["TEST-G001"]
     assert dataset_stats["scan_exclude_paths"] == ["private_inputs"]
-    dataset_rows = (
-        dataset_dir / "excluded-root-test.jsonl"
-    ).read_text(encoding="utf-8")
+    dataset_rows = (dataset_dir / "excluded-root-test.jsonl").read_text(encoding="utf-8")
     assert "private_inputs/answer.py" not in dataset_rows
 
     stale_cached_evidence = evidence_index(
@@ -401,14 +409,7 @@ def test_objective_scanner_enforces_source_protected_roots_in_repo_and_submodule
     repo, objective_path, _todo_path = _seed_repo(tmp_path)
     protected_marker = "HSSL_SOURCE_PROTECTED_MARKER"
     artifact_source = repo / "artifacts" / "private_answer.py"
-    fixture_source = (
-        repo
-        / "tests"
-        / "unit_tests"
-        / "ui"
-        / "html_fixtures"
-        / "private_answer.html"
-    )
+    fixture_source = repo / "tests" / "unit_tests" / "ui" / "html_fixtures" / "private_answer.html"
     artifact_source.parent.mkdir()
     fixture_source.parent.mkdir(parents=True)
     artifact_source.write_text(
@@ -428,9 +429,7 @@ def test_objective_scanner_enforces_source_protected_roots_in_repo_and_submodule
     _git(submodule_source, "checkout", "-b", "main")
     _git(submodule_source, "config", "user.name", "Test User")
     _git(submodule_source, "config", "user.email", "test@example.invalid")
-    submodule_fixture = (
-        submodule_source / "tests" / "model_fixtures" / "private_answer.py"
-    )
+    submodule_fixture = submodule_source / "tests" / "model_fixtures" / "private_answer.py"
     submodule_fixture.parent.mkdir(parents=True)
     submodule_fixture.write_text(
         f"def {protected_marker}():\n    return 'private submodule fixture'\n",
@@ -448,12 +447,7 @@ def test_objective_scanner_enforces_source_protected_roots_in_repo_and_submodule
         "vendor/protected-model",
     )
     checked_out_submodule_fixture = (
-        repo
-        / "vendor"
-        / "protected-model"
-        / "tests"
-        / "model_fixtures"
-        / "private_answer.py"
+        repo / "vendor" / "protected-model" / "tests" / "model_fixtures" / "private_answer.py"
     )
     objective_path.write_text(
         f"""# Objective Heap
@@ -512,9 +506,7 @@ def test_objective_scanner_enforces_source_protected_roots_in_repo_and_submodule
     assert findings[0].missing_evidence == [protected_marker]
     assert stats["source_protected_scan_policy"]["deny_symlinks"] is True
     assert "artifacts" in stats["source_protected_scan_policy"]["deny_components"]
-    dataset_rows = (
-        dataset_dir / "source-policy-test.jsonl"
-    ).read_text(encoding="utf-8")
+    dataset_rows = (dataset_dir / "source-policy-test.jsonl").read_text(encoding="utf-8")
     assert "private_answer" not in dataset_rows
 
     explicit_path_evidence = evidence_index(
@@ -523,28 +515,20 @@ def test_objective_scanner_enforces_source_protected_roots_in_repo_and_submodule
         terms=[
             "artifacts/private_answer.py",
             "src/public_answer.py",
-            (
-                "vendor/protected-model/tests/model_fixtures/"
-                "private_answer.py"
-            ),
+            ("vendor/protected-model/tests/model_fixtures/private_answer.py"),
         ],
         records=[],
     )
     assert explicit_path_evidence == {
         "artifacts/private_answer.py": [],
         "src/public_answer.py": [],
-        (
-            "vendor/protected-model/tests/model_fixtures/"
-            "private_answer.py"
-        ): [],
+        ("vendor/protected-model/tests/model_fixtures/private_answer.py"): [],
     }
 
     class ProtectedCachedRow(dict):
         def get(self, key, default=None):
             if key != "root_relative_path":
-                raise AssertionError(
-                    "protected cached evidence was inspected before denial"
-                )
+                raise AssertionError("protected cached evidence was inspected before denial")
             return super().get(key, default)
 
     poisoned_cached_evidence = evidence_index(
@@ -553,14 +537,9 @@ def test_objective_scanner_enforces_source_protected_roots_in_repo_and_submodule
         terms=[protected_marker],
         embedding_min_score=2.0,
         records=[
+            ProtectedCachedRow(root_relative_path="artifacts/private_answer.py"),
             ProtectedCachedRow(
-                root_relative_path="artifacts/private_answer.py"
-            ),
-            ProtectedCachedRow(
-                root_relative_path=(
-                    "vendor/protected-model/tests/model_fixtures/"
-                    "private_answer.py"
-                )
+                root_relative_path=("vendor/protected-model/tests/model_fixtures/private_answer.py")
             ),
         ],
     )
@@ -585,9 +564,7 @@ def test_tracked_file_inventory_failure_never_falls_back_to_filesystem_walk(
         )
 
     def forbidden_filesystem_walk(*_args, **_kwargs):
-        raise AssertionError(
-            "failed tracked-file inventory attempted a filesystem walk"
-        )
+        raise AssertionError("failed tracked-file inventory attempted a filesystem walk")
 
     monkeypatch.setattr(subprocess, "run", failed_git_inventory)
     monkeypatch.setattr(Path, "rglob", forbidden_filesystem_walk)
@@ -622,11 +599,7 @@ def test_ast_dataset_discards_protected_prior_rows_before_blob_reuse(tmp_path):
 
     serialized = json.dumps(rows, sort_keys=True)
     assert protected_marker not in serialized
-    runtime_row = next(
-        row
-        for row in rows
-        if row["root_relative_path"] == "src/runtime_router.py"
-    )
+    runtime_row = next(row for row in rows if row["root_relative_path"] == "src/runtime_router.py")
     assert "CapabilityRouter" in runtime_row["evidence_text"]
 
 
@@ -643,9 +616,7 @@ def test_ast_dataset_recomputes_poisoned_benign_path_and_blob_rows(tmp_path):
             "source_sha1": source_blob,
             "evidence_text": injected_text,
             "symbols_json": json.dumps([injected_symbol]),
-            "document_tokens_json": json.dumps(
-                [injected_text.lower(), injected_symbol.lower()]
-            ),
+            "document_tokens_json": json.dumps([injected_text.lower(), injected_symbol.lower()]),
             "document_embedding_json": json.dumps([1.0]),
             "ast_text": injected_text,
             "parse_elapsed_seconds": 99,
@@ -663,11 +634,7 @@ def test_ast_dataset_recomputes_poisoned_benign_path_and_blob_rows(tmp_path):
     serialized = json.dumps(rows, sort_keys=True)
     assert injected_text not in serialized
     assert injected_symbol not in serialized
-    runtime_row = next(
-        row
-        for row in rows
-        if row["root_relative_path"] == "src/runtime_router.py"
-    )
+    runtime_row = next(row for row in rows if row["root_relative_path"] == "src/runtime_router.py")
     assert "CapabilityRouter" in runtime_row["evidence_text"]
     assert "capabilityrouter" in runtime_row["symbols_json"].lower()
     assert stats["reused_record_count"] == 0
@@ -786,9 +753,7 @@ def test_external_authority_goals_and_descendants_never_generate_local_work(
         objective_path=objective_path,
         completion_decisions=decisions,
     )
-    assert {proposal.parent_goal_id for proposal in proposals} == {
-        "LOCAL-G001"
-    }
+    assert {proposal.parent_goal_id for proposal in proposals} == {"LOCAL-G001"}
     generated_findings = objective_generation_task_findings(
         [proposal.to_dict() for proposal in proposals],
         repo_root=repo,
@@ -810,9 +775,7 @@ def test_external_authority_goals_and_descendants_never_generate_local_work(
             for proposal in proposals
         },
     )
-    assert {finding.goal_id for finding in generated_findings} == {
-        "LOCAL-G001"
-    }
+    assert {finding.goal_id for finding in generated_findings} == {"LOCAL-G001"}
 
     records = generate_objective_todos(
         repo_root=repo,
@@ -825,9 +788,7 @@ def test_external_authority_goals_and_descendants_never_generate_local_work(
         persist_ast_dataset=False,
         write_todo_vector_index=False,
     )
-    assert {record.finding.goal_id for record in records} == {
-        "LOCAL-G001"
-    }
+    assert {record.finding.goal_id for record in records} == {"LOCAL-G001"}
     todo_text = todo_path.read_text(encoding="utf-8")
     assert "HSSL-G202" not in todo_text
     assert "EXT-G001" not in todo_text
@@ -1243,10 +1204,7 @@ def test_objective_finding_task_identity_binds_source_contract_not_alias_or_prov
         "LOCAL-999",
         replace(
             finding,
-            objective_path=(
-                "/tmp/generated-root/discovery/"
-                "WORLDCOIN_HUMAN_AID_OBJECTIVE_HEAP.md"
-            ),
+            objective_path=("/tmp/generated-root/discovery/WORLDCOIN_HUMAN_AID_OBJECTIVE_HEAP.md"),
             outputs=list(reversed(finding.outputs)),
             missing_evidence=["  OBJECTIVE   validation repair  "],
         ),
@@ -1255,10 +1213,7 @@ def test_objective_finding_task_identity_binds_source_contract_not_alias_or_prov
         "WORLDCOIN-AUTO-001",
         replace(
             finding,
-            refinement=(
-                "Inventory Python/PostgreSQL inputs and preserve the "
-                "service boundary."
-            ),
+            refinement=("Inventory Python/PostgreSQL inputs and preserve the service boundary."),
         ),
     )
 
@@ -1475,12 +1430,17 @@ def test_objective_graph_links_persisted_completion_receipts() -> None:
     )
 
     graph = goal_graph(goals)
-    proof = next(node for node in graph["evidence_nodes"] if node.get("kind") == "completion_evidence")
+    proof = next(
+        node for node in graph["evidence_nodes"] if node.get("kind") == "completion_evidence"
+    )
 
     assert proof["producing_task_or_scan"] == "REF-206"
     assert proof["repository_tree"] == "sha256:tree"
     assert proof["provenance_cid"] == "bafy-provenance"
-    assert any(edge["kind"] == "supported_by" and edge["to"] == proof["id"] for edge in graph["evidence_edges"])
+    assert any(
+        edge["kind"] == "supported_by" and edge["to"] == proof["id"]
+        for edge in graph["evidence_edges"]
+    )
 
 
 def _truthful_completion_gate(identity, *, criterion: str, observed_at: str) -> dict[str, object]:
@@ -1634,9 +1594,9 @@ def test_restart_after_legacy_migration_preserves_lineage_quorum_and_dependencie
 
     restarted_graph = goal_graph(restarted_goals)
     assert restarted_graph["terminal_goal_ids"] == ["G10.S4", "G10.S4.1"]
-    assert {tuple((edge["from"], edge["to"], edge["kind"])) for edge in restarted_graph["edges"]} == {
-        ("G10.S4", "G10.S4.1", "refines")
-    }
+    assert {
+        tuple((edge["from"], edge["to"], edge["kind"])) for edge in restarted_graph["edges"]
+    } == {("G10.S4", "G10.S4.1", "refines")}
     proof = next(
         item
         for item in restarted_graph["evidence_nodes"]
@@ -1701,18 +1661,16 @@ def test_restart_after_legacy_migration_preserves_lineage_quorum_and_dependencie
             "source_task_cid": "cid-proof",
             "target_task_cid": "cid-regression",
             "kind": "goal",
-                "provenance": {
-                    "field": "depends_on",
-                    "value": "REF-208",
+            "provenance": {
+                "field": "depends_on",
+                "value": "REF-208",
                 "resolution": "task_alias",
                 "source_task_id": "REF-208",
                 "target_task_id": "REF-212",
             },
         }
     ]
-    restarted_schedule = {
-        row.task_cid: row for row in restarted_dependencies.schedule
-    }
+    restarted_schedule = {row.task_cid: row for row in restarted_dependencies.schedule}
     assert restarted_schedule["cid-proof"].claimable is True
     assert restarted_schedule["cid-regression"].claimable is False
     assert restarted_schedule["cid-regression"].blocking_task_cids == ["cid-proof"]
@@ -1946,22 +1904,28 @@ def test_forced_blocked_goal_materializes_review_only_without_submission_or_lane
     queue = RecordingQueue()
     assert submit_bundle_tasks(index_path, queue=queue) == []
     assert queue.submissions == []
-    assert plan_bundle_lanes(
-        bundle_index_path=index_path,
-        repo_root=repo,
-        state_root=repo / "state",
-        worktree_root=repo / "worktrees",
-        log_dir=repo / "logs",
-        task_prefix="GATE-",
-        implement=True,
-    ) == []
+    assert (
+        plan_bundle_lanes(
+            bundle_index_path=index_path,
+            repo_root=repo,
+            state_root=repo / "state",
+            worktree_root=repo / "worktrees",
+            log_dir=repo / "logs",
+            task_prefix="GATE-",
+            implement=True,
+        )
+        == []
+    )
 
-    assert scan_objective_gaps(
-        repo,
-        objective_path=objective_path,
-        max_findings=1,
-        force_goal_ids=["G-DONE"],
-    ) == []
+    assert (
+        scan_objective_gaps(
+            repo,
+            objective_path=objective_path,
+            max_findings=1,
+            force_goal_ids=["G-DONE"],
+        )
+        == []
+    )
 
 
 def test_forced_blocked_goal_keeps_its_natural_objective_heap_position(tmp_path):
@@ -2115,11 +2079,7 @@ def test_objective_daemon_force_goal_id_projects_37_of_40_terminal_statuses_safe
     index_path = bundle_dir / "index.json"
     index = json.loads(index_path.read_text(encoding="utf-8"))
     indexed_tasks = sorted(
-        (
-            task
-            for bundle in index["bundles"].values()
-            for task in bundle["tasks"]
-        ),
+        (task for bundle in index["bundles"].values() for task in bundle["tasks"]),
         key=lambda task: task["task_id"],
     )
     assert [task["goal_id"] for task in indexed_tasks] == [
@@ -2131,15 +2091,18 @@ def test_objective_daemon_force_goal_id_projects_37_of_40_terminal_statuses_safe
     assert {task["status"] for task in indexed_tasks} == {"blocked"}
     assert all(task["is_schedulable"] is False for task in indexed_tasks)
     assert all(task["review_only"] is True for task in indexed_tasks)
-    assert plan_bundle_lanes(
-        bundle_index_path=index_path,
-        repo_root=repo,
-        state_root=repo / "state" / "lanes",
-        worktree_root=repo / "worktrees",
-        log_dir=repo / "logs",
-        task_prefix="GATE-",
-        implement=True,
-    ) == []
+    assert (
+        plan_bundle_lanes(
+            bundle_index_path=index_path,
+            repo_root=repo,
+            state_root=repo / "state" / "lanes",
+            worktree_root=repo / "worktrees",
+            log_dir=repo / "logs",
+            task_prefix="GATE-",
+            implement=True,
+        )
+        == []
+    )
 
 
 def test_goal_packet_aggregate_does_not_mix_active_and_review_only_scope():
@@ -2178,10 +2141,7 @@ def test_goal_packet_aggregate_does_not_mix_active_and_review_only_scope():
     )
 
     assert findings == [active, review]
-    assert not any(
-        finding.candidate_kind == "goal_packet_aggregate"
-        for finding in findings
-    )
+    assert not any(finding.candidate_kind == "goal_packet_aggregate" for finding in findings)
 
 
 def test_objective_graph_scanner_semantic_ast_bundles_implicit_goals(tmp_path):
@@ -2281,15 +2241,14 @@ def test_goal_packets_respect_explicit_bundles_and_preserve_implicit_grouping():
     packeted = assign_goal_subgoal_packets(explicit_findings)
 
     packets_by_bundle = {
-        bundle_key: {
-            item.goal_packet_key
-            for item in packeted
-            if item.bundle_key == bundle_key
-        }
+        bundle_key: {item.goal_packet_key for item in packeted if item.bundle_key == bundle_key}
         for bundle_key in ("objective/runtime/shard-a", "objective/runtime/shard-b")
     }
     assert all(len(packet_keys) == 1 for packet_keys in packets_by_bundle.values())
-    assert packets_by_bundle["objective/runtime/shard-a"] != packets_by_bundle["objective/runtime/shard-b"]
+    assert (
+        packets_by_bundle["objective/runtime/shard-a"]
+        != packets_by_bundle["objective/runtime/shard-b"]
+    )
     assert {
         tuple(item.goal_packet_goal_ids)
         for item in packeted
@@ -2303,10 +2262,7 @@ def test_goal_packets_respect_explicit_bundles_and_preserve_implicit_grouping():
 
     expanded = add_goal_packet_aggregate_findings(packeted, max_findings=6)
     aggregates = [item for item in expanded if item.candidate_kind == "goal_packet_aggregate"]
-    assert {
-        (item.bundle_key, tuple(item.goal_packet_goal_ids))
-        for item in aggregates
-    } == {
+    assert {(item.bundle_key, tuple(item.goal_packet_goal_ids)) for item in aggregates} == {
         ("objective/runtime/shard-a", ("VAIOS-G101", "VAIOS-G102")),
         ("objective/runtime/shard-b", ("VAIOS-G103", "VAIOS-G104")),
     }
@@ -2356,7 +2312,10 @@ def test_objective_graph_appends_playwright_validation_for_launch_goals(tmp_path
     validation = findings[0].validation
     assert validation.startswith("test -f objective-heap.md && ")
     assert "npm --prefix swissknife run test:e2e:meta-glasses" in validation
-    assert "npm --prefix hallucinate_app run test:e2e -- multimodal-control-surface.spec.ts" in validation
+    assert (
+        "npm --prefix hallucinate_app run test:e2e -- multimodal-control-surface.spec.ts"
+        in validation
+    )
 
 
 def test_objective_graph_generates_forced_launch_validation_gate_when_evidence_present(tmp_path):
@@ -2418,7 +2377,9 @@ def test_objective_graph_generates_forced_launch_validation_gate_when_evidence_p
     assert [finding.goal_id for finding in suppressed] == ["VAIOS-G697"]
 
 
-def test_objective_graph_generates_forced_interoperability_validation_repair_when_evidence_present(tmp_path):
+def test_objective_graph_generates_forced_interoperability_validation_repair_when_evidence_present(
+    tmp_path,
+):
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
@@ -2428,7 +2389,9 @@ def test_objective_graph_generates_forced_interoperability_validation_repair_whe
     objective_path = repo / "objective-heap.md"
     receipt = repo / "docs" / "integration" / "swissknife_mobile.md"
     receipt.parent.mkdir(parents=True)
-    receipt.write_text("swissknife mobile interoperability adapter contract test receipt\n", encoding="utf-8")
+    receipt.write_text(
+        "swissknife mobile interoperability adapter contract test receipt\n", encoding="utf-8"
+    )
     objective_path.write_text(
         """# Objective Heap
 
@@ -2503,7 +2466,9 @@ def test_generate_objective_todos_writes_bundle_shards_and_payloads(tmp_path):
     assert index["bundles"]["objective/ops/root"]["tasks"][0]["task_id"] == "ACCEL-002"
     assert index["task_conflict_graph"]["surfaces"]
     assert index["task_planning_graph"]["planning_decisions"] == []
-    dataset_manifest = bundle_dir.parent / "objective_datasets" / "accel-objective-ast.manifest.json"
+    dataset_manifest = (
+        bundle_dir.parent / "objective_datasets" / "accel-objective-ast.manifest.json"
+    )
     assert dataset_manifest.exists()
     dataset_payload = json.loads(dataset_manifest.read_text(encoding="utf-8"))
     assert dataset_payload["row_count"] >= 2
@@ -2575,9 +2540,7 @@ def test_generate_objective_todos_projects_goal_dependencies_to_task_ids(tmp_pat
     generated = todo_path.read_text(encoding="utf-8")
     assert "- Depends on: ACCEL-001" in generated
     assert "- Depends on: VAIOS-G000" not in generated
-    index = json.loads(
-        (bundle_dir / "index.json").read_text(encoding="utf-8")
-    )
+    index = json.loads((bundle_dir / "index.json").read_text(encoding="utf-8"))
     indexed_task = next(
         task
         for bundle in index["bundles"].values()
@@ -2662,23 +2625,16 @@ def test_manual_review_finding_without_edit_targets_is_visible_but_not_executabl
     )
     assert "- Status: blocked" in manual_block
     assert (
-        "- Blocked reason: manual review required because no precise edit "
-        "targets were authorized"
+        "- Blocked reason: manual review required because no precise edit targets were authorized"
     ) in manual_block
     assert "authorize precise repository-relative edit targets" in manual_block
     assert "- Status: todo" in actionable_block
     assert "- Blocked reason:" not in actionable_block
-    assert all(
-        line == line.rstrip()
-        for line in (manual_block + actionable_block).splitlines()
-    )
+    assert all(line == line.rstrip() for line in (manual_block + actionable_block).splitlines())
 
     index_path = bundle_dir / "index.json"
     index = json.loads(index_path.read_text(encoding="utf-8"))
-    indexed = {
-        task["task_id"]: task
-        for task in index["bundles"]["objective/ops/review"]["tasks"]
-    }
+    indexed = {task["task_id"]: task for task in index["bundles"]["objective/ops/review"]["tasks"]}
     assert indexed["ACCEL-002"]["status"] == "blocked"
     assert indexed["ACCEL-003"].get("status", "todo") == "todo"
 
@@ -2854,10 +2810,12 @@ def test_legacy_atomic_tasks_cover_reordered_aggregate_obligation(tmp_path):
         discovery_dir=discovery_dir,
         bundle_dir=bundle_dir,
         task_prefix="ACCEL-",
-        precomputed_findings=[replace(
-            finding,
-            missing_evidence=list(reversed(finding.missing_evidence)),
-        )],
+        precomputed_findings=[
+            replace(
+                finding,
+                missing_evidence=list(reversed(finding.missing_evidence)),
+            )
+        ],
         persist_ast_dataset=False,
         write_todo_vector_index=False,
     )
@@ -3042,7 +3000,11 @@ def test_persist_objective_ast_dataset_uses_ipfs_datasets_bridge(tmp_path, monke
 
     assert artifact.backend == "ipfs_datasets_py"
     assert artifact.parquet_path is not None and artifact.parquet_path.exists()
-    assert artifact.manager_result == {"location": str(artifact.parquet_path), "format": "parquet", "size": 123}
+    assert artifact.manager_result == {
+        "location": str(artifact.parquet_path),
+        "format": "parquet",
+        "size": 123,
+    }
     assert saved["dataset_id"] == "objective-ast-test"
     assert saved["row_count"] >= 2
 
@@ -3161,15 +3123,18 @@ def test_merge_resolver_configured_callbacks_and_cli(tmp_path, capsys):
     assert payload["found"] is True
     assert "Keep configured blocked_tasks intact" in payload["prompt"]
 
-    assert run_configured_merge_resolver_cli(
-        MergeResolverCliConfig(
-            default_events_path=events_path,
-            default_repo_root=repo,
-            prompt_heading="Resolve the configured merge conflict.",
-            completion_rule="Keep configured blocked_tasks intact until validation passes.",
-        ),
-        ["--task-id", "CUSTOM-002"],
-    ) == 0
+    assert (
+        run_configured_merge_resolver_cli(
+            MergeResolverCliConfig(
+                default_events_path=events_path,
+                default_repo_root=repo,
+                prompt_heading="Resolve the configured merge conflict.",
+                completion_rule="Keep configured blocked_tasks intact until validation passes.",
+            ),
+            ["--task-id", "CUSTOM-002"],
+        )
+        == 0
+    )
     output = json.loads(capsys.readouterr().out)
     assert output["task_id"] == "CUSTOM-002"
     assert "Resolve the configured merge conflict." in output["prompt"]
@@ -3381,9 +3346,7 @@ def test_bundle_payload_admits_only_the_dependency_closed_ready_member_slice(tmp
     }
     index_path.write_text(json.dumps(payload), encoding="utf-8")
 
-    initial = {
-        item["bundle_key"]: item for item in build_bundle_task_payloads(index_path)
-    }
+    initial = {item["bundle_key"]: item for item in build_bundle_task_payloads(index_path)}
     mixed = initial["objective/mixed"]
     assert mixed["claimable"] is True
     assert mixed["ready_member_task_ids"] == ["A"]
@@ -3393,9 +3356,7 @@ def test_bundle_payload_admits_only_the_dependency_closed_ready_member_slice(tmp
 
     payload["bundles"]["objective/mixed"]["tasks"][0]["status"] = "completed"
     index_path.write_text(json.dumps(payload), encoding="utf-8")
-    waiting = {
-        item["bundle_key"]: item for item in build_bundle_task_payloads(index_path)
-    }
+    waiting = {item["bundle_key"]: item for item in build_bundle_task_payloads(index_path)}
     mixed = waiting["objective/mixed"]
     assert mixed["claimable"] is False
     assert mixed["ready_member_task_ids"] == []
@@ -3560,9 +3521,27 @@ def test_bundle_projection_absorbs_internal_cycles_but_keeps_cross_bundle_cycles
 
 def test_task_dependency_dag_requires_successful_merge_receipts_and_scores_critical_path():
     tasks = [
-        {"task_id": "A", "task_cid": "cid-a", "depends_on": [], "priority": "P2", "created_at_ms": 1_000},
-        {"task_id": "B", "task_cid": "cid-b", "depends_on": ["A"], "priority": "P0", "created_at_ms": 2_000},
-        {"task_id": "C", "task_cid": "cid-c", "depends_on": ["B"], "priority": "P1", "created_at_ms": 3_000},
+        {
+            "task_id": "A",
+            "task_cid": "cid-a",
+            "depends_on": [],
+            "priority": "P2",
+            "created_at_ms": 1_000,
+        },
+        {
+            "task_id": "B",
+            "task_cid": "cid-b",
+            "depends_on": ["A"],
+            "priority": "P0",
+            "created_at_ms": 2_000,
+        },
+        {
+            "task_id": "C",
+            "task_cid": "cid-c",
+            "depends_on": ["B"],
+            "priority": "P1",
+            "created_at_ms": 3_000,
+        },
         {"task_id": "D", "task_cid": "cid-d", "priority": "P0", "created_at_ms": 4_000},
     ]
 
@@ -3635,13 +3614,10 @@ def test_external_authority_fence_rejects_local_status_and_merge_receipts(
             }
         },
     )
-    assert duplicate_external.invalid_task_cids == [
-        "cid-duplicate-authority"
-    ]
+    assert duplicate_external.invalid_task_cids == ["cid-duplicate-authority"]
     assert duplicate_external.schedule[0].claimable is False
     assert any(
-        item.kind == "external_authority_required"
-        for item in duplicate_external.repair_evidence
+        item.kind == "external_authority_required" for item in duplicate_external.repair_evidence
     )
 
     tasks = [
@@ -3729,9 +3705,7 @@ def test_external_authority_fence_rejects_local_status_and_merge_receipts(
     assert schedule["cid-legacy-g243-child"].claimable is False
     assert schedule["cid-generic-gate"].claimable is False
     assert schedule["cid-generic-child"].claimable is False
-    assert schedule["cid-generic-child"].blocking_task_cids == [
-        "cid-generic-gate"
-    ]
+    assert schedule["cid-generic-child"].blocking_task_cids == ["cid-generic-gate"]
     assert schedule["cid-independent"].claimable is True
     assert {
         item.task_cid
@@ -3780,9 +3754,7 @@ def test_external_authority_fence_rejects_local_status_and_merge_receipts(
     assert payloads["objective/known"]["claimable"] is False
     assert payloads["objective/generic"]["completed_member_task_ids"] == []
     assert payloads["objective/generic"]["claimable"] is False
-    assert payloads["objective/local"]["ready_member_task_ids"] == [
-        "INDEPENDENT"
-    ]
+    assert payloads["objective/local"]["ready_member_task_ids"] == ["INDEPENDENT"]
     assert payloads["objective/local"]["claimable"] is True
 
 
@@ -3864,8 +3836,7 @@ def test_semantically_conflicting_duplicate_task_cids_fail_closed_in_all_orders(
     assert graph.invalid_task_cids == ["cid-conflicting-duplicate"]
     assert graph.schedule[0].claimable is False
     assert any(
-        repair.kind == "conflicting_duplicate_task_identity"
-        for repair in graph.repair_evidence
+        repair.kind == "conflicting_duplicate_task_identity" for repair in graph.repair_evidence
     )
 
     index_path = tmp_path / f"duplicate-{int(reverse_records)}.json"
@@ -3890,8 +3861,7 @@ def test_semantically_conflicting_duplicate_task_cids_fail_closed_in_all_orders(
     payloads = build_bundle_task_payloads(index_path)
 
     assert all(
-        payload["completed_member_task_ids"] == []
-        and payload["claimable"] is False
+        payload["completed_member_task_ids"] == [] and payload["claimable"] is False
         for payload in payloads
     )
 
@@ -3921,9 +3891,10 @@ def test_semantically_equivalent_duplicate_task_cids_merge_terminal_status(
     assert graph.invalid_task_cids == []
     assert graph.repair_evidence == []
     assert graph.nodes["cid-equivalent-duplicate"].status == "completed"
-    assert graph.nodes["cid-equivalent-duplicate"].metadata[
-        "task_id_aliases"
-    ] == ["ALIAS-COMPLETED", "ALIAS-TODO"]
+    assert graph.nodes["cid-equivalent-duplicate"].metadata["task_id_aliases"] == [
+        "ALIAS-COMPLETED",
+        "ALIAS-TODO",
+    ]
     assert graph.schedule[0].claimable is False
 
 

@@ -45,9 +45,7 @@ def _ttl(value: Any, field: str) -> float:
 def _source(value: Any) -> str:
     # Event construction owns canonical source validation and keeps the two
     # modules on exactly the same source-name contract.
-    return CatalogInvalidationEvent(
-        "registration", source=value
-    ).source  # type: ignore[return-value]
+    return CatalogInvalidationEvent("registration", source=value).source  # type: ignore[return-value]
 
 
 def _view(value: Any) -> CacheView:
@@ -78,9 +76,7 @@ def _wall_timestamp(clock: Callable[[], Any]) -> str:
     if selected.tzinfo is None or selected.utcoffset() is None:
         raise ValueError("wall clock timestamp must be timezone-aware")
     return (
-        selected.astimezone(timezone.utc)
-        .isoformat(timespec="microseconds")
-        .replace("+00:00", "Z")
+        selected.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
     )
 
 
@@ -104,11 +100,7 @@ class CachePolicy:
 
     def ttl_for(self, view: Any) -> float:
         selected = _view(view)
-        return (
-            self.capabilities_ttl
-            if selected is CacheView.CAPABILITIES
-            else self.health_ttl
-        )
+        return self.capabilities_ttl if selected is CacheView.CAPABILITIES else self.health_ttl
 
     @property
     def static_ttl(self) -> float:
@@ -141,13 +133,9 @@ class HealthSample:
         ):
             raise ValueError("health record_id is invalid")
         if not isinstance(self.state, OperationalState):
-            object.__setattr__(
-                self, "state", OperationalState.from_dict(self.state)
-            )
+            object.__setattr__(self, "state", OperationalState.from_dict(self.state))
         # Reuse the timestamp normalization path through a constant clock.
-        object.__setattr__(
-            self, "observed_at", _wall_timestamp(lambda: self.observed_at)
-        )
+        object.__setattr__(self, "observed_at", _wall_timestamp(lambda: self.observed_at))
         if self.revision is not None and (
             not isinstance(self.revision, str)
             or not self.revision
@@ -191,9 +179,7 @@ class HealthSnapshot:
         keys = [(item.source, item.record_id) for item in parsed]
         if len(keys) != len(set(keys)):
             raise ValueError("health snapshot contains duplicate records")
-        parsed = tuple(
-            sorted(parsed, key=lambda item: (item.source, item.record_id))
-        )
+        parsed = tuple(sorted(parsed, key=lambda item: (item.source, item.record_id)))
         object.__setattr__(self, "samples", parsed)
         expected = content_cid({"health_samples": [item.to_dict() for item in parsed]})
         if self.revision is not None and self.revision != expected:
@@ -258,11 +244,7 @@ class CacheEntry:
     def __post_init__(self) -> None:
         object.__setattr__(self, "source", _source(self.source))
         object.__setattr__(self, "view", _view(self.view))
-        if (
-            not isinstance(self.cid, str)
-            or not self.cid
-            or len(self.cid.encode("utf-8")) > 512
-        ):
+        if not isinstance(self.cid, str) or not self.cid or len(self.cid.encode("utf-8")) > 512:
             raise ValueError("cache CID is invalid")
         for field in ("stored_at", "expires_at"):
             value = getattr(self, field)
@@ -309,20 +291,14 @@ class CatalogSnapshotCache:
         metrics: Optional[CatalogMetrics] = None,
         events: Optional[CatalogEventBus] = None,
     ) -> None:
-        if policy is not None and (
-            capabilities_ttl is not None or health_ttl is not None
-        ):
+        if policy is not None and (capabilities_ttl is not None or health_ttl is not None):
             raise ValueError("pass policy or TTL keyword arguments, not both")
         if policy is None:
             policy = CachePolicy(
                 capabilities_ttl=(
-                    DEFAULT_CAPABILITIES_TTL
-                    if capabilities_ttl is None
-                    else capabilities_ttl
+                    DEFAULT_CAPABILITIES_TTL if capabilities_ttl is None else capabilities_ttl
                 ),
-                health_ttl=(
-                    DEFAULT_HEALTH_TTL if health_ttl is None else health_ttl
-                ),
+                health_ttl=(DEFAULT_HEALTH_TTL if health_ttl is None else health_ttl),
             )
         if not isinstance(policy, CachePolicy):
             raise TypeError("policy must be a CachePolicy")
@@ -335,11 +311,7 @@ class CatalogSnapshotCache:
         self.policy = policy
         self.max_sources = max_sources
         self._clock = time.monotonic if clock is None else clock
-        self._wall_clock = (
-            lambda: datetime.now(timezone.utc)
-            if wall_clock is None
-            else wall_clock
-        )
+        self._wall_clock = lambda: datetime.now(timezone.utc) if wall_clock is None else wall_clock
         if not callable(self._clock) or not callable(self._wall_clock):
             raise TypeError("cache clocks must be callable")
         self.metrics = CatalogMetrics(clock=self._clock) if metrics is None else metrics
@@ -385,9 +357,7 @@ class CatalogSnapshotCache:
             return "expired"
         return "other"
 
-    def peek(
-        self, source: str, view: Any, *, include_stale: bool = True
-    ) -> Optional[CacheEntry]:
+    def peek(self, source: str, view: Any, *, include_stale: bool = True) -> Optional[CacheEntry]:
         key = self._key(source, view)
         now = self._now()
         with self._lock:
@@ -396,9 +366,7 @@ class CatalogSnapshotCache:
             return None
         if entry.is_fresh(now):
             return entry
-        self.metrics.set_stale_records(
-            key[0], key[1], _record_count(entry.value)
-        )
+        self.metrics.set_stale_records(key[0], key[1], _record_count(entry.value))
         return replace(entry, stale=True) if include_stale else None
 
     entry = peek
@@ -425,9 +393,7 @@ class CatalogSnapshotCache:
             # content did not change.  This makes identity reuse observable to
             # callers without retaining duplicate snapshots.
             selected_value = (
-                previous.value
-                if previous is not None and previous.cid == cid
-                else value
+                previous.value if previous is not None and previous.cid == cid else value
             )
             entry = CacheEntry(
                 source=key[0],
@@ -524,35 +490,25 @@ class CatalogSnapshotCache:
                 self._flights.pop(key[0], None)
                 flight.condition.notify_all()
                 existing = self._entries.get(key)
-            self.metrics.record_source_latency(
-                key[0], max(0.0, self._now() - started)
-            )
+            self.metrics.record_source_latency(key[0], max(0.0, self._now() - started))
             if (
                 not cancelled
                 and isinstance(exc, Exception)
                 and stale_allowed
                 and existing is not None
             ):
-                self.metrics.set_stale_records(
-                    key[0], key[1], _record_count(existing.value)
-                )
+                self.metrics.set_stale_records(key[0], key[1], _record_count(existing.value))
                 return replace(existing, stale=True)
             raise
         with self._lock:
             flight.done = True
             self._flights.pop(key[0], None)
             flight.condition.notify_all()
-        self.metrics.record_source_latency(
-            key[0], max(0.0, self._now() - started)
-        )
+        self.metrics.record_source_latency(key[0], max(0.0, self._now() - started))
         return entry
 
     def refresh(
-        self,
-        source: str,
-        view: Any,
-        loader: Callable[[], Any],
-        **kwargs: Any
+        self, source: str, view: Any, loader: Callable[[], Any], **kwargs: Any
     ) -> CacheEntry:
         """Force a source refresh while still joining an existing flight."""
 
@@ -561,23 +517,13 @@ class CatalogSnapshotCache:
 
     get_or_load = get_or_refresh
 
-    def get(
-        self,
-        source: str,
-        view: Any,
-        loader: Callable[[], Any],
-        **kwargs: Any
-    ) -> Any:
+    def get(self, source: str, view: Any, loader: Callable[[], Any], **kwargs: Any) -> Any:
         return self.get_or_refresh(source, view, loader, **kwargs).value
 
-    def get_capabilities(
-        self, source: str, loader: Callable[[], Any], **kwargs: Any
-    ) -> Any:
+    def get_capabilities(self, source: str, loader: Callable[[], Any], **kwargs: Any) -> Any:
         return self.get(source, CacheView.CAPABILITIES, loader, **kwargs)
 
-    def get_health(
-        self, source: str, loader: Callable[[], Any], **kwargs: Any
-    ) -> Any:
+    def get_health(self, source: str, loader: Callable[[], Any], **kwargs: Any) -> Any:
         return self.get(source, CacheView.HEALTH, loader, **kwargs)
 
     async def _async_load(
@@ -593,9 +539,7 @@ class CatalogSnapshotCache:
                 value = await value
             return self._install(key, value)
         finally:
-            self.metrics.record_source_latency(
-                key[0], max(0.0, self._now() - started)
-            )
+            self.metrics.record_source_latency(key[0], max(0.0, self._now() - started))
             with self._lock:
                 current = self._async_flights.get(flight_key)
                 if current is asyncio.current_task():
@@ -630,9 +574,7 @@ class CatalogSnapshotCache:
                     self.metrics.record_cache_miss(
                         key[0], key[1], self._miss_reason(key, existing, now)
                     )
-                    task = loop.create_task(
-                        self._async_load(flight_key, key, loader)
-                    )
+                    task = loop.create_task(self._async_load(flight_key, key, loader))
                     self._async_flights[flight_key] = task
                     task_view = key[1]
                 else:
@@ -648,22 +590,12 @@ class CatalogSnapshotCache:
                 return result
 
     async def get_async(
-        self,
-        source: str,
-        view: Any,
-        loader: Callable[[], Any],
-        **kwargs: Any
+        self, source: str, view: Any, loader: Callable[[], Any], **kwargs: Any
     ) -> Any:
-        return (
-            await self.get_or_refresh_async(source, view, loader, **kwargs)
-        ).value
+        return (await self.get_or_refresh_async(source, view, loader, **kwargs)).value
 
     async def refresh_async(
-        self,
-        source: str,
-        view: Any,
-        loader: Callable[[], Any],
-        **kwargs: Any
+        self, source: str, view: Any, loader: Callable[[], Any], **kwargs: Any
     ) -> CacheEntry:
         kwargs.setdefault("force", True)
         return await self.get_or_refresh_async(source, view, loader, **kwargs)
@@ -671,13 +603,9 @@ class CatalogSnapshotCache:
     async def get_capabilities_async(
         self, source: str, loader: Callable[[], Any], **kwargs: Any
     ) -> Any:
-        return await self.get_async(
-            source, CacheView.CAPABILITIES, loader, **kwargs
-        )
+        return await self.get_async(source, CacheView.CAPABILITIES, loader, **kwargs)
 
-    async def get_health_async(
-        self, source: str, loader: Callable[[], Any], **kwargs: Any
-    ) -> Any:
+    async def get_health_async(self, source: str, loader: Callable[[], Any], **kwargs: Any) -> Any:
         return await self.get_async(source, CacheView.HEALTH, loader, **kwargs)
 
     def invalidate(
@@ -699,9 +627,7 @@ class CatalogSnapshotCache:
             selected_source = event_or_source.source
             selected_views = event_or_source.affected_views
         else:
-            selected_source = (
-                None if event_or_source is None else _source(event_or_source)
-            )
+            selected_source = None if event_or_source is None else _source(event_or_source)
             if views is None:
                 selected_views = tuple(CacheView)
             elif isinstance(views, (str, bytes, CacheView)):
@@ -743,18 +669,12 @@ class CatalogSnapshotCache:
         with self._lock:
             return tuple(
                 self._entries[key]
-                for key in sorted(
-                    self._entries, key=lambda item: (item[0], item[1].value)
-                )
+                for key in sorted(self._entries, key=lambda item: (item[0], item[1].value))
             )
 
     def stale_entries(self) -> Tuple[CacheEntry, ...]:
         now = self._now()
-        return tuple(
-            replace(item, stale=True)
-            for item in self.entries()
-            if not item.is_fresh(now)
-        )
+        return tuple(replace(item, stale=True) for item in self.entries() if not item.is_fresh(now))
 
     @property
     def timestamp(self) -> str:

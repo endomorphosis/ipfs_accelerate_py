@@ -395,50 +395,44 @@ The framework dynamically selects optimizations based on model architecture and 
 def select_optimizations(model_architecture, hardware_platform, model_size):
     """
     Dynamically select appropriate optimizations based on model and hardware.
-    
+
     Args:
         model_architecture: The model architecture (bert, t5, etc.)
         hardware_platform: The target hardware platform
         model_size: Size category of the model (tiny, small, base, large)
-        
+
     Returns:
         List of optimization techniques to apply
     """
     optimizations = []
-    
+
     # Base optimizations for all platforms
     optimizations.append("memory_management")
-    
+
     # Hardware-specific optimizations
     if hardware_platform == "cuda":
-        optimizations.extend([
-            "tensor_core_utilization",
-            "mixed_precision"
-        ])
-        
+        optimizations.extend(["tensor_core_utilization", "mixed_precision"])
+
         # Add model-specific CUDA optimizations
         if model_architecture in ["bert", "t5", "gpt"]:
             optimizations.append("attention_kernel_optimization")
-        
+
         # Size-specific optimizations
         if model_size in ["base", "large"]:
             optimizations.append("memory_efficient_attention")
-    
+
     elif hardware_platform == "webgpu":
-        optimizations.extend([
-            "shader_precompilation",
-            "workgroup_optimization"
-        ])
-        
+        optimizations.extend(["shader_precompilation", "workgroup_optimization"])
+
         # Browser detection and optimization
         optimizations.append("browser_specific_optimization")
-        
+
         # For audio models on WebGPU
         if model_architecture in ["whisper", "wav2vec2", "clap"]:
             optimizations.append("audio_compute_shader_optimization")
-    
+
     # Additional hardware platforms...
-    
+
     return optimizations
 ```
 
@@ -450,25 +444,27 @@ The optimization system uses a template approach to inject optimizations:
 def apply_optimization_template(base_template, model_type, hardware_platform, optimizations):
     """
     Apply optimization templates to the base template.
-    
+
     Args:
         base_template: The original template content
         model_type: Type of model being optimized
         hardware_platform: Target hardware platform
         optimizations: List of optimizations to apply
-        
+
     Returns:
         Optimized template content
     """
     template = base_template
-    
+
     for optimization in optimizations:
         # Get the optimization template
-        optimization_template = get_optimization_template(optimization, model_type, hardware_platform)
-        
+        optimization_template = get_optimization_template(
+            optimization, model_type, hardware_platform
+        )
+
         # Apply the optimization template
         template = insert_optimization(template, optimization_template)
-    
+
     return template
 ```
 
@@ -521,11 +517,11 @@ def add_cuda_memory_management(template_content):
     memory_management_code = """
     # Clear CUDA cache before running test
     torch.cuda.empty_cache()
-    
+
     # Set memory fraction for testing
     if memory_fraction is not None:
         torch.cuda.set_per_process_memory_fraction(memory_fraction)
-    
+
     # Optional memory tracking
     if track_memory:
         initial_memory = torch.cuda.memory_allocated()
@@ -538,14 +534,18 @@ def add_cuda_memory_management(template_content):
             'memory_leaked_mb': memory_leaked / (1024 * 1024)
         }
     """
-    
+
     # Insert at appropriate location in template
     insertion_point = template_content.find("def run_test(")
     if insertion_point == -1:
         return template_content
-    
+
     function_end = template_content.find("\n", insertion_point)
-    return template_content[:function_end+1] + memory_management_code + template_content[function_end+1:]
+    return (
+        template_content[: function_end + 1]
+        + memory_management_code
+        + template_content[function_end + 1 :]
+    )
 ```
 
 For WebGPU platforms:
@@ -558,29 +558,33 @@ def add_webgpu_memory_management(template_content):
         # Force garbage collection to release WebGPU resources
         import gc
         gc.collect()
-        
+
         # Wait for any pending operations to complete
         await device.queue.onSubmittedWorkDone()
-        
+
         # Explicitly destroy buffers
         for buffer in allocated_buffers:
             if buffer:
                 buffer.destroy()
-    
+
     # Track WebGPU resource allocation
     allocated_buffers = []
     def track_buffer(buffer):
         allocated_buffers.append(buffer)
         return buffer
     """
-    
+
     # Insert at appropriate location in template
     insertion_point = template_content.find("class WebGPUTestCase(")
     if insertion_point == -1:
         return template_content
-    
+
     class_end = template_content.find("\n", insertion_point)
-    return template_content[:class_end+1] + memory_management_code + template_content[class_end+1:]
+    return (
+        template_content[: class_end + 1]
+        + memory_management_code
+        + template_content[class_end + 1 :]
+    )
 ```
 
 ### 2. Input Preprocessing Differences
@@ -607,37 +611,46 @@ For text models on different platforms:
 ```python
 def generate_text_input_preprocessing(hardware_platform):
     """Generate preprocessing code for text inputs based on hardware platform"""
-    
+
     # Base preprocessing that works everywhere
     base_code = """
     # Tokenize input text
     tokens = tokenizer(text_input, return_tensors="pt")
     """
-    
+
     if hardware_platform == "cuda":
-        return base_code + """
+        return (
+            base_code
+            + """
         # Move to GPU
         tokens = {k: v.cuda() for k, v in tokens.items()}
         """
-    
+        )
+
     elif hardware_platform == "openvino":
-        return base_code + """
+        return (
+            base_code
+            + """
         # Convert to OpenVINO format
         ov_tokens = {}
         for k, v in tokens.items():
             ov_tokens[k] = ov.Tensor(v.numpy())
         tokens = ov_tokens
         """
-    
+        )
+
     elif hardware_platform == "webnn":
-        return base_code + """
+        return (
+            base_code
+            + """
         # Convert to WebNN format
         webnn_tokens = {}
         for k, v in tokens.items():
             webnn_tokens[k] = MLGraphBuilder.constant(v.numpy())
         tokens = webnn_tokens
         """
-    
+        )
+
     # Default case - return base preprocessing
     return base_code
 ```
@@ -646,7 +659,7 @@ For image models on different platforms:
 ```python
 def generate_image_input_preprocessing(hardware_platform):
     """Generate preprocessing code for image inputs based on hardware platform"""
-    
+
     # Base preprocessing that works everywhere
     base_code = """
     # Basic image preprocessing
@@ -658,26 +671,35 @@ def generate_image_input_preprocessing(hardware_platform):
     ])
     image_tensor = transform(image).unsqueeze(0)  # Add batch dimension
     """
-    
+
     if hardware_platform == "mps":
-        return base_code + """
+        return (
+            base_code
+            + """
         # Move to MPS
         image_tensor = image_tensor.to("mps")
         """
-    
+        )
+
     elif hardware_platform == "rocm":
-        return base_code + """
+        return (
+            base_code
+            + """
         # ROCm requires explicit memory transfer
         image_tensor = image_tensor.to("cuda")
         """
-    
+        )
+
     elif hardware_platform == "webgpu":
-        return base_code + """
+        return (
+            base_code
+            + """
         # Convert to WebGPU buffer format
         image_data = image_tensor.numpy()
         image_buffer = device.createBuffer(data=image_data)
         """
-    
+        )
+
     # Default case - return base preprocessing
     return base_code
 ```
@@ -707,7 +729,7 @@ For precision differences:
 def validate_with_tolerance(reference_output, test_output, hardware_platform):
     """
     Validate outputs with hardware-specific tolerance levels.
-    
+
     Different hardware platforms have different numerical precision characteristics.
     This function applies appropriate tolerance levels for each platform.
     """
@@ -723,20 +745,29 @@ def validate_with_tolerance(reference_output, test_output, hardware_platform):
     else:
         # Default tolerance
         atol, rtol = 1e-4, 1e-4
-    
+
     # Check if outputs are close within tolerance
     if isinstance(reference_output, dict):
         # Handle dictionary outputs (common in transformers)
         for key in reference_output:
-            ref = reference_output[key].numpy() if hasattr(reference_output[key], 'numpy') else reference_output[key]
-            test = test_output[key].numpy() if hasattr(test_output[key], 'numpy') else test_output[key]
+            ref = (
+                reference_output[key].numpy()
+                if hasattr(reference_output[key], "numpy")
+                else reference_output[key]
+            )
+            test = (
+                test_output[key].numpy() if hasattr(test_output[key], "numpy") else test_output[key]
+            )
             if not np.allclose(ref, test, atol=atol, rtol=rtol):
-                return False, f"Output mismatch in '{key}' beyond tolerance (atol={atol}, rtol={rtol})"
+                return (
+                    False,
+                    f"Output mismatch in '{key}' beyond tolerance (atol={atol}, rtol={rtol})",
+                )
         return True, "Outputs match within tolerance"
     else:
         # Handle tensor/array outputs
-        ref = reference_output.numpy() if hasattr(reference_output, 'numpy') else reference_output
-        test = test_output.numpy() if hasattr(test_output, 'numpy') else test_output
+        ref = reference_output.numpy() if hasattr(reference_output, "numpy") else reference_output
+        test = test_output.numpy() if hasattr(test_output, "numpy") else test_output
         if np.allclose(ref, test, atol=atol, rtol=rtol):
             return True, "Outputs match within tolerance"
         else:
@@ -798,33 +829,30 @@ def add_operation_compatibility_layer(template_content, model_type, hardware_pla
 ```python
 def adapt_execution_flow(template_content, hardware_platform):
     """Adapt the execution flow based on platform requirements"""
-    
+
     if hardware_platform == "webgpu":
         # Convert to async pattern for WebGPU
         sync_pattern = "def run_test("
         async_pattern = "async def run_test("
-        
+
         if sync_pattern in template_content:
             # Replace synchronous function with async
             template_content = template_content.replace(sync_pattern, async_pattern)
-            
+
             # Add await to relevant operations
-            template_content = template_content.replace(
-                "output = model(",
-                "output = await model("
-            )
-            
+            template_content = template_content.replace("output = model(", "output = await model(")
+
             # Add async runner at the end
             async_runner = """
 if __name__ == "__main__":
     import anyio
     anyio.run(main)
             """
-            
+
             # Replace standard runner
             std_runner = 'if __name__ == "__main__":'
             template_content = template_content.replace(std_runner, async_runner)
-    
+
     return template_content
 ```
 
@@ -1116,40 +1144,39 @@ The system integrates with existing test files in `test/skills/` to ensure compa
 def generate_skill_test(model_name, model_architecture, reference_skill_path):
     """
     Generate a skill test for a specific model that integrates with the reference skill.
-    
+
     Args:
         model_name: Name of the specific model (e.g., 'bert-base-uncased')
         model_architecture: Type of model architecture (e.g., 'bert')
         reference_skill_path: Path to the reference skill implementation
-        
+
     Returns:
         Path to the generated test file
     """
     # Get the appropriate template
-    template_path = select_optimal_template(model_architecture, 'all')
-    
+    template_path = select_optimal_template(model_architecture, "all")
+
     # Load template content
-    with open(template_path, 'r') as f:
+    with open(template_path, "r") as f:
         template_content = f.read()
-    
+
     # Get reference skill details to ensure compatibility
     reference_skill_details = analyze_reference_skill(reference_skill_path)
-    
+
     # Customize template for the specific model and reference skill
     test_content = customize_template_for_skill(
-        template_content,
-        model_name,
-        model_architecture,
-        reference_skill_details
+        template_content, model_name, model_architecture, reference_skill_details
     )
-    
+
     # Output path follows the existing pattern in test/skills/
-    output_path = f"test/skills/test_hf_{model_architecture.lower()}_{model_name.replace('-', '_')}.py"
-    
+    output_path = (
+        f"test/skills/test_hf_{model_architecture.lower()}_{model_name.replace('-', '_')}.py"
+    )
+
     # Write the test file
-    with open(output_path, 'w') as f:
+    with open(output_path, "w") as f:
         f.write(test_content)
-    
+
     return output_path
 ```
 
@@ -1163,7 +1190,7 @@ The system uses model metadata to guide test generation:
 def generate_test_from_metadata(model_architecture, target_hardware, output_path):
     """
     Generate a hardware-specific test based on model metadata.
-    
+
     Args:
         model_architecture: HuggingFace model architecture name
         target_hardware: Target hardware platform
@@ -1171,33 +1198,26 @@ def generate_test_from_metadata(model_architecture, target_hardware, output_path
     """
     # Fetch model metadata from HuggingFace
     metadata = fetch_model_metadata(model_architecture)
-    
+
     # Select the best template
     template_path = select_optimal_template(model_architecture, target_hardware)
-    
+
     # Load template content
-    with open(template_path, 'r') as f:
+    with open(template_path, "r") as f:
         template_content = f.read()
-    
+
     # Customize template based on metadata
     customized_content = customize_template(
-        template_content,
-        model_architecture,
-        target_hardware,
-        metadata
+        template_content, model_architecture, target_hardware, metadata
     )
-    
+
     # Apply hardware-specific adaptations
-    adapted_content = apply_hardware_adaptations(
-        customized_content,
-        target_hardware,
-        metadata
-    )
-    
+    adapted_content = apply_hardware_adaptations(customized_content, target_hardware, metadata)
+
     # Save the generated test
-    with open(output_path, 'w') as f:
+    with open(output_path, "w") as f:
         f.write(adapted_content)
-    
+
     return output_path
 ```
 
@@ -1286,51 +1306,53 @@ The framework automatically generates and executes a comprehensive testing matri
 def generate_testing_matrix(models, hardware_platforms, batch_sizes=None, sequence_lengths=None):
     """
     Generate a comprehensive testing matrix.
-    
+
     Args:
         models: List of models to test
         hardware_platforms: List of hardware platforms to test on
         batch_sizes: Optional list of batch sizes to test
         sequence_lengths: Optional list of sequence lengths to test
-        
+
     Returns:
         List of test configurations
     """
     if batch_sizes is None:
         batch_sizes = [1, 2, 4, 8]
-    
+
     if sequence_lengths is None:
         sequence_lengths = [128, 256, 512]
-    
+
     test_matrix = []
-    
+
     for model in models:
         for hardware in hardware_platforms:
             # Skip known-incompatible combinations
             if not is_compatible(model, hardware):
                 continue
-                
+
             for batch_size in batch_sizes:
                 # Skip large batch sizes for memory-constrained platforms
                 if is_memory_constrained(hardware) and batch_size > 4:
                     continue
-                    
+
                 for seq_length in sequence_lengths:
                     # Skip large sequence lengths for certain models on certain hardware
                     if is_sequence_too_large(model, hardware, seq_length):
                         continue
-                    
-                    test_matrix.append({
-                        "model": model,
-                        "hardware": hardware,
-                        "batch_size": batch_size,
-                        "sequence_length": seq_length,
-                        "priority": calculate_priority(model, hardware, batch_size, seq_length)
-                    })
-    
+
+                    test_matrix.append(
+                        {
+                            "model": model,
+                            "hardware": hardware,
+                            "batch_size": batch_size,
+                            "sequence_length": seq_length,
+                            "priority": calculate_priority(model, hardware, batch_size, seq_length),
+                        }
+                    )
+
     # Sort by priority
     test_matrix.sort(key=lambda x: x["priority"], reverse=True)
-    
+
     return test_matrix
 ```
 
@@ -1486,7 +1508,9 @@ encoded = tokenizer(text, return_tensors="pt", padding=True)
 inputs = {k: v.repeat(batch_size, 1).to(device) for k, v in encoded.items()}
 if any(m in model_name.lower() for m in ["t5", "pegasus", "bart"]):
     # Add decoder inputs for encoder-decoder models
-    inputs["decoder_input_ids"] = tokenizer("", return_tensors="pt").input_ids.repeat(batch_size, 1).to(device)
+    inputs["decoder_input_ids"] = (
+        tokenizer("", return_tensors="pt").input_ids.repeat(batch_size, 1).to(device)
+    )
 ```
 
 #### 3. Fix Vision Model Input
@@ -1501,14 +1525,16 @@ if any(m in model_name.lower() for m in ["vit", "deit", "beit", "convnext"]):
     # Vision model requires image input
     from PIL import Image
     import torchvision.transforms as transforms
-    
+
     # Load and preprocess image
     image = Image.open("test.jpg").convert("RGB")
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
+    transform = transforms.Compose(
+        [
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ]
+    )
     image_tensor = transform(image).unsqueeze(0)  # Add batch dimension
     inputs = {"pixel_values": image_tensor.repeat(batch_size, 1, 1, 1).to(device)}
 else:
@@ -1590,44 +1616,44 @@ The system automatically recognizes common error patterns:
 def analyze_error_patterns(error_logs):
     """
     Analyze error logs to identify common patterns.
-    
+
     Args:
         error_logs: Collection of error logs from failed tests
-        
+
     Returns:
         Dictionary mapping error patterns to occurrences and potential solutions
     """
     patterns = {}
-    
+
     # Common error patterns and their solutions
     error_matchers = [
         {
             "pattern": r"CUDA out of memory",
             "category": "memory_error",
-            "solution": "Reduce batch size or model size, enable memory efficient attention"
+            "solution": "Reduce batch size or model size, enable memory efficient attention",
         },
         {
             "pattern": r"Cannot find (\w+) implementation",
             "category": "missing_implementation",
-            "solution": "Add custom implementation for the operation or use compatibility layer"
+            "solution": "Add custom implementation for the operation or use compatibility layer",
         },
         {
             "pattern": r"Shape mismatch.*expected \[([\d,]+)\].*got \[([\d,]+)\]",
             "category": "shape_mismatch",
-            "solution": "Add input reshaping or model adapter to handle shape differences"
+            "solution": "Add input reshaping or model adapter to handle shape differences",
         },
         {
             "pattern": r"Unsupported operation: (\w+)",
             "category": "unsupported_operation",
-            "solution": "Implement operation compatibility layer or use equivalent operations"
+            "solution": "Implement operation compatibility layer or use equivalent operations",
         },
         {
             "pattern": r"(\w+) backend compilation failed",
             "category": "compilation_error",
-            "solution": "Check backend compatibility, reduce model complexity or add compilation flags"
-        }
+            "solution": "Check backend compatibility, reduce model complexity or add compilation flags",
+        },
     ]
-    
+
     # Match error patterns
     for error_log in error_logs:
         for matcher in error_matchers:
@@ -1637,12 +1663,12 @@ def analyze_error_patterns(error_logs):
                     patterns[category] = {
                         "count": 0,
                         "solution": matcher["solution"],
-                        "examples": []
+                        "examples": [],
                     }
                 patterns[category]["count"] += 1
                 if len(patterns[category]["examples"]) < 3:  # Store up to 3 examples
                     patterns[category]["examples"].append(extract_error_context(error_log))
-    
+
     return patterns
 ```
 
@@ -1765,7 +1791,7 @@ def configure_cuda_benchmarks(batch_sizes=None, dtype=torch.float32):
     """Configure benchmarks for CUDA hardware."""
     if batch_sizes is None:
         batch_sizes = [1, 2, 4, 8, 16, 32]
-    
+
     config = {
         "batch_sizes": batch_sizes,
         "dtype": dtype,
@@ -1774,18 +1800,18 @@ def configure_cuda_benchmarks(batch_sizes=None, dtype=torch.float32):
         "tensor_cores": True if dtype == torch.float16 else False,
         "profile_layers": False,  # Enable for detailed layer profiling
         "warmup_iterations": 5,
-        "benchmark_iterations": 20
+        "benchmark_iterations": 20,
     }
-    
+
     # CUDA-specific performance optimizations
     if dtype == torch.float16:
         # Enable TensorFloat32 for A100 and newer GPUs
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
-    
+
     # Enable cuDNN benchmarking
     torch.backends.cudnn.benchmark = True
-    
+
     return config
 ```
 
@@ -1797,7 +1823,7 @@ def configure_webgpu_benchmarks(batch_sizes=None, optimize_for_mobile=False):
     if batch_sizes is None:
         # WebGPU generally has lower memory, so use smaller batch sizes
         batch_sizes = [1, 2, 4, 8]
-    
+
     config = {
         "batch_sizes": batch_sizes,
         "precision": "float32",  # Some browsers support float16
@@ -1809,19 +1835,19 @@ def configure_webgpu_benchmarks(batch_sizes=None, optimize_for_mobile=False):
         "browser_optimizations": {
             "chrome": True,
             "firefox": True,
-            "safari": False  # Experimental support
+            "safari": False,  # Experimental support
         },
         "warmup_iterations": 10,  # WebGPU needs more warmup
         "benchmark_iterations": 30,
-        "optimize_for_mobile": optimize_for_mobile
+        "optimize_for_mobile": optimize_for_mobile,
     }
-    
+
     # Mobile optimizations
     if optimize_for_mobile:
         config["workgroup_size"] = 32
         config["max_batch_size"] = 4
         config["precision"] = "float16"  # Better for mobile GPUs
-    
+
     return config
 ```
 
@@ -1833,10 +1859,10 @@ After running benchmarks, systematically record and analyze results:
 def record_benchmark_results(model_name, hardware_platform, results, db_path):
     """Record benchmark results to the database."""
     import duckdb
-    
+
     # Connect to database
     conn = duckdb.connect(db_path)
-    
+
     # Create table if it doesn't exist
     conn.execute("""
     CREATE TABLE IF NOT EXISTS benchmark_results (
@@ -1852,33 +1878,39 @@ def record_benchmark_results(model_name, hardware_platform, results, db_path):
         error VARCHAR
     )
     """)
-    
+
     # Insert results
     for result in results:
         if "error" in result:
             # Record error
-            conn.execute("""
+            conn.execute(
+                """
             INSERT INTO benchmark_results 
             (model_name, hardware_platform, batch_size, error, timestamp)
             VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """, (model_name, hardware_platform, result.get("batch_size", 0), result["error"]))
+            """,
+                (model_name, hardware_platform, result.get("batch_size", 0), result["error"]),
+            )
         else:
             # Record successful benchmark
-            conn.execute("""
+            conn.execute(
+                """
             INSERT INTO benchmark_results 
             (model_name, hardware_platform, batch_size, latency_ms, 
              throughput_items_per_sec, memory_usage_mb, precision, timestamp)
             VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """, (
-                model_name, 
-                hardware_platform, 
-                result["batch_size"],
-                result["mean_latency_ms"],
-                result["throughput_items_per_sec"],
-                result.get("memory_usage_mb", 0),
-                result.get("precision", "fp32")
-            ))
-    
+            """,
+                (
+                    model_name,
+                    hardware_platform,
+                    result["batch_size"],
+                    result["mean_latency_ms"],
+                    result["throughput_items_per_sec"],
+                    result.get("memory_usage_mb", 0),
+                    result.get("precision", "fp32"),
+                ),
+            )
+
     # Commit changes
     conn.commit()
     conn.close()

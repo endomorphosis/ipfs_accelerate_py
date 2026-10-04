@@ -94,5 +94,9 @@ def test_peer_exchange_receive_and_serve(tmp_path) -> None:
     assert stats.get("peer_hits", 0) >= 1
 
     # Sanity check for handler handshake
-    assert stream.writes and stream.writes[-1] in {b"OK", b"ERROR: Invalid format", b"ERROR: Decryption failed"}
+    assert stream.writes and stream.writes[-1] in {
+        b"OK",
+        b"ERROR: Invalid format",
+        b"ERROR: Decryption failed",
+    }
     assert stream.closed is True

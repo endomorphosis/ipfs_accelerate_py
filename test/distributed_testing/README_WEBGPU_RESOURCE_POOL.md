@@ -100,12 +100,8 @@ from resource_pool_bridge import ResourcePoolBridgeIntegration
 # Create integration
 integration = ResourcePoolBridgeIntegration(
     max_connections=4,
-    browser_preferences={
-        'audio': 'firefox',
-        'vision': 'chrome',
-        'text_embedding': 'edge'
-    },
-    enable_fault_tolerance=True
+    browser_preferences={"audio": "firefox", "vision": "chrome", "text_embedding": "edge"},
+    enable_fault_tolerance=True,
 )
 
 # Initialize integration
@@ -119,8 +115,8 @@ model = await integration.get_model(
     fault_tolerance={
         "recovery_timeout": 30,
         "state_persistence": True,
-        "failover_strategy": "immediate"
-    }
+        "failover_strategy": "immediate",
+    },
 )
 
 # Run inference with automatic recovery
@@ -140,7 +136,7 @@ sharded_execution = ShardedModelExecution(
     num_shards=3,
     fault_tolerance_level="high",
     recovery_strategy="retry_failed_shards",
-    connection_pool=integration.connection_pool
+    connection_pool=integration.connection_pool,
 )
 
 # Initialize sharded execution
@@ -158,7 +154,7 @@ print(f"Result: {result}")
 history = await integration.get_performance_history(
     model_type="text_embedding",
     time_range="7d",
-    metrics=["latency", "throughput", "browser_utilization"]
+    metrics=["latency", "throughput", "browser_utilization"],
 )
 
 # Analyze trends and get recommendations

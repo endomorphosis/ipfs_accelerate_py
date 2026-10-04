@@ -167,9 +167,7 @@ def snapshot_records(
     return tuple(getattr(snapshot, record_type))
 
 
-def iter_snapshot(
-    snapshot: CatalogSnapshot, record_type: Optional[str] = None
-) -> Iterator[Any]:
+def iter_snapshot(snapshot: CatalogSnapshot, record_type: Optional[str] = None) -> Iterator[Any]:
     """Iterate over a stable tuple, never mutable registry storage."""
 
     return iter(snapshot_records(snapshot, record_type))
@@ -179,9 +177,7 @@ def _cursor_checksum(payload: Mapping[str, Any]) -> str:
     return content_cid({"catalog_cursor": payload})
 
 
-def _encode_cursor(
-    revision: str, record_type: str, offset: int, query_key: str
-) -> str:
+def _encode_cursor(revision: str, record_type: str, offset: int, query_key: str) -> str:
     payload = {
         "v": CURSOR_VERSION,
         "revision": revision,
@@ -225,10 +221,7 @@ def _decode_cursor(cursor: str) -> Dict[str, Any]:
         or payload["offset"] < 0
     ):
         raise InvalidCursorError("cursor offset is invalid")
-    if not all(
-        isinstance(payload[name], str)
-        for name in ("revision", "record_type", "query")
-    ):
+    if not all(isinstance(payload[name], str) for name in ("revision", "record_type", "query")):
         raise InvalidCursorError("cursor fields are invalid")
     return payload
 

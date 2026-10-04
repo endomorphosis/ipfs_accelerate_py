@@ -25,8 +25,9 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, 
-                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 # Import template validator
@@ -34,24 +35,27 @@ try:
     sys.path.append(str(Path(__file__).parent.parent))
     from scripts.generators.validators.template_validator_integration import (
         validate_template_for_generator,
-        validate_template_file_for_generator
+        validate_template_file_for_generator,
     )
+
     HAS_VALIDATOR = True
     logger.info("Template validator loaded successfully")
 except ImportError:
     HAS_VALIDATOR = False
     logger.warning("Template validator not found. Templates will not be validated.")
-    
+
     # Define minimal validation function
     def validate_template_for_generator(template_content, generator_type, **kwargs):
         return True, []
-        
+
     def validate_template_file_for_generator(file_path, generator_type, **kwargs):
         return True, []
+
 
 # Check for DuckDB availability
 try:
     import duckdb
+
     HAS_DUCKDB = True
 except ImportError:
     HAS_DUCKDB = False
@@ -63,7 +67,7 @@ MODEL_FAMILIES = {
     "text_generation": ["gpt2", "llama", "opt", "t5", "bloom", "mistral", "qwen", "falcon"],
     "vision": ["vit", "resnet", "detr", "deit", "convnext", "beit"],
     "audio": ["whisper", "wav2vec2", "hubert", "speecht5", "clap"],
-    "multimodal": ["clip", "llava", "xclip", "blip", "flava"]
+    "multimodal": ["clip", "llava", "xclip", "blip", "flava"],
 }
 
 # Reverse mapping from model name to family
@@ -244,17 +248,15 @@ if __name__ == "__main__":
 
 # Custom model input code by model type
 MODEL_INPUT_TEMPLATES = {
-    "text_embedding": '''            # Prepare text input
+    "text_embedding": """            # Prepare text input
             text = "This is a sample text for testing the {{model_name}} model."
             inputs = tokenizer(text, return_tensors="pt")
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}''',
-    
-    "text_generation": '''            # Prepare text input for generation
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}""",
+    "text_generation": """            # Prepare text input for generation
             text = "Generate a short explanation of machine learning:"
             inputs = tokenizer(text, return_tensors="pt")
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}''',
-    
-    "vision": '''            # Prepare image input
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}""",
+    "vision": """            # Prepare image input
             from PIL import Image
             import requests
             from io import BytesIO
@@ -280,9 +282,8 @@ MODEL_INPUT_TEMPLATES = {
             # Get image processor
             processor = AutoImageProcessor.from_pretrained(self.model_name)
             inputs = processor(images=image, return_tensors="pt")
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}''',
-    
-    "audio": '''            # Prepare audio input
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}""",
+    "audio": """            # Prepare audio input
             import torch
             import numpy as np
             from transformers import AutoFeatureExtractor
@@ -310,9 +311,8 @@ MODEL_INPUT_TEMPLATES = {
             # Get feature extractor
             feature_extractor = AutoFeatureExtractor.from_pretrained(self.model_name)
             inputs = feature_extractor(audio, sampling_rate=sample_rate, return_tensors="pt")
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}''',
-    
-    "multimodal": '''            # Prepare multimodal input (text and image)
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}""",
+    "multimodal": """            # Prepare multimodal input (text and image)
             from PIL import Image
             from transformers import AutoProcessor
 
@@ -339,38 +339,34 @@ MODEL_INPUT_TEMPLATES = {
             # Get processor
             processor = AutoProcessor.from_pretrained(self.model_name)
             inputs = processor(text=text, images=image, return_tensors="pt")
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}'''
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}""",
 }
 
 # Custom output check code by model type
 OUTPUT_CHECK_TEMPLATES = {
-    "text_embedding": '''            # Check output shape and values
+    "text_embedding": """            # Check output shape and values
             assert hasattr(outputs, "last_hidden_state"), "Missing last_hidden_state in outputs"
             assert outputs.last_hidden_state.shape[0] == 1, "Batch size should be 1"
             assert outputs.last_hidden_state.shape[1] > 0, "Sequence length should be positive"
-            logger.info(f"Output shape: {outputs.last_hidden_state.shape}")''',
-    
-    "text_generation": '''            # For generation models, just check that we have valid output tensors
+            logger.info(f"Output shape: {outputs.last_hidden_state.shape}")""",
+    "text_generation": """            # For generation models, just check that we have valid output tensors
             assert hasattr(outputs, "last_hidden_state"), "Missing last_hidden_state in outputs"
             assert outputs.last_hidden_state.shape[0] == 1, "Batch size should be 1"
             assert outputs.last_hidden_state.shape[1] > 0, "Sequence length should be positive"
-            logger.info(f"Output shape: {outputs.last_hidden_state.shape}")''',
-    
-    "vision": '''            # Check output shape and values
+            logger.info(f"Output shape: {outputs.last_hidden_state.shape}")""",
+    "vision": """            # Check output shape and values
             assert hasattr(outputs, "last_hidden_state"), "Missing last_hidden_state in outputs"
             assert outputs.last_hidden_state.shape[0] == 1, "Batch size should be 1"
-            logger.info(f"Output shape: {outputs.last_hidden_state.shape}")''',
-    
-    "audio": '''            # Check output shape and values
+            logger.info(f"Output shape: {outputs.last_hidden_state.shape}")""",
+    "audio": """            # Check output shape and values
             assert outputs is not None, "Outputs should not be None"
             if hasattr(outputs, "last_hidden_state"):
                 assert outputs.last_hidden_state.shape[0] == 1, "Batch size should be 1"
                 logger.info(f"Output shape: {outputs.last_hidden_state.shape}")
             else:
                 # Some audio models have different output structures
-                logger.info(f"Output keys: {outputs.keys() if hasattr(outputs, 'keys') else 'No keys'}")''',
-    
-    "multimodal": '''            # Check output shape and values
+                logger.info(f"Output keys: {outputs.keys() if hasattr(outputs, 'keys') else 'No keys'}")""",
+    "multimodal": """            # Check output shape and values
             assert outputs is not None, "Outputs should not be None"
             if hasattr(outputs, "last_hidden_state"):
                 assert outputs.last_hidden_state.shape[0] == 1, "Batch size should be 1"
@@ -380,7 +376,7 @@ OUTPUT_CHECK_TEMPLATES = {
                 logger.info(f"Logits shape: {outputs.logits.shape}")
             else:
                 # Some multimodal models have different output structures
-                logger.info(f"Output keys: {outputs.keys() if hasattr(outputs, 'keys') else 'No keys'}")'''
+                logger.info(f"Output keys: {outputs.keys() if hasattr(outputs, 'keys') else 'No keys'}")""",
 }
 
 # Custom model loading code by model type
@@ -411,7 +407,6 @@ CUSTOM_MODEL_LOADING_TEMPLATES = {
         except Exception as e:
             logger.error(f"Error loading model with specific settings: {e}")
             return None, None''',
-    
     "text_generation": '''def get_model_specific(self):
         """Load model with specialized configuration for text generation."""
         try:
@@ -440,7 +435,6 @@ CUSTOM_MODEL_LOADING_TEMPLATES = {
         except Exception as e:
             logger.error(f"Error loading model with specific settings: {e}")
             return None, None''',
-    
     "vision": '''def get_model_specific(self):
         """Load model with specialized configuration for vision tasks."""
         try:
@@ -474,7 +468,6 @@ CUSTOM_MODEL_LOADING_TEMPLATES = {
             except Exception as e2:
                 logger.error(f"Error in fallback loading: {e2}")
                 return None, None''',
-    
     "audio": '''def get_model_specific(self):
         """Load model with specialized configuration for audio processing."""
         try:
@@ -519,7 +512,6 @@ CUSTOM_MODEL_LOADING_TEMPLATES = {
                 except Exception as e3:
                     logger.error(f"Error in fallback loading: {e3}")
                     return None, None''',
-    
     "multimodal": '''def get_model_specific(self):
         """Load model with specialized configuration for multimodal tasks."""
         try:
@@ -553,7 +545,7 @@ CUSTOM_MODEL_LOADING_TEMPLATES = {
                 return model, processor
             except Exception as e2:
                 logger.error(f"Error in alternative loading: {e2}")
-                return None, None'''
+                return None, None''',
 }
 
 # Model-specific code by model type
@@ -604,7 +596,6 @@ def test_embedding_similarity(self):
     except Exception as e:
         logger.error(f"Error during embedding similarity test: {e}")
         return False''',
-    
     "text_generation": '''# Additional methods for text generation models
 def test_text_generation(self):
     """Test text generation functionality."""
@@ -646,7 +637,6 @@ def test_text_generation(self):
     except Exception as e:
         logger.error(f"Error during text generation test: {e}")
         return False''',
-    
     "vision": '''# Additional methods for vision models
 def test_image_classification(self):
     """Test image classification functionality."""
@@ -702,7 +692,6 @@ def test_image_classification(self):
     except Exception as e:
         logger.error(f"Error during image classification test: {e}")
         return False''',
-    
     "audio": '''# Additional methods for audio models
 def test_audio_processing(self):
     """Test audio processing functionality."""
@@ -766,7 +755,6 @@ def test_audio_processing(self):
     except Exception as e:
         logger.error(f"Error during audio processing test: {e}")
         return False''',
-    
     "multimodal": '''# Additional methods for multimodal models
 def test_multimodal_processing(self):
     """Test multimodal processing functionality."""
@@ -840,18 +828,19 @@ def test_multimodal_processing(self):
         return True
     except Exception as e:
         logger.error(f"Error during multimodal processing test: {e}")
-        return False'''
+        return False''',
 }
+
 
 class TemplateBasedTestGenerator:
     """
     Generator for test files from templates.
     """
-    
+
     def __init__(self, db_path: str = "../generators/templates/template_db.json", args=None):
         """
         Initialize the generator with database connection.
-        
+
         Args:
             db_path: Path to the database file
             args: Command line arguments
@@ -859,7 +848,7 @@ class TemplateBasedTestGenerator:
         self.db_path = db_path
         self.templates = {}
         self.args = args or argparse.Namespace()  # Default empty args
-        
+
         # Set default validation behavior if not specified
         if not hasattr(self.args, "validate"):
             self.args.validate = HAS_VALIDATOR
@@ -867,198 +856,229 @@ class TemplateBasedTestGenerator:
             self.args.skip_validation = False
         if not hasattr(self.args, "strict_validation"):
             self.args.strict_validation = False
-            
+
         self.load_templates()
-    
+
     def load_templates(self):
         """Load templates from the database."""
-        if not HAS_DUCKDB or self.db_path.endswith('.json'):
+        if not HAS_DUCKDB or self.db_path.endswith(".json"):
             # Use JSON-based storage
-            json_db_path = self.db_path if self.db_path.endswith('.json') else self.db_path.replace('.duckdb', '.json')
-            
+            json_db_path = (
+                self.db_path
+                if self.db_path.endswith(".json")
+                else self.db_path.replace(".duckdb", ".json")
+            )
+
             if not os.path.exists(json_db_path):
                 logger.error(f"JSON database file not found: {json_db_path}")
                 return
-            
+
             try:
                 # Load the JSON database
-                with open(json_db_path, 'r') as f:
+                with open(json_db_path, "r") as f:
                     template_db = json.load(f)
-                
-                if 'templates' not in template_db:
+
+                if "templates" not in template_db:
                     logger.error("No templates found in JSON database")
                     return
-                
-                self.templates = template_db['templates']
+
+                self.templates = template_db["templates"]
                 logger.info(f"Loaded {len(self.templates)} templates from JSON database")
-                
+
                 # Check how many templates have valid syntax
                 valid_count = 0
                 for template_id, template_data in self.templates.items():
                     try:
-                        content = template_data.get('template', '')
+                        content = template_data.get("template", "")
                         ast.parse(content)
                         valid_count += 1
                     except SyntaxError:
                         pass
-                
-                logger.info(f"Found {valid_count}/{len(self.templates)} templates with valid syntax")
-                
+
+                logger.info(
+                    f"Found {valid_count}/{len(self.templates)} templates with valid syntax"
+                )
+
             except Exception as e:
                 logger.error(f"Error loading templates from JSON database: {str(e)}")
         else:
             # Use DuckDB
             try:
                 import duckdb
-                
+
                 if not os.path.exists(self.db_path):
                     logger.error(f"Database file not found: {self.db_path}")
                     return
-                
+
                 # Connect to the database
                 conn = duckdb.connect(self.db_path)
-                
+
                 # Check if templates table exists
-                table_check = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='templates'").fetchall()
+                table_check = conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='templates'"
+                ).fetchall()
                 if not table_check:
                     logger.error("No 'templates' table found in database")
                     return
-                
+
                 # Get all templates
-                templates = conn.execute("SELECT id, model_type, template_type, platform, template FROM templates").fetchall()
+                templates = conn.execute(
+                    "SELECT id, model_type, template_type, platform, template FROM templates"
+                ).fetchall()
                 if not templates:
                     logger.error("No templates found in database")
                     return
-                
+
                 # Convert to dictionary
                 for template_id, model_type, template_type, platform, content in templates:
                     template_key = f"{model_type}_{template_type}"
                     if platform:
                         template_key += f"_{platform}"
-                    
+
                     self.templates[template_key] = {
-                        'id': template_id,
-                        'model_type': model_type,
-                        'template_type': template_type,
-                        'platform': platform,
-                        'template': content
+                        "id": template_id,
+                        "model_type": model_type,
+                        "template_type": template_type,
+                        "platform": platform,
+                        "template": content,
                     }
-                
+
                 conn.close()
                 logger.info(f"Loaded {len(self.templates)} templates from DuckDB database")
             except Exception as e:
                 logger.error(f"Error loading templates from DuckDB database: {str(e)}")
-    
+
     def get_model_family(self, model_name: str) -> str:
         """
         Determine the model family for a given model name.
-        
+
         Args:
             model_name: Name of the model
-            
+
         Returns:
             Model family name
         """
         # Check direct mapping
-        model_prefix = model_name.split('/')[0] if '/' in model_name else model_name
-        model_prefix = model_prefix.split('-')[0] if '-' in model_prefix else model_prefix
-        
+        model_prefix = model_name.split("/")[0] if "/" in model_name else model_name
+        model_prefix = model_prefix.split("-")[0] if "-" in model_prefix else model_prefix
+
         if model_prefix in MODEL_TO_FAMILY:
             return MODEL_TO_FAMILY[model_prefix]
-        
+
         # Try pattern matching
         for family, models in MODEL_FAMILIES.items():
             for model in models:
                 if model in model_name.lower():
                     return family
-        
+
         # Default to text_embedding if unknown
         return "text_embedding"
-    
-    def generate_test_file(self, model_name: str, output_file: Optional[str] = None, model_type: Optional[str] = None) -> str:
+
+    def generate_test_file(
+        self, model_name: str, output_file: Optional[str] = None, model_type: Optional[str] = None
+    ) -> str:
         """
         Generate a test file for a specific model.
-        
+
         Args:
             model_name: Name of the model
             output_file: Path to output file (optional)
             model_type: Model type/family (optional)
-            
+
         Returns:
             Generated test file content
         """
         if not model_type:
             model_type = self.get_model_family(model_name)
-        
+
         logger.info(f"Generating test file for model {model_name} of type {model_type}")
-        
+
         # Get model class name from model name
-        model_class_name = model_name.split('/')[-1] if '/' in model_name else model_name
-        model_class_name = ''.join(part.capitalize() for part in re.sub(r'[^a-zA-Z0-9]', ' ', model_class_name).split())
-        
+        model_class_name = model_name.split("/")[-1] if "/" in model_name else model_name
+        model_class_name = "".join(
+            part.capitalize() for part in re.sub(r"[^a-zA-Z0-9]", " ", model_class_name).split()
+        )
+
         # Get appropriate templates for this model type
-        model_input_code = MODEL_INPUT_TEMPLATES.get(model_type, MODEL_INPUT_TEMPLATES["text_embedding"])
-        output_check_code = OUTPUT_CHECK_TEMPLATES.get(model_type, OUTPUT_CHECK_TEMPLATES["text_embedding"])
-        custom_model_loading = CUSTOM_MODEL_LOADING_TEMPLATES.get(model_type, CUSTOM_MODEL_LOADING_TEMPLATES["text_embedding"])
-        model_specific_code = MODEL_SPECIFIC_CODE_TEMPLATES.get(model_type, MODEL_SPECIFIC_CODE_TEMPLATES["text_embedding"])
-        
+        model_input_code = MODEL_INPUT_TEMPLATES.get(
+            model_type, MODEL_INPUT_TEMPLATES["text_embedding"]
+        )
+        output_check_code = OUTPUT_CHECK_TEMPLATES.get(
+            model_type, OUTPUT_CHECK_TEMPLATES["text_embedding"]
+        )
+        custom_model_loading = CUSTOM_MODEL_LOADING_TEMPLATES.get(
+            model_type, CUSTOM_MODEL_LOADING_TEMPLATES["text_embedding"]
+        )
+        model_specific_code = MODEL_SPECIFIC_CODE_TEMPLATES.get(
+            model_type, MODEL_SPECIFIC_CODE_TEMPLATES["text_embedding"]
+        )
+
         # Create test file content
         content = STANDARD_TEMPLATE
         content = content.replace("{{model_name}}", model_name)
         content = content.replace("{{model_class_name}}", model_class_name)
         content = content.replace("{{model_type}}", model_type)
-        content = content.replace("{{generation_date}}", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        content = content.replace(
+            "{{generation_date}}", datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        )
         content = content.replace("{{model_input_code}}", model_input_code)
         content = content.replace("{{output_check_code}}", output_check_code)
         content = content.replace("{{custom_model_loading}}", custom_model_loading)
         content = content.replace("{{model_specific_code}}", model_specific_code)
-        
+
         # Validate the generated template content
-        should_validate = HAS_VALIDATOR and (getattr(self.args, "validate", True) and not getattr(self.args, "skip_validation", False))
-        
+        should_validate = HAS_VALIDATOR and (
+            getattr(self.args, "validate", True)
+            and not getattr(self.args, "skip_validation", False)
+        )
+
         if should_validate:
             logger.info(f"Validating template for {model_name}...")
             is_valid, validation_errors = validate_template_for_generator(
-                content, 
+                content,
                 "merged_test_generator",
                 validate_hardware=True,
                 check_resource_pool=True,
-                strict_indentation=False  # Be lenient with template indentation
+                strict_indentation=False,  # Be lenient with template indentation
             )
-            
+
             if not is_valid:
                 logger.warning(f"Generated template has validation errors:")
                 for error in validation_errors:
                     logger.warning(f"  - {error}")
-                
+
                 if getattr(self.args, "strict_validation", False):
                     raise ValueError(f"Template validation failed for {model_name}")
                 else:
-                    logger.warning("Continuing despite validation errors (use --strict-validation to fail on errors)")
+                    logger.warning(
+                        "Continuing despite validation errors (use --strict-validation to fail on errors)"
+                    )
             else:
                 logger.info(f"Template validation passed for {model_name}")
         elif getattr(self.args, "validate", False) and not HAS_VALIDATOR:
-            logger.warning("Template validation requested but validator not available. Skipping validation.")
-        
+            logger.warning(
+                "Template validation requested but validator not available. Skipping validation."
+            )
+
         # Write to file if requested
         if output_file:
             output_path = Path(output_file)
             os.makedirs(output_path.parent, exist_ok=True)
-            
-            with open(output_file, 'w') as f:
+
+            with open(output_file, "w") as f:
                 f.write(content)
-            
+
             logger.info(f"Generated test file saved to {output_file}")
-            
+
             # Make file executable
             os.chmod(output_file, 0o755)
-        
+
         return content
-    
+
     def generate_family_tests(self, family: str, output_dir: str):
         """
         Generate test files for all models in a family.
-        
+
         Args:
             family: Model family name
             output_dir: Directory to save test files
@@ -1066,9 +1086,9 @@ class TemplateBasedTestGenerator:
         if family not in MODEL_FAMILIES:
             logger.error(f"Unknown model family: {family}")
             return
-        
+
         os.makedirs(output_dir, exist_ok=True)
-        
+
         for model_prefix in MODEL_FAMILIES[family]:
             # Use a standard model for each prefix
             if model_prefix == "bert":
@@ -1095,10 +1115,10 @@ class TemplateBasedTestGenerator:
                 model_name = "openai/clip-vit-base-patch32"
             else:
                 model_name = f"{model_prefix}-base"
-            
+
             output_file = os.path.join(output_dir, f"test_{model_prefix}.py")
             self.generate_test_file(model_name, output_file, family)
-    
+
     def list_models(self):
         """
         List all model types/families.
@@ -1110,7 +1130,7 @@ class TemplateBasedTestGenerator:
                 print(f"  - {model}")
             if len(models) > 3:
                 print(f"  - ... ({len(models) - 3} more)")
-    
+
     def list_families(self):
         """
         List all model families.
@@ -1119,31 +1139,49 @@ class TemplateBasedTestGenerator:
         for family in MODEL_FAMILIES:
             print(f"- {family}")
 
+
 def main():
     """Main function for standalone usage"""
     parser = argparse.ArgumentParser(description="Template-Based Test Generator")
     parser.add_argument("--model", type=str, help="Generate test file for specific model")
     parser.add_argument("--family", type=str, help="Generate test files for specific model family")
     parser.add_argument("--output", type=str, help="Output file or directory (depends on mode)")
-    parser.add_argument("--db-path", type=str, default="../generators/templates/template_db.json", 
-                      help="Path to the template database")
+    parser.add_argument(
+        "--db-path",
+        type=str,
+        default="../generators/templates/template_db.json",
+        help="Path to the template database",
+    )
     parser.add_argument("--list-models", action="store_true", help="List available models")
-    parser.add_argument("--list-families", action="store_true", help="List available model families")
-    parser.add_argument("--list-valid-templates", action="store_true", help="List templates with valid syntax")
-    parser.add_argument("--use-valid-only", action="store_true", help="Only use templates with valid syntax")
+    parser.add_argument(
+        "--list-families", action="store_true", help="List available model families"
+    )
+    parser.add_argument(
+        "--list-valid-templates", action="store_true", help="List templates with valid syntax"
+    )
+    parser.add_argument(
+        "--use-valid-only", action="store_true", help="Only use templates with valid syntax"
+    )
     # Validation options
-    parser.add_argument("--validate", action="store_true", 
-                     help="Validate templates before generation (default if validator available)")
-    parser.add_argument("--skip-validation", action="store_true",
-                     help="Skip template validation even if validator is available")
-    parser.add_argument("--strict-validation", action="store_true",
-                     help="Fail on validation errors")
-    
+    parser.add_argument(
+        "--validate",
+        action="store_true",
+        help="Validate templates before generation (default if validator available)",
+    )
+    parser.add_argument(
+        "--skip-validation",
+        action="store_true",
+        help="Skip template validation even if validator is available",
+    )
+    parser.add_argument(
+        "--strict-validation", action="store_true", help="Fail on validation errors"
+    )
+
     args = parser.parse_args()
-    
+
     # Create generator
     generator = TemplateBasedTestGenerator(args.db_path, args)
-    
+
     if args.list_models:
         generator.list_models()
     elif args.list_families:
@@ -1154,19 +1192,21 @@ def main():
         valid_count = 0
         for template_id, template_data in generator.templates.items():
             try:
-                content = template_data.get('template', '')
+                content = template_data.get("template", "")
                 ast.parse(content)
-                model_type = template_data.get('model_type', 'unknown')
-                template_type = template_data.get('template_type', 'unknown')
-                platform = template_data.get('platform', 'generic')
+                model_type = template_data.get("model_type", "unknown")
+                template_type = template_data.get("template_type", "unknown")
+                platform = template_data.get("platform", "generic")
                 key = f"{model_type}/{template_type}"
-                if platform and platform != 'generic':
+                if platform and platform != "generic":
                     key += f"/{platform}"
                 print(f"- {template_id}: {key}")
                 valid_count += 1
             except SyntaxError:
                 continue
-        print(f"\nFound {valid_count}/{len(generator.templates)} templates with valid syntax ({valid_count/len(generator.templates)*100:.1f}%)")
+        print(
+            f"\nFound {valid_count}/{len(generator.templates)} templates with valid syntax ({valid_count / len(generator.templates) * 100:.1f}%)"
+        )
     elif args.model:
         # Generate test file for specific model
         output_file = args.output if args.output else f"test_{args.model.split('/')[-1]}.py"
@@ -1179,8 +1219,9 @@ def main():
         generator.generate_family_tests(args.family, output_dir)
     else:
         parser.print_help()
-    
+
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

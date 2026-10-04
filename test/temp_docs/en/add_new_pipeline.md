@@ -134,10 +134,12 @@ For example, a custom pipeline for sentence pair classification might look like 
 import numpy as np
 from transformers import Pipeline
 
+
 def softmax(outputs):
     maxes = np.max(outputs, axis=-1, keepdims=True)
     shifted_exp = np.exp(outputs - maxes)
     return shifted_exp / shifted_exp.sum(axis=-1, keepdims=True)
+
 
 class PairClassificationPipeline(Pipeline):
     def _sanitize_parameters(self, **kwargs):

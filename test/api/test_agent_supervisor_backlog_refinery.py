@@ -118,7 +118,11 @@ def test_refill_scan_result_has_versioned_terminal_taxonomy_and_explicit_legacy_
             ScanTerminalReason.DUPLICATE_ONLY, "force", "test/v1", repo, started_at
         ),
         ScanTerminalReason.THRESHOLD_SATISFIED: build_scan_result(
-            ScanTerminalReason.THRESHOLD_SATISFIED, "open_task_threshold", "test/v1", repo, started_at
+            ScanTerminalReason.THRESHOLD_SATISFIED,
+            "open_task_threshold",
+            "test/v1",
+            repo,
+            started_at,
         ),
         ScanTerminalReason.COOLDOWN: build_scan_result(
             ScanTerminalReason.COOLDOWN, "cooldown", "test/v1", repo, started_at
@@ -127,7 +131,12 @@ def test_refill_scan_result_has_versioned_terminal_taxonomy_and_explicit_legacy_
             ScanTerminalReason.DISABLED, "disabled", "test/v1", repo, started_at
         ),
         ScanTerminalReason.PARTIAL: build_scan_result(
-            ScanTerminalReason.PARTIAL, "incremental", "test/v1", repo, started_at, ({"id": "partial"},)
+            ScanTerminalReason.PARTIAL,
+            "incremental",
+            "test/v1",
+            repo,
+            started_at,
+            ({"id": "partial"},),
         ),
         ScanTerminalReason.FAILED: build_scan_result(
             ScanTerminalReason.FAILED, "force", "test/v1", repo, started_at, error="analyzer failed"
@@ -273,7 +282,9 @@ def test_commit_generated_dirty_outputs_commits_nested_repo_and_parent_gitlink(t
     (repo / "README.md").write_text("root\n", encoding="utf-8")
     _git(repo, "add", "README.md")
     _git(repo, "commit", "-m", "seed root")
-    _git(repo, "-c", "protocol.file.allow=always", "submodule", "add", str(source), "hallucinate_app")
+    _git(
+        repo, "-c", "protocol.file.allow=always", "submodule", "add", str(source), "hallucinate_app"
+    )
     _git(repo, "commit", "-am", "add submodule")
 
     nested = repo / "hallucinate_app"
@@ -336,7 +347,15 @@ def test_commit_generated_dirty_outputs_repairs_recursive_clean_gitlinks(tmp_pat
     (repo / "README.md").write_text("root\n", encoding="utf-8")
     _git(repo, "add", "README.md")
     _git(repo, "commit", "-m", "seed root")
-    _git(repo, "-c", "protocol.file.allow=always", "submodule", "add", str(parent_source), "modules/parent")
+    _git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(parent_source),
+        "modules/parent",
+    )
     _git(repo, "-c", "protocol.file.allow=always", "submodule", "update", "--init", "--recursive")
     _git(repo, "commit", "-am", "add parent submodule")
 
@@ -376,7 +395,9 @@ def test_commit_generated_dirty_outputs_repairs_stale_nested_index_lock(tmp_path
     (repo / "README.md").write_text("root\n", encoding="utf-8")
     _git(repo, "add", "README.md")
     _git(repo, "commit", "-m", "seed root")
-    _git(repo, "-c", "protocol.file.allow=always", "submodule", "add", str(source), "hallucinate_app")
+    _git(
+        repo, "-c", "protocol.file.allow=always", "submodule", "add", str(source), "hallucinate_app"
+    )
     _git(repo, "commit", "-am", "add submodule")
 
     nested = repo / "hallucinate_app"
@@ -409,7 +430,9 @@ def test_commit_generated_dirty_outputs_defers_during_merge(tmp_path):
     _git(repo, "commit", "-m", "seed generated")
 
     generated.write_text("# Generated\n\nupdated\n", encoding="utf-8")
-    (_git_dir(repo) / "MERGE_HEAD").write_text(f"{_git(repo, 'rev-parse', 'HEAD')}\n", encoding="utf-8")
+    (_git_dir(repo) / "MERGE_HEAD").write_text(
+        f"{_git(repo, 'rev-parse', 'HEAD')}\n", encoding="utf-8"
+    )
 
     result = commit_generated_dirty_outputs(
         repo_root=repo,
@@ -487,7 +510,10 @@ def test_namespace_recorder_factories_bind_standard_paths(tmp_path):
     assert objective_recorder.discovery_dir == namespace_paths.discovery_dir
     assert objective_recorder.default_bundle_dir == namespace_paths.objective_bundle_dir
     assert objective_recorder.default_dataset_dir == namespace_paths.objective_dataset_dir
-    assert objective_recorder.todo_vector_index_path == namespace_paths.objective_todo_vector_index_path
+    assert (
+        objective_recorder.todo_vector_index_path
+        == namespace_paths.objective_todo_vector_index_path
+    )
     assert objective_recorder.depends_on_if_present == ("EX-001",)
     assert objective_recorder.min_open_tasks == 2
     assert objective_recorder.commit_subject == "EX: record objective findings"
@@ -551,21 +577,27 @@ def test_configured_backlog_recorder_bundle_delegates_to_runtime_factories(monke
     )
 
     assert isinstance(bundle, ConfiguredBacklogRecorderBundle)
-    assert bundle.daemon_refill_hooks_factory(
-        discovery_dir=tmp_path / "discovery",
-        objective_path_key="objective_path",
-        repo_root=tmp_path,
-        retry_budget_extra_kwargs={"discovery_output_path": "data/discovery"},
-        scope_label="Example",
-        after_order=("retry-budget", "objective-goal"),
-    ) == "daemon-hooks"
-    assert bundle.supervisor_refill_hooks_factory(
-        discovery_dir_key="discovery_dir",
-        objective_path=tmp_path / "objective.md",
-        codebase_scan_extra_kwargs={"force": True},
-        scope_label="Example",
-        after_once_order=("retry-budget", "objective-goal"),
-    ) == "supervisor-hooks"
+    assert (
+        bundle.daemon_refill_hooks_factory(
+            discovery_dir=tmp_path / "discovery",
+            objective_path_key="objective_path",
+            repo_root=tmp_path,
+            retry_budget_extra_kwargs={"discovery_output_path": "data/discovery"},
+            scope_label="Example",
+            after_order=("retry-budget", "objective-goal"),
+        )
+        == "daemon-hooks"
+    )
+    assert (
+        bundle.supervisor_refill_hooks_factory(
+            discovery_dir_key="discovery_dir",
+            objective_path=tmp_path / "objective.md",
+            codebase_scan_extra_kwargs={"force": True},
+            scope_label="Example",
+            after_once_order=("retry-budget", "objective-goal"),
+        )
+        == "supervisor-hooks"
+    )
 
     assert captured["daemon"]["objective_recorder"] is objective_recorder
     assert captured["daemon"]["codebase_scan_recorder"] is codebase_recorder
@@ -573,7 +605,9 @@ def test_configured_backlog_recorder_bundle_delegates_to_runtime_factories(monke
     assert captured["daemon"]["discovery_dir"] == tmp_path / "discovery"
     assert captured["daemon"]["objective_path_key"] == "objective_path"
     assert captured["daemon"]["repo_root"] == tmp_path
-    assert captured["daemon"]["retry_budget_extra_kwargs"] == {"discovery_output_path": "data/discovery"}
+    assert captured["daemon"]["retry_budget_extra_kwargs"] == {
+        "discovery_output_path": "data/discovery"
+    }
     assert captured["daemon"]["after_order"] == ("retry-budget", "objective-goal")
 
     assert captured["supervisor"]["objective_recorder"] is objective_recorder
@@ -635,8 +669,12 @@ def test_backlog_refinery_appends_missing_task_blocks_in_order(tmp_path):
     updated = todo_path.read_text(encoding="utf-8")
     assert changed
     assert "Duplicate task" not in updated
-    assert updated.index("## AUTO-002 First appended task") < updated.index("## AUTO-003 Second appended task")
-    assert not ensure_task_blocks_present(todo_path, (("AUTO-002", "## AUTO-002 First appended task"),))
+    assert updated.index("## AUTO-002 First appended task") < updated.index(
+        "## AUTO-003 Second appended task"
+    )
+    assert not ensure_task_blocks_present(
+        todo_path, (("AUTO-002", "## AUTO-002 First appended task"),)
+    )
 
     callback_path = tmp_path / "callback-tasks.todo.md"
     callback_path.write_text("# Agent Todos\n", encoding="utf-8")
@@ -858,8 +896,7 @@ def test_codebase_scan_receipt_accounts_inventory_candidates_and_durable_details
     assert limited.candidate_accounting.is_balanced
     assert limited.details_artifact is not None
     summaries = {
-        summary.reason_code.value: summary
-        for summary in limited.reason_summaries["exclusions"]
+        summary.reason_code.value: summary for summary in limited.reason_summaries["exclusions"]
     }
     assert set(summaries) == {"todo_board", "unsupported_suffix"}
     assert summaries["todo_board"].representative_paths == ("todo.md",)
@@ -1088,9 +1125,8 @@ def test_stale_fingerprint_cannot_certify_exhaustion_or_suppress_later_refill(tm
     # a forced/non-exhaustive pass must not turn it into completion proof.
     board = todo_path.read_text(encoding="utf-8")
     generated_heading = board.index("## AUTO-002")
-    completed_generated = (
-        board[:generated_heading]
-        + board[generated_heading:].replace("- Status: todo", "- Status: completed", 1)
+    completed_generated = board[:generated_heading] + board[generated_heading:].replace(
+        "- Status: todo", "- Status: completed", 1
     )
     todo_path.write_text(completed_generated, encoding="utf-8")
     source.write_text("ROUTE_READY = True\n", encoding="utf-8")
@@ -1340,8 +1376,7 @@ def test_backlog_refinery_goal_alignment_uses_declared_goal_outputs_and_records_
     )
 
     assert [
-        (finding.root_relative_path, finding.objective_goal_ids)
-        for finding in admitted.findings
+        (finding.root_relative_path, finding.objective_goal_ids) for finding in admitted.findings
     ] == [
         ("docs/current-state.md", ("DOC-G000",)),
         ("src/api/router.py", ("API-G000",)),
@@ -1642,10 +1677,10 @@ def test_objective_revision_invalidates_codebase_refill_cooldown(tmp_path):
 
     first = _record_codebase_scan_findings(**kwargs)
     objective_path.write_text(
-            objective_path.read_text(encoding="utf-8").replace(
-                "- Outputs: docs",
-                "- Outputs: src/runtime.py",
-            ),
+        objective_path.read_text(encoding="utf-8").replace(
+            "- Outputs: docs",
+            "- Outputs: src/runtime.py",
+        ),
         encoding="utf-8",
     )
     second = _record_codebase_scan_findings(**kwargs)
@@ -1718,10 +1753,9 @@ def test_objective_backed_refill_rejects_unscoped_escape_hatch(tmp_path):
     assert receipt.terminal_reason is ScanTerminalReason.FAILED
     assert "only valid when no objective heap is configured" in str(receipt.error)
     assert receipt.items == ()
-    assert [
-        item.reason_code.value
-        for item in receipt.accounting.admission_rejections
-    ] == ["incompatible_unscoped_refill"]
+    assert [item.reason_code.value for item in receipt.accounting.admission_rejections] == [
+        "incompatible_unscoped_refill"
+    ]
     assert todo_path.read_text(encoding="utf-8") == original_board
 
 
@@ -1743,7 +1777,9 @@ def test_backlog_refinery_codebase_scan_skips_vanished_git_roots(tmp_path, monke
     vanished = tmp_path / "deleted-worktree"
     vanished.mkdir()
     vanished.rmdir()
-    monkeypatch.setattr(backlog_refinery, "discover_git_worktrees", lambda *_args, **_kwargs: [repo, vanished])
+    monkeypatch.setattr(
+        backlog_refinery, "discover_git_worktrees", lambda *_args, **_kwargs: [repo, vanished]
+    )
 
     findings = scan_codebase_findings(repo, max_findings=5)
 
@@ -1833,7 +1869,10 @@ def test_backlog_refinery_dependency_guardrail_adds_ready_repair_task(tmp_path):
         repo_root=repo,
     )
     assert repeated == []
-    assert todo_path.read_text(encoding="utf-8").count("Resolve dependency guardrail for AUTO-001") == 1
+    assert (
+        todo_path.read_text(encoding="utf-8").count("Resolve dependency guardrail for AUTO-001")
+        == 1
+    )
 
 
 def test_backlog_refinery_dependency_guardrail_detects_dependency_cycle(tmp_path):
@@ -1883,7 +1922,9 @@ def test_backlog_refinery_dependency_guardrail_detects_dependency_cycle(tmp_path
     assert findings[0]["dependency_cycle"] == ["AUTO-001", "AUTO-002", "AUTO-001"]
     discovery = Path(findings[0]["discovery_path"]).read_text(encoding="utf-8")
     assert "Dependency cycle: AUTO-001 -> AUTO-002 -> AUTO-001" in discovery
-    assert "## AUTO-003 Resolve dependency guardrail for AUTO-001" in todo_path.read_text(encoding="utf-8")
+    assert "## AUTO-003 Resolve dependency guardrail for AUTO-001" in todo_path.read_text(
+        encoding="utf-8"
+    )
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
     assert strategy["blocked_tasks"] == ["AUTO-001"]
 
@@ -1951,7 +1992,10 @@ def test_backlog_refinery_dependency_guardrail_detects_duplicate_task_ids(tmp_pa
         repo_root=repo,
     )
     assert repeated == []
-    assert todo_path.read_text(encoding="utf-8").count("Resolve dependency guardrail for AUTO-001") == 1
+    assert (
+        todo_path.read_text(encoding="utf-8").count("Resolve dependency guardrail for AUTO-001")
+        == 1
+    )
 
 
 def test_backlog_refinery_releases_completed_guardrail_block(tmp_path):
@@ -2019,7 +2063,7 @@ def test_backlog_refinery_releases_completed_guardrail_block(tmp_path):
             "follow_up_task_id": "",
             "guardrail_kind": "stale_strategy_block",
             "reason": "missing_task",
-        }
+        },
     ]
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
     assert strategy["blocked_tasks"] == []
@@ -2313,7 +2357,7 @@ def test_backlog_refinery_releases_recursive_retry_repair_block(tmp_path):
             "reason": "recursive_retry_repair_task_retired",
             "parent_repair_task_id": "AUTO-002",
             "original_source_task_id": "AUTO-001",
-        }
+        },
     ]
     assert "- Status: completed" in todo_path.read_text(encoding="utf-8").split("## AUTO-003", 1)[1]
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
@@ -2609,14 +2653,11 @@ def test_backlog_refinery_retry_budget_blocks_validation_loop(tmp_path):
             "error": "validation_command_failed",
             "reason": "declared_validation_failed",
             "failed_command": "pytest tests/test_runtime.py",
-            "failed_tests": [
-                "tests/test_runtime.py::test_runtime_contract"
-            ],
+            "failed_tests": ["tests/test_runtime.py::test_runtime_contract"],
             "failed_test_paths": ["tests/test_runtime.py"],
             "validation_impact_paths": ["tests/test_runtime.py"],
             "failure_head": (
-                "FAILED tests/test_runtime.py::test_runtime_contract - "
-                "AssertionError"
+                "FAILED tests/test_runtime.py::test_runtime_contract - AssertionError"
             ),
         },
         "log_path": "state/implementation_logs/auto-001-attempt-1.log",
@@ -2646,19 +2687,13 @@ def test_backlog_refinery_retry_budget_blocks_validation_loop(tmp_path):
     discovery_path = Path(findings[0]["discovery_path"])
     assert discovery_path.exists()
     discovery_text = discovery_path.read_text(encoding="utf-8")
-    assert (
-        "tests/test_runtime.py::test_runtime_contract"
-        in discovery_text
-    )
+    assert "tests/test_runtime.py::test_runtime_contract" in discovery_text
     assert "- Failed test paths: tests/test_runtime.py" in discovery_text
-    assert "- Validation target paths: tests/test_runtime.py" in (
-        discovery_text
-    )
+    assert "- Validation target paths: tests/test_runtime.py" in (discovery_text)
     assert "AssertionError" in discovery_text
     assert (
         "The declared validation target paths "
-        "(tests/test_runtime.py) are bounded diagnostic and repair scope"
-        in todo_text
+        "(tests/test_runtime.py) are bounded diagnostic and repair scope" in todo_text
     )
     assert "do not weaken correct assertions or policy" in todo_text
 
@@ -2701,10 +2736,7 @@ def test_retry_budget_classifies_pre_dispatch_validation_stall(tmp_path):
         "log_path": "state/implementation_logs/auto-001-attempt-1.log",
     }
     events_path.write_text(
-        json.dumps(failure)
-        + "\n"
-        + json.dumps({**failure, "attempt": 2})
-        + "\n",
+        json.dumps(failure) + "\n" + json.dumps({**failure, "attempt": 2}) + "\n",
         encoding="utf-8",
     )
 
@@ -2728,9 +2760,7 @@ def test_retry_budget_classifies_pre_dispatch_validation_stall(tmp_path):
     todo_text = todo_path.read_text(encoding="utf-8")
     assert "Resolve validation retry-budget failure for AUTO-001" in todo_text
     assert "- Validation: test -f " in todo_text
-    discovery_text = Path(findings[0]["discovery_path"]).read_text(
-        encoding="utf-8"
-    )
+    discovery_text = Path(findings[0]["discovery_path"]).read_text(encoding="utf-8")
     assert "Validation attempted: `False`" in discovery_text
     assert "no_required_validation_declared" in discovery_text
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
@@ -2782,7 +2812,9 @@ def test_backlog_refinery_configured_retry_budget_adds_present_dependency(tmp_pa
         },
         "log_path": "state/implementation_logs/auto-001-attempt-1.log",
     }
-    events_path.write_text(json.dumps(failure) + "\n" + json.dumps({**failure, "attempt": 2}) + "\n", encoding="utf-8")
+    events_path.write_text(
+        json.dumps(failure) + "\n" + json.dumps({**failure, "attempt": 2}) + "\n", encoding="utf-8"
+    )
 
     findings = record_configured_retry_budget_findings(
         todo_path=todo_path,
@@ -2841,7 +2873,9 @@ def test_backlog_refinery_configured_retry_budget_recorder_uses_aliases(tmp_path
         },
         "log_path": "state/implementation_logs/auto-001-attempt-1.log",
     }
-    events_path.write_text(json.dumps(failure) + "\n" + json.dumps({**failure, "attempt": 2}) + "\n", encoding="utf-8")
+    events_path.write_text(
+        json.dumps(failure) + "\n" + json.dumps({**failure, "attempt": 2}) + "\n", encoding="utf-8"
+    )
     prepared: list[str] = []
 
     recorder = ConfiguredRetryBudgetRecorder(
@@ -2905,7 +2939,9 @@ def test_backlog_refinery_retry_budget_blocks_implementation_loop(tmp_path):
         "worktree_path": "worktrees/auto-001-attempt-1",
         "branch": "implementation/auto-001-attempt-1",
     }
-    events_path.write_text(json.dumps(failure) + "\n" + json.dumps({**failure, "attempt": 2}) + "\n", encoding="utf-8")
+    events_path.write_text(
+        json.dumps(failure) + "\n" + json.dumps({**failure, "attempt": 2}) + "\n", encoding="utf-8"
+    )
 
     findings = record_retry_budget_findings(
         todo_path=todo_path,
@@ -2978,7 +3014,9 @@ def test_backlog_refinery_retry_budget_skips_recursive_repair_tasks(tmp_path):
         },
         "log_path": "state/implementation_logs/auto-002-attempt-1.log",
     }
-    events_path.write_text(json.dumps(failure) + "\n" + json.dumps({**failure, "attempt": 2}) + "\n", encoding="utf-8")
+    events_path.write_text(
+        json.dumps(failure) + "\n" + json.dumps({**failure, "attempt": 2}) + "\n", encoding="utf-8"
+    )
 
     findings = record_retry_budget_findings(
         todo_path=todo_path,
@@ -3036,7 +3074,9 @@ def test_backlog_refinery_retry_budget_blocks_merge_loop(tmp_path):
         "log_path": "state/implementation_logs/auto-001-attempt-1.log",
     }
     events_path.parent.mkdir(parents=True)
-    events_path.write_text(json.dumps(event) + "\n" + json.dumps({**event, "attempt": 2}) + "\n", encoding="utf-8")
+    events_path.write_text(
+        json.dumps(event) + "\n" + json.dumps({**event, "attempt": 2}) + "\n", encoding="utf-8"
+    )
 
     findings = record_retry_budget_findings(
         todo_path=todo_path,
@@ -3090,7 +3130,9 @@ def test_backlog_refinery_retry_budget_blocks_merge_reconcile_skips(tmp_path):
         "reason": "implementation_branch_missing",
     }
     events_path.parent.mkdir(parents=True)
-    events_path.write_text(json.dumps(event) + "\n" + json.dumps({**event, "attempt": 2}) + "\n", encoding="utf-8")
+    events_path.write_text(
+        json.dumps(event) + "\n" + json.dumps({**event, "attempt": 2}) + "\n", encoding="utf-8"
+    )
 
     findings = record_retry_budget_findings(
         todo_path=todo_path,
@@ -3242,15 +3284,9 @@ def test_codebase_scan_canary_failure_keeps_generated_work_but_returns_partial(
     _git(repo, "commit", "-m", "seed canary failure")
     failed_canaries = AnalyzerCanaryReport(
         backlog_refinery.CODEBASE_SCAN_ANALYZER_VERSION,
-        (
-            AnalyzerCanaryResult(
-                "broken", "line_source", ("annotated_followup",), ()
-            ),
-        ),
+        (AnalyzerCanaryResult("broken", "line_source", ("annotated_followup",), ()),),
     )
-    monkeypatch.setattr(
-        backlog_refinery, "run_codebase_analyzer_canaries", lambda: failed_canaries
-    )
+    monkeypatch.setattr(backlog_refinery, "run_codebase_analyzer_canaries", lambda: failed_canaries)
 
     receipt = record_codebase_scan_findings(
         todo_path=todo_path,

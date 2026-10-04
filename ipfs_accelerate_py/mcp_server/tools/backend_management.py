@@ -15,6 +15,7 @@ try:
         select_backend_for_inference,
     )
 except Exception:
+
     def list_inference_backends(  # type: ignore[misc]
         filter_available: bool = False,
         **kw: Any,

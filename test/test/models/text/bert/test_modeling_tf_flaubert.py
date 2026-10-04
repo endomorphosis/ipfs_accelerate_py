@@ -156,7 +156,9 @@ class TFFlaubertModelTester:
 
         inputs = [input_ids, input_mask]
         result = model(inputs)
-        self.parent.assertEqual(result.last_hidden_state.shape, (self.batch_size, self.seq_length, self.hidden_size))
+        self.parent.assertEqual(
+            result.last_hidden_state.shape, (self.batch_size, self.seq_length, self.hidden_size)
+        )
 
     def create_and_check_flaubert_lm_head(
         self,
@@ -175,7 +177,9 @@ class TFFlaubertModelTester:
         inputs = {"input_ids": input_ids, "lengths": input_lengths, "langs": token_type_ids}
         result = model(inputs)
 
-        self.parent.assertEqual(result.logits.shape, (self.batch_size, self.seq_length, self.vocab_size))
+        self.parent.assertEqual(
+            result.logits.shape, (self.batch_size, self.seq_length, self.vocab_size)
+        )
 
     def create_and_check_flaubert_qa(
         self,
@@ -216,7 +220,9 @@ class TFFlaubertModelTester:
 
         result = model(inputs)
 
-        self.parent.assertEqual(result.logits.shape, (self.batch_size, self.type_sequence_label_size))
+        self.parent.assertEqual(
+            result.logits.shape, (self.batch_size, self.type_sequence_label_size)
+        )
 
     def create_and_check_flaubert_for_token_classification(
         self,
@@ -232,9 +238,15 @@ class TFFlaubertModelTester:
     ):
         config.num_labels = self.num_labels
         model = TFFlaubertForTokenClassification(config=config)
-        inputs = {"input_ids": input_ids, "attention_mask": input_mask, "token_type_ids": token_type_ids}
+        inputs = {
+            "input_ids": input_ids,
+            "attention_mask": input_mask,
+            "token_type_ids": token_type_ids,
+        }
         result = model(inputs)
-        self.parent.assertEqual(result.logits.shape, (self.batch_size, self.seq_length, self.num_labels))
+        self.parent.assertEqual(
+            result.logits.shape, (self.batch_size, self.seq_length, self.num_labels)
+        )
 
     def create_and_check_flaubert_for_multiple_choice(
         self,
@@ -251,8 +263,12 @@ class TFFlaubertModelTester:
         config.num_choices = self.num_choices
         model = TFFlaubertForMultipleChoice(config=config)
         multiple_choice_inputs_ids = tf.tile(tf.expand_dims(input_ids, 1), (1, self.num_choices, 1))
-        multiple_choice_input_mask = tf.tile(tf.expand_dims(input_mask, 1), (1, self.num_choices, 1))
-        multiple_choice_token_type_ids = tf.tile(tf.expand_dims(token_type_ids, 1), (1, self.num_choices, 1))
+        multiple_choice_input_mask = tf.tile(
+            tf.expand_dims(input_mask, 1), (1, self.num_choices, 1)
+        )
+        multiple_choice_token_type_ids = tf.tile(
+            tf.expand_dims(token_type_ids, 1), (1, self.num_choices, 1)
+        )
         inputs = {
             "input_ids": multiple_choice_inputs_ids,
             "attention_mask": multiple_choice_input_mask,
