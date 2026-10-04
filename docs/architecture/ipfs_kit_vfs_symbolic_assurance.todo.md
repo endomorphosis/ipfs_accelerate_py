@@ -8,7 +8,7 @@ compact references and bounded spans only.
 
 ## VFS-001 Define program-assurance evidence, claim, finding, and stage-receipt contracts
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: assurance-contracts
@@ -28,7 +28,7 @@ compact references and bounded spans only.
 
 ## VFS-002 Implement independently bound repository descriptors and authority forests
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: repository-identity
@@ -48,7 +48,7 @@ compact references and bounded spans only.
 
 ## VFS-003 Add a frozen four-repository manifest loader and replay validator
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: repository-identity
@@ -68,7 +68,7 @@ compact references and bounded spans only.
 
 ## VFS-004 Probe real ipfs_datasets_py AST, GraphRAG, IR, solver, multiformats, and ZKP capabilities
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: provider-capabilities
@@ -88,7 +88,7 @@ compact references and bounded spans only.
 
 ## VFS-005 Build an exhaustive Git-aware multi-repository corpus inventory
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: corpus-index
@@ -108,7 +108,7 @@ compact references and bounded spans only.
 
 ## VFS-006 Adapt TypeScript, TSX, and JavaScript evidence into canonical AST blob records
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: corpus-index
@@ -128,7 +128,7 @@ compact references and bounded spans only.
 
 ## VFS-007 Adapt Python, JSON/Schema, Markdown, and manifest evidence into the same index
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: corpus-index
@@ -148,7 +148,7 @@ compact references and bounded spans only.
 
 ## VFS-008 Build the canonical cross-repository program evidence graph
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: program-graph
@@ -168,7 +168,7 @@ compact references and bounded spans only.
 
 ## VFS-009 Resolve cross-language calls conservatively and retain unknown frontiers
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: program-graph
@@ -188,7 +188,7 @@ compact references and bounded spans only.
 
 ## VFS-010 Add a strict DAG-JSON/CIDv1/multihash identity bridge
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: content-addressing
@@ -208,7 +208,7 @@ compact references and bounded spans only.
 
 ## VFS-011 Implement the dependency-aware program-analysis cache
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: content-addressing
@@ -228,7 +228,7 @@ compact references and bounded spans only.
 
 ## VFS-012 Add a bounded ipfs_datasets_py GraphRAG/IPLD projection provider
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: program-graph
@@ -248,7 +248,7 @@ compact references and bounded spans only.
 
 ## VFS-013 Implement minimal dependency-complete call and impact slice queries
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: program-graph
@@ -268,7 +268,7 @@ compact references and bounded spans only.
 
 ## VFS-014 Define a versioned expected/observed program contract IR
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: contract-ir
@@ -288,7 +288,7 @@ compact references and bounded spans only.
 
 ## VFS-015 Extract contracts from IDL, schema, types, tests, specs, and observations
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: contract-ir
@@ -308,7 +308,7 @@ compact references and bounded spans only.
 
 ## VFS-016 Implement symbolic contract comparison and counterexample generation
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: contract-ir
@@ -328,7 +328,7 @@ compact references and bounded spans only.
 
 ## VFS-017 Resolve SwissKnife MCP++ calls to actual package registrations and implementations
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: mcp-interop
@@ -348,7 +348,7 @@ compact references and bounded spans only.
 
 ## VFS-018 Add hermetic MCP++ runtime contract witnesses
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: mcp-interop
@@ -368,7 +368,7 @@ compact references and bounded spans only.
 
 ## VFS-019 Translate supported contracts and call slices through ipfs_datasets_py IR
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: formal-proof
@@ -388,7 +388,7 @@ compact references and bounded spans only.
 
 ## VFS-020 Route code-contract obligations through capability-probed solvers and authoritative checks
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: formal-proof
@@ -408,7 +408,7 @@ compact references and bounded spans only.
 
 ## VFS-021 Compile minimal dependency-complete proof and counterexample contexts
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: formal-proof
@@ -428,7 +428,7 @@ compact references and bounded spans only.
 
 ## VFS-022 Define ZK public inputs, witness policy, and trace semantics for program assurance
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: zero-knowledge
@@ -448,7 +448,7 @@ compact references and bounded spans only.
 
 ## VFS-023 Implement the first bounded program-contract trace circuit and cross-codec vectors
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: zero-knowledge
@@ -468,7 +468,7 @@ compact references and bounded spans only.
 
 ## VFS-024 Enforce production ZK capability, setup, ceremony, and verifier conformance
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: zero-knowledge
@@ -488,7 +488,7 @@ compact references and bounded spans only.
 
 ## VFS-025 Inventory and classify all IPFS Kit VFS surfaces and variants
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: vfs-drift
@@ -508,7 +508,7 @@ compact references and bounded spans only.
 
 ## VFS-026 Define the canonical VFS operation and invariant contract pack
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: vfs-drift
@@ -528,7 +528,7 @@ compact references and bounded spans only.
 
 ## VFS-027 Build a hermetic differential VFS contract harness
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: vfs-drift
@@ -548,7 +548,7 @@ compact references and bounded spans only.
 
 ## VFS-028 Check VFS manifest, SDK, MCP, and MCP++ parity end to end
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: vfs-drift
@@ -568,7 +568,7 @@ compact references and bounded spans only.
 
 ## VFS-029 Implement the append-only content-addressed contract finding ledger
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: finding-generation
@@ -588,7 +588,7 @@ compact references and bounded spans only.
 
 ## VFS-030 Add security-property/dataflow findings and SARIF projection
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: finding-generation
@@ -608,7 +608,7 @@ compact references and bounded spans only.
 
 ## VFS-031 Materialize a stable repair task source from admitted findings
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: finding-generation
@@ -628,7 +628,7 @@ compact references and bounded spans only.
 
 ## VFS-032 Compile compact CID-addressed repair and delta-retry packets
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: low-context-repair
@@ -648,7 +648,7 @@ compact references and bounded spans only.
 
 ## VFS-033 Harden and validate the two-provider Grok Build/Codex supervisor control
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: low-context-repair
@@ -668,7 +668,7 @@ compact references and bounded spans only.
 
 ## VFS-034 Refill goals and tasks from fresh symbolic finding families
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: autonomous-refill
@@ -688,7 +688,7 @@ compact references and bounded spans only.
 
 ## VFS-035 Benchmark symbolic-first coverage, reuse, context, and resources
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: autonomous-refill
@@ -708,7 +708,7 @@ compact references and bounded spans only.
 
 ## VFS-036 Add adversarial end-to-end assurance, control parity, recovery, and rollback gates
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: assurance-rollout
@@ -728,7 +728,7 @@ compact references and bounded spans only.
 
 ## VFS-037 Run and verify the frozen SwissKnife/IPFS VFS pilot and emit the repair board
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: assurance-rollout
@@ -748,7 +748,7 @@ compact references and bounded spans only.
 
 ## VFS-038 Close objective gap: Project a provenance-preserving program and GraphRAG evidence graph
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -814,7 +814,7 @@ compact references and bounded spans only.
 
 ## VFS-039 Close objective gap: Prove transitive cache invalidation and bounded storage
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -880,7 +880,7 @@ compact references and bounded spans only.
 
 ## VFS-040 Close objective gap: Extract versioned expected and observed contracts without circular reasoning
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -946,7 +946,7 @@ compact references and bounded spans only.
 
 ## VFS-041 Close objective gap: Answer minimal call-slice and contract-impact queries
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -1012,7 +1012,7 @@ compact references and bounded spans only.
 
 ## VFS-042 Close objective gap: Prove whether SwissKnife MCP++ calls reach the intended IPFS implementation
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -1078,7 +1078,7 @@ compact references and bounded spans only.
 
 ## VFS-043 Close objective gap: Generate conclusive mismatch witnesses or explicit unknown results
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -1144,7 +1144,7 @@ compact references and bounded spans only.
 
 ## VFS-044 Close objective gap: Attest supported deterministic analysis traces with qualified zero-knowledge proofs
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -1210,7 +1210,7 @@ compact references and bounded spans only.
 
 ## VFS-045 Close objective gap: Establish and check the canonical IPFS Kit VFS behavioral contract
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -1276,7 +1276,7 @@ compact references and bounded spans only.
 
 ## VFS-046 Close objective gap: Project a provenance-preserving program and GraphRAG evidence graph
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -1342,7 +1342,7 @@ compact references and bounded spans only.
 
 ## VFS-047 Close objective gap: Extract versioned expected and observed contracts without circular reasoning
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -1408,7 +1408,7 @@ compact references and bounded spans only.
 
 ## VFS-048 Close objective gap: Generate conclusive mismatch witnesses or explicit unknown results
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -1474,7 +1474,7 @@ compact references and bounded spans only.
 
 ## VFS-049 Close objective gap: Generate a typed, deduplicated correctness and vulnerability ledger
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -1540,7 +1540,7 @@ compact references and bounded spans only.
 
 ## VFS-050 Close objective gap: Materialize a second repair taskboard from admitted findings
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -1606,7 +1606,7 @@ compact references and bounded spans only.
 
 ## VFS-051 Close objective gap: Run conflict-safe Grok Build and Codex implementation shards
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -1672,7 +1672,7 @@ compact references and bounded spans only.
 
 ## VFS-052 Close objective gap: Prove vfs/repository-forest-receipt@1 for Prove and repair IPFS Kit VFS contracts from a content-addressed SwissKnife program graph
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -1739,7 +1739,7 @@ compact references and bounded spans only.
 
 ## VFS-053 Close objective gap: Translate supported code contracts into kernel-checkable proof obligations
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -1805,7 +1805,7 @@ compact references and bounded spans only.
 
 ## VFS-054 Close objective gap: Prove objective validation repair for Project a provenance-preserving program and GraphRAG evidence graph
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -1871,7 +1871,7 @@ compact references and bounded spans only.
 
 ## VFS-055 Close objective gap: Prove vfs/autonomous-refill-exhaustion@1 for Prove and repair IPFS Kit VFS contracts from a content-addressed SwissKnife program graph
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -1938,7 +1938,7 @@ compact references and bounded spans only.
 
 ## VFS-056 Close objective gap: Prove vfs/exhaustive-index-receipt@1 for Prove and repair IPFS Kit VFS contracts from a content-addressed SwissKnife program graph
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -2005,7 +2005,7 @@ compact references and bounded spans only.
 
 ## VFS-057 Close objective gap packet: VFS-G031, VFS-G141
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -2071,7 +2071,7 @@ compact references and bounded spans only.
 
 ## VFS-058 Close objective gap: Witness selected MCP++ paths in a hermetic runtime
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -2137,7 +2137,7 @@ compact references and bounded spans only.
 
 ## VFS-059 Close objective gap: Attest supported deterministic analysis traces with qualified zero-knowledge proofs
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -2203,7 +2203,7 @@ compact references and bounded spans only.
 
 ## VFS-060 Close objective gap: Use canonical multiformats identities and dependency-aware content caches
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -2270,7 +2270,7 @@ compact references and bounded spans only.
 
 ## VFS-061 Review swallowed exception path in ipfs_accelerate_py/agent_supervisor/program_analysis_cache.py:1966
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: runtime
@@ -2315,7 +2315,7 @@ compact references and bounded spans only.
 
 ## VFS-062 Close objective gap: Prove vfs/contract-assurance-root@1 for Prove and repair IPFS Kit VFS contracts from a content-addressed SwissKnife program graph
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -2382,7 +2382,7 @@ compact references and bounded spans only.
 
 ## VFS-063 Close objective gap packet: VFS-G138, VFS-G139
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -2449,7 +2449,7 @@ compact references and bounded spans only.
 
 ## VFS-064 Close objective gap: Exhaustively inventory and incrementally parse the SwissKnife corpus
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -2516,7 +2516,7 @@ compact references and bounded spans only.
 
 ## VFS-065 Resolve 3 preflight-conflicting backlogged worktree merges
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: false
 - Review only: true
@@ -2537,7 +2537,7 @@ compact references and bounded spans only.
 
 ## VFS-066 Close objective gap packet: VFS-G136, VFS-G137
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -2604,7 +2604,7 @@ compact references and bounded spans only.
 
 ## VFS-067 Close objective gap: Prove vfs/repository-descriptor@1 for Bind every observation to an explicit multi-repository authority forest
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -2671,7 +2671,7 @@ compact references and bounded spans only.
 
 ## VFS-068 Close objective gap: Prove vfs/repository-forest-manifest@1 for Bind every observation to an explicit multi-repository authority forest
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -2738,7 +2738,7 @@ compact references and bounded spans only.
 
 ## VFS-069 Close objective gap: Prove vfs/language-edge-resolution@1 for Resolve dynamic language features without inventing call edges
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -2805,7 +2805,7 @@ compact references and bounded spans only.
 
 ## VFS-070 Close objective gap: Prove vfs/repository-forest-replay@1 for Freeze and replay the initial four-repository manifest
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -2872,7 +2872,7 @@ compact references and bounded spans only.
 
 ## VFS-071 Close objective gap: Prove vfs/logic-translation@1 for Translate supported code contracts into kernel-checkable proof obligations
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -2939,7 +2939,7 @@ compact references and bounded spans only.
 
 ## VFS-072 Close objective gap: Prove vfs/mcplusplus-call-path@1 for Prove whether SwissKnife MCP++ calls reach the intended IPFS implementation
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -3006,7 +3006,7 @@ compact references and bounded spans only.
 
 ## VFS-073 Close objective gap: Prove vfs/canonical-operation-matrix@1 for Establish and check the canonical IPFS Kit VFS behavioral contract
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -3073,7 +3073,7 @@ compact references and bounded spans only.
 
 ## VFS-074 Close objective gap: Prove vfs/kernel-proof-receipt@1 for Translate supported code contracts into kernel-checkable proof obligations
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -3140,7 +3140,7 @@ compact references and bounded spans only.
 
 ## VFS-075 Close objective gap: Prove vfs/mcplusplus-manifest-parity@1 for Prove whether SwissKnife MCP++ calls reach the intended IPFS implementation
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -3207,7 +3207,7 @@ compact references and bounded spans only.
 
 ## VFS-076 Close objective gap: Prevent simulated or placeholder ZK paths from acquiring authority
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -3274,7 +3274,7 @@ compact references and bounded spans only.
 
 ## VFS-077 Close objective gap: Differentially witness VFS facade and MCP behavior
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -3341,7 +3341,7 @@ compact references and bounded spans only.
 
 ## VFS-078 Close objective gap: Give Grok and Codex only compact CID-addressed repair packets
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -3408,7 +3408,7 @@ compact references and bounded spans only.
 
 ## VFS-079 Close objective gap packet: VFS-G160, VFS-G161
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -3475,7 +3475,7 @@ compact references and bounded spans only.
 
 ## VFS-080 Close objective gap: Prove vfs/symbolic-refill-epoch@1 for Refill goals, subgoals, and tasks from fresh symbolic evidence
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -3542,7 +3542,7 @@ compact references and bounded spans only.
 
 ## VFS-081 Close objective gap packet: VFS-G162, VFS-G163
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -3609,7 +3609,7 @@ compact references and bounded spans only.
 
 ## VFS-082 Close objective gap: Prove vfs/adversarial-e2e-gate@1 for Release only evidence-backed results through shadow and assist gates
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -3676,7 +3676,7 @@ compact references and bounded spans only.
 
 ## VFS-083 Close objective gap: Prove vfs/refill-idempotency@1 for Refill goals, subgoals, and tasks from fresh symbolic evidence
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -3743,7 +3743,7 @@ compact references and bounded spans only.
 
 ## VFS-084 Close objective gap: Prove vfs/shadow-rollout-report@1 for Release only evidence-backed results through shadow and assist gates
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -3810,7 +3810,7 @@ compact references and bounded spans only.
 
 ## VFS-085 Close objective gap: Prove vfs/swissknife-vfs-pilot@1 for Run the frozen SwissKnife and IPFS Kit VFS pilot
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -3877,7 +3877,7 @@ compact references and bounded spans only.
 
 ## VFS-086 Close objective gap: Prove vfs/symbolic-efficiency-benchmark@1 for Prove low-context symbolic-first operation and bounded resource use
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -3944,7 +3944,7 @@ compact references and bounded spans only.
 
 ## VFS-087 Close objective gap packet: VFS-G141, VFS-G142
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -4011,7 +4011,7 @@ compact references and bounded spans only.
 
 ## VFS-088 Close objective gap: Prove vfs/dependency-cache@1 for Use canonical multiformats identities and dependency-aware content caches
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -4078,7 +4078,7 @@ compact references and bounded spans only.
 
 ## VFS-089 Close objective gap: Prove vfs/cache-invalidation-proof@1 for Goal packet aggregate for VFS-G031, VFS-G141, VFS-G142
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -4145,7 +4145,7 @@ compact references and bounded spans only.
 
 ## VFS-090 Close objective gap: Prove vfs/minimal-call-slice@1 for Answer minimal call-slice and contract-impact queries
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -4212,7 +4212,7 @@ compact references and bounded spans only.
 
 ## VFS-091 Close objective gap: Prove vfs/mcplusplus-runtime-witness@1 for Witness selected MCP++ paths in a hermetic runtime
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -4279,7 +4279,7 @@ compact references and bounded spans only.
 
 ## VFS-092 Close objective gap: Prove vfs/minimal-proof-context@1 for Produce minimal proof and counterexample contexts
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
