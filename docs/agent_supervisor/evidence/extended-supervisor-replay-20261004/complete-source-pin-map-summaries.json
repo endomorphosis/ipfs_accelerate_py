@@ -1,0 +1,54 @@
+{
+  "all_equal": true,
+  "archive_repository_members_fully_covered": true,
+  "maps": {
+    "frozen-production-pins.json": {
+      "by_repository": {
+        "datasets": 7973,
+        "kit": 1299,
+        "source": 2741
+      },
+      "canonical_mapping_sha256": "8e93a7885343cde6916933c1a691730f5bcf8880ec5c79400a631b238cd6ca93",
+      "complete_mapping_body_exported": false,
+      "entries": 12013
+    },
+    "qualification-after-pins.json": {
+      "by_repository": {
+        "datasets": 7973,
+        "kit": 1299,
+        "source": 2741
+      },
+      "canonical_mapping_sha256": "8e93a7885343cde6916933c1a691730f5bcf8880ec5c79400a631b238cd6ca93",
+      "complete_mapping_body_exported": false,
+      "entries": 12013
+    },
+    "qualification-before-pins.json": {
+      "by_repository": {
+        "datasets": 7973,
+        "kit": 1299,
+        "source": 2741
+      },
+      "canonical_mapping_sha256": "8e93a7885343cde6916933c1a691730f5bcf8880ec5c79400a631b238cd6ca93",
+      "complete_mapping_body_exported": false,
+      "entries": 12013
+    }
+  },
+  "original_map_digests": {
+    "frozen-production-pins.json": {
+      "bytes": 1908786,
+      "raw_body_exported": false,
+      "sha256": "8e93a7885343cde6916933c1a691730f5bcf8880ec5c79400a631b238cd6ca93"
+    },
+    "qualification-after-pins.json": {
+      "bytes": 1908786,
+      "raw_body_exported": false,
+      "sha256": "8e93a7885343cde6916933c1a691730f5bcf8880ec5c79400a631b238cd6ca93"
+    },
+    "qualification-before-pins.json": {
+      "bytes": 1908786,
+      "raw_body_exported": false,
+      "sha256": "8e93a7885343cde6916933c1a691730f5bcf8880ec5c79400a631b238cd6ca93"
+    }
+  },
+  "schema": "complete-source-pin-map-summary@1"
+}

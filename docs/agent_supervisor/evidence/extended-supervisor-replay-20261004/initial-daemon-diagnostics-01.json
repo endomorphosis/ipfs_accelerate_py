@@ -1,0 +1,89 @@
+{
+  "container_name": "fix-code-vulnerability__2yrryzv__env-main-1",
+  "diagnostic": {
+    "exact_pattern": "admitted_managed_daemon*.log",
+    "logs": [
+      {
+        "exception_types": [
+          "ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.LeaseTimeoutError"
+        ],
+        "log_bytes": 15975,
+        "mtime_ns": 1791110647083517526,
+        "name": "admitted_managed_daemon_20261004T104222Z.log",
+        "tail_bytes": 15975,
+        "tail_sha256": "3eb0409232fdb8b2399d3e0aceb1feab2a175f918a0c672054376102bb6ba660",
+        "traceback_frames": [
+          {
+            "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+            "function": "_build_implementation_prompt",
+            "line": 65565
+          },
+          {
+            "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+            "function": "_compile_implementation_context",
+            "line": 65082
+          },
+          {
+            "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+            "function": "_task_metadata_snapshot",
+            "line": 61821
+          },
+          {
+            "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py",
+            "function": "load_task_context_nomination",
+            "line": 152
+          },
+          {
+            "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py",
+            "function": "load_task_context_selection",
+            "line": 164
+          },
+          {
+            "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
+            "function": "validate_source384_context",
+            "line": 285
+          },
+          {
+            "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
+            "function": "_validate_source384_context",
+            "line": 327
+          },
+          {
+            "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py",
+            "function": "validate_shared_parent_units",
+            "line": 289
+          },
+          {
+            "file": "/opt/ipfs-supervisor/python-runtime/python/cpython-3.12.12-linux-aarch64-gnu/lib/python3.12/contextlib.py",
+            "function": "__enter__",
+            "line": 137
+          },
+          {
+            "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/codebase_resources.py",
+            "function": "acquire_codebase_resources",
+            "line": 96
+          },
+          {
+            "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+            "function": "acquire_child",
+            "line": 825
+          },
+          {
+            "file": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+            "function": "acquire",
+            "line": 1876
+          }
+        ]
+      }
+    ],
+    "matching_count": 22,
+    "selection": "first_two_by_filename"
+  },
+  "final_receipt": false,
+  "producer_sha256": "4943e91f1dddb867a8b1d8bbdecd9ec257b1f8faeefa69cfefd2167c407829cc",
+  "raw_log_bodies_exported": false,
+  "read_finished_unix_seconds": 1791111086.60252,
+  "read_started_unix_seconds": 1791111086.5432765,
+  "returncode": 0,
+  "schema": "bounded-first-daemon-failure-projection@1"
+}

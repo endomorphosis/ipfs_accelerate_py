@@ -1,0 +1,320 @@
+{
+  "exported_credentials": false,
+  "exported_model_bodies": false,
+  "exported_verifier_bodies": false,
+  "inspection_provenance": {
+    "inspector_sha256": "cd08207d03288539dac24c3594547a64230d8fee53ddac5b4b544b6b16774855",
+    "native_startup_projector": {
+      "frozen_source_match": true,
+      "sha256": "e9235c75731e247fcb0edebd92518baaf15a7f84040fdd2475f3d2c351796d5a",
+      "source_member": "source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py"
+    },
+    "schema": "bounded-full-trial-inspection-provenance@1"
+  },
+  "receipt": {
+    "arm": "full",
+    "benchmark_advantage_claimed": false,
+    "harbor_returncode": 0,
+    "invocation_seconds": 1070.3909469589998,
+    "original_task_inputs_unchanged": true,
+    "parallel_workers": 1,
+    "planning_strategy": "intent_symbolic",
+    "schema": "terminal-full-supervisor-receipt@1",
+    "task": "fix-code-vulnerability",
+    "trial_count": 1
+  },
+  "receipt_bytes": 366807,
+  "receipt_sha256": "21453084f0fe39b866db247f736e8100578769534799d3dfc6f3e8143a8b124e",
+  "schema": "bounded-full-trial-metadata-inspection@1",
+  "trials": [
+    {
+      "contract": {
+        "canonical_source_edits": 0,
+        "completion_authority": false,
+        "publication_authority": false,
+        "status": "candidate_ready",
+        "whole_program_proved": false
+      },
+      "doctor": {
+        "provider_calls": 0,
+        "route": "doctor_contract_candidate",
+        "status": "candidate_ready",
+        "task_cid": "baguqeerazjukt2ysialhblbew3b7boyqzane6ptc3menuh7sydt4imws5d3a"
+      },
+      "doctor_dispatch_present": true,
+      "doctor_invocation_count": null,
+      "durations_seconds": {
+        "agent_execution": 845.299549,
+        "agent_setup": 200.098198,
+        "environment_setup": 6.503387,
+        "verifier": 1.87561
+      },
+      "failure_admission": {
+        "causal_proof": false,
+        "observation_boundary": "request_primary_gate",
+        "reason": "no_native_admission_error",
+        "status": "unavailable"
+      },
+      "failure_admission_observation": {
+        "causal_proof": false,
+        "complete_admission_decision": false,
+        "observation_boundary": "request_primary_gate",
+        "reason": "no_native_admission_error",
+        "schema": "terminal-admission-failure-observation@1",
+        "status": "unavailable"
+      },
+      "failure_resources": {
+        "available_memory_mb": 12144,
+        "cpu_slots": 5,
+        "cpu_stall_percent": 26.08,
+        "io_stall_percent": 0.84,
+        "memory_stall_percent": 0.51,
+        "total_memory_mb": 16384
+      },
+      "initial_context": {
+        "full_capsules": 531,
+        "indexed_symbols": 426,
+        "seconds": 126.15501916200446
+      },
+      "initial_context_phases": {
+        "empty_native_world_capture": 0.3896438989904709,
+        "final_evidence_verification": 10.700155027006986,
+        "persisted_snapshot_reopen": 0.3306071409897413,
+        "retrieval_persistence": 1.8062728290096857,
+        "semantic_build_reconstruction_and_hydration": 35.985443208002835,
+        "source384_capture_and_inference": 69.6078473230009,
+        "vector_qualification": 7.32478742999956
+      },
+      "native_startup": {
+        "bootstrap_error_count": 1,
+        "bootstrap_receipt_count": 19,
+        "bootstrap_wait_seconds": 120.0,
+        "observations": [
+          {
+            "phase": "control_validation",
+            "seconds": 10.769951259993832,
+            "status": "completed"
+          },
+          {
+            "phase": "control_validation",
+            "seconds": 10.78058801300358,
+            "status": "completed"
+          },
+          {
+            "phase": "control_validation",
+            "seconds": 10.458029765999527,
+            "status": "completed"
+          },
+          {
+            "phase": "launch_validation",
+            "seconds": 10.83319018399925,
+            "status": "completed"
+          },
+          {
+            "phase": "bootstrap_validation",
+            "seconds": 10.516456099998322,
+            "status": "completed"
+          },
+          {
+            "phase": "bootstrap_validation",
+            "seconds": 10.541653979002149,
+            "status": "completed"
+          },
+          {
+            "phase": "bootstrap_validation",
+            "seconds": 11.110001143999398,
+            "status": "completed"
+          },
+          {
+            "phase": "bootstrap_validation",
+            "seconds": 10.705068868002854,
+            "status": "completed"
+          },
+          {
+            "phase": "bootstrap_validation",
+            "seconds": 10.531548198996461,
+            "status": "completed"
+          },
+          {
+            "phase": "bootstrap_validation",
+            "seconds": 10.946432816999732,
+            "status": "completed"
+          },
+          {
+            "phase": "bootstrap_validation",
+            "seconds": 10.132820657003322,
+            "status": "completed"
+          },
+          {
+            "phase": "bootstrap_validation",
+            "seconds": 10.649759028005064,
+            "status": "completed"
+          },
+          {
+            "phase": "bootstrap_validation",
+            "seconds": 10.985962298000231,
+            "status": "completed"
+          },
+          {
+            "phase": "bootstrap_validation",
+            "seconds": 10.772033989996999,
+            "status": "completed"
+          },
+          {
+            "phase": "bootstrap_validation",
+            "seconds": 10.91385283600539,
+            "status": "completed"
+          },
+          {
+            "phase": "bootstrap_validation",
+            "seconds": 10.173537672002567,
+            "status": "completed"
+          }
+        ],
+        "observations_truncated": true,
+        "schema": "admitted-native-startup-observation@1",
+        "start_timeout_ms": 120000,
+        "stop_timeout_ms": 20000
+      },
+      "phases": {
+        "context_seconds": 20.513374735004618,
+        "doctor_seconds": 33.26532091900299,
+        "initial_context_seconds": 126.62370465398999,
+        "planning_seconds": 30.855806524996297,
+        "prepare_seconds": 10.892551224009367
+      },
+      "planning": {
+        "elapsed_seconds": 30.855393463003566,
+        "goals": 2,
+        "planning_strategy": "intent_symbolic",
+        "provider_calls": 0,
+        "qualified": true,
+        "tasks": 1
+      },
+      "post_publication_context": {},
+      "post_publication_proof_index": {},
+      "post_publication_security_advice": {},
+      "proof": {
+        "provider_calls": 0,
+        "security_ir_obligations_discharged": false,
+        "status": "proved_local_contract",
+        "whole_program_proved": false
+      },
+      "proof_receipt": {
+        "disposition": "verified",
+        "property_id": "property:reject-control-preserve-safe",
+        "receipt_id": "doctor-authoritative-proof:baguqeeral3rkksr2wfxa4fis3orkkr5wgsmfb3mdf3vcmihj5yyl44katy4q",
+        "uniqueness_satisfied": true,
+        "write_authority": false
+      },
+      "provider_invocation_count": 0,
+      "remaining_processes": 0,
+      "reward": {
+        "reward": 0.0
+      },
+      "source384": {
+        "seconds": 69.51984770099807
+      },
+      "start": {
+        "status": "succeeded"
+      },
+      "stop": {
+        "status": "succeeded"
+      },
+      "supervisor": {
+        "arm": "full",
+        "benchmark_advantage_claimed": false,
+        "error_phase": "native_execution",
+        "error_type": "TimeoutError",
+        "max_total_agent_seconds": 900,
+        "native_start_timeout_ms": 120000,
+        "native_start_timeout_seconds": 120,
+        "native_stop_timeout_ms": 20000,
+        "production_activation": false,
+        "reserved_cleanup_seconds": 60,
+        "schema": "terminal-admitted-supervisor-run@1",
+        "seconds": 843.3322957060009,
+        "task_completed": false,
+        "work_cutoff_seconds": 840,
+        "worker_cleanup_returncode": 0
+      },
+      "task_state": {
+        "revision": 3,
+        "status": "in_progress"
+      },
+      "traceback_frames": [
+        {
+          "file": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+          "function": "run",
+          "line": 637
+        },
+        {
+          "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py",
+          "function": "observe",
+          "line": 1219
+        },
+        {
+          "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py",
+          "function": "observe",
+          "line": 370
+        },
+        {
+          "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py",
+          "function": "_verify_observation",
+          "line": 925
+        },
+        {
+          "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py",
+          "function": "_verify",
+          "line": 895
+        },
+        {
+          "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py",
+          "function": "verify_owner_local_benchmark_observation",
+          "line": 131
+        },
+        {
+          "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+          "function": "verify_local_benchmark_admission",
+          "line": 1066
+        },
+        {
+          "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+          "function": "_verify_local_benchmark_admission",
+          "line": 1074
+        },
+        {
+          "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+          "function": "_manifest",
+          "line": 570
+        },
+        {
+          "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+          "function": "observe_local_manifest_sources",
+          "line": 210
+        },
+        {
+          "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+          "function": "_observe_local_manifest_sources",
+          "line": 245
+        },
+        {
+          "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+          "function": "_sources",
+          "line": 139
+        },
+        {
+          "file": "/opt/ipfs-supervisor/python-runtime/python/cpython-3.12.12-linux-aarch64-gnu/lib/python3.12/pathlib.py",
+          "function": "read_bytes",
+          "line": 1020
+        },
+        {
+          "file": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+          "function": "budget_expired",
+          "line": 440
+        }
+      ],
+      "trial": "fix-code-vulnerability__2YrryzV"
+    }
+  ]
+}

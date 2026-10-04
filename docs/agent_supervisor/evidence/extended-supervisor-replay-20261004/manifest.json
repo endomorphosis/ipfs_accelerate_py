@@ -1,0 +1,133 @@
+{
+  "files": [
+    {
+      "bytes": 4352,
+      "path": "README.md",
+      "sha256": "c627c3668854478eefb5243c8ce460ee4c1284dd8c5b4cf2ea069c54a244c346"
+    },
+    {
+      "bytes": 1534,
+      "path": "build-audit.json",
+      "sha256": "bf4461cb0a3417fbbe41ba1fb21f4c286d982fc45dde6d131c50587e00038638"
+    },
+    {
+      "bytes": 2007,
+      "path": "build-command.json",
+      "sha256": "3f5d377f3af8667527cae0217bee39fb29dde8e9fd874b3fee1c369f5712b060"
+    },
+    {
+      "bytes": 54,
+      "path": "build-exit.json",
+      "sha256": "6c8228a2ddafa1ebdf9790874a8d9148c6aa55bab642dcb9488adba64281e1da"
+    },
+    {
+      "bytes": 455,
+      "path": "ci-observation.json",
+      "sha256": "6e36891af7ba9040171079e973ca4f66efed76cdf17618645a2de82b752263f9"
+    },
+    {
+      "bytes": 1698,
+      "path": "complete-source-pin-map-summaries.json",
+      "sha256": "51365dbda36be04a3f1762e7819f7b6bb5e4c0d771f99086e38e257143f9fa18"
+    },
+    {
+      "bytes": 2032,
+      "path": "execute-command.json",
+      "sha256": "03663efb4233a2c8a0264bb7200d1c0334f9a70d7949ba1af07bff19c09f8c47"
+    },
+    {
+      "bytes": 1122,
+      "path": "experiment-scope.json",
+      "sha256": "a6ab16115de61834fca892fdf6647711359180825c49a2c1ccd675a2e6d1f9d7"
+    },
+    {
+      "bytes": 1219,
+      "path": "export-scope.json",
+      "sha256": "9f1964e876ba08bd2529ca60c12565e474cfff339de2f0de250bf538e829e211"
+    },
+    {
+      "bytes": 55,
+      "path": "full-trial-controller-exit.json",
+      "sha256": "df0d95894640e1910456c34267ce9f8ba97d0a0298c3bebeada4430f4de65425"
+    },
+    {
+      "bytes": 11072,
+      "path": "full-trial-metadata.json",
+      "sha256": "f1c4cc3b6f7a7c8e106149d30c6ba28bf913ff735cd57b9e551adc9b736cf3f2"
+    },
+    {
+      "bytes": 27811,
+      "path": "host-pressure-summary.json",
+      "sha256": "3002ccd1b0fb754217e7a5496b540b6bd465959e2fbde8785ce388c508ec34f4"
+    },
+    {
+      "bytes": 3700,
+      "path": "initial-daemon-diagnostics-01.json",
+      "sha256": "e51038ec9a4c239371ae719ab8c914e9b31334926db35db8805b7e3da8c030bf"
+    },
+    {
+      "bytes": 2461,
+      "path": "prepare-command.json",
+      "sha256": "72f10a717d88fa9a6688142e4c16dedb6e14ab42e6d24415bd3ad17067909a95"
+    },
+    {
+      "bytes": 55,
+      "path": "prepare-exit.json",
+      "sha256": "5521c48f9203e8c51382d03dc96518e2a5ffa6c236d019281a46583da96b75b6"
+    },
+    {
+      "bytes": 270,
+      "path": "public-task-input-digests.json",
+      "sha256": "c2bd9ed3e63cbb7d5202f7c3fe124aaeb45010d8d176d77223e405a6e16806a3"
+    },
+    {
+      "bytes": 2219,
+      "path": "qualification-command.json",
+      "sha256": "91313a9cc75a5b9aa4bc0ac87e1cfae22b85a9aeddadb0cb3d174c706752ce42"
+    },
+    {
+      "bytes": 893,
+      "path": "qualification-controller-command.json",
+      "sha256": "9fbcd6ad49286c74355e9632236c39ec3c08d93f65baf23c65e66b0f61773126"
+    },
+    {
+      "bytes": 4654,
+      "path": "qualification-native-observation.json",
+      "sha256": "e9d0d656c85dc2f0bc437bd0efa745199f3a0247d9aa0061f6ab83915c096190"
+    },
+    {
+      "bytes": 1807,
+      "path": "qualification-outcome.json",
+      "sha256": "237cb66bbcc64dd92f2224fa690a216ccc274dc840bacbe6b699226cd43822c2"
+    },
+    {
+      "bytes": 6069,
+      "path": "retained-original-record-digests.json",
+      "sha256": "ecde36857768599abdf98b2542a90d8fd763a1d5a85697df69c6a7a6f562c378"
+    },
+    {
+      "bytes": 992,
+      "path": "reviewed-input-metadata.json",
+      "sha256": "a8049b941d8ec0f37997ac4c3eeb1f091f2703f415f6b344b8fc6d4e80c64c46"
+    },
+    {
+      "bytes": 3486,
+      "path": "service-pause-restoration.json",
+      "sha256": "871bf332b0408e921bac6a3e2300400304ed64a15cb0277418be0540e3fd39ec"
+    },
+    {
+      "bytes": 317,
+      "path": "solver-metadata.json",
+      "sha256": "7d857a397c0a951d63ee92c0bd21ceab6ff721f7c8e4a999009e0d6b26cf1b9d"
+    },
+    {
+      "bytes": 244,
+      "path": "source-revisions.json",
+      "sha256": "737888e6caf857d3ca573a936454f91141ab61be6a8b8ccfb9c502c03f3e171f"
+    }
+  ],
+  "manifest_excludes_itself": true,
+  "member_bytes": 80578,
+  "member_count": 25,
+  "schema": "bounded-benchmark-evidence-manifest@1"
+}

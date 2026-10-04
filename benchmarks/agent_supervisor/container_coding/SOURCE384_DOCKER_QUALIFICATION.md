@@ -1124,3 +1124,22 @@ not exercised by this trial. Driver work ended at 269.311 seconds; the separate
 The pressure observation identifies the refusing gate, not its underlying cause.
 Leanstral was restored and model readiness passed. Native publication, completion
 and matched-arm efficiency remain open.
+
+The [bounded replay retry](../../../docs/agent_supervisor/evidence/extended-supervisor-replay-20261004/README.md)
+passes fresh Docker checkpoint qualification and reaches successful native START
+and STOP. Its official score remains 0: the first child encounters a Source384
+child-admission timeout while constructing implementation context, then restarted
+children fail the exact owner/task process binding. The driver reaches its
+840-second work cutoff, cleans up all native processes and publishes the failed
+outcome. The first child log does not preserve the request-primary refusing gate;
+external host/cgroup pressure samples cannot reconstruct that decision.
+
+The local applicability recovery allowance is now 120 seconds, bounded by the
+original work and lifecycle deadlines; ordinary replay stays 45 seconds. Forty
+new controls and 162 existing regressions pass, with one explicit optional
+checkpoint skip covered separately by actual Docker qualification. This resolves
+the earlier constructor/startup boundary without qualifying task completion.
+Pre-dispatch admission recovery must settle exact no-effect callback custody
+before retry; dropping the attestation guard would be unsafe. The completion RPC
+also retains its ordinary replay limit. RPI-019/020 remain open and the backlog
+stays 18/32 closed. Leanstral was restored with HTTP model readiness.
