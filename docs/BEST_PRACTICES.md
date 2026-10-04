@@ -13,7 +13,7 @@ This guide provides best practices for using the IPFS Accelerate unified archite
 from ipfs_accelerate_py.kit.github_kit import GitHubKit
 
 kit = GitHubKit()
-result = kit.list_repos(owner='username')
+result = kit.list_repos(owner="username")
 if result.success:
     process_repos(result.data)
 ```
@@ -21,7 +21,8 @@ if result.success:
 **DON'T:**
 ```python
 import subprocess
-result = subprocess.run(['gh', 'repo', 'list', 'username'], capture_output=True)
+
+result = subprocess.run(["gh", "repo", "list", "username"], capture_output=True)
 # Harder to test, no type hints, error handling fragile
 ```
 
@@ -35,7 +36,7 @@ result = subprocess.run(['gh', 'repo', 'list', 'username'], capture_output=True)
 
 **DO:**
 ```python
-result = kit.list_repos(owner='username')
+result = kit.list_repos(owner="username")
 if not result.success:
     logger.error(f"Failed to list repos: {result.error}")
     return default_value
@@ -44,7 +45,7 @@ return result.data
 
 **DON'T:**
 ```python
-result = kit.list_repos(owner='username')
+result = kit.list_repos(owner="username")
 # Assuming success without checking
 data = result.data  # Could be None!
 ```
@@ -73,14 +74,15 @@ ipfs-accelerate hardware info --format json | jq '.cpu.count'
 ```python
 from ipfs_accelerate_py.kit.docker_kit import DockerKit, DockerResult
 
+
 def run_container(kit: DockerKit, image: str) -> DockerResult:
-    return kit.run_container(image=image, command='echo test')
+    return kit.run_container(image=image, command="echo test")
 ```
 
 **DON'T:**
 ```python
 def run_container(kit, image):  # No type hints
-    return kit.run_container(image=image, command='echo test')
+    return kit.run_container(image=image, command="echo test")
 ```
 
 **Why:** Type hints enable:
@@ -98,7 +100,8 @@ def run_container(kit, image):  # No type hints
 ```python
 # Ensure gh CLI is authenticated before using
 import subprocess
-result = subprocess.run(['gh', 'auth', 'status'], capture_output=True)
+
+result = subprocess.run(["gh", "auth", "status"], capture_output=True)
 if result.returncode != 0:
     logger.error("GitHub CLI not authenticated. Run: gh auth login")
 ```
@@ -108,12 +111,13 @@ if result.returncode != 0:
 ```python
 from time import sleep
 
+
 def list_all_repos_paginated(kit: GitHubKit, owner: str):
     """List repos with rate limit handling"""
     repos = []
     page = 1
     per_page = 30
-    
+
     while True:
         result = kit.list_repos(owner=owner, limit=per_page)
         if not result.success:
@@ -122,14 +126,14 @@ def list_all_repos_paginated(kit: GitHubKit, owner: str):
                 sleep(60)
                 continue
             break
-        
+
         if not result.data:
             break
-            
+
         repos.extend(result.data)
         page += 1
         sleep(1)  # Be nice to API
-    
+
     return repos
 ```
 
@@ -140,19 +144,19 @@ def list_all_repos_paginated(kit: GitHubKit, owner: str):
 **DO:**
 ```python
 result = kit.run_container(
-    image='python:3.9',
-    command='python script.py',
-    memory_limit='512m',  # Prevent OOM
+    image="python:3.9",
+    command="python script.py",
+    memory_limit="512m",  # Prevent OOM
     cpus=1.0,  # Limit CPU usage
-    timeout=300  # Prevent hanging
+    timeout=300,  # Prevent hanging
 )
 ```
 
 **DON'T:**
 ```python
 result = kit.run_container(
-    image='python:3.9',
-    command='python script.py'
+    image="python:3.9",
+    command="python script.py",
     # No limits - could consume all resources!
 )
 ```
@@ -167,7 +171,7 @@ def run_temporary_container(kit: DockerKit, image: str, command: str):
         result = kit.run_container(
             image=image,
             command=command,
-            detach=False  # Wait for completion
+            detach=False,  # Wait for completion
         )
         container_id = result.container_id
         return result
@@ -184,11 +188,13 @@ def run_temporary_container(kit: DockerKit, image: str, command: str):
 import functools
 import time
 
+
 @functools.lru_cache(maxsize=1)
 def get_cached_hardware_info():
     """Cache hardware info for 5 minutes"""
     kit = HardwareKit()
     return kit.get_hardware_info(), time.time()
+
 
 def get_hardware_info_cached(max_age=300):
     """Get hardware info with caching"""
@@ -205,13 +211,13 @@ def get_hardware_info_cached(max_age=300):
 def select_best_device(kit: HardwareKit):
     """Select best available device"""
     info = kit.get_hardware_info()
-    
+
     # Try CUDA first
-    if 'cuda' in info.accelerators and info.accelerators['cuda'].get('available'):
-        return 'cuda'
-    
+    if "cuda" in info.accelerators and info.accelerators["cuda"].get("available"):
+        return "cuda"
+
     # Fall back to CPU
-    return 'cpu'
+    return "cpu"
 ```
 
 ### Runner Kit
@@ -221,27 +227,31 @@ def select_best_device(kit: HardwareKit):
 ```python
 from ipfs_accelerate_py.kit.runner_kit import get_runner_kit, RunnerConfig
 
+
 def start_autoscaler_daemon():
     """Start autoscaler as background service"""
     config = RunnerConfig(
-        owner='myorg',
+        owner="myorg",
         poll_interval=60,
         max_runners=10,
-        runner_image='ghcr.io/actions/actions-runner:latest'
+        runner_image="ghcr.io/actions/actions-runner:latest",
     )
-    
+
     kit = get_runner_kit(config)
-    
+
     # Start in background
     kit.start_autoscaler(background=True)
-    
+
     # Monitor
     import time
+
     while True:
         status = kit.get_status()
-        logger.info(f"Autoscaler status: {status.running}, "
-                   f"Active: {status.active_runners}, "
-                   f"Queued: {status.queued_workflows}")
+        logger.info(
+            f"Autoscaler status: {status.running}, "
+            f"Active: {status.active_runners}, "
+            f"Queued: {status.queued_workflows}"
+        )
         time.sleep(60)
 ```
 
@@ -252,18 +262,12 @@ def provision_for_urgent_workflow(kit, repo: str):
     """Manually provision runner for urgent workflow"""
     # Generate token
     token = kit.generate_runner_token(repo)
-    
+
     # Launch with high priority
     container_id = kit.launch_runner_container(
-        repo=repo,
-        token=token,
-        labels=['urgent', 'priority'],
-        config={
-            'cpu': 4,
-            'memory': '8g'
-        }
+        repo=repo, token=token, labels=["urgent", "priority"], config={"cpu": 4, "memory": "8g"}
     )
-    
+
     return container_id
 ```
 
@@ -322,11 +326,12 @@ def github_list_repos_safe(owner: str, limit: int = 30):
     """Safely list repos with validation"""
     if not owner:
         raise ValueError("Owner cannot be empty")
-    
+
     if limit < 1 or limit > 100:
         raise ValueError("Limit must be between 1 and 100")
-    
+
     from ipfs_accelerate_py.mcp.unified_tools import github_list_repos
+
     return github_list_repos(owner=owner, limit=limit)
 ```
 
@@ -374,19 +379,16 @@ async function getMultipleRepos(repos) {
 import unittest
 from unittest.mock import Mock, patch
 
+
 class TestMyFeature(unittest.TestCase):
-    @patch('subprocess.run')
+    @patch("subprocess.run")
     def test_github_list_repos(self, mock_run):
         """Test with mocked subprocess"""
-        mock_run.return_value = Mock(
-            returncode=0,
-            stdout='{"repos": []}',
-            stderr=''
-        )
-        
+        mock_run.return_value = Mock(returncode=0, stdout='{"repos": []}', stderr="")
+
         kit = GitHubKit()
-        result = kit.list_repos(owner='test')
-        
+        result = kit.list_repos(owner="test")
+
         self.assertTrue(result.success)
         mock_run.assert_called_once()
 ```
@@ -398,10 +400,10 @@ def test_real_hardware_detection():
     """Integration test with real hardware"""
     kit = HardwareKit()
     info = kit.get_hardware_info()
-    
+
     # Should always have platform info
     assert info.platform_info is not None
-    assert 'system' in info.platform_info
+    assert "system" in info.platform_info
 ```
 
 ### 3. CLI Tests
@@ -433,24 +435,24 @@ echo "PASS: All CLI tests passed"
 ```python
 # Get hardware info once
 info = kit.get_hardware_info()
-cpu_count = info.cpu['count']
-memory = info.memory['total_gb']
+cpu_count = info.cpu["count"]
+memory = info.memory["total_gb"]
 ```
 
 **DON'T:**
 ```python
 # Multiple calls for same info
-cpu_count = kit.get_hardware_info().cpu['count']
-memory = kit.get_hardware_info().memory['total_gb']
+cpu_count = kit.get_hardware_info().cpu["count"]
+memory = kit.get_hardware_info().memory["total_gb"]
 ```
 
 ### 2. Use Timeouts
 
 ```python
 result = kit.run_container(
-    image='python:3.9',
-    command='long_running_task.py',
-    timeout=300  # Fail after 5 minutes
+    image="python:3.9",
+    command="long_running_task.py",
+    timeout=300,  # Fail after 5 minutes
 )
 ```
 
@@ -459,13 +461,11 @@ result = kit.run_container(
 ```python
 import concurrent.futures
 
+
 def check_multiple_repos(kit, repos):
     """Check multiple repos in parallel"""
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        futures = [
-            executor.submit(kit.get_repo, repo)
-            for repo in repos
-        ]
+        futures = [executor.submit(kit.get_repo, repo) for repo in repos]
         results = [f.result() for f in concurrent.futures.as_completed(futures)]
     return results
 ```
@@ -478,7 +478,7 @@ def check_multiple_repos(kit, repos):
 ```python
 import os
 
-token = os.environ.get('GITHUB_TOKEN')
+token = os.environ.get("GITHUB_TOKEN")
 if not token:
     raise ValueError("GITHUB_TOKEN not set")
 ```
@@ -494,13 +494,13 @@ token = "ghp_xxxxxxxxxxxx"  # Hardcoded token!
 def safe_run_container(kit, image: str, command: str):
     """Run container with input validation"""
     # Validate image name
-    if not image or '..' in image:
+    if not image or ".." in image:
         raise ValueError("Invalid image name")
-    
+
     # Validate command
-    if not command or ';' in command:
+    if not command or ";" in command:
         raise ValueError("Invalid command")
-    
+
     return kit.run_container(image=image, command=command)
 ```
 
@@ -509,12 +509,12 @@ def safe_run_container(kit, image: str, command: str):
 ```python
 # Always set limits for untrusted code
 result = kit.run_container(
-    image='untrusted:latest',
-    command='user_code.py',
-    memory_limit='256m',
+    image="untrusted:latest",
+    command="user_code.py",
+    memory_limit="256m",
     cpus=0.5,
-    network_mode='none',  # No network access
-    timeout=60
+    network_mode="none",  # No network access
+    timeout=60,
 )
 ```
 
@@ -532,8 +532,7 @@ pip install --upgrade ipfs-accelerate-py
 import logging
 
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 ```
 
@@ -543,9 +542,9 @@ logging.basicConfig(
 def health_check():
     """Regular health check for services"""
     checks = {
-        'github': check_github_access(),
-        'docker': check_docker_available(),
-        'hardware': check_hardware_detected()
+        "github": check_github_access(),
+        "docker": check_docker_available(),
+        "hardware": check_hardware_detected(),
     }
     return all(checks.values())
 ```

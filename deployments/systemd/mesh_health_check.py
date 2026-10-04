@@ -71,7 +71,9 @@ def _collect_effective_task_types(units: list[str]) -> tuple[list[str], str]:
     for unit in units:
         env = _service_env(unit)
         if "IPFS_ACCELERATE_PY_TASK_WORKER_TASK_TYPES" in env:
-            return _parse_task_types(env["IPFS_ACCELERATE_PY_TASK_WORKER_TASK_TYPES"]), f"{unit}:Environment"
+            return _parse_task_types(
+                env["IPFS_ACCELERATE_PY_TASK_WORKER_TASK_TYPES"]
+            ), f"{unit}:Environment"
 
     raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_TASK_TYPES")
     if raw:
@@ -85,10 +87,16 @@ def _truthy(text: str | None) -> bool:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Check task mesh health and remote queue drain readiness.")
+    parser = argparse.ArgumentParser(
+        description="Check task mesh health and remote queue drain readiness."
+    )
     parser.add_argument("--timeout-s", type=float, default=2.0)
     parser.add_argument("--limit", type=int, default=25)
-    parser.add_argument("--probe-claim", action="store_true", help="Try claiming one remote task and release it immediately.")
+    parser.add_argument(
+        "--probe-claim",
+        action="store_true",
+        help="Try claiming one remote task and release it immediately.",
+    )
     parser.add_argument("--json", action="store_true", help="Emit JSON only.")
     args = parser.parse_args()
 
@@ -101,7 +109,13 @@ def main() -> int:
     services = [_service_state(u) for u in units]
     task_types, task_types_source = _collect_effective_task_types(units)
 
-    embedding_aliases = {"embedding", "embeddings", "text-embedding", "text_embedding", "text_embeddings"}
+    embedding_aliases = {
+        "embedding",
+        "embeddings",
+        "text-embedding",
+        "text_embedding",
+        "text_embeddings",
+    }
     supports_embedding = bool(set(task_types).intersection(embedding_aliases))
 
     summary: dict[str, Any] = {
@@ -144,7 +158,9 @@ def main() -> int:
 
             row: dict[str, Any] = {"peer_id": pid, "multiaddr": ma}
             try:
-                status = request_status_sync(remote=rq, timeout_s=float(args.timeout_s), detail=True)
+                status = request_status_sync(
+                    remote=rq, timeout_s=float(args.timeout_s), detail=True
+                )
                 row["status_ok"] = bool(isinstance(status, dict) and status.get("ok"))
                 row["session"] = str((status or {}).get("session") or "")
                 queued = int((status or {}).get("queued") or 0)
@@ -202,7 +218,9 @@ def main() -> int:
                         peer_id=probe_worker,
                         clock=None,
                     )
-                    task_ids = [str(t.get("task_id") or "") for t in (claimed or []) if isinstance(t, dict)]
+                    task_ids = [
+                        str(t.get("task_id") or "") for t in (claimed or []) if isinstance(t, dict)
+                    ]
                     released: list[str] = []
                     for tid in task_ids:
                         if not tid:

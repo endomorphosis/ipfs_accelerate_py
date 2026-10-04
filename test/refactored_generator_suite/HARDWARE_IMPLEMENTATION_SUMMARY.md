@@ -61,7 +61,7 @@ The ROCm hardware template implementation provides AMD GPU support with robust d
 
 ```python
 # Dual-path ROCm detection
-if hasattr(torch, 'hip') and torch.hip.is_available():
+if hasattr(torch, "hip") and torch.hip.is_available():
     rocm_available = True
 elif torch.cuda.is_available():
     # Could be ROCm using CUDA API

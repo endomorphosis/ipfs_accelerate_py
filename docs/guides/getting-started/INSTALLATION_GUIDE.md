@@ -99,6 +99,7 @@ pip install transformers>=4.46
 ```python
 # This works without torch installed
 from ipfs_accelerate_py import HardwareDetector
+
 detector = HardwareDetector()
 # Will detect CPU and other available hardware
 ```
@@ -110,6 +111,7 @@ detector = HardwareDetector()
 **Diagnosis**:
 ```python
 from ipfs_accelerate_py import HardwareDetector
+
 detector = HardwareDetector()
 cuda_info = detector._detect_cuda()
 print(f"CUDA detection result: {cuda_info}")
@@ -149,6 +151,7 @@ print(f"CUDA detection result: {cuda_info}")
 3. **Test MPS availability**:
    ```python
    import torch
+
    print(f"MPS available: {torch.backends.mps.is_available()}")
    ```
 
@@ -201,6 +204,7 @@ print(f"CUDA detection result: {cuda_info}")
 1. **Check available memory**:
    ```python
    from ipfs_accelerate_py import HardwareDetector
+
    detector = HardwareDetector()
    memory_info = detector.get_memory_info()
    print(f"Available memory: {memory_info}")
@@ -225,6 +229,7 @@ print(f"CUDA detection result: {cuda_info}")
 **Diagnosis**:
 ```python
 from ipfs_accelerate_py import HardwareDetector
+
 detector = HardwareDetector()
 performance = detector.benchmark_hardware()
 print(f"Hardware performance: {performance}")
@@ -337,27 +342,29 @@ pip install ipfs_accelerate_py
 #!/usr/bin/env python3
 from ipfs_accelerate_py import HardwareDetector
 
+
 def test_installation():
     """Test basic functionality."""
     try:
         detector = HardwareDetector()
         hardware = detector.get_available_hardware()
-        
+
         print("✅ Installation successful!")
         print(f"Available hardware: {hardware}")
-        
-        if hardware.get('cpu'):
+
+        if hardware.get("cpu"):
             print("✅ CPU detection working")
-        if hardware.get('cuda'):
+        if hardware.get("cuda"):
             print("✅ CUDA detection working")
-        if hardware.get('mps'):
+        if hardware.get("mps"):
             print("✅ MPS (Apple Silicon) detection working")
-            
+
         return True
-        
+
     except Exception as e:
         print(f"❌ Installation test failed: {e}")
         return False
+
 
 if __name__ == "__main__":
     test_installation()
@@ -412,6 +419,7 @@ If you're still having issues after following this guide:
 2. **Run diagnostics**:
    ```python
    from ipfs_accelerate_py import HardwareDetector
+
    detector = HardwareDetector()
    diagnostics = detector.run_diagnostics()
    print(diagnostics)

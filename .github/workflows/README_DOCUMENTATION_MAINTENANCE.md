@@ -112,8 +112,9 @@ Use [crontab.guru](https://crontab.guru/) to generate different schedules.
 Modify the filter in `analyze_codebase.py` to include/exclude directories:
 ```python
 py_files = [
-    f for f in py_files 
-    if 'venv' not in str(f)  # Add more filters here
+    f
+    for f in py_files
+    if "venv" not in str(f)  # Add more filters here
 ]
 ```
 

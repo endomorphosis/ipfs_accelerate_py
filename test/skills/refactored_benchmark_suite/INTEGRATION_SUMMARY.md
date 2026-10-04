@@ -55,7 +55,9 @@ for metric_name in self.config.metrics:
     if metric_name == "latency":
         metric_instances.append(TimingMetricFactory.create_latency_metric(device))
     elif metric_name == "throughput":
-        metric_instances.append(TimingMetricFactory.create_throughput_metric(device, batch_size=batch_size))
+        metric_instances.append(
+            TimingMetricFactory.create_throughput_metric(device, batch_size=batch_size)
+        )
     elif metric_name == "memory":
         metric_instances.append(MemoryMetricFactory.create(device))
     elif metric_name == "flops":
@@ -71,7 +73,7 @@ def _synchronize(self):
     """Synchronize the device if needed for accurate timing."""
     if not self.can_synchronize:
         return
-        
+
     if self.device_type == "cuda":
         torch.cuda.synchronize()
     elif self.device_type == "mps" and hasattr(torch.mps, "synchronize"):
@@ -79,6 +81,7 @@ def _synchronize(self):
     elif self.device_type == "xla":
         try:
             import torch_xla.core.xla_model as xm
+
             xm.mark_step()
         except ImportError:
             pass
@@ -126,7 +129,7 @@ with torch.no_grad():
 benchmark = ModelBenchmark(
     model_id="bert-base-uncased",
     hardware=["cpu", "cuda"],
-    metrics=["latency", "throughput", "memory", "flops"]
+    metrics=["latency", "throughput", "memory", "flops"],
 )
 
 # Run benchmark

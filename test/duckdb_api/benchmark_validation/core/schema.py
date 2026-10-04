@@ -18,19 +18,20 @@ import duckdb
 
 logger = logging.getLogger("benchmark_validation.schema")
 
+
 class BenchmarkValidationSchema:
     """Schema definition for benchmark validation database."""
-    
+
     @staticmethod
     def create_tables(conn: duckdb.DuckDBPyConnection) -> None:
         """
         Create tables for benchmark validation data.
-        
+
         Args:
             conn: DuckDB connection
         """
         logger.info("Creating benchmark validation tables")
-        
+
         try:
             # Create benchmark_results table
             conn.execute("""
@@ -46,7 +47,7 @@ class BenchmarkValidationSchema:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """)
-            
+
             # Create validation_results table
             conn.execute("""
             CREATE TABLE IF NOT EXISTS validation_results (
@@ -64,7 +65,7 @@ class BenchmarkValidationSchema:
                 FOREIGN KEY (benchmark_result_id) REFERENCES benchmark_results(result_id)
             )
             """)
-            
+
             # Create certifications table
             conn.execute("""
             CREATE TABLE IF NOT EXISTS certifications (
@@ -82,7 +83,7 @@ class BenchmarkValidationSchema:
                 FOREIGN KEY (benchmark_id) REFERENCES benchmark_results(result_id)
             )
             """)
-            
+
             # Create reproducibility_results table
             conn.execute("""
             CREATE TABLE IF NOT EXISTS reproducibility_results (
@@ -99,7 +100,7 @@ class BenchmarkValidationSchema:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """)
-            
+
             # Create outlier_detection_results table
             conn.execute("""
             CREATE TABLE IF NOT EXISTS outlier_detection_results (
@@ -117,7 +118,7 @@ class BenchmarkValidationSchema:
                 FOREIGN KEY (benchmark_result_id) REFERENCES benchmark_results(result_id)
             )
             """)
-            
+
             # Create data_quality_issues table
             conn.execute("""
             CREATE TABLE IF NOT EXISTS data_quality_issues (
@@ -131,7 +132,7 @@ class BenchmarkValidationSchema:
                 FOREIGN KEY (benchmark_result_id) REFERENCES benchmark_results(result_id)
             )
             """)
-            
+
             # Create stability_analysis table
             conn.execute("""
             CREATE TABLE IF NOT EXISTS stability_analysis (
@@ -151,23 +152,23 @@ class BenchmarkValidationSchema:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """)
-            
+
             logger.info("Benchmark validation tables created successfully")
-            
+
         except Exception as e:
             logger.error(f"Error creating tables: {e}")
             raise
-    
+
     @staticmethod
     def create_views(conn: duckdb.DuckDBPyConnection) -> None:
         """
         Create views for benchmark validation data.
-        
+
         Args:
             conn: DuckDB connection
         """
         logger.info("Creating benchmark validation views")
-        
+
         try:
             # Create validation_summary view
             conn.execute("""
@@ -196,7 +197,7 @@ class BenchmarkValidationSchema:
                 m.model_id, m.model_name, hp.hardware_id, hp.hardware_type, hp.device_name,
                 vr.validation_level, vr.status
             """)
-            
+
             # Create certification_summary view
             conn.execute("""
             CREATE OR REPLACE VIEW certification_summary AS
@@ -222,7 +223,7 @@ class BenchmarkValidationSchema:
                 m.model_id, m.model_name, hp.hardware_id, hp.hardware_type, hp.device_name,
                 c.certification_level
             """)
-            
+
             # Create reproducibility_summary view
             conn.execute("""
             CREATE OR REPLACE VIEW reproducibility_summary AS
@@ -247,7 +248,7 @@ class BenchmarkValidationSchema:
                 m.model_id, m.model_name, hp.hardware_id, hp.hardware_type, hp.device_name,
                 rr.validation_level, rr.status
             """)
-            
+
             # Create outlier_summary view
             conn.execute("""
             CREATE OR REPLACE VIEW outlier_summary AS
@@ -276,7 +277,7 @@ class BenchmarkValidationSchema:
                 m.model_id, m.model_name, hp.hardware_id, hp.hardware_type, hp.device_name,
                 odr.metric
             """)
-            
+
             # Create stability_summary view
             conn.execute("""
             CREATE OR REPLACE VIEW stability_summary AS
@@ -303,39 +304,39 @@ class BenchmarkValidationSchema:
                 m.model_id, m.model_name, hp.hardware_id, hp.hardware_type, hp.device_name,
                 sa.metric
             """)
-            
+
             logger.info("Benchmark validation views created successfully")
-            
+
         except Exception as e:
             logger.error(f"Error creating views: {e}")
             raise
-    
+
     @staticmethod
     def add_validation_schema_to_db(db_path: str) -> None:
         """
         Add benchmark validation schema to an existing database.
-        
+
         Args:
             db_path: Path to the DuckDB database
         """
         logger.info(f"Adding benchmark validation schema to {db_path}")
-        
+
         try:
             # Connect to database
             conn = duckdb.connect(db_path)
-            
+
             # Create tables
             BenchmarkValidationSchema.create_tables(conn)
-            
+
             # Create views
             try:
                 BenchmarkValidationSchema.create_views(conn)
             except Exception as e:
                 # Views may fail if models or hardware_platforms tables don't exist
                 logger.warning(f"Could not create views: {e}")
-            
+
             logger.info("Benchmark validation schema added successfully")
-            
+
         except Exception as e:
             logger.error(f"Error adding schema to database: {e}")
             raise

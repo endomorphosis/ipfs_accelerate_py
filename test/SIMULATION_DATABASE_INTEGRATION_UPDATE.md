@@ -71,9 +71,7 @@ from duckdb_api.simulation_validation.db_integration import SimulationValidation
 from duckdb_api.simulation_validation.simulation_validation_framework import get_framework_instance
 
 # Initialize database integration
-db_integration = SimulationValidationDBIntegration(
-    db_path="benchmark_db.duckdb"
-)
+db_integration = SimulationValidationDBIntegration(db_path="benchmark_db.duckdb")
 
 # Initialize database schema
 db_integration.initialize_database()
@@ -89,10 +87,7 @@ db_integration.store_drift_detection_results(drift_results)
 hw_results = db_integration.get_simulation_results_by_hardware("gpu_rtx3080")
 model_results = db_integration.get_hardware_results_by_model("bert-base-uncased")
 validation_results = db_integration.get_validation_results_by_criteria(
-    hardware_id="gpu_rtx3080",
-    model_id="bert-base-uncased",
-    batch_size=16,
-    precision="fp16"
+    hardware_id="gpu_rtx3080", model_id="bert-base-uncased", batch_size=16, precision="fp16"
 )
 
 # Get latest calibration parameters
@@ -100,8 +95,7 @@ latest_params = db_integration.get_latest_calibration_parameters()
 
 # Get drift detection history
 drift_history = db_integration.get_drift_detection_history(
-    hardware_type="gpu_rtx3080",
-    model_type="bert-base-uncased"
+    hardware_type="gpu_rtx3080", model_type="bert-base-uncased"
 )
 
 # Get MAPE by hardware and model
@@ -109,14 +103,13 @@ mape_results = db_integration.get_mape_by_hardware_and_model()
 
 # Analyze calibration effectiveness
 effectiveness = db_integration.analyze_calibration_effectiveness(
-    before_version="uncalibrated_v1.0",
-    after_version="calibrated_v1.0"
+    before_version="uncalibrated_v1.0", after_version="calibrated_v1.0"
 )
 
 # Export visualization data
 db_integration.export_visualization_data(
     export_path="visualization_data.json",
-    metrics=["throughput_items_per_second", "average_latency_ms"]
+    metrics=["throughput_items_per_second", "average_latency_ms"],
 )
 
 # Integrate with the framework

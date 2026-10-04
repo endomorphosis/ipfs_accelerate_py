@@ -63,22 +63,22 @@ enterprise_config = {
     "enterprise": {
         "enable_monitoring": True,
         "security_level": "maximum",
-        "compliance_standards": ["GDPR", "SOC2", "ISO27001"]
+        "compliance_standards": ["GDPR", "SOC2", "ISO27001"],
     },
     "performance": {
         "auto_optimization": True,
         "cache_strategy": "enterprise",
-        "parallel_requests": 8
+        "parallel_requests": 8,
     },
     "ipfs": {
         "gateway": "https://secure-gateway.enterprise.com/ipfs/",
-        "provider_selection": "optimal_performance"
+        "provider_selection": "optimal_performance",
     },
     "hardware": {
         "precision": "fp16",
         "optimization_level": "maximum",
-        "enable_mixed_precision": True
-    }
+        "enable_mixed_precision": True,
+    },
 }
 
 accelerator = ipfs_accelerate_py(enterprise_config, {}, enterprise_mode=True)
@@ -209,7 +209,7 @@ def process(self, model: str, input_data: Any, endpoint_type: str = None) -> Any
 result = accelerator.process(
     model="bert-base-uncased",
     input_data={"input_ids": [101, 2054, 2003, 102]},
-    endpoint_type="text_embedding"
+    endpoint_type="text_embedding",
 )
 ```
 
@@ -233,13 +233,15 @@ async def process_async(self, model: str, input_data: Any, endpoint_type: str = 
 ```python
 import anyio
 
+
 async def main():
     result = await accelerator.process_async(
         model="bert-base-uncased",
         input_data={"input_ids": [101, 2054, 2003, 102]},
-        endpoint_type="text_embedding"
+        endpoint_type="text_embedding",
     )
     return result
+
 
 result = anyio.run(main)
 ```
@@ -263,9 +265,7 @@ async def accelerate_inference(self, model: str, input_data: Any, use_ipfs: bool
 **Example:**
 ```python
 result = await accelerator.accelerate_inference(
-    model="bert-base-uncased",
-    input_data={"input_ids": [101, 2054, 2003, 102]},
-    use_ipfs=True
+    model="bert-base-uncased", input_data={"input_ids": [101, 2054, 2003, 102]}, use_ipfs=True
 )
 ```
 
@@ -365,6 +365,7 @@ async def store_to_ipfs(self, data: bytes) -> str
 **Example:**
 ```python
 import json
+
 data = json.dumps({"model": "bert", "result": [0.1, 0.2, 0.3]}).encode()
 cid = await accelerator.store_to_ipfs(data)
 ```
@@ -376,10 +377,10 @@ cid = await accelerator.store_to_ipfs(data)
 ```python
 ipfs_config = {
     "gateway": "http://localhost:8080/ipfs/",  # IPFS gateway URL
-    "local_node": "http://localhost:5001",    # Local IPFS node API
-    "timeout": 30,                            # Request timeout in seconds
-    "retry_count": 3,                         # Number of retries for failed requests
-    "enable_local_gateway": True              # Use local IPFS gateway if available
+    "local_node": "http://localhost:5001",  # Local IPFS node API
+    "timeout": 30,  # Request timeout in seconds
+    "retry_count": 3,  # Number of retries for failed requests
+    "enable_local_gateway": True,  # Use local IPFS gateway if available
 }
 ```
 
@@ -387,15 +388,15 @@ ipfs_config = {
 
 ```python
 hardware_config = {
-    "prefer_cuda": True,          # Prefer CUDA acceleration
-    "allow_openvino": True,       # Allow Intel OpenVINO
-    "allow_mps": True,            # Allow Apple Metal Performance Shaders
-    "allow_rocm": True,           # Allow AMD ROCm
-    "allow_qualcomm": False,      # Allow Qualcomm acceleration
-    "precision": "fp16",          # Model precision ("fp32", "fp16", "int8")
-    "mixed_precision": True,      # Enable mixed precision
-    "batch_size": 1,              # Default batch size
-    "max_memory": "8GB"           # Maximum memory usage
+    "prefer_cuda": True,  # Prefer CUDA acceleration
+    "allow_openvino": True,  # Allow Intel OpenVINO
+    "allow_mps": True,  # Allow Apple Metal Performance Shaders
+    "allow_rocm": True,  # Allow AMD ROCm
+    "allow_qualcomm": False,  # Allow Qualcomm acceleration
+    "precision": "fp16",  # Model precision ("fp32", "fp16", "int8")
+    "mixed_precision": True,  # Enable mixed precision
+    "batch_size": 1,  # Default batch size
+    "max_memory": "8GB",  # Maximum memory usage
 }
 ```
 
@@ -403,10 +404,10 @@ hardware_config = {
 
 ```python
 performance_config = {
-    "enable_caching": True,       # Enable result caching
-    "cache_size": "1GB",          # Maximum cache size
-    "enable_prefetch": True,      # Enable model prefetching
-    "parallel_requests": 4        # Number of parallel requests
+    "enable_caching": True,  # Enable result caching
+    "cache_size": "1GB",  # Maximum cache size
+    "enable_prefetch": True,  # Enable model prefetching
+    "parallel_requests": 4,  # Number of parallel requests
 }
 ```
 
@@ -414,9 +415,9 @@ performance_config = {
 
 ```python
 logging_config = {
-    "level": "INFO",                        # Logging level
-    "enable_performance_logging": True,     # Log performance metrics
-    "log_file": "ipfs_accelerate.log"      # Log file path
+    "level": "INFO",  # Logging level
+    "enable_performance_logging": True,  # Log performance metrics
+    "log_file": "ipfs_accelerate.log",  # Log file path
 }
 ```
 
@@ -432,10 +433,7 @@ The framework accepts various input data formats depending on the model type:
 text_input = {"input_ids": [101, 2054, 2003, 102]}
 
 # With attention mask
-text_input_full = {
-    "input_ids": [101, 2054, 2003, 102],
-    "attention_mask": [1, 1, 1, 1]
-}
+text_input_full = {"input_ids": [101, 2054, 2003, 102], "attention_mask": [1, 1, 1, 1]}
 
 # For text generation
 generation_input = {"prompt": "The future of AI is"}
@@ -449,10 +447,7 @@ import torch
 vision_input = {"pixel_values": torch.randn(1, 3, 224, 224)}
 
 # With additional metadata
-vision_input_full = {
-    "pixel_values": torch.randn(1, 3, 224, 224),
-    "image_size": (224, 224)
-}
+vision_input_full = {"pixel_values": torch.randn(1, 3, 224, 224), "image_size": (224, 224)}
 ```
 
 #### Audio Models
@@ -461,10 +456,7 @@ vision_input_full = {
 audio_input = {"input_values": torch.randn(1, 16000)}
 
 # With sampling rate
-audio_input_full = {
-    "input_values": torch.randn(1, 16000),
-    "sampling_rate": 16000
-}
+audio_input_full = {"input_values": torch.randn(1, 16000), "sampling_rate": 16000}
 ```
 
 #### Multimodal Models
@@ -472,7 +464,7 @@ audio_input_full = {
 # Combined vision and text
 multimodal_input = {
     "pixel_values": torch.randn(1, 3, 224, 224),
-    "input_ids": [101, 2054, 2003, 1999, 2023, 3746, 102]
+    "input_ids": [101, 2054, 2003, 1999, 2023, 3746, 102],
 }
 ```
 
@@ -485,17 +477,13 @@ The framework returns different data structures based on the model and task:
 {
     "embedding": [0.1, 0.2, -0.3, ...],  # List of floats
     "model": "bert-base-uncased",
-    "inference_time": 0.045
+    "inference_time": 0.045,
 }
 ```
 
 #### Text Generation
 ```python
-{
-    "text": "The future of AI is bright and promising...",
-    "model": "gpt2",
-    "inference_time": 0.123
-}
+{"text": "The future of AI is bright and promising...", "model": "gpt2", "inference_time": 0.123}
 ```
 
 #### Image Classification
@@ -505,7 +493,7 @@ The framework returns different data structures based on the model and task:
     "score": 0.97,
     "logits": [2.1, -0.5, 3.2, ...],
     "model": "vit-base-patch16-224",
-    "inference_time": 0.078
+    "inference_time": 0.078,
 }
 ```
 
@@ -515,7 +503,7 @@ The framework returns different data structures based on the model and task:
     "text": "Hello world, this is a test recording",
     "model": "openai/whisper-small",
     "confidence": 0.94,
-    "inference_time": 0.234
+    "inference_time": 0.234,
 }
 ```
 
@@ -529,9 +517,7 @@ Raised for invalid input parameters or model configurations.
 ```python
 try:
     result = accelerator.process(
-        model="invalid-model-name",
-        input_data={},
-        endpoint_type="text_embedding"
+        model="invalid-model-name", input_data={}, endpoint_type="text_embedding"
     )
 except ValueError as e:
     print(f"Invalid input: {e}")
@@ -543,9 +529,7 @@ Raised for IPFS connection failures.
 ```python
 try:
     result = await accelerator.accelerate_inference(
-        model="bert-base-uncased",
-        input_data={"input_ids": [101, 102]},
-        use_ipfs=True
+        model="bert-base-uncased", input_data={"input_ids": [101, 102]}, use_ipfs=True
     )
 except ConnectionError as e:
     print(f"IPFS connection failed: {e}")
@@ -556,9 +540,7 @@ Raised for hardware or model loading errors.
 
 ```python
 try:
-    accelerator = ipfs_accelerate_py({
-        "hardware": {"prefer_cuda": True}
-    }, {})
+    accelerator = ipfs_accelerate_py({"hardware": {"prefer_cuda": True}}, {})
 except RuntimeError as e:
     print(f"Hardware initialization failed: {e}")
 ```
@@ -568,21 +550,15 @@ except RuntimeError as e:
 ```python
 async def robust_inference(model, input_data):
     accelerator = ipfs_accelerate_py({}, {})
-    
+
     try:
         # Try IPFS acceleration first
         return await accelerator.accelerate_inference(
-            model=model,
-            input_data=input_data,
-            use_ipfs=True
+            model=model, input_data=input_data, use_ipfs=True
         )
     except (ConnectionError, TimeoutError):
         # Fallback to local processing
-        return accelerator.process(
-            model=model,
-            input_data=input_data,
-            endpoint_type="auto"
-        )
+        return accelerator.process(model=model, input_data=input_data, endpoint_type="auto")
 ```
 
 ## Utility Functions
@@ -643,7 +619,7 @@ hardware_info = accelerator.hardware_detection.detect_all_hardware()
     "rocm": {"available": False},
     "qualcomm": {"available": False},
     "webnn": {"available": True},
-    "webgpu": {"available": True}
+    "webgpu": {"available": True},
 }
 ```
 
@@ -663,6 +639,7 @@ The framework supports 300+ HuggingFace model types, including:
 ```python
 # HuggingFace Hub models
 "bert-base-uncased"
+
 "openai/whisper-small"
 "microsoft/vit-base-patch16-224"
 
@@ -680,17 +657,13 @@ The framework supports 300+ HuggingFace model types, including:
 ```python
 resources = {
     "endpoints": {
-        "local": {
-            "host": "localhost",
-            "port": 8000,
-            "protocol": "http"
-        },
+        "local": {"host": "localhost", "port": 8000, "protocol": "http"},
         "remote": {
             "host": "my-inference-server.com",
             "port": 443,
             "protocol": "https",
-            "api_key": "your-api-key"
-        }
+            "api_key": "your-api-key",
+        },
     }
 }
 
@@ -706,14 +679,14 @@ resources = {
             "provider": "huggingface",
             "cache_dir": "./models/bert-base-uncased",
             "precision": "fp16",
-            "batch_size": 32
+            "batch_size": 32,
         },
         "gpt2": {
             "provider": "huggingface",
             "cache_dir": "./models/gpt2",
             "precision": "fp32",
-            "max_length": 100
-        }
+            "max_length": 100,
+        },
     }
 }
 
@@ -730,7 +703,7 @@ start_time = time.time()
 result = accelerator.process(
     model="bert-base-uncased",
     input_data={"input_ids": [101, 2054, 2003, 102]},
-    endpoint_type="text_embedding"
+    endpoint_type="text_embedding",
 )
 end_time = time.time()
 

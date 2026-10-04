@@ -51,11 +51,13 @@ Instead of replacing imports, we **monkey-patch transformers at runtime**:
 ```python
 # ipfs_transformers_py approach (not chosen)
 from ipfs_transformers_py import AutoModel  # Change import in 15+ files
-model = AutoModel.from_ipfs("QmXXX...")     # Different API
+
+model = AutoModel.from_ipfs("QmXXX...")  # Different API
 
 # Our auto-patching approach (chosen)
 # No changes needed in any file!
-from transformers import AutoModel           # Same import
+from transformers import AutoModel  # Same import
+
 model = AutoModel.from_pretrained("model")  # Same API
 # Distributed storage automatically used via monkey-patching
 ```
@@ -73,10 +75,10 @@ model = AutoModel.from_pretrained("model")  # Same API
 
 **Key Functions**:
 ```python
-apply()         # Apply patches to transformers
-restore()       # Restore original behavior
-disable()       # Disable patching
-get_status()    # Get current patch status
+apply()  # Apply patches to transformers
+restore()  # Restore original behavior
+disable()  # Disable patching
+get_status()  # Get current patch status
 should_patch()  # Check if patching should be applied
 ```
 
@@ -152,6 +154,7 @@ import ipfs_accelerate_py
 
 # 2. Worker skillset (unchanged)
 from worker.skillset import hf_bert
+
 model_handler = hf_bert()
 model_handler.init()
 
@@ -238,6 +241,7 @@ auto_patch_transformers.disable()
 from ipfs_transformers_py import AutoModel  # ← Change this
 import transformers
 
+
 class hf_bert:
     def load_model(self, model_name):
         # Would need to change API
@@ -256,6 +260,7 @@ class hf_bert:
 # worker/skillset/hf_bert.py (NO CHANGES!)
 from transformers import AutoModel  # ← No change
 import transformers
+
 
 class hf_bert:
     def load_model(self, model_name):

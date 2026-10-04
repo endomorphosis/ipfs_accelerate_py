@@ -256,6 +256,7 @@ class TestUni137FinanceDataTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.finance_data_tools.native_finance_data_tools._API"
             ) as mock_api:
+
                 async def _success(**_: object) -> dict:
                     return {"status": "success"}
 
@@ -286,6 +287,7 @@ class TestUni137FinanceDataTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.finance_data_tools.native_finance_data_tools._API"
             ) as mock_error_api:
+
                 async def _error(**_: object) -> dict:
                     return {"error": "backend unavailable"}
 

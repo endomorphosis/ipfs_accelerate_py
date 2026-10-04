@@ -5,6 +5,7 @@ IPFS Accelerate MCP Server CLI
 This script provides a command-line interface for starting and managing
 the IPFS Accelerate MCP server.
 """
+
 import argparse
 import logging
 import os
@@ -14,8 +15,7 @@ import atexit
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("ipfs_accelerate_mcp_cli")
 
@@ -66,17 +66,8 @@ def main():
     )
 
     # Define command-line arguments
-    parser.add_argument(
-        "--host",
-        default="0.0.0.0",
-        help="Host address to bind (default: 0.0.0.0)"
-    )
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=9000,
-        help="Port to listen on (default: 9000)"
-    )
+    parser.add_argument("--host", default="0.0.0.0", help="Host address to bind (default: 0.0.0.0)")
+    parser.add_argument("--port", type=int, default=9000, help="Port to listen on (default: 9000)")
 
     parser.add_argument(
         "--mcp-p2p-port",
@@ -88,12 +79,10 @@ def main():
         "--log-level",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         default="INFO",
-        help="Set the logging level (default: INFO)"
+        help="Set the logging level (default: INFO)",
     )
     parser.add_argument(
-        "--dev",
-        action="store_true",
-        help="Run in development mode with auto-reload"
+        "--dev", action="store_true", help="Run in development mode with auto-reload"
     )
 
     # Default behavior: run MCP + TaskQueue worker/service.
@@ -185,13 +174,17 @@ def main():
     parser.add_argument(
         "--p2p-autoscale-remote-refresh-s",
         type=float,
-        default=float(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE_REFRESH_S", "5")),
+        default=float(
+            os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE_REFRESH_S", "5")
+        ),
         help="Remote backlog poll interval seconds (default: 5)",
     )
     parser.add_argument(
         "--p2p-autoscale-remote-max-peers",
         type=int,
-        default=int(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE_MAX_PEERS", "10")),
+        default=int(
+            os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE_MAX_PEERS", "10")
+        ),
         help="Max peers to poll for remote backlog (default: 10)",
     )
     parser.add_argument(
@@ -252,7 +245,12 @@ def main():
         # Only apply this when we will actually start the p2p TaskQueue service.
         # (Otherwise leave defaults untouched for pure-HTTP usage.)
         env_mcp_p2p_service = os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_SERVICE")
-        env_mcp_p2p_service_enabled = str(env_mcp_p2p_service or "").strip().lower() in {"1", "true", "yes", "on"}
+        env_mcp_p2p_service_enabled = str(env_mcp_p2p_service or "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
         if args.p2p_service or env_mcp_p2p_service_enabled:
             args.p2p_listen_port = int(args.mcp_p2p_port)
 
@@ -264,14 +262,18 @@ def main():
 
     # Environment may still override these defaults if explicitly set.
     if os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_SERVICE") is not None:
-        args.p2p_service = str(os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_SERVICE") or "").strip().lower() in {
+        args.p2p_service = str(
+            os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_SERVICE") or ""
+        ).strip().lower() in {
             "1",
             "true",
             "yes",
             "on",
         }
     if os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_TASK_WORKER") is not None:
-        args.p2p_task_worker = str(os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_TASK_WORKER") or "").strip().lower() in {
+        args.p2p_task_worker = str(
+            os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_TASK_WORKER") or ""
+        ).strip().lower() in {
             "1",
             "true",
             "yes",
@@ -282,12 +284,18 @@ def main():
         os.environ["IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS"] = "1"
 
     if args.p2p_service and args.p2p_listen_port:
-        os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT", str(int(args.p2p_listen_port)))
-        os.environ.setdefault("IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT", str(int(args.p2p_listen_port)))
+        os.environ.setdefault(
+            "IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT", str(int(args.p2p_listen_port))
+        )
+        os.environ.setdefault(
+            "IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT", str(int(args.p2p_listen_port))
+        )
 
     if args.p2p_service and getattr(args, "mcp_p2p_port", None):
         # Make p2p_tasks.worker default to the same port when spawned.
-        os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT", str(int(args.mcp_p2p_port)))
+        os.environ.setdefault(
+            "IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT", str(int(args.mcp_p2p_port))
+        )
         os.environ.setdefault("IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT", str(int(args.mcp_p2p_port)))
 
     # Ensure the announce file is writable and consistent across MCP/systemd.
@@ -346,7 +354,11 @@ def main():
         rt: TaskQueueP2PServiceRuntime | None = None
         if args.p2p_service:
             rt = TaskQueueP2PServiceRuntime()
-            rt.start(queue_path=queue_path, listen_port=args.p2p_listen_port, accelerate_instance=accelerate)
+            rt.start(
+                queue_path=queue_path,
+                listen_port=args.p2p_listen_port,
+                accelerate_instance=accelerate,
+            )
 
             def _stop_p2p_service() -> None:
                 try:
@@ -383,13 +395,21 @@ def main():
 
             # Plumb MCP flags into env so orchestrator can consume them.
             if args.p2p_autoscale_min is not None:
-                os.environ["IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MIN"] = str(int(args.p2p_autoscale_min))
+                os.environ["IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MIN"] = str(
+                    int(args.p2p_autoscale_min)
+                )
             if args.p2p_autoscale_max is not None:
-                os.environ["IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MAX"] = str(int(args.p2p_autoscale_max))
+                os.environ["IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MAX"] = str(
+                    int(args.p2p_autoscale_max)
+                )
             if args.p2p_autoscale_poll_s is not None:
-                os.environ["IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_POLL_S"] = str(float(args.p2p_autoscale_poll_s))
+                os.environ["IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_POLL_S"] = str(
+                    float(args.p2p_autoscale_poll_s)
+                )
             if args.p2p_autoscale_idle_s is not None:
-                os.environ["IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_IDLE_S"] = str(float(args.p2p_autoscale_idle_s))
+                os.environ["IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_IDLE_S"] = str(
+                    float(args.p2p_autoscale_idle_s)
+                )
 
             # If autoscale is explicitly disabled, clamp min=max=1.
             if not bool(args.p2p_autoscale):
@@ -431,6 +451,7 @@ def main():
     except Exception as e:
         logger.error(f"Error starting MCP server: {str(e)}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 

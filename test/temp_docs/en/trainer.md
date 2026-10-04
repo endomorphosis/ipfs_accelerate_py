@@ -186,6 +186,7 @@ For example, to use weighted loss, rewrite [`~Trainer.compute_loss`] inside [`Tr
 from torch import nn
 from transformers import Trainer
 
+
 class CustomTrainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         labels = inputs.pop("labels")
@@ -207,6 +208,7 @@ To use a callback, create a class that inherits from [`TrainerCallback`] and imp
 ```py
 from transformers import TrainerCallback, Trainer
 
+
 class EarlyStoppingCallback(TrainerCallback):
     def __init__(self, num_steps=10):
         self.num_steps = num_steps
@@ -216,6 +218,7 @@ class EarlyStoppingCallback(TrainerCallback):
             return {"should_training_stop": True}
         else:
             return {}
+
 
 trainer = Trainer(
     model=model,
@@ -433,7 +436,7 @@ import datasets
 import trl
 from transformers import TrainingArguments, AutoConfig, AutoTokenizer, AutoModelForCausalLM
 
-train_dataset = datasets.load_dataset('imdb', split='train')
+train_dataset = datasets.load_dataset("imdb", split="train")
 args = TrainingArguments(
     output_dir="./test-galore",
     max_steps=100,
@@ -449,7 +452,7 @@ trainer = trl.SFTTrainer(
     model=model,
     args=args,
     train_dataset=train_dataset,
-    dataset_text_field='text',
+    dataset_text_field="text",
     max_seq_length=512,
 )
 trainer.train()
@@ -466,7 +469,7 @@ import datasets
 import trl
 from transformers import TrainingArguments, AutoConfig, AutoTokenizer, AutoModelForCausalLM
 
-train_dataset = datasets.load_dataset('imdb', split='train')
+train_dataset = datasets.load_dataset("imdb", split="train")
 args = TrainingArguments(
     output_dir="./test-galore",
     max_steps=100,
@@ -482,7 +485,7 @@ trainer = trl.SFTTrainer(
     model=model,
     args=args,
     train_dataset=train_dataset,
-    dataset_text_field='text',
+    dataset_text_field="text",
     max_seq_length=512,
 )
 trainer.train()
@@ -520,7 +523,7 @@ training_args = TrainingArguments(
     save_strategy="epoch",
     load_best_model_at_end=True,
     push_to_hub=True,
-    use_liger_kernel=True
+    use_liger_kernel=True,
 )
 ```
 

@@ -76,7 +76,7 @@ Once training is complete though, you should save the full state dict because th
 
 ```py
 if trainer.is_fsdp_enabled:
-  trainer.accelerator.state.fsdp_plugin.set_state_dict_type("FULL_STATE_DICT")
+    trainer.accelerator.state.fsdp_plugin.set_state_dict_type("FULL_STATE_DICT")
 
 trainer.save_model(script_args.output_dir)
 ```

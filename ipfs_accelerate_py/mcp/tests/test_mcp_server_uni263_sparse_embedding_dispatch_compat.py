@@ -31,7 +31,9 @@ class TestMCPServerUNI263SparseEmbeddingDispatchCompat(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -46,17 +48,20 @@ class TestMCPServerUNI263SparseEmbeddingDispatchCompat(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failure"}
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.dict(
-                native_sparse_embedding_tools._API,
-                {"sparse_search": _contradictory_failure},
-                clear=False,
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.dict(
+                    native_sparse_embedding_tools._API,
+                    {"sparse_search": _contradictory_failure},
+                    clear=False,
+                ),
             ):
                 server = create_mcp_server(name="sparse-embedding-dispatch-compat-errors")
                 dispatch = server.tools["tools_dispatch"]["function"]

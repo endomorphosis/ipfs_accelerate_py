@@ -49,26 +49,23 @@ Creating a plugin involves extending the `Plugin` base class and implementing re
 ```python
 from distributed_testing.plugin_architecture import Plugin, PluginType, HookType
 
+
 class MyPlugin(Plugin):
     def __init__(self):
-        super().__init__(
-            name="MyPlugin",
-            version="1.0.0",
-            plugin_type=PluginType.CUSTOM
-        )
-        
+        super().__init__(name="MyPlugin", version="1.0.0", plugin_type=PluginType.CUSTOM)
+
         # Register hooks
         self.register_hook(HookType.COORDINATOR_STARTUP, self.on_coordinator_startup)
-        
+
     async def initialize(self, coordinator) -> bool:
         # Initialize plugin with reference to coordinator
         self.coordinator = coordinator
         return True
-        
+
     async def shutdown(self) -> bool:
         # Clean up resources
         return True
-        
+
     async def on_coordinator_startup(self, coordinator):
         # Handle coordinator startup event
         print("Coordinator started!")
@@ -99,18 +96,20 @@ The WebGPU/WebNN Resource Pool Integration plugin connects the Distributed Testi
 
 ```python
 # Get plugin instance from coordinator
-webgpu_plugin = coordinator.plugin_manager.get_plugins_by_type(PluginType.INTEGRATION)["WebGPUResourcePool-1.0.0"]
+webgpu_plugin = coordinator.plugin_manager.get_plugins_by_type(PluginType.INTEGRATION)[
+    "WebGPUResourcePool-1.0.0"
+]
 
 # Get model from resource pool with fault tolerance
 model = await webgpu_plugin.get_model(
     model_type="text_embedding",
     model_name="bert-base-uncased",
-    hardware_preferences={'priority_list': ['webgpu', 'webnn', 'cpu']},
+    hardware_preferences={"priority_list": ["webgpu", "webnn", "cpu"]},
     fault_tolerance={
-        'recovery_timeout': 30,
-        'state_persistence': True,
-        'failover_strategy': 'immediate'
-    }
+        "recovery_timeout": 30,
+        "state_persistence": True,
+        "failover_strategy": "immediate",
+    },
 )
 
 # Create sharded model execution
@@ -119,7 +118,7 @@ sharded_execution, exec_id = await webgpu_plugin.create_sharded_execution(
     num_shards=3,
     sharding_strategy="layer_balanced",
     fault_tolerance_level="high",
-    recovery_strategy="coordinated"
+    recovery_strategy="coordinated",
 )
 
 # Run inference on sharded model
@@ -168,7 +167,9 @@ The integration is now more powerful with a standardized API interface that ensu
 
 ```python
 # Access CI/CD plugin from coordinator
-ci_plugin = coordinator.plugin_manager.get_plugins_by_type(PluginType.INTEGRATION)["CICDIntegration-1.0.0"]
+ci_plugin = coordinator.plugin_manager.get_plugins_by_type(PluginType.INTEGRATION)[
+    "CICDIntegration-1.0.0"
+]
 
 # Check CI status
 ci_status = ci_plugin.get_ci_status()
@@ -184,19 +185,11 @@ from distributed_testing.ci import CIProviderFactory
 
 # Create appropriate CI provider based on configuration
 provider = await CIProviderFactory.create_provider(
-    "github",
-    {
-        "token": "YOUR_TOKEN",
-        "repository": "owner/repo",
-        "commit_sha": "1234567890abcdef"
-    }
+    "github", {"token": "YOUR_TOKEN", "repository": "owner/repo", "commit_sha": "1234567890abcdef"}
 )
 
 # Create a test run
-test_run = await provider.create_test_run({
-    "name": "Test Run Example",
-    "build_id": "12345"
-})
+test_run = await provider.create_test_run({"name": "Test Run Example", "build_id": "12345"})
 
 # Use provider through standardized interface
 await provider.update_test_run(
@@ -208,9 +201,9 @@ await provider.update_test_run(
             "passed_tests": 8,
             "failed_tests": 2,
             "skipped_tests": 0,
-            "duration_seconds": 25.5
-        }
-    }
+            "duration_seconds": 25.5,
+        },
+    },
 )
 ```
 
@@ -278,11 +271,10 @@ available_plugins = scheduler_coordinator.get_available_plugins()
 print(f"Available scheduler plugins: {', '.join(available_plugins)}")
 
 # Activate a scheduler plugin
-await scheduler_coordinator.activate_scheduler("FairnessScheduler", {
-    "fairness_window_hours": 24,
-    "enable_quotas": True,
-    "max_consecutive_same_user": 5
-})
+await scheduler_coordinator.activate_scheduler(
+    "FairnessScheduler",
+    {"fairness_window_hours": 24, "enable_quotas": True, "max_consecutive_same_user": 5},
+)
 
 # Set the active scheduling strategy
 await scheduler_coordinator.set_strategy("fair_share")
@@ -302,34 +294,29 @@ Creating a custom scheduler is easy using the `BaseSchedulerPlugin` class:
 from distributed_testing.plugins.scheduler.base_scheduler_plugin import BaseSchedulerPlugin
 from distributed_testing.plugins.scheduler.scheduler_plugin_interface import SchedulingStrategy
 
+
 class MyCustomScheduler(BaseSchedulerPlugin):
     """My custom scheduler implementation."""
-    
+
     def __init__(self):
         super().__init__(
             name="MyCustomScheduler",
             version="1.0.0",
             description="My custom scheduler implementation",
-            strategies=[
-                SchedulingStrategy.ROUND_ROBIN,
-                SchedulingStrategy.LOAD_BALANCED
-            ]
+            strategies=[SchedulingStrategy.ROUND_ROBIN, SchedulingStrategy.LOAD_BALANCED],
         )
-        
+
         # Add custom configuration options
-        self.config.update({
-            "my_custom_option": True,
-            "another_option": 42
-        })
-    
+        self.config.update({"my_custom_option": True, "another_option": 42})
+
     async def schedule_task(self, task_id, task_data, available_workers, worker_load):
         """Implement custom task scheduling logic."""
         # Your custom scheduling logic here
-        
+
         # For example, select the worker with the lowest ID
         if available_workers:
             return min(available_workers.keys())
-        
+
         return None
 ```
 
@@ -403,18 +390,22 @@ from distributed_testing.plugins.notification_plugin import NotificationPlugin
 notification_plugin = NotificationPlugin()
 
 # Configure Discord notifications
-notification_plugin.config.update({
-    "discord_enabled": True,
-    "discord_webhook_url": "https://discord.com/api/webhooks/your-webhook-url",
-    "discord_username": "Distributed Testing Bot"
-})
+notification_plugin.config.update(
+    {
+        "discord_enabled": True,
+        "discord_webhook_url": "https://discord.com/api/webhooks/your-webhook-url",
+        "discord_username": "Distributed Testing Bot",
+    }
+)
 
 # Configure Telegram notifications
-notification_plugin.config.update({
-    "telegram_enabled": True,
-    "telegram_bot_token": "your-telegram-bot-token",
-    "telegram_default_chat_id": "your-chat-id"
-})
+notification_plugin.config.update(
+    {
+        "telegram_enabled": True,
+        "telegram_bot_token": "your-telegram-bot-token",
+        "telegram_default_chat_id": "your-chat-id",
+    }
+)
 
 # Initialize plugin with coordinator
 await notification_plugin.initialize(coordinator)
@@ -424,10 +415,7 @@ await notification_plugin.send_notification(
     event_type="custom_event",
     message="Custom notification message",
     level="info",
-    metadata={
-        "custom_field": "custom_value",
-        "another_field": 42
-    }
+    metadata={"custom_field": "custom_value", "another_field": 42},
 )
 ```
 
@@ -507,49 +495,42 @@ from distributed_testing.plugin_architecture import Plugin, PluginType, HookType
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
+
 class MyCustomPlugin(Plugin):
     """My custom plugin description."""
-    
+
     def __init__(self):
         """Initialize the plugin."""
-        super().__init__(
-            name="MyCustomPlugin",
-            version="1.0.0",
-            plugin_type=PluginType.CUSTOM
-        )
-        
+        super().__init__(name="MyCustomPlugin", version="1.0.0", plugin_type=PluginType.CUSTOM)
+
         # Default configuration
-        self.config = {
-            "option1": "value1",
-            "option2": "value2"
-        }
-        
+        self.config = {"option1": "value1", "option2": "value2"}
+
         # Register hooks
         self.register_hook(HookType.COORDINATOR_STARTUP, self.on_coordinator_startup)
         self.register_hook(HookType.TASK_COMPLETED, self.on_task_completed)
-        
+
         logger.info("MyCustomPlugin initialized")
-    
+
     async def initialize(self, coordinator) -> bool:
         """Initialize the plugin with reference to the coordinator."""
         self.coordinator = coordinator
         logger.info("MyCustomPlugin initialized with coordinator")
         return True
-    
+
     async def shutdown(self) -> bool:
         """Shutdown the plugin."""
         logger.info("MyCustomPlugin shutdown complete")
         return True
-    
+
     async def on_coordinator_startup(self, coordinator):
         """Handle coordinator startup event."""
         logger.info("Coordinator startup detected")
-    
+
     async def on_task_completed(self, task_id: str, result: Any):
         """Handle task completed event."""
         logger.info(f"Task {task_id} completed")
@@ -566,9 +547,7 @@ To deploy your plugins:
 ```python
 # Configure coordinator with custom plugin directory
 coordinator = DistributedTestingCoordinator(
-    db_path="benchmark_db.duckdb",
-    enable_plugins=True,
-    plugin_dirs=["plugins", "custom_plugins"]
+    db_path="benchmark_db.duckdb", enable_plugins=True, plugin_dirs=["plugins", "custom_plugins"]
 )
 
 # Start coordinator

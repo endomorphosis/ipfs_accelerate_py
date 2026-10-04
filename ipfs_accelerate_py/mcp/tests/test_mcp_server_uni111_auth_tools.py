@@ -88,7 +88,9 @@ class TestMCPServerUNI111AuthTools(unittest.TestCase):
 
             bad_permissions = await get_user_info(token="tok", include_permissions="yes")
             self.assertEqual(bad_permissions.get("status"), "error")
-            self.assertIn("include_permissions must be a boolean", str(bad_permissions.get("message", "")))
+            self.assertIn(
+                "include_permissions must be a boolean", str(bad_permissions.get("message", ""))
+            )
 
         anyio.run(_run)
 
@@ -103,7 +105,9 @@ class TestMCPServerUNI111AuthTools(unittest.TestCase):
             self.assertIn(auth.get("status"), ["success", "error"])
             self.assertEqual(auth.get("remember_me"), True)
 
-            info = await get_user_info(token="dummy", include_permissions=False, include_profile=False)
+            info = await get_user_info(
+                token="dummy", include_permissions=False, include_profile=False
+            )
             self.assertIn(info.get("status"), ["success", "error"])
             self.assertEqual(info.get("include_permissions"), False)
             self.assertEqual(info.get("include_profile"), False)
@@ -119,6 +123,7 @@ class TestMCPServerUNI111AuthTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.auth_tools.native_auth_tools._API"
             ) as mock_api:
+
                 async def _authenticate(**kwargs):
                     self.assertEqual(kwargs["username"], "demo")
                     self.assertEqual(kwargs["password"], "pw")
@@ -152,6 +157,7 @@ class TestMCPServerUNI111AuthTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.auth_tools.native_auth_tools._API"
             ) as mock_api:
+
                 async def _validate(**kwargs):
                     action = kwargs["action"]
                     if action == "refresh":
@@ -188,13 +194,19 @@ class TestMCPServerUNI111AuthTools(unittest.TestCase):
 
                 refreshed = await validate_token(token="tok", action="refresh")
                 decoded = await validate_token(token="tok", action="decode")
-                validated = await validate_token(token="tok", required_permission="manage", strict=True)
+                validated = await validate_token(
+                    token="tok", required_permission="manage", strict=True
+                )
 
-            self.assertEqual((refreshed.get("refresh_result") or {}).get("access_token"), "new-token")
+            self.assertEqual(
+                (refreshed.get("refresh_result") or {}).get("access_token"), "new-token"
+            )
             self.assertEqual(decoded.get("message"), "Token decoded successfully")
             self.assertEqual((decoded.get("decoded_token") or {}).get("user_id"), "user-1")
             self.assertEqual((validated.get("validation_result") or {}).get("username"), "demo")
-            self.assertEqual((validated.get("validation_result") or {}).get("has_required_permission"), True)
+            self.assertEqual(
+                (validated.get("validation_result") or {}).get("has_required_permission"), True
+            )
             self.assertEqual(validated.get("strict"), True)
 
         anyio.run(_run)
@@ -204,6 +216,7 @@ class TestMCPServerUNI111AuthTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.auth_tools.native_auth_tools._API"
             ) as mock_api:
+
                 async def _authenticate(**_kwargs):
                     return {"status": "success"}
 
@@ -219,11 +232,15 @@ class TestMCPServerUNI111AuthTools(unittest.TestCase):
                     "get_user_info": _user_info,
                 }.__getitem__
 
-                auth_result = await authenticate_user(username="demo", password="pw", remember_me=True)
+                auth_result = await authenticate_user(
+                    username="demo", password="pw", remember_me=True
+                )
                 refresh_result = await validate_token(token="tok", action="refresh")
                 decode_result = await validate_token(token="tok", action="decode")
                 validate_result = await validate_token(token="tok", action="validate")
-                user_info_result = await get_user_info(token="tok", include_permissions=True, include_profile=True)
+                user_info_result = await get_user_info(
+                    token="tok", include_permissions=True, include_profile=True
+                )
 
             self.assertEqual(auth_result.get("status"), "success")
             self.assertEqual(auth_result.get("username"), "demo")
@@ -236,7 +253,9 @@ class TestMCPServerUNI111AuthTools(unittest.TestCase):
             self.assertEqual(refresh_result.get("message"), "Token refreshed successfully")
             self.assertEqual(refresh_result.get("token_type"), "bearer")
             self.assertEqual(refresh_result.get("expires_in"), 3600)
-            self.assertEqual(refresh_result.get("refresh_result"), {"expires_in": 3600, "token_type": "bearer"})
+            self.assertEqual(
+                refresh_result.get("refresh_result"), {"expires_in": 3600, "token_type": "bearer"}
+            )
 
             self.assertEqual(decode_result.get("status"), "success")
             self.assertEqual(decode_result.get("message"), "Token decoded successfully")

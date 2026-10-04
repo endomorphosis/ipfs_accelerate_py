@@ -139,7 +139,10 @@ async def initialize_p2p_scheduler(
     """Initialize or retrieve the P2P workflow scheduler state."""
     if peer_id is not None and not str(peer_id).strip():
         return _error_result("peer_id must be a non-empty string when provided", peer_id=peer_id)
-    if peers is not None and (not isinstance(peers, list) or not all(isinstance(item, str) and item.strip() for item in peers)):
+    if peers is not None and (
+        not isinstance(peers, list)
+        or not all(isinstance(item, str) and item.strip() for item in peers)
+    ):
         return {
             "status": "error",
             "message": "peers must be an array of non-empty strings when provided",
@@ -150,7 +153,9 @@ async def initialize_p2p_scheduler(
         result = _API["initialize_p2p_scheduler"](peer_id=peer_id, peers=peers)
         payload = await result if hasattr(result, "__await__") else result
     except Exception as exc:
-        return _error_result(f"initialize_p2p_scheduler failed: {exc}", peer_id=peer_id, peers=peers)
+        return _error_result(
+            f"initialize_p2p_scheduler failed: {exc}", peer_id=peer_id, peers=peers
+        )
 
     normalized = _normalize_status_envelope(payload)
     if normalized.get("status") == "success":
@@ -175,7 +180,11 @@ async def schedule_p2p_workflow(
         return _error_result("workflow_id is required", workflow_id=workflow_id)
     if not normalized_name:
         return _error_result("name is required", name=name)
-    if not isinstance(tags, list) or not tags or not all(isinstance(item, str) and item.strip() for item in tags):
+    if (
+        not isinstance(tags, list)
+        or not tags
+        or not all(isinstance(item, str) and item.strip() for item in tags)
+    ):
         return _error_result("tags must be a non-empty array of strings", tags=tags)
     try:
         normalized_priority = float(priority)

@@ -83,27 +83,31 @@ conversation = [
     {
         "role": "system",
         "content": [
-            {"type": "text", "text": "A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions."},
-            ],
+            {
+                "type": "text",
+                "text": "A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions.",
+            },
+        ],
     },
     {
         "role": "user",
         "content": [
             {"type": "text", "text": "What’s shown in this image?"},
             {"type": "image"},
-            ],
+        ],
     },
     {
         "role": "assistant",
-        "content": [{"type": "text", "text": "This image shows a red stop sign."},]
+        "content": [
+            {"type": "text", "text": "This image shows a red stop sign."},
+        ],
     },
     {
-
         "role": "user",
         "content": [
             {"type": "text", "text": "Why is this video funny?"},
             {"type": "video"},
-            ],
+        ],
     },
 ]
 
@@ -129,24 +133,34 @@ import torch
 from transformers import LlavaNextVideoForConditionalGeneration, LlavaNextVideoProcessor
 
 # Load the model in half-precision
-model = LlavaNextVideoForConditionalGeneration.from_pretrained("llava-hf/LLaVA-NeXT-Video-7B-hf", torch_dtype=torch.float16, device_map="auto")
+model = LlavaNextVideoForConditionalGeneration.from_pretrained(
+    "llava-hf/LLaVA-NeXT-Video-7B-hf", torch_dtype=torch.float16, device_map="auto"
+)
 processor = LlavaNextVideoProcessor.from_pretrained("llava-hf/LLaVA-NeXT-Video-7B-hf")
 
 # Load the video as an np.array, sampling uniformly 8 frames (can sample more for longer videos)
-video_path = hf_hub_download(repo_id="raushan-testing-hf/videos-test", filename="sample_demo_1.mp4", repo_type="dataset")
+video_path = hf_hub_download(
+    repo_id="raushan-testing-hf/videos-test", filename="sample_demo_1.mp4", repo_type="dataset"
+)
 
 conversation = [
     {
-
         "role": "user",
         "content": [
             {"type": "text", "text": "Why is this video funny?"},
             {"type": "video", "path": video_path},
-            ],
+        ],
     },
 ]
 
-inputs = processor.apply_chat_template(conversation, num_frames=8, add_generation_prompt=True, tokenize=True, return_dict=True, return_tensors="pt")
+inputs = processor.apply_chat_template(
+    conversation,
+    num_frames=8,
+    add_generation_prompt=True,
+    tokenize=True,
+    return_dict=True,
+    return_tensors="pt",
+)
 
 out = model.generate(**inputs, max_new_tokens=60)
 processor.batch_decode(out, skip_special_tokens=True, clean_up_tokenization_spaces=True)
@@ -158,37 +172,40 @@ processor.batch_decode(out, skip_special_tokens=True, clean_up_tokenization_spac
 The model can also generate from an interleaved image-video inputs. However note, that it was not trained in interleaved image-video setting which might affect the performance. Below is an example usage for mixed media input, add the following lines to the above code snippet: 
 
 ```python
-
 # Generate from image and video mixed inputs
 conversation = [
     {
-
         "role": "user",
         "content": [
             {"type": "text", "text": "How many cats are there in the image?"},
             {"type": "image", "url": "http://images.cocodataset.org/val2017/000000039769.jpg"},
-            ],
+        ],
     },
     {
-
         "role": "assistant",
         "content": [{"type": "text", "text": "There are two cats"}],
     },
     {
-
         "role": "user",
         "content": [
             {"type": "text", "text": "Why is this video funny?"},
             {"type": "video", "path": video_path},
-            ],
+        ],
     },
 ]
-inputs = processor.apply_chat_template(conversation, num_frames=8, add_generation_prompt=True, tokenize=True, return_dict=True, padding=True, return_tensors="pt")
+inputs = processor.apply_chat_template(
+    conversation,
+    num_frames=8,
+    add_generation_prompt=True,
+    tokenize=True,
+    return_dict=True,
+    padding=True,
+    return_tensors="pt",
+)
 
 # Generate
 generate_ids = model.generate(**inputs, max_length=50)
 processor.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True)
-
 ```
 
 ## Model optimization
@@ -220,7 +237,9 @@ quantization_config = BitsAndBytesConfig(
     bnb_4bit_compute_dtype=torch.float16,
 )
 
-model = LlavaNextVideoForConditionalGeneration.from_pretrained("llava-hf/LLaVA-NeXT-Video-7B-hf", quantization_config=quantization_config, device_map="auto")
+model = LlavaNextVideoForConditionalGeneration.from_pretrained(
+    "llava-hf/LLaVA-NeXT-Video-7B-hf", quantization_config=quantization_config, device_map="auto"
+)
 ```
 
 
@@ -242,8 +261,8 @@ To load and run a model using Flash Attention-2, simply add `attn_implementation
 from transformers import LlavaNextVideoForConditionalGeneration
 
 model = LlavaNextVideoForConditionalGeneration.from_pretrained(
-    "llava-hf/LLaVA-NeXT-Video-7B-hf", 
-    torch_dtype=torch.float16, 
+    "llava-hf/LLaVA-NeXT-Video-7B-hf",
+    torch_dtype=torch.float16,
     attn_implementation="flash_attention_2",
 ).to(0)
 ```

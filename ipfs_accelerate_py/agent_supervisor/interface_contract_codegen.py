@@ -190,7 +190,9 @@ def _method_action_id(method: Mapping[str, Any]) -> str:
         return str(method["outputSchema"]["properties"]["type"]["const"])
     except KeyError as exc:
         operation = str(method.get("name") or "<unknown>")
-        raise ValueError(f"Descriptor method {operation!r} is missing outputSchema.properties.type.const") from exc
+        raise ValueError(
+            f"Descriptor method {operation!r} is missing outputSchema.properties.type.const"
+        ) from exc
 
 
 def load_action_definitions_from_descriptor(
@@ -343,7 +345,9 @@ def sync_contract_targets(
     return changed
 
 
-def build_action_contract_sync_targets(config: ActionContractCodegenConfig) -> tuple[ActionContractSyncTarget, ...]:
+def build_action_contract_sync_targets(
+    config: ActionContractCodegenConfig,
+) -> tuple[ActionContractSyncTarget, ...]:
     """Render the configured generated contract artifacts."""
 
     definitions = load_action_definitions_from_descriptor(
@@ -371,7 +375,9 @@ def build_action_contract_sync_targets(config: ActionContractCodegenConfig) -> t
     )
 
 
-def build_action_contract_sync_arg_parser(config: ActionContractCodegenConfig) -> argparse.ArgumentParser:
+def build_action_contract_sync_arg_parser(
+    config: ActionContractCodegenConfig,
+) -> argparse.ArgumentParser:
     """Build the standard check/write parser for action contract sync wrappers."""
 
     parser = argparse.ArgumentParser(description=config.description)
@@ -388,7 +394,9 @@ def build_action_contract_sync_arg_parser(config: ActionContractCodegenConfig) -
     return parser
 
 
-def run_action_contract_sync(config: ActionContractCodegenConfig, argv: Sequence[str] | None = None) -> int:
+def run_action_contract_sync(
+    config: ActionContractCodegenConfig, argv: Sequence[str] | None = None
+) -> int:
     """Run the standard action-contract sync CLI."""
 
     args = build_action_contract_sync_arg_parser(config).parse_args(argv)

@@ -43,7 +43,13 @@ def _load_pdf_tools_api() -> Dict[str, Any]:
             min_confidence: float = 0.6,
             max_relationships: int = 100,
         ) -> Dict[str, Any]:
-            _ = analysis_type, include_cross_document, relationship_types, min_confidence, max_relationships
+            _ = (
+                analysis_type,
+                include_cross_document,
+                relationship_types,
+                min_confidence,
+                max_relationships,
+            )
             return {
                 "status": "error",
                 "document_id": document_id,
@@ -59,7 +65,14 @@ def _load_pdf_tools_api() -> Dict[str, Any]:
             include_sources: bool = True,
             confidence_threshold: float = 0.7,
         ) -> Dict[str, Any]:
-            _ = query_type, max_documents, document_filters, enable_reasoning, include_sources, confidence_threshold
+            _ = (
+                query_type,
+                max_documents,
+                document_filters,
+                enable_reasoning,
+                include_sources,
+                confidence_threshold,
+            )
             return {
                 "status": "error",
                 "query": query,
@@ -91,7 +104,14 @@ def _load_pdf_tools_api() -> Dict[str, Any]:
             context_window: int = 3,
             custom_patterns: Optional[Dict[str, str]] = None,
         ) -> Dict[str, Any]:
-            _ = entity_types, extraction_method, confidence_threshold, include_relationships, context_window, custom_patterns
+            _ = (
+                entity_types,
+                extraction_method,
+                confidence_threshold,
+                include_relationships,
+                context_window,
+                custom_patterns,
+            )
             return {
                 "status": "error",
                 "pdf_source": pdf_source,
@@ -161,7 +181,14 @@ def _load_pdf_tools_api() -> Dict[str, Any]:
             include_visualizations: bool = False,
             output_format: str = "detailed",
         ) -> Dict[str, Any]:
-            _ = analysis_types, similarity_threshold, max_connections, temporal_analysis, include_visualizations, output_format
+            _ = (
+                analysis_types,
+                similarity_threshold,
+                max_connections,
+                temporal_analysis,
+                include_visualizations,
+                output_format,
+            )
             return {
                 "status": "error",
                 "document_ids": list(document_ids or []),
@@ -177,7 +204,14 @@ def _load_pdf_tools_api() -> Dict[str, Any]:
             preserve_structure: bool = True,
             include_metadata: bool = True,
         ) -> Dict[str, Any]:
-            _ = target_llm, chunk_strategy, max_chunk_size, overlap_size, preserve_structure, include_metadata
+            _ = (
+                target_llm,
+                chunk_strategy,
+                max_chunk_size,
+                overlap_size,
+                preserve_structure,
+                include_metadata,
+            )
             return {
                 "status": "error",
                 "pdf_source": pdf_source,
@@ -296,8 +330,12 @@ async def pdf_analyze_relationships(
     if not isinstance(include_cross_document, bool):
         return _error_result("include_cross_document must be a boolean")
     if relationship_types is not None:
-        if not isinstance(relationship_types, list) or any(not isinstance(item, str) or not item.strip() for item in relationship_types):
-            return _error_result("relationship_types must be a list of non-empty strings when provided")
+        if not isinstance(relationship_types, list) or any(
+            not isinstance(item, str) or not item.strip() for item in relationship_types
+        ):
+            return _error_result(
+                "relationship_types must be a list of non-empty strings when provided"
+            )
     if not isinstance(min_confidence, (int, float)):
         return _error_result("min_confidence must be a number")
     normalized_confidence = float(min_confidence)
@@ -343,7 +381,9 @@ async def pdf_extract_entities(
     if not isinstance(pdf_source, (str, dict)):
         return _error_result("pdf_source must be a string or object")
     if entity_types is not None:
-        if not isinstance(entity_types, list) or any(not isinstance(item, str) or not item.strip() for item in entity_types):
+        if not isinstance(entity_types, list) or any(
+            not isinstance(item, str) or not item.strip() for item in entity_types
+        ):
             return _error_result("entity_types must be a list of non-empty strings when provided")
     if not normalized_method:
         return _error_result("extraction_method must be a non-empty string when provided")
@@ -391,10 +431,12 @@ async def pdf_batch_process(
 ) -> Dict[str, Any]:
     """Batch-process one or more PDFs through ingestion/extraction pipelines."""
     if not isinstance(pdf_sources, list) or not pdf_sources:
-        return _error_result("pdf_sources must be provided as a non-empty array", {"pdf_sources": list(pdf_sources or [])})
+        return _error_result(
+            "pdf_sources must be provided as a non-empty array",
+            {"pdf_sources": list(pdf_sources or [])},
+        )
     if any(
-        not isinstance(source, (str, dict))
-        or (isinstance(source, str) and not source.strip())
+        not isinstance(source, (str, dict)) or (isinstance(source, str) and not source.strip())
         for source in pdf_sources
     ):
         return _error_result("pdf_sources entries must be non-empty strings or objects")
@@ -412,7 +454,9 @@ async def pdf_batch_process(
         return _error_result("chunk_strategy must be a non-empty string")
     if not isinstance(output_format, str) or not output_format.strip():
         return _error_result("output_format must be a non-empty string")
-    if progress_callback is not None and (not isinstance(progress_callback, str) or not progress_callback.strip()):
+    if progress_callback is not None and (
+        not isinstance(progress_callback, str) or not progress_callback.strip()
+    ):
         return _error_result("progress_callback must be a non-empty string when provided")
 
     try:
@@ -426,7 +470,9 @@ async def pdf_batch_process(
                 chunk_strategy=chunk_strategy.strip(),
                 enable_cross_document=enable_cross_document,
                 output_format=output_format.strip(),
-                progress_callback=progress_callback.strip() if isinstance(progress_callback, str) else None,
+                progress_callback=progress_callback.strip()
+                if isinstance(progress_callback, str)
+                else None,
             )
         )
     except Exception as exc:
@@ -454,8 +500,12 @@ async def pdf_ingest_to_graphrag(
         return _error_result("pdf_source must be a non-empty string when provided as a string")
     if not isinstance(pdf_source, (str, dict)):
         return _error_result("pdf_source must be a string or object")
-    if isinstance(pdf_source, dict) and not any(key in pdf_source for key in ("path", "url", "cid", "content")):
-        return _error_result("pdf_source object must include at least one of: path, url, cid, content")
+    if isinstance(pdf_source, dict) and not any(
+        key in pdf_source for key in ("path", "url", "cid", "content")
+    ):
+        return _error_result(
+            "pdf_source object must include at least one of: path, url, cid, content"
+        )
     if not isinstance(collection_name, str) or not collection_name.strip():
         return _error_result("collection_name must be a non-empty string")
     if metadata is not None and not isinstance(metadata, dict):
@@ -514,7 +564,9 @@ async def pdf_cross_document_analysis(
     if any(not isinstance(item, str) or not item.strip() for item in document_ids):
         return _error_result("document_ids entries must be non-empty strings")
     if analysis_types is not None:
-        if not isinstance(analysis_types, list) or any(not isinstance(item, str) or not item.strip() for item in analysis_types):
+        if not isinstance(analysis_types, list) or any(
+            not isinstance(item, str) or not item.strip() for item in analysis_types
+        ):
             return _error_result("analysis_types must be a list of non-empty strings when provided")
     if not isinstance(similarity_threshold, (int, float)):
         return _error_result("similarity_threshold must be a number")
@@ -663,9 +715,9 @@ def register_native_pdf_tools(manager: Any) -> None:
                         "path": {"type": "string", "minLength": 1},
                         "url": {"type": "string", "minLength": 1},
                         "cid": {"type": "string", "minLength": 1},
-                        "content": {"type": "string", "minLength": 1}
+                        "content": {"type": "string", "minLength": 1},
                     },
-                    "additionalProperties": True
+                    "additionalProperties": True,
                 },
                 "collection_name": {"type": "string", "minLength": 1, "default": "default"},
                 "metadata": {"type": ["object", "null"]},
@@ -674,9 +726,9 @@ def register_native_pdf_tools(manager: Any) -> None:
                 "overlap_size": {"type": "integer", "minimum": 0, "default": 200},
                 "extract_entities": {"type": "boolean", "default": True},
                 "build_knowledge_graph": {"type": "boolean", "default": True},
-                "store_embeddings": {"type": "boolean", "default": True}
+                "store_embeddings": {"type": "boolean", "default": True},
             },
-            "required": []
+            "required": [],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "pdf-tools"],
@@ -693,7 +745,12 @@ def register_native_pdf_tools(manager: Any) -> None:
                 "analysis_type": {"type": "string", "minLength": 1, "default": "comprehensive"},
                 "include_cross_document": {"type": "boolean", "default": True},
                 "relationship_types": {"type": ["array", "null"], "items": {"type": "string"}},
-                "min_confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.6},
+                "min_confidence": {
+                    "type": "number",
+                    "minimum": 0.0,
+                    "maximum": 1.0,
+                    "default": 0.6,
+                },
                 "max_relationships": {"type": "integer", "minimum": 1, "default": 100},
             },
             "required": ["document_id"],
@@ -786,7 +843,12 @@ def register_native_pdf_tools(manager: Any) -> None:
             "properties": {
                 "document_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}},
                 "analysis_types": {"type": ["array", "null"], "items": {"type": "string"}},
-                "similarity_threshold": {"type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.75},
+                "similarity_threshold": {
+                    "type": "number",
+                    "minimum": 0.0,
+                    "maximum": 1.0,
+                    "default": 0.75,
+                },
                 "max_connections": {"type": "integer", "minimum": 1, "default": 100},
                 "temporal_analysis": {"type": "boolean", "default": True},
                 "include_visualizations": {"type": "boolean", "default": False},

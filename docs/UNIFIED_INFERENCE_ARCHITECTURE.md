@@ -29,7 +29,9 @@ The central coordinator for all inference backends.
 **Usage Example:**
 ```python
 from ipfs_accelerate_py.inference_backend_manager import (
-    get_backend_manager, BackendType, BackendCapabilities
+    get_backend_manager,
+    BackendType,
+    BackendCapabilities,
 )
 
 # Get the global manager
@@ -46,16 +48,14 @@ manager.register_backend(
         supports_streaming=True,
         supports_batching=True,
         hardware_types={"cuda"},
-        protocols={"http", "websocket"}
+        protocols={"http", "websocket"},
     ),
-    endpoint="http://localhost:8000"
+    endpoint="http://localhost:8000",
 )
 
 # Select best backend for a task
 backend = manager.select_backend_for_task(
-    task="text-generation",
-    model="gpt2",
-    preferred_types=[BackendType.GPU, BackendType.API]
+    task="text-generation", model="gpt2", preferred_types=[BackendType.GPU, BackendType.API]
 )
 
 # Get comprehensive status
@@ -126,24 +126,23 @@ Distributed peer-to-peer inference across the network.
 from ipfs_accelerate_py.libp2p_inference import LibP2PInferenceNode, PeerCapability
 
 # Create and start P2P node
-node = LibP2PInferenceNode({
-    'bootstrap_peers': [
-        '/ip4/104.131.131.82/tcp/4001/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ'
-    ],
-    'enable_mdns': True
-})
+node = LibP2PInferenceNode(
+    {
+        "bootstrap_peers": [
+            "/ip4/104.131.131.82/tcp/4001/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ"
+        ],
+        "enable_mdns": True,
+    }
+)
 await node.start()
 
 # Register local capabilities
 node.register_capability(PeerCapability.TEXT_GENERATION)
-node.register_model('gpt2')
+node.register_model("gpt2")
 
 # Submit distributed inference request
 response = await node.submit_inference_request(
-    task='text-generation',
-    model='gpt2',
-    inputs='Hello, world!',
-    parameters={'max_length': 50}
+    task="text-generation", model="gpt2", inputs="Hello, world!", parameters={"max_length": 50}
 )
 ```
 
@@ -161,7 +160,8 @@ Single entry point that coordinates all components.
 **Quick Start:**
 ```python
 from ipfs_accelerate_py.unified_inference_service import (
-    start_unified_service, InferenceServiceConfig
+    start_unified_service,
+    InferenceServiceConfig,
 )
 
 # Create configuration
@@ -172,8 +172,8 @@ config = InferenceServiceConfig(
     enable_libp2p=True,
     enable_api_backends=True,
     enable_cli_backends=True,
-    hf_server_host='0.0.0.0',
-    hf_server_port=8000
+    hf_server_host="0.0.0.0",
+    hf_server_port=8000,
 )
 
 # Start service
@@ -271,25 +271,19 @@ Per-backend metrics:
 ### Round Robin
 Distributes requests evenly across backends:
 ```python
-manager = get_backend_manager({
-    'load_balancing': 'round_robin'
-})
+manager = get_backend_manager({"load_balancing": "round_robin"})
 ```
 
 ### Least Loaded
 Selects backend with smallest queue:
 ```python
-manager = get_backend_manager({
-    'load_balancing': 'least_loaded'
-})
+manager = get_backend_manager({"load_balancing": "least_loaded"})
 ```
 
 ### Best Performance
 Selects backend with best average latency:
 ```python
-manager = get_backend_manager({
-    'load_balancing': 'best_performance'
-})
+manager = get_backend_manager({"load_balancing": "best_performance"})
 ```
 
 ## Configuration
@@ -330,28 +324,24 @@ config = InferenceServiceConfig(
     backend_health_checks=True,
     backend_health_check_interval=60,
     load_balancing_strategy="round_robin",
-    
     # HF Server
     enable_hf_server=True,
     hf_server_host="0.0.0.0",
     hf_server_port=8000,
     hf_auto_discover_skills=True,
     hf_enable_hardware_detection=True,
-    
     # WebSocket
     enable_websocket=True,
-    
     # libp2p
     enable_libp2p=True,
     libp2p_bootstrap_peers=[
         "/ip4/104.131.131.82/tcp/4001/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ"
     ],
-    
     # Backends
     enable_api_backends=True,
     api_backends=["hf_tgi", "hf_tei", "ollama", "openai_api"],
     enable_cli_backends=True,
-    cli_backends=["claude_cli", "openai_cli"]
+    cli_backends=["claude_cli", "openai_cli"],
 )
 ```
 
@@ -366,7 +356,7 @@ config = InferenceServiceConfig(
     enable_websocket=True,
     enable_libp2p=False,  # Disable P2P for local dev
     enable_api_backends=False,
-    enable_cli_backends=False
+    enable_cli_backends=False,
 )
 ```
 
@@ -378,7 +368,7 @@ config = InferenceServiceConfig(
     enable_backend_manager=True,
     load_balancing_strategy="least_loaded",
     enable_hf_server=True,
-    hf_enable_hardware_detection=True
+    hf_enable_hardware_detection=True,
 )
 ```
 
@@ -390,7 +380,7 @@ config = InferenceServiceConfig(
     enable_libp2p=True,
     libp2p_bootstrap_peers=[...],
     enable_backend_manager=True,
-    load_balancing_strategy="best_performance"
+    load_balancing_strategy="best_performance",
 )
 ```
 
@@ -402,7 +392,7 @@ config = InferenceServiceConfig(
     enable_hf_server=True,  # Local GPU
     enable_api_backends=True,  # Cloud APIs
     api_backends=["openai_api", "anthropic"],
-    load_balancing_strategy="round_robin"
+    load_balancing_strategy="round_robin",
 )
 ```
 

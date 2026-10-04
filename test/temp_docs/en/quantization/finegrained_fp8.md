@@ -43,7 +43,9 @@ from transformers import FineGrainedFP8Config, AutoModelForCausalLM, AutoTokeniz
 
 model_name = "meta-llama/Meta-Llama-3-8B"
 quantization_config = FineGrainedFP8Config()
-quantized_model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype="auto", device_map="auto", quantization_config=quantization_config)
+quantized_model = AutoModelForCausalLM.from_pretrained(
+    model_name, torch_dtype="auto", device_map="auto", quantization_config=quantization_config
+)
 
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 input_text = "What are we having for dinner?"

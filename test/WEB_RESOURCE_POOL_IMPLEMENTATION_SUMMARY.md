@@ -150,16 +150,11 @@ accelerator = create_ipfs_web_accelerator()
 
 # Load a model with WebGPU acceleration
 model = accelerator.accelerate_model(
-    model_name="bert-base-uncased",
-    model_type="text",
-    platform="webgpu"
+    model_name="bert-base-uncased", model_type="text", platform="webgpu"
 )
 
 # Create input data
-inputs = {
-    "input_ids": [101, 2023, 2003, 1037, 3231, 102],
-    "attention_mask": [1, 1, 1, 1, 1, 1]
-}
+inputs = {"input_ids": [101, 2023, 2003, 1037, 3231, 102], "attention_mask": [1, 1, 1, 1, 1, 1]}
 
 # Run inference
 result = accelerator.run_inference("bert-base-uncased", inputs)
@@ -182,10 +177,10 @@ from fixed_web_platform.resource_pool_bridge import ResourcePoolBridgeIntegratio
 integration = ResourcePoolBridgeIntegration(
     max_connections=3,
     browser_preferences={
-        'audio': 'firefox',  # Firefox best for audio
-        'vision': 'chrome',  # Chrome best for vision
-        'text': 'edge'       # Edge best for text
-    }
+        "audio": "firefox",  # Firefox best for audio
+        "vision": "chrome",  # Chrome best for vision
+        "text": "edge",  # Edge best for text
+    },
 )
 
 # Initialize integration
@@ -195,37 +190,34 @@ integration.initialize()
 bert_model = integration.get_model(
     model_type="text",
     model_name="bert-base-uncased",
-    hardware_preferences={
-        'priority_list': ['webgpu', 'cpu'],
-        'enable_ipfs': True
-    }
+    hardware_preferences={"priority_list": ["webgpu", "cpu"], "enable_ipfs": True},
 )
 
 vit_model = integration.get_model(
     model_type="vision",
     model_name="vit-base-patch16-224",
     hardware_preferences={
-        'priority_list': ['webgpu', 'cpu'],
-        'enable_ipfs': True,
-        'precompile_shaders': True
-    }
+        "priority_list": ["webgpu", "cpu"],
+        "enable_ipfs": True,
+        "precompile_shaders": True,
+    },
 )
 
 whisper_model = integration.get_model(
     model_type="audio",
     model_name="whisper-tiny",
     hardware_preferences={
-        'priority_list': ['webgpu', 'cpu'],
-        'enable_ipfs': True,
-        'use_firefox_optimizations': True
-    }
+        "priority_list": ["webgpu", "cpu"],
+        "enable_ipfs": True,
+        "use_firefox_optimizations": True,
+    },
 )
 
 # Run concurrent inference
 model_inputs = [
     (bert_model.model_id, bert_inputs),
     (vit_model.model_id, vit_inputs),
-    (whisper_model.model_id, whisper_inputs)
+    (whisper_model.model_id, whisper_inputs),
 ]
 
 results = integration.execute_concurrent(model_inputs)

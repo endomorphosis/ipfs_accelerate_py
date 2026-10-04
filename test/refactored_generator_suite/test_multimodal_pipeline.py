@@ -28,7 +28,7 @@ def import_module_from_path(path: str, module_name: str = None):
     """Import a module from a file path."""
     if module_name is None:
         module_name = os.path.basename(path).replace(".py", "")
-    
+
     spec = importlib.util.spec_from_file_location(module_name, path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -37,7 +37,7 @@ def import_module_from_path(path: str, module_name: str = None):
 
 class DummyMultimodalTemplate(BaseArchitectureTemplate):
     """Dummy multimodal architecture template for testing."""
-    
+
     def __init__(self):
         """Initialize the dummy multimodal template."""
         super().__init__()
@@ -47,20 +47,20 @@ class DummyMultimodalTemplate(BaseArchitectureTemplate):
             "multimodal_classification",
             "multimodal_generation",
             "multimodal_question_answering",
-            "multimodal_retrieval"
+            "multimodal_retrieval",
         ]
         self.default_task_type = "multimodal_classification"
         self.hidden_size = 768
         self.model_description = "A multimodal model that processes images, text, and audio."
-    
+
     def get_model_class(self, task_type: str) -> str:
         """Get the model class for a given task type."""
         return "self.transformers.AutoModel"
-    
+
     def get_processor_class(self, task_type: str) -> str:
         """Get the processor class for a given task type."""
         return "self.transformers.AutoProcessor"
-    
+
     def get_input_processing_code(self, task_type: str) -> str:
         """Get input processing code."""
         return """
@@ -75,7 +75,7 @@ class DummyMultimodalTemplate(BaseArchitectureTemplate):
         # Move inputs to device
         inputs = {k: v.to(device) for k, v in inputs.items()}
         """
-    
+
     def get_output_processing_code(self, task_type: str) -> str:
         """Get output processing code."""
         if task_type == "multimodal_classification":
@@ -133,7 +133,7 @@ class DummyMultimodalTemplate(BaseArchitectureTemplate):
             else:
                 embeddings = None
             """
-    
+
     def get_model_config(self, model_name: str) -> str:
         """Get model configuration code."""
         return """
@@ -146,7 +146,7 @@ class DummyMultimodalTemplate(BaseArchitectureTemplate):
             "model_type": "flava"
         }
         """
-    
+
     def get_mock_output_code(self) -> str:
         """Get mock output code."""
         return """
@@ -164,7 +164,7 @@ class DummyMultimodalTemplate(BaseArchitectureTemplate):
                 
                 return mock_outputs
         """
-    
+
     def get_mock_processor_code(self) -> str:
         """Get mock processor code."""
         return """
@@ -193,67 +193,60 @@ def generate_test_implementation(output_dir: str = "generated_test_models") -> T
     """
     Generate a test implementation for a multimodal model using the multimodal
     pipeline template.
-    
+
     Args:
         output_dir: Output directory for generated files
-        
+
     Returns:
         Tuple of (success, output_file_path)
     """
     # Ensure output directory exists
     os.makedirs(output_dir, exist_ok=True)
-    
+
     # Create model metadata
     model_name = "flava"
     arch_type = "multimodal"
     hardware_types = ["cpu"]
-    
+
     # Create architecture template
     arch_template = DummyMultimodalTemplate()
-    
+
     # Create hardware templates
-    hardware_templates = {
-        "cpu": CPUHardwareTemplate()
-    }
-    
+    hardware_templates = {"cpu": CPUHardwareTemplate()}
+
     # Create pipeline templates
-    pipeline_templates = {
-        "multimodal": MultimodalPipelineTemplate()
-    }
-    
+    pipeline_templates = {"multimodal": MultimodalPipelineTemplate()}
+
     # Create template composer
     composer = TemplateComposer(
         hardware_templates=hardware_templates,
         architecture_templates={"multimodal": arch_template},
         pipeline_templates=pipeline_templates,
-        output_dir=output_dir
+        output_dir=output_dir,
     )
-    
+
     # Generate implementation
     print(f"Generating implementation for {model_name} ({arch_type})...")
     success, output_file = composer.generate_model_implementation(
-        model_name=model_name,
-        arch_type=arch_type,
-        hardware_types=hardware_types,
-        force=True
+        model_name=model_name, arch_type=arch_type, hardware_types=hardware_types, force=True
     )
-    
+
     # Report success/failure
     if success:
         print(f"Successfully generated {output_file}")
     else:
         print(f"Failed to generate implementation for {model_name}")
-    
+
     return success, output_file
 
 
 def verify_implementation(output_file: str) -> bool:
     """
     Verify that the generated implementation contains multimodal pipeline-specific code.
-    
+
     Args:
         output_file: Path to the generated implementation file
-        
+
     Returns:
         True if verification successful, False otherwise
     """
@@ -261,26 +254,28 @@ def verify_implementation(output_file: str) -> bool:
     if not os.path.exists(output_file):
         print(f"Error: Generated file {output_file} does not exist")
         return False
-    
+
     # Read file content
-    with open(output_file, 'r') as f:
+    with open(output_file, "r") as f:
         content = f.read()
-    
+
     # Prepare verification report
     report_file = os.path.join(os.path.dirname(output_file), "verification_report.md")
     report = ["# Multimodal Pipeline Verification Report\n"]
     verification_success = True
-    
+
     # Check file size (should be substantial)
     file_size = os.path.getsize(output_file)
-    report.append(f"## File Information\n- File: {os.path.basename(output_file)}\n- Size: {file_size} bytes\n")
-    
+    report.append(
+        f"## File Information\n- File: {os.path.basename(output_file)}\n- Size: {file_size} bytes\n"
+    )
+
     if file_size < 1000:
         report.append(f"❌ File size is suspiciously small: {file_size} bytes\n")
         verification_success = False
     else:
         report.append(f"✅ File size looks reasonable: {file_size} bytes\n")
-    
+
     # Check for multimodal pipeline imports
     report.append("## Checking for Multimodal Pipeline Imports\n")
     if "# Multimodal pipeline imports" in content:
@@ -288,10 +283,10 @@ def verify_implementation(output_file: str) -> bool:
     else:
         report.append("❌ Missing multimodal pipeline imports\n")
         verification_success = False
-    
+
     # Check for multimodal task types
     report.append("## Checking for Multimodal Task Types\n")
-    
+
     # Only checking for the default task type (multimodal_classification)
     # as the template_composer only generates handlers for the default task type
     if "# Preprocess for multimodal classification" in content:
@@ -299,11 +294,15 @@ def verify_implementation(output_file: str) -> bool:
     else:
         report.append(f"❌ Missing preprocessing for multimodal_classification\n")
         verification_success = False
-    
+
     # Note that other task types are supported by the pipeline but not generated by default
-    report.append("\n> Note: The template_composer only generates handlers for the default task type.\n")
-    report.append("> To test other task types, you would need to modify the task_type parameter in the generation process.\n")
-    
+    report.append(
+        "\n> Note: The template_composer only generates handlers for the default task type.\n"
+    )
+    report.append(
+        "> To test other task types, you would need to modify the task_type parameter in the generation process.\n"
+    )
+
     # Check for multimodal utility functions
     report.append("## Checking for Multimodal Utility Functions\n")
     utility_functions = [
@@ -311,16 +310,16 @@ def verify_implementation(output_file: str) -> bool:
         "encode_image_base64",
         "encode_audio_base64",
         "normalize_embedding",
-        "compute_similarity"
+        "compute_similarity",
     ]
-    
+
     for func in utility_functions:
         if f"def {func}" in content:
             report.append(f"✅ Found utility function: {func}\n")
         else:
             report.append(f"❌ Missing utility function: {func}\n")
             verification_success = False
-    
+
     # Check for multimodal-specific handling
     report.append("## Checking for Multimodal-Specific Handling\n")
     multimodal_features = [
@@ -329,28 +328,28 @@ def verify_implementation(output_file: str) -> bool:
         "audio_input",
         "multimodal_embeds",
         "image_embeds",
-        "text_embeds"
+        "text_embeds",
     ]
-    
+
     for feature in multimodal_features:
         if feature in content:
             report.append(f"✅ Found multimodal feature: {feature}\n")
         else:
             report.append(f"❌ Missing multimodal feature: {feature}\n")
             verification_success = False
-    
+
     # Write verification report
-    with open(report_file, 'w') as f:
+    with open(report_file, "w") as f:
         f.write("\n".join(report))
-    
+
     print(f"Verification report written to {report_file}")
-    
+
     # Return verification result
     if verification_success:
         print("✅ Verification successful! The multimodal pipeline template is working correctly.")
     else:
         print("❌ Verification failed! The multimodal pipeline template is not working correctly.")
-    
+
     return verification_success
 
 
@@ -358,20 +357,20 @@ def main():
     """Main function."""
     parser = argparse.ArgumentParser(description="Test multimodal pipeline template")
     parser.add_argument(
-        "--output-dir", 
-        type=str, 
+        "--output-dir",
+        type=str,
         default="generated_test_models",
-        help="Output directory for generated models"
+        help="Output directory for generated models",
     )
     args = parser.parse_args()
-    
+
     # Generate test implementation
     success, output_file = generate_test_implementation(args.output_dir)
-    
+
     if success:
         # Verify implementation
         verify_implementation(output_file)
-    
+
 
 if __name__ == "__main__":
     main()

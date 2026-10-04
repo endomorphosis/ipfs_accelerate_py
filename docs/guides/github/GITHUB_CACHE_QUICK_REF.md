@@ -80,15 +80,13 @@ from ipfs_accelerate_py.github_cli import configure_cache
 
 cache = configure_cache(
     default_ttl=600,  # 10 minutes instead of 5
-    max_cache_size=2000  # Store more entries
+    max_cache_size=2000,  # Store more entries
 )
 ```
 
 ### Custom Cache Directory
 ```python
-cache = configure_cache(
-    cache_dir="/custom/path/to/cache"
-)
+cache = configure_cache(cache_dir="/custom/path/to/cache")
 ```
 
 ### Disable Persistence

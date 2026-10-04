@@ -68,13 +68,15 @@ The system will automatically select the optimal browser based on model type and
 The Browser Performance History system is enabled by default in the ResourcePoolBridgeIntegration. You can explicitly control it with the `enable_browser_history` parameter:
 
 ```python
-from fixed_web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegrationWithRecovery
+from fixed_web_platform.resource_pool_bridge_integration import (
+    ResourcePoolBridgeIntegrationWithRecovery,
+)
 
 # Create pool with browser history enabled
 pool = ResourcePoolBridgeIntegrationWithRecovery(
     max_connections=4,
     enable_browser_history=True,
-    db_path="./browser_performance.duckdb"  # Optional database for persistence
+    db_path="./browser_performance.duckdb",  # Optional database for persistence
 )
 
 # Initialize the pool
@@ -87,10 +89,7 @@ Once the system has collected enough performance data, it will automatically sel
 
 ```python
 # The system will automatically select the best browser based on history
-model = pool.get_model(
-    model_type="text_embedding",
-    model_name="bert-base-uncased"
-)
+model = pool.get_model(model_type="text_embedding", model_name="bert-base-uncased")
 
 # Run inference with optimal browser
 result = model(inputs)
@@ -106,8 +105,7 @@ browser_history = pool.browser_history
 
 # Get recommendation for specific model type and name
 recommendation = browser_history.get_browser_recommendations(
-    model_type="text_embedding",
-    model_name="bert-base-uncased"
+    model_type="text_embedding", model_name="bert-base-uncased"
 )
 
 print(f"Recommended browser: {recommendation['recommended_browser']}")
@@ -162,10 +160,7 @@ You can still manually specify browser preferences, which will override the auto
 model = pool.get_model(
     model_type="audio",
     model_name="whisper-tiny",
-    hardware_preferences={
-        "browser": "firefox",
-        "priority_list": ["webgpu", "cpu"]
-    }
+    hardware_preferences={"browser": "firefox", "priority_list": ["webgpu", "cpu"]},
 )
 ```
 
@@ -173,10 +168,7 @@ model = pool.get_model(
 
 ```python
 # Get optimized configuration with all browser-specific settings
-config = browser_history.get_optimized_browser_config(
-    model_type="audio",
-    model_name="whisper-tiny"
-)
+config = browser_history.get_optimized_browser_config(model_type="audio", model_name="whisper-tiny")
 
 # Config contains browser, platform and specific optimizations
 print(f"Browser: {config['browser']}")
@@ -197,18 +189,16 @@ anomalies = browser_history.detect_anomalies(
     model_type="vision",
     model_name="vit-base-patch16-224",
     platform="webgpu",
-    metrics={
-        "latency_ms": 150.5,
-        "memory_mb": 420.3,
-        "throughput_tokens_per_sec": 1200.8
-    }
+    metrics={"latency_ms": 150.5, "memory_mb": 420.3, "throughput_tokens_per_sec": 1200.8},
 )
 
 if anomalies:
     print(f"Detected {len(anomalies)} performance anomalies")
     for anomaly in anomalies:
-        print(f"Anomaly in {anomaly['metric']}: value={anomaly['value']}, "
-              f"baseline={anomaly['baseline_mean']}±{anomaly['baseline_stdev']}")
+        print(
+            f"Anomaly in {anomaly['metric']}: value={anomaly['value']}, "
+            f"baseline={anomaly['baseline_mean']}±{anomaly['baseline_stdev']}"
+        )
 ```
 
 ## Browser-Specific Optimizations
@@ -219,10 +209,7 @@ Firefox provides superior performance for audio models due to optimized compute 
 
 ```python
 # Optimized Firefox configuration for audio models
-firefox_audio_config = {
-    "compute_shader_optimization": True,
-    "audio_thread_priority": "high"
-}
+firefox_audio_config = {"compute_shader_optimization": True, "audio_thread_priority": "high"}
 ```
 
 ### Edge Text Model Optimizations
@@ -231,10 +218,7 @@ Microsoft Edge provides the best WebNN implementation for text models:
 
 ```python
 # Optimized Edge configuration for text models
-edge_text_config = {
-    "webnn_optimization": True,
-    "quantization_level": "int8"
-}
+edge_text_config = {"webnn_optimization": True, "quantization_level": "int8"}
 ```
 
 ### Chrome Vision Model Optimizations
@@ -243,10 +227,7 @@ Chrome provides balanced WebGPU performance for vision models:
 
 ```python
 # Optimized Chrome configuration for vision models
-chrome_vision_config = {
-    "webgpu_compute_pipelines": "parallel",
-    "batch_processing": True
-}
+chrome_vision_config = {"webgpu_compute_pipelines": "parallel", "batch_processing": True}
 ```
 
 ## Performance History Analysis
@@ -258,13 +239,13 @@ The system provides tools to analyze historical performance data:
 history = browser_history.get_performance_history(
     browser="firefox",
     model_type="audio",
-    days=30  # Last 30 days
+    days=30,  # Last 30 days
 )
 
 # Export performance data
 browser_history.export_data(
     filepath="performance_report.json",
-    format="json"  # or "csv"
+    format="json",  # or "csv"
 )
 ```
 
@@ -276,13 +257,13 @@ The resource pool provides health status information that includes browser perfo
 # Get health status including browser performance information
 health_status = pool.get_health_status()
 
-if 'browser_performance_history' in health_status:
-    browser_perf = health_status['browser_performance_history']
+if "browser_performance_history" in health_status:
+    browser_perf = health_status["browser_performance_history"]
     print(f"Browser performance history status: {browser_perf['status']}")
-    
+
     # Show capability scores
-    if 'capability_scores' in browser_perf:
-        for browser, scores in browser_perf['capability_scores'].items():
+    if "capability_scores" in browser_perf:
+        for browser, scores in browser_perf["capability_scores"].items():
             for model_type, data in scores.items():
                 print(f"Browser {browser} for {model_type}: Score {data['score']}")
 ```

@@ -74,24 +74,17 @@ error = {
     "type": "ConnectionError",
     "message": "Connection refused",
     "traceback": "...",
-    "hardware_context": {
-        "hardware_type": "cuda",
-        "device_id": 0
-    }
+    "hardware_context": {"hardware_type": "cuda", "device_id": 0},
 }
 
-context = {
-    "worker_id": "worker1",
-    "hardware_type": "cuda",
-    "attempt_count": 1
-}
+context = {"worker_id": "worker1", "hardware_type": "cuda", "attempt_count": 1}
 
 result = error_handler.handle_error("task123", error, context)
 
 # Check result
 if result["retry"]:
     print(f"Retry recommended with delay: {result['retry_delay']} seconds")
-    
+
 if result["recovery_action"]:
     print(f"Recovery actions: {result['recovery_action']['actions_taken']}")
 ```
@@ -103,26 +96,19 @@ You can customize error handling behavior by providing a configuration:
 ```python
 config = {
     # Custom error category mapping
-    "error_categories": {
-        "MyCustomError": ErrorCategory.RESOURCE_EXHAUSTED
-    },
-    
+    "error_categories": {"MyCustomError": ErrorCategory.RESOURCE_EXHAUSTED},
     # Custom retry policies
     "retry_policies": {
         "RESOURCE_EXHAUSTED": {
             "max_retries": 10,
             "retry_delay_seconds": 30,
-            "retry_backoff_factor": 1.5
+            "retry_backoff_factor": 1.5,
         }
     },
-    
     # Custom error message patterns
-    "error_patterns": {
-        r"(?i)custom\s+error\s+pattern": "TEST_ASSERTION_ERROR"
-    },
-    
+    "error_patterns": {r"(?i)custom\s+error\s+pattern": "TEST_ASSERTION_ERROR"},
     # Similarity threshold for error aggregation
-    "similarity_threshold": 0.75
+    "similarity_threshold": 0.75,
 }
 
 # Create error handler with custom configuration
@@ -204,6 +190,7 @@ To add a custom error category:
 from duckdb_api.distributed_testing.distributed_error_handler import ErrorCategory
 import enum
 
+
 # Create a subclass with additional categories
 class CustomErrorCategory(ErrorCategory):
     CUSTOM_ERROR = "custom_error"
@@ -216,30 +203,29 @@ To add a custom recovery strategy:
 ```python
 from duckdb_api.distributed_testing.distributed_error_handler import RecoveryStrategy, ErrorCategory
 
+
 class CustomRecoveryStrategy(RecoveryStrategy):
     """Custom recovery strategy."""
-    
+
     def recover(self, task_id, error, context):
         """Implement custom recovery logic."""
         recovery_result = {
             "success": False,
             "strategy": "custom",
             "actions_taken": [],
-            "retry_recommended": False
+            "retry_recommended": False,
         }
-        
+
         # Implement custom recovery logic
         recovery_result["actions_taken"].append("custom_action")
         recovery_result["success"] = True
         recovery_result["retry_recommended"] = True
-        
+
         return recovery_result
-    
+
     def is_applicable(self, error_category, hardware_type=None):
         """Determine if this strategy applies to the error."""
-        return error_category in [
-            ErrorCategory.CUSTOM_ERROR
-        ]
+        return error_category in [ErrorCategory.CUSTOM_ERROR]
 ```
 
 ### Integrating Custom Strategies
@@ -280,6 +266,7 @@ Enable verbose logging for debugging:
 
 ```python
 import logging
+
 logging.getLogger("distributed_error_handler").setLevel(logging.DEBUG)
 ```
 
