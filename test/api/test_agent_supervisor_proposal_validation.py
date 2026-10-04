@@ -280,10 +280,7 @@ def test_receipt_projects_tree_bound_explicit_proposal_gate_evidence() -> None:
         "path",
         "ast_interface",
     }
-    assert all(
-        gate == {"passed": True, "finding_codes": ()}
-        for gate in evidence["gates"].values()
-    )
+    assert all(gate == {"passed": True, "finding_codes": ()} for gate in evidence["gates"].values())
     restored = ProposalValidationResult.from_dict(result.to_dict())
     assert restored.receipt.proposal_gate_evidence == evidence
 
@@ -307,9 +304,7 @@ def test_receipt_rejects_partial_gate_trace_and_tampered_gate_projection() -> No
         ProposalValidationReceipt(**receipt_values)
 
     payload = deepcopy(result.to_dict())
-    payload["receipt"]["proposal_gate_evidence"]["gates"]["authority"][
-        "passed"
-    ] = False
+    payload["receipt"]["proposal_gate_evidence"]["gates"]["authority"]["passed"] = False
     with pytest.raises(ProposalValidationError, match="gate evidence mismatch"):
         ProposalValidationResult.from_dict(payload)
 
@@ -320,9 +315,7 @@ def test_receipt_rejects_partial_gate_trace_and_tampered_gate_projection() -> No
 
 
 def test_receipt_schema_rejects_truthy_non_boolean_verdict() -> None:
-    payload = deepcopy(
-        validate_implementation_proposal(_proposal(), policy=_policy()).to_dict()
-    )
+    payload = deepcopy(validate_implementation_proposal(_proposal(), policy=_policy()).to_dict())
     payload["receipt"]["accepted"] = "true"
 
     with pytest.raises(ProposalValidationError, match="accepted must be a boolean"):
@@ -353,19 +346,22 @@ def test_admitted_binding_can_require_the_complete_proposal_authority() -> None:
     proposal = _proposal()
     result = validate_implementation_proposal(proposal, policy=policy)
 
-    assert result.require_admitted_binding(
-        task_id=TASK_ID,
-        accepted_plan_id=PLAN_ID,
-        repository_id=REPOSITORY_ID,
-        repository_tree_id=TREE_ID,
-        objective_id=OBJECTIVE_ID,
-        baseline_id=proposal.baseline_id,
-        context_id=proposal.context_id,
-        proposal_id=proposal.proposal_id,
-        policy_id=policy.policy_id,
-        receipt_id=result.receipt.receipt_id,
-        diff_digest=proposal.diff_digest,
-    ) is result
+    assert (
+        result.require_admitted_binding(
+            task_id=TASK_ID,
+            accepted_plan_id=PLAN_ID,
+            repository_id=REPOSITORY_ID,
+            repository_tree_id=TREE_ID,
+            objective_id=OBJECTIVE_ID,
+            baseline_id=proposal.baseline_id,
+            context_id=proposal.context_id,
+            proposal_id=proposal.proposal_id,
+            policy_id=policy.policy_id,
+            receipt_id=result.receipt.receipt_id,
+            diff_digest=proposal.diff_digest,
+        )
+        is result
+    )
     assert result.admission_binding == {
         "task_id": TASK_ID,
         "accepted_plan_id": PLAN_ID,
@@ -412,9 +408,7 @@ def test_admitted_binding_can_require_the_complete_proposal_authority() -> None:
             ProposalGate.PATCH,
         ),
         (
-            _proposal(
-                _entry("docs/outside.md", before="before\n", after="after\n")
-            ),
+            _proposal(_entry("docs/outside.md", before="before\n", after="after\n")),
             ProposalFindingCode.PATH_OUTSIDE_SCOPE,
             ProposalGate.PATH,
         ),
@@ -442,9 +436,7 @@ def test_noop_and_out_of_scope_rejections_are_typed_fail_fast_evidence(
     evidence = dispatched.receipt.rejection_evidence
     assert evidence is not None
     assert evidence.requirement_id == NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID
-    assert evidence.proved_requirement_ids == (
-        NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID,
-    )
+    assert evidence.proved_requirement_ids == (NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID,)
     assert expected_code.value in evidence.rejection_codes
     assert evidence.expensive_checks_started == 0
     assert evidence.expensive_node_ids == (
@@ -459,9 +451,7 @@ def test_noop_and_out_of_scope_rejections_are_typed_fail_fast_evidence(
     assert evidence.allowed_paths == dispatched.policy.allowed_paths
     assert evidence.task_owned_paths == dispatched.policy.task_owned_paths
     assert evidence.changed_paths == dispatched.proposal.changed_paths
-    assert evidence.gate_trace == tuple(
-        gate.value for gate in ORDERED_PROPOSAL_GATES
-    )
+    assert evidence.gate_trace == tuple(gate.value for gate in ORDERED_PROPOSAL_GATES)
     assert ProposalValidationResult.from_dict(dispatched.to_dict()) == dispatched
 
 
@@ -511,9 +501,7 @@ def test_findings_are_deterministic_and_bounded_by_policy() -> None:
 
 
 def test_policy_allowance_cannot_widen_immutable_task_owned_scope() -> None:
-    proposal = _proposal(
-        _entry("docs/outside-task.md", before="before\n", after="after\n")
-    )
+    proposal = _proposal(_entry("docs/outside-task.md", before="before\n", after="after\n"))
     result = validate_implementation_proposal(
         proposal,
         policy=_policy(
@@ -672,15 +660,9 @@ def test_syntax_and_every_frozen_authority_dimension_fail_closed() -> None:
 @pytest.mark.parametrize(
     "mutate",
     [
-        lambda payload: payload["proposal"].__setitem__(
-            "diff_digest", "sha256:forged"
-        ),
-        lambda payload: payload["policy"].__setitem__(
-            "allowed_paths", ["forged/"]
-        ),
-        lambda payload: payload["receipt"].__setitem__(
-            "proof_authoritative", True
-        ),
+        lambda payload: payload["proposal"].__setitem__("diff_digest", "sha256:forged"),
+        lambda payload: payload["policy"].__setitem__("allowed_paths", ["forged/"]),
+        lambda payload: payload["receipt"].__setitem__("proof_authoritative", True),
         lambda payload: payload.__setitem__("code_proof_authoritative", True),
         lambda payload: payload.__setitem__(
             "proved_requirement_ids", [G102_PROOF_CANDIDATE_REQUIREMENT]
@@ -691,18 +673,14 @@ def test_syntax_and_every_frozen_authority_dimension_fail_closed() -> None:
         lambda payload: payload.__setitem__(
             "proved_requirement_ids", G102_PROOF_CANDIDATE_REQUIREMENT
         ),
-        lambda payload: payload["receipt"].__setitem__(
-            "changed_paths", ["forged.py"]
-        ),
+        lambda payload: payload["receipt"].__setitem__("changed_paths", ["forged.py"]),
         lambda payload: payload.__setitem__("accepted", False),
     ],
 )
 def test_serialized_result_rejects_tampered_identity_authority_and_verdict(
     mutate,
 ) -> None:
-    payload = deepcopy(
-        validate_implementation_proposal(_proposal(), policy=_policy()).to_dict()
-    )
+    payload = deepcopy(validate_implementation_proposal(_proposal(), policy=_policy()).to_dict())
     mutate(payload)
 
     with pytest.raises(ProposalValidationError):
@@ -756,9 +734,7 @@ def test_rejection_requirement_projection_cannot_be_erased() -> None:
         expensive_node_ids=("semantic", "proof"),
         expensive_checks_started=0,
     )
-    assert rejected.proved_requirement_ids == (
-        NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID,
-    )
+    assert rejected.proved_requirement_ids == (NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID,)
 
     for target in ("result", "receipt"):
         payload = deepcopy(rejected.to_dict())
@@ -976,9 +952,7 @@ def test_consumed_proposal_identity_cannot_be_replayed() -> None:
         ({}, {"max_output_bytes": 128}, ProposalFindingCode.OUTPUT_TOO_LARGE),
         (
             {
-                "candidate_diff": (
-                    _entry(metadata={"one": {"two": {"three": {"four": True}}}}),
-                ),
+                "candidate_diff": (_entry(metadata={"one": {"two": {"three": {"four": True}}}}),),
             },
             {"max_output_depth": 3},
             ProposalFindingCode.OUTPUT_TOO_DEEP,
@@ -1051,9 +1025,7 @@ def test_repository_and_large_file_boundaries_fail_closed(
 def test_sensitive_file_change_is_rejected_even_when_path_is_in_scope() -> None:
     path = "ipfs_accelerate_py/agent_supervisor/credentials.json"
     proposal = _v2_proposal(
-        candidate_diff=(
-            _entry(path, before='{"token": "old"}\n', after='{"token": "new"}\n'),
-        ),
+        candidate_diff=(_entry(path, before='{"token": "old"}\n', after='{"token": "new"}\n'),),
         declared_paths=(path,),
         operations=(
             ProposalOperation(
