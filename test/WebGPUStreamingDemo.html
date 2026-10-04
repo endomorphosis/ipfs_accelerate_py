@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebGPU Streaming Inference Demo</title>
+  <style>
+    /* Basic styling for the demo page */
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background-color: #f5f7f9;
+      color: #24292e;
+      line-height: 1.5;
+    }
+
+    header {
+      margin-bottom: 30px;
+      text-align: center;
+    }
+
+    h1 {
+      color: #0366d6;
+      margin-bottom: 8px;
+    }
+
+    .description {
+      font-size: 1.1rem;
+      color: #586069;
+      margin-bottom: 30px;
+      text-align: center;
+      max-width: 800px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .demo-container {
+      display: flex;
+      flex-direction: column;
+      gap: 30px;
+    }
+
+    .footer {
+      margin-top: 40px;
+      text-align: center;
+      font-size: 0.9rem;
+      color: #586069;
+      padding: 15px;
+      border-top: 1px solid #e1e4e8;
+    }
+
+    .panel {
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+      padding: 20px;
+    }
+
+    .panel-header {
+      margin-top: 0;
+      color: #0366d6;
+      border-bottom: 1px solid #e1e4e8;
+      padding-bottom: 10px;
+      margin-bottom: 15px;
+    }
+
+    .info-list {
+      list-style-type: none;
+      padding: 0;
+    }
+
+    .info-list li {
+      margin-bottom: 12px;
+      padding-left: 24px;
+      position: relative;
+    }
+
+    .info-list li:before {
+      content: "▶";
+      position: absolute;
+      left: 0;
+      color: #0366d6;
+    }
+
+    .precision-benefits {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 15px;
+      margin-top: 20px;
+    }
+
+    .benefit-card {
+      background-color: #f6f8fa;
+      border-radius: 8px;
+      padding: 15px;
+    }
+
+    .benefit-title {
+      font-weight: 600;
+      color: #0366d6;
+      margin-top: 0;
+      margin-bottom: 8px;
+    }
+
+    @media (max-width: 768px) {
+      body {
+        padding: 15px;
+      }
+    }
+  </style>
+  <!-- Link to the component styles -->
+  <link rel="stylesheet" href="WebGPUStreamingExample.css">
+</head>
+<body>
+  <header>
+    <h1>WebGPU Streaming Inference Demo</h1>
+  </header>
+
+  <div class="description">
+    This interactive demo showcases WebGPU-accelerated streaming inference for large language models
+    with ultra-low precision quantization (2-bit/3-bit/4-bit), enabling significant memory reduction
+    and improved performance directly in your browser.
+  </div>
+
+  <div class="demo-container">
+    <!-- Placeholder for the React component (this would be hydrated by React in a real app) -->
+    <div id="streamingDemo" class="webgpu-streaming-example">
+      <div class="example-header">
+        <h2>WebGPU Streaming Inference</h2>
+        <div class="precision-selector">
+          <label for="precision-select">Precision:</label>
+          <select id="precision-select">
+            <option value="2-bit">2-bit (Ultra-Low)</option>
+            <option value="3-bit">3-bit (Very Low)</option>
+            <option value="4-bit" selected>4-bit (Low)</option>
+            <option value="8-bit">8-bit (Standard)</option>
+          </select>
+          <div class="precision-info">
+            <span class="memory-reduction">
+              Memory reduction: 75%
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="input-area">
+        <form>
+          <textarea
+            placeholder="Enter your prompt here..."
+            rows="4"
+          >Explain how WebGPU streaming works for language models:</textarea>
+          <div class="button-row">
+            <button 
+              type="submit" 
+              class="generate-button"
+            >
+              Generate
+            </button>
+            <button 
+              type="button" 
+              class="stop-button"
+              disabled
+            >
+              Stop
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <div class="metrics-display">
+        <div class="metric">
+          <span class="metric-label">Time to First Token:</span>
+          <span class="metric-value">-</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Tokens/Second:</span>
+          <span class="metric-value">-</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Memory Usage:</span>
+          <span class="metric-value">375 MB</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Total Tokens:</span>
+          <span class="metric-value">-</span>
+        </div>
+      </div>
+
+      <div class="output-area">
+        <div class="placeholder-text">
+          Generated text will appear here...
+        </div>
+      </div>
+
+      <div class="precision-comparison">
+        <h3>Precision Comparison</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Precision</th>
+              <th>Memory Reduction</th>
+              <th>Performance</th>
+              <th>Quality</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>2-bit</td>
+              <td>87.5%</td>
+              <td>Fastest</td>
+              <td>Lowest</td>
+            </tr>
+            <tr>
+              <td>3-bit</td>
+              <td>81.25%</td>
+              <td>Very Fast</td>
+              <td>Better</td>
+            </tr>
+            <tr class="active-row">
+              <td>4-bit</td>
+              <td>75%</td>
+              <td>Fast</td>
+              <td>Good</td>
+            </tr>
+            <tr>
+              <td>8-bit</td>
+              <td>50%</td>
+              <td>Standard</td>
+              <td>High</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2 class="panel-header">How WebGPU Streaming Inference Works</h2>
+      <ul class="info-list">
+        <li><strong>Token-by-Token Generation:</strong> WebGPU processes and streams each token as it's generated, rather than waiting for the entire response.</li>
+        <li><strong>Ultra-Low Precision:</strong> Using 2-bit, 3-bit, or 4-bit quantization dramatically reduces memory usage (up to 87.5% reduction).</li>
+        <li><strong>Memory-Efficient KV Cache:</strong> Optimized cache for tracking attention context, enabling longer context windows.</li>
+        <li><strong>Adaptive Batch Sizing:</strong> Dynamically adjusts batch size based on device performance for optimal speed.</li>
+        <li><strong>Low-Latency Optimization:</strong> Minimizes the time between token generation for a smooth interactive experience.</li>
+      </ul>
+    </div>
+
+    <div class="panel">
+      <h2 class="panel-header">Benefits of Ultra-Low Precision</h2>
+      <div class="precision-benefits">
+        <div class="benefit-card">
+          <h3 class="benefit-title">Memory Efficiency</h3>
+          <p>2-bit precision reduces memory usage by 87.5%, letting you run larger models in constrained environments.</p>
+        </div>
+        <div class="benefit-card">
+          <h3 class="benefit-title">Longer Context Windows</h3>
+          <p>Using ultra-low precision for the KV cache enables up to 8x longer context windows compared to 16-bit precision.</p>
+        </div>
+        <div class="benefit-card">
+          <h3 class="benefit-title">Faster Generation</h3>
+          <p>Lower precision means less data to process, resulting in significantly faster token generation.</p>
+        </div>
+        <div class="benefit-card">
+          <h3 class="benefit-title">Browser Compatibility</h3>
+          <p>Enables running larger models directly in browsers that would otherwise exceed WebGPU memory limits.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <p>WebGPU Streaming Inference Demo - Built using the Unified Web Framework</p>
+  </footer>
+
+  <script>
+    // Simple simulation for demo purposes
+    document.addEventListener('DOMContentLoaded', function() {
+      const form = document.querySelector('form');
+      const textarea = document.querySelector('textarea');
+      const generateBtn = document.querySelector('.generate-button');
+      const stopBtn = document.querySelector('.stop-button');
+      const outputArea = document.querySelector('.output-area');
+      const precisionSelect = document.getElementById('precision-select');
+      const memoryReduction = document.querySelector('.memory-reduction');
+      const activeRow = document.querySelector('.active-row');
+      
+      // Metrics elements
+      const timeToFirstTokenEl = document.querySelectorAll('.metric-value')[0];
+      const tokensPerSecondEl = document.querySelectorAll('.metric-value')[1];
+      const memoryUsageEl = document.querySelectorAll('.metric-value')[2];
+      const totalTokensEl = document.querySelectorAll('.metric-value')[3];
+      
+      // Update memory reduction text and table highlighting when precision changes
+      precisionSelect.addEventListener('change', function() {
+        // Update memory reduction text
+        let reductionText = '';
+        switch(this.value) {
+          case '2-bit': reductionText = '87.5%'; break;
+          case '3-bit': reductionText = '81.25%'; break;
+          case '4-bit': reductionText = '75%'; break;
+          default: reductionText = '50%';
+        }
+        memoryReduction.textContent = `Memory reduction: ${reductionText}`;
+        
+        // Update memory usage
+        let memoryUsage = 0;
+        switch(this.value) {
+          case '2-bit': memoryUsage = 187.5; break;
+          case '3-bit': memoryUsage = 281.25; break;
+          case '4-bit': memoryUsage = 375; break;
+          default: memoryUsage = 750;
+        }
+        memoryUsageEl.textContent = `${memoryUsage} MB`;
+        
+        // Update table highlighting
+        if (activeRow) {
+          activeRow.classList.remove('active-row');
+        }
+        
+        // Find and highlight the new active row
+        const table = document.querySelector('table');
+        const rows = table.querySelectorAll('tbody tr');
+        const rowIndex = precisionSelect.selectedIndex;
+        if (rows[rowIndex]) {
+          rows[rowIndex].classList.add('active-row');
+        }
+      });
+      
+      // Static pseudo-generation for demo purposes
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        if (generateBtn.disabled) return;
+        
+        // Disable generate button, enable stop button
+        generateBtn.textContent = 'Generating...';
+        generateBtn.disabled = true;
+        stopBtn.disabled = false;
+        
+        // Clear output area and prepare for generation
+        outputArea.innerHTML = '';
+        const generatedText = document.createElement('div');
+        generatedText.className = 'generated-text';
+        
+        // Add blinking cursor
+        const cursor = document.createElement('span');
+        cursor.className = 'cursor-blink';
+        
+        // Append to DOM
+        generatedText.appendChild(document.createTextNode(''));
+        generatedText.appendChild(cursor);
+        outputArea.appendChild(generatedText);
+        
+        // Track metrics
+        const startTime = Date.now();
+        let tokenCount = 0;
+        let firstTokenTime = null;
+        
+        // Mock example text for demo
+        const mockResponse = `WebGPU streaming inference for language models works by leveraging the parallel processing capabilities of GPUs directly in web browsers. 
+
+The process begins with loading a quantized model, which is optimized to use either 2-bit, 3-bit, or 4-bit precision instead of the standard 16-bit floating point numbers. This quantization dramatically reduces memory usage - up to 87.5% reduction with 2-bit precision.
+
+Once the model is loaded, here's how the streaming process works:
+
+1. The prompt is tokenized and processed in the "prefill" phase
+2. The GPU processes each new token using optimized WebGPU compute shaders
+3. As soon as each token is generated, it's immediately streamed to the UI
+4. The KV cache is updated with attention state for each new token
+5. The process continues token-by-token until completion
+
+This approach provides several advantages: users see responses immediately rather than waiting for the entire generation to complete, the browser remains responsive throughout generation, and the system can adapt to different hardware capabilities.`;
+        
+        const words = mockResponse.split(' ');
+        
+        // Calculate mock generation speed based on precision
+        let tokenDelayMs = 100; // Default
+        switch(precisionSelect.value) {
+          case '2-bit': tokenDelayMs = 40; break;
+          case '3-bit': tokenDelayMs = 60; break; 
+          case '4-bit': tokenDelayMs = 80; break;
+          case '8-bit': tokenDelayMs = 120; break;
+        }
+        
+        // Simulate the "prefill" phase
+        setTimeout(() => {
+          // Start streaming tokens
+          let i = 0;
+          const streamInterval = setInterval(() => {
+            if (i >= words.length) {
+              clearInterval(streamInterval);
+              generateBtn.textContent = 'Generate';
+              generateBtn.disabled = false;
+              stopBtn.disabled = true;
+              return;
+            }
+            
+            // Add the next word
+            const textNode = generatedText.firstChild;
+            textNode.nodeValue += words[i] + ' ';
+            
+            // Update token count
+            tokenCount++;
+            
+            // Record time to first token
+            if (tokenCount === 1) {
+              firstTokenTime = Date.now() - startTime;
+              timeToFirstTokenEl.textContent = `${firstTokenTime} ms`;
+            }
+            
+            // Update metrics
+            const elapsedSecs = (Date.now() - startTime) / 1000;
+            tokensPerSecondEl.textContent = (tokenCount / elapsedSecs).toFixed(2);
+            totalTokensEl.textContent = tokenCount.toString();
+            
+            // Auto-scroll to bottom
+            outputArea.scrollTop = outputArea.scrollHeight;
+            
+            i++;
+          }, tokenDelayMs);
+          
+          // Add stop functionality
+          stopBtn.onclick = function() {
+            clearInterval(streamInterval);
+            generateBtn.textContent = 'Generate';
+            generateBtn.disabled = false;
+            stopBtn.disabled = true;
+          };
+          
+        }, 300); // Prefill delay
+      });
+    });
+  </script>
+</body>
+</html>

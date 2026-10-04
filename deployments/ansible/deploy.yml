@@ -1,0 +1,118 @@
+# Ansible Playbook for IPFS Accelerate Python Deployment
+# Enterprise-grade infrastructure automation
+
+---
+- name: Deploy IPFS Accelerate Python ML Platform
+  hosts: all
+  become: yes
+  vars:
+    app_user: "ipfs-accelerate"
+    app_dir: "/opt/ipfs-accelerate"
+    python_version: "3.9"
+    environment: "{{ env | default('production') }}"
+    replicas: "{{ replica_count | default(3) }}"
+    
+  tasks:
+    # System preparation
+    - name: Update system packages
+      apt:
+        update_cache: yes
+        upgrade: yes
+        cache_valid_time: 86400
+
+    - name: Install required system packages
+      apt:
+        name:
+          - python3
+          - python3-pip
+          - python3-venv
+          - docker.io
+          - docker-compose
+          - git
+          - curl
+          - wget
+          - htop
+          - vim
+          - nginx
+          - supervisor
+        state: present
+
+    - name: Create application user
+      user:
+        name: "{{ app_user }}"
+        system: yes
+        shell: /bin/bash
+        home: "{{ app_dir }}"
+        create_home: yes
+
+    - name: Add user to docker group
+      user:
+        name: "{{ app_user }}"
+        groups: docker
+        append: yes
+
+    # Application setup
+    - name: Create application directory structure
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0755'
+      loop:
+        - "{{ app_dir }}"
+        - "{{ app_dir }}/logs"
+        - "{{ app_dir }}/config"
+        - "{{ app_dir }}/data"
+        - "{{ app_dir }}/models"
+        - "{{ app_dir }}/tmp"
+
+    - name: Install Python dependencies
+      pip:
+        name:
+          - ipfs-accelerate-py
+          - gunicorn
+          - prometheus-client
+          - psutil
+        state: present
+        executable: pip3
+
+    # Health checks
+    - name: Create health check script
+      copy:
+        content: |
+          #!/bin/bash
+          curl -f http://localhost:8080/health || exit 1
+        dest: "{{ app_dir }}/health_check.sh"
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0755'
+
+    - name: Set up health check cron job
+      cron:
+        name: "IPFS Accelerate Health Check"
+        minute: "*/5"
+        job: "{{ app_dir }}/health_check.sh"
+        user: "{{ app_user }}"
+
+  handlers:
+    - name: reload systemd
+      systemd:
+        daemon_reload: yes
+
+    - name: restart ipfs-accelerate
+      systemd:
+        name: ipfs-accelerate
+        state: restarted
+        enabled: yes
+
+# Post-deployment verification
+- name: Verify deployment
+  hosts: all
+  tasks:
+    - name: Display deployment summary
+      debug:
+        msg: |
+          Deployment completed successfully!
+          Environment: {{ environment }}
+          Replicas: {{ replicas }}

@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hardware Abstracted Whisper Example</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      background-color: #f5f9fc;
+      color: #333;
+    }
+    
+    h1 {
+      color: #2c5282;
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    
+    .container {
+      background-color: white;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    .section {
+      margin-bottom: 20px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid #eaeaea;
+    }
+    
+    .section-title {
+      font-weight: bold;
+      margin-bottom: 10px;
+      color: #2c5282;
+    }
+    
+    button {
+      background-color: #4299e1;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background-color 0.2s;
+    }
+    
+    button:hover {
+      background-color: #3182ce;
+    }
+    
+    button:disabled {
+      background-color: #a0aec0;
+      cursor: not-allowed;
+    }
+    
+    .button-group {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 15px;
+    }
+    
+    pre {
+      background-color: #f8f9fa;
+      padding: 15px;
+      border-radius: 4px;
+      overflow-x: auto;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 14px;
+    }
+    
+    .status {
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+    }
+    
+    .success {
+      background-color: #c6f6d5;
+      color: #276749;
+    }
+    
+    .error {
+      background-color: #fed7d7;
+      color: #9b2c2c;
+    }
+    
+    .info {
+      background-color: #e6fffa;
+      color: #234e52;
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 15px;
+    }
+    
+    table, th, td {
+      border: 1px solid #e2e8f0;
+    }
+    
+    th, td {
+      padding: 10px;
+      text-align: left;
+    }
+    
+    th {
+      background-color: #edf2f7;
+      font-weight: bold;
+    }
+    
+    tr:nth-child(even) {
+      background-color: #f7fafc;
+    }
+    
+    .metrics-panel {
+      height: 200px;
+      overflow-y: auto;
+      margin-bottom: 20px;
+    }
+    
+    .audio-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+    
+    .waveform-container {
+      height: 100px;
+      background-color: #f1f5f9;
+      border-radius: 4px;
+      margin-bottom: 15px;
+      position: relative;
+    }
+    
+    .waveform {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 100px;
+    }
+    
+    .recording-indicator {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      background-color: red;
+      border-radius: 50%;
+      margin-right: 5px;
+    }
+    
+    .recording-indicator.active {
+      animation: blink 1s infinite;
+    }
+    
+    @keyframes blink {
+      0% { opacity: 1; }
+      50% { opacity: 0.3; }
+      100% { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Hardware Abstracted Whisper Demo</h1>
+    
+    <div class="section">
+      <div class="section-title">1. Initialize Model</div>
+      <div class="button-group">
+        <button id="init-tiny-btn">Initialize Whisper Tiny</button>
+        <button id="init-base-btn">Initialize Whisper Base</button>
+        <button id="init-with-options-btn">Initialize with Custom Options</button>
+      </div>
+      <div id="init-status" class="status"></div>
+    </div>
+    
+    <div class="section">
+      <div class="section-title">2. Audio Input</div>
+      <div class="audio-controls">
+        <div>
+          <button id="record-btn" disabled>
+            <span id="recording-indicator" class="recording-indicator"></span> Record Microphone
+          </button>
+          <button id="stop-btn" disabled>Stop Recording</button>
+          <button id="play-btn" disabled>Play Recording</button>
+        </div>
+        <div>Or upload an audio file: <input type="file" id="audio-upload" accept="audio/*" disabled></div>
+        <div>Or use a demo audio sample: 
+          <button id="demo-btn" disabled>Load Demo Audio</button>
+        </div>
+      </div>
+      <div class="waveform-container">
+        <canvas id="waveform" class="waveform"></canvas>
+      </div>
+      <div id="audio-status" class="status"></div>
+    </div>
+    
+    <div class="section">
+      <div class="section-title">3. Transcribe or Translate</div>
+      <div class="button-group">
+        <button id="transcribe-btn" disabled>Transcribe</button>
+        <button id="translate-btn" disabled>Translate</button>
+        <button id="benchmark-btn" disabled>Run Backend Benchmark</button>
+      </div>
+      <div id="transcribe-status" class="status"></div>
+      <pre id="transcription-result"></pre>
+    </div>
+    
+    <div class="section">
+      <div class="section-title">4. Performance Metrics</div>
+      <div class="metrics-panel">
+        <table id="metrics-table">
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th>Average (ms)</th>
+              <th>Min (ms)</th>
+              <th>Max (ms)</th>
+              <th>Count</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- Performance metrics will be inserted here -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+    
+    <div class="section">
+      <div class="section-title">5. Backend Information</div>
+      <pre id="backend-info"></pre>
+    </div>
+    
+    <div class="section">
+      <div class="section-title">6. Model Information</div>
+      <pre id="model-info"></pre>
+    </div>
+    
+    <div class="section">
+      <div class="section-title">7. Multimodal Integration (with BERT)</div>
+      <div class="button-group">
+        <button id="init-bert-btn" disabled>Initialize BERT</button>
+        <button id="run-multimodal-btn" disabled>Run Multimodal Analysis</button>
+      </div>
+      <div id="multimodal-status" class="status"></div>
+      <pre id="multimodal-result"></pre>
+    </div>
+  </div>
+  
+  <script type="module">
+    import { createHardwareAbstractedWhisper, createHardwareAbstractedBERT, StorageManager, IndexedDBStorageManager } from '../../../dist/ipfs_accelerate_js.js';
+    
+    // Global variables
+    let whisperModel = null;
+    let bertModel = null;
+    let storageManager = null;
+    let audioContext = null;
+    let audioBuffer = null;
+    let audioData = null;
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let isRecording = false;
+    
+    // Initialize the storage manager
+    async function initStorageManager() {
+      try {
+        storageManager = new IndexedDBStorageManager();
+        await storageManager.initialize();
+        updateStatus('init-status', 'Storage manager initialized', 'success');
+      } catch (error) {
+        updateStatus('init-status', `Error initializing storage manager: ${error.message}`, 'error');
+        console.error('Storage manager initialization error:', error);
+      }
+    }
+    
+    // Initialize audio context
+    async function initAudioContext() {
+      try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        updateStatus('audio-status', 'Audio context initialized', 'success');
+      } catch (error) {
+        updateStatus('audio-status', `Error initializing audio context: ${error.message}`, 'error');
+        console.error('Audio context initialization error:', error);
+      }
+    }
+    
+    // Initialize the models
+    async function initializeWhisper(modelSize = 'tiny', customOptions = {}) {
+      try {
+        updateStatus('init-status', 'Initializing Whisper model...', 'info');
+        
+        // Default config based on model size
+        let config = {
+          modelId: `openai/whisper-${modelSize}`,
+          taskType: 'transcription'
+        };
+        
+        // Apply custom options if provided
+        if (Object.keys(customOptions).length > 0) {
+          config = { ...config, ...customOptions };
+        }
+        
+        console.log('Initializing Whisper with config:', config);
+        
+        // Create and initialize the model
+        whisperModel = createHardwareAbstractedWhisper(config, storageManager);
+        await whisperModel.initialize();
+        
+        // Update UI with model info
+        document.getElementById('model-info').textContent = JSON.stringify(whisperModel.getModelInfo(), null, 2);
+        document.getElementById('backend-info').textContent = JSON.stringify(whisperModel.getBackendMetrics(), null, 2);
+        
+        // Enable audio controls
+        document.getElementById('record-btn').disabled = false;
+        document.getElementById('audio-upload').disabled = false;
+        document.getElementById('demo-btn').disabled = false;
+        document.getElementById('benchmark-btn').disabled = false;
+        
+        updateStatus('init-status', `Whisper ${modelSize} model initialized successfully with ${whisperModel.getBackendMetrics().type} backend`, 'success');
+      } catch (error) {
+        updateStatus('init-status', `Error initializing Whisper model: ${error.message}`, 'error');
+        console.error('Whisper initialization error:', error);
+      }
+    }
+    
+    async function initializeBERT() {
+      try {
+        updateStatus('multimodal-status', 'Initializing BERT model...', 'info');
+        
+        // Create and initialize the BERT model
+        bertModel = createHardwareAbstractedBERT({
+          modelId: 'bert-base-uncased',
+          taskType: 'embedding'
+        }, storageManager);
+        
+        await bertModel.initialize();
+        
+        document.getElementById('run-multimodal-btn').disabled = false;
+        updateStatus('multimodal-status', 'BERT model initialized successfully', 'success');
+      } catch (error) {
+        updateStatus('multimodal-status', `Error initializing BERT model: ${error.message}`, 'error');
+        console.error('BERT initialization error:', error);
+      }
+    }
+    
+    // Record audio from microphone
+    async function startRecording() {
+      try {
+        recordedChunks = [];
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        mediaRecorder = new MediaRecorder(stream);
+        
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            recordedChunks.push(event.data);
+          }
+        };
+        
+        mediaRecorder.onstop = async () => {
+          const audioBlob = new Blob(recordedChunks, { type: 'audio/wav' });
+          await processAudioBlob(audioBlob);
+          
+          // Stop all tracks to release the microphone
+          stream.getTracks().forEach(track => track.stop());
+        };
+        
+        mediaRecorder.start();
+        isRecording = true;
+        
+        document.getElementById('recording-indicator').classList.add('active');
+        document.getElementById('record-btn').disabled = true;
+        document.getElementById('stop-btn').disabled = false;
+        updateStatus('audio-status', 'Recording started...', 'info');
+      } catch (error) {
+        updateStatus('audio-status', `Error starting recording: ${error.message}`, 'error');
+        console.error('Recording error:', error);
+      }
+    }
+    
+    function stopRecording() {
+      if (mediaRecorder && isRecording) {
+        mediaRecorder.stop();
+        isRecording = false;
+        
+        document.getElementById('recording-indicator').classList.remove('active');
+        document.getElementById('record-btn').disabled = false;
+        document.getElementById('stop-btn').disabled = true;
+        updateStatus('audio-status', 'Recording stopped', 'success');
+      }
+    }
+    
+    async function loadDemoAudio() {
+      try {
+        updateStatus('audio-status', 'Loading demo audio...', 'info');
+        
+        // Fetch a demo audio file
+        const response = await fetch('../../../assets/demo_english_short.wav');
+        const audioBlob = await response.blob();
+        await processAudioBlob(audioBlob);
+        
+        updateStatus('audio-status', 'Demo audio loaded successfully', 'success');
+      } catch (error) {
+        updateStatus('audio-status', `Error loading demo audio: ${error.message}`, 'error');
+        console.error('Demo audio loading error:', error);
+      }
+    }
+    
+    // Process uploaded audio file
+    async function handleAudioUpload(event) {
+      const file = event.target.files[0];
+      if (file) {
+        try {
+          updateStatus('audio-status', `Processing audio file: ${file.name}`, 'info');
+          await processAudioBlob(file);
+        } catch (error) {
+          updateStatus('audio-status', `Error processing audio file: ${error.message}`, 'error');
+          console.error('Audio processing error:', error);
+        }
+      }
+    }
+    
+    // Process audio blob (from recording, upload, or demo)
+    async function processAudioBlob(blob) {
+      try {
+        // Convert blob to array buffer
+        const arrayBuffer = await blob.arrayBuffer();
+        
+        // Decode audio data
+        audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        
+        // Convert to mono and resample to 16kHz if needed
+        audioData = resampleAndNormalizeAudio(audioBuffer);
+        
+        // Draw waveform
+        drawWaveform(audioData);
+        
+        // Enable playback and transcription
+        document.getElementById('play-btn').disabled = false;
+        document.getElementById('transcribe-btn').disabled = false;
+        document.getElementById('translate-btn').disabled = false;
+        
+        updateStatus('audio-status', `Audio processed: ${audioData.length} samples (${(audioData.length/16000).toFixed(1)}s at 16kHz)`, 'success');
+        return audioData;
+      } catch (error) {
+        updateStatus('audio-status', `Error processing audio: ${error.message}`, 'error');
+        console.error('Audio processing error:', error);
+        throw error;
+      }
+    }
+    
+    // Resample and normalize audio to 16kHz mono
+    function resampleAndNormalizeAudio(audioBuffer) {
+      const numChannels = audioBuffer.numberOfChannels;
+      const targetSampleRate = 16000;
+      const originalSampleRate = audioBuffer.sampleRate;
+      
+      // Get all channel data and mix down to mono
+      let monoData;
+      if (numChannels === 1) {
+        monoData = audioBuffer.getChannelData(0);
+      } else {
+        // Mix down to mono
+        monoData = new Float32Array(audioBuffer.length);
+        for (let i = 0; i < audioBuffer.length; i++) {
+          let sum = 0;
+          for (let channel = 0; channel < numChannels; channel++) {
+            sum += audioBuffer.getChannelData(channel)[i];
+          }
+          monoData[i] = sum / numChannels;
+        }
+      }
+      
+      // If already at 16kHz, return as is
+      if (originalSampleRate === targetSampleRate) {
+        return monoData;
+      }
+      
+      // Resample to 16kHz (simple resampling for demo purposes)
+      // In a production app, use a proper resampling algorithm
+      const resampleRatio = targetSampleRate / originalSampleRate;
+      const newLength = Math.round(monoData.length * resampleRatio);
+      const resampledData = new Float32Array(newLength);
+      
+      for (let i = 0; i < newLength; i++) {
+        const originalIndex = Math.min(Math.floor(i / resampleRatio), monoData.length - 1);
+        resampledData[i] = monoData[originalIndex];
+      }
+      
+      return resampledData;
+    }
+    
+    // Draw waveform on canvas
+    function drawWaveform(audioData) {
+      const canvas = document.getElementById('waveform');
+      const ctx = canvas.getContext('2d');
+      
+      // Set canvas dimensions
+      canvas.width = canvas.offsetWidth;
+      canvas.height = canvas.offsetHeight;
+      
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#4299e1';
+      
+      // Draw waveform
+      const stepSize = Math.ceil(audioData.length / canvas.width);
+      const amplitude = canvas.height / 2;
+      const y0 = canvas.height / 2;
+      
+      for (let x = 0; x < canvas.width; x++) {
+        const start = x * stepSize;
+        const end = start + stepSize;
+        
+        let min = 1.0;
+        let max = -1.0;
+        
+        for (let i = start; i < end && i < audioData.length; i++) {
+          const value = audioData[i];
+          if (value < min) min = value;
+          if (value > max) max = value;
+        }
+        
+        // Draw min/max bar
+        ctx.fillRect(x, y0 + min * amplitude, 1, (max - min) * amplitude);
+      }
+    }
+    
+    // Play recorded audio
+    function playAudio() {
+      if (audioBuffer) {
+        const source = audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioContext.destination);
+        source.start();
+        updateStatus('audio-status', 'Playing audio...', 'info');
+      }
+    }
+    
+    // Transcribe audio
+    async function transcribeAudio() {
+      if (!whisperModel || !audioData) {
+        updateStatus('transcribe-status', 'Please initialize the model and load audio first', 'error');
+        return;
+      }
+      
+      try {
+        updateStatus('transcribe-status', 'Transcribing audio...', 'info');
+        document.getElementById('transcribe-btn').disabled = true;
+        document.getElementById('translate-btn').disabled = true;
+        
+        // Reset transcription result
+        document.getElementById('transcription-result').textContent = '';
+        
+        // Run transcription
+        const result = await whisperModel.transcribe(audioData);
+        
+        // Display result
+        document.getElementById('transcription-result').textContent = result.text;
+        
+        // Update metrics
+        updateMetricsTable(whisperModel.getPerformanceMetrics());
+        
+        document.getElementById('transcribe-btn').disabled = false;
+        document.getElementById('translate-btn').disabled = false;
+        updateStatus('transcribe-status', 'Transcription complete', 'success');
+      } catch (error) {
+        document.getElementById('transcribe-btn').disabled = false;
+        document.getElementById('translate-btn').disabled = false;
+        updateStatus('transcribe-status', `Error during transcription: ${error.message}`, 'error');
+        console.error('Transcription error:', error);
+      }
+    }
+    
+    // Translate audio
+    async function translateAudio() {
+      if (!whisperModel || !audioData) {
+        updateStatus('transcribe-status', 'Please initialize the model and load audio first', 'error');
+        return;
+      }
+      
+      try {
+        updateStatus('transcribe-status', 'Translating audio...', 'info');
+        document.getElementById('transcribe-btn').disabled = true;
+        document.getElementById('translate-btn').disabled = true;
+        
+        // Reset transcription result
+        document.getElementById('transcription-result').textContent = '';
+        
+        // Run translation
+        const result = await whisperModel.translate(audioData);
+        
+        // Display result
+        document.getElementById('transcription-result').textContent = result.text;
+        
+        // Update metrics
+        updateMetricsTable(whisperModel.getPerformanceMetrics());
+        
+        document.getElementById('transcribe-btn').disabled = false;
+        document.getElementById('translate-btn').disabled = false;
+        updateStatus('transcribe-status', 'Translation complete', 'success');
+      } catch (error) {
+        document.getElementById('transcribe-btn').disabled = false;
+        document.getElementById('translate-btn').disabled = false;
+        updateStatus('transcribe-status', `Error during translation: ${error.message}`, 'error');
+        console.error('Translation error:', error);
+      }
+    }
+    
+    // Run backend benchmark
+    async function runBackendBenchmark() {
+      if (!whisperModel || !audioData) {
+        updateStatus('transcribe-status', 'Please initialize the model and load audio first', 'error');
+        return;
+      }
+      
+      try {
+        updateStatus('transcribe-status', 'Running benchmark across all available backends...', 'info');
+        document.getElementById('benchmark-btn').disabled = true;
+        
+        // Run benchmark
+        const benchmarkResults = await whisperModel.compareBackends(audioData);
+        
+        // Display results
+        const resultText = Object.entries(benchmarkResults)
+          .sort((a, b) => {
+            // Sort by performance (ascending), but put errors (-1) at the end
+            if (a[1] === -1) return 1;
+            if (b[1] === -1) return -1;
+            return a[1] - b[1];
+          })
+          .map(([backend, time]) => {
+            if (time === -1) {
+              return `${backend}: Failed to initialize or run`;
+            }
+            return `${backend}: ${time.toFixed(2)} ms`;
+          })
+          .join('\n');
+        
+        document.getElementById('transcription-result').textContent = `Backend Benchmark Results:\n${resultText}`;
+        
+        document.getElementById('benchmark-btn').disabled = false;
+        updateStatus('transcribe-status', 'Benchmark complete', 'success');
+      } catch (error) {
+        document.getElementById('benchmark-btn').disabled = false;
+        updateStatus('transcribe-status', `Error during benchmark: ${error.message}`, 'error');
+        console.error('Benchmark error:', error);
+      }
+    }
+    
+    // Run multimodal integration with BERT
+    async function runMultimodalAnalysis() {
+      if (!whisperModel || !bertModel || !audioData) {
+        updateStatus('multimodal-status', 'Please initialize both models and load audio first', 'error');
+        return;
+      }
+      
+      try {
+        updateStatus('multimodal-status', 'Running multimodal analysis...', 'info');
+        document.getElementById('run-multimodal-btn').disabled = true;
+        
+        // First, transcribe audio with Whisper
+        const transcriptionResult = await whisperModel.transcribe(audioData);
+        const text = transcriptionResult.text;
+        
+        // Get audio embedding
+        const audioEmbedding = whisperModel.getSharedTensor('audio_embedding');
+        
+        // Process text with BERT
+        const textEmbedding = await bertModel.predict(text);
+        
+        // Simulate multimodal integration (in a real app, you'd have a classifier)
+        // For demo, we'll just show the tensor shapes and sample values
+        let multimodalResult = '';
+        
+        if (audioEmbedding && textEmbedding) {
+          multimodalResult = `Multimodal Analysis Results:
+          
+Text from Whisper: "${text}"
+
+Audio Embedding: 
+  - Shape: ${JSON.stringify(audioEmbedding.shape)}
+  - Type: ${audioEmbedding.dtype}
+  - Sample (first 5 values): [${audioEmbedding.toArray().slice(0, 5).map(v => v.toFixed(4)).join(', ')}...]
+
+Text Embedding from BERT: 
+  - Shape: ${JSON.stringify(textEmbedding.lastHiddenState.shape)}
+  - Type: ${textEmbedding.lastHiddenState.dtype}
+  - Sample (first 5 values): [${textEmbedding.lastHiddenState.toArray().slice(0, 5).map(v => v.toFixed(4)).join(', ')}...]
+
+In a real application, these embeddings would be passed to a multimodal classifier
+for tasks like sentiment analysis, intent classification, or emotion detection.`;
+        } else {
+          multimodalResult = 'Could not obtain embeddings from both models.';
+        }
+        
+        document.getElementById('multimodal-result').textContent = multimodalResult;
+        
+        document.getElementById('run-multimodal-btn').disabled = false;
+        updateStatus('multimodal-status', 'Multimodal analysis complete', 'success');
+      } catch (error) {
+        document.getElementById('run-multimodal-btn').disabled = false;
+        updateStatus('multimodal-status', `Error during multimodal analysis: ${error.message}`, 'error');
+        console.error('Multimodal analysis error:', error);
+      }
+    }
+    
+    // Update status message
+    function updateStatus(elementId, message, type) {
+      const statusElement = document.getElementById(elementId);
+      statusElement.textContent = message;
+      statusElement.className = `status ${type}`;
+    }
+    
+    // Update metrics table
+    function updateMetricsTable(metrics) {
+      const tableBody = document.getElementById('metrics-table').getElementsByTagName('tbody')[0];
+      tableBody.innerHTML = '';
+      
+      for (const [name, metric] of Object.entries(metrics)) {
+        const row = tableBody.insertRow();
+        row.insertCell(0).textContent = name;
+        row.insertCell(1).textContent = metric.avg.toFixed(2);
+        row.insertCell(2).textContent = metric.min.toFixed(2);
+        row.insertCell(3).textContent = metric.max.toFixed(2);
+        row.insertCell(4).textContent = metric.count;
+      }
+    }
+    
+    // Event listeners
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Initialize storage manager
+      await initStorageManager();
+      
+      // Initialize audio context
+      await initAudioContext();
+      
+      // Add event listeners
+      document.getElementById('init-tiny-btn').addEventListener('click', () => initializeWhisper('tiny'));
+      document.getElementById('init-base-btn').addEventListener('click', () => initializeWhisper('base'));
+      document.getElementById('init-with-options-btn').addEventListener('click', () => {
+        const customOptions = {
+          backendPreference: ['webgpu', 'webnn', 'cpu'],
+          browserOptimizations: true,
+          audioProcessing: {
+            hardwareAccelerated: true,
+            cacheFeatures: true
+          },
+          quantization: {
+            enabled: true,
+            bits: 8
+          }
+        };
+        initializeWhisper('tiny', customOptions);
+      });
+      
+      document.getElementById('record-btn').addEventListener('click', startRecording);
+      document.getElementById('stop-btn').addEventListener('click', stopRecording);
+      document.getElementById('play-btn').addEventListener('click', playAudio);
+      document.getElementById('audio-upload').addEventListener('change', handleAudioUpload);
+      document.getElementById('demo-btn').addEventListener('click', loadDemoAudio);
+      document.getElementById('transcribe-btn').addEventListener('click', transcribeAudio);
+      document.getElementById('translate-btn').addEventListener('click', translateAudio);
+      document.getElementById('benchmark-btn').addEventListener('click', runBackendBenchmark);
+      document.getElementById('init-bert-btn').addEventListener('click', initializeBERT);
+      document.getElementById('run-multimodal-btn').addEventListener('click', runMultimodalAnalysis);
+      
+      // Initialize BERT button becomes available after whisper is initialized
+      document.getElementById('init-bert-btn').disabled = false;
+    });
+  </script>
+</body>
+</html>

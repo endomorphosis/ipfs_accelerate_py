@@ -1,0 +1,17 @@
+2025-03-19 22:05:06,042 - INFO - Created backup at fixed_tests/test_hf_bert.py.bak
+2025-03-19 22:05:06,042 - INFO - Applying indentation fixes to fixed_tests/test_hf_bert.py...
+2025-03-19 22:05:06,064 - ERROR - ❌ Syntax error in fixed_tests/test_hf_bert.py: SyntaxError: invalid syntax (test_hf_bert.py, line 94)
+2025-03-19 22:05:06,064 - INFO - Created backup at fixed_tests/test_hf_gpt2.py.bak
+2025-03-19 22:05:06,064 - INFO - Applying indentation fixes to fixed_tests/test_hf_gpt2.py...
+2025-03-19 22:05:06,088 - ERROR - ❌ Syntax error in fixed_tests/test_hf_gpt2.py: SyntaxError: invalid syntax (test_hf_gpt2.py, line 65)
+2025-03-19 22:05:06,088 - INFO - Created backup at fixed_tests/test_hf_t5.py.bak
+2025-03-19 22:05:06,089 - INFO - Applying indentation fixes to fixed_tests/test_hf_t5.py...
+2025-03-19 22:05:06,105 - ERROR - ❌ Syntax error in fixed_tests/test_hf_t5.py: SyntaxError: invalid syntax (test_hf_t5.py, line 65)
+2025-03-19 22:05:06,105 - INFO - Created backup at fixed_tests/test_hf_vit.py.bak
+2025-03-19 22:05:06,105 - INFO - Applying indentation fixes to fixed_tests/test_hf_vit.py...
+2025-03-19 22:05:06,121 - ERROR - ❌ Syntax error in fixed_tests/test_hf_vit.py: SyntaxError: invalid syntax (test_hf_vit.py, line 69)
+2025-03-19 22:05:06,121 - INFO - 
+Summary:
+2025-03-19 22:05:06,121 - INFO - - Files processed: 4
+2025-03-19 22:05:06,121 - INFO - - Successful: 0
+2025-03-19 22:05:06,121 - INFO - - Failed: 4

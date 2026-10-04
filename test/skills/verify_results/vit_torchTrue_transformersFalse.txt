@@ -1,0 +1,23 @@
+<frozen importlib.util>:208: DeprecationWarning: The `openvino.runtime` module is deprecated and will be removed in the 2026.0 release. Please replace `openvino.runtime` with `openvino`.
+2025-03-20 20:14:22,727 - WARNING - torch not available, using mock
+2025-03-20 20:14:23,116 - INFO - Testing model: google/vit-base-patch16-224
+2025-03-20 20:14:23,116 - INFO - Using cpu as preferred device
+2025-03-20 20:14:23,117 - INFO - Testing google/vit-base-patch16-224 with pipeline() on cpu...
+Fast image processor class <class 'transformers.models.vit.image_processing_vit_fast.ViTImageProcessorFast'> is available for this model. Using slow image processor class. To use the fast image processor class set `use_fast=True`.
+2025-03-20 20:14:30,156 - INFO - Created mock image for ViT pipeline testing - Avoiding URL download
+2025-03-20 20:14:31,164 - INFO - Testing google/vit-base-patch16-224 with from_pretrained() on cpu...
+Fast image processor class <class 'transformers.models.vit.image_processing_vit_fast.ViTImageProcessorFast'> is available for this model. Using slow image processor class. To use the fast image processor class set `use_fast=True`.
+2025-03-20 20:14:31,720 - INFO - Created proper image input tensor for ViT model
+2025-03-20 20:14:32,660 - ERROR - Error testing from_pretrained on cpu: not enough values to unpack (expected 2, got 0)
+
+TEST RESULTS SUMMARY:
+[34m🔷 Using MOCK OBJECTS for CI/CD testing only[0m
+   Dependencies: transformers=True, torch=False, tokenizers=True, sentencepiece=True
+✅ Successfully tested google/vit-base-patch16-224
+  - pipeline_cpu: 0.3317s average inference time
+
+Example output:
+  Input: <PIL.Image.Image image mode=RGB size=224x224 at 0x741E81793F20>
+  Output: [{'label': 'rubber eraser, rubber, pencil eraser', 'score': 0.17228101193904877}, {'label': 'tray', 'score': 0.10462518781423569}, {'label': 'jigsaw puzzle', 'score': 0.048876866698265076}, {'label': ...
+
+For detailed results, use --save flag and check the JSON output file.

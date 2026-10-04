@@ -1,0 +1,67 @@
+"""
+Test for API backend functionality.
+
+This file tests the core API backend functionality for the IPFS Accelerate framework.
+Migrated to refactored test suite on 2025-03-21.
+"""
+
+import os 
+import sys
+import importlib.util
+import importlib
+from refactored_test_suite.api_test import APITest
+
+# Add the parent directory to sys.path
+parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+sys.path.append(parent_dir)
+
+# Mock API modules for testing
+class MockAPIProvider:
+    """Mock API provider for testing."""
+    
+    def __init__(self, provider_name):
+        self.provider_name = provider_name
+        self.initialized = True
+    
+    def generate(self, prompt, **kwargs):
+        """Mock text generation."""
+        return f"Response from {self.provider_name}: {prompt[:10]}..."
+    
+    def embeddings(self, text, **kwargs):
+        """Mock embeddings generation."""
+        return [0.1, 0.2, 0.3, 0.4, 0.5]
+
+
+class TestAPIBackend(APITest):
+    """Test suite for API backend functionality."""
+    
+    def setUp(self):
+        """Set up the test environment."""
+        super().setUp()
+        self.providers = {
+            'claude': MockAPIProvider('claude'),
+            'openai': MockAPIProvider('openai'),
+            'groq': MockAPIProvider('groq'),
+            'ollama': MockAPIProvider('ollama')
+        }
+    
+    def test_api_initialization(self):
+        """Test that API providers can be initialized correctly."""
+        for name, provider in self.providers.items():
+            self.assertTrue(provider.initialized, f"{name} provider not initialized")
+    
+    def test_text_generation(self):
+        """Test that text generation works with all providers."""
+        prompt = "Tell me about machine learning"
+        for name, provider in self.providers.items():
+            response = provider.generate(prompt)
+            self.assertIsNotNone(response)
+            self.assertIn(name, response)
+    
+    def test_embeddings_generation(self):
+        """Test that embeddings generation works."""
+        text = "This is a sample text for embeddings"
+        for name, provider in self.providers.items():
+            embeddings = provider.embeddings(text)
+            self.assertIsNotNone(embeddings)
+            self.assertEqual(len(embeddings), 5)  # Our mock returns 5 values

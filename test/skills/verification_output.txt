@@ -1,0 +1,13 @@
+Running test /home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_bert.py with configuration: full_deps
+✅ full_deps: Using REAL INFERENCE with actual models
+Running test /home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_bert.py with configuration: no_transformers
+✅ no_transformers: Using MOCK OBJECTS for CI/CD testing only
+Running test /home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_bert.py with configuration: no_torch
+✅ no_torch: Using MOCK OBJECTS for CI/CD testing only
+Running test /home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_bert.py with configuration: no_tokenizers
+✅ no_tokenizers: Using REAL INFERENCE with actual models
+Running test /home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_bert.py with configuration: no_sentencepiece
+✅ no_sentencepiece: Using REAL INFERENCE with actual models
+Running test /home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_bert.py with configuration: minimal
+✅ minimal: Using MOCK OBJECTS for CI/CD testing only
+Running test /home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_gpt2.py with configuration: full_deps

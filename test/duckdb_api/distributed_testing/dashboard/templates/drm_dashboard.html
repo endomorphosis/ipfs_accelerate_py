@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dynamic Resource Management Dashboard</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: {{ theme == 'dark' and '#1a1a1a' or '#f5f5f5' }};
+            color: {{ theme == 'dark' and '#f5f5f5' or '#333' }};
+            padding: 0;
+            margin: 0;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: {{ theme == 'dark' and '#333' or '#fff' }};
+            padding: 15px 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 {
+            margin: 0;
+            color: {{ theme == 'dark' and '#f5f5f5' or '#333' }};
+            font-size: 1.8em;
+        }
+        .visualization-container {
+            background-color: {{ theme == 'dark' and '#333' or '#fff' }};
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .dashboard {
+            margin-top: 20px;
+            background-color: {{ theme == 'dark' and '#333' or '#fff' }};
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 0;
+            margin-bottom: 20px;
+        }
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .button {
+            padding: 8px 16px;
+            background-color: {{ theme == 'dark' and '#4dabf7' or '#007bff' }};
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-left: 10px;
+            text-decoration: none;
+        }
+        .button:hover {
+            background-color: {{ theme == 'dark' and '#339af0' or '#0069d9' }};
+        }
+        .button.secondary {
+            background-color: {{ theme == 'dark' and '#6c757d' or '#6c757d' }};
+        }
+        .button.secondary:hover {
+            background-color: {{ theme == 'dark' and '#5a6268' or '#5a6268' }};
+        }
+        .nav {
+            display: flex;
+            margin-right: 20px;
+        }
+        .nav a {
+            color: {{ theme == 'dark' and '#4dabf7' or '#007bff' }};
+            margin-left: 20px;
+            text-decoration: none;
+        }
+        .nav a:hover {
+            text-decoration: underline;
+        }
+        .tab-container {
+            margin-top: 20px;
+        }
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid {{ theme == 'dark' and '#555' or '#dee2e6' }};
+        }
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: 1px solid transparent;
+            border-top-left-radius: 5px;
+            border-top-right-radius: 5px;
+            margin-bottom: -1px;
+        }
+        .tab.active {
+            border-color: {{ theme == 'dark' and '#555' or '#dee2e6' }};
+            border-bottom-color: {{ theme == 'dark' and '#333' or '#fff' }};
+            background-color: {{ theme == 'dark' and '#333' or '#fff' }};
+        }
+        .tab-content {
+            display: none;
+            padding: 20px;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .summary-cards {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .summary-card {
+            flex: 1;
+            min-width: 200px;
+            padding: 15px;
+            background-color: {{ theme == 'dark' and '#444' or '#f8f9fa' }};
+            border-radius: 5px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .summary-card h3 {
+            margin-top: 0;
+            margin-bottom: 10px;
+            font-size: 16px;
+            color: {{ theme == 'dark' and '#adb5bd' or '#6c757d' }};
+        }
+        .summary-card .value {
+            font-size: 24px;
+            font-weight: bold;
+            color: {{ theme == 'dark' and '#f5f5f5' or '#333' }};
+        }
+        .text-muted {
+            color: {{ theme == 'dark' and '#adb5bd' or '#6c757d' }};
+        }
+        .refresh-controls {
+            display: flex;
+            align-items: center;
+            margin-top: 10px;
+        }
+        .refresh-controls label {
+            margin-right: 10px;
+        }
+        select {
+            padding: 5px 10px;
+            border-radius: 4px;
+            border: 1px solid {{ theme == 'dark' and '#555' or '#ced4da' }};
+            background-color: {{ theme == 'dark' and '#333' or '#fff' }};
+            color: {{ theme == 'dark' and '#f5f5f5' or '#333' }};
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Dynamic Resource Management Dashboard</h1>
+            <div class="nav">
+                <a href="/">Overview</a>
+                <a href="/workers">Workers</a>
+                <a href="/tasks">Tasks</a>
+                <a href="/results">Results</a>
+            </div>
+        </div>
+
+        {% if drm_summary %}
+        <div class="summary-cards">
+            <div class="summary-card">
+                <h3>Active Workers</h3>
+                <div class="value">{{ drm_summary.active_workers }}</div>
+            </div>
+            <div class="summary-card">
+                <h3>Total Resources</h3>
+                <div class="value">{{ drm_summary.total_resources }}</div>
+            </div>
+            <div class="summary-card">
+                <h3>Resource Utilization</h3>
+                <div class="value">{{ drm_summary.utilization }}%</div>
+            </div>
+            <div class="summary-card">
+                <h3>Scale Events (24h)</h3>
+                <div class="value">{{ drm_summary.scale_events }}</div>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="controls">
+            <div>
+                <a href="/drm-dashboard?refresh=true" class="button">Refresh Visualizations</a>
+                {% if dashboard_server_running %}
+                <a href="{{ dashboard_server_url }}" target="_blank" class="button">Open Interactive Dashboard</a>
+                {% else %}
+                <a href="/drm-dashboard?action=start-server" class="button">Start Interactive Dashboard</a>
+                {% endif %}
+            </div>
+            <div class="refresh-controls">
+                <label for="auto-refresh">Auto-refresh:</label>
+                <select id="auto-refresh" onchange="updateRefreshInterval(this.value)">
+                    <option value="0" {% if refresh_interval == 0 %}selected{% endif %}>Off</option>
+                    <option value="30" {% if refresh_interval == 30 %}selected{% endif %}>30 seconds</option>
+                    <option value="60" {% if refresh_interval == 60 %}selected{% endif %}>1 minute</option>
+                    <option value="300" {% if refresh_interval == 300 %}selected{% endif %}>5 minutes</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="tab-container">
+            <div class="tabs">
+                <div class="tab active" onclick="switchTab('dashboard')">Dashboard</div>
+                <div class="tab" onclick="switchTab('resource-utilization')">Resource Utilization</div>
+                <div class="tab" onclick="switchTab('scaling-history')">Scaling History</div>
+                <div class="tab" onclick="switchTab('resource-allocation')">Resource Allocation</div>
+                <div class="tab" onclick="switchTab('resource-efficiency')">Resource Efficiency</div>
+                {% if has_cloud_resources %}
+                <div class="tab" onclick="switchTab('cloud-resources')">Cloud Resources</div>
+                {% endif %}
+            </div>
+
+            <div id="dashboard" class="tab-content active">
+                {% if dashboard_html %}
+                {{ dashboard_html|safe }}
+                {% else %}
+                <div class="visualization-container">
+                    <p>No dashboard visualization available. Try refreshing the visualizations.</p>
+                </div>
+                {% endif %}
+            </div>
+
+            <div id="resource-utilization" class="tab-content">
+                {% if resource_heatmap_html %}
+                {{ resource_heatmap_html|safe }}
+                {% else %}
+                <div class="visualization-container">
+                    <p>No resource utilization visualization available. Try refreshing the visualizations.</p>
+                </div>
+                {% endif %}
+            </div>
+
+            <div id="scaling-history" class="tab-content">
+                {% if scaling_history_html %}
+                {{ scaling_history_html|safe }}
+                {% else %}
+                <div class="visualization-container">
+                    <p>No scaling history visualization available. Try refreshing the visualizations.</p>
+                </div>
+                {% endif %}
+            </div>
+
+            <div id="resource-allocation" class="tab-content">
+                {% if resource_allocation_html %}
+                {{ resource_allocation_html|safe }}
+                {% else %}
+                <div class="visualization-container">
+                    <p>No resource allocation visualization available. Try refreshing the visualizations.</p>
+                </div>
+                {% endif %}
+            </div>
+
+            <div id="resource-efficiency" class="tab-content">
+                {% if resource_efficiency_html %}
+                {{ resource_efficiency_html|safe }}
+                {% else %}
+                <div class="visualization-container">
+                    <p>No resource efficiency visualization available. Try refreshing the visualizations.</p>
+                </div>
+                {% endif %}
+            </div>
+
+            {% if has_cloud_resources %}
+            <div id="cloud-resources" class="tab-content">
+                {% if cloud_resources_html %}
+                {{ cloud_resources_html|safe }}
+                {% else %}
+                <div class="visualization-container">
+                    <p>No cloud resources visualization available. Try refreshing the visualizations.</p>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+
+        <p class="text-muted">
+            Last updated: {{ last_updated }}
+        </p>
+    </div>
+
+    <script>
+        function switchTab(tabId) {
+            // Hide all tab contents
+            var tabContents = document.getElementsByClassName('tab-content');
+            for (var i = 0; i < tabContents.length; i++) {
+                tabContents[i].classList.remove('active');
+            }
+            
+            // Deactivate all tabs
+            var tabs = document.getElementsByClassName('tab');
+            for (var i = 0; i < tabs.length; i++) {
+                tabs[i].classList.remove('active');
+            }
+            
+            // Activate selected tab and content
+            document.getElementById(tabId).classList.add('active');
+            
+            // Find and activate the corresponding tab
+            for (var i = 0; i < tabs.length; i++) {
+                if (tabs[i].getAttribute('onclick').includes(tabId)) {
+                    tabs[i].classList.add('active');
+                    break;
+                }
+            }
+        }
+        
+        function updateRefreshInterval(seconds) {
+            // Store the setting in local storage
+            localStorage.setItem('drmRefreshInterval', seconds);
+            
+            if (window.autoRefreshTimer) {
+                clearInterval(window.autoRefreshTimer);
+                window.autoRefreshTimer = null;
+            }
+            
+            if (seconds > 0) {
+                window.autoRefreshTimer = setInterval(function() {
+                    window.location.href = '/drm-dashboard?refresh=true';
+                }, seconds * 1000);
+            }
+        }
+        
+        // Setup auto-refresh on page load if needed
+        window.onload = function() {
+            var refreshInterval = document.getElementById('auto-refresh').value;
+            if (refreshInterval > 0) {
+                updateRefreshInterval(refreshInterval);
+            }
+        };
+    </script>
+</body>
+</html>

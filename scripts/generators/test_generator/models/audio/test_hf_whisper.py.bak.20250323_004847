@@ -1,0 +1,432 @@
+#!/usr/bin/env python3
+"""
+Test file for Whisper speech recognition models.
+
+This file has been migrated to the refactored test suite.
+Generated: 2025-03-21 from skills/fixed_tests/test_hf_whisper.py
+"""
+
+import os
+import sys
+import json
+import logging
+import unittest
+from unittest.mock import patch, MagicMock
+import time
+import numpy as np
+from pathlib import Path
+from typing import Dict, List, Any, Optional, Union
+
+from refactored_test_suite.model_test import ModelTest
+
+# Try to import required packages with fallbacks
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    torch = MagicMock()
+    HAS_TORCH = False
+
+try:
+    import transformers
+    from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq, WhisperProcessor, WhisperForConditionalGeneration
+    HAS_TRANSFORMERS = True
+except ImportError:
+    transformers = MagicMock()
+    AutoProcessor = MagicMock()
+    AutoModelForSpeechSeq2Seq = MagicMock()
+    WhisperProcessor = MagicMock()
+    WhisperForConditionalGeneration = MagicMock()
+    HAS_TRANSFORMERS = False
+
+try:
+    import librosa
+    HAS_LIBROSA = True
+except ImportError:
+    librosa = MagicMock()
+    HAS_LIBROSA = False
+
+try:
+    import soundfile as sf
+    HAS_SOUNDFILE = True
+except ImportError:
+    sf = MagicMock()
+    HAS_SOUNDFILE = False
+
+try:
+    import openvino
+    HAS_OPENVINO = True
+except ImportError:
+    openvino = MagicMock()
+    HAS_OPENVINO = False
+
+# Whisper models registry
+WHISPER_MODELS_REGISTRY = {
+    "openai/whisper-tiny": {
+        "description": "Whisper tiny model (39M parameters), good for basic speech recognition",
+        "class": "WhisperForConditionalGeneration",
+        "sampling_rate": 16000
+    },
+    "openai/whisper-base": {
+        "description": "Whisper base model (74M parameters), good for general speech recognition",
+        "class": "WhisperForConditionalGeneration",
+        "sampling_rate": 16000
+    },
+    "openai/whisper-small": {
+        "description": "Whisper small model (244M parameters), good for accurate speech recognition",
+        "class": "WhisperForConditionalGeneration",
+        "sampling_rate": 16000
+    }
+}
+
+# Define utility functions needed for tests
+def create_test_audio(file_path, duration=3, sample_rate=16000):
+    """Create a test audio file with a simple tone."""
+    # Generate a simple sine wave (440 Hz - A4 note)
+    t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
+    audio = 0.5 * np.sin(2 * np.pi * 440 * t)
+    
+    # Save to file if soundfile is available
+    if HAS_SOUNDFILE:
+        sf.write(file_path, audio, sample_rate)
+    
+    return audio, sample_rate
+
+class TestWhisperModels(ModelTest):
+    """Test class for Whisper speech recognition models."""
+    
+    def setUp(self):
+        """Initialize the test with model details and hardware detection."""
+        super().setUp()
+        self.model_id = "openai/whisper-tiny"  # Default model ID - tiny is fastest for testing
+        
+        # Get model info from registry
+        if self.model_id not in WHISPER_MODELS_REGISTRY:
+            self.logger.warning(f"Model {self.model_id} not in registry, using default configuration")
+            self.model_info = WHISPER_MODELS_REGISTRY["openai/whisper-tiny"]
+        else:
+            self.model_info = WHISPER_MODELS_REGISTRY[self.model_id]
+        
+        # Define model parameters
+        self.task = "automatic-speech-recognition"
+        self.class_name = self.model_info["class"]
+        self.description = self.model_info["description"]
+        self.sampling_rate = self.model_info["sampling_rate"]
+        
+        # Create a test audio file
+        self.test_audio_path = os.path.join(self.model_dir, "test_audio.wav")
+        self.test_audio, _ = create_test_audio(
+            self.test_audio_path, 
+            duration=3, 
+            sample_rate=self.sampling_rate
+        )
+        
+        # Hardware detection
+        self.setup_hardware()
+        
+        # Results storage
+        self.results = {}
+    
+    def setup_hardware(self):
+        """Set up hardware detection for the test."""
+        # Skip test if torch is not available
+        if not HAS_TORCH:
+            self.skipTest("PyTorch not available")
+            
+        # CUDA support
+        self.has_cuda = torch.cuda.is_available()
+        
+        # MPS support (Apple Silicon)
+        try:
+            self.has_mps = hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()
+        except AttributeError:
+            self.has_mps = False
+            
+        # ROCm support (AMD)
+        self.has_rocm = hasattr(torch, 'version') and hasattr(torch.version, 'hip') and torch.version.hip is not None
+        
+        # OpenVINO support
+        self.has_openvino = HAS_OPENVINO
+        
+        # WebNN/WebGPU support (always false for server-side tests)
+        self.has_webnn = False
+        self.has_webgpu = False
+        
+        # Set default device
+        if self.has_cuda:
+            self.device = 'cuda'
+        elif self.has_mps:
+            self.device = 'mps'
+        elif self.has_rocm:
+            self.device = 'cuda'  # ROCm uses CUDA compatibility layer
+        else:
+            self.device = 'cpu'
+            
+        self.logger.info(f"Using device: {self.device}")
+    
+    def load_model(self, model_id=None):
+        """Load Whisper model from HuggingFace."""
+        if not HAS_TRANSFORMERS:
+            self.skipTest("Transformers not available")
+            
+        model_id = model_id or self.model_id
+            
+        try:
+            # Load processor
+            self.logger.info(f"Loading Whisper processor: {model_id}")
+            processor = WhisperProcessor.from_pretrained(model_id)
+            
+            # Load model
+            self.logger.info(f"Loading Whisper model: {model_id} on {self.device}")
+            model = WhisperForConditionalGeneration.from_pretrained(model_id).to(self.device)
+            
+            # Store processor for later use
+            self.processor = processor
+            
+            return model
+        except Exception as e:
+            self.logger.error(f"Error loading model: {e}")
+            self.skipTest(f"Could not load model: {str(e)}")
+    
+    def test_pipeline(self):
+        """Test the model using transformers pipeline API."""
+        if not HAS_TRANSFORMERS or not HAS_TORCH:
+            self.skipTest("Required dependencies not available")
+        
+        if not HAS_LIBROSA and not HAS_SOUNDFILE and not os.path.exists(self.test_audio_path):
+            self.skipTest("No audio libraries available and no test audio file exists")
+            
+        self.logger.info(f"Testing {self.model_id} with pipeline() on {self.device}...")
+        
+        try:
+            # Create pipeline with appropriate parameters
+            pipeline_kwargs = {
+                "task": self.task,
+                "model": self.model_id,
+                "device": self.device
+            }
+            
+            # Time the model loading
+            load_start_time = time.time()
+            pipeline = transformers.pipeline(**pipeline_kwargs)
+            load_time = time.time() - load_start_time
+            
+            # Run inference
+            inference_start_time = time.time()
+            result = pipeline(self.test_audio_path)
+            inference_time = time.time() - inference_start_time
+            
+            # Verify output
+            self.assertIsNotNone(result, "Pipeline output should not be None")
+            self.assertIn("text", result, "Pipeline output should contain transcribed text")
+            
+            self.logger.info(f"Transcribed text: {result['text']}")
+            self.logger.info(f"Model load time: {load_time:.4f} seconds")
+            self.logger.info(f"Inference time: {inference_time:.4f} seconds")
+            
+            # Store results
+            self.results['pipeline_test'] = {
+                'transcribed_text': result['text'],
+                'load_time': load_time,
+                'inference_time': inference_time
+            }
+            
+            self.logger.info("Pipeline test passed")
+            
+        except Exception as e:
+            self.logger.error(f"Error in pipeline test: {e}")
+            self.fail(f"Pipeline test failed: {str(e)}")
+    
+    def test_direct_model_inference(self):
+        """Test the model using direct model inference."""
+        if not HAS_TRANSFORMERS or not HAS_TORCH:
+            self.skipTest("Required dependencies not available")
+        
+        self.logger.info(f"Testing {self.model_id} with direct inference on {self.device}...")
+        
+        try:
+            # Load model and processor
+            model = self.load_model()
+            processor = self.processor
+            
+            # Load audio data
+            if os.path.exists(self.test_audio_path):
+                if HAS_LIBROSA:
+                    array, sampling_rate = librosa.load(self.test_audio_path, sr=self.sampling_rate)
+                elif HAS_SOUNDFILE:
+                    array, sampling_rate = sf.read(self.test_audio_path)
+                    if sampling_rate != self.sampling_rate:
+                        # Simple resampling (this is a naive approach)
+                        array = np.interp(
+                            np.linspace(0, len(array), int(len(array) * self.sampling_rate / sampling_rate)),
+                            np.arange(len(array)),
+                            array
+                        )
+                        sampling_rate = self.sampling_rate
+                else:
+                    # Use the generated test audio
+                    array = self.test_audio
+                    sampling_rate = self.sampling_rate
+            else:
+                # Use the generated test audio
+                array = self.test_audio
+                sampling_rate = self.sampling_rate
+            
+            # Process inputs
+            input_features = processor(
+                array, 
+                sampling_rate=sampling_rate, 
+                return_tensors="pt"
+            ).input_features.to(self.device)
+            
+            # Generate tokens
+            with torch.no_grad():
+                predicted_ids = model.generate(input_features)
+            
+            # Decode output
+            transcription = processor.batch_decode(predicted_ids, skip_special_tokens=True)[0]
+            
+            # Verify output
+            self.assertIsNotNone(transcription, "Transcription should not be None")
+            self.assertGreater(len(transcription.strip()), 0, "Transcription should not be empty")
+            
+            self.logger.info(f"Transcribed text: {transcription}")
+            self.logger.info("Direct model inference test passed")
+            
+            # Store results
+            self.results['direct_inference_test'] = {
+                'transcribed_text': transcription
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error in direct inference: {e}")
+            self.fail(f"Direct model inference test failed: {str(e)}")
+    
+    def test_openvino_inference(self):
+        """Test the model with OpenVINO if available."""
+        if not HAS_TRANSFORMERS:
+            self.skipTest("Transformers not available")
+        
+        if not self.has_openvino:
+            self.skipTest("OpenVINO not available")
+        
+        self.logger.info(f"Testing {self.model_id} with OpenVINO...")
+        
+        try:
+            from openvino.runtime import Core
+            import tempfile
+            
+            # Load processor
+            processor = WhisperProcessor.from_pretrained(self.model_id)
+            
+            # Load model for conversion
+            model = WhisperForConditionalGeneration.from_pretrained(self.model_id)
+            
+            # Load audio data
+            if os.path.exists(self.test_audio_path):
+                if HAS_LIBROSA:
+                    array, sampling_rate = librosa.load(self.test_audio_path, sr=self.sampling_rate)
+                elif HAS_SOUNDFILE:
+                    array, sampling_rate = sf.read(self.test_audio_path)
+                else:
+                    array = self.test_audio
+                    sampling_rate = self.sampling_rate
+            else:
+                array = self.test_audio
+                sampling_rate = self.sampling_rate
+            
+            # Process inputs
+            input_features = processor(
+                array, 
+                sampling_rate=sampling_rate, 
+                return_tensors="pt"
+            ).input_features
+            
+            # For demonstration, we'll use a mock for the actual OpenVINO inference
+            # In a real implementation, you would:
+            # 1. Export the model to ONNX
+            # 2. Load it with OpenVINO
+            # 3. Run inference
+            
+            # Simulate the result
+            with torch.no_grad():
+                predicted_ids = model.generate(input_features)
+            
+            # Decode output
+            transcription = processor.batch_decode(predicted_ids, skip_special_tokens=True)[0]
+            
+            # Verify output
+            self.assertIsNotNone(transcription, "Transcription should not be None")
+            self.logger.info(f"OpenVINO transcribed text: {transcription}")
+            self.logger.info("OpenVINO inference test passed (simulated)")
+            
+            # Store results
+            self.results['openvino_inference_test'] = {
+                'transcribed_text': transcription,
+                'note': 'This is a simulated result - actual OpenVINO integration would require model conversion'
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error in OpenVINO inference: {e}")
+            self.fail(f"OpenVINO inference test failed: {str(e)}")
+    
+    def test_hardware_compatibility(self):
+        """Test model compatibility with different hardware platforms."""
+        if not HAS_TRANSFORMERS or not HAS_TORCH:
+            self.skipTest("Required dependencies not available")
+            
+        devices_to_test = []
+        
+        # Always test CPU
+        devices_to_test.append('cpu')
+        
+        # Only test available hardware
+        if self.has_cuda:
+            devices_to_test.append('cuda')
+        if self.has_mps:
+            devices_to_test.append('mps')
+            
+        # Test each device
+        for device in devices_to_test:
+            original_device = self.device
+            try:
+                self.logger.info(f"Testing on {device}...")
+                self.device = device
+                
+                # Create pipeline with appropriate parameters
+                pipeline_kwargs = {
+                    "task": self.task,
+                    "model": self.model_id,
+                    "device": device
+                }
+                
+                # Time the model loading and inference
+                load_start_time = time.time()
+                pipeline = transformers.pipeline(**pipeline_kwargs)
+                load_time = time.time() - load_start_time
+                
+                inference_start_time = time.time()
+                result = pipeline(self.test_audio_path)
+                inference_time = time.time() - inference_start_time
+                
+                # Verify output
+                self.assertIsNotNone(result, f"Pipeline output on {device} should not be None")
+                self.assertIn("text", result, f"Pipeline output on {device} should contain transcribed text")
+                
+                # Store performance results
+                self.results[f'performance_{device}'] = {
+                    'load_time': load_time,
+                    'inference_time': inference_time,
+                    'transcribed_text': result['text']
+                }
+                
+                self.logger.info(f"Test on {device} passed (load: {load_time:.4f}s, inference: {inference_time:.4f}s)")
+            except Exception as e:
+                self.logger.error(f"Error testing on {device}: {e}")
+                self.fail(f"Test on {device} failed: {str(e)}")
+            finally:
+                # Restore original device
+                self.device = original_device
+
+if __name__ == "__main__":
+    unittest.main()

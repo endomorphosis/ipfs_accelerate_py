@@ -1,0 +1,19 @@
+2025-03-19 19:48:06,750 - INFO - Regenerating test files for: bert, gpt2, t5, vit
+2025-03-19 19:48:06,750 - INFO - Regenerating test file for bert...
+2025-03-19 19:48:06,827 - INFO - Fixed indentation issues in /home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_bert.py
+2025-03-19 19:48:06,827 - INFO - ✅ Successfully regenerated test file for bert: /home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_bert.py
+2025-03-19 19:48:06,827 - INFO - Regenerating test file for gpt2...
+2025-03-19 19:48:06,898 - INFO - Fixed indentation issues in /home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_gpt2.py
+2025-03-19 19:48:06,898 - INFO - ✅ Successfully regenerated test file for gpt2: /home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_gpt2.py
+2025-03-19 19:48:06,898 - INFO - Regenerating test file for t5...
+2025-03-19 19:48:06,958 - INFO - Fixed indentation issues in /home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_t5.py
+2025-03-19 19:48:06,958 - INFO - ✅ Successfully regenerated test file for t5: /home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_t5.py
+2025-03-19 19:48:06,958 - INFO - Regenerating test file for vit...
+2025-03-19 19:48:07,023 - INFO - Fixed indentation issues in /home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_vit.py
+2025-03-19 19:48:07,023 - INFO - ✅ Successfully regenerated test file for vit: /home/barberb/ipfs_accelerate_py/test/skills/fixed_tests/test_hf_vit.py
+2025-03-19 19:48:07,023 - INFO - 
+Regeneration Summary:
+2025-03-19 19:48:07,023 - INFO - - Successful: 4
+2025-03-19 19:48:07,023 - INFO - - Failed: 0
+2025-03-19 19:48:07,023 - INFO - - Total: 4
+2025-03-19 19:48:07,023 - INFO - - Output directory: /home/barberb/ipfs_accelerate_py/test/skills/fixed_tests

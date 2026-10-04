@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comprehensive Model Compatibility Matrix</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1, h2, h3 {
+            color: #1a1a1a;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+        }
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+            position: sticky;
+            top: 0;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+        .full {
+            color: green;
+            font-size: 18px;
+        }
+        .partial {
+            color: orange;
+            font-size: 18px;
+        }
+        .limited {
+            color: #FFA500;
+            font-size: 18px;
+        }
+        .not-supported {
+            color: red;
+            font-size: 18px;
+        }
+        .filters {
+            background-color: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .filter-group {
+            margin-bottom: 10px;
+        }
+        .filter-group label {
+            font-weight: bold;
+            display: block;
+            margin-bottom: 5px;
+        }
+        .filter-options {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .filter-options label {
+            font-weight: normal;
+            margin-right: 10px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 14px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .tooltip {
+            position: relative;
+            display: inline-block;
+        }
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: 200px;
+            background-color: #555;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 5px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -100px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+        .search-box {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .tab {
+            overflow: hidden;
+            border: 1px solid #ccc;
+            background-color: #f1f1f1;
+            border-radius: 5px 5px 0 0;
+        }
+        .tab button {
+            background-color: inherit;
+            float: left;
+            border: none;
+            outline: none;
+            cursor: pointer;
+            padding: 14px 16px;
+            transition: 0.3s;
+            color: #333;
+        }
+        .tab button:hover {
+            background-color: #ddd;
+        }
+        .tab button.active {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .tabcontent {
+            display: none;
+            padding: 6px 12px;
+            border: 1px solid #ccc;
+            border-top: none;
+            border-radius: 0 0 5px 5px;
+            animation: fadeEffect 1s;
+        }
+        @keyframes fadeEffect {
+            from {opacity: 0;}
+            to {opacity: 1;}
+        }
+        .chart-container {
+            width: 100%;
+            height: 400px;
+            margin-top: 20px;
+        }
+        .export-buttons {
+            margin-top: 20px;
+            margin-bottom: 20px;
+        }
+        .export-buttons button {
+            margin-right: 10px;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <h1>Comprehensive Model Compatibility Matrix</h1>
+    
+    <p><strong>Generated:</strong> {{ generated_date }} | <strong>Models:</strong> {{ total_models }} | <strong>Hardware Platforms:</strong> {{ total_hardware_platforms }}</p>
+    
+    <div class="tab">
+        <button class="tablinks active" onclick="openTab(event, 'MatrixView')">Matrix View</button>
+        <button class="tablinks" onclick="openTab(event, 'PerformanceView')">Performance View</button>
+        <button class="tablinks" onclick="openTab(event, 'RecommendationsView')">Recommendations</button>
+    </div>
+    
+    <div id="MatrixView" class="tabcontent" style="display: block;">
+        <div class="filters">
+            <h3>Filters</h3>
+            <input type="text" id="searchBox" class="search-box" placeholder="Search for models, families, or hardware...">
+            
+            <div class="filter-group">
+                <label>Modality:</label>
+                <div class="filter-options" id="modalityFilters">
+                    <label><input type="checkbox" value="all" checked> All</label>
+                    {% for modality in modalities %}
+                    <label><input type="checkbox" value="{{ modality }}" class="modality-filter"> {{ modality|title }}</label>
+                    {% endfor %}
+                </div>
+            </div>
+            
+            <div class="filter-group">
+                <label>Hardware Platforms:</label>
+                <div class="filter-options" id="hardwareFilters">
+                    <label><input type="checkbox" value="all" checked> All</label>
+                    {% for hw in hardware_platforms %}
+                    <label><input type="checkbox" value="{{ hw }}" class="hardware-filter"> {{ hw }}</label>
+                    {% endfor %}
+                </div>
+            </div>
+            
+            <div class="filter-group">
+                <label>Compatibility Level:</label>
+                <div class="filter-options" id="compatibilityFilters">
+                    <label><input type="checkbox" value="all" checked> All</label>
+                    <label><input type="checkbox" value="full" class="compatibility-filter"> ✅ Full Support</label>
+                    <label><input type="checkbox" value="partial" class="compatibility-filter"> ⚠️ Partial Support</label>
+                    <label><input type="checkbox" value="limited" class="compatibility-filter"> 🔶 Limited Support</label>
+                    <label><input type="checkbox" value="not-supported" class="compatibility-filter"> ❌ Not Supported</label>
+                </div>
+            </div>
+            
+            <button onclick="applyFilters()">Apply Filters</button>
+            <button onclick="resetFilters()">Reset Filters</button>
+        </div>
+        
+        <div class="export-buttons">
+            <button onclick="exportTableToCSV()">Export to CSV</button>
+            <button onclick="exportTableToJSON()">Export to JSON</button>
+        </div>
+        
+        {% for modality, models in models_by_modality.items() %}
+        <div class="modality-section" data-modality="{{ modality }}">
+            <h2>{{ modality|title }} Models</h2>
+            <table class="compatibility-table">
+                <thead>
+                    <tr>
+                        <th>Model</th>
+                        <th>Family</th>
+                        <th>Parameters</th>
+                        {% for hw in hardware_platforms %}
+                        <th>{{ hw }}</th>
+                        {% endfor %}
+                        <th>Notes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for model in models %}
+                    <tr data-modality="{{ modality }}" data-family="{{ model.model_family }}">
+                        <td>{{ model.model_name }}</td>
+                        <td>{{ model.model_family }}</td>
+                        <td>{{ model.parameters_million }}M</td>
+                        {% for hw in hardware_platforms %}
+                        <td class="tooltip">
+                            <span class="{{ model.get(hw + '_level', 'not-supported') }}">{{ model.get(hw, '❌') }}</span>
+                            <span class="tooltiptext">{{ model.get(hw + '_notes', '') }}</span>
+                        </td>
+                        {% endfor %}
+                        <td>{{ model.compatibility_notes }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endfor %}
+    </div>
+    
+    <div id="PerformanceView" class="tabcontent">
+        <h2>Performance Metrics</h2>
+        
+        <div class="chart-container">
+            <canvas id="throughputChart"></canvas>
+        </div>
+        
+        <div class="chart-container">
+            <canvas id="latencyChart"></canvas>
+        </div>
+        
+        <div class="chart-container">
+            <canvas id="memoryChart"></canvas>
+        </div>
+        
+        <h3>Raw Performance Data</h3>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>Model Family</th>
+                    <th>Hardware</th>
+                    <th>Avg Throughput (items/sec)</th>
+                    <th>Avg Latency (ms)</th>
+                    <th>Avg Memory (MB)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for family, hw_metrics in performance_by_family.items() %}
+                    {% for hw, metrics in hw_metrics.items() %}
+                    <tr>
+                        <td>{{ family }}</td>
+                        <td>{{ hw }}</td>
+                        <td>{{ metrics.get('avg_throughput', 'N/A') }}</td>
+                        <td>{{ metrics.get('avg_latency', 'N/A') }}</td>
+                        <td>{{ metrics.get('avg_memory', 'N/A') }}</td>
+                    </tr>
+                    {% endfor %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    <div id="RecommendationsView" class="tabcontent">
+        <h2>Hardware Recommendations by Model Type</h2>
+        
+        {% for modality, recs in recommendations.items() %}
+        <div class="recommendation-section">
+            <h3>{{ modality|title }} Models</h3>
+            
+            <p>{{ recs.summary }}</p>
+            
+            <h4>Best Hardware Platform: {{ recs.best_platform }}</h4>
+            
+            <h4>Recommended Configurations:</h4>
+            <ul>
+                {% for config in recs.configurations %}
+                <li>{{ config }}</li>
+                {% endfor %}
+            </ul>
+            
+            {% if recs.chart_data %}
+            <div class="chart-container">
+                <canvas id="{{ modality }}RecommendationChart"></canvas>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    
+    <script>
+        // Tab functionality
+        function openTab(evt, tabName) {
+            var i, tabcontent, tablinks;
+            tabcontent = document.getElementsByClassName("tabcontent");
+            for (i = 0; i < tabcontent.length; i++) {
+                tabcontent[i].style.display = "none";
+            }
+            tablinks = document.getElementsByClassName("tablinks");
+            for (i = 0; i < tablinks.length; i++) {
+                tablinks[i].className = tablinks[i].className.replace(" active", "");
+            }
+            document.getElementById(tabName).style.display = "block";
+            evt.currentTarget.className += " active";
+            
+            // Initialize charts if performance view is selected
+            if (tabName === 'PerformanceView') {
+                initializeCharts();
+            }
+            
+            // Initialize recommendation charts if recommendations view is selected
+            if (tabName === 'RecommendationsView') {
+                initializeRecommendationCharts();
+            }
+        }
+        
+        // Search functionality
+        document.getElementById('searchBox').addEventListener('keyup', function() {
+            var searchText = this.value.toLowerCase();
+            var rows = document.querySelectorAll('.compatibility-table tbody tr');
+            
+            rows.forEach(function(row) {
+                var text = row.textContent.toLowerCase();
+                if (text.includes(searchText)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
+        
+        // Filter functionality
+        function applyFilters() {
+            var selectedModalities = getSelectedFilters('modality-filter');
+            var selectedHardware = getSelectedFilters('hardware-filter');
+            var selectedCompatibility = getSelectedFilters('compatibility-filter');
+            
+            var rows = document.querySelectorAll('.compatibility-table tbody tr');
+            
+            rows.forEach(function(row) {
+                var modality = row.getAttribute('data-modality');
+                var modalityMatch = selectedModalities.includes('all') || selectedModalities.includes(modality);
+                
+                var compatibilityMatch = selectedCompatibility.includes('all');
+                // Check compatibility match for each hardware platform
+                if (!compatibilityMatch) {
+                    // Implement compatibility matching logic
+                }
+                
+                if (modalityMatch && compatibilityMatch) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+                
+                // Show/hide entire modality sections
+                var modalitySections = document.querySelectorAll('.modality-section');
+                modalitySections.forEach(function(section) {
+                    var sectionModality = section.getAttribute('data-modality');
+                    if (selectedModalities.includes('all') || selectedModalities.includes(sectionModality)) {
+                        section.style.display = '';
+                    } else {
+                        section.style.display = 'none';
+                    }
+                });
+            });
+        }
+        
+        function getSelectedFilters(className) {
+            var checkboxes = document.querySelectorAll('.' + className + ':checked');
+            var values = Array.from(checkboxes).map(function(checkbox) {
+                return checkbox.value;
+            });
+            
+            // If none selected, include all
+            if (values.length === 0) {
+                return ['all'];
+            }
+            
+            return values;
+        }
+        
+        function resetFilters() {
+            var allCheckboxes = document.querySelectorAll('.filters input[type="checkbox"]');
+            allCheckboxes.forEach(function(checkbox) {
+                checkbox.checked = checkbox.value === 'all';
+            });
+            
+            document.getElementById('searchBox').value = '';
+            
+            // Show all rows
+            var rows = document.querySelectorAll('.compatibility-table tbody tr');
+            rows.forEach(function(row) {
+                row.style.display = '';
+            });
+            
+            // Show all modality sections
+            var modalitySections = document.querySelectorAll('.modality-section');
+            modalitySections.forEach(function(section) {
+                section.style.display = '';
+            });
+        }
+        
+        // Handle "All" checkbox behavior
+        document.querySelectorAll('.filters input[value="all"]').forEach(function(checkbox) {
+            checkbox.addEventListener('change', function() {
+                if (this.checked) {
+                    // Uncheck all other checkboxes in the same group
+                    var siblings = this.parentElement.parentElement.querySelectorAll('input[type="checkbox"]:not([value="all"])');
+                    siblings.forEach(function(sib) {
+                        sib.checked = false;
+                    });
+                }
+            });
+        });
+        
+        document.querySelectorAll('.filters input[type="checkbox"]:not([value="all"])').forEach(function(checkbox) {
+            checkbox.addEventListener('change', function() {
+                if (this.checked) {
+                    // Uncheck the "All" checkbox
+                    var allCheckbox = this.parentElement.parentElement.querySelector('input[value="all"]');
+                    allCheckbox.checked = false;
+                }
+                
+                // If no checkbox is checked, check the "All" checkbox
+                var checkedSiblings = this.parentElement.parentElement.querySelectorAll('input[type="checkbox"]:checked');
+                if (checkedSiblings.length === 0) {
+                    var allCheckbox = this.parentElement.parentElement.querySelector('input[value="all"]');
+                    allCheckbox.checked = true;
+                }
+            });
+        });
+        
+        // Export functionalities
+        function exportTableToCSV() {
+            var tables = document.querySelectorAll('.compatibility-table');
+            var csv = [];
+            
+            tables.forEach(function(table) {
+                // Get table headers
+                var headers = [];
+                var headerCells = table.querySelectorAll('thead th');
+                headerCells.forEach(function(cell) {
+                    headers.push('"' + cell.textContent.trim() + '"');
+                });
+                csv.push(headers.join(','));
+                
+                // Get visible table rows
+                var rows = table.querySelectorAll('tbody tr:not([style*="display: none"])');
+                rows.forEach(function(row) {
+                    var rowData = [];
+                    var cells = row.querySelectorAll('td');
+                    cells.forEach(function(cell) {
+                        // Clean up emojis and get just text
+                        var text = cell.textContent.trim().replace(/[^\x00-\x7F]/g, '');
+                        rowData.push('"' + text + '"');
+                    });
+                    csv.push(rowData.join(','));
+                });
+                
+                // Add an empty line between tables
+                csv.push('');
+            });
+            
+            downloadCSV(csv.join('\n'), 'model_compatibility_matrix.csv');
+        }
+        
+        function downloadCSV(csv, filename) {
+            var csvFile = new Blob([csv], {type: "text/csv"});
+            var downloadLink = document.createElement("a");
+            
+            downloadLink.download = filename;
+            downloadLink.href = window.URL.createObjectURL(csvFile);
+            downloadLink.style.display = "none";
+            
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+        }
+        
+        function exportTableToJSON() {
+            var tables = document.querySelectorAll('.compatibility-table');
+            var jsonData = [];
+            
+            tables.forEach(function(table) {
+                // Get table headers
+                var headers = [];
+                var headerCells = table.querySelectorAll('thead th');
+                headerCells.forEach(function(cell) {
+                    headers.push(cell.textContent.trim());
+                });
+                
+                // Get visible table rows
+                var rows = table.querySelectorAll('tbody tr:not([style*="display: none"])');
+                rows.forEach(function(row) {
+                    var rowObj = {};
+                    var cells = row.querySelectorAll('td');
+                    cells.forEach(function(cell, index) {
+                        // Clean up emojis for certain fields
+                        var text = cell.textContent.trim();
+                        rowObj[headers[index]] = text;
+                    });
+                    
+                    // Add modality and family as metadata
+                    rowObj['modality'] = row.getAttribute('data-modality');
+                    rowObj['model_family'] = row.getAttribute('data-family');
+                    
+                    jsonData.push(rowObj);
+                });
+            });
+            
+            downloadJSON(JSON.stringify(jsonData, null, 2), 'model_compatibility_matrix.json');
+        }
+        
+        function downloadJSON(json, filename) {
+            var jsonFile = new Blob([json], {type: "application/json"});
+            var downloadLink = document.createElement("a");
+            
+            downloadLink.download = filename;
+            downloadLink.href = window.URL.createObjectURL(jsonFile);
+            downloadLink.style.display = "none";
+            
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+        }
+        
+        // Chart initialization
+        function initializeCharts() {
+            // Load performance data from the page
+            var performanceData = {{ performance_data|tojson }};
+            
+            // Create throughput chart
+            createChart('throughputChart', 'Average Throughput by Model Family', 
+                        performanceData.families, 
+                        performanceData.hardware_platforms, 
+                        performanceData.throughput_data,
+                        'items/second');
+            
+            // Create latency chart
+            createChart('latencyChart', 'Average Latency by Model Family', 
+                        performanceData.families, 
+                        performanceData.hardware_platforms, 
+                        performanceData.latency_data,
+                        'milliseconds');
+            
+            // Create memory chart
+            createChart('memoryChart', 'Average Memory Usage by Model Family', 
+                        performanceData.families, 
+                        performanceData.hardware_platforms, 
+                        performanceData.memory_data,
+                        'MB');
+        }
+        
+        function createChart(canvasId, title, labels, datasets, data, yAxisLabel) {
+            var ctx = document.getElementById(canvasId).getContext('2d');
+            
+            // Define colors for each hardware platform
+            var colors = [
+                'rgba(75, 192, 192, 0.7)',
+                'rgba(255, 99, 132, 0.7)',
+                'rgba(54, 162, 235, 0.7)',
+                'rgba(255, 206, 86, 0.7)',
+                'rgba(153, 102, 255, 0.7)',
+                'rgba(255, 159, 64, 0.7)',
+                'rgba(199, 199, 199, 0.7)'
+            ];
+            
+            // Prepare chart datasets
+            var chartDatasets = [];
+            for (var i = 0; i < datasets.length; i++) {
+                chartDatasets.push({
+                    label: datasets[i],
+                    data: data[i],
+                    backgroundColor: colors[i % colors.length],
+                    borderColor: colors[i % colors.length].replace('0.7', '1'),
+                    borderWidth: 1
+                });
+            }
+            
+            // Create the chart
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: chartDatasets
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: title,
+                            font: {
+                                size: 16
+                            }
+                        },
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: yAxisLabel
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        function initializeRecommendationCharts() {
+            // Load recommendation data from the page
+            var recommendationData = {{ recommendation_chart_data|tojson }};
+            
+            // Create charts for each modality
+            for (var modality in recommendationData) {
+                if (recommendationData.hasOwnProperty(modality)) {
+                    createRecommendationChart(
+                        modality + 'RecommendationChart',
+                        'Hardware Recommendations for ' + modality.charAt(0).toUpperCase() + modality.slice(1) + ' Models',
+                        recommendationData[modality]
+                    );
+                }
+            }
+        }
+        
+        function createRecommendationChart(canvasId, title, data) {
+            var canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            
+            var ctx = canvas.getContext('2d');
+            
+            new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: data.axes,
+                    datasets: data.datasets
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: title,
+                            font: {
+                                size: 16
+                            }
+                        },
+                        legend: {
+                            position: 'top',
+                        }
+                    },
+                    scales: {
+                        r: {
+                            angleLines: {
+                                display: true
+                            },
+                            suggestedMin: 0,
+                            suggestedMax: 100
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Initialize with default tab open
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize event listeners for filters
+            document.querySelectorAll('.filters input[type="checkbox"]').forEach(function(checkbox) {
+                checkbox.addEventListener('change', applyFilters);
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,97 @@
+pipeline {
+    agent {
+        docker {
+            image 'python:3.10'
+        }
+    }
+    
+    parameters {
+        string(name: 'COORDINATOR_URL', defaultValue: 'http://localhost:8080', description: 'URL of the distributed testing coordinator')
+        password(name: 'API_KEY', defaultValue: 'test_key', description: 'API key for coordinator authentication')
+        string(name: 'TEST_PATTERN', defaultValue: 'test/**/test_*.py', description: 'Test pattern to run')
+        choice(name: 'HARDWARE', choices: ['cpu', 'cuda', 'webgpu', 'webnn', 'all'], description: 'Hardware to test on')
+        string(name: 'TEST_TIMEOUT', defaultValue: '3600', description: 'Timeout in seconds')
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        
+        stage('Setup') {
+            steps {
+                sh '''
+                python -m pip install --upgrade pip
+                pip install -r requirements.txt
+                pip install -e .
+                '''
+            }
+        }
+        
+        stage('Prepare Tests') {
+            steps {
+                script {
+                    def testPattern = "${params.TEST_PATTERN}"
+                    
+                    // If hardware-specific filtering is needed
+                    if (params.HARDWARE != 'all' && params.TEST_PATTERN == 'test/**/test_*.py') {
+                        testPattern = "test/**/test_*${params.HARDWARE}*.py"
+                    }
+                    
+                    env.TEST_PATTERN = testPattern
+                }
+            }
+        }
+        
+        stage('Run Distributed Tests') {
+            steps {
+                sh '''
+                python -m duckdb_api.distributed_testing.cicd_integration \
+                  --provider jenkins \
+                  --coordinator ${COORDINATOR_URL} \
+                  --api-key ${API_KEY} \
+                  --test-pattern "${TEST_PATTERN}" \
+                  --timeout ${TEST_TIMEOUT} \
+                  --output-dir ./test_reports \
+                  --report-formats json md html \
+                  --verbose
+                '''
+            }
+        }
+    }
+    
+    post {
+        always {
+            archiveArtifacts artifacts: 'test_reports/**', allowEmptyArchive: true
+            
+            script {
+                // Try to find and publish JUnit test results if available
+                if (fileExists('test_reports/test_report.xml')) {
+                    junit 'test_reports/test_report.xml'
+                }
+                
+                // Publish HTML reports
+                if (fileExists('test_reports')) {
+                    publishHTML(target: [
+                        allowMissing: true,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'test_reports',
+                        reportFiles: '*.html',
+                        reportName: 'Test Reports'
+                    ])
+                }
+            }
+        }
+        
+        success {
+            echo 'All distributed tests passed!'
+        }
+        
+        failure {
+            echo 'Some distributed tests failed. Check the reports for details.'
+        }
+    }
+}

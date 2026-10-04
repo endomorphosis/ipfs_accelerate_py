@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block title %}Job Details - Simulation Validation Framework{% endblock %}
+
+{% block content %}
+<div class="card shadow">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-cpu"></i> Job Details
+        </h5>
+        <div>
+            <a href="{{ url_for('jobs') }}" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-arrow-left"></i> Back to Jobs
+            </a>
+            
+            {% if job.status in ['pending', 'running'] %}
+            <form method="POST" action="{{ url_for('cancel_job', job_id=job.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to cancel this job?')">
+                    <i class="bi bi-x-circle"></i> Cancel Job
+                </button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <h6 class="fw-bold">Job Information</h6>
+                <table class="table table-sm">
+                    <tr>
+                        <th style="width: 150px;">Job ID</th>
+                        <td>{{ job.id }}</td>
+                    </tr>
+                    <tr>
+                        <th>Type</th>
+                        <td>
+                            <span class="badge bg-secondary">{{ job_types.get(job.type, job.type) }}</span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Name</th>
+                        <td>{{ job.name }}</td>
+                    </tr>
+                    <tr>
+                        <th>Status</th>
+                        <td>
+                            {% if job.status == 'pending' %}
+                            <span class="badge bg-secondary">Pending</span>
+                            {% elif job.status == 'running' %}
+                            <span class="badge bg-primary">Running</span>
+                            {% elif job.status == 'completed' %}
+                            <span class="badge bg-success">Completed</span>
+                            {% elif job.status == 'failed' %}
+                            <span class="badge bg-danger">Failed</span>
+                            {% elif job.status == 'cancelled' %}
+                            <span class="badge bg-warning text-dark">Cancelled</span>
+                            {% else %}
+                            <span class="badge bg-light text-dark">{{ job.status }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <h6 class="fw-bold">Timing Information</h6>
+                <table class="table table-sm">
+                    <tr>
+                        <th style="width: 150px;">Created</th>
+                        <td>{{ job.created_at }}</td>
+                    </tr>
+                    <tr>
+                        <th>Started</th>
+                        <td>{{ job.started_at or 'Not started yet' }}</td>
+                    </tr>
+                    <tr>
+                        <th>Completed</th>
+                        <td>{{ job.completed_at or 'Not completed yet' }}</td>
+                    </tr>
+                    <tr>
+                        <th>Duration</th>
+                        <td>
+                            {% if job.started_at and job.completed_at %}
+                            {{ (job.completed_at | string)[:19] - (job.started_at | string)[:19] }}
+                            {% elif job.started_at %}
+                            Running...
+                            {% else %}
+                            Not started yet
+                            {% endif %}
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        
+        {% if job.status == 'failed' and job.error %}
+        <div class="alert alert-danger">
+            <h6 class="fw-bold">Error</h6>
+            <pre class="mb-0">{{ job.error }}</pre>
+        </div>
+        {% endif %}
+        
+        {% if job.status == 'completed' and job.result %}
+        <div class="mt-4">
+            <h6 class="fw-bold">Result</h6>
+            
+            {% if job.type == 'validation' %}
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h6 class="mb-0">Validation Results</h6>
+                </div>
+                <div class="card-body">
+                    <!-- Display validation result based on the job.result content -->
+                    {% if job.result is mapping %}
+                    <table class="table table-sm">
+                        {% for key, value in job.result.items() %}
+                        <tr>
+                            <th>{{ key }}</th>
+                            <td>{{ value }}</td>
+                        </tr>
+                        {% endfor %}
+                    </table>
+                    {% elif job.result is iterable and job.result is not string %}
+                    <div class="list-group">
+                        {% for item in job.result %}
+                        <div class="list-group-item">
+                            {% if item is mapping %}
+                            <table class="table table-sm mb-0">
+                                {% for key, value in item.items() %}
+                                <tr>
+                                    <th>{{ key }}</th>
+                                    <td>{{ value }}</td>
+                                </tr>
+                                {% endfor %}
+                            </table>
+                            {% else %}
+                            {{ item }}
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <pre>{{ job.result }}</pre>
+                    {% endif %}
+                </div>
+            </div>
+            
+            {% elif job.type == 'report_generation' %}
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h6 class="mb-0">Report</h6>
+                </div>
+                <div class="card-body">
+                    {% if job.result is mapping and 'report_url' in job.result %}
+                    <p>Report generated successfully!</p>
+                    <a href="{{ job.result.report_url }}" class="btn btn-primary">
+                        <i class="bi bi-download"></i> Download Report
+                    </a>
+                    {% else %}
+                    <pre>{{ job.result }}</pre>
+                    {% endif %}
+                </div>
+            </div>
+            
+            {% elif job.type == 'dashboard_generation' %}
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h6 class="mb-0">Dashboard</h6>
+                </div>
+                <div class="card-body">
+                    {% if job.result is mapping and 'dashboard_url' in job.result %}
+                    <p>Dashboard generated successfully!</p>
+                    <a href="{{ job.result.dashboard_url }}" class="btn btn-primary" target="_blank">
+                        <i class="bi bi-graph-up"></i> View Dashboard
+                    </a>
+                    {% else %}
+                    <pre>{{ job.result }}</pre>
+                    {% endif %}
+                </div>
+            </div>
+            
+            {% else %}
+            <pre>{{ job.result }}</pre>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Auto-refresh page every 5 seconds if job is not complete
+    {% if job.status in ['pending', 'running'] %}
+    const refreshInterval = setInterval(function() {
+        location.reload();
+    }, 5000);
+    {% endif %}
+});
+</script>
+{% endblock %}

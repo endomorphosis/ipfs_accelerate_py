@@ -43,7 +43,6 @@ RUNTIME_OWNED_MODULES: Final[tuple[str, ...]] = (
     "learning_checkpoint",
     "operational_campaign",
     "multi_supervisor_runner",
-    "operational_campaign",
     "provider_batch_scheduler",
     "provider_command_binding",
     "provider_command_environment",
@@ -60,7 +59,9 @@ RUNTIME_OWNED_MODULES: Final[tuple[str, ...]] = (
 )
 
 # Dual-copied under this package in the current ASREF-011 batch.
-RUNTIME_LANDED_MODULES: Final[tuple[str, ...]] = ("multi_supervisor_runner",)
+RUNTIME_LANDED_MODULES: Final[tuple[str, ...]] = (
+    "multi_supervisor_runner",
+)
 
 # Packages that must not be imported by runtime (DAG / cycle guard).
 RUNTIME_FORBIDDEN_DEPENDENTS: Final[tuple[str, ...]] = (

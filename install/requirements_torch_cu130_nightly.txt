@@ -1,0 +1,12 @@
+# CUDA-enabled PyTorch nightly (CUDA 13.0)
+#
+# This is intended for very new NVIDIA GPUs (e.g. GB10 / compute capability 12.1)
+# where stable builds may not yet include the required SM support.
+
+--pre
+--index-url https://download.pytorch.org/whl/nightly/cu130
+--extra-index-url https://pypi.org/simple
+
+torch
+torchvision
+torchaudio

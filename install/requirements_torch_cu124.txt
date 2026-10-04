@@ -1,0 +1,11 @@
+# CUDA-enabled PyTorch (CUDA 12.4) wheels
+#
+# NOTE (linux/aarch64 / DGX Spark-class systems): pip strongly prefers manylinux wheels.
+# The CUDA-enabled builds we want here are published as linux_aarch64 wheels on PyTorch's CUDA index,
+# so we reference them explicitly to avoid pip selecting a CPU-only manylinux wheel.
+
+--index-url https://pypi.org/simple
+
+torch @ https://download.pytorch.org/whl/cu124/torch-2.5.1-cp312-cp312-linux_aarch64.whl
+torchvision @ https://download.pytorch.org/whl/cu124/torchvision-0.20.1-cp312-cp312-linux_aarch64.whl
+torchaudio @ https://download.pytorch.org/whl/cu124/torchaudio-2.5.1-cp312-cp312-linux_aarch64.whl

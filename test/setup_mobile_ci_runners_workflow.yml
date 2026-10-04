@@ -1,0 +1,259 @@
+name: Setup Mobile CI Runners
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform to configure'
+        type: choice
+        options:
+          - android
+          - ios
+          - all
+        required: true
+        default: 'all'
+      action:
+        description: 'Action to perform'
+        type: choice
+        options:
+          - check
+          - configure
+          - verify
+        required: true
+        default: 'check'
+      device_id:
+        description: 'Specific device ID (optional)'
+        required: false
+
+jobs:
+  setup-android-runner:
+    name: Setup Android Runner
+    if: ${{ github.event.inputs.platform == 'android' || github.event.inputs.platform == 'all' }}
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install requests
+      
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+      
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v2
+      
+      - name: Install adb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y android-tools-adb
+      
+      - name: Run setup script
+        run: |
+          python test/setup_mobile_ci_runners.py \
+            --action ${{ github.event.inputs.action }} \
+            --platform android \
+            ${{ github.event.inputs.device_id != '' && format('--device-id {0}', github.event.inputs.device_id) || '' }} \
+            --verbose
+      
+      - name: Create summary
+        run: |
+          echo "## Android Runner Setup" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ github.event.inputs.action }}" == "check" ]]; then
+            python test/setup_mobile_ci_runners.py --action check --platform android --verbose > check_output.json
+            
+            echo "### Environment Check" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            cat check_output.json >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            
+            # Extract key information
+            JAVA_INSTALLED=$(python -c "import json; data=json.load(open('check_output.json')); print('✅' if data['platforms']['android']['java_installed'] else '❌')")
+            SDK_INSTALLED=$(python -c "import json; data=json.load(open('check_output.json')); print('✅' if data['platforms']['android']['android_sdk_installed'] else '❌')")
+            ADB_INSTALLED=$(python -c "import json; data=json.load(open('check_output.json')); print('✅' if data['platforms']['android']['adb_installed'] else '❌')")
+            STATUS=$(python -c "import json; data=json.load(open('check_output.json')); print(data['platforms']['android']['status'])")
+            
+            echo "### Summary" >> $GITHUB_STEP_SUMMARY
+            echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+            echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Java | $JAVA_INSTALLED |" >> $GITHUB_STEP_SUMMARY
+            echo "| Android SDK | $SDK_INSTALLED |" >> $GITHUB_STEP_SUMMARY
+            echo "| ADB | $ADB_INSTALLED |" >> $GITHUB_STEP_SUMMARY
+            echo "| Overall Status | $STATUS |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [[ "${{ github.event.inputs.action }}" == "configure" ]]; then
+            echo "### Configuration" >> $GITHUB_STEP_SUMMARY
+            echo "Android environment has been configured for CI testing." >> $GITHUB_STEP_SUMMARY
+            echo "To register this machine as a self-hosted runner, run:" >> $GITHUB_STEP_SUMMARY
+            echo '```bash' >> $GITHUB_STEP_SUMMARY
+            echo "python test/setup_mobile_ci_runners.py --action register --platform android" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [[ "${{ github.event.inputs.action }}" == "verify" ]]; then
+            echo "### Verification" >> $GITHUB_STEP_SUMMARY
+            echo "Android device connectivity has been verified." >> $GITHUB_STEP_SUMMARY
+            echo "To run tests on this device, use:" >> $GITHUB_STEP_SUMMARY
+            echo '```bash' >> $GITHUB_STEP_SUMMARY
+            echo "python test/android_test_harness/run_ci_benchmarks.py --device-id DEVICE_ID --output-db benchmark_results.duckdb" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+  
+  setup-ios-runner:
+    name: Setup iOS Runner
+    if: ${{ github.event.inputs.platform == 'ios' || github.event.inputs.platform == 'all' }}
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install requests coremltools
+      
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      
+      - name: Run setup script
+        run: |
+          python test/setup_mobile_ci_runners.py \
+            --action ${{ github.event.inputs.action }} \
+            --platform ios \
+            ${{ github.event.inputs.device_id != '' && format('--device-id {0}', github.event.inputs.device_id) || '' }} \
+            --verbose
+      
+      - name: Create summary
+        run: |
+          echo "## iOS Runner Setup" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ github.event.inputs.action }}" == "check" ]]; then
+            python test/setup_mobile_ci_runners.py --action check --platform ios --verbose > check_output.json
+            
+            echo "### Environment Check" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            cat check_output.json >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            
+            # Extract key information
+            XCODE_INSTALLED=$(python -c "import json; data=json.load(open('check_output.json')); print('✅' if data['platforms']['ios']['xcode_installed'] else '❌')")
+            XCRUN_INSTALLED=$(python -c "import json; data=json.load(open('check_output.json')); print('✅' if data['platforms']['ios']['xcrun_installed'] else '❌')")
+            SIMULATOR_INSTALLED=$(python -c "import json; data=json.load(open('check_output.json')); print('✅' if data['platforms']['ios']['simulator_installed'] else '❌')")
+            STATUS=$(python -c "import json; data=json.load(open('check_output.json')); print(data['platforms']['ios']['status'])")
+            
+            echo "### Summary" >> $GITHUB_STEP_SUMMARY
+            echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+            echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Xcode | $XCODE_INSTALLED |" >> $GITHUB_STEP_SUMMARY
+            echo "| xcrun | $XCRUN_INSTALLED |" >> $GITHUB_STEP_SUMMARY
+            echo "| Simulator | $SIMULATOR_INSTALLED |" >> $GITHUB_STEP_SUMMARY
+            echo "| Overall Status | $STATUS |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [[ "${{ github.event.inputs.action }}" == "configure" ]]; then
+            echo "### Configuration" >> $GITHUB_STEP_SUMMARY
+            echo "iOS environment has been configured for CI testing." >> $GITHUB_STEP_SUMMARY
+            echo "To register this machine as a self-hosted runner, run:" >> $GITHUB_STEP_SUMMARY
+            echo '```bash' >> $GITHUB_STEP_SUMMARY
+            echo "python test/setup_mobile_ci_runners.py --action register --platform ios" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [[ "${{ github.event.inputs.action }}" == "verify" ]]; then
+            echo "### Verification" >> $GITHUB_STEP_SUMMARY
+            echo "iOS device connectivity has been verified." >> $GITHUB_STEP_SUMMARY
+            echo "To run tests on this device, use:" >> $GITHUB_STEP_SUMMARY
+            echo '```bash' >> $GITHUB_STEP_SUMMARY
+            echo "python test/ios_test_harness/run_ci_benchmarks.py --device-id DEVICE_ID --output-db benchmark_results.duckdb" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+  
+  summarize:
+    name: Provide Final Summary
+    needs: [setup-android-runner, setup-ios-runner]
+    if: always() && (github.event.inputs.platform == 'all')
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+      
+      - name: Create final summary
+        run: |
+          echo "# Mobile CI Runners Setup Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "This workflow has ${{ github.event.inputs.action == 'check' && 'checked' || github.event.inputs.action == 'configure' && 'configured' || 'verified' }} the environment for mobile CI testing." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ github.event.inputs.action }}" == "check" ]]; then
+            echo "## Next Steps" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "1. Configure the environments:" >> $GITHUB_STEP_SUMMARY
+            echo "   - Re-run this workflow with action = 'configure'" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "2. Connect test devices and verify connectivity:" >> $GITHUB_STEP_SUMMARY
+            echo "   - Re-run this workflow with action = 'verify'" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "3. Register self-hosted runners:" >> $GITHUB_STEP_SUMMARY
+            echo "   ```bash" >> $GITHUB_STEP_SUMMARY
+            echo "   python test/setup_mobile_ci_runners.py --action register --platform all" >> $GITHUB_STEP_SUMMARY
+            echo "   ```" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [[ "${{ github.event.inputs.action }}" == "configure" ]]; then
+            echo "## Using GitHub Actions Workflows" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Once your runners are registered, you can use these workflows:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- Android CI: `.github/workflows/android_mobile_ci.yml`" >> $GITHUB_STEP_SUMMARY
+            echo "- iOS CI: `.github/workflows/ios_mobile_ci.yml`" >> $GITHUB_STEP_SUMMARY
+            echo "- Cross-Platform Analysis: `.github/workflows/mobile_cross_platform_workflow.yml`" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [[ "${{ github.event.inputs.action }}" == "verify" ]]; then
+            echo "## CI Integration Complete" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Your CI environment is now ready for mobile testing." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "To run a complete benchmark:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "1. Run the Android workflow manually:" >> $GITHUB_STEP_SUMMARY
+            echo "   - Go to Actions → Android Mobile CI → Run workflow" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "2. Run the iOS workflow manually:" >> $GITHUB_STEP_SUMMARY
+            echo "   - Go to Actions → iOS Mobile CI → Run workflow" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "3. Run the Cross-Platform Analysis workflow:" >> $GITHUB_STEP_SUMMARY
+            echo "   - Go to Actions → Mobile Cross-Platform Analysis → Run workflow" >> $GITHUB_STEP_SUMMARY
+          fi

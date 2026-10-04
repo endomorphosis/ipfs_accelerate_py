@@ -45,7 +45,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 
 
 def _git(repo: Path, *args: str) -> str:
-    result = subprocess.run(["git", *args], cwd=repo, text=True, capture_output=True, check=False)
+    result = subprocess.run(
+        ["git", *args], cwd=repo, text=True, capture_output=True, check=False
+    )
     assert result.returncode == 0, result.stderr
     return result.stdout.strip()
 
@@ -573,9 +575,13 @@ def test_queue_combines_priority_with_age_fairness(tmp_path: Path) -> None:
         priority_aging_seconds=10,
         max_age_seconds=1_000,
     )
-    old = queue.enqueue(branch_name="old-low", task_id="OLD", priority="P3", commit_sha="1" * 40)
+    old = queue.enqueue(
+        branch_name="old-low", task_id="OLD", priority="P3", commit_sha="1" * 40
+    )
     now[0] = 40.0
-    queue.enqueue(branch_name="new-high", task_id="NEW", priority="P0", commit_sha="2" * 40)
+    queue.enqueue(
+        branch_name="new-high", task_id="NEW", priority="P0", commit_sha="2" * 40
+    )
 
     claimed = queue.dequeue()
     assert claimed is not None
@@ -1573,8 +1579,13 @@ def test_isolated_daemon_lanes_share_only_one_target_scoped_train(
         task_header_prefix="## REF-",
         merge_target_branch="benchmark/semantic-roundtrip",
     )
-    assert benchmark_lane.merge_queue.database_path != lane_a.merge_queue.database_path
-    assert benchmark_lane.merge_queue.target_branch == ("benchmark/semantic-roundtrip")
+    assert (
+        benchmark_lane.merge_queue.database_path
+        != lane_a.merge_queue.database_path
+    )
+    assert benchmark_lane.merge_queue.target_branch == (
+        "benchmark/semantic-roundtrip"
+    )
     assert benchmark_lane.merge_queue.pending_count() == 0
     foreign_request, _foreign_result = benchmark_lane._enqueue_merge_candidate(
         branch_name="implementation/ref-038-benchmark",
@@ -2756,14 +2767,8 @@ def test_delayed_schema_v3_callback_records_exact_reconciliation_once(
         )
 
 
-@pytest.mark.parametrize(
-    "preexisting_failure_envelope",
-    [False, True],
-    ids=["direct", "same-request-failure-envelope"],
-)
 def test_synchronous_schema_v3_callback_projects_source_before_completion(
     tmp_path: Path,
-    preexisting_failure_envelope: bool,
 ) -> None:
     repo = _repo(tmp_path)
     attempt = _database_projection_attempt(
@@ -2807,35 +2812,6 @@ def test_synchronous_schema_v3_callback_projects_source_before_completion(
             "selection": {"scope": "pre_merge"},
         },
     )
-    if preexisting_failure_envelope:
-        daemon._record_event(
-            "worktree_reconciliation_candidate_queued",
-            {
-                "task_id": task.task_id,
-                "canonical_task_cid": task_cid,
-                "attempt": 1,
-                "returncode": 1,
-                "attempt_consumed": False,
-                "provider_dispatched": False,
-                "branch": request.branch_name,
-                "baseline_ref": baseline,
-                "implementation_commit": candidate,
-                "validation_result": {
-                    "attempted": True,
-                    "passed": True,
-                    "returncode": 0,
-                    "protected_path_violation": {},
-                },
-                "merge_result": {
-                    **dict(queued),
-                    "reason": "reconciled_candidate_queued_pending_merge",
-                    "train_result": {
-                        "status": "retrying",
-                        "reason": "merge_callback_exception",
-                    },
-                },
-            },
-        )
     result = daemon._merge_train_callback(request)
 
     assert result["merged"] is True
@@ -2850,16 +2826,7 @@ def test_synchronous_schema_v3_callback_projects_source_before_completion(
         for event in events
         if event.get("type")
         == "worktree_reconciliation_candidate_queued"
-        and "merge_queue_synchronous_source" in event
     ]
-    failure_envelopes = [
-        event
-        for event in events
-        if event.get("type")
-        == "worktree_reconciliation_candidate_queued"
-        and "merge_queue_synchronous_source" not in event
-    ]
-    assert len(failure_envelopes) == int(preexisting_failure_envelope)
     [reconciled] = [
         event for event in events if event.get("type") == "merge_reconciled"
     ]

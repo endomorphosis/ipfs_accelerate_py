@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IPFS Accelerate - WebNN Backend Example</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      line-height: 1.6;
+      margin: 0;
+      padding: 20px;
+      max-width: 800px;
+      margin: 0 auto;
+      color: #333;
+    }
+    
+    h1 {
+      color: #2c3e50;
+      border-bottom: 2px solid #eee;
+      padding-bottom: 10px;
+    }
+    
+    h2 {
+      color: #3498db;
+      margin-top: 25px;
+    }
+    
+    pre {
+      background-color: #f8f9fa;
+      padding: 15px;
+      border-radius: 5px;
+      overflow-x: auto;
+    }
+    
+    code {
+      font-family: 'Courier New', Courier, monospace;
+    }
+    
+    .info {
+      background-color: #e8f4fd;
+      border-left: 4px solid #3498db;
+      padding: 15px;
+      margin: 20px 0;
+    }
+    
+    .warning {
+      background-color: #fff5e6;
+      border-left: 4px solid #e67e22;
+      padding: 15px;
+      margin: 20px 0;
+    }
+    
+    button {
+      background-color: #3498db;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      font-size: 16px;
+      cursor: pointer;
+      border-radius: 5px;
+      margin-right: 10px;
+      margin-bottom: 10px;
+    }
+    
+    button:hover {
+      background-color: #2980b9;
+    }
+    
+    button:disabled {
+      background-color: #95a5a6;
+      cursor: not-allowed;
+    }
+    
+    .result {
+      background-color: #f0f0f0;
+      padding: 15px;
+      border-radius: 5px;
+      margin-top: 20px;
+    }
+
+    .status {
+      font-weight: bold;
+    }
+
+    .status.success {
+      color: #27ae60;
+    }
+
+    .status.error {
+      color: #e74c3c;
+    }
+  </style>
+</head>
+<body>
+  <h1>IPFS Accelerate - WebNN Backend Example</h1>
+  
+  <div class="info">
+    <p>This example demonstrates using the WebNN backend for hardware acceleration in browsers.</p>
+    <p>For best results, run this in Microsoft Edge which has the most complete WebNN implementation.</p>
+  </div>
+  
+  <h2>WebNN Backend Status</h2>
+  <div>
+    <button id="checkSupport">Check WebNN Support</button>
+    <button id="runSimpleOperation">Run Simple Operation</button>
+    <button id="runMatMul">Run Matrix Multiplication</button>
+    <button id="runNeuralNetworkLayer">Run Neural Network Layer</button>
+  </div>
+  
+  <div id="result" class="result">
+    <p>Results will appear here...</p>
+  </div>
+  
+  <h2>Implementation Details</h2>
+  <pre><code>/**
+ * Example of using the WebNN backend
+ */
+
+// Import the WebNN backend from IPFS Accelerate
+import { WebNNBackend } from '@ipfs-accelerate/core/backends/webnn';
+
+// Initialize the backend with options
+const webnnBackend = new WebNNBackend({
+  deviceType: 'gpu',
+  powerPreference: 'high-performance'
+});
+
+// Check if WebNN is supported
+const isSupported = await webnnBackend.isSupported();
+
+// Initialize the backend if supported
+if (isSupported) {
+  await webnnBackend.initialize();
+  
+  // Create input tensor
+  const inputTensor = await webnnBackend.createTensor(
+    new Float32Array([1, 2, 3, 4]),
+    [2, 2],
+    'float32'
+  );
+  
+  // Run ReLU operation
+  const reluResult = await webnnBackend.execute('elementwise', {
+    input: inputTensor
+  }, {
+    operation: 'relu'
+  });
+  
+  // Read results back to CPU
+  const resultData = await webnnBackend.readTensor(
+    reluResult.tensor,
+    reluResult.shape,
+    reluResult.dataType
+  );
+  
+  console.log('ReLU result:', Array.from(resultData));
+  
+  // Clean up resources when done
+  webnnBackend.dispose();
+}
+</code></pre>
+
+  <h2>Browser Support</h2>
+  <p>WebNN API support varies by browser:</p>
+  <ul>
+    <li><strong>Microsoft Edge</strong>: Best support for WebNN operations</li>
+    <li><strong>Chrome</strong>: Limited support on some platforms</li>
+    <li><strong>Firefox</strong>: Limited WebNN support</li>
+    <li><strong>Safari</strong>: WebNN support is experimental</li>
+  </ul>
+
+  <script>
+    // Simulated implementation of the WebNN backend for the example
+    class WebNNBackend {
+      constructor(options = {}) {
+        this.options = {
+          deviceType: 'gpu',
+          powerPreference: 'high-performance',
+          ...options
+        };
+        this.initialized = false;
+        this.context = null;
+        this.graphBuilder = null;
+      }
+      
+      async isSupported() {
+        try {
+          return 'ml' in navigator;
+        } catch (error) {
+          console.error('Error checking WebNN support:', error);
+          return false;
+        }
+      }
+      
+      async initialize() {
+        try {
+          if (!('ml' in navigator)) {
+            throw new Error('WebNN not supported in this browser');
+          }
+          
+          this.context = await navigator.ml.createContext({
+            deviceType: this.options.deviceType
+          });
+          
+          if (!this.context) {
+            throw new Error('Failed to create WebNN context');
+          }
+          
+          this.graphBuilder = new MLGraphBuilder(this.context);
+          this.initialized = true;
+          return true;
+        } catch (error) {
+          console.error('Error initializing WebNN backend:', error);
+          this.initialized = false;
+          return false;
+        }
+      }
+      
+      async createTensor(data, shape, dataType = 'float32') {
+        if (!this.initialized || !this.context) {
+          throw new Error('WebNN backend not initialized');
+        }
+        
+        try {
+          const descriptor = {
+            type: dataType,
+            dimensions: shape
+          };
+          
+          const tensor = this.context.createOperand(descriptor, data);
+          
+          return {
+            tensor,
+            shape,
+            dataType,
+            id: `tensor_${Date.now()}`,
+            size: data.length * (dataType === 'float32' ? 4 : dataType === 'int32' ? 4 : 1)
+          };
+        } catch (error) {
+          console.error('Error creating tensor:', error);
+          throw error;
+        }
+      }
+      
+      async execute(operation, inputs, options = {}) {
+        if (!this.initialized || !this.graphBuilder) {
+          throw new Error('WebNN backend not initialized');
+        }
+        
+        try {
+          let outputTensor;
+          let outputShape;
+          
+          switch (operation) {
+            case 'elementwise': {
+              const { input } = inputs;
+              const { operation = 'relu' } = options;
+              
+              if (operation === 'relu') {
+                outputTensor = this.graphBuilder.relu(input.tensor);
+              } else if (operation === 'sigmoid') {
+                outputTensor = this.graphBuilder.sigmoid(input.tensor);
+              } else if (operation === 'tanh') {
+                outputTensor = this.graphBuilder.tanh(input.tensor);
+              } else {
+                throw new Error(`Unsupported elementwise operation: ${operation}`);
+              }
+              
+              outputShape = input.shape;
+              break;
+            }
+            
+            case 'matmul': {
+              const { a, b } = inputs;
+              outputTensor = this.graphBuilder.matmul(a.tensor, b.tensor);
+              outputShape = [a.shape[0], b.shape[1]];
+              break;
+            }
+            
+            case 'softmax': {
+              const { input } = inputs;
+              const { axis = -1 } = options;
+              
+              outputTensor = this.graphBuilder.softmax?.(input.tensor, { axis }) || 
+                             input.tensor; // Fallback if softmax not available
+              outputShape = input.shape;
+              break;
+            }
+            
+            default:
+              throw new Error(`Unsupported operation: ${operation}`);
+          }
+          
+          // Build and run the graph
+          const graph = await this.graphBuilder.build({
+            inputs: Object.values(inputs).map(i => i.tensor),
+            outputs: [outputTensor]
+          });
+          
+          const inputsMap = {};
+          Object.entries(inputs).forEach(([key, value]) => {
+            inputsMap[key] = value.tensor;
+          });
+          
+          const outputsMap = { output: outputTensor };
+          const results = await graph.compute(inputsMap, outputsMap);
+          
+          return {
+            tensor: results.output,
+            shape: outputShape,
+            dataType: 'float32'
+          };
+        } catch (error) {
+          console.error('Error executing operation:', error);
+          throw error;
+        }
+      }
+      
+      async readTensor(tensor, shape, dataType = 'float32') {
+        if (!this.initialized || !this.context) {
+          throw new Error('WebNN backend not initialized');
+        }
+        
+        try {
+          const size = shape.reduce((a, b) => a * b, 1);
+          let result;
+          
+          if (dataType === 'float32') {
+            result = new Float32Array(size);
+          } else if (dataType === 'int32') {
+            result = new Int32Array(size);
+          } else if (dataType === 'uint8') {
+            result = new Uint8Array(size);
+          } else {
+            throw new Error(`Unsupported data type: ${dataType}`);
+          }
+          
+          await this.context.readOperand(tensor, result);
+          return result;
+        } catch (error) {
+          console.error('Error reading tensor:', error);
+          throw error;
+        }
+      }
+      
+      dispose() {
+        this.context = null;
+        this.graphBuilder = null;
+        this.initialized = false;
+      }
+    }
+
+    // UI interaction code
+    document.addEventListener('DOMContentLoaded', function() {
+      const resultDiv = document.getElementById('result');
+      const webnnBackend = new WebNNBackend();
+      
+      function updateResult(status, message, isError = false) {
+        resultDiv.innerHTML = `
+          <p class="status ${isError ? 'error' : 'success'}">${status}</p>
+          <p>${message}</p>
+        `;
+      }
+      
+      // Check WebNN support
+      document.getElementById('checkSupport').addEventListener('click', async function() {
+        try {
+          const isSupported = await webnnBackend.isSupported();
+          
+          if (isSupported) {
+            updateResult('WebNN Supported ✓', 'Your browser supports the WebNN API for hardware acceleration.');
+          } else {
+            updateResult('WebNN Not Supported ✗', 'Your browser does not support the WebNN API. Try using Microsoft Edge for best results.', true);
+          }
+        } catch (error) {
+          updateResult('Error', `Error checking WebNN support: ${error.message}`, true);
+        }
+      });
+      
+      // Run simple operation
+      document.getElementById('runSimpleOperation').addEventListener('click', async function() {
+        try {
+          const isSupported = await webnnBackend.isSupported();
+          
+          if (!isSupported) {
+            updateResult('WebNN Not Supported ✗', 'Your browser does not support the WebNN API. Try using Microsoft Edge for best results.', true);
+            return;
+          }
+          
+          await webnnBackend.initialize();
+          
+          // Create input tensor
+          const inputTensor = await webnnBackend.createTensor(
+            new Float32Array([1, 2, 3, 4]),
+            [2, 2],
+            'float32'
+          );
+          
+          // Apply ReLU
+          const result = await webnnBackend.execute('elementwise', {
+            input: inputTensor
+          }, {
+            operation: 'relu'
+          });
+          
+          // Read results
+          const resultData = await webnnBackend.readTensor(
+            result.tensor,
+            result.shape,
+            result.dataType
+          );
+          
+          updateResult('Operation Successful ✓', `
+            <strong>Operation:</strong> ReLU<br>
+            <strong>Input:</strong> [1, 2, 3, 4]<br>
+            <strong>Output:</strong> [${Array.from(resultData).join(', ')}]
+          `);
+        } catch (error) {
+          updateResult('Error', `Error running operation: ${error.message}`, true);
+        }
+      });
+      
+      // Run matrix multiplication
+      document.getElementById('runMatMul').addEventListener('click', async function() {
+        try {
+          const isSupported = await webnnBackend.isSupported();
+          
+          if (!isSupported) {
+            updateResult('WebNN Not Supported ✗', 'Your browser does not support the WebNN API. Try using Microsoft Edge for best results.', true);
+            return;
+          }
+          
+          await webnnBackend.initialize();
+          
+          // Create input tensors
+          const tensorA = await webnnBackend.createTensor(
+            new Float32Array([1, 2, 3, 4]),
+            [2, 2],
+            'float32'
+          );
+          
+          const tensorB = await webnnBackend.createTensor(
+            new Float32Array([5, 6, 7, 8]),
+            [2, 2],
+            'float32'
+          );
+          
+          // Perform matrix multiplication
+          const result = await webnnBackend.execute('matmul', {
+            a: tensorA,
+            b: tensorB
+          });
+          
+          // Read results
+          const resultData = await webnnBackend.readTensor(
+            result.tensor,
+            result.shape,
+            result.dataType
+          );
+          
+          updateResult('Operation Successful ✓', `
+            <strong>Operation:</strong> Matrix Multiplication<br>
+            <strong>Input A:</strong> [[1, 2], [3, 4]]<br>
+            <strong>Input B:</strong> [[5, 6], [7, 8]]<br>
+            <strong>Output:</strong> [[${resultData[0]}, ${resultData[1]}], [${resultData[2]}, ${resultData[3]}]]
+          `);
+        } catch (error) {
+          updateResult('Error', `Error running matrix multiplication: ${error.message}`, true);
+        }
+      });
+      
+      // Run neural network layer
+      document.getElementById('runNeuralNetworkLayer').addEventListener('click', async function() {
+        try {
+          const isSupported = await webnnBackend.isSupported();
+          
+          if (!isSupported) {
+            updateResult('WebNN Not Supported ✗', 'Your browser does not support the WebNN API. Try using Microsoft Edge for best results.', true);
+            return;
+          }
+          
+          await webnnBackend.initialize();
+          
+          // Create input tensor (features)
+          const inputTensor = await webnnBackend.createTensor(
+            new Float32Array([0.5, -0.5, 0.7, -0.3]),
+            [1, 4],
+            'float32'
+          );
+          
+          // Create weights tensor
+          const weightsTensor = await webnnBackend.createTensor(
+            new Float32Array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]),
+            [4, 2],
+            'float32'
+          );
+          
+          // Perform matrix multiplication (linear layer)
+          const matmulResult = await webnnBackend.execute('matmul', {
+            a: inputTensor,
+            b: weightsTensor
+          });
+          
+          // Apply activation function (ReLU)
+          const reluResult = await webnnBackend.execute('elementwise', {
+            input: matmulResult
+          }, {
+            operation: 'relu'
+          });
+          
+          // Apply softmax
+          const softmaxResult = await webnnBackend.execute('softmax', {
+            input: reluResult
+          });
+          
+          // Read results
+          const resultData = await webnnBackend.readTensor(
+            softmaxResult.tensor,
+            softmaxResult.shape,
+            softmaxResult.dataType
+          );
+          
+          updateResult('Operation Successful ✓', `
+            <strong>Operation:</strong> Neural Network Layer (Linear → ReLU → Softmax)<br>
+            <strong>Input:</strong> [0.5, -0.5, 0.7, -0.3]<br>
+            <strong>Weights:</strong> 4×2 matrix<br>
+            <strong>Output (Probabilities):</strong> [${resultData[0].toFixed(4)}, ${resultData[1].toFixed(4)}]
+          `);
+        } catch (error) {
+          updateResult('Error', `Error running neural network layer: ${error.message}`, true);
+        }
+      });
+    });
+  </script>
+</body>
+</html>

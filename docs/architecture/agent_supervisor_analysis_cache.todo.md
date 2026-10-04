@@ -6,7 +6,7 @@ tranche.
 
 ## ANALYSIS-CACHE-001 Implement the content-addressed analysis cache
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: analysis-cache

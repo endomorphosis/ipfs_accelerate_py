@@ -1,0 +1,11 @@
+2025-03-19 20:56:26,170 - INFO - Regenerating test files for: bert
+2025-03-19 20:56:26,171 - INFO - Regenerating test file for bert...
+2025-03-19 20:56:26,242 - INFO - Applying indentation fixes to fixed_tests/test_hf_bert.py...
+2025-03-19 20:56:26,243 - INFO - Created backup at fixed_tests/test_hf_bert.py.bak
+2025-03-19 20:56:26,245 - ERROR - ❌ Error regenerating test file for bert: bad escape \w at position 19
+2025-03-19 20:56:26,245 - INFO - 
+Regeneration Summary:
+2025-03-19 20:56:26,245 - INFO - - Successful: 0
+2025-03-19 20:56:26,245 - INFO - - Failed: 1
+2025-03-19 20:56:26,245 - INFO - - Total: 1
+2025-03-19 20:56:26,245 - INFO - - Output directory: fixed_tests

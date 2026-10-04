@@ -1,0 +1,349 @@
+name: Model Hardware Tests
+
+on:
+  # Run on schedule (weekly)
+  schedule:
+    - cron: '0 0 * * 0'  # Run at midnight UTC every Sunday
+  
+  # Run on push to main when relevant code changes
+  push:
+    branches:
+      - main
+    paths:
+      - 'test/refactored_benchmark_suite/**'
+      - 'test/ipfs_accelerate_py/worker/skillset/**'
+      - '.github/workflows/model_hardware_tests.yml'
+  
+  # Run on pull requests when relevant code changes
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'test/refactored_benchmark_suite/**'
+      - 'test/ipfs_accelerate_py/worker/skillset/**'
+  
+  # Allow manual triggering with custom parameters
+  workflow_dispatch:
+    inputs:
+      models:
+        description: 'Models to test (comma-separated, "all" for all models)'
+        required: false
+        default: 'bert,t5,gpt2,vit,whisper'
+      hardware:
+        description: 'Hardware to test (comma-separated)'
+        required: false
+        default: 'cpu'
+        type: choice
+        options:
+          - 'cpu'
+          - 'cpu,cuda'
+          - 'cpu,rocm'
+          - 'cpu,openvino'
+          - 'cpu,mps'
+          - 'cpu,qnn'
+          - 'all'
+      benchmark_type:
+        description: 'Type of benchmark to run'
+        required: false
+        default: 'inference'
+        type: choice
+        options:
+          - 'inference'
+          - 'throughput'
+          - 'both'
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      models: ${{ steps.setup-vars.outputs.models }}
+      hardware: ${{ steps.setup-vars.outputs.hardware }}
+      matrix: ${{ steps.setup-vars.outputs.matrix }}
+      timestamp: ${{ steps.setup-vars.outputs.timestamp }}
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup variables
+        id: setup-vars
+        run: |
+          TIMESTAMP=$(date +%Y%m%d%H%M%S)
+          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+          
+          # Setup models
+          if [[ "${{ github.event.inputs.models }}" == "all" ]]; then
+            # Get all models in skillset directory
+            cd test/ipfs_accelerate_py/worker/skillset
+            MODELS=$(find . -name "hf_*.py" | sed 's/.\///g' | sed 's/hf_//g' | sed 's/\.py//g' | tr '\n' ',' | sed 's/,$//g')
+          elif [[ -n "${{ github.event.inputs.models }}" ]]; then
+            MODELS="${{ github.event.inputs.models }}"
+          else
+            MODELS="bert,t5,gpt2,vit,whisper"
+          fi
+          echo "models=$MODELS" >> $GITHUB_OUTPUT
+          
+          # Setup hardware
+          if [[ "${{ github.event.inputs.hardware }}" == "all" ]]; then
+            HARDWARE="cpu,cuda,rocm,openvino,mps,qnn"
+          elif [[ -n "${{ github.event.inputs.hardware }}" ]]; then
+            HARDWARE="${{ github.event.inputs.hardware }}"
+          else
+            HARDWARE="cpu"
+          fi
+          echo "hardware=$HARDWARE" >> $GITHUB_OUTPUT
+          
+          # Create matrix for model-hardware combinations
+          MODEL_ARRAY=($(echo $MODELS | tr ',' ' '))
+          HARDWARE_ARRAY=($(echo $HARDWARE | tr ',' ' '))
+          
+          # Limit number of combinations to avoid timeouts
+          MAX_COMBINATIONS=20
+          COMBINATIONS=()
+          
+          COUNT=0
+          for model in "${MODEL_ARRAY[@]}"; do
+            for hw in "${HARDWARE_ARRAY[@]}"; do
+              COMBINATIONS+=("{\"model\":\"$model\",\"hardware\":\"$hw\"}")
+              COUNT=$((COUNT+1))
+              
+              if [ $COUNT -ge $MAX_COMBINATIONS ]; then
+                break 2
+              fi
+            done
+          done
+          
+          # Format as JSON array for GitHub matrix
+          MATRIX="{\"include\":[$(echo "${COMBINATIONS[@]}" | tr ' ' ',')]}"
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+
+  test-inference:
+    needs: setup
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        include: ${{ fromJson(needs.setup.outputs.matrix) }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest numpy pandas matplotlib
+          
+          # Install hardware-specific dependencies
+          if [[ "${{ matrix.hardware }}" == "cpu" ]]; then
+            pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+          elif [[ "${{ matrix.hardware }}" == "cuda" ]]; then
+            pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+          elif [[ "${{ matrix.hardware }}" == "rocm" ]]; then
+            pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm5.7
+          elif [[ "${{ matrix.hardware }}" == "openvino" ]]; then
+            pip install openvino openvino-tokenizers
+          elif [[ "${{ matrix.hardware }}" == "mps" ]]; then
+            # MPS is only supported on macOS
+            if [[ "${{ runner.os }}" == "macOS" ]]; then
+              pip install torch torchvision torchaudio
+            fi
+          elif [[ "${{ matrix.hardware }}" == "qnn" ]]; then
+            # Qualcomm dependencies would go here
+            echo "QNN dependencies not available in CI environment"
+          fi
+          
+          pip install transformers
+      
+      - name: Run inference test
+        id: inference-test
+        continue-on-error: true
+        run: |
+          cd test/refactored_benchmark_suite
+          
+          # Create output directory
+          mkdir -p test_results
+          
+          # Run the appropriate benchmark based on hardware
+          if [[ "${{ github.event.inputs.benchmark_type }}" == "throughput" || "${{ github.event.inputs.benchmark_type }}" == "both" ]]; then
+            python run_skillset_benchmark.py \
+              --type throughput \
+              --hardware ${{ matrix.hardware }} \
+              --model ${{ matrix.model }} \
+              --batch-sizes 1 \
+              --concurrent-workers 3 \
+              --output-dir test_results 
+          else
+            python run_skillset_benchmark.py \
+              --type inference \
+              --hardware ${{ matrix.hardware }} \
+              --model ${{ matrix.model }} \
+              --batch-sizes 1 \
+              --output-dir test_results
+          fi
+          
+          # Generate simple JSON report for this test
+          cat > test_results/summary_${{ matrix.model }}_${{ matrix.hardware }}.json << EOF
+          {
+            "model": "${{ matrix.model }}",
+            "hardware": "${{ matrix.hardware }}",
+            "success": $?
+          }
+          EOF
+      
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.model }}-${{ matrix.hardware }}
+          path: test/refactored_benchmark_suite/test_results
+          retention-days: 14
+
+  generate-report:
+    needs: [setup, test-inference]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas matplotlib
+      
+      - name: Download all test results
+        uses: actions/download-artifact@v4
+        with:
+          path: all-results
+      
+      - name: Generate summary report
+        run: |
+          mkdir -p reports
+          
+          # Python script to generate the report
+          python - << EOF
+          import os
+          import json
+          import pandas as pd
+          import matplotlib.pyplot as plt
+          from pathlib import Path
+          
+          # Find all summary JSON files
+          results = []
+          for root, dirs, files in os.walk("all-results"):
+              for file in files:
+                  if file.startswith("summary_") and file.endswith(".json"):
+                      with open(os.path.join(root, file), "r") as f:
+                          try:
+                              data = json.load(f)
+                              results.append(data)
+                          except:
+                              print(f"Failed to parse {os.path.join(root, file)}")
+          
+          if not results:
+              print("No test results found!")
+              exit(1)
+              
+          # Create DataFrame
+          df = pd.DataFrame(results)
+          
+          # Create compatibility matrix
+          matrix = df.pivot_table(
+              index="model", 
+              columns="hardware", 
+              values="success",
+              aggfunc="max"  # In case of duplicates
+          ).fillna(False)
+          
+          # Generate Markdown report
+          with open("reports/compatibility_matrix.md", "w") as f:
+              f.write("# Model Hardware Compatibility Matrix\n\n")
+              f.write("Generated on: ${{ needs.setup.outputs.timestamp }}\n\n")
+              f.write("## Compatibility Results\n\n")
+              
+              # Write the matrix as a markdown table
+              f.write("| Model | " + " | ".join(matrix.columns) + " |\n")
+              f.write("| ----- | " + " | ".join(["-" * len(col) for col in matrix.columns]) + " |\n")
+              
+              for model, row in matrix.iterrows():
+                  values = []
+                  for hw in matrix.columns:
+                      if row[hw]:
+                          values.append("✅")
+                      else:
+                          values.append("❌")
+                  f.write(f"| {model} | " + " | ".join(values) + " |\n")
+              
+              # Summary statistics
+              f.write("\n## Summary Statistics\n\n")
+              
+              total_combinations = len(df)
+              successful_combinations = df["success"].sum()
+              success_rate = successful_combinations / total_combinations * 100
+              
+              f.write(f"- Total test combinations: {total_combinations}\n")
+              f.write(f"- Successful combinations: {successful_combinations}\n")
+              f.write(f"- Success rate: {success_rate:.1f}%\n\n")
+              
+              # Hardware success rates
+              f.write("### Hardware Success Rates\n\n")
+              hw_success = df.groupby("hardware")["success"].agg(["count", "sum"])
+              hw_success["rate"] = hw_success["sum"] / hw_success["count"] * 100
+              
+              f.write("| Hardware | Tests | Passed | Rate |\n")
+              f.write("| -------- | ----- | ------ | ---- |\n")
+              
+              for hw, row in hw_success.iterrows():
+                  f.write(f"| {hw} | {int(row['count'])} | {int(row['sum'])} | {row['rate']:.1f}% |\n")
+              
+              # Model success rates
+              f.write("\n### Model Success Rates\n\n")
+              model_success = df.groupby("model")["success"].agg(["count", "sum"])
+              model_success["rate"] = model_success["sum"] / model_success["count"] * 100
+              
+              f.write("| Model | Tests | Passed | Rate |\n")
+              f.write("| ----- | ----- | ------ | ---- |\n")
+              
+              for model, row in model_success.iterrows():
+                  f.write(f"| {model} | {int(row['count'])} | {int(row['sum'])} | {row['rate']:.1f}% |\n")
+          
+          # Create a visual matrix plot
+          plt.figure(figsize=(10, len(matrix) * 0.4))
+          plt.imshow(matrix, cmap='RdYlGn', aspect='auto')
+          plt.colorbar(label='Compatible')
+          plt.xticks(range(len(matrix.columns)), matrix.columns, rotation=45)
+          plt.yticks(range(len(matrix)), matrix.index)
+          plt.title('Model-Hardware Compatibility Matrix')
+          plt.tight_layout()
+          plt.savefig('reports/compatibility_matrix.png')
+          print("Generated compatibility matrix report")
+          EOF
+      
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: hardware-compatibility-report
+          path: reports
+          retention-days: 30
+      
+      - name: Generate GitHub summary
+        run: |
+          echo "# Model Hardware Compatibility Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "![Compatibility Matrix](reports/compatibility_matrix.png)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Full report available in artifacts: hardware-compatibility-report" >> $GITHUB_STEP_SUMMARY

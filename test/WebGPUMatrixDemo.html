@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebGPU Matrix Operations Demo</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      line-height: 1.6;
+      margin: 0;
+      padding: 20px;
+      background-color: #f5f5f5;
+      color: #333;
+    }
+    
+    header {
+      background-color: #333;
+      color: #fff;
+      padding: 20px;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    
+    h1 {
+      margin: 0;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background-color: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    }
+    
+    pre {
+      background-color: #f0f0f0;
+      padding: 15px;
+      border-radius: 5px;
+      overflow-x: auto;
+    }
+    
+    code {
+      font-family: Consolas, Monaco, 'Andale Mono', monospace;
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 20px;
+    }
+    
+    table, th, td {
+      border: 1px solid #ddd;
+    }
+    
+    th, td {
+      padding: 12px;
+      text-align: left;
+    }
+    
+    th {
+      background-color: #f2f2f2;
+    }
+    
+    tr:nth-child(even) {
+      background-color: #f9f9f9;
+    }
+    
+    .error {
+      background-color: #ffebee;
+      color: #c62828;
+      padding: 15px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+      display: none;
+    }
+    
+    .info-box {
+      background-color: #e3f2fd;
+      border-left: 5px solid #2196f3;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+    
+    .browser-info {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      background-color: #f5f5f5;
+      padding: 15px;
+      border-radius: 5px;
+    }
+    
+    .browser-info div {
+      flex: 1;
+      margin-right: 10px;
+    }
+    
+    .browser-info h4 {
+      margin-top: 0;
+      margin-bottom: 10px;
+    }
+    
+    #loading {
+      text-align: center;
+      padding: 20px;
+      font-style: italic;
+    }
+    
+    @media (max-width: 768px) {
+      .browser-info {
+        flex-direction: column;
+      }
+      
+      .browser-info div {
+        margin-bottom: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>WebGPU Matrix Operations Demo</h1>
+    <p>Demonstrating browser-optimized WebGPU compute shader operations for matrix multiplication</p>
+  </header>
+  
+  <div class="container">
+    <div id="error" class="error"></div>
+    
+    <div class="info-box">
+      <p>This demo showcases WebGPU compute shader implementations for matrix operations with browser-specific optimizations. It demonstrates three different strategies for matrix multiplication:</p>
+      <ul>
+        <li><strong>Simple</strong>: Direct matrix multiplication, best for small matrices (&lt;64x64)</li>
+        <li><strong>Tiled</strong>: Uses shared memory tiling to improve memory access patterns, best for medium matrices (64x64 - 512x512)</li>
+        <li><strong>Micro-Tiled</strong>: Advanced hierarchical tiling with register optimization, best for large matrices (&gt;512x512)</li>
+      </ul>
+      <p>The demo automatically selects the optimal strategy based on your browser type, GPU vendor, and matrix dimensions.</p>
+    </div>
+    
+    <div id="loading">Loading WebGPU Matrix Operations Demo...</div>
+    
+    <div id="browser-detection" class="browser-info" style="display: none;">
+      <div>
+        <h4>Browser Detection</h4>
+        <div id="browser-info"></div>
+      </div>
+      <div>
+        <h4>WebGPU Support</h4>
+        <div id="webgpu-info"></div>
+      </div>
+      <div>
+        <h4>Hardware Info</h4>
+        <div id="hardware-info"></div>
+      </div>
+    </div>
+    
+    <div id="results"></div>
+    
+    <h3>About WebGPU Matrix Operations</h3>
+    <p>
+      The WebGPU Matrix Operations library provides highly optimized matrix operations using WebGPU compute shaders.
+      It includes multiple multiplication strategies optimized for different matrix sizes and browser types.
+    </p>
+    
+    <h4>Code Example</h4>
+    <pre><code>
+// Create browser-optimized matrix operations
+const matrixOps = new BrowserOptimizedMatrixOperations(
+  device, 
+  bufferUtils, 
+  { browserType, browserVersion, gpuVendor }
+);
+
+// Initialize the matrix operations
+await matrixOps.initialize();
+
+// Perform matrix multiplication with automatic strategy selection
+const result = await matrixOps.matmul(matrixA, matrixB, M, N, K);
+    </code></pre>
+  </div>
+  
+  <script type="module">
+    // Import the matrix operations module
+    import { BrowserOptimizedMatrixOperations } from './ipfs_accelerate_js_matrix_operations.js';
+    import { GPUBufferUtils } from './ipfs_accelerate_js_webgpu_backend.js';
+    
+    // This script would be added in a real implementation
+    // For this demo, we'll load the script directly
+    const script = document.createElement('script');
+    script.src = './ipfs_accelerate_js_matrix_example.js';
+    script.type = 'module';
+    document.body.appendChild(script);
+    
+    // Update browser detection info
+    window.addEventListener('load', () => {
+      const browserInfo = document.getElementById('browser-info');
+      const webgpuInfo = document.getElementById('webgpu-info');
+      const hardwareInfo = document.getElementById('hardware-info');
+      
+      if (browserInfo && webgpuInfo && hardwareInfo) {
+        const userAgent = navigator.userAgent;
+        browserInfo.textContent = userAgent;
+        
+        if (navigator.gpu) {
+          webgpuInfo.textContent = 'WebGPU is supported in this browser!';
+          webgpuInfo.style.color = 'green';
+        } else {
+          webgpuInfo.textContent = 'WebGPU is NOT supported in this browser.';
+          webgpuInfo.style.color = 'red';
+        }
+        
+        // Hardware info would come from adapter in a real implementation
+        hardwareInfo.textContent = 'GPU information would be detected here in a full implementation.';
+        
+        document.getElementById('browser-detection').style.display = 'flex';
+        document.getElementById('loading').style.display = 'none';
+      }
+    });
+  </script>
+</body>
+</html>

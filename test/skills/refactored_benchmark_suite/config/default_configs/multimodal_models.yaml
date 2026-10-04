@@ -1,0 +1,39 @@
+# Default configuration for multimodal models benchmarking
+
+models:
+  - id: openai/clip-vit-base-patch32
+    task: image-to-text
+    batch_sizes: [1, 2, 4]
+    sequence_lengths: [16, 32]
+  
+  - id: Salesforce/blip-image-captioning-base
+    task: image-to-text
+    batch_sizes: [1, 2]
+    sequence_lengths: [16, 32]
+
+# Hardware platforms to benchmark on
+hardware:
+  - cpu
+  - cuda  # Will be ignored if not available
+
+# Metrics to collect
+metrics:
+  - latency
+  - throughput
+  - memory
+  - flops
+
+# Benchmark parameters
+warmup_iterations: 3
+test_iterations: 10
+
+# Output options
+output_dir: multimodal_benchmark_results
+save_results: true
+
+# Export options
+export:
+  formats:
+    - json
+    - csv
+    - markdown

@@ -1,0 +1,44 @@
+# Default configuration for vision models benchmarking
+
+models:
+  - id: google/vit-base-patch16-224
+    task: image-classification
+    batch_sizes: [1, 4, 8, 16]
+    sequence_lengths: [1]  # Not applicable for vision models
+  
+  - id: facebook/convnext-tiny-224
+    task: image-classification
+    batch_sizes: [1, 4, 8, 16]
+    sequence_lengths: [1]
+    
+  - id: microsoft/resnet-50
+    task: image-classification
+    batch_sizes: [1, 4, 8, 16]
+    sequence_lengths: [1]
+
+# Hardware platforms to benchmark on
+hardware:
+  - cpu
+  - cuda  # Will be ignored if not available
+
+# Metrics to collect
+metrics:
+  - latency
+  - throughput
+  - memory
+  - flops
+
+# Benchmark parameters
+warmup_iterations: 5
+test_iterations: 20
+
+# Output options
+output_dir: vision_benchmark_results
+save_results: true
+
+# Export options
+export:
+  formats:
+    - json
+    - csv
+    - markdown

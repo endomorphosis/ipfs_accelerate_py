@@ -1,0 +1,78 @@
+# Error Notification Sound System
+
+This directory contains sound files for the Error Visualization system's notification feature. These files are used to provide auditory feedback for different error severities.
+
+## Sound Files
+
+The system uses the following sound files:
+
+1. **error-system-critical.mp3**: Highest-priority alert sound for system-level critical errors (1.0s duration)
+   * Used for coordinator failure, database corruption, and security breaches
+   * Rising frequency pattern (880Hz → 1046.5Hz → 1318.5Hz) with increasing urgency
+   * Features accelerating pulse rate (4Hz to 16Hz) and harmonic richness
+   * Designed for immediate attention in critical system failures
+
+2. **error-critical.mp3**: High-priority alert sound for critical errors (0.7s duration)
+   * Used for hardware availability errors, resource allocation errors, and worker crashes
+   * Higher frequency (880Hz/440Hz) with attention-grabbing tonal pattern
+   * Includes a pulsing effect (8Hz modulation) for urgency
+
+3. **error-warning.mp3**: Medium-priority alert sound for warning-level errors (0.5s duration)
+   * Used for network errors, resource cleanup issues, and worker timeouts
+   * Medium frequency (660Hz/330Hz) with moderate decay
+   * Dual-tone approach for distinctiveness
+
+4. **error-info.mp3**: Low-priority notification sound for informational errors (0.3s duration)
+   * Used for test execution errors and other non-critical issues
+   * Lower frequency (523Hz) with quick decay
+   * Short, subtle tone that's non-intrusive
+
+5. **error-notification.mp3**: Default notification sound (fallback)
+   * Copy of error-critical.mp3 by default
+   * Used when specific severity sounds fail to load
+
+## Sound Generation
+
+These sound files are automatically generated using the `generate_sound_files.py` script in this directory. The script uses numpy and scipy to synthesize the tones with specific acoustic properties for each severity level.
+
+To regenerate the sound files:
+
+```bash
+python generate_sound_files.py
+```
+
+## Custom Sounds
+
+You can replace these files with your own custom sounds if desired. Just make sure to keep the same filenames and format (MP3) for compatibility with the dashboard.
+
+## Volume Control
+
+The dashboard provides volume control and mute functionality for these sounds through the UI. These settings are saved in the browser's localStorage for persistence between sessions.
+
+## Technical Details
+
+The sound generation uses the following parameters:
+
+1. System-Critical Sound:
+   * Frequencies: Rising pattern 880Hz (A5) → 1046.5Hz (C6) → 1318.5Hz (E6)
+   * Accelerating pulse rate from 4Hz to 16Hz
+   * Additional harmonic at 1760Hz (A6) for richness
+   * Three distinct segments with crossfading
+   * Duration: 1.0 seconds
+
+2. Critical Sound:
+   * Frequencies: 880Hz (A5) and 440Hz (A4)
+   * Amplitude modulation with 8Hz pulsing
+   * Duration: 0.7 seconds
+
+3. Warning Sound:
+   * Frequencies: 660Hz (E5) and 330Hz (E4)
+   * Moderate decay profile
+   * Duration: 0.5 seconds
+
+4. Info Sound:
+   * Frequency: 523.25Hz (C5)
+   * Quick decay profile
+   * Duration: 0.3 seconds
+
+All sounds are normalized to prevent clipping and converted to 16-bit PCM before encoding as MP3.

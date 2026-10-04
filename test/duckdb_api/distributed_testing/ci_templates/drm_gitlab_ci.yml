@@ -1,0 +1,154 @@
+stages:
+  - unit_tests
+  - integration_tests
+  - performance_tests
+  - e2e_tests
+  - distributed_tests
+
+variables:
+  PYTHONPATH: "$CI_PROJECT_DIR/test"
+  COORDINATOR_URL: "http://coordinator:8080"
+  API_KEY: "gitlab-ci-key"
+
+# Unit Tests for each component
+.unit_test_template: &unit_test_definition
+  stage: unit_tests
+  image: python:3.10-slim
+  before_script:
+    - python -m pip install --upgrade pip
+    - pip install pytest pytest-mock
+    - pip install -r test/duckdb_api/distributed_testing/requirements.txt
+  script:
+    - cd test
+    - python -m pytest duckdb_api/distributed_testing/tests/test_${COMPONENT}.py -v
+  artifacts:
+    paths:
+      - test/test_results
+    reports:
+      junit: test/test_results/*.xml
+  only:
+    changes:
+      - duckdb_api/distributed_testing/${COMPONENT}.py
+      - duckdb_api/distributed_testing/tests/test_${COMPONENT}.py
+
+dynamic_resource_manager_test:
+  <<: *unit_test_definition
+  variables:
+    COMPONENT: "dynamic_resource_manager"
+
+resource_performance_predictor_test:
+  <<: *unit_test_definition
+  variables:
+    COMPONENT: "resource_performance_predictor"
+
+cloud_provider_manager_test:
+  <<: *unit_test_definition
+  variables:
+    COMPONENT: "cloud_provider_manager"
+
+resource_optimizer_test:
+  <<: *unit_test_definition
+  variables:
+    COMPONENT: "resource_optimizer"
+
+# Integration Tests
+integration_tests:
+  stage: integration_tests
+  image: python:3.10-slim
+  dependencies:
+    - dynamic_resource_manager_test
+    - resource_performance_predictor_test
+    - cloud_provider_manager_test
+    - resource_optimizer_test
+  before_script:
+    - python -m pip install --upgrade pip
+    - pip install pytest pytest-mock
+    - pip install -r test/duckdb_api/distributed_testing/requirements.txt
+  script:
+    - cd test
+    - python -m pytest duckdb_api/distributed_testing/tests/test_drm_integration.py -v
+  artifacts:
+    paths:
+      - test/test_results
+    reports:
+      junit: test/test_results/*.xml
+  only:
+    changes:
+      - duckdb_api/distributed_testing/*.py
+      - duckdb_api/distributed_testing/tests/test_drm_integration.py
+
+# Resource Optimizer Performance Tests
+resource_optimizer_performance:
+  stage: performance_tests
+  image: python:3.10-slim
+  dependencies:
+    - resource_optimizer_test
+  before_script:
+    - python -m pip install --upgrade pip
+    - pip install pytest pytest-mock
+    - pip install -r test/duckdb_api/distributed_testing/requirements.txt
+  script:
+    - cd test
+    - python duckdb_api/distributed_testing/tests/run_resource_optimization_tests.py --verbose
+  artifacts:
+    paths:
+      - test/test_results
+    reports:
+      junit: test/test_results/*.xml
+  only:
+    changes:
+      - duckdb_api/distributed_testing/resource_optimization.py
+      - duckdb_api/distributed_testing/tests/test_resource_optimization.py
+      - duckdb_api/distributed_testing/tests/run_resource_optimization_tests.py
+
+# End-to-End Tests
+e2e_tests:
+  stage: e2e_tests
+  image: python:3.10-slim
+  dependencies:
+    - integration_tests
+    - resource_optimizer_performance
+  before_script:
+    - python -m pip install --upgrade pip
+    - pip install pytest pytest-mock
+    - pip install -r test/duckdb_api/distributed_testing/requirements.txt
+  script:
+    - cd test
+    - python duckdb_api/distributed_testing/tests/run_e2e_drm_test.py --quick --output-dir=./e2e_reports
+  artifacts:
+    paths:
+      - test/e2e_reports
+  only:
+    refs:
+      - main
+      - tags
+    changes:
+      - duckdb_api/distributed_testing/*.py
+      - duckdb_api/distributed_testing/tests/run_e2e_drm_test.py
+
+# Distributed Testing Framework Integration
+distributed_tests:
+  stage: distributed_tests
+  image: python:3.10-slim
+  services:
+    - name: registry.gitlab.com/yourusername/ipfs_accelerate_py/coordinator:latest
+      alias: coordinator
+  before_script:
+    - python -m pip install --upgrade pip
+    - pip install -r test/duckdb_api/distributed_testing/requirements.txt
+    # Start test workers
+    - cd test
+    - python -m duckdb_api.distributed_testing.worker --coordinator ${COORDINATOR_URL} --api-key ${API_KEY} --worker-id worker-1 &
+    - python -m duckdb_api.distributed_testing.worker --coordinator ${COORDINATOR_URL} --api-key ${API_KEY} --worker-id worker-2 &
+    - sleep 5  # Give workers time to register
+  script:
+    - cd test
+    - python -m duckdb_api.distributed_testing.drm_cicd_integration --provider gitlab --coordinator ${COORDINATOR_URL} --api-key ${API_KEY} --component all --output-dir ./drm_reports --verbose
+  artifacts:
+    paths:
+      - test/drm_reports
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes:
+        - duckdb_api/distributed_testing/*.py

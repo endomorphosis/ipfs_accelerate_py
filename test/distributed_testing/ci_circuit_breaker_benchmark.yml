@@ -1,0 +1,159 @@
+name: Circuit Breaker Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      benchmark_type:
+        description: 'Benchmark type to run'
+        required: true
+        default: 'quick'
+        type: choice
+        options:
+          - quick
+          - comprehensive
+          - extreme
+      compare_with_previous:
+        description: 'Compare with previous benchmark results'
+        required: false
+        default: true
+        type: boolean
+      failure_types:
+        description: 'Comma-separated list of failure types to test (leave empty for default)'
+        required: false
+        type: string
+  schedule:
+    # Run daily at 2:30 AM UTC
+    - cron: '30 2 * * *'
+  push:
+    branches:
+      - main
+    paths:
+      - 'test/distributed_testing/circuit_breaker.py'
+      - 'test/distributed_testing/browser_failure_injector.py'
+      - 'test/distributed_testing/browser_recovery_strategies.py'
+      - 'test/distributed_testing/benchmark_circuit_breaker.py'
+      - 'test/distributed_testing/run_circuit_breaker_benchmark.sh'
+
+jobs:
+  benchmark:
+    name: Run Circuit Breaker Benchmark
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install matplotlib numpy asyncio selenium
+      
+      - name: Create benchmark directory
+        run: mkdir -p benchmark_reports
+      
+      - name: Determine benchmark type
+        id: benchmark-type
+        run: |
+          if [[ "${{ github.event_name }}" == "schedule" ]]; then
+            # For scheduled runs, use weekday-schedule option
+            echo "BENCHMARK_TYPE=--weekday-schedule" >> $GITHUB_ENV
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            # For manual runs, use the specified type
+            echo "BENCHMARK_TYPE=--${{ inputs.benchmark_type }}" >> $GITHUB_ENV
+            
+            # Add failure types if specified
+            if [[ -n "${{ inputs.failure_types }}" ]]; then
+              echo "FAILURE_TYPES=--failure-types=${{ inputs.failure_types }}" >> $GITHUB_ENV
+            else
+              echo "FAILURE_TYPES=" >> $GITHUB_ENV
+            fi
+            
+            # Add comparison flag if requested
+            if [[ "${{ inputs.compare_with_previous }}" == "true" ]]; then
+              echo "COMPARE_FLAG=--compare-with-previous" >> $GITHUB_ENV
+            else
+              echo "COMPARE_FLAG=" >> $GITHUB_ENV
+            fi
+          else
+            # For push events, use quick benchmark
+            echo "BENCHMARK_TYPE=--quick" >> $GITHUB_ENV
+          fi
+      
+      - name: Run benchmark
+        id: benchmark
+        run: |
+          cd test/distributed_testing
+          ./run_circuit_breaker_benchmark.sh --ci --export-metrics --metrics-file=benchmark_metrics.json ${{ env.BENCHMARK_TYPE }} ${{ env.FAILURE_TYPES }} ${{ env.COMPARE_FLAG }}
+      
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v3
+        with:
+          name: circuit-breaker-benchmark-results
+          path: |
+            test/distributed_testing/benchmark_reports/*.json
+            test/distributed_testing/benchmark_reports/*.md
+            test/distributed_testing/benchmark_reports/*.png
+            test/distributed_testing/benchmark_metrics.json
+          retention-days: 90
+      
+      - name: Generate benchmark summary
+        id: summary
+        run: |
+          cd test/distributed_testing
+          if [ -f benchmark_metrics.json ]; then
+            echo "## Circuit Breaker Benchmark Results" >> $GITHUB_STEP_SUMMARY
+            
+            # Get key metrics
+            RECOVERY_TIME=$(python -c "import json; data=json.load(open('benchmark_metrics.json')); print(f\"{data.get('recovery_time_improvement_pct', 0):.1f}%\")")
+            SUCCESS_RATE=$(python -c "import json; data=json.load(open('benchmark_metrics.json')); print(f\"{data.get('success_rate_improvement_pct', 0):.1f}%\")")
+            RATING=$(python -c "import json; data=json.load(open('benchmark_metrics.json')); print(data.get('overall_rating', 'Unknown'))")
+            BENCHMARK_TYPE=$(python -c "import json; data=json.load(open('benchmark_metrics.json')); print(data.get('benchmark_type', 'Unknown'))")
+            
+            # Add summary to GitHub step summary
+            echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Benchmark Type | $BENCHMARK_TYPE |" >> $GITHUB_STEP_SUMMARY
+            echo "| Recovery Time Improvement | $RECOVERY_TIME |" >> $GITHUB_STEP_SUMMARY
+            echo "| Success Rate Improvement | $SUCCESS_RATE |" >> $GITHUB_STEP_SUMMARY
+            echo "| Overall Rating | $RATING |" >> $GITHUB_STEP_SUMMARY
+            
+            # Add interpretation
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Interpretation" >> $GITHUB_STEP_SUMMARY
+            
+            if [[ $(python -c "import json; data=json.load(open('benchmark_metrics.json')); print('Yes' if data.get('recovery_time_improvement_pct', 0) > 20 and data.get('success_rate_improvement_pct', 0) > 20 else 'No')") == "Yes" ]]; then
+              echo "✅ **Excellent Results**: The circuit breaker pattern is highly effective, providing significant improvements in both recovery time and success rate." >> $GITHUB_STEP_SUMMARY
+            elif [[ $(python -c "import json; data=json.load(open('benchmark_metrics.json')); print('Yes' if data.get('recovery_time_improvement_pct', 0) > 10 and data.get('success_rate_improvement_pct', 0) > 10 else 'No')") == "Yes" ]]; then
+              echo "✅ **Good Results**: The circuit breaker pattern is providing notable benefits for fault tolerance and recovery." >> $GITHUB_STEP_SUMMARY
+            elif [[ $(python -c "import json; data=json.load(open('benchmark_metrics.json')); print('Yes' if data.get('recovery_time_improvement_pct', 0) > 0 and data.get('success_rate_improvement_pct', 0) > 0 else 'No')") == "Yes" ]]; then
+              echo "ℹ️ **Positive Results**: The circuit breaker pattern is showing some benefits, but there may be room for improvement." >> $GITHUB_STEP_SUMMARY
+            else
+              echo "⚠️ **Concerning Results**: The circuit breaker pattern is not showing clear benefits in this benchmark run. Further investigation may be needed." >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            # Capture outputs for downstream jobs
+            echo "recovery_time=$RECOVERY_TIME" >> $GITHUB_OUTPUT
+            echo "success_rate=$SUCCESS_RATE" >> $GITHUB_OUTPUT
+            echo "rating=$RATING" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️ Benchmark metrics file not found" >> $GITHUB_STEP_SUMMARY
+          fi
+      
+      - name: Check performance regression
+        if: github.event_name != 'workflow_dispatch' || inputs.compare_with_previous
+        run: |
+          cd test/distributed_testing
+          if [ -f benchmark_metrics.json ]; then
+            # Check if recovery time improvement is below threshold
+            RECOVERY_TIME=$(python -c "import json; data=json.load(open('benchmark_metrics.json')); print(data.get('recovery_time_improvement_pct', 0))")
+            SUCCESS_RATE=$(python -c "import json; data=json.load(open('benchmark_metrics.json')); print(data.get('success_rate_improvement_pct', 0))")
+            
+            if (( $(echo "$RECOVERY_TIME < 5" | bc -l) )) || (( $(echo "$SUCCESS_RATE < 5" | bc -l) )); then
+              echo "::warning::Circuit breaker performance is below threshold! Recovery time improvement: $RECOVERY_TIME%, Success rate improvement: $SUCCESS_RATE%"
+            fi
+          fi

@@ -1,0 +1,8 @@
+2025-03-19 21:16:34,753 - INFO - Created backup at ./fixed_tests/test_hf_bert.py.bak
+2025-03-19 21:16:35,242 - INFO - ✅ Fixed indentation in ./fixed_tests/test_hf_bert.py
+2025-03-19 21:16:35,242 - INFO - Created backup at ./fixed_tests/test_hf_gpt2.py.bak
+2025-03-19 21:16:35,357 - INFO - ✅ Fixed indentation in ./fixed_tests/test_hf_gpt2.py
+2025-03-19 21:16:35,358 - INFO - Created backup at ./fixed_tests/test_hf_t5.py.bak
+2025-03-19 21:16:35,784 - INFO - ✅ Fixed indentation in ./fixed_tests/test_hf_t5.py
+2025-03-19 21:16:35,785 - INFO - Created backup at ./fixed_tests/test_hf_vit.py.bak
+2025-03-19 21:16:36,117 - INFO - ✅ Fixed indentation in ./fixed_tests/test_hf_vit.py

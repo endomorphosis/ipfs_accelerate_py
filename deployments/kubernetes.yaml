@@ -1,0 +1,120 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ipfs-accelerate-py
+  namespace: production
+  labels:
+    app: ipfs-accelerate-py
+    version: v1.0
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: ipfs-accelerate-py
+  template:
+    metadata:
+      labels:
+        app: ipfs-accelerate-py
+        version: v1.0
+    spec:
+      containers:
+      - name: ipfs-accelerate-py
+        image: ipfs-accelerate-py:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: IPFS_ACCELERATE_ENV
+          value: "production"
+        - name: LOG_LEVEL
+          value: "INFO"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: config
+          mountPath: /app/config
+        - name: logs
+          mountPath: /app/logs
+      volumes:
+      - name: config
+        configMap:
+          name: ipfs-accelerate-py-config
+      - name: logs
+        emptyDir: {}
+      
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ipfs-accelerate-py-service
+  namespace: production
+  labels:
+    app: ipfs-accelerate-py
+spec:
+  selector:
+    app: ipfs-accelerate-py
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8000
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ipfs-accelerate-py-config
+  namespace: production
+data:
+  config.yaml: |
+    environment: production
+    log_level: INFO
+    metrics:
+      enabled: true
+      port: 9090
+    monitoring:
+      enabled: true
+      prometheus: true
+      grafana: true
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ipfs-accelerate-py-ingress
+  namespace: production
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  tls:
+  - hosts:
+    - ipfs-accelerate.example.com
+    secretName: ipfs-accelerate-tls
+  rules:
+  - host: ipfs-accelerate.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: ipfs-accelerate-py-service
+            port:
+              number: 80

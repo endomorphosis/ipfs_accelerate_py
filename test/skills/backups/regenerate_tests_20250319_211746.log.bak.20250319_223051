@@ -1,0 +1,27 @@
+2025-03-19 21:17:46,613 - INFO - Regenerating test files for: bert, gpt2, t5, vit
+2025-03-19 21:17:46,613 - INFO - Regenerating test file for bert...
+2025-03-19 21:17:46,693 - INFO - Applying indentation fixes to fixed_files_new/test_hf_bert.py...
+2025-03-19 21:17:46,693 - INFO - Created backup at fixed_files_new/test_hf_bert.py.bak
+2025-03-19 21:17:47,163 - INFO - ✅ Fixed indentation in fixed_files_new/test_hf_bert.py
+2025-03-19 21:17:47,163 - INFO - ✅ Successfully regenerated test file for bert: fixed_files_new/test_hf_bert.py
+2025-03-19 21:17:47,163 - INFO - Regenerating test file for gpt2...
+2025-03-19 21:17:47,246 - INFO - Applying indentation fixes to fixed_files_new/test_hf_gpt2.py...
+2025-03-19 21:17:47,247 - INFO - Created backup at fixed_files_new/test_hf_gpt2.py.bak
+2025-03-19 21:17:47,363 - INFO - ✅ Fixed indentation in fixed_files_new/test_hf_gpt2.py
+2025-03-19 21:17:47,363 - INFO - ✅ Successfully regenerated test file for gpt2: fixed_files_new/test_hf_gpt2.py
+2025-03-19 21:17:47,364 - INFO - Regenerating test file for t5...
+2025-03-19 21:17:47,440 - INFO - Applying indentation fixes to fixed_files_new/test_hf_t5.py...
+2025-03-19 21:17:47,440 - INFO - Created backup at fixed_files_new/test_hf_t5.py.bak
+2025-03-19 21:17:47,856 - INFO - ✅ Fixed indentation in fixed_files_new/test_hf_t5.py
+2025-03-19 21:17:47,856 - INFO - ✅ Successfully regenerated test file for t5: fixed_files_new/test_hf_t5.py
+2025-03-19 21:17:47,856 - INFO - Regenerating test file for vit...
+2025-03-19 21:17:47,922 - INFO - Applying indentation fixes to fixed_files_new/test_hf_vit.py...
+2025-03-19 21:17:47,922 - INFO - Created backup at fixed_files_new/test_hf_vit.py.bak
+2025-03-19 21:17:48,237 - INFO - ✅ Fixed indentation in fixed_files_new/test_hf_vit.py
+2025-03-19 21:17:48,238 - INFO - ✅ Successfully regenerated test file for vit: fixed_files_new/test_hf_vit.py
+2025-03-19 21:17:48,238 - INFO - 
+Regeneration Summary:
+2025-03-19 21:17:48,238 - INFO - - Successful: 4
+2025-03-19 21:17:48,238 - INFO - - Failed: 0
+2025-03-19 21:17:48,238 - INFO - - Total: 4
+2025-03-19 21:17:48,238 - INFO - - Output directory: fixed_files_new

@@ -1,0 +1,84 @@
+name: 'Pre-Checkout Cleanup'
+description: 'Fix permissions and clean workspace BEFORE checkout - use as first step in self-hosted workflows'
+branding:
+  icon: 'shield'
+  color: 'green'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Fix workspace ownership (containerized workflow files)
+      shell: bash
+      run: |
+        echo "🔧 Pre-checkout cleanup for self-hosted runner"
+        current_user=$(whoami)
+        
+        # Find root-owned files in current workspace if it exists
+        if [ -d "${GITHUB_WORKSPACE}" ]; then
+          echo "  Checking workspace: ${GITHUB_WORKSPACE}"
+          
+          # Check if there are root-owned files
+          root_files=$(find "${GITHUB_WORKSPACE}" -type f -user root 2>/dev/null | head -1)
+          
+          if [ -n "$root_files" ]; then
+            echo "  ⚠️ Found root-owned files from previous containerized workflow"
+            
+            # Try to fix ownership with sudo (requires passwordless sudo via sudoers)
+            if sudo -n chown -R "$current_user:$current_user" "${GITHUB_WORKSPACE}" 2>/dev/null; then
+              echo "  ✅ Fixed ownership with sudo"
+            else
+              echo "  ⚠️ Cannot fix ownership (sudo not available or requires password)"
+              echo "  Files will be force-removed during checkout"
+            fi
+          else
+            echo "  ✅ No root-owned files found"
+          fi
+        else
+          echo "  ℹ️ No existing workspace directory"
+        fi
+      continue-on-error: true
+    
+    - name: Remove stale git locks
+      shell: bash
+      run: |
+        echo "🔒 Removing stale git lock files..."
+        if [ -d "${GITHUB_WORKSPACE}" ]; then
+          find "${GITHUB_WORKSPACE}" -name "*.lock" -type f -delete 2>/dev/null || true
+          find "${GITHUB_WORKSPACE}" -name "index.lock" -type f -delete 2>/dev/null || true
+          echo "✅ Lock files removed"
+        fi
+      continue-on-error: true
+    
+    - name: Configure git safe directory
+      shell: bash
+      run: |
+        echo "🔐 Configuring git safe directory..."
+        git config --global --add safe.directory "${GITHUB_WORKSPACE}" 2>/dev/null || true
+        git config --global --add safe.directory "*" 2>/dev/null || true
+        echo "✅ Git safe directory configured"
+      continue-on-error: true
+    
+    - name: Fix existing .git permissions
+      shell: bash
+      run: |
+        if [ -d "${GITHUB_WORKSPACE}/.git" ]; then
+          echo "📁 Fixing existing .git directory permissions..."
+          current_user=$(whoami)
+          
+          # Fix ownership first
+          if sudo -n chown -R "$current_user:$current_user" "${GITHUB_WORKSPACE}/.git" 2>/dev/null; then
+            echo "  ✅ Fixed .git ownership"
+          fi
+          
+          # Fix permissions
+          chmod -R u+rwX "${GITHUB_WORKSPACE}/.git" 2>/dev/null || true
+          echo "✅ .git permissions fixed"
+        fi
+      continue-on-error: true
+    
+    - name: Summary
+      shell: bash
+      run: |
+        echo ""
+        echo "✅ Pre-checkout cleanup completed"
+        echo "   The checkout action will now run safely"

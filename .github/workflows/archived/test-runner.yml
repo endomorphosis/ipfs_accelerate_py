@@ -1,0 +1,55 @@
+name: Test ARM64 Runner
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths: [ '.github/workflows/test-runner.yml' ]
+
+jobs:
+  test-runner:
+    runs-on: [self-hosted, ARM64]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: System information
+      run: |
+        echo "🔍 System Information:"
+        echo "Architecture: $(uname -m)"
+        echo "OS: $(cat /etc/os-release | grep PRETTY_NAME)"
+        echo "CPU cores: $(nproc)"
+        echo "Memory: $(free -h | grep Mem | awk '{print $2}')"
+        echo "Disk space: $(df -h / | tail -1 | awk '{print $4}')"
+        echo "Python version: $(python3 --version)"
+        echo "Docker version: $(docker --version)"
+        
+    - name: Test Python environment
+      run: |
+        echo "🐍 Testing Python environment:"
+        python3 -c "
+        import sys
+        import platform
+        print(f'Python {sys.version}')
+        print(f'Platform: {platform.platform()}')
+        print(f'Machine: {platform.machine()}')
+        print(f'Architecture: {platform.architecture()}')
+        "
+        
+    - name: Test Docker ARM64 support
+      run: |
+        echo "🐳 Testing Docker ARM64 support:"
+        docker run --rm --platform linux/arm64 ubuntu:22.04 uname -m
+        
+    - name: Verify repository access
+      run: |
+        echo "📁 Repository contents:"
+        ls -la
+        echo "Git status:"
+        git status --porcelain || echo "Not a git repository or no changes"
+        
+    - name: Success message
+      run: |
+        echo "✅ ARM64 GitHub Actions runner is working correctly!"
+        echo "🚀 Ready for CI/CD workflows on ARM64 architecture"

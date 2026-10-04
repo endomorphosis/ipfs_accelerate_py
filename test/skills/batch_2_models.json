@@ -1,0 +1,81 @@
+{
+  "encoder_decoder": [
+    {
+      "name": "m2m_100",
+      "architecture": "encoder_decoder",
+      "template": "t5",
+      "task": "translation",
+      "original_name": "m2m-100",
+      "default_model": "facebook/m2m100_418M"
+    },
+    {
+      "name": "seamless_m4t",
+      "architecture": "encoder_decoder",
+      "template": "t5",
+      "task": "translation",
+      "original_name": "seamless-m4t",
+      "default_model": "facebook/seamless-m4t-medium"
+    },
+    {
+      "name": "switch_transformers",
+      "architecture": "encoder_decoder",
+      "template": "t5",
+      "task": "text2text-generation",
+      "original_name": "switch-transformers",
+      "default_model": "google/switch-base-8"
+    },
+    {
+      "name": "umt5",
+      "architecture": "encoder_decoder",
+      "template": "t5",
+      "task": "text2text-generation",
+      "default_model": "google/umt5-base"
+    }
+  ],
+  "encoder_only": [
+    {
+      "name": "convbert",
+      "architecture": "encoder_only",
+      "template": "bert",
+      "task": "fill-mask",
+      "default_model": "YituTech/conv-bert-base"
+    },
+    {
+      "name": "data2vec_text",
+      "architecture": "encoder_only",
+      "template": "bert",
+      "task": "fill-mask",
+      "original_name": "data2vec-text",
+      "default_model": "facebook/data2vec-text-base"
+    },
+    {
+      "name": "deberta_v2",
+      "architecture": "encoder_only",
+      "template": "deberta",
+      "task": "fill-mask",
+      "original_name": "deberta-v2",
+      "default_model": "microsoft/deberta-v2-base"
+    },
+    {
+      "name": "esm",
+      "architecture": "encoder_only",
+      "template": "bert",
+      "task": "fill-mask",
+      "default_model": "facebook/esm2_t6_8M_UR50D"
+    },
+    {
+      "name": "flaubert",
+      "architecture": "encoder_only",
+      "template": "bert",
+      "task": "fill-mask",
+      "default_model": "flaubert/flaubert_base_cased"
+    },
+    {
+      "name": "ibert",
+      "architecture": "encoder_only",
+      "template": "bert",
+      "task": "fill-mask",
+      "default_model": "kssteven/ibert-roberta-base"
+    }
+  ]
+}

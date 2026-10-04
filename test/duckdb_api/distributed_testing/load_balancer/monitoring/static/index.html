@@ -1,0 +1,1081 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Load Balancer Monitoring Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.2/dist/socket.io.min.js"></script>
+    
+    <style>
+        body {
+            padding-top: 56px;
+            background-color: #f8f9fa;
+        }
+        .dashboard-card {
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            background-color: #fff;
+        }
+        .dashboard-card-header {
+            border-bottom: 1px solid #e3e6f0;
+            padding: 0.75rem 1.25rem;
+            background-color: #f8f9fa;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+            font-weight: 700;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .dashboard-card-body {
+            padding: 1.25rem;
+        }
+        .status-badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+        .status-healthy {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status-warning {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .status-danger {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .worker-tile {
+            width: 100px;
+            height: 100px;
+            border-radius: 8px;
+            margin: 5px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .worker-tile:hover {
+            transform: scale(1.05);
+        }
+        .worker-tile-cpu {
+            background-color: #4e73df;
+        }
+        .worker-tile-gpu {
+            background-color: #1cc88a;
+        }
+        .worker-tile-tpu {
+            background-color: #f6c23e;
+        }
+        .worker-tile-inactive {
+            background-color: #858796;
+        }
+        .chart-container {
+            position: relative;
+            height: 250px;
+            width: 100%;
+        }
+        .anomaly-item {
+            padding: 10px;
+            border-left: 3px solid;
+            margin-bottom: 10px;
+            background-color: #f8f9fa;
+        }
+        .anomaly-high {
+            border-left-color: #e74a3b;
+        }
+        .anomaly-medium {
+            border-left-color: #f6c23e;
+        }
+        .anomaly-low {
+            border-left-color: #1cc88a;
+        }
+        #worker-detail-modal .modal-body {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="bi bi-bar-chart-fill"></i>
+                Load Balancer Monitoring
+            </a>
+            <div class="d-flex">
+                <span class="navbar-text me-2">System Status:</span>
+                <span class="status-badge status-healthy" id="system-status-badge">Healthy</span>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <div class="row">
+            <!-- System Overview -->
+            <div class="col-12 mb-4">
+                <div class="dashboard-card">
+                    <div class="dashboard-card-header">
+                        <span>System Overview</span>
+                        <span id="last-updated"></span>
+                    </div>
+                    <div class="dashboard-card-body">
+                        <div class="row">
+                            <div class="col-md-3 col-sm-6 mb-3">
+                                <div class="card border-left-primary h-100 py-2">
+                                    <div class="card-body">
+                                        <div class="row no-gutters align-items-center">
+                                            <div class="col mr-2">
+                                                <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                                    Workers</div>
+                                                <div class="h5 mb-0 font-weight-bold text-gray-800" id="workers-count">12/15</div>
+                                            </div>
+                                            <div class="col-auto">
+                                                <i class="bi bi-cpu fs-2 text-gray-300"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3 col-sm-6 mb-3">
+                                <div class="card border-left-success h-100 py-2">
+                                    <div class="card-body">
+                                        <div class="row no-gutters align-items-center">
+                                            <div class="col mr-2">
+                                                <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                                    Tasks</div>
+                                                <div class="h5 mb-0 font-weight-bold text-gray-800" id="tasks-count">34/45/12</div>
+                                            </div>
+                                            <div class="col-auto">
+                                                <i class="bi bi-list-task fs-2 text-gray-300"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3 col-sm-6 mb-3">
+                                <div class="card border-left-info h-100 py-2">
+                                    <div class="card-body">
+                                        <div class="row no-gutters align-items-center">
+                                            <div class="col mr-2">
+                                                <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                                                    Throughput</div>
+                                                <div class="h5 mb-0 font-weight-bold text-gray-800" id="throughput">12.5 tasks/min</div>
+                                            </div>
+                                            <div class="col-auto">
+                                                <i class="bi bi-speedometer fs-2 text-gray-300"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3 col-sm-6 mb-3">
+                                <div class="card border-left-warning h-100 py-2">
+                                    <div class="card-body">
+                                        <div class="row no-gutters align-items-center">
+                                            <div class="col mr-2">
+                                                <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                                                    Success Rate</div>
+                                                <div class="h5 mb-0 font-weight-bold text-gray-800" id="success-rate">98.5%</div>
+                                            </div>
+                                            <div class="col-auto">
+                                                <i class="bi bi-check-circle fs-2 text-gray-300"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Worker Grid -->
+            <div class="col-xl-6 col-lg-6">
+                <div class="dashboard-card">
+                    <div class="dashboard-card-header">
+                        <span>Worker Grid</span>
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-sm btn-outline-secondary active" id="view-all-workers">All</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="view-cpu-workers">CPU</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="view-gpu-workers">GPU</button>
+                        </div>
+                    </div>
+                    <div class="dashboard-card-body">
+                        <div class="d-flex flex-wrap" id="worker-grid">
+                            <!-- Worker tiles will be added here dynamically -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Performance Metrics -->
+            <div class="col-xl-6 col-lg-6">
+                <div class="dashboard-card">
+                    <div class="dashboard-card-header">
+                        <span>Performance Metrics</span>
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-sm btn-outline-secondary active" id="view-throughput">Throughput</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="view-latency">Latency</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="view-success">Success Rate</button>
+                        </div>
+                    </div>
+                    <div class="dashboard-card-body">
+                        <div class="chart-container">
+                            <canvas id="performance-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <!-- Task Distribution -->
+            <div class="col-xl-6 col-lg-6">
+                <div class="dashboard-card">
+                    <div class="dashboard-card-header">
+                        <span>Task Distribution</span>
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-sm btn-outline-secondary active" id="view-by-status">By Status</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="view-by-family">By Family</button>
+                        </div>
+                    </div>
+                    <div class="dashboard-card-body">
+                        <div class="chart-container">
+                            <canvas id="task-distribution-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Resource Utilization -->
+            <div class="col-xl-6 col-lg-6">
+                <div class="dashboard-card">
+                    <div class="dashboard-card-header">
+                        <span>Resource Utilization</span>
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-sm btn-outline-secondary active" id="view-cpu-util">CPU</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="view-gpu-util">GPU</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="view-memory-util">Memory</button>
+                        </div>
+                    </div>
+                    <div class="dashboard-card-body">
+                        <div class="chart-container">
+                            <canvas id="resource-utilization-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <!-- Alerts & Notifications -->
+            <div class="col-12">
+                <div class="dashboard-card">
+                    <div class="dashboard-card-header">
+                        <span>Alerts & Notifications</span>
+                        <span class="badge bg-danger" id="alert-count">0</span>
+                    </div>
+                    <div class="dashboard-card-body">
+                        <div id="alerts-container">
+                            <!-- Alerts will be added here dynamically -->
+                            <div class="text-center text-muted" id="no-alerts-message">
+                                No active alerts at this time
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Worker Detail Modal -->
+    <div class="modal fade" id="worker-detail-modal" tabindex="-1" aria-labelledby="worker-detail-modal-label" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="worker-detail-modal-label">Worker Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Worker Information</h6>
+                            <table class="table table-sm">
+                                <tbody>
+                                    <tr>
+                                        <th>Worker ID</th>
+                                        <td id="worker-detail-id"></td>
+                                    </tr>
+                                    <tr>
+                                        <th>Hostname</th>
+                                        <td id="worker-detail-hostname"></td>
+                                    </tr>
+                                    <tr>
+                                        <th>Type</th>
+                                        <td id="worker-detail-type"></td>
+                                    </tr>
+                                    <tr>
+                                        <th>Status</th>
+                                        <td id="worker-detail-status"></td>
+                                    </tr>
+                                    <tr>
+                                        <th>Active Tasks</th>
+                                        <td id="worker-detail-active-tasks"></td>
+                                    </tr>
+                                    <tr>
+                                        <th>Registration Time</th>
+                                        <td id="worker-detail-registration-time"></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Resource Utilization</h6>
+                            <div class="mb-3">
+                                <label class="form-label">CPU Utilization</label>
+                                <div class="progress">
+                                    <div id="worker-detail-cpu" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Memory Utilization</label>
+                                <div class="progress">
+                                    <div id="worker-detail-memory" class="progress-bar bg-info" role="progressbar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">GPU Utilization</label>
+                                <div class="progress">
+                                    <div id="worker-detail-gpu" class="progress-bar bg-success" role="progressbar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Assignment Efficiency</label>
+                                <div class="progress">
+                                    <div id="worker-detail-efficiency" class="progress-bar bg-warning" role="progressbar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <h6>Current Tasks</h6>
+                            <div class="table-responsive">
+                                <table class="table table-striped table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Task ID</th>
+                                            <th>Model</th>
+                                            <th>Status</th>
+                                            <th>Started</th>
+                                            <th>Duration</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="worker-detail-tasks">
+                                        <!-- Tasks will be added here dynamically -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Dashboard data
+        let systemMetrics = {};
+        let workerMetrics = {};
+        let taskMetrics = {};
+        let workerMetadata = {};
+        let taskMetadata = {};
+        let anomalies = [];
+
+        // Charts
+        let performanceChart;
+        let taskDistributionChart;
+        let resourceUtilizationChart;
+
+        // Socket connection
+        let socket;
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize charts
+            initializeCharts();
+            
+            // Load initial data
+            fetchInitialData();
+            
+            // Set up real-time updates
+            setupSocketConnection();
+            
+            // Set up event listeners
+            setupEventListeners();
+            
+            // Fetch anomalies periodically
+            setInterval(fetchAnomalies, 10000);
+        });
+
+        function initializeCharts() {
+            // Performance Chart
+            const performanceCtx = document.getElementById('performance-chart').getContext('2d');
+            performanceChart = new Chart(performanceCtx, {
+                type: 'line',
+                data: {
+                    labels: generateTimeLabels(10),
+                    datasets: [{
+                        label: 'Throughput (tasks/min)',
+                        data: Array(10).fill(0),
+                        borderColor: '#4e73df',
+                        tension: 0.4,
+                        fill: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        duration: 500
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+
+            // Task Distribution Chart
+            const taskDistributionCtx = document.getElementById('task-distribution-chart').getContext('2d');
+            taskDistributionChart = new Chart(taskDistributionCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Queued', 'Running', 'Completed', 'Failed'],
+                    datasets: [{
+                        data: [0, 0, 0, 0],
+                        backgroundColor: ['#4e73df', '#1cc88a', '#36b9cc', '#e74a3b']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        duration: 500
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+
+            // Resource Utilization Chart
+            const resourceUtilizationCtx = document.getElementById('resource-utilization-chart').getContext('2d');
+            resourceUtilizationChart = new Chart(resourceUtilizationCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Worker 1', 'Worker 2', 'Worker 3', 'Worker 4', 'Worker 5'],
+                    datasets: [{
+                        label: 'CPU Utilization (%)',
+                        data: [0, 0, 0, 0, 0],
+                        backgroundColor: '#4e73df'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        duration: 500
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100
+                        }
+                    }
+                }
+            });
+        }
+
+        function fetchInitialData() {
+            // Fetch system metrics
+            fetch('/api/metrics/system')
+                .then(response => response.json())
+                .then(data => {
+                    systemMetrics = data.metrics;
+                    updateSystemOverview();
+                });
+            
+            // Fetch worker metrics
+            fetch('/api/metrics/workers')
+                .then(response => response.json())
+                .then(data => {
+                    workerMetrics = data.metrics;
+                    updateWorkerGrid();
+                    updateResourceUtilization();
+                });
+            
+            // Fetch worker metadata
+            fetch('/api/workers/metadata')
+                .then(response => response.json())
+                .then(data => {
+                    workerMetadata = data;
+                    updateWorkerGrid();
+                });
+            
+            // Fetch task metrics
+            fetch('/api/metrics/tasks/stats')
+                .then(response => response.json())
+                .then(data => {
+                    updateTaskDistribution(data);
+                });
+            
+            // Fetch anomalies
+            fetchAnomalies();
+        }
+
+        function setupSocketConnection() {
+            // Create socket connection
+            socket = io();
+            
+            // Set up event handlers
+            socket.on('connect', () => {
+                console.log('Connected to server');
+                
+                // Subscribe to metric updates
+                socket.emit('subscribe', { metric_type: 'system' });
+                socket.emit('subscribe', { metric_type: 'worker' });
+                socket.emit('subscribe', { metric_type: 'task' });
+            });
+            
+            socket.on('disconnect', () => {
+                console.log('Disconnected from server');
+            });
+            
+            // Handle metric updates
+            socket.on('metrics_system', (data) => {
+                systemMetrics = data.metrics;
+                updateSystemOverview();
+                updatePerformanceChart();
+                updateLastUpdated(data.timestamp);
+            });
+            
+            socket.on('metrics_worker', (data) => {
+                workerMetrics = data.metrics;
+                updateWorkerGrid();
+                updateResourceUtilization();
+                updateLastUpdated(data.timestamp);
+            });
+            
+            socket.on('metrics_task', (data) => {
+                taskMetrics = data.metrics;
+                updateTaskCounts();
+                updateLastUpdated(data.timestamp);
+                
+                // Fetch updated task stats
+                fetch('/api/metrics/tasks/stats')
+                    .then(response => response.json())
+                    .then(data => {
+                        updateTaskDistribution(data);
+                    });
+            });
+        }
+
+        function setupEventListeners() {
+            // Worker grid view buttons
+            document.getElementById('view-all-workers').addEventListener('click', () => {
+                document.getElementById('view-all-workers').classList.add('active');
+                document.getElementById('view-cpu-workers').classList.remove('active');
+                document.getElementById('view-gpu-workers').classList.remove('active');
+                updateWorkerGrid('all');
+            });
+            
+            document.getElementById('view-cpu-workers').addEventListener('click', () => {
+                document.getElementById('view-all-workers').classList.remove('active');
+                document.getElementById('view-cpu-workers').classList.add('active');
+                document.getElementById('view-gpu-workers').classList.remove('active');
+                updateWorkerGrid('cpu');
+            });
+            
+            document.getElementById('view-gpu-workers').addEventListener('click', () => {
+                document.getElementById('view-all-workers').classList.remove('active');
+                document.getElementById('view-cpu-workers').classList.remove('active');
+                document.getElementById('view-gpu-workers').classList.add('active');
+                updateWorkerGrid('gpu');
+            });
+
+            // Performance metric view buttons
+            document.getElementById('view-throughput').addEventListener('click', () => {
+                document.getElementById('view-throughput').classList.add('active');
+                document.getElementById('view-latency').classList.remove('active');
+                document.getElementById('view-success').classList.remove('active');
+                updatePerformanceChart('throughput');
+            });
+            
+            document.getElementById('view-latency').addEventListener('click', () => {
+                document.getElementById('view-throughput').classList.remove('active');
+                document.getElementById('view-latency').classList.add('active');
+                document.getElementById('view-success').classList.remove('active');
+                updatePerformanceChart('latency');
+            });
+            
+            document.getElementById('view-success').addEventListener('click', () => {
+                document.getElementById('view-throughput').classList.remove('active');
+                document.getElementById('view-latency').classList.remove('active');
+                document.getElementById('view-success').classList.add('active');
+                updatePerformanceChart('success');
+            });
+
+            // Task distribution view buttons
+            document.getElementById('view-by-status').addEventListener('click', () => {
+                document.getElementById('view-by-status').classList.add('active');
+                document.getElementById('view-by-family').classList.remove('active');
+                fetch('/api/metrics/tasks/stats')
+                    .then(response => response.json())
+                    .then(data => {
+                        updateTaskDistribution(data, 'status');
+                    });
+            });
+            
+            document.getElementById('view-by-family').addEventListener('click', () => {
+                document.getElementById('view-by-status').classList.remove('active');
+                document.getElementById('view-by-family').classList.add('active');
+                fetch('/api/metrics/tasks/stats')
+                    .then(response => response.json())
+                    .then(data => {
+                        updateTaskDistribution(data, 'family');
+                    });
+            });
+
+            // Resource utilization view buttons
+            document.getElementById('view-cpu-util').addEventListener('click', () => {
+                document.getElementById('view-cpu-util').classList.add('active');
+                document.getElementById('view-gpu-util').classList.remove('active');
+                document.getElementById('view-memory-util').classList.remove('active');
+                updateResourceUtilization('cpu');
+            });
+            
+            document.getElementById('view-gpu-util').addEventListener('click', () => {
+                document.getElementById('view-cpu-util').classList.remove('active');
+                document.getElementById('view-gpu-util').classList.add('active');
+                document.getElementById('view-memory-util').classList.remove('active');
+                updateResourceUtilization('gpu');
+            });
+            
+            document.getElementById('view-memory-util').addEventListener('click', () => {
+                document.getElementById('view-cpu-util').classList.remove('active');
+                document.getElementById('view-gpu-util').classList.remove('active');
+                document.getElementById('view-memory-util').classList.add('active');
+                updateResourceUtilization('memory');
+            });
+        }
+
+        function updateSystemOverview() {
+            if (!systemMetrics) return;
+            
+            // Update workers count
+            const activeWorkers = systemMetrics.active_workers || 0;
+            const totalWorkers = systemMetrics.total_workers || 0;
+            document.getElementById('workers-count').textContent = `${activeWorkers}/${totalWorkers}`;
+            
+            // Update tasks count
+            const queuedTasks = systemMetrics.tasks_queued || 0;
+            const runningTasks = systemMetrics.tasks_running || 0;
+            const completedTasks = systemMetrics.tasks_completed || 0;
+            document.getElementById('tasks-count').textContent = `${queuedTasks}/${runningTasks}/${completedTasks}`;
+            
+            // Update throughput
+            const throughput = systemMetrics.throughput || 0;
+            document.getElementById('throughput').textContent = `${throughput.toFixed(1)} tasks/min`;
+            
+            // Update success rate
+            const successRate = systemMetrics.success_rate || 100;
+            document.getElementById('success-rate').textContent = `${successRate.toFixed(1)}%`;
+            
+            // Update system status
+            updateSystemStatus();
+        }
+
+        function updateSystemStatus() {
+            const statusBadge = document.getElementById('system-status-badge');
+            
+            if (anomalies.length === 0) {
+                statusBadge.textContent = 'Healthy';
+                statusBadge.className = 'status-badge status-healthy';
+            } else {
+                const highSeverity = anomalies.some(a => a.severity === 'high');
+                
+                if (highSeverity) {
+                    statusBadge.textContent = 'Critical';
+                    statusBadge.className = 'status-badge status-danger';
+                } else {
+                    statusBadge.textContent = 'Warning';
+                    statusBadge.className = 'status-badge status-warning';
+                }
+            }
+        }
+
+        function updateWorkerGrid(filter = 'all') {
+            if (!workerMetrics || !workerMetadata) return;
+            
+            const workerGrid = document.getElementById('worker-grid');
+            workerGrid.innerHTML = '';
+            
+            // Get list of workers
+            const workers = [];
+            
+            for (const workerId in workerMetadata) {
+                if (workerMetrics[workerId]) {
+                    const metadata = workerMetadata[workerId];
+                    const metrics = workerMetrics[workerId];
+                    
+                    const workerType = metadata.worker_type || 'cpu';
+                    
+                    // Apply filter
+                    if (filter !== 'all' && filter !== workerType) {
+                        continue;
+                    }
+                    
+                    workers.push({
+                        id: workerId,
+                        type: workerType,
+                        active: metrics.status > 0,
+                        hostname: metadata.hostname,
+                        cpuUtilization: metrics.cpu_utilization || 0,
+                        memoryUtilization: metrics.memory_utilization || 0,
+                        gpuUtilization: metrics.gpu_utilization || 0,
+                        activeTasks: metrics.active_tasks || 0
+                    });
+                }
+            }
+            
+            // Sort workers by type and id
+            workers.sort((a, b) => {
+                if (a.type !== b.type) {
+                    return a.type.localeCompare(b.type);
+                } else {
+                    return a.id.localeCompare(b.id);
+                }
+            });
+            
+            // Create worker tiles
+            for (const worker of workers) {
+                const workerTile = document.createElement('div');
+                
+                let typeClass = 'worker-tile-cpu';
+                if (worker.type === 'gpu') {
+                    typeClass = 'worker-tile-gpu';
+                } else if (worker.type === 'tpu') {
+                    typeClass = 'worker-tile-tpu';
+                }
+                
+                workerTile.className = `worker-tile ${worker.active ? typeClass : 'worker-tile-inactive'}`;
+                workerTile.setAttribute('data-worker-id', worker.id);
+                
+                // Set utilization as opacity (higher utilization = darker color)
+                const utilization = worker.type === 'gpu' ? worker.gpuUtilization : worker.cpuUtilization;
+                const opacity = 0.5 + (utilization / 200); // Scale from 0.5 to 1.0
+                workerTile.style.opacity = opacity;
+                
+                // Add worker name and info
+                workerTile.innerHTML = `
+                    <div>${worker.id.substring(0, 8)}</div>
+                    <div class="small">${worker.type.toUpperCase()}</div>
+                    <div class="small">${worker.activeTasks} tasks</div>
+                `;
+                
+                // Add click handler to show detail modal
+                workerTile.addEventListener('click', () => {
+                    showWorkerDetail(worker.id);
+                });
+                
+                workerGrid.appendChild(workerTile);
+            }
+        }
+
+        function updateTaskCounts() {
+            if (!systemMetrics) return;
+            
+            // Update tasks count
+            const queuedTasks = systemMetrics.tasks_queued || 0;
+            const runningTasks = systemMetrics.tasks_running || 0;
+            const completedTasks = systemMetrics.tasks_completed || 0;
+            document.getElementById('tasks-count').textContent = `${queuedTasks}/${runningTasks}/${completedTasks}`;
+        }
+
+        function updateTaskDistribution(data, type = 'status') {
+            if (!data) return;
+            
+            if (type === 'status') {
+                const labels = ['Queued', 'Running', 'Completed', 'Failed'];
+                const counts = [
+                    data.status_counts.queued || 0,
+                    data.status_counts.running || 0,
+                    data.status_counts.completed || 0,
+                    data.status_counts.failed || 0
+                ];
+                
+                taskDistributionChart.data.labels = labels;
+                taskDistributionChart.data.datasets[0].data = counts;
+                taskDistributionChart.data.datasets[0].backgroundColor = ['#4e73df', '#1cc88a', '#36b9cc', '#e74a3b'];
+            } else {
+                const labels = [];
+                const counts = [];
+                const colors = ['#4e73df', '#1cc88a', '#36b9cc', '#e74a3b', '#f6c23e', '#858796'];
+                
+                let i = 0;
+                for (const family in data.family_counts) {
+                    labels.push(family);
+                    counts.push(data.family_counts[family]);
+                    i++;
+                }
+                
+                taskDistributionChart.data.labels = labels;
+                taskDistributionChart.data.datasets[0].data = counts;
+                taskDistributionChart.data.datasets[0].backgroundColor = colors.slice(0, i);
+            }
+            
+            taskDistributionChart.update();
+        }
+
+        function updateResourceUtilization(type = 'cpu') {
+            if (!workerMetrics || !workerMetadata) return;
+            
+            // Get list of workers
+            const workers = [];
+            
+            for (const workerId in workerMetadata) {
+                if (workerMetrics[workerId]) {
+                    const metadata = workerMetadata[workerId];
+                    const metrics = workerMetrics[workerId];
+                    
+                    if (metrics.status <= 0) continue; // Skip inactive workers
+                    
+                    workers.push({
+                        id: workerId,
+                        hostname: metadata.hostname,
+                        cpuUtilization: metrics.cpu_utilization || 0,
+                        memoryUtilization: metrics.memory_utilization || 0,
+                        gpuUtilization: metrics.gpu_utilization || 0
+                    });
+                }
+            }
+            
+            // Sort workers by hostname
+            workers.sort((a, b) => a.hostname.localeCompare(b.hostname));
+            
+            // Update chart
+            const labels = workers.map(w => w.hostname);
+            let data = [];
+            let label = '';
+            let color = '';
+            
+            if (type === 'cpu') {
+                data = workers.map(w => w.cpuUtilization);
+                label = 'CPU Utilization (%)';
+                color = '#4e73df';
+            } else if (type === 'gpu') {
+                data = workers.map(w => w.gpuUtilization);
+                label = 'GPU Utilization (%)';
+                color = '#1cc88a';
+            } else if (type === 'memory') {
+                data = workers.map(w => w.memoryUtilization);
+                label = 'Memory Utilization (%)';
+                color = '#36b9cc';
+            }
+            
+            resourceUtilizationChart.data.labels = labels;
+            resourceUtilizationChart.data.datasets[0].label = label;
+            resourceUtilizationChart.data.datasets[0].data = data;
+            resourceUtilizationChart.data.datasets[0].backgroundColor = color;
+            resourceUtilizationChart.update();
+        }
+
+        function updatePerformanceChart(type = 'throughput') {
+            if (!systemMetrics) return;
+            
+            // Add current throughput to chart
+            if (type === 'throughput') {
+                const throughput = systemMetrics.throughput || 0;
+                addDataPoint(performanceChart, throughput);
+                performanceChart.data.datasets[0].label = 'Throughput (tasks/min)';
+                performanceChart.data.datasets[0].borderColor = '#4e73df';
+            } else if (type === 'latency') {
+                const latency = systemMetrics.avg_queue_time || 0;
+                addDataPoint(performanceChart, latency);
+                performanceChart.data.datasets[0].label = 'Average Queue Time (s)';
+                performanceChart.data.datasets[0].borderColor = '#e74a3b';
+            } else if (type === 'success') {
+                const successRate = systemMetrics.success_rate || 100;
+                addDataPoint(performanceChart, successRate);
+                performanceChart.data.datasets[0].label = 'Success Rate (%)';
+                performanceChart.data.datasets[0].borderColor = '#1cc88a';
+            }
+            
+            performanceChart.update();
+        }
+
+        function addDataPoint(chart, value) {
+            // Add new data point and remove oldest
+            chart.data.datasets[0].data.push(value);
+            chart.data.datasets[0].data.shift();
+            
+            // Update labels
+            chart.data.labels.push(formatTime(new Date()));
+            chart.data.labels.shift();
+        }
+
+        function generateTimeLabels(count) {
+            const labels = [];
+            const now = new Date();
+            
+            for (let i = count - 1; i >= 0; i--) {
+                const time = new Date(now.getTime() - i * 10000);
+                labels.push(formatTime(time));
+            }
+            
+            return labels;
+        }
+
+        function formatTime(date) {
+            const hours = date.getHours().toString().padStart(2, '0');
+            const minutes = date.getMinutes().toString().padStart(2, '0');
+            const seconds = date.getSeconds().toString().padStart(2, '0');
+            return `${hours}:${minutes}:${seconds}`;
+        }
+
+        function updateLastUpdated(timestamp) {
+            const date = new Date(timestamp);
+            document.getElementById('last-updated').textContent = `Last updated: ${formatTime(date)}`;
+        }
+
+        function fetchAnomalies() {
+            fetch('/api/anomalies')
+                .then(response => response.json())
+                .then(data => {
+                    anomalies = data;
+                    updateAnomalies();
+                    updateSystemStatus();
+                });
+        }
+
+        function updateAnomalies() {
+            const alertsContainer = document.getElementById('alerts-container');
+            const noAlertsMessage = document.getElementById('no-alerts-message');
+            const alertCount = document.getElementById('alert-count');
+            
+            if (anomalies.length === 0) {
+                alertsContainer.innerHTML = '';
+                alertsContainer.appendChild(noAlertsMessage);
+                noAlertsMessage.style.display = 'block';
+                alertCount.textContent = '0';
+            } else {
+                alertsContainer.innerHTML = '';
+                noAlertsMessage.style.display = 'none';
+                alertCount.textContent = anomalies.length.toString();
+                
+                // Sort anomalies by severity
+                anomalies.sort((a, b) => {
+                    const severityOrder = { high: 0, medium: 1, low: 2 };
+                    return severityOrder[a.severity] - severityOrder[b.severity];
+                });
+                
+                // Add anomalies to container
+                for (const anomaly of anomalies) {
+                    const anomalyItem = document.createElement('div');
+                    anomalyItem.className = `anomaly-item anomaly-${anomaly.severity}`;
+                    
+                    let anomalyIcon = 'bi-exclamation-triangle';
+                    if (anomaly.severity === 'high') {
+                        anomalyIcon = 'bi-exclamation-circle';
+                    } else if (anomaly.severity === 'low') {
+                        anomalyIcon = 'bi-info-circle';
+                    }
+                    
+                    anomalyItem.innerHTML = `
+                        <div class="d-flex align-items-center">
+                            <i class="bi ${anomalyIcon} me-2"></i>
+                            <div class="flex-grow-1">
+                                <div class="d-flex justify-content-between">
+                                    <strong>${anomaly.type}</strong>
+                                    <span class="badge bg-${anomaly.severity === 'high' ? 'danger' : anomaly.severity === 'medium' ? 'warning' : 'success'}">${anomaly.severity}</span>
+                                </div>
+                                <div>${anomaly.message}</div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    alertsContainer.appendChild(anomalyItem);
+                }
+            }
+        }
+
+        function showWorkerDetail(workerId) {
+            const worker = workerMetadata[workerId];
+            const metrics = workerMetrics[workerId];
+            
+            if (!worker || !metrics) return;
+            
+            // Set worker information
+            document.getElementById('worker-detail-id').textContent = workerId;
+            document.getElementById('worker-detail-hostname').textContent = worker.hostname;
+            document.getElementById('worker-detail-type').textContent = worker.worker_type;
+            document.getElementById('worker-detail-status').textContent = metrics.status > 0 ? 'Active' : 'Inactive';
+            document.getElementById('worker-detail-active-tasks').textContent = metrics.active_tasks || 0;
+            document.getElementById('worker-detail-registration-time').textContent = new Date(worker.registration_time).toLocaleString();
+            
+            // Set resource utilization
+            const cpuUtilization = metrics.cpu_utilization || 0;
+            const memoryUtilization = metrics.memory_utilization || 0;
+            const gpuUtilization = metrics.gpu_utilization || 0;
+            const assignmentEfficiency = metrics.assignment_efficiency || 0;
+            
+            const cpuBar = document.getElementById('worker-detail-cpu');
+            cpuBar.style.width = `${cpuUtilization}%`;
+            cpuBar.textContent = `${cpuUtilization.toFixed(1)}%`;
+            cpuBar.className = `progress-bar ${cpuUtilization > 80 ? 'bg-danger' : cpuUtilization > 60 ? 'bg-warning' : 'bg-primary'}`;
+            
+            const memoryBar = document.getElementById('worker-detail-memory');
+            memoryBar.style.width = `${memoryUtilization}%`;
+            memoryBar.textContent = `${memoryUtilization.toFixed(1)}%`;
+            memoryBar.className = `progress-bar ${memoryUtilization > 80 ? 'bg-danger' : memoryUtilization > 60 ? 'bg-warning' : 'bg-info'}`;
+            
+            const gpuBar = document.getElementById('worker-detail-gpu');
+            gpuBar.style.width = `${gpuUtilization}%`;
+            gpuBar.textContent = `${gpuUtilization.toFixed(1)}%`;
+            gpuBar.className = `progress-bar ${gpuUtilization > 80 ? 'bg-danger' : gpuUtilization > 60 ? 'bg-warning' : 'bg-success'}`;
+            
+            const efficiencyBar = document.getElementById('worker-detail-efficiency');
+            efficiencyBar.style.width = `${assignmentEfficiency}%`;
+            efficiencyBar.textContent = `${assignmentEfficiency.toFixed(1)}%`;
+            efficiencyBar.className = `progress-bar ${assignmentEfficiency < 50 ? 'bg-danger' : assignmentEfficiency < 80 ? 'bg-warning' : 'bg-success'}`;
+            
+            // TODO: Fetch worker tasks and update task table
+            
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('worker-detail-modal'));
+            modal.show();
+        }
+    </script>
+</body>
+</html>

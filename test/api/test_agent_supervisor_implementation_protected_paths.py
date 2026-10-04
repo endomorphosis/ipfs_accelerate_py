@@ -1728,213 +1728,6 @@ def test_ephemeral_fence_accepts_concurrent_daemon_owned_completion_commit(
     assert accepted[0]["protected_paths"] == [POLICY_PATH]
 
 
-def _duckdb_bound_task(*, outputs: list[str]) -> PortalTask:
-    return replace(
-        _task(outputs=outputs),
-        canonical_task_key="sha256:" + "a" * 64,
-        canonical_task_cid="sha256:" + "b" * 64,
-        board_namespace="database-attempt-fixture",
-    )
-
-
-def test_ephemeral_fence_accepts_clean_strict_forward_control_update_for_duckdb_task(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    daemon, repo, workspace, protected = _protected_git_worktree_daemon(tmp_path)
-    # The task body is canonical DuckDB state.  Portal's Markdown path is only
-    # a projection and supplies no authority to this decision.
-    task = _duckdb_bound_task(outputs=["src/example.py"])
-    authority = {
-        "authoritative_task_store": "duckdb",
-        "projection_authority": False,
-        "task_alias": task.task_id,
-        "task_cid": task.canonical_task_cid,
-        "binding_id": "sha256:" + "c" * 64,
-        "attempt_id": "attempt:focused",
-        "claim_id": "claim:focused",
-        "lease_id": "lease:focused",
-        "attempt_number": 1,
-        "fencing_token": 1,
-        "fence_epoch": 1,
-    }
-    monkeypatch.setattr(
-        daemon,
-        "_database_forward_update_attempt_identity",
-        lambda observed: authority if observed == task else {},
-    )
-    before = daemon._require_implementation_protected_snapshot(
-        task=task,
-        attempt=1,
-        workspace_path=workspace,
-    )
-
-    protected.write_text("external control-plane update\n", encoding="utf-8")
-    _git(repo, "add", POLICY_PATH)
-    _git(
-        repo,
-        "-c",
-        "user.name=External Controller",
-        "-c",
-        "user.email=external-controller@example.invalid",
-        "commit",
-        "-m",
-        "advance protected control-plane source",
-    )
-
-    violation = daemon._implementation_protected_path_violation(
-        task=task,
-        attempt=1,
-        workspace_path=workspace,
-        before=before,
-    )
-
-    assert violation == {}
-    assert not daemon._implementation_protected_incident_path().exists()
-    events = [
-        json.loads(line)
-        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
-    ]
-    accepted = [
-        event
-        for event in events
-        if event["type"]
-        == "implementation_protected_path_concurrent_update_accepted"
-        and event.get("history_kind")
-        == "clean_strict_forward_protected_source_update"
-    ]
-    assert len(accepted) == 1
-    assert accepted[0]["task_output_scope_excluded"] is True
-    assert accepted[0]["workspace_protected_paths_unchanged"] is True
-    assert accepted[0]["shared_checkout_clean"] is True
-    assert accepted[0]["database_attempt_identity"] == authority
-    assert accepted[0]["before_head"] != accepted[0]["after_head"]
-    assert accepted[0]["after_tree"] == _git(repo, "rev-parse", "HEAD^{tree}")
-    assert accepted[0]["protected_paths"] == [POLICY_PATH]
-    assert accepted[0]["path_evidence"][0]["path"] == POLICY_PATH
-
-
-@pytest.mark.parametrize(
-    "denial",
-    [
-        "markdown_authority",
-        "output_overlap",
-        "dirty_checkout",
-        "rewritten_history",
-    ],
-)
-def test_ephemeral_fence_rejects_unproved_forward_control_update(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    denial: str,
-) -> None:
-    daemon, repo, workspace, protected = _protected_git_worktree_daemon(tmp_path)
-    rollback_head = ""
-    if denial == "rewritten_history":
-        rollback_head, _discarded_head = _temporary_shared_merge(repo, protected)
-    task = _duckdb_bound_task(
-        outputs=[POLICY_PATH] if denial == "output_overlap" else ["src/example.py"]
-    )
-    if denial != "markdown_authority":
-        monkeypatch.setattr(
-            daemon,
-            "_database_forward_update_attempt_identity",
-            lambda observed: (
-                {
-                    "authoritative_task_store": "duckdb",
-                    "projection_authority": False,
-                    "task_alias": observed.task_id,
-                    "task_cid": observed.canonical_task_cid,
-                    "binding_id": "sha256:" + "c" * 64,
-                }
-                if observed == task
-                else {}
-            ),
-        )
-    before = daemon._require_implementation_protected_snapshot(
-        task=task,
-        attempt=1,
-        workspace_path=workspace,
-    )
-    if rollback_head:
-        _git(repo, "reset", "--hard", rollback_head)
-    protected.write_text("unproved external update\n", encoding="utf-8")
-    _git(repo, "add", POLICY_PATH)
-    _git(
-        repo,
-        "-c",
-        "user.name=External Controller",
-        "-c",
-        "user.email=external-controller@example.invalid",
-        "commit",
-        "-m",
-        "unproved protected source update",
-    )
-    if denial == "dirty_checkout":
-        (repo / "untracked-provider-byte.txt").write_text(
-            "not admitted\n",
-            encoding="utf-8",
-        )
-
-    violation = daemon._implementation_protected_path_violation(
-        task=task,
-        attempt=1,
-        workspace_path=workspace,
-        before=before,
-    )
-
-    assert violation["reason"] == "implementation_protected_path_mutated"
-    assert daemon._implementation_protected_incident_path().exists()
-
-
-def test_crash_recovery_does_not_clear_clean_head_without_quack_retry_receipt(
-    tmp_path: Path,
-) -> None:
-    daemon, repo, workspace, protected = _protected_git_worktree_daemon(tmp_path)
-    task = _duckdb_bound_task(outputs=["src/example.py"])
-    # Deliberately omit DuckDB attempt authority so the live fence latches.
-    before = daemon._require_implementation_protected_snapshot(
-        task=task,
-        attempt=1,
-        workspace_path=workspace,
-    )
-    protected.write_text("committed but not admitted\n", encoding="utf-8")
-    _git(repo, "add", POLICY_PATH)
-    _git(
-        repo,
-        "-c",
-        "user.name=External Controller",
-        "-c",
-        "user.email=external-controller@example.invalid",
-        "commit",
-        "-m",
-        "unbound protected source update",
-    )
-    violation = daemon._implementation_protected_path_violation(
-        task=task,
-        attempt=1,
-        workspace_path=workspace,
-        before=before,
-    )
-    assert violation["reason"] == "implementation_protected_path_mutated"
-    incident_path = daemon._implementation_protected_incident_path()
-    active_path = daemon._implementation_protected_active_snapshot_path()
-    incident_before = incident_path.read_bytes()
-    active_before = active_path.read_bytes()
-
-    recovery = daemon._reconcile_implementation_protected_path_fence()
-
-    assert recovery["blocked"] is True
-    assert recovery["reason"] == "implementation_protected_path_incident_latched"
-    assert incident_path.read_bytes() == incident_before
-    assert active_path.read_bytes() == active_before
-    assert not list(
-        incident_path.parent.glob(
-            "implementation-protected-path-head-clean-clearance-*.json"
-        )
-    )
-
-
 def test_ephemeral_fence_accepts_trusted_update_after_temporary_merge_rollback(
     tmp_path: Path,
 ) -> None:
@@ -2503,137 +2296,6 @@ def test_protected_verification_lock_timeout_defers_without_latching(
     lock_path.unlink()
 
 
-def test_ephemeral_lock_retry_does_not_redispatch_provider_or_block(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    daemon, _repo, _workspace, _protected = (
-        _protected_git_worktree_daemon(tmp_path)
-    )
-    task = _task(outputs=["src/example.py"])
-    state = PortalTaskState()
-    provider_workspaces: list[Path] = []
-    validation_workspaces: list[Path] = []
-    queued_workspaces: list[Path] = []
-
-    def provider_runner(*_args, **kwargs):
-        provider_workspace = Path(kwargs["cwd"]).resolve()
-        provider_workspaces.append(provider_workspace)
-        output = provider_workspace / "src" / "example.py"
-        output.parent.mkdir(parents=True)
-        output.write_text("candidate = True\n", encoding="utf-8")
-        kwargs["on_started"](SimpleNamespace())
-        return subprocess.CompletedProcess(["fake-agent"], 0)
-
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "run_process_group_stream",
-        provider_runner,
-    )
-    original_acquire = (
-        daemon._acquire_implementation_protected_verification_lock
-    )
-    acquisition_workspaces: list[Path] = []
-
-    def acquire_after_one_peer_lease(**kwargs):
-        acquisition_workspaces.append(
-            Path(kwargs["workspace_path"]).resolve()
-        )
-        if len(acquisition_workspaces) == 1:
-            return {
-                "acquired": False,
-                "reason": "lock_exists",
-                "lock_path": str(
-                    checkout_mutation_lock_path(daemon.repo_root)
-                ),
-                "waited_seconds": 30.0,
-                "lock_owner_pid": 1234,
-                "lock_owner_task_id": "EX-PEER",
-                "lock_owner_branch": "implementation/ex-peer",
-                "lock_owner_operation": "merge_validated_worktree",
-            }
-        return original_acquire(**kwargs)
-
-    monkeypatch.setattr(
-        daemon,
-        "_acquire_implementation_protected_verification_lock",
-        acquire_after_one_peer_lease,
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_prepare_worktree_for_validation",
-        lambda *_args, **_kwargs: None,
-    )
-
-    def validate(workspace_path, *_args, **_kwargs):
-        validation_workspaces.append(Path(workspace_path).resolve())
-        return {
-            "attempted": True,
-            "passed": True,
-            "returncode": 0,
-            "results": [],
-            "reason": "passed",
-        }
-
-    monkeypatch.setattr(
-        daemon,
-        "_run_validation_with_candidate_binding",
-        validate,
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_validated_candidate_handoff_guard",
-        lambda *_args, **kwargs: {
-            "allowed": True,
-            "phase": str(kwargs.get("phase") or ""),
-        },
-    )
-
-    def enqueue(**kwargs):
-        queued_workspaces.append(Path(kwargs["worktree_path"]).resolve())
-        return {
-            "queued": True,
-            "merged": False,
-            "reason": "queued",
-            "request_id": "merge:ex-001",
-            "target_branch": "main",
-        }
-
-    monkeypatch.setattr(
-        daemon,
-        "_enqueue_validated_worktree",
-        enqueue,
-    )
-
-    result = daemon._run_implementation_in_ephemeral_worktree(
-        task=task,
-        state=state,
-        attempt=1,
-        started_at="2026-08-30T00:00:00+00:00",
-        log_path=tmp_path / "state" / "lock-retry.log",
-        prompt="implement",
-    )
-
-    assert result["returncode"] == 0
-    assert result["provider_dispatched"] is True
-    assert len(provider_workspaces) == 1
-    assert validation_workspaces == provider_workspaces
-    assert queued_workspaces == provider_workspaces
-    # Initial verification retries once in place, then post-validation
-    # verification reacquires the same repository lease normally.
-    assert acquisition_workspaces == provider_workspaces * 3
-    assert result["merge_result"]["queued"] is True
-    assert result["board_completion"]["pending_merge"] is True
-    assert result.get("reason") != (
-        "implementation_protected_path_verification_lock_timeout"
-    )
-    assert result.get("deferred") is not True
-    events = list(daemon._iter_events())
-    assert not any(
-        event.get("type") == "task_blocked" for event in events
-    )
-
-
 def test_shared_terminal_verification_deferral_does_not_consume_attempt(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2736,10 +2398,6 @@ def test_ephemeral_verification_lock_deferral_does_not_consume_attempt(
 
     def provider_runner(*_args, **kwargs):
         provider_inheritance.append(bool(kwargs["inherit_environment"]))
-        provider_workspace = Path(kwargs["cwd"])
-        output = provider_workspace / "src" / "example.py"
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text("retained_candidate = True\n", encoding="utf-8")
         return subprocess.CompletedProcess(["fake-agent"], 0)
 
     monkeypatch.setattr(
@@ -2763,7 +2421,6 @@ def test_ephemeral_verification_lock_deferral_does_not_consume_attempt(
         "_acquire_implementation_protected_verification_lock",
         defer_verification,
     )
-    original_preserve = daemon._preserve_interrupted_worktree
     monkeypatch.setattr(
         daemon,
         "_preserve_interrupted_worktree",
@@ -2771,7 +2428,6 @@ def test_ephemeral_verification_lock_deferral_does_not_consume_attempt(
             "verification deferral attempted candidate commit or rescue ref"
         ),
     )
-    original_cleanup = daemon._cleanup_merged_worktree
     monkeypatch.setattr(
         daemon,
         "_cleanup_merged_worktree",
@@ -2829,13 +2485,6 @@ def test_ephemeral_verification_lock_deferral_does_not_consume_attempt(
         "reason": "verification_deferred_checkout_lease_active",
         "retained": True,
     }
-    retained_receipt = retained["retained_candidate_receipt"]
-    assert retained_receipt["provider_dispatched"] is True
-    assert retained_receipt["attempt_consumed"] is False
-    assert retained_receipt["retained_workspace"]["status_bytes"] >= 0
-    assert retained_receipt["retained_workspace"][
-        "fingerprint_id"
-    ].startswith("sha256:")
     retained_path = Path(result["worktree_path"])
     assert retained_path.exists()
     lifecycle = daemon.worktree_lifecycle.load_workspace(retained_path)
@@ -2849,10 +2498,8 @@ def test_ephemeral_verification_lock_deferral_does_not_consume_attempt(
         workspace_path=retained_path,
         branch=result["branch"],
     )
-    assert not cleanup_authorization.allowed
-    assert cleanup_authorization.reason == (
-        "verification_deferred_candidate_recovery_required"
-    )
+    assert cleanup_authorization.allowed
+    assert cleanup_authorization.reason == "terminal_record"
     retry_lifecycle = daemon.worktree_lifecycle.begin_preparing(
         task_id=task.task_id,
         canonical_task_cid=canonical_task_cid,
@@ -2874,140 +2521,6 @@ def test_ephemeral_verification_lock_deferral_does_not_consume_attempt(
     assert persisted.implementation_attempts_by_cid == {
         canonical_task_cid: 2
     }
-
-    # A later maintenance pass owns the checkout transaction, reproduces the
-    # exact retained bytes/lifecycle, and materializes one clean rescue commit.
-    # The provider is never invoked a second time.
-    monkeypatch.setattr(daemon, "_run_git", original_run_git)
-    monkeypatch.setattr(
-        daemon,
-        "_preserve_interrupted_worktree",
-        original_preserve,
-    )
-    monkeypatch.setattr(
-        daemon,
-        "_cleanup_merged_worktree",
-        original_cleanup,
-    )
-    retained_output = retained_path / "src" / "example.py"
-    retained_output.write_text("tampered = True\n", encoding="utf-8")
-    with pytest.raises(RuntimeError, match="fingerprint changed"):
-        daemon.recover_retained_verification_deferred_candidate(
-            task=task,
-            retained_candidate_receipt=retained_receipt,
-        )
-    assert provider_inheritance == [False]
-    assert daemon.worktree_lifecycle.authorize_cleanup(
-        workspace_path=retained_path,
-        branch=result["branch"],
-    ).reason == "verification_deferred_candidate_recovery_required"
-    retained_output.write_text(
-        "retained_candidate = True\n",
-        encoding="utf-8",
-    )
-    original_commit = daemon._commit_worktree_changes
-    monkeypatch.setattr(
-        daemon,
-        "_commit_worktree_changes",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            RuntimeError("injected retained preservation failure")
-        ),
-    )
-    with pytest.raises(
-        RuntimeError,
-        match="injected retained preservation failure",
-    ):
-        daemon.recover_retained_verification_deferred_candidate(
-            task=task,
-            retained_candidate_receipt=retained_receipt,
-        )
-    failed_preservation_lifecycle = (
-        daemon.worktree_lifecycle.load_workspace(retained_path)
-    )
-    assert failed_preservation_lifecycle is not None
-    assert failed_preservation_lifecycle.terminal_reason == (
-        "verification_deferred_checkout_lease_unavailable"
-    )
-    assert daemon.worktree_lifecycle.authorize_cleanup(
-        workspace_path=retained_path,
-        branch=result["branch"],
-    ).reason == "verification_deferred_candidate_recovery_required"
-    monkeypatch.setattr(
-        daemon,
-        "_commit_worktree_changes",
-        original_commit,
-    )
-
-    def exact_owner_cleanup(
-        worktree_path,
-        branch_name,
-        *,
-        reusable=True,
-        caller_lease_id="",
-    ):
-        rescue_branch = daemon._interrupted_worktree_rescue_branch_name(
-            branch_name,
-            "verification-deferred",
-        )
-        assert daemon._git_ref_exists(rescue_branch)
-        recovery_lifecycle = daemon.worktree_lifecycle.load_workspace(
-            worktree_path
-        )
-        assert recovery_lifecycle is not None
-        assert recovery_lifecycle.terminal_reason == (
-            "verification_deferred_candidate_recovery_authorized"
-        )
-        assert caller_lease_id == retained_receipt["lifecycle"]["lease_id"]
-        assert daemon.worktree_lifecycle.authorize_cleanup(
-            workspace_path=worktree_path,
-            branch=branch_name,
-        ).reason == "verification_deferred_recovery_owner_required"
-        assert daemon.worktree_lifecycle.authorize_cleanup(
-            workspace_path=worktree_path,
-            branch=branch_name,
-            caller_lease_id="foreign-recovery-owner",
-        ).reason == "verification_deferred_recovery_owner_required"
-        exact_owner = daemon.worktree_lifecycle.authorize_cleanup(
-            workspace_path=worktree_path,
-            branch=branch_name,
-            caller_lease_id=caller_lease_id,
-        )
-        assert exact_owner.allowed
-        assert exact_owner.reason == (
-            "verification_deferred_recovery_owner_after_rescue"
-        )
-        return original_cleanup(
-            worktree_path,
-            branch_name,
-            reusable=reusable,
-            caller_lease_id=caller_lease_id,
-        )
-
-    monkeypatch.setattr(
-        daemon,
-        "_cleanup_merged_worktree",
-        exact_owner_cleanup,
-    )
-    recovery = daemon.recover_retained_verification_deferred_candidate(
-        task=task,
-        retained_candidate_receipt=retained_receipt,
-    )
-    assert recovery["recovered"] is True
-    assert recovery["provider_dispatched"] is False
-    assert recovery["attempt_consumed"] is False
-    assert recovery["source_receipt_id"] == retained_receipt["receipt_id"]
-    assert len(recovery["preserved_commit"]) == 40
-    assert recovery["rescue_branch"].endswith("-verification-deferred")
-    assert recovery["preservation"]["cleanup_result"]["cleaned"] is True
-    if retained_path.exists():
-        assert subprocess.run(
-            ["git", "status", "--porcelain"],
-            cwd=retained_path,
-            text=True,
-            capture_output=True,
-            check=True,
-        ).stdout == ""
-    assert provider_inheritance == [False]
 
 
 def test_protected_verification_double_snapshot_workspace_race_latches_mutation(

@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}Visualization Dashboard - {{ title }}{% endblock %}
+
+{% block header %}Visualization Dashboard{% endblock %}
+
+{% block header_buttons %}
+<div>
+    <a href="{{ url_for('validation_results') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Back to Results
+    </a>
+    <a href="{{ dashboard_url }}" class="btn btn-outline-primary" target="_blank">
+        <i class="bi bi-box-arrow-up-right"></i> Open in New Tab
+    </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Dashboard Content -->
+<div class="card {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+    <div class="card-body p-0">
+        <!-- Responsive iframe for the dashboard -->
+        <div class="ratio" style="--bs-aspect-ratio: 75%;">
+            <iframe src="{{ dashboard_url }}" title="Visualization Dashboard" allowfullscreen></iframe>
+        </div>
+    </div>
+</div>
+
+<!-- Dashboard Controls -->
+<div class="card mt-4 {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-sliders"></i> Dashboard Controls</h5>
+    </div>
+    <div class="card-body">
+        <form method="get" action="{{ url_for('dashboard') }}">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label for="hardware_id" class="form-label">Hardware</label>
+                    <select class="form-select {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="hardware_id" name="hardware_id">
+                        <option value="">All Hardware</option>
+                        {% for hw in hardware_types if hardware_types is defined %}
+                        <option value="{{ hw.id }}" {% if hw.id == hardware_id %}selected{% endif %}>{{ hw.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label for="model_id" class="form-label">Model</label>
+                    <select class="form-select {% if theme == 'dark' %}bg-dark text-light{% endif %}" id="model_id" name="model_id">
+                        <option value="">All Models</option>
+                        {% for model in model_types if model_types is defined %}
+                        <option value="{{ model.id }}" {% if model.id == model_id %}selected{% endif %}>{{ model.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label d-block">&nbsp;</label> <!-- Spacer for alignment -->
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-filter"></i> Update Dashboard
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Dashboard Information -->
+<div class="card mt-4 {% if theme == 'dark' %}bg-dark text-light{% endif %}">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-info-circle"></i> About This Dashboard</h5>
+    </div>
+    <div class="card-body">
+        <p>This interactive dashboard provides visualization of simulation validation results. Use it to:</p>
+        <ul>
+            <li>Compare simulation and hardware metrics across different models and hardware platforms</li>
+            <li>Analyze error patterns and identify areas for improvement</li>
+            <li>View trends in simulation accuracy over time</li>
+            <li>Identify potential calibration opportunities</li>
+        </ul>
+        
+        <div class="alert alert-info mt-3" role="alert">
+            <i class="bi bi-lightbulb"></i> <strong>Tip:</strong> The dashboard is interactive. Click on legends, bars, and data points to filter and explore the data.
+            Hover over charts for additional information.
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Add responsive height adjustment for the iframe
+    document.addEventListener('DOMContentLoaded', function() {
+        function adjustIframeHeight() {
+            const windowHeight = window.innerHeight;
+            const iframe = document.querySelector('.ratio');
+            if (iframe) {
+                // Set iframe height to 75% of viewport height, with min of 500px
+                const targetHeight = Math.max(500, windowHeight * 0.75);
+                iframe.style.height = `${targetHeight}px`;
+            }
+        }
+        
+        // Initial adjustment
+        adjustIframeHeight();
+        
+        // Adjust on resize
+        window.addEventListener('resize', adjustIframeHeight);
+    });
+</script>
+{% endblock %}
