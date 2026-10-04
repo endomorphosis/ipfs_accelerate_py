@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import stat
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -1199,7 +1200,7 @@ def _git(repo_root: Path, *arguments: str, binary: bool = False) -> str | bytes 
     return result.stdout.decode("utf-8", errors="surrogateescape")
 
 
-def _git_source(repo_root: Path, revision: str | None, path: str) -> tuple[str | None, str]:
+def _git_source(repo_root: Path, revision: str | None, path: str, *, binary_metadata: dict[str, object] | None = None) -> tuple[str | None, str]:
     if revision is None:
         absolute = repo_root / path
         if absolute.is_symlink():
@@ -1215,6 +1216,20 @@ def _git_source(repo_root: Path, revision: str | None, path: str) -> tuple[str |
         if not isinstance(raw, bytes):
             return None, ""
         blob = _git(repo_root, "rev-parse", f"{revision}:{path}")
+    # Metadata describes actual opaque bytes read by the local collector;
+    # providers cannot grant themselves binary path authority with these fields.
+    if binary_metadata is not None:
+        try:
+            is_binary = b"\0" in raw
+            if not is_binary:
+                raw.decode("utf-8")
+        except UnicodeDecodeError:
+            is_binary = True
+        if is_binary:
+            binary_metadata.update({
+                "size_bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest(),
+                "media_type": "application/pdf" if raw.startswith(b"%PDF-") and b"%%EOF" in raw[-1024:] else "application/zip" if raw.startswith((b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08")) else "application/octet-stream",
+            })
     if b"\0" in raw:
         return None, str(blob or "").strip()
     try:
@@ -1222,6 +1237,44 @@ def _git_source(repo_root: Path, revision: str | None, path: str) -> tuple[str |
     except UnicodeDecodeError:
         return None, str(blob or "").strip()
     return source, str(blob or "").strip()
+
+
+def _git_entry_mode(repo_root: Path, revision: str | None, path: str) -> str:
+    """Read the Git object mode without following a candidate symlink."""
+
+    if revision is not None:
+        raw = _git(repo_root, "ls-tree", "-z", revision, "--", f":(literal){path}", binary=True)
+        records = raw.split(b"\0") if isinstance(raw, bytes) else []
+        records = [record for record in records if record]
+        if len(records) == 1:
+            header, separator, raw_path = records[0].partition(b"\t")
+            mode = header.split(b" ", 1)[0].decode("ascii")
+            if separator and raw_path.decode("utf-8", errors="surrogateescape") == path:
+                if mode in {"100644", "100755", "120000", "160000"}:
+                    return mode
+        raise ValueError(f"unable to bind baseline Git mode: {path}")
+
+    try:
+        observed = (repo_root / path).lstat().st_mode
+    except FileNotFoundError:
+        observed = 0
+    if stat.S_ISLNK(observed):
+        return "120000"
+    if stat.S_ISREG(observed):
+        return "100755" if observed & stat.S_IXUSR else "100644"
+    # An initialized or absent gitlink is identified by its stage-zero index
+    # entry, not by treating an arbitrary directory as a source file.
+    raw = _git(repo_root, "ls-files", "--stage", "-z", "--", f":(literal){path}", binary=True)
+    records = raw.split(b"\0") if isinstance(raw, bytes) else []
+    records = [record for record in records if record]
+    if len(records) == 1:
+        header, separator, raw_path = records[0].partition(b"\t")
+        fields = header.split()
+        if (separator and len(fields) == 3 and fields[0] == b"160000"
+                and fields[2] == b"0"
+                and raw_path.decode("utf-8", errors="surrogateescape") == path):
+            return "160000"
+    raise ValueError(f"unable to bind candidate Git mode: {path}")
 
 
 def collect_git_candidate_diff(
@@ -1276,11 +1329,13 @@ def collect_git_candidate_diff(
 
     entries: list[CandidateDiffEntry] = []
     for status, old_path, new_path in changes:
+        before_metadata: dict[str, object] = {}
+        after_metadata: dict[str, object] = {}
         before_source, before_blob = (
-            _git_source(root, base_revision, old_path) if old_path else (None, "")
+            _git_source(root, base_revision, old_path, binary_metadata=before_metadata) if old_path else (None, "")
         )
         after_source, after_blob = (
-            _git_source(root, candidate_revision, new_path) if new_path else (None, "")
+            _git_source(root, candidate_revision, new_path, binary_metadata=after_metadata) if new_path else (None, "")
         )
         binary = bool(
             (old_path and before_source is None and before_blob)
@@ -1296,6 +1351,12 @@ def collect_git_candidate_diff(
                 before_blob_id=before_blob,
                 after_blob_id=after_blob,
                 binary=binary,
+                metadata={
+                    **{"before_" + k: v for k, v in before_metadata.items()},
+                    **{"after_" + k: v for k, v in after_metadata.items()},
+                    "before_mode": _git_entry_mode(root, base_revision, old_path) if old_path else "",
+                    "after_mode": _git_entry_mode(root, candidate_revision, new_path) if new_path else "",
+                },
             )
         )
 
@@ -1328,7 +1389,11 @@ def collect_git_candidate_diff(
                 before_blob_id=old_entry.before_blob_id,
                 after_blob_id=new_entry.after_blob_id,
                 binary=old_entry.binary or new_entry.binary,
-                metadata={"detected_from_unstaged_blob_identity": True},
+                metadata={
+                    "detected_from_unstaged_blob_identity": True,
+                    "before_mode": old_entry.metadata["before_mode"],
+                    "after_mode": new_entry.metadata["after_mode"],
+                },
             )
         )
     reconciled.extend(entry for entry in entries if id(entry) not in replaced)
