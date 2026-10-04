@@ -1,0 +1,18 @@
+{
+  "schema": "native-implementation-fixture-diagnostic@1",
+  "source_record_sha256": "c3773e7b804c54e33f1047c11d8f805e12269730f058f85d55aebe479d08a512",
+  "source_record_raw_body_exported": false,
+  "failure_kind": "validation_failure",
+  "returncode": 78,
+  "validation_reason": "declared_validation_failed",
+  "validation_error": "validation_command_failed",
+  "proposal_gate_accepted": true,
+  "changed_paths": [
+    "answer.py"
+  ],
+  "cause": "Existing qualification fixture declares an absolute Python path; the native pre-merge validator requires the sealed python or python3 launcher.",
+  "resolution": "Declare the new native implementation fixture with python3 validation through prepare_local_task before signing admission; leave production validation policy intact.",
+  "native_gateway_constructor_passed": true,
+  "native_START_passed": true,
+  "native_completion_proved": false
+}

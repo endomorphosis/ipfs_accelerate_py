@@ -1,0 +1,118 @@
+{
+  "benchmark_container_memory_full_avg10": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "benchmark_container_memory_high_event_delta": 0,
+  "benchmark_container_oom_delta": 0,
+  "causal_limit": "Contemporaneous allocation and separate cgroup throttling observations; they do not prove the GPU service alone caused pressure, a past refusal, or a benchmark outcome.",
+  "credentials_or_foreign_argv_read": false,
+  "global_cache_dropped": false,
+  "gpu_reported_allocation_mib": [
+    63527,
+    63527,
+    63527,
+    63527,
+    63527
+  ],
+  "gpu_service_memory_high_event_delta": 0,
+  "host_available_memory_kib": [
+    43543804,
+    43012600,
+    43458152,
+    42812340,
+    42536684
+  ],
+  "processes_stopped_during_diagnostic": false,
+  "samples": 5,
+  "schema": "bounded-host-memory-attribution-observation@1",
+  "seconds": 40.09620237350464,
+  "separate_cgroup_high_limit_snapshot": {
+    "groups_scanned": 95,
+    "observed_at": 1791099437.6181839,
+    "rows": [
+      {
+        "current_bytes": 2741211136,
+        "events_local": {
+          "high": 1263,
+          "low": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_group_kill": 0,
+          "oom_kill": 0
+        },
+        "full_avg10": 0.0,
+        "group": "user@1000.service/app.slice/agent-supervisor-doep-v1.service",
+        "high_bytes": "4294967296",
+        "max_bytes": "6442450944"
+      },
+      {
+        "current_bytes": 37093376,
+        "events_local": {
+          "high": 1636658,
+          "low": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_group_kill": 0,
+          "oom_kill": 0
+        },
+        "full_avg10": 0.0,
+        "group": "user@1000.service/app.slice/ipfs-taskboard-watchdog.service",
+        "high_bytes": "536870912",
+        "max_bytes": "2147483648"
+      },
+      {
+        "current_bytes": 12521472,
+        "events_local": {
+          "high": 0,
+          "low": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_group_kill": 0,
+          "oom_kill": 0
+        },
+        "full_avg10": 0.0,
+        "group": "user@1000.service/app.slice/ipfs-taskboard-repair.service",
+        "high_bytes": "536870912",
+        "max_bytes": "2147483648"
+      }
+    ],
+    "schema": "bounded-cgroup-high-limit-attribution@1",
+    "truncated": false
+  },
+  "source_checkout_unchanged": true,
+  "source_records": {
+    "cgroup-high-limits-01.json": {
+      "bytes": 1281,
+      "raw_body_exported": false,
+      "sha256": "3f75243e8759aa2e9adcbc4a7392a2c7d04e1d04fc66f16bf402efc3a7587ffb"
+    },
+    "host-memory-attribution-01.json": {
+      "bytes": 34315,
+      "raw_body_exported": false,
+      "sha256": "160d200a7d559ff6aa6422137bfad3f73b0ca9c57569918dd2b9b7f41117df43"
+    },
+    "host-memory-deltas-01.json": {
+      "bytes": 11631,
+      "raw_body_exported": false,
+      "sha256": "09e4b7a85354bbf1d3aa0452b16d7da43ccaf5f7646cda37e2ff0db5b83367c5"
+    },
+    "live-readiness-01.json": {
+      "bytes": 3439,
+      "raw_body_exported": false,
+      "sha256": "fd9d9a1457b26b002b1297f0da449d0890daa4510e41ddb78f841c16715fa1a6"
+    }
+  },
+  "user_ancestor_memory_full_avg10": [
+    0.0,
+    0.0,
+    6.17,
+    12.36,
+    14.23
+  ],
+  "user_ancestor_memory_high_event_delta": 2677,
+  "user_ancestor_oom_delta": 0
+}

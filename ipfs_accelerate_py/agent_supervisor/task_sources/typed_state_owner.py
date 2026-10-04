@@ -5473,6 +5473,9 @@ class TypedStateOwnerGateway:
         self._event_wait_clear_handler: Any | None = None
         self._database_task_command_handler: Any | None = None
         self._local_task_validation_handler: Any | None = None
+        self._local_task_validation_binding: object | None = None
+        self._local_task_validation_active = 0
+        self._local_task_validation_active_thread: int | None = None
         self._commit_observer: Any | None = None
         self._last_observer_error_type = ""
         self._eaaef_service_bind_lock = threading.Lock()
@@ -7329,12 +7332,11 @@ class TypedStateOwnerGateway:
                         revision = request.get("expected_revision")
                         if type(revision) is not int or revision < 1:
                             raise TypedStateOwnerProtocolError("local validation revision is invalid")
-                        handler = self._local_task_validation_handler
-                        if not callable(handler):
-                            raise TypedStateOwnerProtocolError("owner local validation service is unavailable")
                         with self._transaction_lock:
                             grant = self._require_active_grant(grant, peer_identity=peer_identity, session_id=session_id)
-                            result = handler(task_cid, attempt_id, revision, grant)
+                            result = self._invoke_local_task_validation_handler_locked(
+                                task_cid, attempt_id, revision, grant,
+                            )
                         response = {"ok": True, "result": dict(result)}
                     elif action == "wait_events":
                         self._reject_unknown(
@@ -13207,14 +13209,82 @@ class TypedStateOwnerGateway:
                 self._database_task_command_handler = handler
         _mirror_owner_binding("database_task_command_handler_binding")
 
-    def bind_local_task_validation_handler(self, handler: Any) -> None:
-        """Bind one trusted fixed-scope owner validation service exactly once."""
+    def bind_local_task_validation_handler(
+        self, handler: Any, *, retirable: bool = False,
+    ) -> object | None:
+        """Bind one trusted callback; opt-in retirement gets an opaque capability.
+
+        Ordinary bindings keep their original lifetime and return ``None``.
+        A retirement capability is process-local identity, never serialized or
+        exposed through the worker RPC. A fresh binding gets a fresh identity.
+        """
+        if type(retirable) is not bool:
+            raise TypedStateOwnerProtocolError("retirable must be an exact boolean")
         if not callable(handler):
             raise TypedStateOwnerProtocolError("local validation handler must be callable")
         with self._grants_lock:
             if self._local_task_validation_handler is not None:
                 raise TypedStateOwnerProtocolError("local validation handler is already bound")
+            binding = object() if retirable else None
             self._local_task_validation_handler = handler
+            self._local_task_validation_binding = binding
+            self._local_task_validation_active = 0
+            self._local_task_validation_active_thread = None
+            return binding
+
+    def unbind_local_task_validation_handler(self, handler: Any, binding: object) -> bool:
+        """Retire only the exact idle callback whose capability the caller owns.
+
+        Never wait for transaction custody while holding the grants lock. A
+        nonblocking custody check refuses concurrent owner work; the second
+        identity check closes the race with another retirement and rebind.
+        """
+        with self._grants_lock:
+            if (binding is None or self._local_task_validation_binding is not binding
+                    or self._local_task_validation_handler is not handler):
+                return False
+            if (self._local_task_validation_active
+                    and self._local_task_validation_active_thread == threading.get_ident()):
+                raise TypedStateOwnerProtocolError("owner local validation callback is active")
+        if not self._transaction_lock.acquire(blocking=False):
+            raise TypedStateOwnerProtocolError("owner local validation custody is active")
+        try:
+            with self._grants_lock:
+                if (self._local_task_validation_binding is not binding
+                        or self._local_task_validation_handler is not handler):
+                    return False
+                if self._local_task_validation_active:
+                    raise TypedStateOwnerProtocolError("owner local validation callback is active")
+                self._local_task_validation_handler = None
+                self._local_task_validation_binding = None
+                return True
+        finally:
+            self._transaction_lock.release()
+
+    def _invoke_local_task_validation_handler(self, *args: Any, **kwargs: Any) -> Any:
+        """Invoke with exclusive owner custody, including callback selection."""
+        with self._transaction_lock:
+            return self._invoke_local_task_validation_handler_locked(*args, **kwargs)
+
+    def _invoke_local_task_validation_handler_locked(self, *args: Any, **kwargs: Any) -> Any:
+        """Caller holds transaction custody; do not reacquire a plain Lock.
+
+        The active count also prevents same-thread retirement through an RLock
+        while a callback is on the stack. Failure always releases this count.
+        """
+        with self._grants_lock:
+            handler = self._local_task_validation_handler
+            if not callable(handler):
+                raise TypedStateOwnerProtocolError("owner local validation service is unavailable")
+            self._local_task_validation_active += 1
+            self._local_task_validation_active_thread = threading.get_ident()
+        try:
+            return handler(*args, **kwargs)
+        finally:
+            with self._grants_lock:
+                self._local_task_validation_active -= 1
+                if not self._local_task_validation_active:
+                    self._local_task_validation_active_thread = None
 
     def _admit_open_grant(
         self,

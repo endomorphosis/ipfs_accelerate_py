@@ -1,0 +1,33 @@
+{
+  "command": {
+    "argv": [
+      "<PYTHON_EXECUTABLE>",
+      "-B",
+      "<EVIDENCE_ROOT>/baseline_gateway.py",
+      "-q",
+      "test/api/causal_federation/test_typed_state_owner.py::test_owner_rebuilds_task_status_indexes_after_art_fatal",
+      "test/api/causal_federation/test_typed_state_owner.py::test_owner_drops_status_indexes_around_receipt_cas",
+      "--junitxml=<EVIDENCE_ROOT>/baseline-indexes-01.xml"
+    ],
+    "baseline_gateway_sha256": "36e0702aaaba43d7447807e4c9d1abf1b5fe9cbbe950bbe41e1d610cba44cc28",
+    "cwd": "<ACCELERATE_CHECKOUT>",
+    "environment_overrides": {
+      "CUDA_VISIBLE_DEVICES": "",
+      "HF_HUB_OFFLINE": "1",
+      "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "<PRIVATE_STATE>/baseline-indexes-01/seal.duckdb",
+      "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "<PRIVATE_STATE>/baseline-indexes-01/keys.db",
+      "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": "<PRIVATE_STATE>/baseline-indexes-01/scheduler.json",
+      "MKL_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1",
+      "OMP_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "PYTHONDONTWRITEBYTECODE": "1",
+      "PYTHONPATH": "<ACCELERATE_CHECKOUT>:<DATASETS_CHECKOUT>",
+      "TOKENIZERS_PARALLELISM": "false",
+      "TRANSFORMERS_OFFLINE": "1"
+    },
+    "scope": "Original gateway module only; all other modules are current checkout. No checkout source mutation."
+  },
+  "normalization": "Interpreter, checkout and private-state paths replaced with declared placeholders; this is a projection, not the original command bytes.",
+  "schema": "redacted-test-command@1"
+}

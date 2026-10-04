@@ -1,0 +1,57 @@
+{
+  "baseline_repeated_cases": 2,
+  "baseline_reproduced_failed_cases": 2,
+  "claims": {
+    "actual_terminal_bench_trial": false,
+    "completed_task_token_score": false,
+    "learned_model_inference": false,
+    "proof_authority": false
+  },
+  "current_failed": 2,
+  "current_passed": 69,
+  "distinct_current_cases": 71,
+  "failed_cases": [
+    "test_owner_rebuilds_task_status_indexes_after_art_fatal",
+    "test_owner_drops_status_indexes_around_receipt_cas"
+  ],
+  "limitations": [
+    "Retirement fixtures exercise real owner methods with explicit runtime fixtures; they do not themselves qualify signed native START, worker completion, training or a Terminal-Bench score.",
+    "The broader run contains all 23 retirement cases; adding its 69 passes to the 23 passes would double-count those cases.",
+    "Two status-index expectations fail with both the changed and original gateway module. This reproduces the baseline failure in that module substitution scope, not an entire clean historical checkout.",
+    "Command files and XML are bounded redacted projections. Original command, exit, XML, stdout and stderr digests are retained for provenance. Exit metadata is copied byte-for-byte.",
+    "No original gateway source, callback bodies, model files, credentials, hostname, absolute checkout path or private temporary-directory data is included."
+  ],
+  "retirement_cases_are_subset_of_broader_run": true,
+  "runs": [
+    {
+      "errors": 0,
+      "failed": 0,
+      "label": "retirement-01",
+      "returncode": 0,
+      "seconds": 19.25469809299102,
+      "skipped": 0,
+      "source_pins_unchanged": true,
+      "tests": 23
+    },
+    {
+      "errors": 0,
+      "failed": 2,
+      "label": "owner-controls-01",
+      "returncode": 1,
+      "seconds": 66.86161114599963,
+      "skipped": 0,
+      "source_pins_unchanged": true,
+      "tests": 71
+    },
+    {
+      "errors": 0,
+      "failed": 2,
+      "label": "baseline-indexes-01",
+      "returncode": 1,
+      "seconds": 18.302420250998694,
+      "skipped": 0,
+      "tests": 2
+    }
+  ],
+  "schema": "callback-retirement-controls@1"
+}

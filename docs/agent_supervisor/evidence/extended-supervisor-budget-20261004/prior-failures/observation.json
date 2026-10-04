@@ -1,0 +1,70 @@
+[
+  {
+    "failures": [
+      {
+        "classname": "",
+        "failure_text_sha256": "afa547415b2f5b4f2cea64318418b46f4157c8fdce40861bf64fc9bae6becb4a",
+        "kind": "error",
+        "name": "benchmarks.agent_supervisor.container_coding.test_extended_resource_profile",
+        "raw_failure_body_exported": false
+      }
+    ],
+    "label": "transport-01",
+    "outcome": {
+      "errors": 1,
+      "failed": 0,
+      "returncode": 2,
+      "seconds": 52.92320631501207,
+      "skipped": 0,
+      "tests": 1
+    },
+    "qualified": false,
+    "superseded_by_passing_scope": "transport-03",
+    "xml": {
+      "bytes": 1108,
+      "raw_body_exported": false,
+      "sha256": "b582de533024a2d1b7f70884e414b4a8304d3b382c302b8f4cc957bbdeed6290"
+    }
+  },
+  {
+    "failures": [
+      {
+        "classname": "benchmarks.agent_supervisor.container_coding.test_terminal_setup_cache_advice",
+        "failure_text_sha256": "333017da6ccf431d9e92575440e12e105e7a8fe8dfd2f93b16d4f7fb8251ae1c",
+        "kind": "failure",
+        "name": "test_harbor_selected_order_is_deploy_boundary_then_advice",
+        "raw_failure_body_exported": false
+      },
+      {
+        "classname": "benchmarks.agent_supervisor.container_coding.test_terminal_setup_cache_advice",
+        "failure_text_sha256": "38539e059ced01b17a72274d1f2cce7e6e54b2ade38b2cb56abfc49d2d498c52",
+        "kind": "failure",
+        "name": "test_qualifier_runs_same_boundary_advice_order_and_preserves_cleanup[False]",
+        "raw_failure_body_exported": false
+      },
+      {
+        "classname": "benchmarks.agent_supervisor.container_coding.test_terminal_setup_cache_advice",
+        "failure_text_sha256": "f70cda26593ffc4855b985796bb3639d73fa55dba632f32d0ec782cb7a138f5c",
+        "kind": "failure",
+        "name": "test_qualifier_runs_same_boundary_advice_order_and_preserves_cleanup[True]",
+        "raw_failure_body_exported": false
+      }
+    ],
+    "label": "transport-02",
+    "outcome": {
+      "errors": 0,
+      "failed": 3,
+      "returncode": 1,
+      "seconds": 62.766267237995635,
+      "skipped": 0,
+      "tests": 211
+    },
+    "qualified": false,
+    "superseded_by_passing_scope": "transport-03",
+    "xml": {
+      "bytes": 61262,
+      "raw_body_exported": false,
+      "sha256": "ebd0a9f4d72c510848ce3abc6da521a6c57425b423f7ceb4b17309f32346fb61"
+    }
+  }
+]

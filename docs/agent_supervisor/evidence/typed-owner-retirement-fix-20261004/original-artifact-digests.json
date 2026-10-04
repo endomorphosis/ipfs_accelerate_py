@@ -1,0 +1,71 @@
+{
+  "artifacts": {
+    "baseline-indexes-01": {
+      "-command.json": {
+        "bytes": 1774,
+        "sha256": "86c5465d063ac1c4c82b7de246f531d865412a24fb5770e878ffd4aaac7bb615"
+      },
+      "-exit.json": {
+        "bytes": 115,
+        "sha256": "38c89dceabb974b81b6be335afc45d261d669893708aa0e1ed50796cf36476b0"
+      },
+      ".stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      ".stdout": {
+        "bytes": 14614,
+        "sha256": "a51d48c24eb6082a7dbcc9c4f6d3cbc9580c9103492f4fefe411e43d08fb24a1"
+      },
+      ".xml": {
+        "bytes": 3011,
+        "sha256": "ac1a5986cb40e6c36a7381701dcaafd5a73c143a0b36e84734101072e1d937a5"
+      }
+    },
+    "owner-controls-01": {
+      "-command.json": {
+        "bytes": 2233,
+        "sha256": "55481f93c4df16aea4163aab4f65639dd5c436fe2c327c984b65b486f23bb40f"
+      },
+      "-exit.json": {
+        "bytes": 148,
+        "sha256": "a9c9515c2504c1099eb7c68f7698b66967ae4fbc9e096ef090c15885ac4014ea"
+      },
+      ".stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      ".stdout": {
+        "bytes": 82430,
+        "sha256": "2f5f61c2b100052b0d0b0fa3f441ef51679fd017598e25c75087ed2d87737d75"
+      },
+      ".xml": {
+        "bytes": 14200,
+        "sha256": "4a691f381124d91437e86b57455790c9777b2b619ed99a90bc5c7c2c48d55a7b"
+      }
+    },
+    "retirement-01": {
+      "-command.json": {
+        "bytes": 2025,
+        "sha256": "9880eaad972093fb20759caa42ca92d0268c141b137ad480b98e393e79a09c88"
+      },
+      "-exit.json": {
+        "bytes": 148,
+        "sha256": "20c9193f7a76c36bf0e63fee3012ea3b8a108559d2d5bc839ffacb583658ac43"
+      },
+      ".stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      ".stdout": {
+        "bytes": 4998,
+        "sha256": "150f8b32ac73ec56021d3aefdddfa0f0144a21d48f1249867be5144a4abe9985"
+      },
+      ".xml": {
+        "bytes": 3904,
+        "sha256": "b84707d056cb57bd557d42c3336826ba07ea8254faac4e3fa0124c00713e7a84"
+      }
+    }
+  },
+  "schema": "retained-original-digests@1"
+}

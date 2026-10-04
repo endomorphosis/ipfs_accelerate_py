@@ -1,0 +1,49 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "-o",
+    "cache_dir=/home/barberb/lift_coding/artifacts/local-benchmark-memory-profile-20261004/private/native-02/pytest-cache",
+    "tests/integration/logic/software_contracts/test_codebase_source_units_384.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/local-benchmark-memory-profile-20261004/native-02.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004",
+  "environment_overrides": {
+    "CODEBASE384_CHECKPOINT": "/home/barberb/lift_coding/artifacts/distributed384-20261001/run-01/security_ir/coordinator/checkpoints/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json",
+    "CODEBASE384_EMBEDDING_SNAPSHOT": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd",
+    "CUDA_VISIBLE_DEVICES": "",
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/local-benchmark-memory-profile-20261004/private/native-02/seal.duckdb",
+    "IPFS_DATASETS_PROOF_RESOURCE_PROFILE": "local-benchmark@1",
+    "IPFS_DATASETS_PROOF_RESOURCE_RECOVERY": "1",
+    "IPFS_DATASETS_PROOF_RESOURCE_SAFETY": "1",
+    "IPFS_DATASETS_PUBLIC_BOTTLE_FIXTURE": "/home/barberb/lift_coding/artifacts/source384-construction-lifetime-20261004/trial-01/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__WCih55g/agent/public-output-evidence/before/bottle.py",
+    "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "/home/barberb/lift_coding/artifacts/local-benchmark-memory-profile-20261004/private/native-02/keys.db",
+    "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": "/home/barberb/lift_coding/artifacts/local-benchmark-memory-profile-20261004/private/native-02/scheduler.json",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_MAX_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "hidden_verifier_used": false,
+  "production_scheduler_ledger_mutated": false,
+  "provider_calls": 0,
+  "source_pins": {
+    "ipfs_datasets_py/logic/software_contracts/codebase_header_context.py": "7b21cfcfb37325bf006f4952848926bc359a300068f0723f057b04978fc01090",
+    "ipfs_datasets_py/logic/software_contracts/codebase_ir.py": "6ca72bea0a321fd07b0ea785356b0d6b7e311c43be8a17c2475ab7f4a7bc00fc",
+    "ipfs_datasets_py/logic/software_contracts/codebase_resources.py": "aacf2ae1de1d78f560aabec940695addd38997fec0c46422f63c0967ca7ead81",
+    "ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py": "dd07523511858621982d2620d1648adc106798c871af57401c1ff02c7308a08e",
+    "ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py": "740543329dacbd84afcb19c88b6fdb0f09b4dd38bb564cfc6cf999d3fcb4e22a",
+    "tests/integration/logic/software_contracts/test_codebase_current.py": "e6e6d3a5ea0665042f0c67419cd6e1cf4c82a4a8c9e12f6053741e79f87252eb",
+    "tests/integration/logic/software_contracts/test_codebase_source_units_384.py": "c506e9186640d2f78c192ecfc37125f7080b027ec3705deb29b09a49d2b88cbd",
+    "tests/unit/optimizers/logic_theorem_optimizer/test_local_benchmark_resource_profile.py": "6f28e6bc1bf3427a0422f3aff387be117df83af104ea9ce4b2d545d654edbc38"
+  }
+}

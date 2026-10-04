@@ -1,0 +1,38 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "-o",
+    "cache_dir=/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/private-state/final-profile-01/pytest-cache",
+    "benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py",
+    "benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py",
+    "benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source384_transport.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/final-profile-01.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "environment_overrides": {
+    "CUDA_VISIBLE_DEVICES": "",
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/private-state/final-profile-01/seal.duckdb",
+    "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/private-state/final-profile-01/keys.db",
+    "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/private-state/final-profile-01/scheduler.json",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_MAX_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "provider_calls": 0,
+  "hidden_verifier_used": false
+}

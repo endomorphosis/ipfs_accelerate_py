@@ -1,0 +1,18 @@
+{
+  "baseline_scope": "Only the original prepatch gateway was loaded through an isolated import hook. Other modules came from the current checkout. The baseline command records the original gateway digest, not a complete independent prepatch source inventory.",
+  "broader_owner_run": {
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "45a442ec7b3c87f3f7eeb1d7fcdc005d6c078a25e3a63b6bc599ba534dfd588a",
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py": "a5d15cade2892f62b7852191bbe21e4c08601066f13d0f74f0ad0855cbef6d27",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "d49d2ee166483c6e503dd2f88d2df9ba1d4954972e8214253b0a1ccbd349e0bb",
+    "test/api/causal_federation/test_typed_state_owner.py": "d185ebfa9072b6ba1b09f38e24a31b8422a38c7ff84dd0ece24e58d4ccd6222e",
+    "test/api/test_owner_completion_service_retirement.py": "6e164a092938cfa9799660d457ebfff1879a49aa0f9afbd53415c67c05b410fe"
+  },
+  "original_gateway": "36e0702aaaba43d7447807e4c9d1abf1b5fe9cbbe950bbe41e1d610cba44cc28",
+  "retirement_run": {
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "45a442ec7b3c87f3f7eeb1d7fcdc005d6c078a25e3a63b6bc599ba534dfd588a",
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py": "a5d15cade2892f62b7852191bbe21e4c08601066f13d0f74f0ad0855cbef6d27",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "d49d2ee166483c6e503dd2f88d2df9ba1d4954972e8214253b0a1ccbd349e0bb",
+    "test/api/test_owner_completion_service_retirement.py": "6e164a092938cfa9799660d457ebfff1879a49aa0f9afbd53415c67c05b410fe"
+  },
+  "schema": "callback-retirement-source-pins@1"
+}

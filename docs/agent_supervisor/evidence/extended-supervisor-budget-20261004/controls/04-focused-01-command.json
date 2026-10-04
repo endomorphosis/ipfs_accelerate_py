@@ -1,0 +1,46 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "-o",
+    "cache_dir=/home/barberb/lift_coding/artifacts/extended-driver-budget-20261004/private-controls-01/pytest-cache",
+    "benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py",
+    "benchmarks/agent_supervisor/container_coding/test_cleanup_deadline.py",
+    "benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py",
+    "test/integration/test_admitted_benchmark_runtime.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/extended-driver-budget-20261004/focused-01.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "environment_overrides": {
+    "CUDA_VISIBLE_DEVICES": "",
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/extended-driver-budget-20261004/private-controls-01/seal.duckdb",
+    "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "/home/barberb/lift_coding/artifacts/extended-driver-budget-20261004/private-controls-01/keys.db",
+    "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": "/home/barberb/lift_coding/artifacts/extended-driver-budget-20261004/private-controls-01/scheduler.json",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_MAX_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "hidden_verifier_used": false,
+  "production_scheduler_ledger_mutated": false,
+  "provider_calls": 0,
+  "source_pins": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_resource_profile.py": "d0e2c3f277c74bb92acd5ee36764399c34bab18199dfb3b0c03ecf9c3026c0d4",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "0bc644a4f5b4b680a175bc2c1b42ba94085a3736bf92b6e8a666ad2e053f666e",
+    "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": "84c71ad62cffbff5cf43c85e05dafd7b179a4c58169f95489ce71a7976b0561c",
+    "benchmarks/agent_supervisor/container_coding/test_cleanup_deadline.py": "290cfc975c23a1c47a65df7e374386dcb35de983f816e780b77d533fa23b8ad6",
+    "benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py": "11df889dd051940b4222a3f00109e74a7be5a1711a6a7fdff1d0f6c065b5399e",
+    "benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py": "27103c9b591e4c22a556739c5f1fa67aa95acc24e24c7c1442d8820c1bbd9195",
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "325e9632d6265f39b0b536eeecd5cdf7563e769fb51b1e2cbf8bacbb57cc37b8",
+    "test/integration/test_admitted_benchmark_runtime.py": "f755172d964e0a188bfca4bbe6deb63b9266c55266a6260b189894ba31278926"
+  }
+}

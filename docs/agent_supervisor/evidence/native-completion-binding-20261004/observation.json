@@ -1,0 +1,47 @@
+{
+  "Docker_qualification_claimed": false,
+  "benchmark_score": null,
+  "completed_token_score": null,
+  "counts": {
+    "errors": 0,
+    "executions": 58,
+    "failed": 0,
+    "passed": 58,
+    "skipped": 0
+  },
+  "final_label": "regression-02",
+  "finite_and_inventory_paired_cleanup_modified": false,
+  "intermediate_native_03": "Actual authored repair passed before final cleanup-edge changes; final joined run re-exercises it on current owners.",
+  "native_implementation": {
+    "immutable_public_check_preserved": true,
+    "implementation_authored_by_test": true,
+    "included_in_final_58": true,
+    "independently_declared_fixture": true,
+    "native_START": true,
+    "native_STOP": true,
+    "provider_calls": 0,
+    "remaining_native_processes": 0,
+    "signed_runtime_constructor": true,
+    "task_completed": true
+  },
+  "ordinary_binding_retirable": false,
+  "ordinary_failure_controls": [
+    "Pre-bind refusal: actual empty tree, bootstrap shutdown, persisted run lease released, task ready.",
+    "Install-then-raise: bootstrap shutdown, callback and run lease retained, no successful cleanup claim.",
+    "Pre-existing duplicate callback: existing callback preserved, only failed new runtime disposed."
+  ],
+  "pin_scope": "Three production owners and two changed test files; this is not a complete imported-source inventory.",
+  "production_scheduler_ledger_mutated": false,
+  "qualified_scope": "58 affected host controls including actual implementation and owner-signed completion",
+  "schema": "native-completion-binding-component-evidence@1",
+  "seconds": 91.09487701099715,
+  "selected_final_source_pins": {
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "963880629bb185c092453d159a985e5127e1197cbeea8656332860bdd80fbb08",
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py": "a5d15cade2892f62b7852191bbe21e4c08601066f13d0f74f0ad0855cbef6d27",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "d49d2ee166483c6e503dd2f88d2df9ba1d4954972e8214253b0a1ccbd349e0bb",
+    "test/api/test_owner_completion_service_retirement.py": "6e164a092938cfa9799660d457ebfff1879a49aa0f9afbd53415c67c05b410fe",
+    "test/integration/test_admitted_benchmark_runtime.py": "d8954b1a9c42c37033218a531c8f9a8f186292448f913795ce51bb4d832db8a9"
+  },
+  "selected_source_pins_unchanged": true,
+  "service_changes": false
+}

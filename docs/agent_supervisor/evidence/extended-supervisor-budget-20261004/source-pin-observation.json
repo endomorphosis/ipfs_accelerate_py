@@ -1,0 +1,35 @@
+{
+  "after_matches_frozen": true,
+  "before_matches_frozen": true,
+  "map_bodies_exported": false,
+  "namespaces": {
+    "datasets": 7969,
+    "kit": 1299,
+    "source": 2740
+  },
+  "records": {
+    "frozen-production-pins.json": {
+      "bytes": 1907973,
+      "raw_body_exported": false,
+      "sha256": "e9cf55cecdfa89500056dd283dae139489f136ffa55a29204f4aad1ae232fc08"
+    },
+    "qualification-after-pins.json": {
+      "bytes": 1907973,
+      "raw_body_exported": false,
+      "sha256": "e9cf55cecdfa89500056dd283dae139489f136ffa55a29204f4aad1ae232fc08"
+    },
+    "qualification-before-pins.json": {
+      "bytes": 1907973,
+      "raw_body_exported": false,
+      "sha256": "e9cf55cecdfa89500056dd283dae139489f136ffa55a29204f4aad1ae232fc08"
+    }
+  },
+  "repository_members": 12008,
+  "schema": "complete-inventory-source-pin-observation@1",
+  "scope": "Retained qualification maps compared exactly; no new live filesystem scan during full trial.",
+  "source_revisions": {
+    "datasets": "37f556040bccdce81f0bc3de6ee52d02b147ba2c",
+    "kit": "a9b98beac1ef14278b4adf4f2289cd509530fb86",
+    "source": "b81c27f961cef3cbf2092dec4a59167fee31661e"
+  }
+}
