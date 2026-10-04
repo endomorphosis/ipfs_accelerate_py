@@ -1,0 +1,192 @@
+{
+  "allow_honest_nonpromotion": true,
+  "arms": [
+    "direct_minimal_orchestration_baseline",
+    "sealed_current_supervisor_baseline",
+    "candidate_optimized_supervisor"
+  ],
+  "audit_overhead": {
+    "includes_audit_in_quality_adjusted_cost": true,
+    "total_microusd": 10170,
+    "unit": "microusd"
+  },
+  "authority": false,
+  "bootstrap_seed": 13,
+  "cohort": "hermetic",
+  "controls": {
+    "acceptance_tests": "baguqeerajtjx2uf5nnpmyj5njj7nmtg5lsgecfabalz3o53kgv3jpu3vacia",
+    "available_providers_and_models": "baguqeera5wehcqr5rbuwrcgskjdhpt7d4oz32ks7oalbqa5iimevjpjstrha",
+    "human_intervention_policy": "baguqeeraijx5uvhi35valu2yfdtvrhq4oqxbzkjkxziwwsrgo7dmugi2sc7q",
+    "maximum_retries": 3,
+    "objective": "ASEH-G020",
+    "price_accounting": "baguqeera3nas3dp546nrxqg3nr6qdalxzbld2wlbhxzrdt5bz5disttd3w6a",
+    "repository_revision": "729da9f8293ecfa046a0136381a3d3808f9ed140",
+    "resource_limits": "baguqeera3ndxb76ndwpggkigqukxf7grvanwyolsuq6w4ujwayucts6c2hka",
+    "task_inputs": "baguqeera2iqng4k6ldr75hhg2h6mhwbiv3ahn3j4kgojuwlzzafdua2nv5ma"
+  },
+  "equal_control_fields": [
+    "repository_revision",
+    "objective",
+    "task_inputs",
+    "acceptance_tests",
+    "available_providers_and_models",
+    "price_accounting",
+    "resource_limits",
+    "maximum_retries",
+    "human_intervention_policy"
+  ],
+  "escaped_seeds": [],
+  "fixture_count": 72,
+  "fixture_ids": [
+    "aseh-h01",
+    "aseh-h02",
+    "aseh-h03",
+    "aseh-h04",
+    "aseh-h05",
+    "aseh-h06",
+    "aseh-h07",
+    "aseh-h08",
+    "aseh-h09",
+    "aseh-h10",
+    "aseh-h11",
+    "aseh-h12",
+    "aseh-h13",
+    "aseh-h14",
+    "aseh-h15",
+    "aseh-h16",
+    "aseh-h17",
+    "aseh-h18",
+    "aseh-h19",
+    "aseh-h20",
+    "aseh-h21",
+    "aseh-h22",
+    "aseh-h23",
+    "aseh-h24",
+    "aseh-h25",
+    "aseh-h26",
+    "aseh-h27",
+    "aseh-h28",
+    "aseh-h29",
+    "aseh-h30",
+    "aseh-h31",
+    "aseh-h32",
+    "aseh-h33",
+    "aseh-h34",
+    "aseh-h35",
+    "aseh-h36",
+    "aseh-h37",
+    "aseh-h38",
+    "aseh-h39",
+    "aseh-h40",
+    "aseh-h41",
+    "aseh-h42",
+    "aseh-h43",
+    "aseh-h44",
+    "aseh-h45",
+    "aseh-h46",
+    "aseh-h47",
+    "aseh-h48",
+    "aseh-h49",
+    "aseh-h50",
+    "aseh-h51",
+    "aseh-h52",
+    "aseh-h53",
+    "aseh-h54",
+    "aseh-h55",
+    "aseh-h56",
+    "aseh-h57",
+    "aseh-h58",
+    "aseh-h59",
+    "aseh-h60",
+    "aseh-h61",
+    "aseh-h62",
+    "aseh-h63",
+    "aseh-h64",
+    "aseh-h65",
+    "aseh-h66",
+    "aseh-h67",
+    "aseh-h68",
+    "aseh-h69",
+    "aseh-h70",
+    "aseh-h71",
+    "aseh-h72"
+  ],
+  "hermetic_manifest_identity": "baguqeeranymtdwei4y7guw2ttbwhdajpebrskxk4qtest5hfto4trs5hpsuq",
+  "hermetic_sufficient_for_production_promotion": false,
+  "interface": "AsehPairedHarness@1",
+  "live": false,
+  "minimum_tasks": 60,
+  "pair_count": 72,
+  "population_kind": "hermetic_development",
+  "primary_comparison": "candidate_vs_sealed_current",
+  "promotion_without_paired_campaign": false,
+  "required_statistics": [
+    "median_difference",
+    "mean_difference",
+    "per_task_ratios",
+    "bootstrap_confidence_intervals",
+    "distribution_by_task_class",
+    "outlier_analysis",
+    "quality_adjusted_cost",
+    "accepted_patch_rate",
+    "time_to_terminal_outcome"
+  ],
+  "schema": "ipfs_accelerate_py/agent-supervisor/aseh-hermetic-campaign-results@1",
+  "schema_version": 1,
+  "statistics": {
+    "accepted_patch_rate": {
+      "accepted": 36,
+      "total": 72,
+      "unit": "ratio_millionths",
+      "value": 500000
+    },
+    "bootstrap_confidence_intervals": {
+      "resamples": 199,
+      "seed": 13,
+      "unit": "microusd",
+      "width": 150
+    },
+    "distribution_by_task_class": {
+      "bug_repair": 6,
+      "context_pack_build": 6,
+      "feature_addition": 6,
+      "human_escalation": 6,
+      "merge_conflict": 6,
+      "proof_obligation": 6,
+      "recovery_replay": 6,
+      "retry_rescue": 6,
+      "routing_policy": 6,
+      "schema_change": 6,
+      "state_migration": 6,
+      "test_selection": 6
+    },
+    "mean_difference": {
+      "unsigned_cost_microusd": 991
+    },
+    "median_difference": {
+      "unsigned_cost_microusd": 605
+    },
+    "outlier_analysis": {
+      "count": 1,
+      "fixture_ids": [
+        "aseh-h68"
+      ],
+      "method": "tukey_iqr_150"
+    },
+    "per_task_ratios": {
+      "median_ratio_millionths": 784742
+    },
+    "quality_adjusted_cost": {
+      "includes_audit_overhead": true,
+      "median_candidate_microusd": 2760
+    },
+    "time_to_terminal_outcome": {
+      "median_us": 92962,
+      "unit": "seconds_millionths"
+    }
+  },
+  "task_id": "ASEH-070",
+  "vectors_identity": "baguqeera2iqng4k6ldr75hhg2h6mhwbiv3ahn3j4kgojuwlzzafdua2nv5ma",
+  "vectors_path": "benchmarks/agent_supervisor/efficiency_state_hardening/hermetic_vectors.jsonl",
+  "vectors_sha256": "sha256:9b8801a336e3b7d240e755fdbc481ccdc7dcc26e45124e413774ee850773232a"
+}
