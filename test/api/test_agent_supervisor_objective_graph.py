@@ -99,7 +99,14 @@ def _seed_repo(tmp_path: Path) -> tuple[Path, Path, Path]:
 """,
         encoding="utf-8",
     )
-    _git(repo, "add", "todo.md", "objective-heap.md", "src/runtime_router.py", "docs/runtime_notes.md")
+    _git(
+        repo,
+        "add",
+        "todo.md",
+        "objective-heap.md",
+        "src/runtime_router.py",
+        "docs/runtime_notes.md",
+    )
     _git(repo, "commit", "-m", "seed objective heap")
     return repo, objective_path, todo_path
 
@@ -114,8 +121,12 @@ def test_objective_graph_scanner_uses_ast_and_embedding_evidence(tmp_path):
     assert finding.goal_id == "VAIOS-G000"
     assert finding.bundle_key == "objective/ops/root"
     assert finding.missing_evidence == ["missing_meta_glasses_contract"]
-    assert finding.present_evidence["CapabilityRouter.dispatch_task"] == ["src/runtime_router.py (ast)"]
-    assert finding.present_evidence["meta glasses terminal router"][0].startswith("docs/runtime_notes.md (embedding:")
+    assert finding.present_evidence["CapabilityRouter.dispatch_task"] == [
+        "src/runtime_router.py (ast)"
+    ]
+    assert finding.present_evidence["meta glasses terminal router"][0].startswith(
+        "docs/runtime_notes.md (embedding:"
+    )
 
 
 def test_objective_goal_heap_accepts_package_specific_goal_ids():
@@ -274,7 +285,10 @@ def test_objective_graph_appends_playwright_validation_for_launch_goals(tmp_path
     validation = findings[0].validation
     assert validation.startswith("test -f objective-heap.md && ")
     assert "npm --prefix swissknife run test:e2e:meta-glasses" in validation
-    assert "npm --prefix hallucinate_app run test:e2e -- multimodal-control-surface.spec.ts" in validation
+    assert (
+        "npm --prefix hallucinate_app run test:e2e -- multimodal-control-surface.spec.ts"
+        in validation
+    )
 
 
 def test_objective_graph_generates_forced_launch_validation_gate_when_evidence_present(tmp_path):
@@ -336,7 +350,9 @@ def test_objective_graph_generates_forced_launch_validation_gate_when_evidence_p
     assert [finding.goal_id for finding in suppressed] == ["VAIOS-G697"]
 
 
-def test_objective_graph_generates_forced_interoperability_validation_repair_when_evidence_present(tmp_path):
+def test_objective_graph_generates_forced_interoperability_validation_repair_when_evidence_present(
+    tmp_path,
+):
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
@@ -346,7 +362,9 @@ def test_objective_graph_generates_forced_interoperability_validation_repair_whe
     objective_path = repo / "objective-heap.md"
     receipt = repo / "docs" / "integration" / "swissknife_mobile.md"
     receipt.parent.mkdir(parents=True)
-    receipt.write_text("swissknife mobile interoperability adapter contract test receipt\n", encoding="utf-8")
+    receipt.write_text(
+        "swissknife mobile interoperability adapter contract test receipt\n", encoding="utf-8"
+    )
     objective_path.write_text(
         """# Objective Heap
 
@@ -411,7 +429,9 @@ def test_generate_objective_todos_writes_bundle_shards_and_payloads(tmp_path):
     index_path = bundle_dir / "index.json"
     index = json.loads(index_path.read_text(encoding="utf-8"))
     assert index["bundles"]["objective/ops/root"]["tasks"][0]["task_id"] == "ACCEL-002"
-    dataset_manifest = bundle_dir.parent / "objective_datasets" / "accel-objective-ast.manifest.json"
+    dataset_manifest = (
+        bundle_dir.parent / "objective_datasets" / "accel-objective-ast.manifest.json"
+    )
     assert dataset_manifest.exists()
     dataset_payload = json.loads(dataset_manifest.read_text(encoding="utf-8"))
     assert dataset_payload["row_count"] >= 2
@@ -483,7 +503,11 @@ def test_persist_objective_ast_dataset_uses_ipfs_datasets_bridge(tmp_path, monke
 
     assert artifact.backend == "ipfs_datasets_py"
     assert artifact.parquet_path is not None and artifact.parquet_path.exists()
-    assert artifact.manager_result == {"location": str(artifact.parquet_path), "format": "parquet", "size": 123}
+    assert artifact.manager_result == {
+        "location": str(artifact.parquet_path),
+        "format": "parquet",
+        "size": 123,
+    }
     assert saved["dataset_id"] == "objective-ast-test"
     assert saved["row_count"] >= 2
 
@@ -602,15 +626,18 @@ def test_merge_resolver_configured_callbacks_and_cli(tmp_path, capsys):
     assert payload["found"] is True
     assert "Keep configured blocked_tasks intact" in payload["prompt"]
 
-    assert run_configured_merge_resolver_cli(
-        MergeResolverCliConfig(
-            default_events_path=events_path,
-            default_repo_root=repo,
-            prompt_heading="Resolve the configured merge conflict.",
-            completion_rule="Keep configured blocked_tasks intact until validation passes.",
-        ),
-        ["--task-id", "CUSTOM-002"],
-    ) == 0
+    assert (
+        run_configured_merge_resolver_cli(
+            MergeResolverCliConfig(
+                default_events_path=events_path,
+                default_repo_root=repo,
+                prompt_heading="Resolve the configured merge conflict.",
+                completion_rule="Keep configured blocked_tasks intact until validation passes.",
+            ),
+            ["--task-id", "CUSTOM-002"],
+        )
+        == 0
+    )
     output = json.loads(capsys.readouterr().out)
     assert output["task_id"] == "CUSTOM-002"
     assert "Resolve the configured merge conflict." in output["prompt"]

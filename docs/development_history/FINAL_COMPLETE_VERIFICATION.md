@@ -53,10 +53,7 @@ This document provides final verification that datasets integration has been add
 ```python
 # github_cli/wrapper.py
 self._provenance_logger = ProvenanceLogger()
-self._datasets_manager = DatasetsManager({
-    'enable_audit': True,
-    'enable_provenance': True
-})
+self._datasets_manager = DatasetsManager({"enable_audit": True, "enable_provenance": True})
 ```
 
 **Data Logged**:
@@ -84,10 +81,7 @@ self._datasets_manager = DatasetsManager({
 ```python
 # cli_integrations/github_cli_integration.py
 self._provenance_logger = ProvenanceLogger()
-self._datasets_manager = DatasetsManager({
-    'enable_audit': True,
-    'enable_provenance': True
-})
+self._datasets_manager = DatasetsManager({"enable_audit": True, "enable_provenance": True})
 logger.info("GitHub CLI integration using datasets integration for PR/issue tracking")
 ```
 
@@ -138,11 +132,8 @@ logger.info("GitHub CLI integration using datasets integration for PR/issue trac
 **Integration Code**:
 ```python
 # common/kubernetes_cache.py
-from ..datasets_integration import (
-    is_datasets_available,
-    ProvenanceLogger,
-    DatasetsManager
-)
+from ..datasets_integration import is_datasets_available, ProvenanceLogger, DatasetsManager
+
 HAVE_DATASETS_INTEGRATION = True
 ```
 
@@ -170,11 +161,8 @@ HAVE_DATASETS_INTEGRATION = True
 **Integration Code**:
 ```python
 # common/docker_cache.py
-from ..datasets_integration import (
-    is_datasets_available,
-    ProvenanceLogger,
-    DatasetsManager
-)
+from ..datasets_integration import is_datasets_available, ProvenanceLogger, DatasetsManager
+
 HAVE_DATASETS_INTEGRATION = True
 ```
 

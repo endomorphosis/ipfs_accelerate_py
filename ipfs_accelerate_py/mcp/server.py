@@ -16,36 +16,39 @@ from typing import Dict, Any, Optional, List, Union, Callable
 
 # Set up logging
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("ipfs_accelerate_mcp.server")
 
 # Ensure minimal runtime dependencies when allowed
 try:
     from ..utils.auto_install import ensure_packages
-    ensure_packages({
-        "fastapi": "fastapi",
-        "uvicorn": "uvicorn",
-        # FastMCP is optional; try to make it available if user permits
-        "fastmcp": "fastmcp",
-    })
+
+    ensure_packages(
+        {
+            "fastapi": "fastapi",
+            "uvicorn": "uvicorn",
+            # FastMCP is optional; try to make it available if user permits
+            "fastmcp": "fastmcp",
+        }
+    )
 except Exception:
     # Best-effort; server can still run in standalone mode
     pass
 
+
 class StandaloneMCP:
     """
     Standalone MCP Implementation
-    
+
     This class provides a standalone implementation of the Model Context Protocol
     when FastMCP is not available.
     """
-    
+
     def __init__(self, name: str):
         """
         Initialize the Standalone MCP
-        
+
         Args:
             name: Name of the server
         """
@@ -54,123 +57,130 @@ class StandaloneMCP:
         self.resources = {}
         self.prompts = {}
         self._error_handler = None
-        
+
         logger.info(f"Using standalone MCP implementation: {name}")
-        
+
         # Initialize error handler if available
         self._init_error_handler()
-    
+
     def _init_error_handler(self):
         """Initialize the error handler for auto-healing."""
         try:
             import os
             from ipfs_accelerate_py.error_handler import CLIErrorHandler
-            
+
             # Check if auto-healing is enabled
-            enable_auto_issue = os.environ.get('IPFS_AUTO_ISSUE', '').lower() in ('1', 'true', 'yes')
-            enable_auto_pr = os.environ.get('IPFS_AUTO_PR', '').lower() in ('1', 'true', 'yes')
-            enable_auto_heal = os.environ.get('IPFS_AUTO_HEAL', '').lower() in ('1', 'true', 'yes')
-            repo = os.environ.get('IPFS_REPO', 'endomorphosis/ipfs_accelerate_py')
-            
+            enable_auto_issue = os.environ.get("IPFS_AUTO_ISSUE", "").lower() in (
+                "1",
+                "true",
+                "yes",
+            )
+            enable_auto_pr = os.environ.get("IPFS_AUTO_PR", "").lower() in ("1", "true", "yes")
+            enable_auto_heal = os.environ.get("IPFS_AUTO_HEAL", "").lower() in ("1", "true", "yes")
+            repo = os.environ.get("IPFS_REPO", "endomorphosis/ipfs_accelerate_py")
+
             if enable_auto_issue or enable_auto_pr or enable_auto_heal:
                 self._error_handler = CLIErrorHandler(
                     repo=repo,
                     enable_auto_issue=enable_auto_issue,
                     enable_auto_pr=enable_auto_pr,
                     enable_auto_heal=enable_auto_heal,
-                    log_context_lines=50
+                    log_context_lines=50,
                 )
-                logger.info(f"MCP auto-healing enabled: issue={enable_auto_issue}, pr={enable_auto_pr}, heal={enable_auto_heal}")
+                logger.info(
+                    f"MCP auto-healing enabled: issue={enable_auto_issue}, pr={enable_auto_pr}, heal={enable_auto_heal}"
+                )
         except ImportError as e:
             logger.debug(f"Error handler not available for MCP: {e}")
         except Exception as e:
             logger.debug(f"Failed to initialize MCP error handler: {e}")
-    
+
     def _report_tool_error(self, tool_name: str, exception: Exception, params: dict):
         """Report a tool execution error to the auto-healing system."""
         if not self._error_handler:
             return
-        
+
         try:
             context = {
-                'mcp_server': self.name,
-                'tool_name': tool_name,
-                'tool_params': str(params),
-                'error_source': 'mcp_tool'
+                "mcp_server": self.name,
+                "tool_name": tool_name,
+                "tool_params": str(params),
+                "error_source": "mcp_tool",
             }
-            
+
             # Capture the error
             self._error_handler.capture_error(exception, context=context)
-            
+
             # Create issue if enabled
             if self._error_handler.enable_auto_issue:
                 self._error_handler.create_issue_from_error(exception, context=context)
         except Exception as e:
             logger.debug(f"Failed to report tool error: {e}")
-    
+
     def _report_resource_error(self, resource_uri: str, exception: Exception):
         """Report a resource access error to the auto-healing system."""
         if not self._error_handler:
             return
-        
+
         try:
             context = {
-                'mcp_server': self.name,
-                'resource_uri': resource_uri,
-                'error_source': 'mcp_resource'
+                "mcp_server": self.name,
+                "resource_uri": resource_uri,
+                "error_source": "mcp_resource",
             }
-            
+
             # Capture the error
             self._error_handler.capture_error(exception, context=context)
-            
+
             # Create issue if enabled
             if self._error_handler.enable_auto_issue:
                 self._error_handler.create_issue_from_error(exception, context=context)
         except Exception as e:
             logger.debug(f"Failed to report resource error: {e}")
-    
+
     def _report_client_error(self, error_data: dict):
         """
         Report a client-side (JavaScript SDK) error to the auto-healing system.
-        
+
         Args:
             error_data: Dictionary containing error details from the client
         """
         if not self._error_handler:
             logger.debug("Error handler not available, skipping client error report")
             return
-        
+
         try:
             # Create a synthetic exception from the client error data
-            error_type = error_data.get('error_type', 'ClientError')
-            error_message = error_data.get('error_message', 'Unknown client error')
-            stack_trace = error_data.get('stack_trace', '')
-            client_context = error_data.get('context', {})
-            
+            error_type = error_data.get("error_type", "ClientError")
+            error_message = error_data.get("error_message", "Unknown client error")
+            stack_trace = error_data.get("stack_trace", "")
+            client_context = error_data.get("context", {})
+
             # Build context
             context = {
-                'mcp_server': self.name,
-                'error_source': 'mcp_javascript_sdk',
-                'client_context': client_context,
-                'client_stack_trace': stack_trace,
+                "mcp_server": self.name,
+                "error_source": "mcp_javascript_sdk",
+                "client_context": client_context,
+                "client_stack_trace": stack_trace,
             }
-            
+
             # Create a RuntimeError with the client's error message
             exception = RuntimeError(f"[JavaScript SDK] {error_type}: {error_message}")
-            
+
             # Capture the error
             self._error_handler.capture_error(exception, context=context)
-            
+
             # Create issue if enabled
             if self._error_handler.enable_auto_issue:
                 self._error_handler.create_issue_from_error(exception, context=context)
-            
+
             logger.info(f"Reported client error to auto-healing system: {error_type}")
         except Exception as e:
             logger.error(f"Failed to report client error: {e}")
             import traceback
+
             logger.debug(traceback.format_exc())
-    
+
     def register_tool(
         self,
         name: str,
@@ -186,7 +196,7 @@ class StandaloneMCP:
     ) -> None:
         """
         Register a tool with the MCP server
-        
+
         Args:
             name: Name of the tool
             function: Function to be called when the tool is used
@@ -214,9 +224,9 @@ class StandaloneMCP:
             "tags": [str(t) for t in (tags or []) if str(t).strip()],
             "metadata": metadata,
         }
-        
+
         logger.debug(f"Registered tool: {name}")
-    
+
     def tool(
         self,
         *,
@@ -228,36 +238,40 @@ class StandaloneMCP:
     ):
         """
         Decorator for registering tools (FastMCP compatibility)
-        
+
         This decorator allows tools to be registered using the @mcp.tool() syntax
         compatible with FastMCP, but internally uses register_tool.
-        
+
         Returns:
             Decorator function
         """
+
         def decorator(func):
             # Extract function name and docstring
             tool_name = str(name or func.__name__)
-            tool_desc = description if description is not None else (func.__doc__ or "No description")
-            
+            tool_desc = (
+                description if description is not None else (func.__doc__ or "No description")
+            )
+
             # Create a simple input schema from the function signature
             import inspect
+
             sig = inspect.signature(func)
             properties = {}
             required = []
-            
+
             for param_name, param in sig.parameters.items():
                 # Skip self/cls parameters
-                if param_name in ('self', 'cls'):
+                if param_name in ("self", "cls"):
                     continue
-                    
+
                 # Determine type hint if available
                 param_type = "string"  # default
                 if param.annotation != inspect.Parameter.empty:
                     ann = param.annotation
                     # Check for typing generics by examining __origin__
-                    origin = getattr(ann, '__origin__', None)
-                    
+                    origin = getattr(ann, "__origin__", None)
+
                     if ann is int:
                         param_type = "integer"
                     elif ann is float:
@@ -268,13 +282,13 @@ class StandaloneMCP:
                         param_type = "array"
                     elif ann is dict or origin is dict:
                         param_type = "object"
-                
+
                 properties[param_name] = {"type": param_type}
-                
+
                 # Add to required if no default value
                 if param.default == inspect.Parameter.empty:
                     required.append(param_name)
-            
+
             derived_schema = {
                 "type": "object",
                 "properties": properties,
@@ -282,7 +296,7 @@ class StandaloneMCP:
             }
 
             schema = input_schema if isinstance(input_schema, dict) else derived_schema
-            
+
             # Register the tool
             self.register_tool(
                 name=tool_name,
@@ -292,42 +306,30 @@ class StandaloneMCP:
                 execution_context=execution_context,
                 tags=tags,
             )
-            
+
             return func
-        
+
         return decorator
-    
-    def register_resource(
-        self,
-        uri: str,
-        function: Callable,
-        description: str
-    ) -> None:
+
+    def register_resource(self, uri: str, function: Callable, description: str) -> None:
         """
         Register a resource with the MCP server
-        
+
         Args:
             uri: URI of the resource
             function: Function to be called when the resource is accessed
             description: Description of the resource
         """
-        self.resources[uri] = {
-            "function": function,
-            "description": description
-        }
-        
+        self.resources[uri] = {"function": function, "description": description}
+
         logger.debug(f"Registered resource: {uri}")
-    
+
     def register_prompt(
-        self,
-        name: str,
-        template: str,
-        description: str,
-        input_schema: Dict[str, Any]
+        self, name: str, template: str, description: str, input_schema: Dict[str, Any]
     ) -> None:
         """
         Register a prompt with the MCP server
-        
+
         Args:
             name: Name of the prompt
             template: Template for the prompt
@@ -337,9 +339,9 @@ class StandaloneMCP:
         self.prompts[name] = {
             "template": template,
             "description": description,
-            "input_schema": input_schema
+            "input_schema": input_schema,
         }
-        
+
         logger.debug(f"Registered prompt: {name}")
 
     def access_resource(self, uri: str, **kwargs) -> Any:
@@ -361,7 +363,7 @@ class StandaloneMCP:
             logger.error(f"Error accessing resource {uri}: {e}")
             logger.debug(traceback.format_exc())
         return None
-    
+
     def create_fastapi_app(
         self,
         title: str,
@@ -369,11 +371,11 @@ class StandaloneMCP:
         version: str,
         docs_url: str,
         redoc_url: str,
-        mount_path: str
+        mount_path: str,
     ) -> Any:
         """
         Create a FastAPI app for the MCP server
-        
+
         Args:
             title: Title of the API
             description: Description of the API
@@ -381,25 +383,25 @@ class StandaloneMCP:
             docs_url: URL for the API documentation
             redoc_url: URL for the API redoc documentation
             mount_path: Path to mount the API at
-            
+
         Returns:
             FastAPI app
         """
         logger.debug(f"Creating FastAPI app for standalone MCP: {title}")
-        
+
         try:
             from fastapi import FastAPI, APIRouter, Body, Depends
             from pydantic import BaseModel, Field, create_model
             from functools import partial
-            
+
             app = FastAPI(
                 title=title,
                 description=description,
                 version=version,
                 docs_url=docs_url,
-                redoc_url=redoc_url
+                redoc_url=redoc_url,
             )
-            
+
             router = APIRouter()
 
             def _server_info() -> Dict[str, Any]:
@@ -432,10 +434,10 @@ class StandaloneMCP:
             @router.get("/resources", summary="List resources")
             async def list_resources_endpoint():
                 return sorted(list((self.resources or {}).keys()))
-            
+
             # Create a single endpoint for all tools that dynamically dispatches based on the tool name
             from fastapi import HTTPException, Path, Body
-            
+
             async def _execute_tool(tool_name: str, data: dict):
                 if tool_name not in (self.tools or {}):
                     raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found")
@@ -462,7 +464,9 @@ class StandaloneMCP:
                     try:
                         self._report_tool_error(tool_name, e, data or {})
                     except Exception as report_error:
-                        logger.debug(f"Failed to report error to auto-healing system: {report_error}")
+                        logger.debug(
+                            f"Failed to report error to auto-healing system: {report_error}"
+                        )
 
                     raise HTTPException(status_code=500, detail=str(e))
 
@@ -481,15 +485,17 @@ class StandaloneMCP:
                 data: dict = Body({}, description="Tool input data"),
             ):
                 return await _execute_tool(tool_name, data)
-            
+
             # Log all registered tools
             for name, tool in self.tools.items():
                 logger.debug(f"Registered tool: {name} (accessible at POST /tool/{name})")
-            
+
             # Create a single endpoint for all resources that dynamically dispatches based on the resource URI
             async def _get_resource(resource_uri: str):
                 if resource_uri not in (self.resources or {}):
-                    raise HTTPException(status_code=404, detail=f"Resource '{resource_uri}' not found")
+                    raise HTTPException(
+                        status_code=404, detail=f"Resource '{resource_uri}' not found"
+                    )
 
                 try:
                     resource = self.resources[resource_uri]
@@ -504,7 +510,9 @@ class StandaloneMCP:
                     try:
                         self._report_resource_error(resource_uri, e)
                     except Exception as report_error:
-                        logger.debug(f"Failed to report error to auto-healing system: {report_error}")
+                        logger.debug(
+                            f"Failed to report error to auto-healing system: {report_error}"
+                        )
 
                     raise HTTPException(status_code=500, detail=str(e))
 
@@ -521,58 +529,62 @@ class StandaloneMCP:
                 resource_uri: str = Path(..., description="The URI of the resource to access"),
             ):
                 return await _get_resource(resource_uri)
-            
+
             # Log all registered resources
             for uri, resource in self.resources.items():
                 logger.debug(f"Registered resource: {uri} (accessible at GET /resource/{uri})")
-            
+
             # Add error reporting endpoint for JavaScript SDK
             @router.post("/report-error", summary="Report client-side error")
-            async def report_error_endpoint(error_data: dict = Body(..., description="Error details from client")):
+            async def report_error_endpoint(
+                error_data: dict = Body(..., description="Error details from client"),
+            ):
                 """
                 Endpoint for JavaScript SDK to report client-side errors.
-                
+
                 Expected error_data format:
                 {
                     "error_type": "string",
-                    "error_message": "string", 
+                    "error_message": "string",
                     "stack_trace": "string",
                     "context": {...}
                 }
-                
+
                 Security: This endpoint validates and sanitizes input before processing.
                 """
                 try:
                     # Validate required fields
                     if not isinstance(error_data, dict):
                         raise HTTPException(status_code=400, detail="Invalid error data format")
-                    
+
                     required_fields = ["error_type", "error_message"]
                     for field in required_fields:
                         if field not in error_data:
-                            raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
-                    
+                            raise HTTPException(
+                                status_code=400, detail=f"Missing required field: {field}"
+                            )
+
                     # Sanitize and limit field sizes to prevent abuse
                     max_message_length = 10000
                     max_stack_trace_length = 50000
-                    
+
                     error_type = str(error_data.get("error_type", ""))[:500]
                     error_message = str(error_data.get("error_message", ""))[:max_message_length]
                     stack_trace = str(error_data.get("stack_trace", ""))[:max_stack_trace_length]
                     context = error_data.get("context", {})
-                    
+
                     # Validate context is dict and limit size
                     if not isinstance(context, dict):
                         context = {}
-                    
+
                     # Create sanitized error data
                     sanitized_error_data = {
                         "error_type": error_type,
                         "error_message": error_message,
                         "stack_trace": stack_trace,
-                        "context": context
+                        "context": context,
                     }
-                    
+
                     # Report the error to the auto-healing system
                     self._report_client_error(sanitized_error_data)
                     return {"status": "ok", "message": "Error reported successfully"}
@@ -581,7 +593,7 @@ class StandaloneMCP:
                 except Exception as e:
                     logger.error(f"Failed to report client error: {e}")
                     return {"status": "error", "message": "Internal server error"}
-            
+
             # Mount the router (mount_path may be "" when used as a sub-app)
             app.include_router(router, prefix=mount_path)
 
@@ -589,66 +601,70 @@ class StandaloneMCP:
             # (e.g. GET /mcp) to avoid redirects.
             normalized = (mount_path or "").rstrip("/")
             if normalized and normalized != "/":
-                app.add_api_route(normalized, lambda: _server_info(), methods=["GET"], include_in_schema=False)
-            
+                app.add_api_route(
+                    normalized, lambda: _server_info(), methods=["GET"], include_in_schema=False
+                )
+
             # Debug: Print all registered routes
             logger.debug(f"FastAPI app created for standalone MCP with routes:")
             for route in app.routes:
-                logger.debug(f"Route: {route.path} {route.methods if hasattr(route, 'methods') else ''}")
-            
+                logger.debug(
+                    f"Route: {route.path} {route.methods if hasattr(route, 'methods') else ''}"
+                )
+
             return app
-        
+
         except ImportError:
             logger.error("Failed to create FastAPI app: FastAPI not installed")
             raise
-        
+
         except Exception as e:
             logger.error(f"Failed to create FastAPI app: {e}")
             raise
-    
+
     def _create_pydantic_model(self, name: str, schema: Dict[str, Any]) -> Any:
         """
         Create a Pydantic model from a JSON schema
-        
+
         Args:
             name: Name of the model
             schema: JSON schema for the model
-            
+
         Returns:
             Pydantic model
         """
         from pydantic import create_model, Field
-        
+
         if "properties" not in schema:
             return create_model(name, __base__=BaseModel)
-        
+
         required = schema.get("required", [])
         fields = {}
-        
+
         for prop_name, prop_schema in schema["properties"].items():
             field_type = self._get_field_type(prop_schema)
             default = None if prop_name in required else prop_schema.get("default", ...)
             description = prop_schema.get("description", "")
-            
+
             fields[prop_name] = (field_type, Field(default=default, description=description))
-        
+
         return create_model(name, **fields, __base__=BaseModel)
-    
+
     def _get_field_type(self, schema: Dict[str, Any]) -> Any:
         """
         Get the Python type for a JSON schema type
-        
+
         Args:
             schema: JSON schema
-            
+
         Returns:
             Python type
         """
         if "type" not in schema:
             return Any
-        
+
         schema_type = schema["type"]
-        
+
         if schema_type == "string":
             return str
         elif schema_type == "integer":
@@ -664,24 +680,25 @@ class StandaloneMCP:
         else:
             return Any
 
+
 class IPFSAccelerateMCPServer:
     """
     IPFS Accelerate MCP Server
-    
+
     This class provides a Model Context Protocol server for IPFS Accelerate.
     """
-    
+
     def __init__(
         self,
-    name: str = "ipfs-accelerate",
-    host: str = "0.0.0.0",
+        name: str = "ipfs-accelerate",
+        host: str = "0.0.0.0",
         port: int = 8000,
         mount_path: str = "/mcp",
-        debug: bool = False
+        debug: bool = False,
     ):
         """
         Initialize the IPFS Accelerate MCP Server
-        
+
         Args:
             name: Name of the server
             host: Host to bind the server to
@@ -695,45 +712,48 @@ class IPFSAccelerateMCPServer:
         self.mount_path = mount_path
         self.debug = debug
         self._using_fastmcp = False
-        
+
         # Configure logging
         if debug:
             logging.getLogger("ipfs_accelerate_mcp").setLevel(logging.DEBUG)
-        
+
         # Set up server attributes
         self.mcp = None
         self.fastapi_app = None
         self.server_url = f"http://{host}:{port}{mount_path}"
-        
+
         logger.debug(f"Initialized IPFS Accelerate MCP Server: {self.server_url}")
-    
+
     def setup(self) -> None:
         """
         Set up the MCP server
-        
+
         This function sets up the MCP server with all tools and resources.
         """
         logger.info(f"Setting up IPFS Accelerate MCP Server: {self.name}")
-        
+
         try:
             # Try to import FastMCP
             def _import_fastmcp_site_first():
                 original = list(sys.path)
                 try:
-                    site_paths = [p for p in original if ('site-packages' in p or 'dist-packages' in p)]
+                    site_paths = [
+                        p for p in original if ("site-packages" in p or "dist-packages" in p)
+                    ]
                     other_paths = [p for p in original if p not in site_paths]
                     # Prioritize site-packages before repo root to avoid local mcp shadowing
                     sys.path[:] = site_paths + other_paths
                     import importlib
-                    return importlib.import_module('fastmcp')
+
+                    return importlib.import_module("fastmcp")
                 except Exception:
                     return None
                 finally:
                     sys.path[:] = original
 
             fm = _import_fastmcp_site_first()
-            if fm is not None and hasattr(fm, 'FastMCP'):
-                FastMCP = getattr(fm, 'FastMCP')
+            if fm is not None and hasattr(fm, "FastMCP"):
+                FastMCP = getattr(fm, "FastMCP")
                 # Create FastMCP instance
                 self.mcp = FastMCP(name=self.name)
                 # Create FastAPI app
@@ -743,7 +763,7 @@ class IPFSAccelerateMCPServer:
                     version="0.1.0",
                     docs_url="/docs",
                     redoc_url="/redoc",
-                    mount_path=self.mount_path
+                    mount_path=self.mount_path,
                 )
                 logger.info("Using FastMCP implementation")
                 self._using_fastmcp = True
@@ -751,7 +771,7 @@ class IPFSAccelerateMCPServer:
                 # Use standalone implementation
                 logger.warning("FastMCP not available, using standalone implementation")
                 self.mcp = StandaloneMCP(name=self.name)
-                
+
                 # Create FastAPI app
                 self.fastapi_app = self.mcp.create_fastapi_app(
                     title="IPFS Accelerate MCP API",
@@ -759,11 +779,11 @@ class IPFSAccelerateMCPServer:
                     version="0.1.0",
                     docs_url="/docs",
                     redoc_url="/redoc",
-                    mount_path=self.mount_path
+                    mount_path=self.mount_path,
                 )
-                
+
                 self._using_fastmcp = False
-            
+
             # Enable CORS for external API consumers (configurable via MCP_CORS_ORIGINS)
             try:
                 from fastapi.middleware.cors import CORSMiddleware
@@ -784,99 +804,99 @@ class IPFSAccelerateMCPServer:
 
             # Register tools
             self._register_tools()
-            
+
             # Register resources
             self._register_resources()
-            
+
             # Register prompts
             self._register_prompts()
-            
+
             logger.info(f"IPFS Accelerate MCP Server set up: {self.server_url}")
-        
+
         except Exception as e:
             logger.error(f"Error setting up MCP server: {e}")
             raise
-    
+
     def run(self) -> None:
         """
         Run the MCP server
-        
+
         This function runs the MCP server using uvicorn.
         """
         if self.fastapi_app is None:
             self.setup()
-        
+
         logger.info(f"Running IPFS Accelerate MCP Server at {self.server_url}")
-        
+
         try:
             import uvicorn
-            
+
             # Run the server
             uvicorn.run(
                 self.fastapi_app,
                 host=self.host,
                 port=self.port,
-                log_level="debug" if self.debug else "info"
+                log_level="debug" if self.debug else "info",
             )
-        
+
         except ImportError:
             logger.error("Failed to import uvicorn. Please install with 'pip install uvicorn'.")
             raise
-        
+
         except Exception as e:
             logger.error(f"Error running MCP server: {e}")
             raise
-    
+
     def _register_tools(self) -> None:
         """
         Register tools with the MCP server
-        
+
         This function registers all tools with the MCP server.
         """
         logger.debug("Registering tools with MCP server")
-        
+
         try:
             # Import tools
             from ipfs_accelerate_py.mcp.tools import register_all_tools
-            
+
             # Register tools
             register_all_tools(self.mcp)
-            
+
             logger.debug("Tools registered with MCP server")
-        
+
         except Exception as e:
             logger.error(f"Error registering tools with MCP server: {e}")
             raise
-    
+
     def _register_resources(self) -> None:
         """
         Register resources with the MCP server
-        
+
         This function registers all resources with the MCP server.
         """
         logger.debug("Registering resources with MCP server")
-        
+
         try:
             # Import resources
             from ipfs_accelerate_py.mcp.resources import register_all_resources
-            
+
             # Register resources
             register_all_resources(self.mcp)
-            
+
             logger.debug("Resources registered with MCP server")
-        
+
         except Exception as e:
             logger.error(f"Error registering resources with MCP server: {e}")
             raise
-    
+
     def _register_prompts(self) -> None:
         """
         Register prompts with the MCP server
-        
+
         This function registers all prompts with the MCP server.
         """
         logger.debug("Registering prompts with MCP server")
-        
+
         try:
             # Define default help prompt
             self.mcp.register_prompt(
@@ -899,53 +919,46 @@ class IPFSAccelerateMCPServer:
                 {% endfor %}
                 """,
                 description="Get help with IPFS Accelerate",
-                input_schema={
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }
+                input_schema={"type": "object", "properties": {}, "required": []},
             )
-            
+
             logger.debug("Prompts registered with MCP server")
-        
+
         except Exception as e:
             logger.error(f"Error registering prompts with MCP server: {e}")
             # Don't raise here, as prompts are optional
             pass
 
+
 def main() -> None:
     """
     Main entry point for the IPFS Accelerate MCP Server
-    
+
     This function parses command-line arguments and runs the server.
     """
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="IPFS Accelerate MCP Server")
-    
+
     parser.add_argument("--name", default="ipfs-accelerate", help="Name of the server")
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind the server to")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind the server to")
     parser.add_argument("--mount-path", default="/mcp", help="Path to mount the server at")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
-    
+
     args = parser.parse_args()
-    
+
     # Create server
     server = IPFSAccelerateMCPServer(
-        name=args.name,
-        host=args.host,
-        port=args.port,
-        mount_path=args.mount_path,
-        debug=args.debug
+        name=args.name, host=args.host, port=args.port, mount_path=args.mount_path, debug=args.debug
     )
-    
+
     # Run server
     try:
         server.run()
-    
+
     except KeyboardInterrupt:
         logger.info("Keyboard interrupt received, stopping server...")
-    
+
     except Exception as e:
         logger.error(f"Error running server: {e}")
         sys.exit(1)
@@ -1137,7 +1150,9 @@ class MCPServerWrapper:
             for name, prompt in (self.mcp.prompts or {}).items()
         ]
 
-    def run(self, host: Optional[str] = None, port: Optional[int] = None, reload: bool = False) -> None:
+    def run(
+        self, host: Optional[str] = None, port: Optional[int] = None, reload: bool = False
+    ) -> None:
         """Run the MCP server via uvicorn."""
         import uvicorn
 
@@ -1287,7 +1302,9 @@ def create_mcp_server(
                 facade_telemetry["bridge_disable_ignored"] = False
                 facade_telemetry["reason"] = "force_legacy_rollback"
             if bridge_enabled:
-                from ipfs_accelerate_py.mcp_server.server import create_server as create_unified_server
+                from ipfs_accelerate_py.mcp_server.server import (
+                    create_server as create_unified_server,
+                )
 
                 if cutover_dry_run_enabled:
                     try:
@@ -1303,7 +1320,9 @@ def create_mcp_server(
                         cutover_dry_run_status["ok"] = True
                         facade_telemetry["dry_run_ok"] = True
                         facade_telemetry["reason"] = "dry_run_legacy_fallback"
-                        logger.info("Unified cutover dry-run validation succeeded; continuing on legacy path")
+                        logger.info(
+                            "Unified cutover dry-run validation succeeded; continuing on legacy path"
+                        )
                     except Exception as dry_run_exc:
                         cutover_dry_run_status["error"] = str(dry_run_exc)
                         facade_telemetry["bridge_error"] = str(dry_run_exc)
@@ -1324,7 +1343,9 @@ def create_mcp_server(
                     )
                     facade_telemetry["bridge_active"] = True
                     facade_telemetry["selected_runtime"] = "unified"
-                    facade_telemetry["reason"] = "unified_default" if not bridge_explicit else "unified_bridge"
+                    facade_telemetry["reason"] = (
+                        "unified_default" if not bridge_explicit else "unified_bridge"
+                    )
                     _MCP_SERVER_INSTANCE = server
                     try:
                         set_mcp_like_instance(getattr(server, "mcp", None) or server)
@@ -1377,6 +1398,7 @@ def create_mcp_server(
 def get_mcp_server_instance() -> Optional[Any]:
     """Return the last created MCP server instance or MCP-like registry, if any."""
     return _MCP_SERVER_INSTANCE or _MCP_LIKE_INSTANCE
+
 
 if __name__ == "__main__":
     main()

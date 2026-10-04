@@ -292,13 +292,13 @@ Modify `github_autoscaler.py` to customize behavior:
 # Only provision for specific workflow states
 def check_and_scale(self):
     queues = self.queue_mgr.create_workflow_queues(...)
-    
+
     # Custom filtering
     filtered_queues = {
-        repo: [w for w in workflows if w.get('event') == 'push']
+        repo: [w for w in workflows if w.get("event") == "push"]
         for repo, workflows in queues.items()
     }
-    
+
     self.runner_mgr.provision_runners_for_queue(filtered_queues)
 ```
 

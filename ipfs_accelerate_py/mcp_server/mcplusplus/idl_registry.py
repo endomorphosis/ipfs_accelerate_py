@@ -45,7 +45,9 @@ def _missing_capabilities(requires: Iterable[Any], supported: Iterable[Any]) -> 
 
 def canonicalize_descriptor(descriptor: Dict[str, Any]) -> bytes:
     """Return deterministic canonical bytes for an interface descriptor."""
-    return json.dumps(descriptor, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    return json.dumps(descriptor, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode(
+        "utf-8"
+    )
 
 
 def compute_interface_cid(descriptor: Dict[str, Any]) -> str:
@@ -83,7 +85,8 @@ def build_descriptor(
         "compatibility": compatibility or {"compatible_with": [], "supersedes": []},
         "semantic_tags": semantic_tags or [],
         "observability": observability or {"trace": True, "provenance": True},
-        "interaction_patterns": interaction_patterns or {"request_response": True, "event_streams": False},
+        "interaction_patterns": interaction_patterns
+        or {"request_response": True, "event_streams": False},
         "resource_cost_hints": resource_cost_hints or {},
     }
 
@@ -162,7 +165,9 @@ class InterfaceDescriptorRegistry:
                         cid
                         for cid, payload in self._by_cid.items()
                         if cid != interface_cid
-                        and not _missing_capabilities(payload.get("requires", []), self._supported_capabilities)
+                        and not _missing_capabilities(
+                            payload.get("requires", []), self._supported_capabilities
+                        )
                     ]
                 ),
             )

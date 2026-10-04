@@ -29,6 +29,7 @@ if _EXPORTS:
     globals().update(_EXPORTS)
     __all__ = sorted(_EXPORTS.keys())
 else:
+
     class NLUcanPolicyUnavailable(RuntimeError):
         """Raised when NL-UCAN policy surface is unavailable in this environment."""
 

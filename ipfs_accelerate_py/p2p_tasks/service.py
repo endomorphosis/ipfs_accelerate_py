@@ -112,7 +112,9 @@ def record_peer_seen(*, peer_id: str, info: Optional[Dict[str, object]] = None) 
         _KNOWN_PEERS[pid] = cur
 
 
-def list_known_peers(*, alive_only: bool = True, limit: int = 200, exclude_peer_id: str = "") -> list[Dict[str, Any]]:
+def list_known_peers(
+    *, alive_only: bool = True, limit: int = 200, exclude_peer_id: str = ""
+) -> list[Dict[str, Any]]:
     """List peers recently seen by this TaskQueue p2p service."""
 
     now = time.time()
@@ -196,9 +198,8 @@ def _default_announce_file() -> str:
 
 
 def _announce_file_path() -> str:
-    raw = (
-        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE")
-        or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE")
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE") or os.environ.get(
+        "IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE"
     )
     text = str(raw).strip() if raw is not None else ""
     if text.lower() in {"0", "false", "no", "off"}:
@@ -513,6 +514,7 @@ async def _maybe_start_rendezvous(*, host, namespace: str) -> object | None:
 def _have_libp2p() -> bool:
     try:
         import libp2p  # noqa: F401
+
         return True
     except Exception:
         return False
@@ -537,9 +539,8 @@ def _load_config() -> ServiceConfig:
 
 
 def _parse_bootstrap_peers() -> list[str]:
-    raw = (
-        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS")
-        or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_BOOTSTRAP_PEERS")
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS") or os.environ.get(
+        "IPFS_DATASETS_PY_TASK_P2P_BOOTSTRAP_PEERS"
     )
     if raw is not None and str(raw).strip().lower() in {"0", "false", "no", "off"}:
         return []
@@ -559,9 +560,8 @@ def _parse_bootstrap_peers() -> list[str]:
 
 
 def _dnsaddr_resolution_enabled() -> bool:
-    raw = (
-        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_DNSADDR_RESOLVE")
-        or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_DNSADDR_RESOLVE")
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_DNSADDR_RESOLVE") or os.environ.get(
+        "IPFS_DATASETS_PY_TASK_P2P_DNSADDR_RESOLVE"
     )
     if raw is None:
         return True
@@ -602,7 +602,7 @@ def _resolve_dnsaddr_txt(hostname: str) -> list[str]:
         txt = (txt or "").strip()
         if not txt.startswith("dnsaddr="):
             continue
-        ma = txt[len("dnsaddr="):].strip()
+        ma = txt[len("dnsaddr=") :].strip()
         if ma:
             out.append(ma)
     return out
@@ -627,7 +627,7 @@ def _expand_dnsaddr_peers(peers: list[str]) -> list[str]:
             return [text]
         seen_dns.add(text)
 
-        remainder = text[len("/dnsaddr/"):]
+        remainder = text[len("/dnsaddr/") :]
         host = remainder
         peer_id = ""
         if "/p2p/" in remainder:
@@ -700,7 +700,9 @@ def _jsonable(value: Any) -> Any:
         return str(type(value))
 
 
-def _accelerate_capabilities(accelerate_instance: object | None, *, detail: bool = False) -> Dict[str, Any]:
+def _accelerate_capabilities(
+    accelerate_instance: object | None, *, detail: bool = False
+) -> Dict[str, Any]:
     if accelerate_instance is None:
         return {
             "task_types": ["text-generation"],
@@ -1001,7 +1003,9 @@ async def serve_task_queue(
                     continue
 
             # 2) Peer-id targets (only if already present in peerstore)
-            target_texts = {str(t).strip() for t in cache_replicate_targets if "/p2p/" not in str(t or "")}
+            target_texts = {
+                str(t).strip() for t in cache_replicate_targets if "/p2p/" not in str(t or "")
+            }
             if target_texts:
                 try:
                     for pid in list(ps.peer_ids()):  # type: ignore[attr-defined]
@@ -1127,7 +1131,9 @@ async def serve_task_queue(
     sched_clock = _MerkleClock(node_id="taskqueue-service")
     known_peers: dict[str, dict[str, object]] = {}
 
-    def _update_peer_state(peer: str, clock_dict: object | None = None, extra: object | None = None) -> None:
+    def _update_peer_state(
+        peer: str, clock_dict: object | None = None, extra: object | None = None
+    ) -> None:
         pid = str(peer or "").strip()
         if not pid:
             return
@@ -1151,7 +1157,10 @@ async def serve_task_queue(
                 pass
         known_peers[pid] = info
         try:
-            record_peer_seen(peer_id=pid, info={k: v for k, v in info.items() if k not in {"peer_id", "last_seen"}})
+            record_peer_seen(
+                peer_id=pid,
+                info={k: v for k, v in info.items() if k not in {"peer_id", "last_seen"}},
+            )
         except Exception:
             pass
 
@@ -1284,7 +1293,9 @@ async def serve_task_queue(
             "This environment likely has an incompatible `multihash` module."
         )
 
-    print("ipfs_accelerate_py task queue p2p service: creating host...", file=sys.stderr, flush=True)
+    print(
+        "ipfs_accelerate_py task queue p2p service: creating host...", file=sys.stderr, flush=True
+    )
 
     # libp2p's ResourceManager can enter a "graceful degradation" mode when it
     # believes connection limits are exhausted. In long-running processes with
@@ -1346,7 +1357,9 @@ async def serve_task_queue(
                     pass
 
             try:
-                msg, err = await read_ndjson_message(stream, max_message_bytes=1024 * 1024, chunk_size=1024)
+                msg, err = await read_ndjson_message(
+                    stream, max_message_bytes=1024 * 1024, chunk_size=1024
+                )
             except (StreamEOF, MuxedStreamEOF):
                 return
 
@@ -1354,7 +1367,9 @@ async def serve_task_queue(
                 # Empty stream: no response required.
                 if err == "empty":
                     return
-                await _safe_write_json({"ok": False, "error": str(err or "invalid_message"), "peer_id": peer_id})
+                await _safe_write_json(
+                    {"ok": False, "error": str(err or "invalid_message"), "peer_id": peer_id}
+                )
                 return
 
             auth_mode = (
@@ -1371,7 +1386,9 @@ async def serve_task_queue(
                 # Host-driven auth: require the embedding host to validate the message.
                 allowed = False
                 try:
-                    if accelerate_instance is not None and hasattr(accelerate_instance, "validate_p2p_message"):
+                    if accelerate_instance is not None and hasattr(
+                        accelerate_instance, "validate_p2p_message"
+                    ):
                         maybe = accelerate_instance.validate_p2p_message(msg)
                         if hasattr(maybe, "__await__"):
                             allowed = bool(await maybe)
@@ -1381,11 +1398,15 @@ async def serve_task_queue(
                     allowed = False
 
                 if not allowed:
-                    await _safe_write_json({"ok": False, "error": "unauthorized", "peer_id": peer_id})
+                    await _safe_write_json(
+                        {"ok": False, "error": "unauthorized", "peer_id": peer_id}
+                    )
                     return
             elif auth_mode in {"shared_token", "shared", "token"}:
                 if not auth_ok(msg):
-                    await _safe_write_json({"ok": False, "error": "unauthorized", "peer_id": peer_id})
+                    await _safe_write_json(
+                        {"ok": False, "error": "unauthorized", "peer_id": peer_id}
+                    )
                     return
             else:
                 # Back-compat default: shared token, if configured, is enforced.
@@ -1393,7 +1414,9 @@ async def serve_task_queue(
                 if not auth_ok(msg):
                     allowed = False
                     try:
-                        if accelerate_instance is not None and hasattr(accelerate_instance, "validate_p2p_message"):
+                        if accelerate_instance is not None and hasattr(
+                            accelerate_instance, "validate_p2p_message"
+                        ):
                             maybe = accelerate_instance.validate_p2p_message(msg)
                             if hasattr(maybe, "__await__"):
                                 allowed = bool(await maybe)
@@ -1403,7 +1426,9 @@ async def serve_task_queue(
                         allowed = False
 
                     if not allowed:
-                        await _safe_write_json({"ok": False, "error": "unauthorized", "peer_id": peer_id})
+                        await _safe_write_json(
+                            {"ok": False, "error": "unauthorized", "peer_id": peer_id}
+                        )
                         return
 
             op = (msg.get("op") or "").strip().lower()
@@ -1425,10 +1450,14 @@ async def serve_task_queue(
             if op in {"claim", "claim_next"}:
                 worker_id = str(msg.get("worker_id") or "").strip()
                 if not worker_id:
-                    await _safe_write_json({"ok": False, "error": "missing_worker_id", "peer_id": peer_id})
+                    await _safe_write_json(
+                        {"ok": False, "error": "missing_worker_id", "peer_id": peer_id}
+                    )
                     return
 
-                session_id = str(msg.get("session_id") or msg.get("session") or msg.get("p2p_session") or "").strip()
+                session_id = str(
+                    msg.get("session_id") or msg.get("session") or msg.get("p2p_session") or ""
+                ).strip()
 
                 claimed_peer_id = str(msg.get("peer") or msg.get("peer_id") or "").strip()
                 # For deterministic scheduling, use the caller-provided peer id
@@ -1512,12 +1541,16 @@ async def serve_task_queue(
                 worker_id = str(msg.get("worker_id") or "").strip()
                 if not worker_id:
                     await stream.write(
-                        json.dumps({"ok": False, "error": "missing_worker_id", "peer_id": peer_id}).encode("utf-8")
+                        json.dumps(
+                            {"ok": False, "error": "missing_worker_id", "peer_id": peer_id}
+                        ).encode("utf-8")
                         + b"\n"
                     )
                     return
 
-                session_id = str(msg.get("session_id") or msg.get("session") or msg.get("p2p_session") or "").strip()
+                session_id = str(
+                    msg.get("session_id") or msg.get("session") or msg.get("p2p_session") or ""
+                ).strip()
 
                 claimed_peer_id = str(msg.get("peer") or msg.get("peer_id") or "").strip()
                 peer_ident = (claimed_peer_id or remote_peer_id or worker_id).strip()
@@ -1581,7 +1614,10 @@ async def serve_task_queue(
                         )
                 except Exception as exc:
                     await stream.write(
-                        json.dumps({"ok": False, "error": str(exc), "peer_id": peer_id}).encode("utf-8") + b"\n"
+                        json.dumps({"ok": False, "error": str(exc), "peer_id": peer_id}).encode(
+                            "utf-8"
+                        )
+                        + b"\n"
                     )
                     return
 
@@ -1602,14 +1638,17 @@ async def serve_task_queue(
                     )
 
                 await stream.write(
-                    json.dumps({"ok": True, "tasks": tasks_out, "peer_id": peer_id}).encode("utf-8") + b"\n"
+                    json.dumps({"ok": True, "tasks": tasks_out, "peer_id": peer_id}).encode("utf-8")
+                    + b"\n"
                 )
                 return
 
             if op in {"complete", "task.complete", "complete_task"}:
                 task_id = str(msg.get("task_id") or "").strip()
                 if not task_id:
-                    await _safe_write_json({"ok": False, "error": "missing_task_id", "peer_id": peer_id})
+                    await _safe_write_json(
+                        {"ok": False, "error": "missing_task_id", "peer_id": peer_id}
+                    )
                     return
 
                 status = str(msg.get("status") or "completed").strip().lower()
@@ -1638,10 +1677,14 @@ async def serve_task_queue(
                 worker_id = str(msg.get("worker_id") or msg.get("assigned_worker") or "").strip()
                 reason = msg.get("reason")
                 if not task_id:
-                    await _safe_write_json({"ok": False, "error": "missing_task_id", "peer_id": peer_id})
+                    await _safe_write_json(
+                        {"ok": False, "error": "missing_task_id", "peer_id": peer_id}
+                    )
                     return
                 if not worker_id:
-                    await _safe_write_json({"ok": False, "error": "missing_worker_id", "peer_id": peer_id})
+                    await _safe_write_json(
+                        {"ok": False, "error": "missing_worker_id", "peer_id": peer_id}
+                    )
                     return
                 try:
                     ok = bool(
@@ -1661,7 +1704,9 @@ async def serve_task_queue(
                 claimed_peer_id = str(msg.get("peer") or msg.get("peer_id") or "").strip()
                 pid = (claimed_peer_id or remote_peer_id or "").strip()
                 if not pid:
-                    await _safe_write_json({"ok": False, "error": "missing_peer_id", "peer_id": peer_id})
+                    await _safe_write_json(
+                        {"ok": False, "error": "missing_peer_id", "peer_id": peer_id}
+                    )
                     return
                 clock_dict = msg.get("clock") if isinstance(msg.get("clock"), dict) else None
                 _update_peer_state(
@@ -1723,7 +1768,9 @@ async def serve_task_queue(
                 reason = msg.get("reason")
                 reason_text = str(reason).strip() if isinstance(reason, (str, int, float)) else None
                 if not task_id:
-                    await _safe_write_json({"ok": False, "error": "missing_task_id", "peer_id": peer_id})
+                    await _safe_write_json(
+                        {"ok": False, "error": "missing_task_id", "peer_id": peer_id}
+                    )
                     return
                 try:
                     ok = bool(queue.cancel(task_id=task_id, reason=reason_text))
@@ -1771,8 +1818,12 @@ async def serve_task_queue(
                     resp["queue"] = {
                         "queued": int(queued_total),
                         "running": int(running_total),
-                        "queued_by_type": queued_by_type if isinstance(queued_by_type, dict) else {},
-                        "running_by_type": running_by_type if isinstance(running_by_type, dict) else {},
+                        "queued_by_type": queued_by_type
+                        if isinstance(queued_by_type, dict)
+                        else {},
+                        "running_by_type": running_by_type
+                        if isinstance(running_by_type, dict)
+                        else {},
                     }
 
                     def _truthy_env(*names: str) -> bool:
@@ -1909,40 +1960,43 @@ async def serve_task_queue(
                     }
 
                     try:
-                        if local_worker_enabled and any(t.startswith("docker.") for t in (local_supported or [])):
+                        if local_worker_enabled and any(
+                            t.startswith("docker.") for t in (local_supported or [])
+                        ):
                             resp["scheduler"]["counts"]["docker_workers_configured"] = 1
                         else:
                             resp["scheduler"]["counts"]["docker_workers_configured"] = 0
                     except Exception:
                         resp["scheduler"]["counts"]["docker_workers_configured"] = 0
 
-                await stream.write(
-                    json.dumps(resp).encode("utf-8") + b"\n"
-                )
+                await stream.write(json.dumps(resp).encode("utf-8") + b"\n")
                 return
 
             if op in {"tool", "call_tool", "tool.call"}:
-                allow = (
-                    str(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS", "")).lower()
-                    in {"1", "true", "yes"}
-                )
+                allow = str(
+                    os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS", "")
+                ).lower() in {"1", "true", "yes"}
                 if not allow:
                     await stream.write(
-                        json.dumps({"ok": False, "error": "tools_disabled", "peer_id": peer_id}).encode("utf-8")
+                        json.dumps(
+                            {"ok": False, "error": "tools_disabled", "peer_id": peer_id}
+                        ).encode("utf-8")
                         + b"\n"
                     )
                     return
 
-                tool_name = str(msg.get("tool") or msg.get("tool_name") or msg.get("name") or "").strip()
+                tool_name = str(
+                    msg.get("tool") or msg.get("tool_name") or msg.get("name") or ""
+                ).strip()
                 args = msg.get("args") or msg.get("arguments") or msg.get("params") or {}
                 if not isinstance(args, dict):
                     args = {"value": args}
 
                 if not tool_name:
                     await stream.write(
-                        json.dumps({"ok": False, "error": "missing_tool_name", "peer_id": peer_id}).encode(
-                            "utf-8"
-                        )
+                        json.dumps(
+                            {"ok": False, "error": "missing_tool_name", "peer_id": peer_id}
+                        ).encode("utf-8")
                         + b"\n"
                     )
                     return
@@ -1963,7 +2017,10 @@ async def serve_task_queue(
                         # treat accelerate_instance as an MCP-like registry if
                         # it explicitly exposes one.
                         mcp_like = getattr(accelerate_instance, "mcp", None)
-                        if mcp_like is None and getattr(accelerate_instance, "tools", None) is not None:
+                        if (
+                            mcp_like is None
+                            and getattr(accelerate_instance, "tools", None) is not None
+                        ):
                             mcp_like = accelerate_instance
 
                     # Back-compat: fall back to the ipfs_accelerate_py MCP wrapper.
@@ -1975,14 +2032,18 @@ async def serve_task_queue(
                         except Exception:
                             mcp_like = None
 
-                    ctx = tool_execution_context(mcp_like, tool_name=tool_name) if mcp_like is not None else None
+                    ctx = (
+                        tool_execution_context(mcp_like, tool_name=tool_name)
+                        if mcp_like is not None
+                        else None
+                    )
 
                     # When embedded in a host MCP server, default unknown tools to
                     # 'server' so call_tool works without requiring extra metadata.
                     if ctx is None and accelerate_instance is not None:
                         ctx = "server"
 
-                    must_run_in_worker = (ctx != "server")
+                    must_run_in_worker = ctx != "server"
 
                     if must_run_in_worker:
                         # Enqueue as a task so execution happens in workers.
@@ -1995,7 +2056,9 @@ async def serve_task_queue(
                             "_origin": "p2p.call_tool",
                             "_peer_id": str(peer_id),
                         }
-                        tid = q.submit(task_type="tool.call", model_name="mcp.tool", payload=payload)
+                        tid = q.submit(
+                            task_type="tool.call", model_name="mcp.tool", payload=payload
+                        )
 
                         # Wait for completion and return result inline.
                         deadline = time.time() + max(0.0, float(timeout_s))
@@ -2020,7 +2083,11 @@ async def serve_task_queue(
                             if st == "completed":
                                 # worker returns {tool,result} shape; normalize.
                                 result = task.get("result")
-                                if isinstance(result, dict) and "result" in result and "tool" in result:
+                                if (
+                                    isinstance(result, dict)
+                                    and "result" in result
+                                    and "tool" in result
+                                ):
                                     resp = {
                                         "ok": True,
                                         "tool": str(result.get("tool") or tool_name),
@@ -2028,7 +2095,12 @@ async def serve_task_queue(
                                         "peer_id": peer_id,
                                     }
                                 else:
-                                    resp = {"ok": True, "tool": tool_name, "result": result, "peer_id": peer_id}
+                                    resp = {
+                                        "ok": True,
+                                        "tool": tool_name,
+                                        "result": result,
+                                        "peer_id": peer_id,
+                                    }
                             elif st in {"failed", "cancelled"}:
                                 resp = {
                                     "ok": False,
@@ -2037,7 +2109,12 @@ async def serve_task_queue(
                                     "peer_id": peer_id,
                                 }
                             else:
-                                resp = {"ok": False, "tool": tool_name, "error": "timeout", "peer_id": peer_id}
+                                resp = {
+                                    "ok": False,
+                                    "tool": tool_name,
+                                    "error": "timeout",
+                                    "peer_id": peer_id,
+                                }
 
                         # Ephemeral: delete the internal task row now that we returned.
                         try:
@@ -2083,7 +2160,9 @@ async def serve_task_queue(
                         mcp_like,
                         tool_name=tool_name,
                         args=args,
-                        accelerate_instance=getattr(accelerate_instance, "accelerate_instance", None)
+                        accelerate_instance=getattr(
+                            accelerate_instance, "accelerate_instance", None
+                        )
                         or accelerate_instance,
                     )
                     if not isinstance(resp, dict):
@@ -2099,12 +2178,16 @@ async def serve_task_queue(
 
             if op in {"cache.get", "cache_get", "cache"}:
                 if not _cache_enabled():
-                    await _safe_write_json({"ok": False, "error": "cache_disabled", "peer_id": peer_id})
+                    await _safe_write_json(
+                        {"ok": False, "error": "cache_disabled", "peer_id": peer_id}
+                    )
                     return
 
                 key = str(msg.get("key") or "").strip()
                 if not key:
-                    await _safe_write_json({"ok": False, "error": "missing_key", "peer_id": peer_id})
+                    await _safe_write_json(
+                        {"ok": False, "error": "missing_key", "peer_id": peer_id}
+                    )
                     return
 
                 value = cache_store.get(key)
@@ -2121,12 +2204,16 @@ async def serve_task_queue(
 
             if op in {"cache.has", "cache_has"}:
                 if not _cache_enabled():
-                    await _safe_write_json({"ok": False, "error": "cache_disabled", "peer_id": peer_id})
+                    await _safe_write_json(
+                        {"ok": False, "error": "cache_disabled", "peer_id": peer_id}
+                    )
                     return
 
                 key = str(msg.get("key") or "").strip()
                 if not key:
-                    await _safe_write_json({"ok": False, "error": "missing_key", "peer_id": peer_id})
+                    await _safe_write_json(
+                        {"ok": False, "error": "missing_key", "peer_id": peer_id}
+                    )
                     return
 
                 hit = bool(cache_store.has(key))
@@ -2135,12 +2222,16 @@ async def serve_task_queue(
 
             if op in {"cache.set", "cache_set"}:
                 if not _cache_enabled():
-                    await _safe_write_json({"ok": False, "error": "cache_disabled", "peer_id": peer_id})
+                    await _safe_write_json(
+                        {"ok": False, "error": "cache_disabled", "peer_id": peer_id}
+                    )
                     return
 
                 key = str(msg.get("key") or "").strip()
                 if not key:
-                    await _safe_write_json({"ok": False, "error": "missing_key", "peer_id": peer_id})
+                    await _safe_write_json(
+                        {"ok": False, "error": "missing_key", "peer_id": peer_id}
+                    )
                     return
 
                 value = msg.get("value")
@@ -2171,12 +2262,16 @@ async def serve_task_queue(
 
             if op in {"cache.delete", "cache_del", "cache_delete"}:
                 if not _cache_enabled():
-                    await _safe_write_json({"ok": False, "error": "cache_disabled", "peer_id": peer_id})
+                    await _safe_write_json(
+                        {"ok": False, "error": "cache_disabled", "peer_id": peer_id}
+                    )
                     return
 
                 key = str(msg.get("key") or "").strip()
                 if not key:
-                    await _safe_write_json({"ok": False, "error": "missing_key", "peer_id": peer_id})
+                    await _safe_write_json(
+                        {"ok": False, "error": "missing_key", "peer_id": peer_id}
+                    )
                     return
 
                 deleted = bool(cache_store.delete(key))
@@ -2191,7 +2286,9 @@ async def serve_task_queue(
                         )
                     except Exception:
                         pass
-                await _safe_write_json({"ok": True, "key": key, "deleted": deleted, "peer_id": peer_id})
+                await _safe_write_json(
+                    {"ok": True, "key": key, "deleted": deleted, "peer_id": peer_id}
+                )
                 return
 
             if op == "get":
@@ -2317,7 +2414,11 @@ async def serve_task_queue(
 
                 mdns = MDNSDiscovery(host.get_network(), port=int(cfg.listen_port))
                 mdns.start()
-                print("ipfs_accelerate_py task queue p2p service: mDNS enabled", file=sys.stderr, flush=True)
+                print(
+                    "ipfs_accelerate_py task queue p2p service: mDNS enabled",
+                    file=sys.stderr,
+                    flush=True,
+                )
             except Exception as exc:
                 print(
                     f"ipfs_accelerate_py task queue p2p service: failed to start mDNS: {exc}",
@@ -2507,7 +2608,10 @@ async def serve_task_queue(
                                         except Exception:
                                             # Some builds may accept bytes-like keys.
                                             try:
-                                                await put_value(record_key.encode("utf-8"), _record_value_bytes())
+                                                await put_value(
+                                                    record_key.encode("utf-8"),
+                                                    _record_value_bytes(),
+                                                )
                                                 ok_local = True
                                             except Exception:
                                                 pass

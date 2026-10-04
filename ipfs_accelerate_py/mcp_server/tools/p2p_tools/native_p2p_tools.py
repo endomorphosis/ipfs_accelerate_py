@@ -59,14 +59,18 @@ def _load_p2p_tools_api() -> Dict[str, Any]:
         def _cache_has_fallback(key: str) -> Dict[str, Any]:
             return {"ok": True, "key": str(key), "hit": False}
 
-        def _cache_set_fallback(key: str, value: Any, ttl_s: Optional[float] = None) -> Dict[str, Any]:
+        def _cache_set_fallback(
+            key: str, value: Any, ttl_s: Optional[float] = None
+        ) -> Dict[str, Any]:
             _ = value, ttl_s
             return {"ok": True, "key": str(key)}
 
         def _cache_delete_fallback(key: str) -> Dict[str, Any]:
             return {"ok": True, "key": str(key), "deleted": False}
 
-        def _task_submit_fallback(task_type: str, payload: Dict[str, Any], model_name: str = "") -> Dict[str, Any]:
+        def _task_submit_fallback(
+            task_type: str, payload: Dict[str, Any], model_name: str = ""
+        ) -> Dict[str, Any]:
             _ = task_type, payload, model_name
             return {"ok": True, "task_id": "fallback-task-id"}
 
@@ -155,11 +159,29 @@ def _validate_remote_cache_args(
     if not isinstance(key, str) or not key.strip():
         return _error_result("key must be a non-empty string", key=key), None, "", "", 0.0
     if not isinstance(remote_multiaddr, str):
-        return _error_result("remote_multiaddr must be a string", remote_multiaddr=remote_multiaddr), None, "", "", 0.0
+        return (
+            _error_result("remote_multiaddr must be a string", remote_multiaddr=remote_multiaddr),
+            None,
+            "",
+            "",
+            0.0,
+        )
     if not isinstance(remote_peer_id, str):
-        return _error_result("remote_peer_id must be a string", remote_peer_id=remote_peer_id), None, "", "", 0.0
+        return (
+            _error_result("remote_peer_id must be a string", remote_peer_id=remote_peer_id),
+            None,
+            "",
+            "",
+            0.0,
+        )
     if not isinstance(timeout_s, (int, float)) or float(timeout_s) <= 0:
-        return _error_result("timeout_s must be a number > 0", timeout_s=timeout_s), None, "", "", 0.0
+        return (
+            _error_result("timeout_s must be a number > 0", timeout_s=timeout_s),
+            None,
+            "",
+            "",
+            0.0,
+        )
     return None, key.strip(), remote_multiaddr.strip(), remote_peer_id.strip(), float(timeout_s)
 
 
@@ -232,7 +254,9 @@ async def p2p_cache_set(key: str, value: Any, ttl_s: Optional[float] = None) -> 
         return _error_result("ttl_s must be a number > 0 when provided", key=key, ttl_s=ttl_s)
     key = key.strip()
     try:
-        result = _API["p2p_cache_set"](key=key, value=value, ttl_s=float(ttl_s) if ttl_s is not None else None)
+        result = _API["p2p_cache_set"](
+            key=key, value=value, ttl_s=float(ttl_s) if ttl_s is not None else None
+        )
         if hasattr(result, "__await__"):
             result = await result
         envelope = _normalize_payload(result)
@@ -260,7 +284,9 @@ async def p2p_cache_delete(key: str) -> Dict[str, Any]:
         return _error_result(str(exc), key=key)
 
 
-async def p2p_task_submit(task_type: str, payload: Dict[str, Any], model_name: str = "") -> Dict[str, Any]:
+async def p2p_task_submit(
+    task_type: str, payload: Dict[str, Any], model_name: str = ""
+) -> Dict[str, Any]:
     """Submit a task to local P2P task queue."""
     if not isinstance(task_type, str) or not task_type.strip():
         return _error_result("task_type must be a non-empty string", task_type=task_type)
@@ -271,7 +297,9 @@ async def p2p_task_submit(task_type: str, payload: Dict[str, Any], model_name: s
     task_type = task_type.strip()
     model_name = model_name.strip()
     try:
-        result = _API["p2p_task_submit"](task_type=task_type, payload=payload, model_name=model_name)
+        result = _API["p2p_task_submit"](
+            task_type=task_type, payload=payload, model_name=model_name
+        )
         if hasattr(result, "__await__"):
             result = await result
         envelope = _normalize_payload(result)
@@ -403,11 +431,13 @@ async def p2p_remote_cache_get(
     timeout_s: float = 10.0,
 ) -> Dict[str, Any]:
     """Get cache value from remote peer."""
-    error, normalized_key, normalized_multiaddr, normalized_peer_id, normalized_timeout = _validate_remote_cache_args(
-        key=key,
-        remote_multiaddr=remote_multiaddr,
-        remote_peer_id=remote_peer_id,
-        timeout_s=timeout_s,
+    error, normalized_key, normalized_multiaddr, normalized_peer_id, normalized_timeout = (
+        _validate_remote_cache_args(
+            key=key,
+            remote_multiaddr=remote_multiaddr,
+            remote_peer_id=remote_peer_id,
+            timeout_s=timeout_s,
+        )
     )
     if error is not None:
         return error
@@ -442,11 +472,13 @@ async def p2p_remote_cache_set(
     timeout_s: float = 10.0,
 ) -> Dict[str, Any]:
     """Set cache value on remote peer."""
-    error, normalized_key, normalized_multiaddr, normalized_peer_id, normalized_timeout = _validate_remote_cache_args(
-        key=key,
-        remote_multiaddr=remote_multiaddr,
-        remote_peer_id=remote_peer_id,
-        timeout_s=timeout_s,
+    error, normalized_key, normalized_multiaddr, normalized_peer_id, normalized_timeout = (
+        _validate_remote_cache_args(
+            key=key,
+            remote_multiaddr=remote_multiaddr,
+            remote_peer_id=remote_peer_id,
+            timeout_s=timeout_s,
+        )
     )
     if error is not None:
         return error
@@ -479,11 +511,13 @@ async def p2p_remote_cache_has(
     timeout_s: float = 10.0,
 ) -> Dict[str, Any]:
     """Check cache key existence on remote peer."""
-    error, normalized_key, normalized_multiaddr, normalized_peer_id, normalized_timeout = _validate_remote_cache_args(
-        key=key,
-        remote_multiaddr=remote_multiaddr,
-        remote_peer_id=remote_peer_id,
-        timeout_s=timeout_s,
+    error, normalized_key, normalized_multiaddr, normalized_peer_id, normalized_timeout = (
+        _validate_remote_cache_args(
+            key=key,
+            remote_multiaddr=remote_multiaddr,
+            remote_peer_id=remote_peer_id,
+            timeout_s=timeout_s,
+        )
     )
     if error is not None:
         return error
@@ -516,11 +550,13 @@ async def p2p_remote_cache_delete(
     timeout_s: float = 10.0,
 ) -> Dict[str, Any]:
     """Delete cache key on remote peer."""
-    error, normalized_key, normalized_multiaddr, normalized_peer_id, normalized_timeout = _validate_remote_cache_args(
-        key=key,
-        remote_multiaddr=remote_multiaddr,
-        remote_peer_id=remote_peer_id,
-        timeout_s=timeout_s,
+    error, normalized_key, normalized_multiaddr, normalized_peer_id, normalized_timeout = (
+        _validate_remote_cache_args(
+            key=key,
+            remote_multiaddr=remote_multiaddr,
+            remote_peer_id=remote_peer_id,
+            timeout_s=timeout_s,
+        )
     )
     if error is not None:
         return error

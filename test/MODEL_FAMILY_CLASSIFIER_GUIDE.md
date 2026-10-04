@@ -58,14 +58,14 @@ from model_family_classifier import classify_model
 result = classify_model("bert-base-uncased")
 print(f"Model family: {result['family']}")
 print(f"Confidence: {result['confidence']:.2f}")
-if result.get('subfamily'):
+if result.get("subfamily"):
     print(f"Subfamily: {result['subfamily']}")
 
 # Classify with more information for higher accuracy
 result = classify_model(
     model_name="t5-small",
     model_class="T5ForConditionalGeneration",
-    tasks=["translation", "summarization"]
+    tasks=["translation", "summarization"],
 )
 
 # Print detailed classification
@@ -87,7 +87,7 @@ result = classify_model(
     model_name="facebook/wav2vec2-base",
     model_class="Wav2Vec2Model",
     tasks=["automatic-speech-recognition"],
-    model_db_path=model_db_path
+    model_db_path=model_db_path,
 )
 
 # The classification will be saved to the database for future use
@@ -103,14 +103,14 @@ from model_family_classifier import classify_model
 hw_compatibility = {
     "cuda": {"compatible": True, "memory_usage": {"peak": 15000}},
     "mps": {"compatible": False},
-    "openvino": {"compatible": False}
+    "openvino": {"compatible": False},
 }
 
 # Classify with hardware information
 result = classify_model(
     model_name="llava-hf/llava-1.5-7b-hf",
     model_class="LlavaForConditionalGeneration",
-    hw_compatibility=hw_compatibility
+    hw_compatibility=hw_compatibility,
 )
 
 # High memory requirements and MPS incompatibility help identify multimodal LLMs
@@ -145,7 +145,7 @@ result = classify_model(
     model_name="vit-base-patch16-224",
     model_class="ViTForImageClassification",
     tasks=["image-classification"],
-    methods=["classify", "process_image"]
+    methods=["classify", "process_image"],
 )
 
 # See which analysis methods contributed to the classification
@@ -153,7 +153,9 @@ for analysis in result["analyses"]:
     if analysis.get("family"):
         source = analysis.get("source", "unknown")
         confidence = analysis.get("confidence", 0)
-        print(f"Analysis method: {source}, family: {analysis['family']}, confidence: {confidence:.2f}")
+        print(
+            f"Analysis method: {source}, family: {analysis['family']}, confidence: {confidence:.2f}"
+        )
 ```
 
 ## ModelFamilyClassifier API
@@ -181,10 +183,9 @@ task_analysis = classifier.analyze_model_tasks(["fill-mask", "feature-extraction
 method_analysis = classifier.analyze_model_methods(["encode", "embed"])
 
 # Analyze hardware compatibility
-hw_analysis = classifier.analyze_hardware_compatibility({
-    "cuda": {"compatible": True},
-    "mps": {"compatible": True}
-})
+hw_analysis = classifier.analyze_hardware_compatibility(
+    {"cuda": {"compatible": True}, "mps": {"compatible": True}}
+)
 
 # Classify model using all available information
 classification = classifier.classify_model(
@@ -192,7 +193,7 @@ classification = classifier.classify_model(
     model_class="BertModel",
     tasks=["fill-mask", "feature-extraction"],
     methods=["encode", "embed"],
-    hw_compatibility={"cuda": {"compatible": True}}
+    hw_compatibility={"cuda": {"compatible": True}},
 )
 
 # Get template for model family
@@ -213,7 +214,7 @@ method_weights = {
     "class_analysis": 0.9,
     "task_analysis": 1.0,
     "method_analysis": 0.8,
-    "hardware_analysis": 0.5
+    "hardware_analysis": 0.5,
 }
 ```
 
@@ -311,7 +312,7 @@ model = pool.get_model(
     model_family,  # Pass the model family for best device selection
     "bert-base-uncased",
     constructor=lambda: AutoModel.from_pretrained("bert-base-uncased"),
-    hardware_preferences=hardware_preferences
+    hardware_preferences=hardware_preferences,
 )
 ```
 

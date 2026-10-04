@@ -130,7 +130,7 @@ import warnings
 warnings.warn(
     "This module has been moved to scripts/generators/scripts/generators/test_scripts/generators/merged_test_generator.py. "
     "Please update your imports.",
-    DeprecationWarning
+    DeprecationWarning,
 )
 
 # Import from the new location

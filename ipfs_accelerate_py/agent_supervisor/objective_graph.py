@@ -26,9 +26,15 @@ from typing import Any, Iterable, Mapping, Sequence
 from .dataset_store import DatasetArtifact, ObjectiveDatasetStore
 
 
-DEFAULT_EMBEDDING_DIMENSIONS = int(os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_EMBEDDING_DIMENSIONS", "64"))
-DEFAULT_EMBEDDING_MIN_SCORE = float(os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_EMBEDDING_MIN_SCORE", "0.62"))
-DEFAULT_BUNDLE_CLUSTER_MIN_SCORE = float(os.environ.get("IPFS_ACCELERATE_AGENT_BUNDLE_CLUSTER_MIN_SCORE", "0.42"))
+DEFAULT_EMBEDDING_DIMENSIONS = int(
+    os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_EMBEDDING_DIMENSIONS", "64")
+)
+DEFAULT_EMBEDDING_MIN_SCORE = float(
+    os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_EMBEDDING_MIN_SCORE", "0.62")
+)
+DEFAULT_BUNDLE_CLUSTER_MIN_SCORE = float(
+    os.environ.get("IPFS_ACCELERATE_AGENT_BUNDLE_CLUSTER_MIN_SCORE", "0.42")
+)
 DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX = os.environ.get(
     "IPFS_ACCELERATE_AGENT_OBJECTIVE_TASK_SUMMARY_PREFIX",
     "Close objective gap",
@@ -57,7 +63,9 @@ DEFAULT_SCAN_OVERSAMPLE_MULTIPLIER = int(
     os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_SCAN_OVERSAMPLE_MULTIPLIER", "2")
 )
 DEFAULT_TASK_PREFIX = "AUTO-"
-DEFAULT_AST_DATASET_MAX_CHARS = int(os.environ.get("IPFS_ACCELERATE_AGENT_AST_DATASET_MAX_CHARS", "1000000"))
+DEFAULT_AST_DATASET_MAX_CHARS = int(
+    os.environ.get("IPFS_ACCELERATE_AGENT_AST_DATASET_MAX_CHARS", "1000000")
+)
 LAUNCH_PLAYWRIGHT_VALIDATION_COMMAND = (
     "(test ! -f swissknife/package.json || npm --prefix swissknife run test:e2e:meta-glasses) && "
     "(test ! -f hallucinate_app/package.json || "
@@ -122,7 +130,9 @@ class ObjectiveGoal:
 
     @property
     def required_evidence(self) -> list[str]:
-        return split_terms(str(self.fields.get("evidence") or self.fields.get("required_evidence") or ""))
+        return split_terms(
+            str(self.fields.get("evidence") or self.fields.get("required_evidence") or "")
+        )
 
     @property
     def parent_goal_ids(self) -> list[str]:
@@ -171,7 +181,9 @@ class ObjectiveFinding:
     bundle_strategy: str = "semantic_ast"
     embedding_query: str = ""
     ast_query: str = ""
-    conflict_policy: str = "prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts"
+    conflict_policy: str = (
+        "prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts"
+    )
     refinement_depth: str = "0"
     candidate_kind: str = "aggregate"
     surplus_group: str = ""
@@ -287,7 +299,11 @@ def parse_goal_heap(text: str) -> list[ObjectiveGoal]:
 
     def flush() -> None:
         if current_id and current_fields:
-            goals.append(ObjectiveGoal(goal_id=current_id, title=current_title.strip(), fields=dict(current_fields)))
+            goals.append(
+                ObjectiveGoal(
+                    goal_id=current_id, title=current_title.strip(), fields=dict(current_fields)
+                )
+            )
 
     for line in text.splitlines():
         header = header_pattern.match(line)
@@ -403,7 +419,9 @@ def symbol_terms(path: Path, text: str) -> set[str]:
     return {item.lower() for item in expanded if item.strip()}
 
 
-def ast_dataset_payload(path: Path, text: str, *, max_chars: int = DEFAULT_AST_DATASET_MAX_CHARS) -> dict[str, Any]:
+def ast_dataset_payload(
+    path: Path, text: str, *, max_chars: int = DEFAULT_AST_DATASET_MAX_CHARS
+) -> dict[str, Any]:
     """Return a serializable AST/symbol payload suitable for dataset storage."""
 
     suffix = path.suffix.lower()
@@ -609,7 +627,9 @@ def evidence_index(
             normalized_symbol = " ".join(objective_tokens(term))
             if normalized_symbol and (
                 normalized_symbol in symbols
-                or any(normalized_symbol in symbol or symbol in normalized_symbol for symbol in symbols)
+                or any(
+                    normalized_symbol in symbol or symbol in normalized_symbol for symbol in symbols
+                )
             ):
                 evidence[term].append(f"{root_relative} (ast)")
                 continue
@@ -687,9 +707,23 @@ def objective_goal_work_surface(goal: ObjectiveGoal) -> int:
     evidence_count = len(goal.required_evidence)
     output_count = len(split_terms(str(goal.fields.get("outputs") or "")))
     ast_count = len(split_terms(str(goal.fields.get("ast_query") or "")))
-    interface_count = len(split_terms(str(goal.fields.get("interfaces") or goal.fields.get("interface_contracts") or "")))
-    submodule_count = len(split_terms(str(goal.fields.get("submodules") or goal.fields.get("interoperability_pair") or "")))
-    return evidence_count * 4 + output_count * 2 + ast_count + interface_count * 3 + submodule_count * 3
+    interface_count = len(
+        split_terms(
+            str(goal.fields.get("interfaces") or goal.fields.get("interface_contracts") or "")
+        )
+    )
+    submodule_count = len(
+        split_terms(
+            str(goal.fields.get("submodules") or goal.fields.get("interoperability_pair") or "")
+        )
+    )
+    return (
+        evidence_count * 4
+        + output_count * 2
+        + ast_count
+        + interface_count * 3
+        + submodule_count * 3
+    )
 
 
 def objective_goal_requires_launch_playwright_validation(goal: ObjectiveGoal) -> bool:
@@ -832,7 +866,9 @@ def objective_fingerprint(goal: ObjectiveGoal, missing_terms: Sequence[str]) -> 
     return sha1(payload.encode("utf-8")).hexdigest()
 
 
-def objective_merge_key(goal: ObjectiveGoal, missing_terms: Sequence[str], *, candidate_kind: str = "aggregate") -> str:
+def objective_merge_key(
+    goal: ObjectiveGoal, missing_terms: Sequence[str], *, candidate_kind: str = "aggregate"
+) -> str:
     payload = {
         "goal_id": goal.goal_id,
         "candidate_kind": candidate_kind,
@@ -847,8 +883,12 @@ def objective_surplus_group(goal: ObjectiveGoal) -> str:
     return f"objective/{goal.goal_id}"
 
 
-def objective_todo_vector_key(goal: ObjectiveGoal, missing_terms: Sequence[str], *, candidate_kind: str) -> str:
-    payload = "\0".join([goal.goal_id, candidate_kind, *sorted(str(term) for term in missing_terms)])
+def objective_todo_vector_key(
+    goal: ObjectiveGoal, missing_terms: Sequence[str], *, candidate_kind: str
+) -> str:
+    payload = "\0".join(
+        [goal.goal_id, candidate_kind, *sorted(str(term) for term in missing_terms)]
+    )
     return sha1(payload.encode("utf-8")).hexdigest()[:16]
 
 
@@ -914,10 +954,20 @@ def assign_goal_subgoal_packets(findings: Sequence[ObjectiveFinding]) -> list[Ob
         packet_key = objective_goal_packet_key(group_findings)
         goal_ids = sorted({finding.goal_id for finding in group_findings if finding.goal_id})
         task_count = len(group_findings)
-        packet_work_items = sum(finding.work_item_count or len(finding.missing_evidence) for finding in group_findings)
+        packet_work_items = sum(
+            finding.work_item_count or len(finding.missing_evidence) for finding in group_findings
+        )
         multi_goal_packet = len(goal_ids) > 1
         for index, finding in enumerate(
-            sorted(group_findings, key=lambda item: (item.priority, item.goal_id, item.candidate_kind, item.fingerprint))
+            sorted(
+                group_findings,
+                key=lambda item: (
+                    item.priority,
+                    item.goal_id,
+                    item.candidate_kind,
+                    item.fingerprint,
+                ),
+            )
         ):
             role = "packet_anchor" if index == 0 else "packet_member"
             merge_family = packet_key if multi_goal_packet else finding.merge_family
@@ -1001,17 +1051,25 @@ def add_goal_packet_aggregate_findings(
         goal_ids = _unique_strings(finding.goal_id for finding in sorted_group)
         if len(goal_ids) < 2:
             continue
-        missing_terms = _unique_strings(term for finding in sorted_group for term in finding.missing_evidence)
+        missing_terms = _unique_strings(
+            term for finding in sorted_group for term in finding.missing_evidence
+        )
         if len(missing_terms) < 2:
             continue
-        fingerprint = objective_goal_packet_aggregate_fingerprint(packet_key, sorted_group, missing_terms)
+        fingerprint = objective_goal_packet_aggregate_fingerprint(
+            packet_key, sorted_group, missing_terms
+        )
         if fingerprint in seen:
             continue
 
         anchor = sorted_group[0]
-        parent_goal_ids = _unique_strings(parent for finding in sorted_group for parent in finding.parent_goal_ids)
+        parent_goal_ids = _unique_strings(
+            parent for finding in sorted_group for parent in finding.parent_goal_ids
+        )
         outputs = _unique_strings(output for finding in sorted_group for output in finding.outputs)
-        evidence_methods = _unique_strings(method for finding in sorted_group for method in finding.evidence_methods)
+        evidence_methods = _unique_strings(
+            method for finding in sorted_group for method in finding.evidence_methods
+        )
         goal_lines = [
             f"{finding.goal_id}: {finding.goal or finding.title}"
             for finding in sorted_group
@@ -1020,7 +1078,9 @@ def add_goal_packet_aggregate_findings(
         merge_key = objective_goal_packet_aggregate_key(packet_key, missing_terms)
         title = f"Goal packet aggregate for {', '.join(goal_ids)}"
         summary = f"{summary_prefix} packet: {', '.join(goal_ids)}"
-        ast_terms = _unique_strings(term for finding in sorted_group for term in split_terms(finding.ast_query))
+        ast_terms = _unique_strings(
+            term for finding in sorted_group for term in split_terms(finding.ast_query)
+        )
         if not ast_terms:
             ast_terms = missing_terms
         aggregate = ObjectiveFinding(
@@ -1035,7 +1095,9 @@ def add_goal_packet_aggregate_findings(
             evidence_methods=evidence_methods,
             objective_path=anchor.objective_path,
             outputs=outputs,
-            validation=_first_non_empty((finding.validation for finding in sorted_group), anchor.validation),
+            validation=_first_non_empty(
+                (finding.validation for finding in sorted_group), anchor.validation
+            ),
             goal="Close packet goals:\n" + "\n".join(f"- {line}" for line in goal_lines),
             refinement=_first_non_empty((finding.refinement for finding in sorted_group)),
             gap_task=(
@@ -1059,7 +1121,9 @@ def add_goal_packet_aggregate_findings(
             ),
             ast_query=", ".join(ast_terms),
             conflict_policy=anchor.conflict_policy,
-            refinement_depth=str(min(_parse_int(finding.refinement_depth, 0) for finding in sorted_group)),
+            refinement_depth=str(
+                min(_parse_int(finding.refinement_depth, 0) for finding in sorted_group)
+            ),
             candidate_kind="goal_packet_aggregate",
             surplus_group=packet_key,
             merge_key=merge_key,
@@ -1067,7 +1131,9 @@ def add_goal_packet_aggregate_findings(
             merge_role="packet_aggregate",
             work_item_count=len(missing_terms),
             work_scope="goal_subgoal_packet_aggregate; vector_ast_bundle",
-            todo_vector_key=sha1(f"{packet_key}\0goal_packet_aggregate\0{merge_key}".encode("utf-8")).hexdigest()[:16],
+            todo_vector_key=sha1(
+                f"{packet_key}\0goal_packet_aggregate\0{merge_key}".encode("utf-8")
+            ).hexdigest()[:16],
             goal_packet_key=packet_key,
             goal_packet_role="packet_aggregate",
             goal_packet_goal_ids=goal_ids,
@@ -1168,7 +1234,9 @@ def surplus_missing_term_groups(
     seen_term_sets = {tuple(terms)}
 
     def append_group(candidate_terms: Sequence[str]) -> None:
-        normalized = [term for term in dict.fromkeys(str(item).strip() for item in candidate_terms) if term]
+        normalized = [
+            term for term in dict.fromkeys(str(item).strip() for item in candidate_terms) if term
+        ]
         if len(normalized) < minimum_terms:
             return
         key = tuple(normalized)
@@ -1333,7 +1401,11 @@ def scan_objective_gaps(
     )
 
     goals_by_id = {goal.goal_id: goal for goal in goals}
-    scheduled_goals = [goals_by_id[record.goal_id] for record in objective_heap_schedule(goals) if record.goal_id in goals_by_id]
+    scheduled_goals = [
+        goals_by_id[record.goal_id]
+        for record in objective_heap_schedule(goals)
+        if record.goal_id in goals_by_id
+    ]
     for goal in scheduled_goals:
         terms = goal.required_evidence
         missing_terms = [term for term in terms if not evidence.get(term)]
@@ -1346,7 +1418,9 @@ def scan_objective_gaps(
             if not missing_terms:
                 continue
             validation_gap = True
-        launch_validation_gap = validation_gap and objective_goal_requires_launch_playwright_validation(goal)
+        launch_validation_gap = (
+            validation_gap and objective_goal_requires_launch_playwright_validation(goal)
+        )
         fields = goal.fields
         present = {term: evidence.get(term, []) for term in terms if evidence.get(term)}
         explicit_bundle = bool(str(fields.get("bundle") or "").strip())
@@ -1393,16 +1467,22 @@ def scan_objective_gaps(
                 parallel_lane=str(fields.get("parallel_lane") or bundle_key),
                 bundle_explicit=explicit_bundle,
                 bundle_strategy="explicit" if explicit_bundle else "semantic_ast",
-                embedding_query=str(fields.get("embedding_query") or fields.get("goal") or goal.title),
+                embedding_query=str(
+                    fields.get("embedding_query") or fields.get("goal") or goal.title
+                ),
                 ast_query=str(fields.get("ast_query") or ", ".join(terms)),
                 conflict_policy=str(
                     fields.get("conflict_policy")
                     or "prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts"
                 ),
-                refinement_depth=str(fields.get("refinement_depth") or graph["depths"].get(goal.goal_id, 0)),
+                refinement_depth=str(
+                    fields.get("refinement_depth") or graph["depths"].get(goal.goal_id, 0)
+                ),
                 candidate_kind=candidate_kind,
                 surplus_group=objective_surplus_group(goal),
-                merge_key=objective_merge_key(goal, candidate_missing_terms, candidate_kind=candidate_kind),
+                merge_key=objective_merge_key(
+                    goal, candidate_missing_terms, candidate_kind=candidate_kind
+                ),
                 merge_family=objective_surplus_group(goal),
                 merge_role=candidate_kind,
                 work_item_count=len(candidate_missing_terms),
@@ -1535,7 +1615,9 @@ def render_task_block(
     outputs.extend(str(item) for item in finding.outputs if str(item).strip())
     unique_outputs = list(dict.fromkeys(outputs))
     missing = ", ".join(finding.missing_evidence)
-    refinement = finding.refinement or "Refine the objective heap if the gap needs smaller child goals."
+    refinement = (
+        finding.refinement or "Refine the objective heap if the gap needs smaller child goals."
+    )
     parents = ", ".join(finding.parent_goal_ids) or "none"
     packet_goals = ", ".join(finding.goal_packet_goal_ids)
     packet_acceptance = (
@@ -1544,7 +1626,10 @@ def render_task_block(
         if finding.goal_packet_key and packet_goals
         else ""
     )
-    bundle_shard = bundle_shard or f"data/agent_supervisor/objective_bundles/{safe_bundle_key(finding.bundle_key)}.todo.md"
+    bundle_shard = (
+        bundle_shard
+        or f"data/agent_supervisor/objective_bundles/{safe_bundle_key(finding.bundle_key)}.todo.md"
+    )
     return f"""## {task_id} {finding.summary}
 
 - Status: todo
@@ -1638,7 +1723,9 @@ def write_bundle_shards(
         task_map: dict[str, dict[str, Any]] = {}
         existing = bundles.get(key, {})
         if isinstance(existing, Mapping):
-            for item in existing.get("tasks", []) if isinstance(existing.get("tasks"), list) else []:
+            for item in (
+                existing.get("tasks", []) if isinstance(existing.get("tasks"), list) else []
+            ):
                 if isinstance(item, Mapping) and str(item.get("task_id") or ""):
                     task_map[str(item["task_id"])] = dict(item)
         for record in bundle_records:
@@ -1654,7 +1741,8 @@ def write_bundle_shards(
                 "merge_key": record.finding.merge_key,
                 "merge_family": record.finding.merge_family or record.finding.surplus_group,
                 "merge_role": record.finding.merge_role or record.finding.candidate_kind,
-                "work_item_count": record.finding.work_item_count or len(record.finding.missing_evidence),
+                "work_item_count": record.finding.work_item_count
+                or len(record.finding.missing_evidence),
                 "work_scope": record.finding.work_scope or "goal_subgoal_multi_evidence_batch",
                 "goal_packet_key": record.finding.goal_packet_key,
                 "goal_packet_role": record.finding.goal_packet_role,
@@ -1676,9 +1764,13 @@ def write_bundle_shards(
     index_payload["generated_at"] = utc_now()
     index_payload["source_todo"] = source_todo
     index_payload["bundles"] = bundles
-    index_path.write_text(json.dumps(index_payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    index_path.write_text(
+        json.dumps(index_payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     generated_paths.append(index_path)
-    return BundleWriteResult(generated_paths=generated_paths, index_path=index_path, bundle_paths=bundle_paths)
+    return BundleWriteResult(
+        generated_paths=generated_paths, index_path=index_path, bundle_paths=bundle_paths
+    )
 
 
 def generate_objective_todos(
@@ -1704,7 +1796,9 @@ def generate_objective_todos(
 ) -> list[ObjectiveTaskRecord]:
     """Append generated objective gap tasks and write bundle shards."""
 
-    todo_text = todo_path.read_text(encoding="utf-8") if todo_path.exists() else "# Objective Todo\n"
+    todo_text = (
+        todo_path.read_text(encoding="utf-8") if todo_path.exists() else "# Objective Todo\n"
+    )
     records: list[ObjectiveTaskRecord] = []
     for finding in scan_objective_gaps(
         repo_root,
@@ -1718,7 +1812,9 @@ def generate_objective_todos(
     ):
         task_id = next_task_id(todo_text, task_prefix=task_prefix)
         shard_relative = repo_relative_path(repo_root, bundle_path(bundle_dir, finding.bundle_key))
-        discovery_path = write_discovery(discovery_dir=discovery_dir, task_id=task_id, finding=finding)
+        discovery_path = write_discovery(
+            discovery_dir=discovery_dir, task_id=task_id, finding=finding
+        )
         task_block = render_task_block(
             task_id=task_id,
             finding=finding,
@@ -1741,7 +1837,9 @@ def generate_objective_todos(
         return []
     todo_path.parent.mkdir(parents=True, exist_ok=True)
     todo_path.write_text(todo_text, encoding="utf-8")
-    bundle_result = write_bundle_shards(bundle_dir=bundle_dir, repo_root=repo_root, todo_path=todo_path, records=records)
+    bundle_result = write_bundle_shards(
+        bundle_dir=bundle_dir, repo_root=repo_root, todo_path=todo_path, records=records
+    )
     if write_todo_vector_index:
         from .todo_vector_index import write_todo_vector_index as write_index
 
@@ -1755,7 +1853,9 @@ def generate_objective_todos(
             task_header_prefix=task_header_prefix,
             objective_path=objective_path,
             bundle_index_path=bundle_result.index_path,
-            dataset_dir=(dataset_dir or bundle_dir.parent / "objective_datasets") if persist_ast_dataset else None,
+            dataset_dir=(dataset_dir or bundle_dir.parent / "objective_datasets")
+            if persist_ast_dataset
+            else None,
             dataset_id=f"{task_prefix.rstrip('-').lower()}-todo-vector-index",
             persist_dataset=persist_ast_dataset,
         )

@@ -272,7 +272,7 @@ class MergeQueue:
         # Enforce max queue size
         pending = sorted(self.pending_dir.glob("*.json"))
         if len(pending) > self.max_queue_size:
-            for excess in pending[self.max_queue_size:]:
+            for excess in pending[self.max_queue_size :]:
                 try:
                     excess.rename(self.failed_dir / excess.name)
                     purged += 1

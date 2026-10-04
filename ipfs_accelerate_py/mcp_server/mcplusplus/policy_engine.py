@@ -100,7 +100,9 @@ def parse_policy_clauses(raw_clauses: Iterable[Dict[str, Any]]) -> List[PolicyCl
                 clause_type=str(item.get("clause_type", "") or "").strip().lower(),
                 actor=str(item.get("actor", "*") or "*").strip() or "*",
                 action=str(item.get("action", "*") or "*").strip() or "*",
-                resource=(str(item.get("resource", "")).strip() or None) if item.get("resource") is not None else None,
+                resource=(str(item.get("resource", "")).strip() or None)
+                if item.get("resource") is not None
+                else None,
                 valid_from=str(item.get("valid_from", "")).strip() or None,
                 valid_until=str(item.get("valid_until", "")).strip() or None,
                 obligation_deadline=str(item.get("obligation_deadline", "")).strip() or None,
@@ -146,7 +148,9 @@ def evaluate_policy(
                     "type": "obligation",
                     "action": clause.action,
                     "deadline": deadline,
-                    "status": "overdue" if deadline_dt is not None and eval_time > deadline_dt else "pending",
+                    "status": "overdue"
+                    if deadline_dt is not None and eval_time > deadline_dt
+                    else "pending",
                     "metadata": metadata,
                 }
             )

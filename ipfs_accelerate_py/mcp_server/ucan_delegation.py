@@ -50,7 +50,8 @@ class Delegation:
             issuer=self.issuer,
             audience=self.audience,
             capabilities=tuple(
-                UcanCapability(resource=c.resource, ability=c.ability) for c in (self.capabilities or [])
+                UcanCapability(resource=c.resource, ability=c.ability)
+                for c in (self.capabilities or [])
             ),
             expiry=self.expiry,
             revoked=bool(self.revoked),
@@ -66,7 +67,9 @@ class Delegation:
             cid=resolved_cid,
             issuer=delegation.issuer,
             audience=delegation.audience,
-            capabilities=[Capability(resource=c.resource, ability=c.ability) for c in delegation.capabilities],
+            capabilities=[
+                Capability(resource=c.resource, ability=c.ability) for c in delegation.capabilities
+            ],
             expiry=delegation.expiry,
             proof_cid=delegation.proof_cid or None,
             signature=delegation.signature or None,
@@ -199,7 +202,12 @@ def parse_raw_chain(raw_chain: Iterable[Dict[str, Any]]) -> List[Delegation]:
             proof_cid = previous_cid
         else:
             proof_cid = _normalize_cid(item.proof_cid)
-        out.append(Delegation.from_ucan(item, cid=cid if cid else "",))
+        out.append(
+            Delegation.from_ucan(
+                item,
+                cid=cid if cid else "",
+            )
+        )
         if out:
             out[-1].proof_cid = proof_cid or None
         previous_cid = cid

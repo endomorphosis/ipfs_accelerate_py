@@ -174,6 +174,7 @@ Initialize the template database with default templates:
 
 ```python
 from template_database import add_default_templates
+
 add_default_templates("./template_database.duckdb")
 ```
 
@@ -193,7 +194,7 @@ template_id = db.add_template(
     template_type="skill",
     model_family="text_embedding",
     template_content="...",  # Template content with ${variable} placeholders
-    description="Basic template for text embedding model skills"
+    description="Basic template for text embedding model skills",
 )
 ```
 
@@ -212,14 +213,12 @@ rendered_content = renderer.render_template(
     model_name="bert-base-uncased",
     template_type="skill",
     hardware_platform="cuda",
-    variables={"batch_size": 4}
+    variables={"batch_size": 4},
 )
 
 # Render a complete component set
 generated_files = renderer.render_component_set(
-    model_name="bert-base-uncased",
-    hardware_platform="cuda",
-    output_dir="./generated"
+    model_name="bert-base-uncased", hardware_platform="cuda", output_dir="./generated"
 )
 ```
 
@@ -274,9 +273,7 @@ The template system is integrated with the End-to-End Testing Framework through 
 ```python
 # Create an integrated component tester
 tester = IntegratedComponentTester(
-    model_name="bert-base-uncased",
-    hardware="cuda",
-    template_db_path="./template_database.duckdb"
+    model_name="bert-base-uncased", hardware="cuda", template_db_path="./template_database.duckdb"
 )
 
 # Generate components
@@ -288,9 +285,11 @@ benchmark_success, benchmark_results = tester.run_benchmark(benchmark_file)
 
 # Save results
 results_dir = tester.save_results(
-    test_success, test_results,
-    benchmark_success, benchmark_results,
-    (skill_file, test_file, benchmark_file)
+    test_success,
+    test_results,
+    benchmark_success,
+    benchmark_results,
+    (skill_file, test_file, benchmark_file),
 )
 ```
 
@@ -525,14 +524,16 @@ If you're still having issues, try these steps:
 1. **Direct database inspection**:
    ```python
    import duckdb
-   conn = duckdb.connect('path/to/template_database.duckdb')
+
+   conn = duckdb.connect("path/to/template_database.duckdb")
    print(conn.execute("SELECT * FROM templates").fetchall())
    ```
 
 2. **Manual template rendering**:
    ```python
    from template_database import TemplateDatabase
-   db = TemplateDatabase('path/to/template_database.duckdb')
+
+   db = TemplateDatabase("path/to/template_database.duckdb")
    template = db.get_template(model_family="text_embedding", template_type="skill")
    print(template["template_content"])
    ```
@@ -549,7 +550,8 @@ If you're still having issues, try these steps:
 4. **Check database integrity**:
    ```python
    from template_database import TemplateDatabase
-   db = TemplateDatabase('path/to/template_database.duckdb')
+
+   db = TemplateDatabase("path/to/template_database.duckdb")
    db.list_templates()  # Should return list of templates
    ```
 
@@ -574,16 +576,17 @@ import torch
 import numpy as np
 from typing import Dict, Any, List, Union
 
+
 class BertBaseUncasedSkill:
     """
     Model skill for bert-base-uncased on cuda hardware.
     Model type: text_embedding
     Input type: text
     Output type: embedding
-    
+
     This skill provides text embedding functionality using the bert-base-uncased model.
     """
-    
+
     def __init__(self):
         self.model_name = "bert-base-uncased"
         self.hardware = "cuda"
@@ -591,96 +594,102 @@ class BertBaseUncasedSkill:
         self.model = None
         self.tokenizer = None
         self.device = None
-        
+
     def setup(self, **kwargs) -> bool:
         """Set up the model and tokenizer."""
         try:
             # CUDA setup logic
             import torch
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+            device = "cuda" if torch.cuda.is_available() else "cpu"
             self.device = device
-            
+
             # Load model and tokenizer
             from transformers import AutoTokenizer, AutoModel
+
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
             self.model = AutoModel.from_pretrained(self.model_name)
             self.model.to(device)
             self.model.eval()
-            
+
             return True
         except Exception as e:
             print(f"Error setting up model: {e}")
             return False
-    
+
     def run(self, inputs: Union[str, List[str]], **kwargs) -> Dict[str, Any]:
         """
         Run the model on inputs.
-        
+
         Args:
             inputs: Input text or list of texts
             **kwargs: Additional parameters:
                 - pooling_strategy: How to pool token embeddings (mean, cls, etc.)
                 - batch_size: Override default batch size
-        
+
         Returns:
             Dictionary with model outputs including embeddings
         """
-        pooling_strategy = kwargs.get('pooling_strategy', 'mean')
-        
+        pooling_strategy = kwargs.get("pooling_strategy", "mean")
+
         try:
             if not self.model or not self.tokenizer:
                 raise ValueError("Model not set up. Call setup() first.")
-                
+
             if isinstance(inputs, str):
                 inputs = [inputs]
-                
+
             # Tokenize inputs
-            encoded_inputs = self.tokenizer(inputs, padding=True, truncation=True, return_tensors="pt")
+            encoded_inputs = self.tokenizer(
+                inputs, padding=True, truncation=True, return_tensors="pt"
+            )
             encoded_inputs = {k: v.to(self.device) for k, v in encoded_inputs.items()}
-            
+
             # Run model
             with torch.no_grad():
                 outputs = self.model(**encoded_inputs)
-                
+
             # Process outputs based on pooling strategy
-            if pooling_strategy == 'cls':
+            if pooling_strategy == "cls":
                 # Use [CLS] token embedding
                 embeddings = outputs.last_hidden_state[:, 0, :].cpu().numpy()
-            elif pooling_strategy == 'mean':
+            elif pooling_strategy == "mean":
                 # Mean pooling
-                attention_mask = encoded_inputs['attention_mask']
+                attention_mask = encoded_inputs["attention_mask"]
                 token_embeddings = outputs.last_hidden_state
-                input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+                input_mask_expanded = (
+                    attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+                )
                 sum_embeddings = torch.sum(token_embeddings * input_mask_expanded, 1)
                 sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
                 embeddings = (sum_embeddings / sum_mask).cpu().numpy()
             else:
                 # Default to last_hidden_state
                 embeddings = outputs.last_hidden_state.cpu().numpy()
-            
+
             return {
                 "embeddings": embeddings,
                 "embedding_dim": embeddings.shape[-1],
                 "model_name": self.model_name,
-                "hardware": self.hardware
+                "hardware": self.hardware,
             }
-            
+
         except Exception as e:
             return {
                 "error": str(e),
                 "success": False,
                 "model_name": self.model_name,
-                "hardware": self.hardware
+                "hardware": self.hardware,
             }
-    
+
     def cleanup(self) -> bool:
         """Clean up resources."""
         try:
             # Free CUDA memory
-            if self.model and hasattr(torch, 'cuda') and torch.cuda.is_available():
+            if self.model and hasattr(torch, "cuda") and torch.cuda.is_available():
                 del self.model
                 torch.cuda.empty_cache()
-            
+
             self.model = None
             self.tokenizer = None
             return True
@@ -708,92 +717,100 @@ import unittest
 import numpy as np
 from bert_base_uncased_cpu_skill import BertBaseUncasedSkill
 
+
 class TestBertBaseUncasedCpu(unittest.TestCase):
     """Test suite for bert-base-uncased model on cpu hardware."""
-    
+
     def setUp(self):
         """Set up the test environment."""
         self.skill = BertBaseUncasedSkill()
         self.setup_success = self.skill.setup()
-        
+
     def tearDown(self):
         """Clean up after tests."""
-        if hasattr(self, 'skill'):
+        if hasattr(self, "skill"):
             self.skill.cleanup()
-    
+
     def test_setup(self):
         """Test model setup."""
         self.assertTrue(self.setup_success, "Model setup should succeed")
         self.assertIsNotNone(self.skill.model, "Model should be initialized")
         self.assertIsNotNone(self.skill.tokenizer, "Tokenizer should be initialized")
-    
+
     def test_embedding_dimensions(self):
         """Test embedding dimensions."""
         if not self.setup_success:
             self.skipTest("Model setup failed")
-        
+
         # Run model on test input
         result = self.skill.run("This is a test input")
-        
+
         # Check result structure
         self.assertIn("embeddings", result, "Result should contain embeddings")
         self.assertIn("embedding_dim", result, "Result should contain embedding_dim")
-        
+
         # Check embedding dimensions
         embeddings = result["embeddings"]
         self.assertEqual(embeddings.shape[0], 1, "Should have 1 embedding (batch size 1)")
         self.assertEqual(embeddings.shape[1], 768, "Embedding dimension should be 768")
         self.assertEqual(result["embedding_dim"], 768, "embedding_dim should be 768")
-    
+
     def test_batch_processing(self):
         """Test batch processing."""
         if not self.setup_success:
             self.skipTest("Model setup failed")
-        
+
         # Prepare batch input
         batch_input = ["First test sentence.", "Second test sentence.", "Third test sentence."]
-        
+
         # Run model on batch
         result = self.skill.run(batch_input)
-        
+
         # Check result
         self.assertIn("embeddings", result, "Result should contain embeddings")
         embeddings = result["embeddings"]
         self.assertEqual(embeddings.shape[0], 3, "Should have 3 embeddings (batch size 3)")
         self.assertEqual(embeddings.shape[1], 768, "Embedding dimension should be 768")
-    
+
     def test_embedding_properties(self):
         """Test embedding properties."""
         if not self.setup_success:
             self.skipTest("Model setup failed")
-        
+
         # Run model on test input
         result = self.skill.run("This is a test input")
-        
+
         # Check embedding properties
         embeddings = result["embeddings"]
         self.assertTrue(np.all(np.isfinite(embeddings)), "Embeddings should all be finite")
-        self.assertTrue(-100 < np.min(embeddings) < 100, "Embedding values should be within reasonable range")
-        self.assertTrue(-100 < np.max(embeddings) < 100, "Embedding values should be within reasonable range")
-    
+        self.assertTrue(
+            -100 < np.min(embeddings) < 100, "Embedding values should be within reasonable range"
+        )
+        self.assertTrue(
+            -100 < np.max(embeddings) < 100, "Embedding values should be within reasonable range"
+        )
+
     def test_pooling_strategies(self):
         """Test different pooling strategies."""
         if not self.setup_success:
             self.skipTest("Model setup failed")
-        
+
         # Run model with different pooling strategies
-        cls_result = self.skill.run("This is a test input", pooling_strategy='cls')
-        mean_result = self.skill.run("This is a test input", pooling_strategy='mean')
-        
+        cls_result = self.skill.run("This is a test input", pooling_strategy="cls")
+        mean_result = self.skill.run("This is a test input", pooling_strategy="mean")
+
         # Check result structure
         self.assertIn("embeddings", cls_result, "CLS result should contain embeddings")
         self.assertIn("embeddings", mean_result, "Mean result should contain embeddings")
-        
+
         # Embeddings should be different for different pooling strategies
         cls_embeddings = cls_result["embeddings"]
         mean_embeddings = mean_result["embeddings"]
-        self.assertFalse(np.allclose(cls_embeddings, mean_embeddings), 
-                         "CLS and Mean pooling should produce different embeddings")
+        self.assertFalse(
+            np.allclose(cls_embeddings, mean_embeddings),
+            "CLS and Mean pooling should produce different embeddings",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
@@ -823,19 +840,22 @@ import torch
 from typing import Dict, List, Any, Tuple
 from bert_base_uncased_cuda_skill import BertBaseUncasedSkill
 
-def benchmark_bert_base_uncased_on_cuda(batch_sizes: List[int] = [1, 2, 4, 8, 16],
-                                      iterations: int = 10,
-                                      warmup: int = 3,
-                                      output_dir: str = "./benchmark_results") -> Dict[str, Any]:
+
+def benchmark_bert_base_uncased_on_cuda(
+    batch_sizes: List[int] = [1, 2, 4, 8, 16],
+    iterations: int = 10,
+    warmup: int = 3,
+    output_dir: str = "./benchmark_results",
+) -> Dict[str, Any]:
     """
     Benchmark bert-base-uncased model on cuda hardware.
-    
+
     Args:
         batch_sizes: List of batch sizes to benchmark
         iterations: Number of iterations for each batch size
         warmup: Number of warmup iterations before timing
         output_dir: Directory to store results
-        
+
     Returns:
         Dictionary with benchmark results
     """
@@ -843,65 +863,65 @@ def benchmark_bert_base_uncased_on_cuda(batch_sizes: List[int] = [1, 2, 4, 8, 16
     print(f"Batch sizes: {batch_sizes}")
     print(f"Iterations: {iterations}")
     print(f"Warmup: {warmup}")
-    
+
     # Initialize skill
     skill = BertBaseUncasedSkill()
     setup_start = time.time()
     setup_success = skill.setup()
     setup_time = time.time() - setup_start
-    
+
     if not setup_success:
         print("Failed to set up model")
         return {
             "success": False,
             "model_name": "bert-base-uncased",
             "hardware": "cuda",
-            "error": "Failed to set up model"
+            "error": "Failed to set up model",
         }
-    
+
     print(f"Model setup completed in {setup_time:.4f} seconds")
-    
+
     # Generate test input text (medium-length sentence)
     base_text = "This is a benchmark test input for the bert-base-uncased model on cuda hardware."
-    
+
     # Results will be stored here
     results_by_batch = {}
-    
+
     # Memory tracking
     if torch.cuda.is_available():
         torch.cuda.reset_peak_memory_stats()
-        
+
     # Run benchmarks for each batch size
     for batch_size in batch_sizes:
         print(f"\nBenchmarking with batch size {batch_size}")
-        
+
         # Create input batch
         if batch_size == 1:
             inputs = base_text
         else:
             inputs = [base_text] * batch_size
-            
+
         # Warmup runs
         print(f"Running {warmup} warmup iterations...")
         for _ in range(warmup):
             _ = skill.run(inputs)
-            
+
         # Reset memory stats after warmup
         if torch.cuda.is_available():
             torch.cuda.reset_peak_memory_stats()
-            
+
         # Actual timing runs
         print(f"Running {iterations} timed iterations...")
         latencies = []
-        
+
         for i in range(iterations):
             start_time = time.time()
             result = skill.run(inputs)
             end_time = time.time()
             latency = (end_time - start_time) * 1000  # Convert to ms
             latencies.append(latency)
-            print(f"  Iteration {i+1}/{iterations}: {latency:.2f} ms")
-            
+            print(f"  Iteration {i + 1}/{iterations}: {latency:.2f} ms")
+
         # Calculate statistics
         latencies = np.array(latencies)
         avg_latency = np.mean(latencies)
@@ -910,16 +930,16 @@ def benchmark_bert_base_uncased_on_cuda(batch_sizes: List[int] = [1, 2, 4, 8, 16
         p50_latency = np.percentile(latencies, 50)
         p95_latency = np.percentile(latencies, 95)
         p99_latency = np.percentile(latencies, 99)
-        
+
         # Calculate throughput
         throughput = batch_size * 1000 / avg_latency  # items per second
-        
+
         # Get memory usage
         if torch.cuda.is_available():
             memory_usage = torch.cuda.max_memory_allocated() / (1024 * 1024)  # MB
         else:
             memory_usage = None
-            
+
         # Store results for this batch size
         results_by_batch[str(batch_size)] = {
             "average_latency_ms": float(avg_latency),
@@ -930,9 +950,9 @@ def benchmark_bert_base_uncased_on_cuda(batch_sizes: List[int] = [1, 2, 4, 8, 16
             "p99_latency_ms": float(p99_latency),
             "throughput_items_per_second": float(throughput),
             "memory_usage_mb": float(memory_usage) if memory_usage is not None else None,
-            "all_latencies_ms": [float(l) for l in latencies]
+            "all_latencies_ms": [float(l) for l in latencies],
         }
-        
+
         # Print results
         print(f"\nResults for batch size {batch_size}:")
         print(f"  Average latency: {avg_latency:.2f} ms")
@@ -941,10 +961,10 @@ def benchmark_bert_base_uncased_on_cuda(batch_sizes: List[int] = [1, 2, 4, 8, 16
         print(f"  Throughput: {throughput:.2f} items/second")
         if memory_usage is not None:
             print(f"  Memory usage: {memory_usage:.2f} MB")
-    
+
     # Clean up
     cleanup_success = skill.cleanup()
-    
+
     # Prepare final results
     final_results = {
         "model_name": "bert-base-uncased",
@@ -953,50 +973,55 @@ def benchmark_bert_base_uncased_on_cuda(batch_sizes: List[int] = [1, 2, 4, 8, 16
         "hardware_info": {
             "device": "cuda" if torch.cuda.is_available() else "cpu",
             "device_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU",
-            "device_count": torch.cuda.device_count() if torch.cuda.is_available() else 0
+            "device_count": torch.cuda.device_count() if torch.cuda.is_available() else 0,
         },
         "benchmark_config": {
             "batch_sizes": batch_sizes,
             "iterations": iterations,
-            "warmup_iterations": warmup
+            "warmup_iterations": warmup,
         },
         "results_by_batch": results_by_batch,
         "setup_time_seconds": setup_time,
         "success": True,
-        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
-    
+
     # Save results to file
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
-        output_file = os.path.join(output_dir, f"benchmark_bert_base_uncased_cuda_{int(time.time())}.json")
-        with open(output_file, 'w') as f:
+        output_file = os.path.join(
+            output_dir, f"benchmark_bert_base_uncased_cuda_{int(time.time())}.json"
+        )
+        with open(output_file, "w") as f:
             json.dump(final_results, f, indent=2)
         print(f"\nResults saved to {output_file}")
-    
+
     return final_results
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Benchmark bert-base-uncased on cuda")
-    parser.add_argument("--batch-sizes", type=str, default="1,2,4,8,16",
-                        help="Comma-separated list of batch sizes")
-    parser.add_argument("--iterations", type=int, default=10,
-                        help="Number of iterations for each batch size")
-    parser.add_argument("--warmup", type=int, default=3,
-                        help="Number of warmup iterations")
-    parser.add_argument("--output-dir", type=str, default="./benchmark_results",
-                        help="Directory to store results")
+    parser.add_argument(
+        "--batch-sizes", type=str, default="1,2,4,8,16", help="Comma-separated list of batch sizes"
+    )
+    parser.add_argument(
+        "--iterations", type=int, default=10, help="Number of iterations for each batch size"
+    )
+    parser.add_argument("--warmup", type=int, default=3, help="Number of warmup iterations")
+    parser.add_argument(
+        "--output-dir", type=str, default="./benchmark_results", help="Directory to store results"
+    )
     args = parser.parse_args()
-    
+
     # Parse batch sizes
     batch_sizes = [int(b) for b in args.batch_sizes.split(",")]
-    
+
     # Run benchmark
     benchmark_bert_base_uncased_on_cuda(
         batch_sizes=batch_sizes,
         iterations=args.iterations,
         warmup=args.warmup,
-        output_dir=args.output_dir
+        output_dir=args.output_dir,
     )
 ```
 

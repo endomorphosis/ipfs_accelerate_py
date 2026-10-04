@@ -125,7 +125,7 @@ class RouterDeps:
 
         Creates the manager lazily on first access.
         Returns ``None`` if backend manager is unavailable.
-        
+
         Note: The enable_health_checks and load_balancing_strategy parameters are
         currently not used as get_backend_manager() returns a singleton. Future
         versions may support per-purpose configuration.

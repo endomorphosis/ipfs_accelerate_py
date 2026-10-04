@@ -100,6 +100,7 @@ The WebGPU/WebNN Resource Pool Integration has been completed with these major f
 import anyio
 from fixed_web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
 
+
 async def run_inference():
     # Create resource pool integration with adaptive scaling
     integration = ResourcePoolBridgeIntegration(
@@ -107,7 +108,7 @@ async def run_inference():
         enable_gpu=True,
         enable_cpu=True,
         adaptive_scaling=True,
-        headless=True  # Run browsers in headless mode
+        headless=True,  # Run browsers in headless mode
     )
 
     # Initialize the integration (async)
@@ -116,9 +117,9 @@ async def run_inference():
     try:
         # Get a model with automatic browser optimization (async)
         model = await integration.get_model(
-            model_type='text_embedding',
-            model_name='bert-base-uncased',
-            hardware_preferences={'priority_list': ['webgpu', 'cpu']}
+            model_type="text_embedding",
+            model_name="bert-base-uncased",
+            hardware_preferences={"priority_list": ["webgpu", "cpu"]},
         )
 
         # Run inference (sync wrapper around async call)
@@ -127,6 +128,7 @@ async def run_inference():
     finally:
         # Ensure proper cleanup of browser resources
         await integration.close()
+
 
 # Run the async function
 anyio.run(run_inference)
@@ -138,39 +140,40 @@ anyio.run(run_inference)
 import anyio
 from fixed_web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
 
+
 async def run_concurrent_inference():
     # Create integration
     integration = ResourcePoolBridgeIntegration(
-        max_connections=4, 
+        max_connections=4,
         adaptive_scaling=True,
         browser_preferences={
-            'audio': 'firefox',     # Firefox for audio models
-            'vision': 'chrome',     # Chrome for vision models
-            'text_embedding': 'edge' # Edge for embedding models
-        }
+            "audio": "firefox",  # Firefox for audio models
+            "vision": "chrome",  # Chrome for vision models
+            "text_embedding": "edge",  # Edge for embedding models
+        },
     )
-    
+
     # Initialize
     await integration.initialize()
-    
+
     try:
         # Load multiple models (async)
         text_model = await integration.get_model(
-            'text_embedding', 
-            'bert-base-uncased',
-            {'priority_list': ['webnn', 'webgpu']}  # Try WebNN first for text
+            "text_embedding",
+            "bert-base-uncased",
+            {"priority_list": ["webnn", "webgpu"]},  # Try WebNN first for text
         )
-        
+
         vision_model = await integration.get_model(
-            'vision', 
-            'vit-base',
-            {'priority_list': ['webgpu'], 'precompile_shaders': True}  # Use shader precompilation
+            "vision",
+            "vit-base",
+            {"priority_list": ["webgpu"], "precompile_shaders": True},  # Use shader precompilation
         )
-        
+
         audio_model = await integration.get_model(
-            'audio', 
-            'whisper-tiny',
-            {'priority_list': ['webgpu'], 'compute_shaders': True}  # Use compute shaders for audio
+            "audio",
+            "whisper-tiny",
+            {"priority_list": ["webgpu"], "compute_shaders": True},  # Use compute shaders for audio
         )
 
         # Create inputs
@@ -179,19 +182,18 @@ async def run_concurrent_inference():
         audio_input = {"audio": {"duration": 5.0}}
 
         # Execute concurrently for 3.5x throughput
-        results = integration.execute_concurrent_sync([
-            (text_model, text_input),
-            (vision_model, vision_input),
-            (audio_model, audio_input)
-        ])
+        results = integration.execute_concurrent_sync(
+            [(text_model, text_input), (vision_model, vision_input), (audio_model, audio_input)]
+        )
 
         # Process results
         for i, result in enumerate(results):
-            print(f"Model {i+1} result: {result}")
-            
+            print(f"Model {i + 1} result: {result}")
+
     finally:
         # Ensure proper cleanup
         await integration.close()
+
 
 # Run the async function
 anyio.run(run_concurrent_inference)
@@ -204,33 +206,36 @@ async def get_metrics():
     # Create and initialize
     integration = ResourcePoolBridgeIntegration(max_connections=4, adaptive_scaling=True)
     await integration.initialize()
-    
+
     try:
         # Get comprehensive metrics
         metrics = integration.get_metrics()
-        
+
         # Process metrics
         print(f"Connection utilization: {metrics['connections']['utilization']:.2f}")
-        print(f"Active connections: {metrics['connections']['active']}/{metrics['connections']['max']}")
+        print(
+            f"Active connections: {metrics['connections']['active']}/{metrics['connections']['max']}"
+        )
         print(f"Adaptive scaling events: {len(metrics['adaptive_scaling']['scaling_events'])}")
         print(f"Browser distribution: {metrics['connections']['browser_distribution']}")
-        
+
         # Get real browser capabilities
-        if 'browser_capabilities' in metrics:
+        if "browser_capabilities" in metrics:
             print("\nBrowser Capabilities:")
-            for browser, capabilities in metrics['browser_capabilities'].items():
-                webgpu = capabilities.get('webgpu_supported', False)
-                webnn = capabilities.get('webnn_supported', False)
+            for browser, capabilities in metrics["browser_capabilities"].items():
+                webgpu = capabilities.get("webgpu_supported", False)
+                webnn = capabilities.get("webnn_supported", False)
                 print(f"  {browser}: WebGPU: {webgpu}, WebNN: {webnn}")
-        
+
         # System resource usage
-        if 'resources' in metrics:
+        if "resources" in metrics:
             print(f"\nSystem memory: {metrics['resources']['system_memory_percent']}%")
             print(f"Process memory: {metrics['resources']['process_memory_mb']:.1f} MB")
-            
+
     finally:
         # Clean up
         await integration.close()
+
 
 # Run the async function
 anyio.run(get_metrics)
@@ -246,49 +251,48 @@ async def test_real_browsers():
     integration = ResourcePoolBridgeIntegration(
         max_connections=4,
         browser_preferences={
-            'audio': 'firefox',  # Firefox for audio models (compute shaders)
-            'vision': 'chrome',  # Chrome for vision models
-            'text': 'edge'       # Edge for text models (WebNN)
+            "audio": "firefox",  # Firefox for audio models (compute shaders)
+            "vision": "chrome",  # Chrome for vision models
+            "text": "edge",  # Edge for text models (WebNN)
         },
-        headless=True  # Run browsers in headless mode
+        headless=True,  # Run browsers in headless mode
     )
-    
+
     # Initialize will launch actual browser instances with Selenium
     success = await integration.initialize()
     if not success:
         print("Failed to initialize browsers, falling back to simulation")
-    
+
     try:
         # Check what browsers were actually launched
         metrics = integration.get_metrics()
         print("Browser connections:")
-        if hasattr(integration, 'browser_connections'):
+        if hasattr(integration, "browser_connections"):
             for conn_id, conn in integration.browser_connections.items():
                 print(f"  {conn_id}: {conn['browser']} - {conn['platform']}")
                 print(f"    Is simulation: {conn['is_simulation']}")
-                if 'capabilities' in conn:
-                    caps = conn['capabilities']
-                    webgpu = caps.get('webgpu_supported', False)
-                    webnn = caps.get('webnn_supported', False)
+                if "capabilities" in conn:
+                    caps = conn["capabilities"]
+                    webgpu = caps.get("webgpu_supported", False)
+                    webnn = caps.get("webnn_supported", False)
                     print(f"    WebGPU: {webgpu}, WebNN: {webnn}")
-        
+
         # Test with a specific model (will use real browser if available)
         model = await integration.get_model(
-            'audio', 
-            'whisper-tiny',
-            {'priority_list': ['webgpu'], 'compute_shaders': True}
+            "audio", "whisper-tiny", {"priority_list": ["webgpu"], "compute_shaders": True}
         )
-        
+
         # Run inference
         result = model({"audio": {"duration": 5.0}})
         print(f"\nInference result: {result}")
         print(f"Using real hardware: {result.get('is_real_hardware', False)}")
         print(f"Browser used: {result.get('browser', 'unknown')}")
         print(f"Compute shaders enabled: {result.get('compute_shader_optimized', False)}")
-        
+
     finally:
         # Proper cleanup (will close all browser instances)
         await integration.close()
+
 
 # Run the test
 anyio.run(test_real_browsers)

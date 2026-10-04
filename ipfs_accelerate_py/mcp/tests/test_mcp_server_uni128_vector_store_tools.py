@@ -49,7 +49,9 @@ class TestMCPServerUNI128VectorStoreTools(unittest.TestCase):
         self.assertEqual(enhanced_search_schema["properties"]["query_vector"].get("minItems"), 1)
 
         enhanced_storage_schema = by_name["enhanced_vector_storage"]["input_schema"]
-        self.assertIn("get_metadata", enhanced_storage_schema["properties"]["action"].get("enum", []))
+        self.assertIn(
+            "get_metadata", enhanced_storage_schema["properties"]["action"].get("enum", [])
+        )
 
     def test_vector_index_rejects_invalid_action(self) -> None:
         async def _run() -> None:
@@ -89,6 +91,7 @@ class TestMCPServerUNI128VectorStoreTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.vector_store_tools.native_vector_store_tools._API"
             ) as mock_api:
+
                 async def _impl(**kwargs):
                     _ = kwargs
                     return {"status": "success"}
@@ -109,6 +112,7 @@ class TestMCPServerUNI128VectorStoreTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.vector_store_tools.native_vector_store_tools._API"
             ) as mock_api:
+
                 async def _impl(**kwargs):
                     _ = kwargs
                     return {"status": "success"}
@@ -130,6 +134,7 @@ class TestMCPServerUNI128VectorStoreTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.vector_store_tools.native_vector_store_tools._API"
             ) as mock_api:
+
                 async def _impl(**kwargs):
                     _ = kwargs
                     return {"status": "success"}
@@ -155,7 +160,7 @@ class TestMCPServerUNI128VectorStoreTools(unittest.TestCase):
 
     def test_enhanced_vector_storage_rejects_invalid_vector_ids(self) -> None:
         async def _run() -> None:
-            result = await enhanced_vector_storage(action="delete", vector_ids=[""]) 
+            result = await enhanced_vector_storage(action="delete", vector_ids=[""])
             self.assertEqual(result.get("status"), "error")
             self.assertIn("list of non-empty strings", str(result.get("message", "")))
 
@@ -181,7 +186,9 @@ class TestMCPServerUNI128VectorStoreTools(unittest.TestCase):
 
         anyio.run(_run)
 
-    def test_vector_store_wrappers_infer_error_status_from_contradictory_delegate_payload(self) -> None:
+    def test_vector_store_wrappers_infer_error_status_from_contradictory_delegate_payload(
+        self,
+    ) -> None:
         async def _contradictory_failure(**_: object) -> dict:
             return {"status": "success", "success": False, "error": "delegate failed"}
 

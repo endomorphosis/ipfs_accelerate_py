@@ -132,7 +132,7 @@ model = init_webgpu(
     model_name="llama-2-7b-chat-hf",
     model_type="text",
     device="webgpu",
-    web_api_mode="simulation"
+    web_api_mode="simulation",
 )
 
 # Model now runs with 4-bit weights and efficient KV-cache

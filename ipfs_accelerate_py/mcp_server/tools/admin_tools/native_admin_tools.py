@@ -275,7 +275,11 @@ async def manage_endpoints(
             "message": f"action must be one of: {', '.join(sorted(allowed_actions))}",
             "action": action,
         }
-    if normalized_action == "add" and (not str(model or "").strip() or not str(endpoint or "").strip() or not str(endpoint_type or "").strip()):
+    if normalized_action == "add" and (
+        not str(model or "").strip()
+        or not str(endpoint or "").strip()
+        or not str(endpoint_type or "").strip()
+    ):
         return {
             "status": "error",
             "message": "model, endpoint, and endpoint_type are required for add action",
@@ -376,7 +380,11 @@ async def configure_system(
             "message": f"action must be one of: {', '.join(sorted(allowed_actions))}",
             "action": action,
         }
-    if normalized_action in {"set", "update", "configure"} and settings is not None and not isinstance(settings, dict):
+    if (
+        normalized_action in {"set", "update", "configure"}
+        and settings is not None
+        and not isinstance(settings, dict)
+    ):
         return {
             "status": "error",
             "message": "settings must be an object when provided",
@@ -444,11 +452,23 @@ async def get_system_status(
 ) -> Dict[str, Any]:
     """Return enhanced system-status summary compatible with source wrappers."""
     if not isinstance(include_details, bool):
-        return {"status": "error", "message": "include_details must be a boolean", "include_details": include_details}
+        return {
+            "status": "error",
+            "message": "include_details must be a boolean",
+            "include_details": include_details,
+        }
     if not isinstance(include_services, bool):
-        return {"status": "error", "message": "include_services must be a boolean", "include_services": include_services}
+        return {
+            "status": "error",
+            "message": "include_services must be a boolean",
+            "include_services": include_services,
+        }
     if not isinstance(include_resources, bool):
-        return {"status": "error", "message": "include_resources must be a boolean", "include_resources": include_resources}
+        return {
+            "status": "error",
+            "message": "include_resources must be a boolean",
+            "include_resources": include_resources,
+        }
 
     normalized_format = str(format or "json").strip().lower()
     if normalized_format not in {"json", "summary", "detailed"}:
@@ -480,8 +500,12 @@ async def get_system_status(
         payload.setdefault("health", payload.get("health_status", "unknown"))
         payload.setdefault("services_running", len(payload.get("services") or {}))
         payload.setdefault("total_services", len(payload.get("services") or {}))
-        payload.setdefault("cpu_usage", ((payload.get("resource_usage") or {}).get("cpu_percent", 0.0)))
-        payload.setdefault("memory_usage", ((payload.get("resource_usage") or {}).get("memory_percent", 0.0)))
+        payload.setdefault(
+            "cpu_usage", ((payload.get("resource_usage") or {}).get("cpu_percent", 0.0))
+        )
+        payload.setdefault(
+            "memory_usage", ((payload.get("resource_usage") or {}).get("memory_percent", 0.0))
+        )
         return payload
 
     payload.setdefault("status", "success")
@@ -508,7 +532,11 @@ async def manage_service(
     """Manage one service or all known services using enhanced admin parity."""
     normalized_service_name = str(service_name or "").strip()
     if not normalized_service_name:
-        return {"status": "error", "message": "service_name must be a non-empty string", "service_name": service_name}
+        return {
+            "status": "error",
+            "message": "service_name must be a non-empty string",
+            "service_name": service_name,
+        }
 
     normalized_action = str(action or "").strip().lower()
     if normalized_action not in {"start", "stop", "restart", "status"}:
@@ -557,7 +585,11 @@ async def manage_service(
         )
         payload.setdefault(
             "failed_operations",
-            sum(1 for item in (payload.get("results") or []) if item.get("success") is False or item.get("error")),
+            sum(
+                1
+                for item in (payload.get("results") or [])
+                if item.get("success") is False or item.get("error")
+            ),
         )
     else:
         payload.setdefault("single_operation", True)
@@ -588,9 +620,17 @@ async def update_configuration(
             "config_updates": config_updates,
         }
     if not isinstance(create_backup, bool):
-        return {"status": "error", "message": "create_backup must be a boolean", "create_backup": create_backup}
+        return {
+            "status": "error",
+            "message": "create_backup must be a boolean",
+            "create_backup": create_backup,
+        }
     if not isinstance(validate_config, bool):
-        return {"status": "error", "message": "validate_config must be a boolean", "validate_config": validate_config}
+        return {
+            "status": "error",
+            "message": "validate_config must be a boolean",
+            "validate_config": validate_config,
+        }
 
     handler = _API.get("update_configuration")
     if handler is not None:
@@ -635,11 +675,23 @@ async def cleanup_resources(
             "cleanup_type": cleanup_type,
         }
     if not isinstance(restart_services, bool):
-        return {"status": "error", "message": "restart_services must be a boolean", "restart_services": restart_services}
+        return {
+            "status": "error",
+            "message": "restart_services must be a boolean",
+            "restart_services": restart_services,
+        }
     if not isinstance(cleanup_temp_files, bool):
-        return {"status": "error", "message": "cleanup_temp_files must be a boolean", "cleanup_temp_files": cleanup_temp_files}
+        return {
+            "status": "error",
+            "message": "cleanup_temp_files must be a boolean",
+            "cleanup_temp_files": cleanup_temp_files,
+        }
     if not isinstance(cleanup_logs, bool):
-        return {"status": "error", "message": "cleanup_logs must be a boolean", "cleanup_logs": cleanup_logs}
+        return {
+            "status": "error",
+            "message": "cleanup_logs must be a boolean",
+            "cleanup_logs": cleanup_logs,
+        }
     if not isinstance(max_log_age_days, int) or max_log_age_days < 1:
         return {
             "status": "error",
@@ -694,7 +746,10 @@ def register_native_admin_tools(manager: Any) -> None:
                 "action": {"type": "string", "enum": ["add", "update", "remove", "list"]},
                 "model": {"type": ["string", "null"]},
                 "endpoint": {"type": ["string", "null"]},
-                "endpoint_type": {"type": ["string", "null"], "enum": ["local", "http", "https", "openai", "azure", "sagemaker", None]},
+                "endpoint_type": {
+                    "type": ["string", "null"],
+                    "enum": ["local", "http", "https", "openai", "azure", "sagemaker", None],
+                },
                 "ctx_length": {"type": ["integer", "null"], "minimum": 1, "default": 512},
             },
             "required": ["action"],
@@ -711,10 +766,32 @@ def register_native_admin_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "operation": {"type": ["string", "null"], "enum": ["health_check", "cleanup", "restart", "backup", "status", "health", None]},
+                "operation": {
+                    "type": ["string", "null"],
+                    "enum": [
+                        "health_check",
+                        "cleanup",
+                        "restart",
+                        "backup",
+                        "status",
+                        "health",
+                        None,
+                    ],
+                },
                 "target": {"type": ["string", "null"]},
                 "force": {"type": "boolean", "default": False},
-                "action": {"type": ["string", "null"], "enum": ["health_check", "cleanup", "restart", "backup", "status", "health", None]},
+                "action": {
+                    "type": ["string", "null"],
+                    "enum": [
+                        "health_check",
+                        "cleanup",
+                        "restart",
+                        "backup",
+                        "status",
+                        "health",
+                        None,
+                    ],
+                },
             },
             "required": [],
         },
@@ -769,7 +846,11 @@ def register_native_admin_tools(manager: Any) -> None:
                 "include_details": {"type": "boolean", "default": True},
                 "include_services": {"type": "boolean", "default": True},
                 "include_resources": {"type": "boolean", "default": True},
-                "format": {"type": "string", "enum": ["json", "summary", "detailed"], "default": "json"},
+                "format": {
+                    "type": "string",
+                    "enum": ["json", "summary", "detailed"],
+                    "default": "json",
+                },
             },
             "required": [],
         },
@@ -804,7 +885,10 @@ def register_native_admin_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "action": {"type": "string", "enum": ["get", "update", "validate", "backup", "restore"]},
+                "action": {
+                    "type": "string",
+                    "enum": ["get", "update", "validate", "backup", "restore"],
+                },
                 "config_updates": {"type": ["object", "null"]},
                 "create_backup": {"type": "boolean", "default": True},
                 "validate_config": {"type": "boolean", "default": True},
@@ -823,7 +907,11 @@ def register_native_admin_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "cleanup_type": {"type": "string", "enum": ["basic", "full", "cache_only", "logs_only"], "default": "basic"},
+                "cleanup_type": {
+                    "type": "string",
+                    "enum": ["basic", "full", "cache_only", "logs_only"],
+                    "default": "basic",
+                },
                 "restart_services": {"type": "boolean", "default": True},
                 "cleanup_temp_files": {"type": "boolean", "default": True},
                 "cleanup_logs": {"type": "boolean", "default": False},

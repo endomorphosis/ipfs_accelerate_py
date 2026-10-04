@@ -62,6 +62,7 @@ class TestMCPServerUNI129FunctionTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.functions.native_function_tools._API"
             ) as mock_api:
+
                 async def _impl(**kwargs):
                     return {"message": "ok", "echo": kwargs.get("code")}
 
@@ -79,6 +80,7 @@ class TestMCPServerUNI129FunctionTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.functions.native_function_tools._API"
             ) as mock_api:
+
                 async def _impl(**kwargs):
                     _ = kwargs
                     return {"status": "success"}

@@ -7,15 +7,16 @@ import unittest
 import numpy as np
 from bert_base_uncased_webgpu_skill import bert_base_uncasedSkill
 
+
 class TestBert_Base_Uncased:
     """Test suite for bert-base-uncased on webgpu."""
-    
+
     def test_setup(self):
         """Test model setup."""
         skill = bert_base_uncasedSkill()
         success = skill.setup()
         assert success, "Model setup should succeed"
-    
+
     def test_run(self):
         """Test model inference."""
         skill = bert_base_uncasedSkill()

@@ -23,7 +23,7 @@ def test_submit_docker_hub_task_builds_payload(monkeypatch):
         tid = await submit_docker_hub_task(
             remote=rq,
             image="python:3.11-slim",
-            command=["python", "-c", "print(1)"] ,
+            command=["python", "-c", "print(1)"],
             entrypoint="bash -lc",
             environment={"A": 1},
             volumes={"/h": "/c"},

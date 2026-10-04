@@ -28,7 +28,9 @@ class TestMCPServerUNI174StorageTools(unittest.TestCase):
         action_enum = (manage_schema.get("properties") or {}).get("action", {}).get("enum") or []
         self.assertIn("backend_status", action_enum)
 
-        include_capabilities = (manage_schema.get("properties") or {}).get("include_capabilities") or {}
+        include_capabilities = (manage_schema.get("properties") or {}).get(
+            "include_capabilities"
+        ) or {}
         self.assertEqual(include_capabilities.get("type"), "boolean")
 
     def test_manage_collections_backend_status_returns_report(self) -> None:

@@ -155,10 +155,12 @@ balancer.start()
 # Create metrics collector
 metrics = DashboardMetricsCollector()
 
+
 # Register callback
 def assignment_callback(assignment):
     metrics.record_completion(assignment)
-    
+
+
 balancer.register_assignment_callback(assignment_callback)
 
 # Run your tests...

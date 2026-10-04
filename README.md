@@ -310,7 +310,7 @@ accelerator = IPFSAccelerator()  # Uses best available
 
 # Manual selection
 accelerator = IPFSAccelerator(device="cuda")  # Force CUDA
-accelerator = IPFSAccelerator(device="mps")   # Force Apple MPS
+accelerator = IPFSAccelerator(device="mps")  # Force Apple MPS
 ```
 
 ⚙️ **Hardware guides**: [Hardware Optimization](docs/guides/hardware/overview.md) | [Platform Support](docs/guides/hardware/overview.md#platforms)

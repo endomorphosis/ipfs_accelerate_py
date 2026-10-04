@@ -41,22 +41,17 @@ The model supports cropping images into smaller patches when the image aspect ra
 Pan and scan is an inference time optimization to handle images with skewed aspect ratios. When enabled, it improves performance on tasks related to document understanding, infographics, OCR, etc.
 
 ```python
-
 processor = AutoProcessor.from_pretrained("google/gemma-3-4b-it", padding_side="left")
 
 url = "https://media.istockphoto.com/id/1192867753/photo/cow-in-berchida-beach-siniscola.jpg?s=612x612&w=0&k=20&c=v0hjjniwsMNfJSuKWZuIn8pssmD5h5bSN1peBd1CmH4="
 messages = [
+    {"role": "system", "content": [{"type": "text", "text": "You are a helpful assistant."}]},
     {
-        "role": "system",
+        "role": "user",
         "content": [
-            {"type": "text", "text": "You are a helpful assistant."}
-        ]
-    },
-    {
-        "role": "user", "content": [
             {"type": "image", "url": url},
             {"type": "text", "text": "What is shown in this image?"},
-        ]
+        ],
     },
 ]
 inputs = processor.apply_chat_template(
@@ -67,7 +62,6 @@ inputs = processor.apply_chat_template(
     add_generation_prompt=True,
     do_pan_and_scan=True,
 ).to(model.device)
-
 ```
 
 
@@ -84,17 +78,13 @@ processor = AutoProcessor.from_pretrained(model_id, padding_side="left")
 
 url = "https://media.istockphoto.com/id/1192867753/photo/cow-in-berchida-beach-siniscola.jpg?s=612x612&w=0&k=20&c=v0hjjniwsMNfJSuKWZuIn8pssmD5h5bSN1peBd1CmH4="
 messages = [
+    {"role": "system", "content": [{"type": "text", "text": "You are a helpful assistant."}]},
     {
-        "role": "system",
+        "role": "user",
         "content": [
-            {"type": "text", "text": "You are a helpful assistant."}
-        ]
-    },
-    {
-        "role": "user", "content": [
             {"type": "image", "url": url},
             {"type": "text", "text": "What is shown in this image?"},
-        ]
+        ],
     },
 ]
 inputs = processor.apply_chat_template(
@@ -106,7 +96,7 @@ inputs = processor.apply_chat_template(
 ).to(model.device)
 
 output = model.generate(**inputs, max_new_tokens=50)
-print(processor.decode(output[0], skip_special_tokens=True)[inputs.input_ids.shape[1]: ])
+print(processor.decode(output[0], skip_special_tokens=True)[inputs.input_ids.shape[1] :])
 ```
 
 ### Multi-image Inference
@@ -119,18 +109,14 @@ processor = AutoProcessor.from_pretrained(model_id, padding_side="left")
 url_cow = "https://media.istockphoto.com/id/1192867753/photo/cow-in-berchida-beach-siniscola.jpg?s=612x612&w=0&k=20&c=v0hjjniwsMNfJSuKWZuIn8pssmD5h5bSN1peBd1CmH4="
 url_stop = "https://www.ilankelman.org/stopsigns/australia.jpg"
 messages = [
+    {"role": "system", "content": [{"type": "text", "text": "You are a helpful assistant."}]},
     {
-        "role": "system",
+        "role": "user",
         "content": [
-            {"type": "text", "text": "You are a helpful assistant."}
-        ]
-    },
-    {
-        "role": "user", "content": [
             {"type": "image", "url": url_cow},
             {"type": "image", "url": url_stop},
             {"type": "text", "text": "Are these two images identical?"},
-        ]
+        ],
     },
 ]
 inputs = processor.apply_chat_template(
@@ -142,8 +128,7 @@ inputs = processor.apply_chat_template(
 ).to(model.device)
 
 output = model.generate(**inputs, max_new_tokens=50)
-print(processor.decode(output[0], skip_special_tokens=True)[inputs.input_ids.shape[1]: ])
-
+print(processor.decode(output[0], skip_special_tokens=True)[inputs.input_ids.shape[1] :])
 ```
 
 ### Text-only inference
@@ -157,13 +142,14 @@ model_id = "google/gemma-3-1b-it"
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 model = Gemma3ForCausalLM.from_pretrained(model_id, device_map="auto")
 
-input_ids = tokenizer("Write me a poem about Machine Learning.", return_tensors="pt").to(model.device)
+input_ids = tokenizer("Write me a poem about Machine Learning.", return_tensors="pt").to(
+    model.device
+)
 
 outputs = model.generate(**input_ids, max_new_tokens=100)
 text = tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
 print(text)
-
 ```
 
 

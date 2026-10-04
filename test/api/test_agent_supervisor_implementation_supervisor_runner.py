@@ -115,7 +115,9 @@ def test_build_supervisor_refill_default_factories_resolve_bootstrap_paths(tmp_p
         objective_bundle_dir_key="bundle_dir",
         objective_dataset_dir_key="dataset_dir",
         objective_discovery_dir_key="discovery_dir",
-        objective_discovery_output_path_factory=lambda resolved: f"out/{Path(resolved['discovery_dir']).name}",
+        objective_discovery_output_path_factory=lambda resolved: (
+            f"out/{Path(resolved['discovery_dir']).name}"
+        ),
         objective_todo_vector_index_path_key="todo_vector_index_path",
         objective_interoperability_focus=("hallucinate_app",),
         objective_scan_max_findings=11,
@@ -123,7 +125,9 @@ def test_build_supervisor_refill_default_factories_resolve_bootstrap_paths(tmp_p
     )
     codebase_factory = build_codebase_refill_defaults_factory(
         codebase_scan_discovery_dir_key="discovery_dir",
-        codebase_scan_discovery_output_path_factory=lambda resolved: f"scan/{Path(resolved['discovery_dir']).name}",
+        codebase_scan_discovery_output_path_factory=lambda resolved: (
+            f"scan/{Path(resolved['discovery_dir']).name}"
+        ),
         codebase_scan_skip_prefixes=("data/state/",),
     )
 
@@ -631,7 +635,9 @@ def test_build_configured_supervisor_runtime_exports_binds_public_facade(tmp_pat
         def is_running(self, state_dir: Path, state_prefix: str) -> bool:
             return state_dir.name == "state" and state_prefix == "agent"
 
-        def ensure_running(self, argv: list[str], *, state_dir: Path, state_prefix: str) -> dict[str, object]:
+        def ensure_running(
+            self, argv: list[str], *, state_dir: Path, state_prefix: str
+        ) -> dict[str, object]:
             return {"argv": tuple(argv), "state_dir": state_dir, "state_prefix": state_prefix}
 
     runtime = ConfiguredSupervisorRuntime(

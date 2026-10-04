@@ -196,13 +196,11 @@ framework = get_framework_instance()
 
 # Generate or load simulation and hardware results
 simulation_results = [...]  # List of SimulationResult objects
-hardware_results = [...]    # List of HardwareResult objects
+hardware_results = [...]  # List of HardwareResult objects
 
 # Run validation
 validation_results = framework.validate(
-    simulation_results=simulation_results,
-    hardware_results=hardware_results,
-    protocol="standard"
+    simulation_results=simulation_results, hardware_results=hardware_results, protocol="standard"
 )
 
 # Generate a summary
@@ -211,10 +209,7 @@ print(f"Overall MAPE: {summary['overall']['mape']['mean']:.2f}%")
 print(f"Status: {summary['overall']['status']}")
 
 # Generate a report
-report = framework.generate_report(
-    validation_results=validation_results,
-    format="markdown"
-)
+report = framework.generate_report(validation_results=validation_results, format="markdown")
 ```
 
 ### Checking Calibration Needs
@@ -222,18 +217,15 @@ report = framework.generate_report(
 ```python
 # Check if calibration is needed
 cal_check = framework.check_calibration_needed(
-    validation_results=validation_results,
-    hardware_id="rtx3080",
-    model_id="bert-base-uncased"
+    validation_results=validation_results, hardware_id="rtx3080", model_id="bert-base-uncased"
 )
 
 if cal_check["calibration_recommended"]:
     print(f"Calibration recommended: {cal_check['reason']}")
-    
+
     # Calibrate simulation parameters
     updated_parameters = framework.calibrate(
-        validation_results=validation_results,
-        simulation_parameters=current_parameters
+        validation_results=validation_results, simulation_parameters=current_parameters
     )
 ```
 
@@ -242,23 +234,20 @@ if cal_check["calibration_recommended"]:
 ```python
 # Split validation results into historical and recent
 historical_results = [...]  # Past validation results
-recent_results = [...]      # Recent validation results
+recent_results = [...]  # Recent validation results
 
 # Detect drift
 drift_results = framework.detect_drift(
-    historical_validation_results=historical_results,
-    new_validation_results=recent_results
+    historical_validation_results=historical_results, new_validation_results=recent_results
 )
 
 if drift_results["is_significant"]:
     print("Significant drift detected!")
     print(f"Affected metrics: {drift_results['significant_metrics']}")
-    
+
     # Visualize the drift detection results
     framework.visualize_drift_detection(
-        drift_results=drift_results,
-        output_path="drift_detection.html",
-        interactive=True
+        drift_results=drift_results, output_path="drift_detection.html", interactive=True
     )
 ```
 
@@ -272,20 +261,17 @@ framework.visualize_mape_comparison(
     hardware_ids=["rtx3080", "a100"],
     model_ids=["bert-base-uncased", "vit-base-patch16-224"],
     output_path="mape_comparison.html",
-    interactive=True
+    interactive=True,
 )
 
 # Create a hardware comparison heatmap
 framework.visualize_hardware_comparison_heatmap(
-    validation_results=validation_results,
-    metric_name="all",
-    output_path="hardware_heatmap.html"
+    validation_results=validation_results, metric_name="all", output_path="hardware_heatmap.html"
 )
 
 # Create a comprehensive dashboard
 framework.create_comprehensive_dashboard(
-    validation_results=validation_results,
-    output_path="dashboard.html"
+    validation_results=validation_results, output_path="dashboard.html"
 )
 ```
 
@@ -304,7 +290,7 @@ report = manager.generate_report(
     report_type=ReportType.COMPREHENSIVE_REPORT,
     output_format=ReportFormat.HTML,
     title="Validation Report",
-    description="Comprehensive validation results"
+    description="Comprehensive validation results",
 )
 
 # Generate an executive summary
@@ -312,18 +298,16 @@ summary = manager.generate_report(
     validation_results=validation_results,
     report_type=ReportType.EXECUTIVE_SUMMARY,
     title="Executive Summary",
-    description="High-level summary for executive review"
+    description="High-level summary for executive review",
 )
 
 # Generate a comparative report
 comparative_report = manager.generate_report(
     validation_results=validation_results_after,
     report_type=ReportType.COMPARATIVE_REPORT,
-    comparative_data={
-        "validation_results_before": validation_results_before
-    },
+    comparative_data={"validation_results_before": validation_results_before},
     title="Calibration Improvement Report",
-    description="Comparison before and after calibration"
+    description="Comparison before and after calibration",
 )
 ```
 
@@ -333,9 +317,7 @@ comparative_report = manager.generate_report(
 from duckdb_api.simulation_validation.db_integration import SimulationValidationDBIntegration
 
 # Initialize database integration
-db_integration = SimulationValidationDBIntegration(
-    db_path="benchmark_db.duckdb"
-)
+db_integration = SimulationValidationDBIntegration(db_path="benchmark_db.duckdb")
 
 # Initialize database schema
 db_integration.initialize_database()
@@ -348,8 +330,7 @@ db_integration.store_calibration_parameters(calibration_params)
 
 # Get validation results by criteria
 hw_model_results = db_integration.get_validation_results_by_criteria(
-    hardware_id="rtx3080",
-    model_id="bert-base-uncased"
+    hardware_id="rtx3080", model_id="bert-base-uncased"
 )
 
 # Get latest calibration parameters
@@ -357,15 +338,14 @@ latest_params = db_integration.get_latest_calibration_parameters()
 
 # Analyze calibration effectiveness
 effectiveness = db_integration.analyze_calibration_effectiveness(
-    before_version="uncalibrated_v1.0",
-    after_version="calibrated_v1.0"
+    before_version="uncalibrated_v1.0", after_version="calibrated_v1.0"
 )
 print(f"Overall improvement: {effectiveness['overall_improvement']:.2f}%")
 
 # Export visualization data
 db_integration.export_visualization_data(
     export_path="visualization_data.json",
-    metrics=["throughput_items_per_second", "average_latency_ms"]
+    metrics=["throughput_items_per_second", "average_latency_ms"],
 )
 
 # Connect database integration to the framework

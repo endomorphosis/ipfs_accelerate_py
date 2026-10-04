@@ -97,7 +97,7 @@ await pool.share_tensor_between_models(
     tensor_name="vit_embedding",
     producer_model="vit-base",
     consumer_models=["clip-vit"],
-    storage_type="webgpu"
+    storage_type="webgpu",
 )
 
 # Get second model - will use the shared tensor
@@ -118,7 +118,7 @@ ulp_config = setup_ultra_low_precision(
     model_type="text",
     precision_bits=2,
     mixed_precision=True,
-    enable_kv_cache=True
+    enable_kv_cache=True,
 )
 
 # Create resource pool with tensor sharing
@@ -126,17 +126,11 @@ pool = ResourcePoolBridgeIntegration()
 manager = pool.setup_tensor_sharing()
 
 # Configure hardware preferences with ultra-low precision
-hardware_preferences = {
-    "priority_list": ["webgpu", "cpu"],
-    "precision": 2,
-    "mixed_precision": True
-}
+hardware_preferences = {"priority_list": ["webgpu", "cpu"], "precision": 2, "mixed_precision": True}
 
 # Get model with ultra-low precision
 model = await pool.get_model(
-    model_type="text",
-    model_name="llama-7b",
-    hardware_preferences=hardware_preferences
+    model_type="text", model_name="llama-7b", hardware_preferences=hardware_preferences
 )
 
 # Run inference - tensors will be shared with 2-bit precision
@@ -185,7 +179,7 @@ tensor = manager.register_shared_tensor(
     shape=[1, 768],
     storage_type="webgpu",
     producer_model="bert",
-    consumer_models=["t5", "llama"]
+    consumer_models=["t5", "llama"],
 )
 
 # Get a shared tensor
@@ -204,11 +198,7 @@ The `SharedTensor` class represents a shareable tensor with reference counting:
 
 ```python
 tensor = SharedTensor(
-    name="embedding",
-    shape=[1, 768],
-    dtype="float32",
-    storage_type="webgpu",
-    producer_model="bert"
+    name="embedding", shape=[1, 768], dtype="float32", storage_type="webgpu", producer_model="bert"
 )
 
 # Reference counting
@@ -216,11 +206,7 @@ tensor.acquire("t5")  # Increment reference count
 tensor.release("t5")  # Decrement reference count
 
 # Create a view into the tensor
-view = tensor.create_view(
-    name="first_half",
-    offset=[0, 0],
-    size=[1, 384]
-)
+view = tensor.create_view(name="first_half", offset=[0, 0], size=[1, 384])
 ```
 
 ## Best Practices

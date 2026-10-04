@@ -103,12 +103,12 @@ result = model.inference("Your text here")
 
 ```python
 # Automatic (recommended) - picks best available
-acc = IPFSAccelerator()  
+acc = IPFSAccelerator()
 
 # Manual selection - force specific hardware
-acc_cuda = IPFSAccelerator(device="cuda")    # NVIDIA GPU
-acc_mps = IPFSAccelerator(device="mps")      # Apple Silicon
-acc_cpu = IPFSAccelerator(device="cpu")      # CPU only
+acc_cuda = IPFSAccelerator(device="cuda")  # NVIDIA GPU
+acc_mps = IPFSAccelerator(device="mps")  # Apple Silicon
+acc_cpu = IPFSAccelerator(device="cpu")  # CPU only
 
 # Check what you're using
 print(f"Using: {acc.device}")
@@ -125,7 +125,7 @@ accelerator = IPFSAccelerator()
 bert = accelerator.load_model("bert-base-uncased")
 text_result = bert.inference("Hello world")
 
-# Vision model  
+# Vision model
 vit = accelerator.load_model("google/vit-base-patch16-224")
 image_result = vit.inference(image_path="photo.jpg")
 
@@ -210,11 +210,7 @@ from ipfs_accelerate_py import IPFSAccelerator
 accelerator = IPFSAccelerator.from_config("config.yaml")
 
 # Or pass directly
-accelerator = IPFSAccelerator(
-    device="cuda",
-    precision="fp16",
-    enable_cache=True
-)
+accelerator = IPFSAccelerator(device="cuda", precision="fp16", enable_cache=True)
 ```
 
 ### Step 3: Docker Deployment
@@ -280,13 +276,16 @@ app = FastAPI()
 accelerator = IPFSAccelerator()
 model = accelerator.load_model("bert-base-uncased")
 
+
 @app.post("/inference")
 async def run_inference(text: str):
     result = model.inference(text)
     return {"result": result}
 
+
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)
 ```
 
@@ -328,19 +327,21 @@ Integrate into your application:
 ```python
 import ipfs_accelerate_py as ia
 
+
 class MyMLService:
     def __init__(self):
         self.accelerator = ia.IPFSAccelerator()
         self.models = {
-            'text': self.accelerator.load_model('bert-base'),
-            'vision': self.accelerator.load_model('vit-base'),
+            "text": self.accelerator.load_model("bert-base"),
+            "vision": self.accelerator.load_model("vit-base"),
         }
-    
+
     def process_text(self, text):
-        return self.models['text'].inference(text)
-    
+        return self.models["text"].inference(text)
+
     def process_image(self, image):
-        return self.models['vision'].inference(image)
+        return self.models["vision"].inference(image)
+
 
 # Use in your app
 service = MyMLService()

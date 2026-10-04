@@ -14,7 +14,7 @@ from typing import Callable, Sequence
 
 PromptBuilder = Callable[[object, str], str]
 BootstrapCallback = Callable[[], None]
-DEFAULT_OPEN_TASK_STATUSES = ("to" "do", "ready")
+DEFAULT_OPEN_TASK_STATUSES = ("todo", "ready")
 DEFAULT_TASK_PROPOSAL_TEST_OUTPUT = "tests and fixtures needed"
 
 
@@ -131,10 +131,14 @@ def build_task_proposal_route_paths(
     else:
         if not artifact_namespace:
             raise ValueError("artifact_namespace is required when artifact_dir is not configured")
-        resolved_artifact_dir = _repo_path(root, artifact_root) / str(artifact_namespace) / Path(artifact_leaf)
+        resolved_artifact_dir = (
+            _repo_path(root, artifact_root) / str(artifact_namespace) / Path(artifact_leaf)
+        )
     return TaskProposalRoutePaths(
         task_board_path=repo_task_board_path(root, task_board_stem, docs_dir=task_board_dir),
-        plan_path=repo_doc_path(root, f"{plan_stem or task_board_stem}.md", docs_dir=plan_dir or task_board_dir),
+        plan_path=repo_doc_path(
+            root, f"{plan_stem or task_board_stem}.md", docs_dir=plan_dir or task_board_dir
+        ),
         artifact_dir=resolved_artifact_dir,
     )
 
@@ -696,7 +700,9 @@ def run_task_proposal_router(
     return payload
 
 
-def build_task_proposal_router_parser(config: TaskProposalRouterCliConfig) -> argparse.ArgumentParser:
+def build_task_proposal_router_parser(
+    config: TaskProposalRouterCliConfig,
+) -> argparse.ArgumentParser:
     """Build the standard CLI parser for a project-specific proposal wrapper."""
 
     parser = argparse.ArgumentParser(description=config.description)
@@ -711,7 +717,11 @@ def build_task_proposal_router_parser(config: TaskProposalRouterCliConfig) -> ar
         parser.add_argument(option, dest="task_board_path", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--plan-path", type=Path, default=config.router_config.plan_path)
     parser.add_argument("--artifact-dir", type=Path, default=config.router_config.artifact_dir)
-    parser.add_argument("--generate", action="store_true", help="Actually call llm_router. Default is dry-run/preflight.")
+    parser.add_argument(
+        "--generate",
+        action="store_true",
+        help="Actually call llm_router. Default is dry-run/preflight.",
+    )
     if config.include_dry_run_flag:
         parser.add_argument(
             "--dry-run",
@@ -726,7 +736,9 @@ def build_task_proposal_router_parser(config: TaskProposalRouterCliConfig) -> ar
     return parser
 
 
-def run_task_proposal_router_cli(config: TaskProposalRouterCliConfig, argv: list[str] | None = None) -> int:
+def run_task_proposal_router_cli(
+    config: TaskProposalRouterCliConfig, argv: list[str] | None = None
+) -> int:
     """Run the standard dry-run/generate CLI for one project-specific task board."""
 
     parser = build_task_proposal_router_parser(config)

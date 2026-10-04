@@ -335,7 +335,7 @@ model = pool.get_model(
     model_type=self.model_type,
     model_name=model_name,
     constructor=create_model,
-    hardware_preferences=hardware_preferences
+    hardware_preferences=hardware_preferences,
 )
 ```
 

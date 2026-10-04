@@ -25,7 +25,13 @@ if str(test_dir) not in sys.path:
 import unittest
 
 from transformers import SqueezeBertConfig, is_torch_available
-from transformers.testing_utils import require_sentencepiece, require_tokenizers, require_torch, slow, torch_device
+from transformers.testing_utils import (
+    require_sentencepiece,
+    require_tokenizers,
+    require_torch,
+    slow,
+    torch_device,
+)
 
 from test.test_configuration_common import ConfigTester
 from test.test_modeling_common import ModelTesterMixin, ids_tensor, random_attention_mask
@@ -154,7 +160,9 @@ class SqueezeBertModelTester:
         model.eval()
         result = model(input_ids, input_mask)
         result = model(input_ids)
-        self.parent.assertEqual(result.last_hidden_state.shape, (self.batch_size, self.seq_length, self.hidden_size))
+        self.parent.assertEqual(
+            result.last_hidden_state.shape, (self.batch_size, self.seq_length, self.hidden_size)
+        )
 
     def create_and_check_squeezebert_for_masked_lm(
         self, config, input_ids, input_mask, sequence_labels, token_labels, choice_labels
@@ -163,7 +171,9 @@ class SqueezeBertModelTester:
         model.to(torch_device)
         model.eval()
         result = model(input_ids, attention_mask=input_mask, labels=token_labels)
-        self.parent.assertEqual(result.logits.shape, (self.batch_size, self.seq_length, self.vocab_size))
+        self.parent.assertEqual(
+            result.logits.shape, (self.batch_size, self.seq_length, self.vocab_size)
+        )
 
     def create_and_check_squeezebert_for_question_answering(
         self, config, input_ids, input_mask, sequence_labels, token_labels, choice_labels
@@ -172,7 +182,10 @@ class SqueezeBertModelTester:
         model.to(torch_device)
         model.eval()
         result = model(
-            input_ids, attention_mask=input_mask, start_positions=sequence_labels, end_positions=sequence_labels
+            input_ids,
+            attention_mask=input_mask,
+            start_positions=sequence_labels,
+            end_positions=sequence_labels,
         )
         self.parent.assertEqual(result.start_logits.shape, (self.batch_size, self.seq_length))
         self.parent.assertEqual(result.end_logits.shape, (self.batch_size, self.seq_length))
@@ -196,7 +209,9 @@ class SqueezeBertModelTester:
         model.eval()
 
         result = model(input_ids, attention_mask=input_mask, labels=token_labels)
-        self.parent.assertEqual(result.logits.shape, (self.batch_size, self.seq_length, self.num_labels))
+        self.parent.assertEqual(
+            result.logits.shape, (self.batch_size, self.seq_length, self.num_labels)
+        )
 
     def create_and_check_squeezebert_for_multiple_choice(
         self, config, input_ids, input_mask, sequence_labels, token_labels, choice_labels
@@ -205,8 +220,12 @@ class SqueezeBertModelTester:
         model = SqueezeBertForMultipleChoice(config=config)
         model.to(torch_device)
         model.eval()
-        multiple_choice_inputs_ids = input_ids.unsqueeze(1).expand(-1, self.num_choices, -1).contiguous()
-        multiple_choice_input_mask = input_mask.unsqueeze(1).expand(-1, self.num_choices, -1).contiguous()
+        multiple_choice_inputs_ids = (
+            input_ids.unsqueeze(1).expand(-1, self.num_choices, -1).contiguous()
+        )
+        multiple_choice_input_mask = (
+            input_mask.unsqueeze(1).expand(-1, self.num_choices, -1).contiguous()
+        )
         result = model(
             multiple_choice_inputs_ids,
             attention_mask=multiple_choice_input_mask,
@@ -216,7 +235,9 @@ class SqueezeBertModelTester:
 
     def prepare_config_and_inputs_for_common(self):
         config_and_inputs = self.prepare_config_and_inputs()
-        (config, input_ids, input_mask, sequence_labels, token_labels, choice_labels) = config_and_inputs
+        (config, input_ids, input_mask, sequence_labels, token_labels, choice_labels) = (
+            config_and_inputs
+        )
         inputs_dict = {"input_ids": input_ids, "attention_mask": input_mask}
         return config, inputs_dict
 
@@ -272,7 +293,9 @@ class SqueezeBertModelTest(ModelTesterMixin, PipelineTesterMixin, unittest.TestC
 
     def test_for_sequence_classification(self):
         config_and_inputs = self.model_tester.prepare_config_and_inputs()
-        self.model_tester.create_and_check_squeezebert_for_sequence_classification(*config_and_inputs)
+        self.model_tester.create_and_check_squeezebert_for_sequence_classification(
+            *config_and_inputs
+        )
 
     def test_for_token_classification(self):
         config_and_inputs = self.model_tester.prepare_config_and_inputs()

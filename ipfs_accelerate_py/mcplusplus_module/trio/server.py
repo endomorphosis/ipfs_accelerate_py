@@ -61,6 +61,7 @@ async def _to_thread(fn):
 # Rate Limiter (Token Bucket)
 # ---------------------------------------------------------------------------
 
+
 class TokenBucketRateLimiter:
     """Per-IP token bucket rate limiter for HTTP endpoints.
 
@@ -83,7 +84,9 @@ class TokenBucketRateLimiter:
         try:
             val = int(raw)
             if val < min_val or val > max_val:
-                logger.warning("%s=%d out of range [%d, %d], using %d", key, val, min_val, max_val, default)
+                logger.warning(
+                    "%s=%d out of range [%d, %d], using %d", key, val, min_val, max_val, default
+                )
                 return default
             return val
         except (ValueError, OverflowError):
@@ -135,6 +138,7 @@ class ServerConfig:
         enable_workflow_tools: Enable workflow scheduler tools (default: True)
         enable_taskqueue_tools: Enable taskqueue tools (default: True)
     """
+
     name: str = "ipfs-accelerate-mcp-trio"
     host: str = "0.0.0.0"
     port: int = 8000
@@ -169,6 +173,7 @@ class ServerConfig:
         Returns:
             ServerConfig instance with values from environment
         """
+
         def _safe_int(env_key: str, default: int) -> int:
             val = os.getenv(env_key, "")
             try:
@@ -228,13 +233,15 @@ class TrioMCPServer:
 
             class JSONFormatter(logging.Formatter):
                 def format(self, record):
-                    return _json.dumps({
-                        "ts": self.formatTime(record),
-                        "level": record.levelname,
-                        "logger": record.name,
-                        "msg": record.getMessage(),
-                        "module": record.module,
-                    })
+                    return _json.dumps(
+                        {
+                            "ts": self.formatTime(record),
+                            "level": record.levelname,
+                            "logger": record.name,
+                            "msg": record.getMessage(),
+                            "module": record.module,
+                        }
+                    )
 
             handler = logging.StreamHandler()
             handler.setFormatter(JSONFormatter())
@@ -368,7 +375,9 @@ class TrioMCPServer:
         logger.info("Registering P2P tools for Trio server")
 
         try:
-            register_p2p_taskqueue_tools, register_p2p_workflow_tools = self._resolve_p2p_registrars()
+            register_p2p_taskqueue_tools, register_p2p_workflow_tools = (
+                self._resolve_p2p_registrars()
+            )
 
             # Register tools based on configuration
             if self.config.enable_taskqueue_tools and self.config.enable_workflow_tools:
@@ -439,7 +448,7 @@ class TrioMCPServer:
             # set MCP_CORS_ORIGINS=* in production if needed
             allowed_origins = os.getenv(
                 "MCP_CORS_ORIGINS",
-                "http://localhost:8765,http://localhost:3000,http://127.0.0.1:8765"
+                "http://localhost:8765,http://localhost:3000,http://127.0.0.1:8765",
             )
             origins = [o.strip() for o in allowed_origins.split(",") if o.strip()]
 
@@ -468,7 +477,10 @@ class TrioMCPServer:
                     if content_length and int(content_length) > MAX_BODY_BYTES:
                         return StarletteJSONResponse(
                             status_code=413,
-                            content={"error": "Request body too large", "max_bytes": MAX_BODY_BYTES},
+                            content={
+                                "error": "Request body too large",
+                                "max_bytes": MAX_BODY_BYTES,
+                            },
                         )
                     return await call_next(request)
 
@@ -483,6 +495,7 @@ class TrioMCPServer:
                     if not rate_limiter.allow(client_ip):
                         try:
                             from ..metrics import get_metrics
+
                             get_metrics().rate_limit_rejected.inc()
                         except Exception:
                             pass
@@ -509,14 +522,16 @@ class TrioMCPServer:
             async def readiness_check():
                 """Readiness probe — server is ready to accept traffic."""
                 from ..cid_ucan import get_event_dag
+
                 dag = get_event_dag()
                 dag_state = dag.to_dict()
 
                 p2p_ready = False
                 try:
                     from ..p2p_transport import get_p2p_node
+
                     node = get_p2p_node()
-                    p2p_ready = getattr(node, '_operational', node._started)
+                    p2p_ready = getattr(node, "_operational", node._started)
                 except Exception:
                     pass
 
@@ -545,14 +560,16 @@ class TrioMCPServer:
                 Returns combined health + readiness for Electron dashboard.
                 """
                 from ..cid_ucan import get_event_dag
+
                 dag = get_event_dag()
                 dag_state = dag.to_dict()
 
                 p2p_status = "disabled"
                 try:
                     from ..p2p_transport import get_p2p_node
+
                     node = get_p2p_node()
-                    p2p_status = "active" if getattr(node, '_operational', False) else "degraded"
+                    p2p_status = "active" if getattr(node, "_operational", False) else "degraded"
                 except Exception:
                     pass
 
@@ -560,10 +577,10 @@ class TrioMCPServer:
                     "status": "ready" if self._started else "starting",
                     "service": self.config.name,
                     "version": "0.1.0",
-                    "uptime": time.time() - self._start_time if hasattr(self, '_start_time') else 0,
+                    "uptime": time.time() - self._start_time if hasattr(self, "_start_time") else 0,
                     "dag_events": dag_state.get("total_events", 0),
                     "p2p": p2p_status,
-                    "tools": len(self.mcp.tools) if hasattr(self.mcp, 'tools') else 0,
+                    "tools": len(self.mcp.tools) if hasattr(self.mcp, "tools") else 0,
                 }
 
             @app.get("/tools/list")
@@ -575,14 +592,14 @@ class TrioMCPServer:
                 Returns tool names with descriptions for UI rendering.
                 """
                 tools = []
-                if hasattr(self.mcp, 'tools'):
+                if hasattr(self.mcp, "tools"):
                     for name, tool in self.mcp.tools.items():
                         tool_info = {"name": name}
-                        if hasattr(tool, 'description'):
+                        if hasattr(tool, "description"):
                             tool_info["description"] = tool.description
-                        if hasattr(tool, 'inputSchema'):
+                        if hasattr(tool, "inputSchema"):
                             tool_info["inputSchema"] = tool.inputSchema
-                        elif hasattr(tool, 'input_schema'):
+                        elif hasattr(tool, "input_schema"):
                             tool_info["inputSchema"] = tool.input_schema
                         tools.append(tool_info)
                 return {"tools": tools}
@@ -592,15 +609,19 @@ class TrioMCPServer:
                 """Prometheus metrics endpoint."""
                 from starlette.responses import Response
                 from ..metrics import get_metrics
+
                 metrics = get_metrics()
 
                 # Update dynamic gauges
                 try:
                     from ..cid_ucan import get_event_dag, get_evaluator
+
                     dag = get_event_dag()
                     dag_state = dag.to_dict()
                     metrics.dag_events_total.set(dag_state.get("total_events", 0))
-                    metrics.dag_hot_events.set(dag_state.get("hot_events", dag_state.get("total_events", 0)))
+                    metrics.dag_hot_events.set(
+                        dag_state.get("hot_events", dag_state.get("total_events", 0))
+                    )
                     compaction = dag_state.get("compaction", {})
                     metrics.dag_compaction_epochs.set(compaction.get("epochs_compacted", 0))
 
@@ -612,6 +633,7 @@ class TrioMCPServer:
 
                 try:
                     from ..p2p_transport import get_p2p_node
+
                     node = get_p2p_node()
                     metrics.p2p_peers_connected.set(len(node._peers))
                 except Exception:
@@ -639,25 +661,28 @@ class TrioMCPServer:
         @app.get("/mcp/interfaces")
         async def list_interfaces():
             """Profile A: List all registered interface descriptors with full schemas."""
-            from ..interface_descriptor import InterfaceDescriptor, MethodDescriptor, get_interface_repository
+            from ..interface_descriptor import (
+                InterfaceDescriptor,
+                MethodDescriptor,
+                get_interface_repository,
+            )
 
             repo = get_interface_repository()
-            tools = list(self.mcp.tools.keys()) if hasattr(self.mcp, 'tools') else []
+            tools = list(self.mcp.tools.keys()) if hasattr(self.mcp, "tools") else []
 
             # Auto-populate repository if empty
             if len(repo._descriptors) == 0 and tools:
                 for tool_name in tools:
-                    tool_fn = self.mcp.tools[tool_name] if hasattr(self.mcp, 'tools') else None
+                    tool_fn = self.mcp.tools[tool_name] if hasattr(self.mcp, "tools") else None
                     # Extract schema from tool function if available
                     input_schema = {}
-                    if tool_fn and hasattr(tool_fn, '__annotations__'):
+                    if tool_fn and hasattr(tool_fn, "__annotations__"):
                         input_schema = {
-                            k: str(v) for k, v in tool_fn.__annotations__.items()
-                            if k != 'return'
+                            k: str(v) for k, v in tool_fn.__annotations__.items() if k != "return"
                         }
                     method = MethodDescriptor(
                         name=tool_name,
-                        description=getattr(tool_fn, '__doc__', '') or '',
+                        description=getattr(tool_fn, "__doc__", "") or "",
                         input_schema=input_schema,
                     )
                     descriptor = InterfaceDescriptor(
@@ -690,32 +715,41 @@ class TrioMCPServer:
                 try:
                     policy_eval = get_policy_evaluator()
                     decision = policy_eval.evaluate(
-                        method=method, actor=requester or "*",
-                        resource=f"mcp://tool/{method}", policy_cid=policy_cid,
+                        method=method,
+                        actor=requester or "*",
+                        resource=f"mcp://tool/{method}",
+                        policy_cid=policy_cid,
                     )
                     if decision.verdict not in ("allow", "allow_with_obligations"):
                         return JSONResponse(
                             status_code=403,
-                            content={"error": f"Policy denied: {decision.justification}",
-                                     "decision": decision.to_dict()},
+                            content={
+                                "error": f"Policy denied: {decision.justification}",
+                                "decision": decision.to_dict(),
+                            },
                         )
                 except Exception as e:
                     # Fail-closed: if policy evaluation crashes, deny the request
                     logger.error("Policy evaluation error (fail-closed): %s", e)
                     return JSONResponse(
                         status_code=403,
-                        content={"error": "Policy evaluation failed (fail-closed)",
-                                 "detail": str(e)},
+                        content={
+                            "error": "Policy evaluation failed (fail-closed)",
+                            "detail": str(e),
+                        },
                     )
 
             async def _execute(m, p):
-                if hasattr(self.mcp, 'tools') and m in self.mcp.tools:
+                if hasattr(self.mcp, "tools") and m in self.mcp.tools:
                     return await self.mcp.tools[m](**p)
                 raise ValueError(f"Tool not found: {m}")
 
             envelope = await execute_with_envelope(
-                method=method, params=params, requester=requester,
-                delegation_cid=delegation_cid, executor_fn=_execute,
+                method=method,
+                params=params,
+                requester=requester,
+                delegation_cid=delegation_cid,
+                executor_fn=_execute,
             )
             return envelope.to_dict()
 
@@ -723,25 +757,57 @@ class TrioMCPServer:
         async def dag_frontier():
             """Profile B: Get Event DAG frontier (leaf nodes)."""
             from ..cid_ucan import get_event_dag
+
             dag = get_event_dag()
             frontier = dag.frontier()
-            return {"frontier": [{"cid": e.cid, "type": e.event_type, "timestamp": e.timestamp} for e in frontier]}
+            return {
+                "frontier": [
+                    {"cid": e.cid, "type": e.event_type, "timestamp": e.timestamp} for e in frontier
+                ]
+            }
 
         @app.get("/mcp/dag/history")
         async def dag_history(limit: int = 50):
             """Profile B: Get recent Event DAG history."""
             from ..cid_ucan import get_event_dag
+
             dag = get_event_dag()
             events = dag.history(limit=limit)
-            return {"events": [{"event_cid": e.cid, "cid": e.cid, "event_type": e.event_type, "type": e.event_type, "parents": e.parent_cids, "timestamp": e.timestamp, "payload": getattr(e, "payload", {})} for e in events]}
+            return {
+                "events": [
+                    {
+                        "event_cid": e.cid,
+                        "cid": e.cid,
+                        "event_type": e.event_type,
+                        "type": e.event_type,
+                        "parents": e.parent_cids,
+                        "timestamp": e.timestamp,
+                        "payload": getattr(e, "payload", {}),
+                    }
+                    for e in events
+                ]
+            }
 
         @app.get("/mcp/dag/provenance/{cid}")
         async def dag_provenance(cid: str):
             """Profile B: Trace provenance for a CID."""
             from ..cid_ucan import get_event_dag
+
             dag = get_event_dag()
             chain = dag.provenance(cid)
-            return {"provenance": [{"event_cid": e.cid, "cid": e.cid, "event_type": e.event_type, "type": e.event_type, "parents": e.parent_cids, "payload": getattr(e, "payload", {})} for e in chain]}
+            return {
+                "provenance": [
+                    {
+                        "event_cid": e.cid,
+                        "cid": e.cid,
+                        "event_type": e.event_type,
+                        "type": e.event_type,
+                        "parents": e.parent_cids,
+                        "payload": getattr(e, "payload", {}),
+                    }
+                    for e in chain
+                ]
+            }
 
         @app.post("/mcp/ucan/delegate")
         async def ucan_delegate(request: Request):
@@ -749,7 +815,10 @@ class TrioMCPServer:
             from ..cid_ucan import Delegation, Capability, get_evaluator
 
             body = await request.json()
-            caps = [Capability(resource=c["resource"], ability=c["ability"]) for c in body.get("capabilities", [])]
+            caps = [
+                Capability(resource=c["resource"], ability=c["ability"])
+                for c in body.get("capabilities", [])
+            ]
             delegation = Delegation(
                 issuer=body.get("issuer", ""),
                 audience=body.get("audience", ""),
@@ -767,7 +836,10 @@ class TrioMCPServer:
                 if not evaluator._verify_signature(delegation):
                     return JSONResponse(
                         status_code=401,
-                        content={"error": "Invalid signature on delegation", "issuer": delegation.issuer},
+                        content={
+                            "error": "Invalid signature on delegation",
+                            "issuer": delegation.issuer,
+                        },
                     )
 
             # Verify proof chain (parent delegations must exist)
@@ -781,10 +853,13 @@ class TrioMCPServer:
             evaluator.add(delegation)
             # Write-through: persist immediately to survive crashes
             try:
-                storage_dir = os.environ.get("MCPPP_STORAGE_DIR",
-                                             os.path.expanduser("~/.ipfs_accelerate/state"))
+                storage_dir = os.environ.get(
+                    "MCPPP_STORAGE_DIR", os.path.expanduser("~/.ipfs_accelerate/state")
+                )
                 await trio.to_thread.run_sync(
-                    lambda: evaluator.save_delegations(os.path.join(storage_dir, "delegations.json"))
+                    lambda: evaluator.save_delegations(
+                        os.path.join(storage_dir, "delegations.json")
+                    )
                 )
             except Exception:
                 pass  # Best-effort; will be saved on shutdown
@@ -824,6 +899,7 @@ class TrioMCPServer:
             """Service registry: List all known local and remote services."""
             try:
                 from ..service_registry import get_service_registry
+
                 registry = get_service_registry()
                 return registry.to_dict()
             except Exception as e:
@@ -833,18 +909,21 @@ class TrioMCPServer:
         async def p2p_peers():
             """Profile E: List connected P2P peers (filtered for security)."""
             from ..p2p_transport import get_p2p_node
+
             node = get_p2p_node()
             full = node.to_dict()
             # Filter sensitive data: redact internal multiaddrs from public response
             safe_peers = []
             for peer in full.get("peers", []):
-                safe_peers.append({
-                    "peer_id": peer.get("peer_id", ""),
-                    "protocols": peer.get("protocols", []),
-                    "last_seen": peer.get("last_seen", 0),
-                    "latency_ms": peer.get("latency_ms", 0),
-                    # Omit multiaddrs (contain internal IPs)
-                })
+                safe_peers.append(
+                    {
+                        "peer_id": peer.get("peer_id", ""),
+                        "protocols": peer.get("protocols", []),
+                        "last_seen": peer.get("last_seen", 0),
+                        "latency_ms": peer.get("latency_ms", 0),
+                        # Omit multiaddrs (contain internal IPs)
+                    }
+                )
             full["peers"] = safe_peers
             return full
 
@@ -873,8 +952,11 @@ class TrioMCPServer:
                     logger.warning("UCAN chain validation failed (possible DoS): %s", e)
                     return JSONResponse(
                         status_code=400,
-                        content={"error": "Invalid delegation chain", "code": "CHAIN_INVALID",
-                                 "detail": str(e)},
+                        content={
+                            "error": "Invalid delegation chain",
+                            "code": "CHAIN_INVALID",
+                            "detail": str(e),
+                        },
                     )
                 if not authorized:
                     return JSONResponse(
@@ -885,10 +967,13 @@ class TrioMCPServer:
             # Enforce policy if provided
             if policy_cid:
                 from ..temporal_policy import get_policy_evaluator
+
                 policy_eval = get_policy_evaluator()
                 decision = policy_eval.evaluate(
-                    method=method, actor=actor or "*",
-                    resource=f"mcp://tool/{method}", policy_cid=policy_cid,
+                    method=method,
+                    actor=actor or "*",
+                    resource=f"mcp://tool/{method}",
+                    policy_cid=policy_cid,
                 )
                 if decision.verdict not in ("allow", "allow_with_obligations"):
                     return JSONResponse(
@@ -897,20 +982,24 @@ class TrioMCPServer:
                     )
 
             node = get_p2p_node()
-            if not node._started or not getattr(node, '_operational', False):
+            if not node._started or not getattr(node, "_operational", False):
                 return JSONResponse(
                     status_code=503,
-                    content={"error": "P2P service not available",
-                             "code": "SERVICE_DEGRADED",
-                             "fallback": "Use /mcp/execute for local tool invocation"},
+                    content={
+                        "error": "P2P service not available",
+                        "code": "SERVICE_DEGRADED",
+                        "fallback": "Use /mcp/execute for local tool invocation",
+                    },
                 )
             # Validate peer_id is a known/connected peer (prevent SSRF relay to arbitrary hosts)
             if peer_id not in node._peers:
                 return JSONResponse(
                     status_code=400,
-                    content={"error": f"Unknown peer: {peer_id[:16]}...",
-                             "code": "UNKNOWN_PEER",
-                             "hint": "Use /mcp/p2p/peers to discover available peers"},
+                    content={
+                        "error": f"Unknown peer: {peer_id[:16]}...",
+                        "code": "UNKNOWN_PEER",
+                        "hint": "Use /mcp/p2p/peers to discover available peers",
+                    },
                 )
             try:
                 # Cap user-supplied timeout to prevent connection holding attacks
@@ -926,16 +1015,23 @@ class TrioMCPServer:
             except TimeoutError as e:
                 return JSONResponse(status_code=504, content={"error": str(e), "code": "TIMEOUT"})
             except ConnectionError as e:
-                return JSONResponse(status_code=502, content={"error": str(e), "code": "CONNECTION_ERROR"})
+                return JSONResponse(
+                    status_code=502, content={"error": str(e), "code": "CONNECTION_ERROR"}
+                )
             except RuntimeError as e:
-                return JSONResponse(status_code=502, content={"error": str(e), "code": "REMOTE_ERROR"})
+                return JSONResponse(
+                    status_code=502, content={"error": str(e), "code": "REMOTE_ERROR"}
+                )
             except Exception as e:
-                return JSONResponse(status_code=500, content={"error": str(e), "code": "INTERNAL_ERROR"})
+                return JSONResponse(
+                    status_code=500, content={"error": str(e), "code": "INTERNAL_ERROR"}
+                )
 
         @app.post("/mcp/policy/evaluate")
         async def policy_evaluate(request: Request):
             """Profile D: Evaluate a temporal deontic policy."""
             from ..temporal_policy import get_policy_evaluator
+
             body = await request.json()
             evaluator = get_policy_evaluator()
             decision = evaluator.evaluate(
@@ -950,6 +1046,7 @@ class TrioMCPServer:
         async def policy_register(request: Request):
             """Profile D: Register a new temporal deontic policy."""
             from ..temporal_policy import get_policy_evaluator, PolicyObject, PolicyClause
+
             body = await request.json()
             clauses = [
                 PolicyClause(
@@ -973,8 +1070,9 @@ class TrioMCPServer:
             cid = evaluator.register(policy)
             # Write-through: persist immediately to survive crashes
             try:
-                storage_dir = os.environ.get("MCPPP_STORAGE_DIR",
-                                             os.path.expanduser("~/.ipfs_accelerate/state"))
+                storage_dir = os.environ.get(
+                    "MCPPP_STORAGE_DIR", os.path.expanduser("~/.ipfs_accelerate/state")
+                )
                 await trio.to_thread.run_sync(
                     lambda: evaluator.save_policies(os.path.join(storage_dir, "policies.json"))
                 )
@@ -987,7 +1085,7 @@ class TrioMCPServer:
             """Discovery endpoint: returns server capabilities, version, available tools."""
             from ..interface_descriptor import get_interface_repository
 
-            tools = list(self.mcp.tools.keys()) if hasattr(self.mcp, 'tools') else []
+            tools = list(self.mcp.tools.keys()) if hasattr(self.mcp, "tools") else []
             repo = get_interface_repository()
 
             profiles = {
@@ -1002,6 +1100,7 @@ class TrioMCPServer:
             peer_id = None
             try:
                 from ..p2p_transport import get_p2p_node
+
                 node = get_p2p_node()
                 if node._started:
                     p2p_status = "active"
@@ -1070,7 +1169,7 @@ class TrioMCPServer:
                     last_count = len(dag._events)
 
                     # Send initial connection event
-                    yield f"event: connected\ndata: {{\"server\": \"{self.config.name}\", \"events\": {last_count}}}\n\n"
+                    yield f'event: connected\ndata: {{"server": "{self.config.name}", "events": {last_count}}}\n\n'
 
                     # Poll for new events (every 1s) — SSE keepalive
                     while True:
@@ -1083,12 +1182,14 @@ class TrioMCPServer:
                             # New events appended
                             new_events = list(dag._events.values())[last_count:current_count]
                             for event in new_events:
-                                event_data = json.dumps({
-                                    "cid": event.cid,
-                                    "type": event.event_type,
-                                    "timestamp": event.timestamp,
-                                    "parents": event.parent_cids,
-                                })
+                                event_data = json.dumps(
+                                    {
+                                        "cid": event.cid,
+                                        "type": event.event_type,
+                                        "timestamp": event.timestamp,
+                                        "parents": event.parent_cids,
+                                    }
+                                )
                                 yield f"event: dag_event\ndata: {event_data}\n\n"
                             last_count = current_count
                         else:
@@ -1130,26 +1231,31 @@ class TrioMCPServer:
         try:
             import os
             import json as _json
+
             state_dir = os.path.expanduser("~/.ipfs_accelerate/state")
             dag_path = os.path.join(state_dir, "event_dag.json")
             if os.path.isfile(dag_path):
+
                 def _load_dag():
                     with open(dag_path, "r") as f:
                         return _json.load(f)
 
                 from ..cid_ucan import get_event_dag, DAGEvent
+
                 data = await trio.to_thread.run_sync(_load_dag)
                 dag = get_event_dag()
                 events = data.get("events", {})
                 loaded = 0
                 for cid, info in events.items():
                     if cid not in dag._events:
-                        dag.append(DAGEvent(
-                            cid=cid,
-                            event_type=info.get("type", "unknown"),
-                            parent_cids=info.get("parents", []),
-                            timestamp=info.get("timestamp", 0),
-                        ))
+                        dag.append(
+                            DAGEvent(
+                                cid=cid,
+                                event_type=info.get("type", "unknown"),
+                                parent_cids=info.get("parents", []),
+                                timestamp=info.get("timestamp", 0),
+                            )
+                        )
                         loaded += 1
                 if loaded > 0:
                     logger.info(f"EventDAG recovered: {loaded} events from disk")
@@ -1159,6 +1265,7 @@ class TrioMCPServer:
         # Recover persisted revocation list
         try:
             import os
+
             state_dir = os.path.expanduser("~/.ipfs_accelerate/state")
             revoc_path = os.path.join(state_dir, "revocations.json")
             if os.path.isfile(revoc_path):
@@ -1178,44 +1285,52 @@ class TrioMCPServer:
         if self.config.enable_p2p_tools and self._nursery:
             try:
                 from ..p2p_transport import get_p2p_node
+
                 node = get_p2p_node()
                 await node.start(self._nursery)
 
                 # Wait briefly for P2P to become operational
                 deadline = time.time() + 5.0
-                while not getattr(node, '_operational', False) and time.time() < deadline:
+                while not getattr(node, "_operational", False) and time.time() < deadline:
                     await trio.sleep(0.1)
 
-                if not getattr(node, '_operational', False):
-                    logger.warning("P2P node started but not yet operational (will continue in background)")
+                if not getattr(node, "_operational", False):
+                    logger.warning(
+                        "P2P node started but not yet operational (will continue in background)"
+                    )
 
                 # Register our MCP tools as the P2P tool handler
-                if hasattr(self.mcp, 'tools'):
+                if hasattr(self.mcp, "tools"):
                     tools_list = list(self.mcp.tools.keys())
 
                     async def _handle_p2p_tool(method, params):
                         # Handle service announcements
                         if method == "_mcppp_service_announce":
                             from ..service_registry import get_service_registry
+
                             registry = get_service_registry()
                             sender = params.get("_sender_peer_id", "")
                             return registry.handle_announce(params, sender_peer_id=sender)
                         if method in self.mcp.tools:
                             return await self.mcp.tools[method](**params)
                         raise ValueError(f"Tool not found: {method}")
+
                     node.set_tool_handler(_handle_p2p_tool)
 
                     # Register in service registry for cross-server discovery
                     try:
                         from ..service_registry import get_service_registry, ServiceRecord
+
                         registry = get_service_registry()
-                        registry.register_local(ServiceRecord(
-                            service_name="ipfs-accelerate-mcp",
-                            peer_id=node.peer_id or "",
-                            multiaddrs=node.multiaddrs or [],
-                            tools=tools_list,
-                            metadata={"port": self.config.port, "server": self.config.name},
-                        ))
+                        registry.register_local(
+                            ServiceRecord(
+                                service_name="ipfs-accelerate-mcp",
+                                peer_id=node.peer_id or "",
+                                multiaddrs=node.multiaddrs or [],
+                                tools=tools_list,
+                                metadata={"port": self.config.port, "server": self.config.name},
+                            )
+                        )
                         # Start service advertise loop
                         self._nursery.start_soon(registry.advertise_loop, node, self._nursery)
                     except Exception as e:
@@ -1278,6 +1393,7 @@ class TrioMCPServer:
     async def _obligation_enforcement_loop(self) -> None:
         """Background loop that checks for overdue obligations (Profile D enforcement)."""
         from ..temporal_policy import get_obligation_tracker
+
         tracker = get_obligation_tracker()
 
         while self._started:
@@ -1288,13 +1404,17 @@ class TrioMCPServer:
                     for ob in overdue:
                         logger.warning(
                             "OBLIGATION VIOLATION: id=%s action=%s deadline=%s actor=%s",
-                            ob.obligation_id[:16], ob.action, ob.deadline, ob.actor,
+                            ob.obligation_id[:16],
+                            ob.action,
+                            ob.deadline,
+                            ob.actor,
                         )
                     # Emit metrics
                     try:
                         from ..metrics import get_metrics_registry
+
                         metrics = get_metrics_registry()
-                        if hasattr(metrics, 'obligations_overdue'):
+                        if hasattr(metrics, "obligations_overdue"):
                             metrics.obligations_overdue.set(len(overdue))
                     except Exception:
                         pass
@@ -1314,6 +1434,7 @@ class TrioMCPServer:
         # Stop P2P node
         try:
             from ..p2p_transport import get_p2p_node
+
             node = get_p2p_node()
             if node._started:
                 await node.stop()
@@ -1323,11 +1444,13 @@ class TrioMCPServer:
         # Persist EventDAG to disk (non-blocking)
         try:
             from ..cid_ucan import get_event_dag
+
             dag = get_event_dag()
             dag_state = dag.to_dict(include_events=True)
             if dag_state["total_events"] > 0:
                 import os
                 import json as _json
+
                 state_dir = os.path.expanduser("~/.ipfs_accelerate/state")
 
                 def _persist_dag():
@@ -1345,6 +1468,7 @@ class TrioMCPServer:
         try:
             from ..cid_ucan import get_evaluator
             import os
+
             state_dir = os.path.expanduser("~/.ipfs_accelerate/state")
 
             def _persist_revocations():
@@ -1363,6 +1487,7 @@ class TrioMCPServer:
         try:
             from ..temporal_policy import get_policy_evaluator
             import os
+
             state_dir = os.path.expanduser("~/.ipfs_accelerate/state")
 
             def _persist_policies():
@@ -1404,10 +1529,13 @@ class TrioMCPServer:
             # Set up signal handling for graceful shutdown
             async def _wait_for_signal():
                 import signal
+
                 try:
                     with trio.open_signal_receiver(signal.SIGTERM, signal.SIGINT) as signal_aiter:
                         async for sig_num in signal_aiter:
-                            logger.info(f"Received signal {sig_num}, initiating graceful shutdown...")
+                            logger.info(
+                                f"Received signal {sig_num}, initiating graceful shutdown..."
+                            )
                             nursery.cancel_scope.cancel()
                             break
                 except (OSError, NotImplementedError, AttributeError):
@@ -1431,7 +1559,9 @@ class TrioMCPServer:
 
                     logger.info(
                         "TrioMCPServer serving via Hypercorn at http://%s:%s%s",
-                        self.config.host, self.config.port, self.config.mount_path,
+                        self.config.host,
+                        self.config.port,
+                        self.config.mount_path,
                     )
                     # Signal ready just before serving (Hypercorn binds synchronously)
                     task_status.started()
@@ -1441,7 +1571,9 @@ class TrioMCPServer:
                     # Fallback: built-in Trio TCP server with JSON-RPC handler
                     logger.info(
                         "Hypercorn not available. Starting built-in Trio JSON-RPC server at http://%s:%s%s",
-                        self.config.host, self.config.port, self.config.mount_path,
+                        self.config.host,
+                        self.config.port,
+                        self.config.mount_path,
                     )
                     # _serve_jsonrpc_trio signals started after socket binds
                     await self._serve_jsonrpc_trio(nursery, task_status)
@@ -1456,7 +1588,7 @@ class TrioMCPServer:
 
     async def _serve_jsonrpc_trio(self, nursery: trio.Nursery, task_status=None) -> None:
         """Built-in Trio TCP server for MCP JSON-RPC over HTTP.
-        
+
         Handles basic HTTP/1.1 POST requests with JSON-RPC payloads.
         This is a minimal implementation for when Hypercorn is not available.
         Signals task_status.started() only after the socket is bound.
@@ -1475,7 +1607,7 @@ class TrioMCPServer:
                 # Parse HTTP request
                 header_end = data.find(b"\r\n\r\n")
                 headers_raw = data[:header_end].decode("utf-8", errors="replace")
-                body_start = data[header_end + 4:]
+                body_start = data[header_end + 4 :]
 
                 # Get content-length
                 content_length = 0
@@ -1496,44 +1628,94 @@ class TrioMCPServer:
                 method, path, _ = first_line.split(" ", 2)
 
                 if method == "GET" and path == "/api/mcp/status":
-                    response_body = _json.dumps({"status": "ok", "server": self.config.name, "protocol": "/mcp+p2p/1.0.0"})
+                    response_body = _json.dumps(
+                        {"status": "ok", "server": self.config.name, "protocol": "/mcp+p2p/1.0.0"}
+                    )
                 elif method == "GET" and path == "/api/mcp/tools":
-                    tools = list(self.mcp.tools.keys()) if hasattr(self.mcp, 'tools') else []
+                    tools = list(self.mcp.tools.keys()) if hasattr(self.mcp, "tools") else []
                     response_body = _json.dumps({"tools": tools})
                 elif method == "POST" and path == self.config.mount_path:
                     # JSON-RPC handler
                     request = _json.loads(body.decode("utf-8"))
                     response_body = _json.dumps(await self._handle_jsonrpc(request))
                 elif method == "GET" and path == "/mcp/interfaces":
-                    tools = list(self.mcp.tools.keys()) if hasattr(self.mcp, 'tools') else []
-                    interfaces = [{"cid": compute_cid({"name": t}), "name": t, "version": "1.0.0"} for t in tools]
-                    response_body = _json.dumps({"interfaces": interfaces, "count": len(interfaces)})
+                    tools = list(self.mcp.tools.keys()) if hasattr(self.mcp, "tools") else []
+                    interfaces = [
+                        {"cid": compute_cid({"name": t}), "name": t, "version": "1.0.0"}
+                        for t in tools
+                    ]
+                    response_body = _json.dumps(
+                        {"interfaces": interfaces, "count": len(interfaces)}
+                    )
                 elif method == "GET" and path == "/mcp/dag/frontier":
                     from ..cid_ucan import get_event_dag
+
                     dag = get_event_dag()
                     frontier = dag.frontier()
-                    response_body = _json.dumps({"frontier": [{"event_cid": e.cid, "cid": e.cid, "event_type": e.event_type, "type": e.event_type, "timestamp": e.timestamp} for e in frontier]})
+                    response_body = _json.dumps(
+                        {
+                            "frontier": [
+                                {
+                                    "event_cid": e.cid,
+                                    "cid": e.cid,
+                                    "event_type": e.event_type,
+                                    "type": e.event_type,
+                                    "timestamp": e.timestamp,
+                                }
+                                for e in frontier
+                            ]
+                        }
+                    )
                 elif method == "GET" and path == "/mcp/dag/history":
                     from ..cid_ucan import get_event_dag
+
                     dag = get_event_dag()
                     events = dag.history(limit=50)
-                    response_body = _json.dumps({"events": [{"event_cid": e.cid, "cid": e.cid, "event_type": e.event_type, "type": e.event_type, "parents": e.parent_cids, "timestamp": e.timestamp, "payload": getattr(e, "payload", {})} for e in events]})
+                    response_body = _json.dumps(
+                        {
+                            "events": [
+                                {
+                                    "event_cid": e.cid,
+                                    "cid": e.cid,
+                                    "event_type": e.event_type,
+                                    "type": e.event_type,
+                                    "parents": e.parent_cids,
+                                    "timestamp": e.timestamp,
+                                    "payload": getattr(e, "payload", {}),
+                                }
+                                for e in events
+                            ]
+                        }
+                    )
                 elif method == "GET" and path.startswith("/mcp/dag/provenance/"):
                     from ..cid_ucan import get_event_dag
+
                     target_cid = path.split("/mcp/dag/provenance/")[1]
                     dag = get_event_dag()
                     chain = dag.provenance(target_cid)
-                    response_body = _json.dumps({"provenance": [{"cid": e.cid, "type": e.event_type, "parents": e.parent_cids} for e in chain]})
+                    response_body = _json.dumps(
+                        {
+                            "provenance": [
+                                {"cid": e.cid, "type": e.event_type, "parents": e.parent_cids}
+                                for e in chain
+                            ]
+                        }
+                    )
                 elif method == "POST" and path == "/mcp/execute":
                     from ..cid_ucan import execute_with_envelope
+
                     req = _json.loads(body.decode("utf-8"))
+
                     async def _exec(m, p):
-                        if hasattr(self.mcp, 'tools') and m in self.mcp.tools:
+                        if hasattr(self.mcp, "tools") and m in self.mcp.tools:
                             return await self.mcp.tools[m](**p)
                         raise ValueError(f"Tool not found: {m}")
+
                     envelope = await execute_with_envelope(
-                        method=req.get("method", ""), params=req.get("params", {}),
-                        requester=req.get("requester", ""), delegation_cid=req.get("delegation_cid"),
+                        method=req.get("method", ""),
+                        params=req.get("params", {}),
+                        requester=req.get("requester", ""),
+                        delegation_cid=req.get("delegation_cid"),
                         executor_fn=_exec,
                     )
                     response_body = _json.dumps(envelope.to_dict())
@@ -1571,18 +1753,33 @@ class TrioMCPServer:
         """Handle a single JSON-RPC request with input validation and metrics."""
         # Validate request structure
         if not isinstance(request, dict):
-            return {"jsonrpc": "2.0", "id": None,
-                    "error": {"code": -32700, "message": "Parse error: request must be a JSON object"}}
+            return {
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {"code": -32700, "message": "Parse error: request must be a JSON object"},
+            }
 
         method = request.get("method")
         if not method or not isinstance(method, str):
-            return {"jsonrpc": "2.0", "id": request.get("id"),
-                    "error": {"code": -32600, "message": "Invalid Request: missing or non-string 'method'"}}
+            return {
+                "jsonrpc": "2.0",
+                "id": request.get("id"),
+                "error": {
+                    "code": -32600,
+                    "message": "Invalid Request: missing or non-string 'method'",
+                },
+            }
 
         req_id = request.get("id", 1)
         if req_id is not None and not isinstance(req_id, (str, int, float)):
-            return {"jsonrpc": "2.0", "id": None,
-                    "error": {"code": -32600, "message": "Invalid Request: 'id' must be string, number, or null"}}
+            return {
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {
+                    "code": -32600,
+                    "message": "Invalid Request: 'id' must be string, number, or null",
+                },
+            }
 
         params = request.get("params", {})
         if not isinstance(params, (dict, list)):
@@ -1600,6 +1797,7 @@ class TrioMCPServer:
         duration = time.time() - start_time
         try:
             from ..metrics import get_metrics
+
             metrics = get_metrics()
             metrics.requests_total.inc(method=method, status=status)
             metrics.request_duration.observe(duration, method=method)
@@ -1615,7 +1813,8 @@ class TrioMCPServer:
             client_caps = params.get("capabilities", {}).get("experimental", {})
             server_caps = {k: True for k in client_caps if k.startswith("mcp++")}
             return {
-                "jsonrpc": "2.0", "id": req_id,
+                "jsonrpc": "2.0",
+                "id": req_id,
                 "result": {
                     "protocolVersion": "2024-11-05",
                     "capabilities": {"tools": {"listChanged": True}, "experimental": server_caps},
@@ -1627,29 +1826,43 @@ class TrioMCPServer:
             arguments = params.get("arguments", {})
             delegation_cid = params.get("_delegation_cid")  # MCP++ extension
 
-            if hasattr(self.mcp, 'tools') and tool_name in self.mcp.tools:
+            if hasattr(self.mcp, "tools") and tool_name in self.mcp.tools:
                 # Profile A: Validate params against declared schema
                 try:
                     from ..interface_descriptor import validate_params
+
                     validation_error = validate_params(tool_name, arguments)
                     if validation_error:
-                        return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32602, "message": f"Schema validation: {validation_error}"}}
+                        return {
+                            "jsonrpc": "2.0",
+                            "id": req_id,
+                            "error": {
+                                "code": -32602,
+                                "message": f"Schema validation: {validation_error}",
+                            },
+                        }
                 except ImportError:
                     pass
 
                 # Enforce UCAN delegation if provided
                 if delegation_cid:
                     from ..cid_ucan import get_evaluator
+
                     evaluator = get_evaluator()
                     actor = params.get("_actor", "")
                     authorized, reason = evaluator.can_invoke(
                         delegation_cid, f"mcp://tool/{tool_name}", "invoke", actor=actor or None
                     )
                     if not authorized:
-                        return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32003, "message": f"Unauthorized: {reason}"}}
+                        return {
+                            "jsonrpc": "2.0",
+                            "id": req_id,
+                            "error": {"code": -32003, "message": f"Unauthorized: {reason}"},
+                        }
 
                 try:
                     import inspect
+
                     exec_timeout = float(os.environ.get("MCPPP_EXEC_TIMEOUT_S", "30"))
                     tool_fn = self.mcp.tools[tool_name]
                     with trio.move_on_after(exec_timeout) as cancel_scope:
@@ -1658,23 +1871,43 @@ class TrioMCPServer:
                         else:
                             result = await _to_thread(lambda: tool_fn(**arguments))
                     if cancel_scope.cancelled_caught:
-                        return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": f"Execution timeout after {exec_timeout}s"}}
+                        return {
+                            "jsonrpc": "2.0",
+                            "id": req_id,
+                            "error": {
+                                "code": -32000,
+                                "message": f"Execution timeout after {exec_timeout}s",
+                            },
+                        }
                     return {"jsonrpc": "2.0", "id": req_id, "result": result}
                 except Exception as e:
-                    return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": str(e)}}
-            return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": f"Tool not found: {tool_name}"}}
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": req_id,
+                        "error": {"code": -32000, "message": str(e)},
+                    }
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "error": {"code": -32601, "message": f"Tool not found: {tool_name}"},
+            }
         elif method == "tools/list":
-            tools = list(self.mcp.tools.keys()) if hasattr(self.mcp, 'tools') else []
+            tools = list(self.mcp.tools.keys()) if hasattr(self.mcp, "tools") else []
             return {"jsonrpc": "2.0", "id": req_id, "result": {"tools": tools}}
         elif method == "mcp++/execute":
             # Profile B: CID-native envelope execution via JSON-RPC
             tool_name = params.get("tool") or params.get("name", "")
             arguments = params.get("arguments", {})
-            if not (hasattr(self.mcp, 'tools') and tool_name in self.mcp.tools):
-                return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": f"Tool not found: {tool_name}"}}
+            if not (hasattr(self.mcp, "tools") and tool_name in self.mcp.tools):
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {"code": -32601, "message": f"Tool not found: {tool_name}"},
+                }
             try:
                 import inspect
                 from ..cid_ucan import execute_with_envelope
+
                 tool_fn = self.mcp.tools[tool_name]
 
                 async def _exec(method_name, p):
@@ -1683,40 +1916,63 @@ class TrioMCPServer:
                     return await _to_thread(lambda: tool_fn(**p))
 
                 envelope = await execute_with_envelope(
-                    method=tool_name, params=arguments, executor_fn=_exec,
+                    method=tool_name,
+                    params=arguments,
+                    executor_fn=_exec,
                 )
-                return {"jsonrpc": "2.0", "id": req_id, "result": {
-                    "output": envelope.receipt.result,
-                    "envelope_cid": envelope.cid,
-                    "event_cid": envelope.cid,
-                    "receipt": {
-                        "cid": envelope.receipt.cid,
-                        "receipt_cid": envelope.receipt.cid,
-                        "output_cid": envelope.receipt.output_cid,
-                        "result": envelope.receipt.result,
-                        "success": envelope.receipt.success,
-                        "error": envelope.receipt.error,
-                        "duration_ms": envelope.receipt.duration_ms,
-                        "signature": envelope.receipt.signature,
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "output": envelope.receipt.result,
+                        "envelope_cid": envelope.cid,
+                        "event_cid": envelope.cid,
+                        "receipt": {
+                            "cid": envelope.receipt.cid,
+                            "receipt_cid": envelope.receipt.cid,
+                            "output_cid": envelope.receipt.output_cid,
+                            "result": envelope.receipt.result,
+                            "success": envelope.receipt.success,
+                            "error": envelope.receipt.error,
+                            "duration_ms": envelope.receipt.duration_ms,
+                            "signature": envelope.receipt.signature,
+                        },
                     },
-                }}
+                }
             except Exception as e:
-                return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": str(e)}}
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {"code": -32000, "message": str(e)},
+                }
         elif method == "mcp++/ucan/validate":
             from ..cid_ucan import get_evaluator
+
             proof_cid = params.get("proof_cid", "")
             try:
                 ev = get_evaluator()
                 chain = ev.build_chain(proof_cid) if hasattr(ev, "build_chain") else []
-                return {"jsonrpc": "2.0", "id": req_id, "result": {"valid": bool(chain), "chain": [getattr(d, "cid", str(d)) for d in chain]}}
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "valid": bool(chain),
+                        "chain": [getattr(d, "cid", str(d)) for d in chain],
+                    },
+                }
             except Exception as e:
-                return {"jsonrpc": "2.0", "id": req_id, "result": {"valid": False, "chain": [], "reason": str(e)}}
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {"valid": False, "chain": [], "reason": str(e)},
+                }
         elif method == "mcp++/policy/evaluate":
             # Profile D: temporal deontic policy evaluation via JSON-RPC.
             # Mirrors the REST /mcp/policy/evaluate handler; maps the internal
             # `verdict` to the `decision` field the SwissKnife connector expects.
             try:
                 from ..temporal_policy import get_policy_evaluator
+
                 evaluator = get_policy_evaluator()
                 decision = evaluator.evaluate(
                     method=params.get("method", ""),
@@ -1725,19 +1981,35 @@ class TrioMCPServer:
                     policy_cid=params.get("policy_cid"),
                 )
                 d = decision.to_dict()
-                return {"jsonrpc": "2.0", "id": req_id, "result": {
-                    "decision": d.get("verdict", "allow"),
-                    "obligations": d.get("obligations", []),
-                    "allowed": d.get("allowed", True),
-                }}
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "decision": d.get("verdict", "allow"),
+                        "obligations": d.get("obligations", []),
+                        "allowed": d.get("allowed", True),
+                    },
+                }
             except Exception as e:
-                return {"jsonrpc": "2.0", "id": req_id, "result": {"decision": "allow", "obligations": [], "reason": str(e)}}
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {"decision": "allow", "obligations": [], "reason": str(e)},
+                }
         elif method == "mcp++/p2p/peers":
-            return {"jsonrpc": "2.0", "id": req_id, "result": {"peers": [], "protocol": "/mcp+p2p/1.0.0"}}
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {"peers": [], "protocol": "/mcp+p2p/1.0.0"},
+            }
         elif method == "shutdown":
             return {"jsonrpc": "2.0", "id": req_id, "result": None}
         else:
-            return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": f"Method not found: {method}"}}
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "error": {"code": -32601, "message": f"Method not found: {method}"},
+            }
 
     def create_asgi_app(self) -> Any:
         """Create the ASGI application for Hypercorn.

@@ -28,7 +28,9 @@ class TestMCPServerUNI181AuthDispatchCompat(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -79,20 +81,23 @@ class TestMCPServerUNI181AuthDispatchCompat(unittest.TestCase):
             }
 
         async def _run_flow() -> None:
-            with patch(
-                "ipfs_accelerate_py.mcp_server.tools.auth_tools.native_auth_tools._API",
-                {
-                    "authenticate_user": _authenticate,
-                    "validate_token": _validate,
-                    "get_user_info": _get_user_info,
-                },
-            ), patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
+            with (
+                patch(
+                    "ipfs_accelerate_py.mcp_server.tools.auth_tools.native_auth_tools._API",
+                    {
+                        "authenticate_user": _authenticate,
+                        "validate_token": _validate,
+                        "get_user_info": _get_user_info,
+                    },
+                ),
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
             ):
                 server = create_mcp_server(name="auth-dispatch-compat")
 
@@ -111,8 +116,12 @@ class TestMCPServerUNI181AuthDispatchCompat(unittest.TestCase):
                         {"username": "demo", "password": "pw", "remember_me": True},
                     )
                 )
-                self.assertEqual((auth_result.get("authentication") or {}).get("access_token"), "token-123")
-                self.assertEqual((auth_result.get("authentication") or {}).get("expires_in"), 86400 * 7)
+                self.assertEqual(
+                    (auth_result.get("authentication") or {}).get("access_token"), "token-123"
+                )
+                self.assertEqual(
+                    (auth_result.get("authentication") or {}).get("expires_in"), 86400 * 7
+                )
 
                 validate_result = self._assert_dispatch_success_envelope(
                     await dispatch(
@@ -121,7 +130,9 @@ class TestMCPServerUNI181AuthDispatchCompat(unittest.TestCase):
                         {"token": "tok", "required_permission": "manage", "strict": True},
                     )
                 )
-                self.assertEqual((validate_result.get("validation_result") or {}).get("username"), "demo")
+                self.assertEqual(
+                    (validate_result.get("validation_result") or {}).get("username"), "demo"
+                )
                 self.assertEqual(validate_result.get("strict"), True)
 
                 decode_result = self._assert_dispatch_success_envelope(
@@ -131,7 +142,9 @@ class TestMCPServerUNI181AuthDispatchCompat(unittest.TestCase):
                         {"token": "tok", "action": "decode"},
                     )
                 )
-                self.assertEqual((decode_result.get("decoded_token") or {}).get("user_id"), "user-1")
+                self.assertEqual(
+                    (decode_result.get("decoded_token") or {}).get("user_id"), "user-1"
+                )
 
                 info_result = self._assert_dispatch_success_envelope(
                     await dispatch(
@@ -140,19 +153,27 @@ class TestMCPServerUNI181AuthDispatchCompat(unittest.TestCase):
                         {"token": "tok", "include_permissions": True, "include_profile": True},
                     )
                 )
-                self.assertEqual((info_result.get("user_info") or {}).get("profile"), {"team": "infra"})
-                self.assertEqual(info_result.get("message"), "User information retrieved successfully")
+                self.assertEqual(
+                    (info_result.get("user_info") or {}).get("profile"), {"team": "infra"}
+                )
+                self.assertEqual(
+                    info_result.get("message"), "User information retrieved successfully"
+                )
 
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_auth_dispatch_infers_error_status_from_contradictory_delegate_payloads(self, mock_wrapper) -> None:
+    def test_auth_dispatch_infers_error_status_from_contradictory_delegate_payloads(
+        self, mock_wrapper
+    ) -> None:
         class DummyServer:
             def __init__(self):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -167,21 +188,24 @@ class TestMCPServerUNI181AuthDispatchCompat(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failure"}
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.dict(
-                native_auth_tools._API,
-                {
-                    "authenticate_user": _contradictory_failure,
-                    "validate_token": _contradictory_failure,
-                    "get_user_info": _contradictory_failure,
-                },
-                clear=False,
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.dict(
+                    native_auth_tools._API,
+                    {
+                        "authenticate_user": _contradictory_failure,
+                        "validate_token": _contradictory_failure,
+                        "get_user_info": _contradictory_failure,
+                    },
+                    clear=False,
+                ),
             ):
                 server = create_mcp_server(name="auth-dispatch-compat-errors")
                 dispatch = server.tools["tools_dispatch"]["function"]

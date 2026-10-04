@@ -69,7 +69,7 @@ dashboard = CompatibilityDashboard(db_path="./benchmark_db.duckdb")
 # Generate static dashboard
 dashboard.generate_static(
     output_path="reports/compatibility_dashboard.html",
-    include_all_data=True  # Embeds all data for offline use
+    include_all_data=True,  # Embeds all data for offline use
 )
 ```
 
@@ -248,8 +248,8 @@ dashboard = CompatibilityDashboard(
         "show_performance_metrics": True,
         "show_trends": True,
         "auto_refresh": True,
-        "refresh_interval": 3600  # seconds
-    }
+        "refresh_interval": 3600,  # seconds
+    },
 )
 ```
 
@@ -259,23 +259,17 @@ Define custom metrics and compatibility thresholds:
 
 ```python
 # Define custom compatibility levels
-dashboard.set_compatibility_thresholds({
-    "high": {
-        "throughput_ratio": 0.8,  # 80% of best platform
-        "successful_tests": 0.95,  # 95% tests pass
-        "features_supported": 0.9  # 90% features supported
-    },
-    "medium": {
-        "throughput_ratio": 0.5,
-        "successful_tests": 0.8,
-        "features_supported": 0.7
-    },
-    "limited": {
-        "throughput_ratio": 0.3,
-        "successful_tests": 0.6,
-        "features_supported": 0.5
+dashboard.set_compatibility_thresholds(
+    {
+        "high": {
+            "throughput_ratio": 0.8,  # 80% of best platform
+            "successful_tests": 0.95,  # 95% tests pass
+            "features_supported": 0.9,  # 90% features supported
+        },
+        "medium": {"throughput_ratio": 0.5, "successful_tests": 0.8, "features_supported": 0.7},
+        "limited": {"throughput_ratio": 0.3, "successful_tests": 0.6, "features_supported": 0.5},
     }
-})
+)
 
 # Add custom metrics
 dashboard.add_custom_metric(
@@ -288,7 +282,7 @@ dashboard.add_custom_metric(
                ELSE 'None'
            END as value
     FROM model_optimizations
-    """
+    """,
 )
 ```
 
@@ -306,11 +300,9 @@ dashboard.create_custom_view(
         "primary": "matrix",
         "secondary": "radar",
         "filters": ["model_type", "model_size", "hardware_platform"],
-        "metrics": ["throughput_items_per_second", "memory_mb", "power_watts"]
+        "metrics": ["throughput_items_per_second", "memory_mb", "power_watts"],
     },
-    default_filters={
-        "hardware_platforms": ["qualcomm", "webgpu", "webnn"]
-    }
+    default_filters={"hardware_platforms": ["qualcomm", "webgpu", "webnn"]},
 )
 ```
 
@@ -379,11 +371,11 @@ reporter.schedule_report(
         "title": "Weekly Compatibility Report",
         "sections": ["new_compatibility", "performance_improvements", "regressions"],
         "format": "html",
-        "output_path": "reports/weekly_compatibility_{date}.html"
+        "output_path": "reports/weekly_compatibility_{date}.html",
     },
     frequency="weekly",
     weekday="monday",
-    time="09:00"
+    time="09:00",
 )
 
 # Configure email delivery
@@ -392,8 +384,8 @@ reporter.configure_delivery(
     config={
         "recipients": ["team@example.com"],
         "subject": "Weekly Compatibility Report - {date}",
-        "sender": "dashboard@example.com"
-    }
+        "sender": "dashboard@example.com",
+    },
 )
 ```
 
@@ -409,15 +401,12 @@ api = CompatibilityAPI(db_path="./benchmark_db.duckdb")
 
 # Get compatibility for specific model
 compatibility = api.get_compatibility(
-    model_name="bert-base-uncased",
-    hardware_platforms=["cuda", "webgpu", "qualcomm"]
+    model_name="bert-base-uncased", hardware_platforms=["cuda", "webgpu", "qualcomm"]
 )
 
 # Check if model is compatible with specific hardware
 is_compatible = api.is_compatible(
-    model_name="bert-base-uncased",
-    hardware_platform="webgpu",
-    min_compatibility_level="medium"
+    model_name="bert-base-uncased", hardware_platform="webgpu", min_compatibility_level="medium"
 )
 
 # Get recommended hardware
@@ -425,8 +414,8 @@ recommended_hardware = api.get_recommended_hardware(
     model_name="bert-base-uncased",
     criteria={
         "priority": "throughput",  # throughput, latency, memory, power
-        "min_compatibility_level": "medium"
-    }
+        "min_compatibility_level": "medium",
+    },
 )
 ```
 
