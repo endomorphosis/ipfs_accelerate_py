@@ -2076,6 +2076,93 @@ class DatabaseCoordinator:
                 self._rollback_if_open(connection)
                 raise
 
+    def reconcile_reopened_task(
+        self,
+        *,
+        task_cid: str,
+        expected_control_revision: int,
+        read_control_task: Callable[[str], Any],
+        now_ms: int | None = None,
+    ) -> dict[str, Any]:
+        """Retire a settled completion projection after authoritative reopening.
+
+        The caller supplies the native control source reader, not task metadata
+        from a worker. Only a strictly newer ready revision can supersede the
+        old completion. Its exact original row is archived in lease_events in
+        the same transaction; attempts, claims, leases and fences stay intact.
+        Normal ready selection and its control CAS still govern the next claim.
+        """
+        cid = _text(task_cid, "task_cid")
+        if type(expected_control_revision) is not int or expected_control_revision < 1:
+            raise ValueError("expected_control_revision must be a positive integer")
+        now = self._now_ms() if now_ms is None else _nonneg_int(int(now_ms), "now_ms")
+        with self._lock:
+            connection = self._require()
+            self._begin(connection)
+            try:
+                row = connection.execute(
+                    "SELECT task_cid, completed_at_ms, status, body_json "
+                    "FROM task_completions WHERE task_cid = ?", [cid],
+                ).fetchone()
+                if row is None:
+                    self._commit_if_idle(connection)
+                    return {"reopened": False, "task_cid": cid}
+                archived = dict(_row_mapping(row))
+                prepared = self._prepared_completion_unlocked(
+                    connection, cid, required=True, include_promoted=True,
+                )
+                if prepared["status"] != AttemptStatus.SUCCEEDED.value:
+                    raise DatabaseCoordinationStaleFenceError("unsettled completion cannot reopen")
+                prior_control = prepared.get("control_completion", {})
+                prior_revision = prior_control.get("revision")
+                if (prior_control.get("task_cid") != cid
+                        or prior_control.get("status") != "completed"
+                        or type(prior_revision) is not int
+                        or not 0 < prior_revision < expected_control_revision):
+                    raise DatabaseCoordinationStaleFenceError("reopening needs a newer control revision")
+                identity = self._task_claim_identity(prepared)
+                self._protect_task_claim_unlocked(
+                    connection, identity=identity, now=now,
+                    expected_attempt_status=AttemptStatus.SUCCEEDED,
+                    expected_lease_state=LeaseState.RELEASED,
+                    allow_logically_completed=True, record_event=False,
+                )
+                for table, column, value in (
+                    ("fenced_leases", "state", LeaseState.ACCEPTED.value),
+                    ("task_claims", "state", LeaseState.ACCEPTED.value),
+                    ("task_attempts", "status", AttemptStatus.RUNNING.value),
+                ):
+                    if connection.execute(
+                        f"SELECT 1 FROM {table} WHERE task_cid = ? AND {column} = ? LIMIT 1",
+                        [cid, value],
+                    ).fetchone() is not None:
+                        raise DatabaseCoordinationStaleFenceError("task authority is still active")
+                current = read_control_task(cid)
+                current = current.to_dict() if callable(getattr(current, "to_dict", None)) else current
+                if (not isinstance(current, Mapping) or current.get("task_cid") != cid
+                        or current.get("status") != "ready"
+                        or current.get("revision") != expected_control_revision):
+                    raise DatabaseCoordinationStaleFenceError("control reopening changed before reconciliation")
+                event_id = self._record_event(
+                    connection, lease_id=identity["lease_id"],
+                    scope_key=exclusive_scope_key(lease_kind=LeaseKind.TASK, scope=cid, task_cid=cid),
+                    event_type="task_completion_superseded_by_control_reopening",
+                    fencing_token=identity["fencing_token"], fence_epoch=identity["fence_epoch"],
+                    observed_at_ms=now,
+                    body={"task_cid": cid, "archived_completion_row": archived,
+                          "control_revision": expected_control_revision,
+                          "control_task_digest": _sha256_hex(_canonical_json(dict(current)).encode("utf-8")),
+                          "attempt_budget_reset": False},
+                )
+                connection.execute("DELETE FROM task_completions WHERE task_cid = ?", [cid])
+                connection.execute("UPDATE coordination_tasks SET ready = TRUE WHERE task_cid = ?", [cid])
+                self._commit_if_idle(connection)
+                return {"reopened": True, "task_cid": cid, "event_id": event_id,
+                        "control_revision": expected_control_revision, "attempt_budget_reset": False}
+            except Exception:
+                self._rollback_if_open(connection)
+                raise
+
     def coordination_registry_projection(self) -> dict[str, Any]:
         """Return a deterministic, content-addressed coordination read model.
 
