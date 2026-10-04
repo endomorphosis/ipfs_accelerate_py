@@ -1,0 +1,61 @@
+{
+  "schema": "bounded-public-evidence-manifest@1",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 2041,
+      "sha256": "0277e77b9b86b8a41863683680908206655adcfa57dd2f1dc6493892b8399de6"
+    },
+    {
+      "path": "change.patch",
+      "bytes": 2836,
+      "sha256": "cdda656f7b24a7348e245cc593ba92dcc145063c933ecbcd122a67a363731b9d"
+    },
+    {
+      "path": "diagnosis-before.json",
+      "bytes": 1928,
+      "sha256": "46d29f86665d41290048b5fe001ab54fe022872027f39eaab337c2106500da3b"
+    },
+    {
+      "path": "package_regressions.py",
+      "bytes": 6113,
+      "sha256": "986fbc7e423df05e95bcec76f49be2a8b9eb52045fa011275529f9683e36d5fc"
+    },
+    {
+      "path": "regression-01-command.json",
+      "bytes": 5288,
+      "sha256": "b5ca3a563eee78bf29b46e73f2ad16b4dc02623f8117c0c24f578331d6b6e3fc"
+    },
+    {
+      "path": "regression-01-exit.json",
+      "bytes": 3429,
+      "sha256": "e7bb3f7b47745b6ee4e5bbea6b7a5fe03d80d8600589c82eae6c98d9bc14f1ce"
+    },
+    {
+      "path": "regression-01.xml",
+      "bytes": 18499,
+      "sha256": "2bcc76e851f5cd6b3a465155e071115ccbe818d6a2c1c0bf5cef54f020955b49"
+    },
+    {
+      "path": "run_regressions.py",
+      "bytes": 5215,
+      "sha256": "5f752cde15b8e238eb91473f7d4c45086f0060bb1e6e4c3dbc640fe4292abbf6"
+    },
+    {
+      "path": "scope.json",
+      "bytes": 490,
+      "sha256": "aa3bbe85caa41b57702f60108cf0679af4928474c309e8aa024983fe5c730366"
+    },
+    {
+      "path": "source-binding.json",
+      "bytes": 968,
+      "sha256": "f8454bd372ddb1f7c5356b56babbd890a3fd6aabda77a6775eec9184d8dce947"
+    }
+  ],
+  "member_count": 10,
+  "member_bytes": 46807,
+  "exported_public_source_diff": true,
+  "exported_credentials": false,
+  "exported_model_bodies": false,
+  "exported_verifier_bodies": false
+}

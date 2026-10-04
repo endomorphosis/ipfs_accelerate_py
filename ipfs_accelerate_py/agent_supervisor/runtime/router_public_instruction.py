@@ -130,7 +130,8 @@ def _intent_context(payload, manifest, source_text):
     graph = local.PromptGoalGraph.from_dict(plan["graph"])
     signed = local._verify_signature(plan["receipt"], profile)
     expected = local._planning_payload(graph, payload["manifest"], manifest, profile,
-        manifest["sources"], plan["requirement_bindings"], requirement_source_text=source_text)
+        manifest["sources"], plan["requirement_bindings"], requirement_source_text=source_text,
+        source_applicability_nomination=local._header_nomination(signed))
     if signed != expected:
         raise ValueError("worker intent admission differs from exact replayed planning receipt")
     tasks = [task for task in graph.tasks if task.task_cid == payload["task_cid"]]

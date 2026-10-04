@@ -1,0 +1,38 @@
+diff --git a/ipfs_accelerate_py/agent_supervisor/runtime/intent_requirement_observation.py b/ipfs_accelerate_py/agent_supervisor/runtime/intent_requirement_observation.py
+index 8309d7d04..ca0f7ca90 100644
+--- a/ipfs_accelerate_py/agent_supervisor/runtime/intent_requirement_observation.py
++++ b/ipfs_accelerate_py/agent_supervisor/runtime/intent_requirement_observation.py
+@@ -267,6 +267,7 @@ def _verify_admission(admission):
+     expected = local._planning_payload(
+         graph, admission["manifest"], manifest, profile, manifest["sources"],
+         admission["requirement_bindings"],
++        source_applicability_nomination=local._header_nomination(receipt),
+     )
+     if receipt != expected:
+         raise local.LocalPlanningError("requirement observation admission differs from replay")
+diff --git a/ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py b/ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py
+index d15e4b28e..3bef94d32 100644
+--- a/ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py
++++ b/ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py
+@@ -157,6 +157,7 @@ def verify_owner_local_benchmark_observation(*, server: QuackStateServer, admiss
+                     expected = local._planning_payload(
+                         graph, admission["manifest"], manifest, profile, manifest["sources"],
+                         admission.get("requirement_bindings"),
++                        source_applicability_nomination=local._header_nomination(receipt),
+                     )
+                     claim = task["body"].get("completion_receipt", {})
+                     revision = transition["payload"]["task_revision"]
+diff --git a/ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py b/ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py
+index c5aed2a61..95fb9012b 100644
+--- a/ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py
++++ b/ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py
+@@ -130,7 +130,8 @@ def _intent_context(payload, manifest, source_text):
+     graph = local.PromptGoalGraph.from_dict(plan["graph"])
+     signed = local._verify_signature(plan["receipt"], profile)
+     expected = local._planning_payload(graph, payload["manifest"], manifest, profile,
+-        manifest["sources"], plan["requirement_bindings"], requirement_source_text=source_text)
++        manifest["sources"], plan["requirement_bindings"], requirement_source_text=source_text,
++        source_applicability_nomination=local._header_nomination(signed))
+     if signed != expected:
+         raise ValueError("worker intent admission differs from exact replayed planning receipt")
+     tasks = [task for task in graph.tasks if task.task_cid == payload["task_cid"]]

@@ -1,0 +1,33 @@
+{
+  "schema": "bounded-completed-header-observation-diagnosis@1",
+  "receipt_sha256": "aa8bd7498e14f9fc62b6a09b42199e7914fc7ce4d3e3e618cb67e8215cc7f873",
+  "receipt_bytes": 369897,
+  "producer_sha256": null,
+  "official_reward": {
+    "reward": 1.0
+  },
+  "task_state": {
+    "status": "completed",
+    "revision": 4
+  },
+  "supervisor_task_completed": false,
+  "error_type": "LocalPlanningError",
+  "error_matches_known_no_exact_observation": true,
+  "symbolic_receipt_schema": "intent-symbolic-planning-receipt@1",
+  "header_nomination_present": true,
+  "header_nomination_schema": "source-header-applicability-nomination@1",
+  "confirmed_source_contract_gap": "changed_source_observation_replay_omits_signed_header_nomination",
+  "historical_inner_error_available": false,
+  "causal_limit": "The retained error contains no rejected-row predicate; the omitted v3 argument is a deterministic source defect consistent with this boundary.",
+  "successor_scope": "Source384 successor inference is independently unavailable and must remain explicitly unverified.",
+  "source_pins": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py": "a5d15cade2892f62b7852191bbe21e4c08601066f13d0f74f0ad0855cbef6d27",
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py": "fc9a8696a127b0a6c0dfca24d49aaf0f03b13387a543a5f3a5cb5f1a61329c3f",
+    "ipfs_accelerate_py/agent_supervisor/runtime/header_intent_applicability.py": "118990a874f9637e19d26e99d7f80ef7c9d83956bcbf202ce7fdfd1bfe777e15",
+    "ipfs_accelerate_py/agent_supervisor/planning/intent_requirement_adapter.py": "4b773cdf818c40af82015a2bbe460ec364a1faa0e1146427f2e39608122c27c2",
+    "ipfs_accelerate_py/agent_supervisor/runtime/published_task_context.py": "cd809effb7d13eedc46c21e8875246f4f11164e39e8e4de6e12a7ab24ed2618b"
+  },
+  "exported_verifier_bodies": false,
+  "exported_model_bodies": false,
+  "exported_credentials": false
+}

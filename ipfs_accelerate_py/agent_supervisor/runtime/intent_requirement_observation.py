@@ -267,6 +267,7 @@ def _verify_admission(admission):
     expected = local._planning_payload(
         graph, admission["manifest"], manifest, profile, manifest["sources"],
         admission["requirement_bindings"],
+        source_applicability_nomination=local._header_nomination(receipt),
     )
     if receipt != expected:
         raise local.LocalPlanningError("requirement observation admission differs from replay")

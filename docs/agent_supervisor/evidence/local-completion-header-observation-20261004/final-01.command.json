@@ -1,0 +1,55 @@
+{
+  "argv": [
+    "<PYTHON>",
+    "-m",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "--basetemp=<ISOLATED_TEST_TEMP>",
+    "--junitxml=<EVIDENCE_ROOT>/final-01/results.xml",
+    "test/api/test_local_completion_header_observation.py"
+  ],
+  "cwd": "<WORKSPACE>/.worktrees/ir-release-accelerate-20261002",
+  "environment_overrides": {
+    "CUDA_VISIBLE_DEVICES": "",
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR": "<ISOLATED_TEST_TEMP>",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "<ISOLATED_TEST_TEMP>",
+    "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "<ISOLATED_TEST_TEMP>",
+    "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": "<EVIDENCE_ROOT>/final-01/fallback-scheduler.json",
+    "MKL_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "<WORKSPACE>/.worktrees/ir-release-accelerate-20261002:<WORKSPACE>/.worktrees/ir-pressure-attribution-datasets-20261004:<WORKSPACE>/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "harness_sha256": "b5da6b36c08729c56dbc9f7f39cff6111bb23a7faab4c80cff1849a098865633",
+  "selected_source_pins_complete_repository": false,
+  "source_pins": {
+    "datasets/ipfs_datasets_py/logic/security_ir/bounded_header_checker.py": "a60a9a73bf8ef46490cad19ce71ae0230d0d2b6341c2b7b9aa044aec43218cfb",
+    "datasets/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py": "e11776174de1db224a09f6cd1e7d4fdac8766ce349e3ec0615972f80a3ba6cde",
+    "datasets/ipfs_datasets_py/logic/software_contracts/codebase_header_context.py": "7b21cfcfb37325bf006f4952848926bc359a300068f0723f057b04978fc01090",
+    "datasets/ipfs_datasets_py/logic/software_contracts/codebase_resources.py": "aacf2ae1de1d78f560aabec940695addd38997fec0c46422f63c0967ca7ead81",
+    "datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py": "3655923785cb99409171caaba8c523354f03dbe8d82b6deb45a7b46db8394633",
+    "datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py": "740543329dacbd84afcb19c88b6fdb0f09b4dd38bb564cfc6cf999d3fcb4e22a",
+    "source/ipfs_accelerate_py/agent_supervisor/planning/intent_requirement_adapter.py": "4b773cdf818c40af82015a2bbe460ec364a1faa0e1146427f2e39608122c27c2",
+    "source/ipfs_accelerate_py/agent_supervisor/planning/intent_symbolic_planning.py": "dd5b7e7d4c23167fe309d991c143f936e86c26b62e55afdf47a6586d5fc0f5e2",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/header_intent_applicability.py": "118990a874f9637e19d26e99d7f80ef7c9d83956bcbf202ce7fdfd1bfe777e15",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/intent_requirement_observation.py": "680e5a62d5f6816f46e7d92683b899b9c26e4e9cf3b1883f90767f5be3ef0518",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py": "f37f3c529b604f55d6ef32abe8f145893be4b8b93e98b4545ef4648d18e65206",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py": "fc9a8696a127b0a6c0dfca24d49aaf0f03b13387a543a5f3a5cb5f1a61329c3f",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/published_task_context.py": "cd809effb7d13eedc46c21e8875246f4f11164e39e8e4de6e12a7ab24ed2618b",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py": "9f33994d69720eca2bddf5d2d49a9a2830bd35929e837fa47fc13ad1737cd791",
+    "source/ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "d49d2ee166483c6e503dd2f88d2df9ba1d4954972e8214253b0a1ccbd349e0bb",
+    "source/test/api/test_header_intent_applicability.py": "7cbef7755ab1c8cc43d4c6cc0da8236fc17dd9d47149f98dfca8b7d03571078b",
+    "source/test/api/test_local_completion_bridge.py": "212d1d2e07efdc6549ad5548a22a363d27886e8e3d9432ebdf015af37ba3b970",
+    "source/test/api/test_local_completion_header_observation.py": "7cb193dd5c769e87424dd1c7e070a8badef5f67b183923955bfea8f7470d73c9"
+  },
+  "source_revisions": {
+    "datasets": "d5aaf256618c53b009695e8d5618436fba1c0419",
+    "source": "ba57d21d48d7a223cd9926a9dc745ad90c953d92"
+  }
+}

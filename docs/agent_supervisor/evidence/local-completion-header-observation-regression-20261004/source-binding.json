@@ -1,0 +1,19 @@
+{
+  "schema": "header-nomination-owner-binding@1",
+  "owners": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py": {
+      "before_sha256": "a5d15cade2892f62b7852191bbe21e4c08601066f13d0f74f0ad0855cbef6d27",
+      "tested_sha256": "f37f3c529b604f55d6ef32abe8f145893be4b8b93e98b4545ef4648d18e65206"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/intent_requirement_observation.py": {
+      "before_sha256": "9601e06f4baf2fe77dda029ab508ad484d1d26cc635c9cb4897621a92f272490",
+      "tested_sha256": "680e5a62d5f6816f46e7d92683b899b9c26e4e9cf3b1883f90767f5be3ef0518"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py": {
+      "before_sha256": "36bd7f3594e6564233cac56d3c077ecdf93ac172beb71492bed2e25deab2ea88",
+      "tested_sha256": "9f33994d69720eca2bddf5d2d49a9a2830bd35929e837fa47fc13ad1737cd791"
+    }
+  },
+  "all_owner_source_pins_unchanged": true,
+  "complete_repository_pin_claim": false
+}

@@ -157,6 +157,7 @@ def verify_owner_local_benchmark_observation(*, server: QuackStateServer, admiss
                     expected = local._planning_payload(
                         graph, admission["manifest"], manifest, profile, manifest["sources"],
                         admission.get("requirement_bindings"),
+                        source_applicability_nomination=local._header_nomination(receipt),
                     )
                     claim = task["body"].get("completion_receipt", {})
                     revision = transition["payload"]["task_revision"]

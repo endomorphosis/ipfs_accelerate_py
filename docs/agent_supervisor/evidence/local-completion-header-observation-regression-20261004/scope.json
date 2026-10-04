@@ -1,0 +1,16 @@
+{
+  "schema": "header-observation-regression-scope@1",
+  "cases": 115,
+  "passed": 114,
+  "failed": 0,
+  "errors": 0,
+  "skipped": [
+    {
+      "test": "api.test_header_intent_applicability::test_normal_initialization_with_real_checkpoint_produces_nomination_before_planning",
+      "reason": "explicit pinned checkpoint and cached GTE snapshot required"
+    }
+  ],
+  "new_v3_component_passed": 6,
+  "combined_distinct_passes": 120,
+  "whole_package_neural_qualification_claimed": false
+}

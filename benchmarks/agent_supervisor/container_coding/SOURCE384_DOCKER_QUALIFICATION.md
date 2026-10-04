@@ -1180,3 +1180,20 @@ verification path. Leanstral was restored with HTTP readiness and the container
 removed. The new source-applicability nomination handoff must be qualified before
 claiming full-methodology success. Complete token costs and matched baseline/
 ablation efficiency remain unmeasured; RPI-019/020 remain open.
+
+The post-publication mismatch is now reproduced and corrected in component
+controls. Completed-task observation, requirement observation and public
+instruction replay each forward the source-applicability nomination from their
+already verified signed planning receipt. Six new controls pass, including real
+captured-header/Z3 checks, Git publication, native owner validation, typed task
+completion and observation; re-signed missing/altered nominations and source
+drift still refuse. All three original handoff failures are retained. Another
+114 affected regressions pass, with one explicit optional checkpoint/GTE test
+skipped. See [signed nomination controls](../../../docs/agent_supervisor/evidence/local-completion-header-observation-20261004/README.txt).
+
+This correction follows the scored T run and has no new Docker score attached.
+Source384 successor inference remains explicitly unavailable, the completion RPC
+still needs its bounded replay-scope handoff, and separate worker-UID captured
+store custody is unchanged. The six new tests use authored source and resource
+telemetry with actual native checking/publication; they do not establish neural
+quality, host-pressure recovery, or a matched benchmark advantage.

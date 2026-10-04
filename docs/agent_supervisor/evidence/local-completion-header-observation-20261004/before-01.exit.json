@@ -1,0 +1,31 @@
+{
+  "after_pins": {
+    "datasets/ipfs_datasets_py/logic/security_ir/bounded_header_checker.py": "a60a9a73bf8ef46490cad19ce71ae0230d0d2b6341c2b7b9aa044aec43218cfb",
+    "datasets/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py": "e11776174de1db224a09f6cd1e7d4fdac8766ce349e3ec0615972f80a3ba6cde",
+    "datasets/ipfs_datasets_py/logic/software_contracts/codebase_header_context.py": "7b21cfcfb37325bf006f4952848926bc359a300068f0723f057b04978fc01090",
+    "datasets/ipfs_datasets_py/logic/software_contracts/codebase_resources.py": "aacf2ae1de1d78f560aabec940695addd38997fec0c46422f63c0967ca7ead81",
+    "datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py": "3655923785cb99409171caaba8c523354f03dbe8d82b6deb45a7b46db8394633",
+    "datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py": "740543329dacbd84afcb19c88b6fdb0f09b4dd38bb564cfc6cf999d3fcb4e22a",
+    "source/ipfs_accelerate_py/agent_supervisor/planning/intent_requirement_adapter.py": "4b773cdf818c40af82015a2bbe460ec364a1faa0e1146427f2e39608122c27c2",
+    "source/ipfs_accelerate_py/agent_supervisor/planning/intent_symbolic_planning.py": "dd5b7e7d4c23167fe309d991c143f936e86c26b62e55afdf47a6586d5fc0f5e2",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/header_intent_applicability.py": "118990a874f9637e19d26e99d7f80ef7c9d83956bcbf202ce7fdfd1bfe777e15",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/intent_requirement_observation.py": "9601e06f4baf2fe77dda029ab508ad484d1d26cc635c9cb4897621a92f272490",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py": "a5d15cade2892f62b7852191bbe21e4c08601066f13d0f74f0ad0855cbef6d27",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py": "fc9a8696a127b0a6c0dfca24d49aaf0f03b13387a543a5f3a5cb5f1a61329c3f",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/published_task_context.py": "cd809effb7d13eedc46c21e8875246f4f11164e39e8e4de6e12a7ab24ed2618b",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py": "36bd7f3594e6564233cac56d3c077ecdf93ac172beb71492bed2e25deab2ea88",
+    "source/ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "d49d2ee166483c6e503dd2f88d2df9ba1d4954972e8214253b0a1ccbd349e0bb",
+    "source/test/api/test_header_intent_applicability.py": "7cbef7755ab1c8cc43d4c6cc0da8236fc17dd9d47149f98dfca8b7d03571078b",
+    "source/test/api/test_local_completion_bridge.py": "212d1d2e07efdc6549ad5548a22a363d27886e8e3d9432ebdf015af37ba3b970",
+    "source/test/api/test_local_completion_header_observation.py": "077727602517cd7bf133dbfb9202ea2a999a1c40cf94bb2e83a146f0a4fd8cdc"
+  },
+  "returncode": 1,
+  "seconds": 32.26425469000242,
+  "source_pins_unchanged": true,
+  "xml_counts": {
+    "errors": 0,
+    "failures": 1,
+    "skipped": 0,
+    "tests": 1
+  }
+}
