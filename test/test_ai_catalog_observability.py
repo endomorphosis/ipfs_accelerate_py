@@ -169,9 +169,7 @@ def test_unchanged_refresh_reuses_snapshot_value_and_content_cid():
     clock = FakeClock()
     cache = CatalogSnapshotCache(clock=clock)
     first_snapshot = _snapshot()
-    first = cache.get_or_refresh(
-        "routers.text", CacheView.CAPABILITIES, lambda: first_snapshot
-    )
+    first = cache.get_or_refresh("routers.text", CacheView.CAPABILITIES, lambda: first_snapshot)
     clock.advance(1)
     equivalent = CatalogSnapshot.from_dict(first_snapshot.to_dict())
     second = cache.get_or_refresh(
@@ -219,9 +217,7 @@ def test_explicit_refresh_can_target_one_view_or_all_sources():
         cache.put(source, CacheView.CAPABILITIES, _snapshot(source))
         cache.put(source, CacheView.HEALTH, _health(source))
 
-    cache.invalidate(
-        explicit_refresh_event(views="capabilities")
-    )
+    cache.invalidate(explicit_refresh_event(views="capabilities"))
 
     assert not cache.peek("one", CacheView.CAPABILITIES)
     assert not cache.peek("two", CacheView.CAPABILITIES)
@@ -278,18 +274,14 @@ def test_cancelled_async_waiter_does_not_cancel_or_poison_shared_refresh():
             return _snapshot()
 
         cancelled_waiter = asyncio.create_task(
-            cache.get_or_refresh_async(
-                "routers.text", CacheView.CAPABILITIES, loader
-            )
+            cache.get_or_refresh_async("routers.text", CacheView.CAPABILITIES, loader)
         )
         await entered.wait()
         cancelled_waiter.cancel()
         with pytest.raises(asyncio.CancelledError):
             await cancelled_waiter
         successful_waiter = asyncio.create_task(
-            cache.get_or_refresh_async(
-                "routers.text", CacheView.CAPABILITIES, loader
-            )
+            cache.get_or_refresh_async("routers.text", CacheView.CAPABILITIES, loader)
         )
         release.set()
         result = await successful_waiter
@@ -312,9 +304,7 @@ def test_failed_or_cancelled_refresh_clears_sync_flight_state():
 
     with pytest.raises(RuntimeError, match="transient"):
         cache.get_or_refresh("routers.text", CacheView.CAPABILITIES, loader)
-    result = cache.get_or_refresh(
-        "routers.text", CacheView.CAPABILITIES, loader
-    )
+    result = cache.get_or_refresh("routers.text", CacheView.CAPABILITIES, loader)
 
     assert calls == 2
     assert result.value == _snapshot()
@@ -386,28 +376,29 @@ def test_metrics_cover_required_signals_with_bounded_labels():
     metrics.record_cache_hit("source.two", CacheView.HEALTH)
     metrics.record_cache_hit("unbounded.third", CacheView.HEALTH)
 
-    assert metrics.value(
-        "catalog_source_latency_seconds_sum", source="source.one"
-    ) == 0.25
-    assert metrics.value(
-        "catalog_cache_hits_total",
-        source="source.one",
-        view="capabilities",
-    ) == 1
-    assert metrics.value(
-        "catalog_no_match_total", reason="policy"
-    ) == 1
-    assert metrics.value(
-        "catalog_health_transitions_total",
-        from_state="healthy",
-        to_state="unhealthy",
-    ) == 1
-    samples = metrics.snapshot()
-    assert any(
-        dict(item.labels).get("source") == "other" for item in samples
+    assert metrics.value("catalog_source_latency_seconds_sum", source="source.one") == 0.25
+    assert (
+        metrics.value(
+            "catalog_cache_hits_total",
+            source="source.one",
+            view="capabilities",
+        )
+        == 1
     )
+    assert metrics.value("catalog_no_match_total", reason="policy") == 1
+    assert (
+        metrics.value(
+            "catalog_health_transitions_total",
+            from_state="healthy",
+            to_state="unhealthy",
+        )
+        == 1
+    )
+    samples = metrics.snapshot()
+    assert any(dict(item.labels).get("source") == "other" for item in samples)
     assert all(
-        set(dict(item.labels)) <= {
+        set(dict(item.labels))
+        <= {
             "source",
             "view",
             "reason",

@@ -39,8 +39,9 @@ circuit_breaker = AdaptiveCircuitBreaker(
     optimization_enabled=True,
     prediction_enabled=True,
     hardware_specific=True,
-    hardware_type="gpu"  # For WebGPU tests
+    hardware_type="gpu",  # For WebGPU tests
 )
+
 
 async def execute_browser_test():
     # Run a browser test with adaptive circuit breaker protection
@@ -94,17 +95,19 @@ def _optimize_parameters(self) -> None:
     # Prepare data
     failure_df = pd.DataFrame(self.recent_failures)
     recovery_df = pd.DataFrame(self.recent_recoveries) if self.recent_recoveries else None
-    
+
     # Optimize thresholds using ML models
     new_threshold = self._optimize_failure_threshold(failure_df)
     new_recovery_timeout = self._optimize_recovery_timeout(failure_df, recovery_df)
     new_half_open_timeout = self._optimize_half_open_timeout(failure_df, recovery_df)
-    
+
     # Apply optimized values with learning rate
-    self.current_failure_threshold = int(round(
-        self.current_failure_threshold * (1 - self.learning_rate) + 
-        new_threshold * self.learning_rate
-    ))
+    self.current_failure_threshold = int(
+        round(
+            self.current_failure_threshold * (1 - self.learning_rate)
+            + new_threshold * self.learning_rate
+        )
+    )
     # Similar calculations for other parameters...
 ```
 
@@ -138,16 +141,12 @@ The system recognizes that different hardware types have different failure patte
 ```python
 # GPU-specific circuit breaker
 gpu_circuit_breaker = AdaptiveCircuitBreaker(
-    name="gpu_tests",
-    hardware_specific=True,
-    hardware_type="gpu"
+    name="gpu_tests", hardware_specific=True, hardware_type="gpu"
 )
 
 # CPU-specific circuit breaker
 cpu_circuit_breaker = AdaptiveCircuitBreaker(
-    name="cpu_tests",
-    hardware_specific=True,
-    hardware_type="cpu"
+    name="cpu_tests", hardware_specific=True, hardware_type="cpu"
 )
 ```
 
@@ -216,11 +215,7 @@ The circuit breaker also provides built-in retry logic:
 
 ```python
 # With automatic retries
-result = await circuit_breaker.execute_with_retries(
-    my_operation,
-    max_retries=3,
-    retry_delay=1.0
-)
+result = await circuit_breaker.execute_with_retries(my_operation, max_retries=3, retry_delay=1.0)
 ```
 
 #### Hardware-Specific Usage
@@ -230,15 +225,11 @@ For hardware-specific optimization:
 ```python
 # Create hardware-specific circuit breakers
 gpu_breaker = AdaptiveCircuitBreaker(
-    name="gpu_operations",
-    hardware_specific=True,
-    hardware_type="gpu"
+    name="gpu_operations", hardware_specific=True, hardware_type="gpu"
 )
 
 webgpu_breaker = AdaptiveCircuitBreaker(
-    name="webgpu_operations",
-    hardware_specific=True,
-    hardware_type="webgpu"
+    name="webgpu_operations", hardware_specific=True, hardware_type="webgpu"
 )
 ```
 
@@ -261,7 +252,7 @@ advanced_breaker = AdaptiveCircuitBreaker(
     retraining_interval_hours=24,
     min_data_points=50,
     hardware_specific=True,
-    hardware_type="webgpu"
+    hardware_type="webgpu",
 )
 ```
 
@@ -277,6 +268,7 @@ from selenium_browser_bridge import SeleniumBrowserBridge
 from browser_failure_injector import BrowserFailureInjector
 from browser_recovery_strategies import BrowserRecoveryManager
 
+
 async def setup_webgpu_testing():
     # Create hardware-specific circuit breaker for WebGPU
     circuit_breaker = AdaptiveCircuitBreaker(
@@ -284,18 +276,19 @@ async def setup_webgpu_testing():
         hardware_specific=True,
         hardware_type="webgpu",
         optimization_enabled=True,
-        prediction_enabled=True
+        prediction_enabled=True,
     )
-    
+
     # Create browser bridge and recovery manager
     browser_config = BrowserConfiguration(browser_name="chrome", platform="webgpu")
     bridge = SeleniumBrowserBridge(browser_config)
     recovery_manager = BrowserRecoveryManager(circuit_breaker=circuit_breaker)
-    
+
     # Setup failure injector for testing
     injector = BrowserFailureInjector(bridge, circuit_breaker=circuit_breaker)
-    
+
     return circuit_breaker, bridge, recovery_manager, injector
+
 
 async def run_webgpu_test(circuit_breaker, bridge, test_function):
     try:
@@ -327,8 +320,7 @@ For advanced analytics, the circuit breaker can integrate with DuckDB:
 ```python
 # Create circuit breaker with DuckDB integration
 circuit_breaker = AdaptiveCircuitBreaker(
-    name="analytics_enabled",
-    db_path="./circuit_breaker_metrics.duckdb"
+    name="analytics_enabled", db_path="./circuit_breaker_metrics.duckdb"
 )
 
 # Query metrics from DuckDB
@@ -367,14 +359,18 @@ df = conn.execute("""
 
 # Plot threshold adjustments over time
 plt.figure(figsize=(12, 6))
-optimization_df = df[df['event_type'] == 'optimization']
-plt.plot(optimization_df['timestamp'], optimization_df['failure_threshold'], label='Failure Threshold')
-plt.plot(optimization_df['timestamp'], optimization_df['recovery_timeout'], label='Recovery Timeout')
-plt.title('Circuit Breaker Parameter Optimization Over Time')
-plt.xlabel('Time')
-plt.ylabel('Parameter Value')
+optimization_df = df[df["event_type"] == "optimization"]
+plt.plot(
+    optimization_df["timestamp"], optimization_df["failure_threshold"], label="Failure Threshold"
+)
+plt.plot(
+    optimization_df["timestamp"], optimization_df["recovery_timeout"], label="Recovery Timeout"
+)
+plt.title("Circuit Breaker Parameter Optimization Over Time")
+plt.xlabel("Time")
+plt.ylabel("Parameter Value")
 plt.legend()
-plt.savefig('circuit_breaker_optimization.png')
+plt.savefig("circuit_breaker_optimization.png")
 ```
 
 ## Future Enhancements

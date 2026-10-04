@@ -116,7 +116,7 @@ result = TestRunResult(
     failed_tests=2,
     skipped_tests=0,
     duration_seconds=25.5,
-    metadata={"commit": "abc123", "branch": "main"}
+    metadata={"commit": "abc123", "branch": "main"},
 )
 
 # Convert to dict for serialization
@@ -136,8 +136,7 @@ CIProviderFactory.register_provider("circleci", CircleCIProvider)
 
 # Create provider instance
 provider = await CIProviderFactory.create_provider(
-    "github", 
-    {"token": "token123", "repository": "owner/repo"}
+    "github", {"token": "token123", "repository": "owner/repo"}
 )
 
 # Get list of available providers
@@ -168,10 +167,10 @@ For security, tokens should be provided via environment variables or secure stor
 ```python
 # Recommended approach
 import os
+
 token = os.environ.get("GITHUB_TOKEN")
 provider = await CIProviderFactory.create_provider(
-    "github", 
-    {"token": token, "repository": "owner/repo"}
+    "github", {"token": token, "repository": "owner/repo"}
 )
 ```
 
@@ -213,24 +212,23 @@ The CI/CD API interface integrates seamlessly with the framework's plugin archit
 from distributed_testing.plugin_architecture import Plugin, PluginType, HookType
 from distributed_testing.ci import CIProviderFactory
 
+
 class MyCIIntegrationPlugin(Plugin):
     async def initialize(self, coordinator):
         # Create CI provider using factory
-        self.provider = await CIProviderFactory.create_provider(
-            "github", self.config
-        )
-        
+        self.provider = await CIProviderFactory.create_provider("github", self.config)
+
         # Register for test completion hook
         self.register_hook(HookType.TASK_COMPLETED, self.on_task_completed)
-        
+
         return True
-        
+
     async def on_task_completed(self, task_id, result):
         # Report results to CI system
-        await self.provider.update_test_run(self.test_run_id, {
-            "status": "completed",
-            "summary": self._convert_result_to_summary(result)
-        })
+        await self.provider.update_test_run(
+            self.test_run_id,
+            {"status": "completed", "summary": self._convert_result_to_summary(result)},
+        )
 ```
 
 ## Supported CI/CD Systems
@@ -280,7 +278,7 @@ metadata = ArtifactMetadata(
     artifact_name="test_report.json",
     artifact_path="/path/to/report.json",
     test_run_id="test-123",
-    provider_name="github"
+    provider_name="github",
 )
 
 # Add custom labels for categorization
@@ -307,7 +305,7 @@ matching_artifacts = ArtifactDiscovery.discover_artifacts(
     artifact_type="performance_report",
     labels=["regression-test"],
     metadata_query={"platform": "linux"},
-    content_query={"metrics.throughput": 1250.5}
+    content_query={"metrics.throughput": 1250.5},
 )
 
 # Group artifacts by type
@@ -315,14 +313,12 @@ grouped_artifacts = ArtifactDiscovery.group_artifacts_by_type(all_artifacts)
 
 # Find latest artifact of a specific type
 latest_perf_report = ArtifactDiscovery.find_latest_artifact(
-    artifacts=all_artifacts,
-    artifact_type="performance_report"
+    artifacts=all_artifacts, artifact_type="performance_report"
 )
 
 # Extract metrics from multiple artifacts for analysis
 metrics = ArtifactDiscovery.extract_metrics_from_artifacts(
-    artifacts=perf_artifacts,
-    metric_names=["throughput", "latency", "memory_usage"]
+    artifacts=perf_artifacts, metric_names=["throughput", "latency", "memory_usage"]
 )
 ```
 
@@ -333,9 +329,7 @@ The `ArtifactRetriever` efficiently retrieves and caches artifacts from CI provi
 ```python
 # Create retriever with custom settings
 retriever = ArtifactRetriever(
-    cache_dir="./artifact_cache",
-    max_cache_size_mb=1024,
-    max_cache_age_days=7
+    cache_dir="./artifact_cache", max_cache_size_mb=1024, max_cache_age_days=7
 )
 
 # Register CI providers
@@ -347,22 +341,30 @@ artifact_path, metadata = await retriever.retrieve_artifact(
     test_run_id="test-123",
     artifact_name="performance_report.json",
     provider_name="github",
-    use_cache=True
+    use_cache=True,
 )
 
 # Batch retrieve multiple artifacts in parallel
 artifacts_to_retrieve = [
     {"test_run_id": "test-123", "artifact_name": "logs.txt", "provider_name": "github"},
     {"test_run_id": "test-123", "artifact_name": "metrics.json", "provider_name": "github"},
-    {"test_run_id": "test-456", "artifact_name": "report.json", "provider_name": "gitlab"}
+    {"test_run_id": "test-456", "artifact_name": "report.json", "provider_name": "gitlab"},
 ]
 
 results = await retriever.retrieve_artifacts_batch(artifacts_to_retrieve)
 
 # Compare artifacts between versions
 comparison = await retriever.compare_artifacts(
-    artifact1={"test_run_id": "test-123", "artifact_name": "report.json", "provider_name": "github"},
-    artifact2={"test_run_id": "test-456", "artifact_name": "report.json", "provider_name": "github"}
+    artifact1={
+        "test_run_id": "test-123",
+        "artifact_name": "report.json",
+        "provider_name": "github",
+    },
+    artifact2={
+        "test_run_id": "test-456",
+        "artifact_name": "report.json",
+        "provider_name": "github",
+    },
 )
 ```
 
@@ -384,10 +386,10 @@ from distributed_testing.ci.register_providers import initialize_artifact_system
 providers = await initialize_artifact_systems(
     provider_configs={
         "github": {"token": "github_token", "repository": "owner/repo"},
-        "gitlab": {"token": "gitlab_token", "project": "group/project"}
+        "gitlab": {"token": "gitlab_token", "project": "group/project"},
     },
     artifact_handler_storage_dir="./artifacts",
-    artifact_retriever_cache_dir="./artifact_cache"
+    artifact_retriever_cache_dir="./artifact_cache",
 )
 
 # Access registered providers
@@ -421,25 +423,27 @@ from distributed_testing.integration.ci_cd_integration_plugin import CICDIntegra
 ci_plugin = CICDIntegrationPlugin()
 
 # Configure plugin (or let it auto-detect the CI environment)
-ci_plugin.configure({
-    "ci_system": "github",  # Options: github, gitlab, jenkins, azure, circleci, travis, bitbucket, teamcity, auto
-    "api_token": "YOUR_TOKEN",  # Or username/password for systems that require it
-    "repository": "owner/repo",
-    "update_interval": 30,
-    "enable_pr_comments": True,
-    "enable_artifacts": True,
-    "artifact_dir": "test_artifacts",
-    "result_format": "all",  # Options: junit, json, html, all
-    "enable_history_tracking": True,  # Track test performance over time
-    "track_performance_trends": True,  # Analyze performance trends
-    "retry_attempts": 3  # Retry API calls on failure
-})
+ci_plugin.configure(
+    {
+        "ci_system": "github",  # Options: github, gitlab, jenkins, azure, circleci, travis, bitbucket, teamcity, auto
+        "api_token": "YOUR_TOKEN",  # Or username/password for systems that require it
+        "repository": "owner/repo",
+        "update_interval": 30,
+        "enable_pr_comments": True,
+        "enable_artifacts": True,
+        "artifact_dir": "test_artifacts",
+        "result_format": "all",  # Options: junit, json, html, all
+        "enable_history_tracking": True,  # Track test performance over time
+        "track_performance_trends": True,  # Analyze performance trends
+        "retry_attempts": 3,  # Retry API calls on failure
+    }
+)
 
 # Initialize coordinator with plugin support
 coordinator = DistributedTestingCoordinator(
     db_path="benchmark_db.duckdb",
     enable_plugins=True,
-    plugin_dirs=["distributed_testing/integration"]
+    plugin_dirs=["distributed_testing/integration"],
 )
 
 # Start coordinator
@@ -996,78 +1000,71 @@ import anyio
 import os
 from distributed_testing.ci import CIProviderFactory
 
+
 async def main():
     # Get available providers
     available_providers = CIProviderFactory.get_available_providers()
-    print(f"Available providers: {available_providers}")  # github, gitlab, jenkins, azure, circleci, bitbucket, teamcity, travis
-    
+    print(
+        f"Available providers: {available_providers}"
+    )  # github, gitlab, jenkins, azure, circleci, bitbucket, teamcity, travis
+
     # Choose a provider based on environment or configuration
     # Example configurations for different providers:
-    
+
     configs = {
         "github": {
             "token": os.environ.get("GITHUB_TOKEN"),
             "repository": "owner/repo",
-            "commit_sha": "1234567890abcdef"
+            "commit_sha": "1234567890abcdef",
         },
-        "gitlab": {
-            "token": os.environ.get("GITLAB_TOKEN"),
-            "project_id": "12345",
-            "ref": "main"
-        },
+        "gitlab": {"token": os.environ.get("GITLAB_TOKEN"), "project_id": "12345", "ref": "main"},
         "jenkins": {
             "url": "https://jenkins.example.com/",
             "user": os.environ.get("JENKINS_USER"),
             "token": os.environ.get("JENKINS_TOKEN"),
             "job_name": "test-job",
-            "build_id": "123"
+            "build_id": "123",
         },
         "azure": {
             "org_url": "https://dev.azure.com/organization",
             "project": "project-name",
             "token": os.environ.get("AZURE_TOKEN"),
-            "build_id": "456"
+            "build_id": "456",
         },
         "circleci": {
             "token": os.environ.get("CIRCLE_TOKEN"),
             "project_slug": "github/owner/repo",
-            "build_num": os.environ.get("CIRCLE_BUILD_NUM")
+            "build_num": os.environ.get("CIRCLE_BUILD_NUM"),
         },
         "bitbucket": {
             "username": os.environ.get("BB_USERNAME"),
             "app_password": os.environ.get("BB_APP_PASSWORD"),
             "workspace": "workspace-name",
             "repository": "repo-name",
-            "commit_hash": "abcdef1234567890"
+            "commit_hash": "abcdef1234567890",
         },
         "teamcity": {
             "url": "https://teamcity.example.com",
             "username": os.environ.get("TC_USERNAME"),
             "password": os.environ.get("TC_PASSWORD"),
-            "build_id": "123"
+            "build_id": "123",
         },
         "travis": {
             "token": os.environ.get("TRAVIS_TOKEN"),
             "repository": "owner/repo",
-            "build_id": os.environ.get("TRAVIS_BUILD_ID")
-        }
+            "build_id": os.environ.get("TRAVIS_BUILD_ID"),
+        },
     }
-    
+
     # Choose provider based on environment
     provider_type = os.environ.get("CI_PROVIDER", "github")
-    
+
     # Create CI provider using factory
-    provider = await CIProviderFactory.create_provider(
-        provider_type,
-        configs[provider_type]
-    )
-    
+    provider = await CIProviderFactory.create_provider(provider_type, configs[provider_type])
+
     # Create a test run
-    test_run = await provider.create_test_run({
-        "name": "Example Test Run",
-        "build_id": "12345"
-    })
-    
+    test_run = await provider.create_test_run({"name": "Example Test Run", "build_id": "12345"})
+
     # Update test run status
     await provider.update_test_run(
         test_run["id"],
@@ -1075,46 +1072,34 @@ async def main():
             "status": "running",
             "summary": {
                 "total_tasks": 10,
-                "task_statuses": {
-                    "completed": 5,
-                    "running": 3,
-                    "failed": 2
-                },
-                "duration": 15.2
-            }
-        }
+                "task_statuses": {"completed": 5, "running": 3, "failed": 2},
+                "duration": 15.2,
+            },
+        },
     )
-    
+
     # Add PR comment if supported by the provider
     if hasattr(provider, "add_pr_comment"):
-        await provider.add_pr_comment(
-            "123",
-            "## Test Results\n\n8/10 tests passed in 25.5 seconds"
-        )
-    
+        await provider.add_pr_comment("123", "## Test Results\n\n8/10 tests passed in 25.5 seconds")
+
     # Upload artifact
-    await provider.upload_artifact(
-        test_run["id"],
-        "test_results.json",
-        "Test Results"
-    )
-    
+    await provider.upload_artifact(test_run["id"], "test_results.json", "Test Results")
+
     # Record performance metrics for analysis
     await provider.record_performance_metric(
         test_run_id=test_run["id"],
         task_id="task-123",
         metric_name="execution_time",
         metric_value=0.75,
-        unit="seconds"
+        unit="seconds",
     )
-    
+
     # Analyze performance trends
     trends = await provider.analyze_performance_trends(
-        metric_name="execution_time",
-        grouping="task_type"
+        metric_name="execution_time", grouping="task_type"
     )
     print(f"Performance trends: {trends}")
-    
+
     # Complete the test run
     await provider.update_test_run(
         test_run["id"],
@@ -1122,17 +1107,15 @@ async def main():
             "status": "completed",
             "summary": {
                 "total_tasks": 10,
-                "task_statuses": {
-                    "completed": 8,
-                    "failed": 2
-                },
-                "duration": 25.5
-            }
-        }
+                "task_statuses": {"completed": 8, "failed": 2},
+                "duration": 25.5,
+            },
+        },
     )
-    
+
     # Clean up
     await provider.close()
+
 
 anyio.run(main)
 ```
@@ -1188,7 +1171,7 @@ await ci_client.record_performance_metric(
     task_id="task-456",
     metric_name="execution_time",
     metric_value=1.23,
-    unit="seconds"
+    unit="seconds",
 )
 ```
 
@@ -1208,8 +1191,8 @@ The `analyze_performance_trends` method provides powerful analysis of performanc
 trends = await ci_client.analyze_performance_trends(
     metric_name="execution_time",
     grouping="branch",  # branch, commit, task_type
-    timeframe="1w",     # 1d, 1w, 1m, all
-    limit=5
+    timeframe="1w",  # 1d, 1w, 1m, all
+    limit=5,
 )
 ```
 
@@ -1224,11 +1207,7 @@ This returns a comprehensive analysis including:
 The test history can be queried using the `get_test_history` method:
 
 ```python
-history = await ci_client.get_test_history(
-    limit=10,
-    branch="main",
-    commit_sha="1234567890abcdef"
-)
+history = await ci_client.get_test_history(limit=10, branch="main", commit_sha="1234567890abcdef")
 ```
 
 This returns a list of test runs with their associated metadata, making it easy to track test performance over time and identify trends or regressions.
@@ -1282,9 +1261,7 @@ from distributed_testing.cicd_integration import CICDIntegration
 from distributed_testing.js_sdk_runner import JavaScriptSDKRunner
 
 integration = CICDIntegration(
-    coordinator_url="http://coordinator-url:8080",
-    api_key="YOUR_API_KEY",
-    provider="github"
+    coordinator_url="http://coordinator-url:8080", api_key="YOUR_API_KEY", provider="github"
 )
 
 # Create test run
@@ -1297,8 +1274,8 @@ results = js_runner.run_tests(
     env={
         "TEST_RUN_ID": test_run_id,
         "GITHUB_TOKEN": os.environ.get("GITHUB_TOKEN"),
-        "GITHUB_REPOSITORY": os.environ.get("GITHUB_REPOSITORY")
-    }
+        "GITHUB_REPOSITORY": os.environ.get("GITHUB_REPOSITORY"),
+    },
 )
 
 # Update test results
@@ -1312,25 +1289,28 @@ To add support for a new CI system, implement the `CIProviderInterface`:
 ```python
 from distributed_testing.ci.api_interface import CIProviderInterface
 
+
 class MyCIProvider(CIProviderInterface):
     """Custom CI provider implementation."""
-    
+
     async def initialize(self, config):
         # Initialize provider with configuration
         return True
-    
+
     async def create_test_run(self, test_run_data):
         # Create a test run
         return {"id": "test-run-id", "status": "running"}
-    
+
     # Implement other required methods...
-    
+
     async def close(self):
         # Clean up resources
         pass
 
+
 # Register provider with factory
 from distributed_testing.ci import CIProviderFactory
+
 CIProviderFactory.register_provider("my-ci", MyCIProvider)
 ```
 
@@ -1342,6 +1322,7 @@ For multi-environment CI setup:
 import os
 from distributed_testing.ci import CIProviderFactory
 
+
 async def create_ci_provider():
     # Detect environment
     if os.environ.get("GITHUB_ACTIONS") == "true":
@@ -1349,19 +1330,19 @@ async def create_ci_provider():
         config = {
             "token": os.environ.get("GITHUB_TOKEN"),
             "repository": os.environ.get("GITHUB_REPOSITORY"),
-            "commit_sha": os.environ.get("GITHUB_SHA")
+            "commit_sha": os.environ.get("GITHUB_SHA"),
         }
     elif os.environ.get("GITLAB_CI") == "true":
         provider_type = "gitlab"
         config = {
             "token": os.environ.get("GITLAB_TOKEN"),
             "project": os.environ.get("CI_PROJECT_PATH"),
-            "commit_sha": os.environ.get("CI_COMMIT_SHA")
+            "commit_sha": os.environ.get("CI_COMMIT_SHA"),
         }
     else:
         provider_type = "generic"
         config = {}
-    
+
     # Create provider
     return await CIProviderFactory.create_provider(provider_type, config)
 ```
@@ -1402,16 +1383,17 @@ async def create_ci_provider():
 import os
 import requests
 
+
 def test_github_token(token=None):
     """Test if a GitHub token is valid."""
     token = token or os.environ.get("GITHUB_TOKEN")
     if not token:
         print("No token provided or found in GITHUB_TOKEN environment variable")
         return False
-        
+
     headers = {"Authorization": f"token {token}"}
     response = requests.get("https://api.github.com/user", headers=headers)
-    
+
     if response.status_code == 200:
         user_data = response.json()
         print(f"Token is valid for user: {user_data['login']}")
@@ -1476,7 +1458,8 @@ def test_github_token(token=None):
   ```python
   # For GitHub
   from distributed_testing.ci import GitHubClient
-  
+
+
   # Test PR commenting
   async def test_pr_comment(token, repo, pr_number):
       client = GitHubClient()
@@ -1588,6 +1571,7 @@ os.environ["DISTRIBUTED_TESTING_DEBUG_PROXY_PORT"] = "8888"
 
 # Start the debug proxy before running tests
 from distributed_testing.debug import start_proxy_server
+
 start_proxy_server()
 
 # Then run your tests with requests going through the debug proxy
@@ -1606,6 +1590,7 @@ start_proxy_server()
    - Print environment variables to ensure they are available and correct
    ```python
    import os
+
    for key in ["GITHUB_TOKEN", "GITHUB_REPOSITORY", "GITHUB_SHA"]:
        value = os.environ.get(key, "NOT SET")
        masked_value = value[:4] + "***" if len(value) > 4 else value
@@ -1636,31 +1621,33 @@ class CIProviderInterface(abc.ABC):
     @abc.abstractmethod
     async def initialize(self, config: Dict[str, Any]) -> bool:
         """Initialize the CI provider with configuration."""
-    
+
     @abc.abstractmethod
     async def create_test_run(self, test_run_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new test run in the CI system."""
-    
+
     @abc.abstractmethod
     async def update_test_run(self, test_run_id: str, update_data: Dict[str, Any]) -> bool:
         """Update a test run in the CI system."""
-    
+
     @abc.abstractmethod
     async def add_pr_comment(self, pr_number: str, comment: str) -> bool:
         """Add a comment to a pull request."""
-    
+
     @abc.abstractmethod
-    async def upload_artifact(self, test_run_id: str, artifact_path: str, artifact_name: str) -> bool:
+    async def upload_artifact(
+        self, test_run_id: str, artifact_path: str, artifact_name: str
+    ) -> bool:
         """Upload an artifact for a test run."""
-    
+
     @abc.abstractmethod
     async def get_test_run_status(self, test_run_id: str) -> Dict[str, Any]:
         """Get the status of a test run."""
-    
+
     @abc.abstractmethod
     async def set_build_status(self, status: str, description: str) -> bool:
         """Set the build status in the CI system."""
-    
+
     @abc.abstractmethod
     async def close(self) -> None:
         """Close the CI provider and clean up resources."""
@@ -1679,15 +1666,15 @@ class TestRunResult:
         failed_tests: int,
         skipped_tests: int,
         duration_seconds: float,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
     ):
         """Initialize a test run result."""
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'TestRunResult':
+    def from_dict(cls, data: Dict[str, Any]) -> "TestRunResult":
         """Create from dictionary."""
 ```
 
@@ -1698,11 +1685,13 @@ class CIProviderFactory:
     @classmethod
     def register_provider(cls, provider_type: str, provider_class: type) -> None:
         """Register a CI provider class."""
-    
+
     @classmethod
-    async def create_provider(cls, provider_type: str, config: Dict[str, Any]) -> CIProviderInterface:
+    async def create_provider(
+        cls, provider_type: str, config: Dict[str, Any]
+    ) -> CIProviderInterface:
         """Create a CI provider instance."""
-    
+
     @classmethod
     def get_available_providers(cls) -> List[str]:
         """Get list of available provider types."""

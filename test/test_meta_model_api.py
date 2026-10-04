@@ -54,14 +54,8 @@ def test_credential_precedence_is_explicit_then_environment_then_encrypted_store
     manager = _FakeSecretsManager("stored-value")
 
     monkeypatch.setenv("MODEL_API_KEY", "environment-value")
-    assert (
-        resolve_meta_model_api_key("explicit-value", secrets_manager=manager)
-        == "explicit-value"
-    )
-    assert (
-        resolve_meta_model_api_key(secrets_manager=manager)
-        == "environment-value"
-    )
+    assert resolve_meta_model_api_key("explicit-value", secrets_manager=manager) == "explicit-value"
+    assert resolve_meta_model_api_key(secrets_manager=manager) == "environment-value"
     assert manager.requested == []
 
     monkeypatch.delenv("MODEL_API_KEY")

@@ -15,20 +15,38 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, 
-format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 # Try to import required components
 try:
     from scripts.generators.utils.resource_pool import get_global_resource_pool
-    # For syntactic validation only, not trying to import 
+
+    # For syntactic validation only, not trying to import
     # hardware_detection that doesn't exist here yet
-    CUDA, ROCM, MPS, OPENVINO, CPU, WEBNN, WEBGPU = "cuda", "rocm", "mps", "openvino", "cpu", "webnn", "webgpu"
+    CUDA, ROCM, MPS, OPENVINO, CPU, WEBNN, WEBGPU = (
+        "cuda",
+        "rocm",
+        "mps",
+        "openvino",
+        "cpu",
+        "webnn",
+        "webgpu",
+    )
 except ImportError as e:
     logger.error(f"Required module not found: {e}")
     logger.error("Make sure resource_pool.py is in your path")
-    CUDA, ROCM, MPS, OPENVINO, CPU, WEBNN, WEBGPU = "cuda", "rocm", "mps", "openvino", "cpu", "webnn", "webgpu"
+    CUDA, ROCM, MPS, OPENVINO, CPU, WEBNN, WEBGPU = (
+        "cuda",
+        "rocm",
+        "mps",
+        "openvino",
+        "cpu",
+        "webnn",
+        "webgpu",
+    )
 
 # Try to import model classification components
 try:
@@ -43,29 +61,46 @@ except ImportError as e:
 try:
     from hardware_model_integration import (
         HardwareAwareModelClassifier,
-        get_hardware_aware_model_classification
+        get_hardware_aware_model_classification,
     )
+
     HARDWARE_MODEL_INTEGRATION_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"Hardware-model integration not available: {e}")
     logger.warning("Will use basic hardware-model integration")
     HARDWARE_MODEL_INTEGRATION_AVAILABLE = False
 
+
 def parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description="Test generator with resource pool integration")
     parser.add_argument("--model", type=str, required=True, help="Model name to generate tests for")
-    parser.add_argument("--output-dir", type=str, default="./skills", help="Output directory for generated tests")
-    parser.add_argument("--timeout", type=float, default=0.1, help="Resource cleanup timeout (minutes)")
-    parser.add_argument("--clear-cache", action="store_true", help="Clear resource cache before running")
+    parser.add_argument(
+        "--output-dir", type=str, default="./skills", help="Output directory for generated tests"
+    )
+    parser.add_argument(
+        "--timeout", type=float, default=0.1, help="Resource cleanup timeout (minutes)"
+    )
+    parser.add_argument(
+        "--clear-cache", action="store_true", help="Clear resource cache before running"
+    )
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
-    parser.add_argument("--device", type=str, choices=["cpu", "cuda", "mps", "auto"], 
-    default="auto", help="Force specific device for testing")
+    parser.add_argument(
+        "--device",
+        type=str,
+        choices=["cpu", "cuda", "mps", "auto"],
+        default="auto",
+        help="Force specific device for testing",
+    )
     parser.add_argument("--hw-cache", type=str, help="Path to hardware detection cache")
     parser.add_argument("--model-db", type=str, help="Path to model database")
-    parser.add_argument("--use-model-family", action="store_true", 
-    help="Use model family classifier for optimal template selection")
+    parser.add_argument(
+        "--use-model-family",
+        action="store_true",
+        help="Use model family classifier for optimal template selection",
+    )
     return parser.parse_args()
+
 
 def setup_environment(args):
     """Set up the environment and configure logging"""
@@ -73,39 +108,41 @@ def setup_environment(args):
         logging.getLogger().setLevel(logging.DEBUG)
         logger.setLevel(logging.DEBUG)
         logger.debug("Debug logging enabled")
-    
+
     # Clear resource pool if requested:
     if args.clear_cache:
         pool = get_global_resource_pool()
         pool.clear()
         logger.info("Resource pool cleared")
 
+
 def load_dependencies():
     """Load common dependencies with resource pooling"""
     logger.info("Loading dependencies using resource pool")
     pool = get_global_resource_pool()
-    
+
     # Load common libraries
     torch = pool.get_resource("torch", constructor=lambda: __import__("torch"))
     transformers = pool.get_resource("transformers", constructor=lambda: __import__("transformers"))
-    
+
     # Check if dependencies were loaded successfully:
     if torch is None or transformers is None:
         logger.error("Failed to load required dependencies")
         return False
-    
+
     logger.info("Dependencies loaded successfully")
     return True
+
 
 def get_hardware_aware_classification(model_name, hw_cache_path=None, model_db_path=None):
     """
     Get hardware-aware model classification
-    
+
     Args:
         model_name: Model name to classify
         hw_cache_path: Optional path to hardware detection cache
         model_db_path: Optional path to model database
-        
+
     Returns:
         Dictionary with hardware-aware classification results
     """
@@ -114,28 +151,26 @@ def get_hardware_aware_classification(model_name, hw_cache_path=None, model_db_p
         try:
             logger.info("Using hardware-model integration for classification")
             classification = get_hardware_aware_model_classification(
-                model_name=model_name,
-                hw_cache_path=hw_cache_path,
-                model_db_path=model_db_path
+                model_name=model_name, hw_cache_path=hw_cache_path, model_db_path=model_db_path
             )
             return classification
         except Exception as e:
             logger.warning(f"Error using hardware-model integration: {e}")
-    
+
     # Fallback to simpler classification with hardware detection
     logger.info("Using basic hardware-model integration")
-    
+
     # Simplified hardware detection for syntax validation
     hardware_result = {
-        "cuda": HAS_CUDA if 'HAS_CUDA' in globals() else False,
-        "mps": HAS_MPS if 'HAS_MPS' in globals() else False,
+        "cuda": HAS_CUDA if "HAS_CUDA" in globals() else False,
+        "mps": HAS_MPS if "HAS_MPS" in globals() else False,
         "best_available": "cpu",
-        "torch_device": "cpu"
+        "torch_device": "cpu",
     }
     hardware_info = {k: v for k, v in hardware_result.items() if isinstance(v, bool)}
-    best_hardware = hardware_result.get('best_available', CPU)
-    torch_device = hardware_result.get('torch_device', 'cpu')
-    
+    best_hardware = hardware_result.get("best_available", CPU)
+    torch_device = hardware_result.get("torch_device", "cpu")
+
     # Classify model if classifier is available
     model_family = "default"
     subfamily = None
@@ -148,62 +183,66 @@ def get_hardware_aware_classification(model_name, hw_cache_path=None, model_db_p
                 "rocm": {"compatible": hardware_info.get("rocm", False)},
                 "openvino": {"compatible": hardware_info.get("openvino", False)},
                 "webnn": {"compatible": hardware_info.get("webnn", False)},
-                "webgpu": {"compatible": hardware_info.get("webgpu", False)}
+                "webgpu": {"compatible": hardware_info.get("webgpu", False)},
             }
-            
+
             # Call classify_model with model name and hardware compatibility
             classification = classify_model(
                 model_name=model_name,
                 hw_compatibility=hw_compatibility,
-                model_db_path=model_db_path
+                model_db_path=model_db_path,
             )
-            
+
             model_family = classification.get("family", "default")
             subfamily = classification.get("subfamily")
             confidence = classification.get("confidence", 0)
-            logger.info(f"Model classified as: {model_family} (subfamily: {subfamily}, confidence: {confidence:.2f})")
+            logger.info(
+                f"Model classified as: {model_family} (subfamily: {subfamily}, confidence: {confidence:.2f})"
+            )
         except Exception as e:
             logger.warning(f"Error classifying model: {e}")
-    
+
     # Build and return classification dictionary
     return {
         "family": model_family,
         "subfamily": subfamily,
         "best_hardware": best_hardware,
         "torch_device": torch_device,
-        "hardware_info": hardware_info
+        "hardware_info": hardware_info,
     }
 
-def generate_test_file(model_name, output_dir="./", model_family="default",
-                      model_subfamily=None, hardware_info=None):
+
+def generate_test_file(
+    model_name, output_dir="./", model_family="default", model_subfamily=None, hardware_info=None
+):
     """
     Generate test file for a model with hardware-specific configurations.
-    
+
     Args:
         model_name: Name of the model to generate tests for
         output_dir: Directory to write the test file to
         model_family: Model family for template selection
         model_subfamily: Optional model subfamily for template selection
         hardware_info: Dictionary with hardware availability information
-        
+
     Returns:
         Path to the generated test file
     """
     # Make sure output directory exists
     os.makedirs(output_dir, exist_ok=True)
-    
+
     # Generate file name
     normalized_name = model_name.replace("/", "_").replace("-", "_").lower()
     file_name = f"test_hf_{normalized_name}.py"
     file_path = os.path.join(output_dir, file_name)
-    
+
     # Prepare hardware support information
     if hardware_info is None:
         hardware_info = {}
-    
+
     best_hardware = hardware_info.get("best_hardware", "cpu")
     torch_device = hardware_info.get("torch_device", "cpu")
-    
+
     # Determine available hardware for import statements
     has_cuda = hardware_info.get("cuda", False)
     has_mps = hardware_info.get("mps", False)
@@ -211,7 +250,7 @@ def generate_test_file(model_name, output_dir="./", model_family="default",
     has_openvino = hardware_info.get("openvino", False)
     has_webnn = hardware_info.get("webnn", False)
     has_webgpu = hardware_info.get("webgpu", False)
-    
+
     # Prepare template context
     context = {
         "model_name": model_name,
@@ -227,30 +266,31 @@ def generate_test_file(model_name, output_dir="./", model_family="default",
         "has_webnn": has_webnn,
         "has_webgpu": has_webgpu,
         "generated_at": datetime.now().isoformat(),
-        "generator": __file__
+        "generator": __file__,
     }
-    
+
     # Select appropriate template based on model family
     template = get_template_for_model(model_family, model_subfamily)
-    
+
     # Render template with context
     test_content = render_template(template, context)
-    
+
     # Write test file
     with open(file_path, "w") as f:
         f.write(test_content)
-    
+
     logger.info(f"Generated test file: {file_path}")
     return file_path
+
 
 def get_template_for_model(model_family, model_subfamily=None):
     """
     Select appropriate template based on model family and subfamily.
-    
+
     Args:
         model_family: Model family (e.g., "bert", "t5", "vit")
         model_subfamily: Optional model subfamily
-        
+
     Returns:
         Template string for the model family
     """
@@ -274,17 +314,18 @@ def get_template_for_model(model_family, model_subfamily=None):
     else:
         # Default to generic text model
         template = TEMPLATES["default"]
-    
+
     return template
+
 
 def render_template(template, context):
     """
     Render a template with the given context.
-    
+
     Args:
         template: Template string
         context: Dictionary with variables for template rendering
-        
+
     Returns:
         Rendered template string
     """
@@ -294,8 +335,9 @@ def render_template(template, context):
         placeholder = f"{{{key}}}"
         if placeholder in rendered:
             rendered = rendered.replace(placeholder, str(value))
-    
+
     return rendered
+
 
 # Template definitions
 TEMPLATES = {
@@ -373,7 +415,6 @@ class Test{normalized_name}(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 ''',
-    
     # More templates for specific model families would go here
     "bert": '''#!/usr/bin/env python3
 """
@@ -453,7 +494,6 @@ class Test{normalized_name}(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 ''',
-    
     # Simple template for T5
     "t5": '''#!/usr/bin/env python3
 """
@@ -517,7 +557,6 @@ class Test{normalized_name}(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 ''',
-    
     # Simple template for CLIP
     "clip": '''#!/usr/bin/env python3
 """
@@ -586,7 +625,6 @@ class Test{normalized_name}(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 ''',
-    
     # Simple template for vision models
     "vit": '''#!/usr/bin/env python3
 """
@@ -657,7 +695,6 @@ class Test{normalized_name}(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 ''',
-
     # Add other templates for different model types
     "whisper": '''#!/usr/bin/env python3
 """
@@ -733,7 +770,6 @@ class Test{normalized_name}(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 ''',
-
     "wav2vec2": '''#!/usr/bin/env python3
 """
 Wav2Vec2 model test with resource pool integration.
@@ -805,7 +841,6 @@ class Test{normalized_name}(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 ''',
-
     "llama": '''#!/usr/bin/env python3
 """
 LLaMA model test with resource pool integration.
@@ -873,7 +908,6 @@ class Test{normalized_name}(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 ''',
-
     "clap": '''#!/usr/bin/env python3
 """
 CLAP model test with resource pool integration.
@@ -943,37 +977,37 @@ class Test{normalized_name}(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-'''
+''',
 }
+
 
 def main():
     """Main function."""
     args = parse_args()
     setup_environment(args)
-    
+
     # Load dependencies
     if not load_dependencies():
         logger.error("Failed to load dependencies. Exiting.")
         return 1
-    
+
     # Get hardware-aware classification
     classification = get_hardware_aware_classification(
-        model_name=args.model,
-        hw_cache_path=args.hw_cache,
-        model_db_path=args.model_db
+        model_name=args.model, hw_cache_path=args.hw_cache, model_db_path=args.model_db
     )
-    
+
     # Generate test file
     output_file = generate_test_file(
         model_name=args.model,
         output_dir=args.output_dir,
         model_family=classification.get("family", "default"),
         model_subfamily=classification.get("subfamily"),
-        hardware_info=classification
+        hardware_info=classification,
     )
-    
+
     logger.info(f"Test file generated successfully: {output_file}")
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

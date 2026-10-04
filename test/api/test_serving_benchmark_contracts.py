@@ -2,8 +2,18 @@ import asyncio
 import time
 
 from ipfs_accelerate_py.docker_executor import DockerExecutionConfig, DockerExecutor
-from ipfs_accelerate_py.inference_backend_manager import BackendCapabilities, BackendType, InferenceBackendManager
-from ipfs_accelerate_py.model_manager import DataType, IOSpec, ModelManager, ModelMetadata, ModelType
+from ipfs_accelerate_py.inference_backend_manager import (
+    BackendCapabilities,
+    BackendType,
+    InferenceBackendManager,
+)
+from ipfs_accelerate_py.model_manager import (
+    DataType,
+    IOSpec,
+    ModelManager,
+    ModelMetadata,
+    ModelType,
+)
 from ipfs_accelerate_py.p2p_tasks.task_queue import TaskQueue
 
 
@@ -58,7 +68,9 @@ def test_benchmark_backend_throughput(tmp_path):
     started = time.perf_counter()
     completed = 0
     for _ in range(50):
-        result = asyncio.run(manager.execute_task(task="text-generation", model="model-a", inputs=["hello"]))
+        result = asyncio.run(
+            manager.execute_task(task="text-generation", model="model-a", inputs=["hello"])
+        )
         assert result["backend_id"] == "backend-1"
         completed += 1
     elapsed = time.perf_counter() - started
@@ -136,7 +148,9 @@ def test_benchmark_failover_reselection_latency(tmp_path):
         capabilities=BackendCapabilities(supported_tasks={"text-generation"}, protocols={"http"}),
         endpoint="http://example.invalid/2",
     )
-    manager.backends["backend-unhealthy"].status = manager.backends["backend-unhealthy"].status.UNHEALTHY
+    manager.backends["backend-unhealthy"].status = manager.backends[
+        "backend-unhealthy"
+    ].status.UNHEALTHY
 
     started = time.perf_counter()
     chosen = None

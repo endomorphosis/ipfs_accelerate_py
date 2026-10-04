@@ -140,10 +140,7 @@ from duckdb_api.distributed_testing.worker import WorkerClient
 from duckdb_api.distributed_testing.worker_error_reporting import integrate_error_reporting
 
 # Create standard worker client
-worker = WorkerClient(
-    coordinator_url="ws://localhost:8080",
-    api_key="YOUR_API_KEY"
-)
+worker = WorkerClient(coordinator_url="ws://localhost:8080", api_key="YOUR_API_KEY")
 
 # Integrate enhanced error reporting
 worker = integrate_error_reporting(worker)
@@ -161,8 +158,7 @@ from duckdb_api.distributed_testing.worker_error_reporting import EnhancedErrorR
 
 # Create error reporter
 error_reporter = EnhancedErrorReporter(
-    worker_id="worker-123",
-    capabilities={"hardware_types": ["cuda", "cpu"]}
+    worker_id="worker-123", capabilities={"hardware_types": ["cuda", "cpu"]}
 )
 
 try:
@@ -171,11 +167,9 @@ try:
 except Exception as e:
     # Create enhanced error report
     enhanced_error = error_reporter.create_enhanced_error_report(
-        error_type="TaskExecutionError",
-        message=str(e),
-        task_id="task-456"
+        error_type="TaskExecutionError", message=str(e), task_id="task-456"
     )
-    
+
     # Report error with enhanced context
     report_error_to_coordinator(enhanced_error)
 ```
@@ -343,17 +337,19 @@ You can extend the error categories to include domain-specific error types:
 from duckdb_api.distributed_testing.distributed_error_handler import ErrorCategory
 from enum import Enum
 
+
 # Create custom error categories
 class CustomErrorCategory(Enum):
     MODEL_LOADING_ERROR = "model_loading_error"
     QUANTIZATION_ERROR = "quantization_error"
     DATA_PREPROCESSING_ERROR = "data_preprocessing_error"
 
+
 # Use custom categories in error reporter
 error_reporter = EnhancedErrorReporter(
     worker_id="worker-123",
     capabilities={"hardware_types": ["cuda", "cpu"]},
-    custom_categories=CustomErrorCategory
+    custom_categories=CustomErrorCategory,
 )
 ```
 

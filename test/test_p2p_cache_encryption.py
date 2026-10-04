@@ -23,8 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("test_p2p_cache")
 
@@ -39,6 +38,7 @@ def test_encryption_dependencies():
         from cryptography.fernet import Fernet
         from cryptography.hazmat.primitives import hashes
         from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
         logger.info("✓ cryptography package available")
         return True
     except ImportError as e:
@@ -55,6 +55,7 @@ def test_multiformats_dependencies():
 
     try:
         from multiformats import CID, multihash
+
         logger.info("✓ multiformats package available")
         return True
     except ImportError as e:
@@ -78,7 +79,9 @@ def test_libp2p_dependencies():
         return True
     except ImportError as e:
         logger.warning(f"⚠ libp2p package not available: {e}")
-        logger.warning("  Optional but required for P2P: pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p.git@main'")
+        logger.warning(
+            "  Optional but required for P2P: pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p.git@main'"
+        )
         return False
 
 
@@ -98,12 +101,8 @@ def test_github_token_available():
     # Try gh CLI
     try:
         import subprocess
-        result = subprocess.run(
-            ["gh", "auth", "token"],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
+
+        result = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, timeout=5)
         if result.returncode == 0 and result.stdout.strip():
             token = result.stdout.strip()
             logger.info("✓ GitHub token available from gh CLI")
@@ -133,7 +132,7 @@ def test_encryption_key_derivation():
         cache = GitHubAPICache(
             cache_dir=cache_dir,
             enable_persistence=False,
-            enable_p2p=False  # Don't start P2P for this test
+            enable_p2p=False,  # Don't start P2P for this test
         )
 
         # Try to initialize encryption
@@ -168,22 +167,14 @@ def test_message_encryption_decryption():
         from ipfs_accelerate_py.github_cli.cache import GitHubAPICache
 
         cache_dir = tempfile.mkdtemp(prefix="test_cache_")
-        cache = GitHubAPICache(
-            cache_dir=cache_dir,
-            enable_persistence=False,
-            enable_p2p=False
-        )
+        cache = GitHubAPICache(cache_dir=cache_dir, enable_persistence=False, enable_p2p=False)
 
         cache._init_encryption()
 
         # Test message
         test_message = {
             "key": "test_key",
-            "entry": {
-                "data": {"repos": ["repo1", "repo2"]},
-                "timestamp": time.time(),
-                "ttl": 300
-            }
+            "entry": {"data": {"repos": ["repo1", "repo2"]}, "timestamp": time.time(), "ttl": 300},
         }
 
         # Encrypt
@@ -193,7 +184,7 @@ def test_message_encryption_decryption():
         logger.info(f"  Encrypted data (first 50 bytes): {encrypted[:50].hex()}")
 
         # Verify it's actually encrypted (not plaintext)
-        plaintext = json.dumps(test_message).encode('utf-8')
+        plaintext = json.dumps(test_message).encode("utf-8")
         if encrypted == plaintext:
             logger.error("✗ Message not actually encrypted!")
             return False
@@ -217,6 +208,7 @@ def test_message_encryption_decryption():
     except Exception as e:
         logger.error(f"✗ Encryption/decryption test failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -233,29 +225,18 @@ def test_wrong_key_decryption():
 
         # Create cache 1 with real GitHub token
         cache_dir1 = tempfile.mkdtemp(prefix="test_cache_1_")
-        cache1 = GitHubAPICache(
-            cache_dir=cache_dir1,
-            enable_persistence=False,
-            enable_p2p=False
-        )
+        cache1 = GitHubAPICache(cache_dir=cache_dir1, enable_persistence=False, enable_p2p=False)
         cache1._init_encryption()
 
         # Create cache 2 with different key (simulating different GitHub token)
         cache_dir2 = tempfile.mkdtemp(prefix="test_cache_2_")
-        cache2 = GitHubAPICache(
-            cache_dir=cache_dir2,
-            enable_persistence=False,
-            enable_p2p=False
-        )
+        cache2 = GitHubAPICache(cache_dir=cache_dir2, enable_persistence=False, enable_p2p=False)
         cache2._init_encryption()
         # Replace with different key
         cache2._cipher = Fernet(Fernet.generate_key())
 
         # Test message
-        test_message = {
-            "key": "test_key",
-            "entry": {"data": "secret_data"}
-        }
+        test_message = {"key": "test_key", "entry": {"data": "secret_data"}}
 
         # Encrypt with cache1
         logger.info("Encrypting message with key 1...")
@@ -278,6 +259,7 @@ def test_wrong_key_decryption():
     except Exception as e:
         logger.error(f"✗ Wrong key test failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -293,10 +275,7 @@ def test_cache_basic_operations():
 
         cache_dir = tempfile.mkdtemp(prefix="test_cache_")
         cache = GitHubAPICache(
-            cache_dir=cache_dir,
-            enable_persistence=False,
-            enable_p2p=False,
-            default_ttl=5
+            cache_dir=cache_dir, enable_persistence=False, enable_p2p=False, default_ttl=5
         )
 
         # Test put
@@ -328,7 +307,7 @@ def test_cache_basic_operations():
         logger.info("Testing cache statistics...")
         stats = cache.get_stats()
         logger.info(f"  Cache stats: {json.dumps(stats, indent=2)}")
-        if stats['hits'] > 0 and stats['misses'] > 0:
+        if stats["hits"] > 0 and stats["misses"] > 0:
             logger.info("✓ Statistics tracking works")
         else:
             logger.error("✗ Statistics not tracking correctly")
@@ -339,6 +318,7 @@ def test_cache_basic_operations():
     except Exception as e:
         logger.error(f"✗ Basic cache operations failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -358,7 +338,7 @@ def test_content_hashing():
         logger.info("Testing validation field extraction...")
         test_repos = [
             {"name": "repo1", "updatedAt": "2025-11-08T10:00:00Z"},
-            {"name": "repo2", "updatedAt": "2025-11-08T11:00:00Z"}
+            {"name": "repo2", "updatedAt": "2025-11-08T11:00:00Z"},
         ]
 
         validation_fields = cache._extract_validation_fields("list_repos", test_repos)
@@ -398,6 +378,7 @@ def test_content_hashing():
     except Exception as e:
         logger.error(f"✗ Content hashing test failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -422,7 +403,7 @@ def test_github_cli_integration():
         logger.info(f"✓ Global cache retrieved")
 
         # Check if encryption is enabled
-        if hasattr(cache, '_cipher') and cache._cipher:
+        if hasattr(cache, "_cipher") and cache._cipher:
             logger.info("✓ Cache has encryption enabled")
         else:
             logger.warning("⚠ Cache encryption not enabled")
@@ -440,6 +421,7 @@ def test_github_cli_integration():
     except Exception as e:
         logger.error(f"✗ GitHub CLI integration test failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -484,7 +466,7 @@ def run_all_tests():
         logger.info(f"{status:10} | {test_name}")
 
     logger.info("=" * 70)
-    logger.info(f"Total: {passed}/{total} tests passed ({passed/total*100:.1f}%)")
+    logger.info(f"Total: {passed}/{total} tests passed ({passed / total * 100:.1f}%)")
     logger.info("=" * 70)
 
     if passed == total:

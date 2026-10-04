@@ -68,7 +68,9 @@ def main() -> int:
             started = time.time()
 
             async with anyio.create_task_group() as tg:
-                tg.start_soon(functools.partial(serve_task_queue, queue_path=queue_path, listen_port=port))
+                tg.start_soon(
+                    functools.partial(serve_task_queue, queue_path=queue_path, listen_port=port)
+                )
 
                 # Wait for the service to publish its announce file.
                 deadline = anyio.current_time() + 15.0
@@ -91,7 +93,9 @@ def main() -> int:
                     return 1
 
                 # Dial the service directly via its announced multiaddr.
-                resp = await request_status(remote=RemoteQueue(multiaddr=multiaddr), timeout_s=5.0, detail=False)
+                resp = await request_status(
+                    remote=RemoteQueue(multiaddr=multiaddr), timeout_s=5.0, detail=False
+                )
 
                 elapsed_ms = int((time.time() - started) * 1000)
                 print(f"Elapsed: {elapsed_ms}ms")

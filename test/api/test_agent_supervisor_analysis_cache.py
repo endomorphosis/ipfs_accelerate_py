@@ -173,16 +173,12 @@ def test_non_success_outcomes_have_bounded_ttl_and_never_complete(
 
     completion = cache.lookup(_key(), require_completion_evidence=True)
     assert completion.status is AnalysisCacheLookupStatus.INVALIDATED
-    assert completion.reason_codes == (
-        AnalysisCacheReason.NOT_COMPLETION_EVIDENCE.value,
-    )
+    assert completion.reason_codes == (AnalysisCacheReason.NOT_COMPLETION_EVIDENCE.value,)
 
     now[0] += 11
     stale = cache.lookup(_key())
     assert stale.status is AnalysisCacheLookupStatus.INVALIDATED
-    assert stale.reason_codes == (
-        AnalysisCacheReason.STALE_NEGATIVE_ENTRY.value,
-    )
+    assert stale.reason_codes == (AnalysisCacheReason.STALE_NEGATIVE_ENTRY.value,)
     assert stale.receipt is None
     assert not stale.is_completion_evidence
 
@@ -214,9 +210,7 @@ def test_compact_receipts_exclude_heavy_analysis_payloads(tmp_path: Path) -> Non
     for receipt in forbidden_receipts:
         result = cache.put(_key(), receipt)
         assert not result.stored
-        assert result.reason_codes == (
-            AnalysisCacheReason.MALFORMED_RECEIPT.value,
-        )
+        assert result.reason_codes == (AnalysisCacheReason.MALFORMED_RECEIPT.value,)
     assert cache.stats().entry_count == 0
 
 
@@ -255,9 +249,7 @@ def test_concurrent_thread_writers_never_publish_partial_json(
         except BaseException as exc:  # pragma: no cover - assertion reports it
             failures.append(exc)
 
-    threads = [
-        threading.Thread(target=worker, args=(ordinal,)) for ordinal in range(16)
-    ]
+    threads = [threading.Thread(target=worker, args=(ordinal,)) for ordinal in range(16)]
     for thread in threads:
         thread.start()
     for thread in threads:
@@ -284,9 +276,7 @@ def test_concurrent_same_key_writers_converge_on_one_valid_entry(
         except BaseException as exc:  # pragma: no cover - assertion reports it
             failures.append(exc)
 
-    threads = [
-        threading.Thread(target=worker, args=(ordinal,)) for ordinal in range(12)
-    ]
+    threads = [threading.Thread(target=worker, args=(ordinal,)) for ordinal in range(12)]
     for thread in threads:
         thread.start()
     for thread in threads:
@@ -296,9 +286,7 @@ def test_concurrent_same_key_writers_converge_on_one_valid_entry(
     hit = cache.lookup(_key())
     assert hit.hit
     assert hit.receipt is not None
-    assert hit.receipt["receipt_id"] in {
-        f"receipt-{ordinal}" for ordinal in range(12)
-    }
+    assert hit.receipt["receipt_id"] in {f"receipt-{ordinal}" for ordinal in range(12)}
     assert cache.stats().entry_count == 1
 
 
@@ -344,9 +332,7 @@ def test_concurrent_process_writers_preserve_all_entries(tmp_path: Path) -> None
     cache = AnalysisCache(tmp_path, max_entries=32)
     assert cache.stats().entry_count == 6
     for ordinal in range(6):
-        assert cache.lookup(
-            _key(query_digest=f"sha256:process-query-{ordinal}")
-        ).hit
+        assert cache.lookup(_key(query_digest=f"sha256:process-query-{ordinal}")).hit
 
 
 def test_count_and_byte_retention_bounds_are_enforced_on_disk(
@@ -395,7 +381,5 @@ def test_entry_size_limit_rejects_without_disturbing_existing_entry(
         oversized,
     )
     assert not rejected.stored
-    assert rejected.reason_codes == (
-        AnalysisCacheReason.ENTRY_TOO_LARGE.value,
-    )
+    assert rejected.reason_codes == (AnalysisCacheReason.ENTRY_TOO_LARGE.value,)
     assert cache.lookup(_key()).hit

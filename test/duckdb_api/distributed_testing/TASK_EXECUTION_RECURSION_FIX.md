@@ -72,44 +72,47 @@ def execute_task_with_metrics(self, task_id: str, task_config: Dict[str, Any]) -
     """
     # Get original task executor
     task_executor = self.task_executor
-    
+
     if not task_executor:
         return {"error": "No task executor available"}
-    
+
     # Check if we have a checkpoint to resume from
     checkpoint_data = self.get_latest_checkpoint(task_id)
     if checkpoint_data:
         # Track checkpoint resumption
         self.metrics.add_checkpoint_resumed()
-        
+
         # Add checkpoint data to task config so worker can resume
         updated_config = task_config.copy()
         updated_config["_checkpoint_data"] = checkpoint_data
         task_config = updated_config
-    
+
     # For direct execution cases (not through the plugin), execute the task:
-    if task_executor and task_executor.__qualname__ != 'EnhancedWorkerReconnectionPlugin._task_executor_wrapper':
+    if (
+        task_executor
+        and task_executor.__qualname__ != "EnhancedWorkerReconnectionPlugin._task_executor_wrapper"
+    ):
         # Track task execution start time
         start_time = time.time()
-        
+
         try:
             # Execute task using the provided executor
             result = task_executor(task_id, task_config)
-            
+
             # Track successful task completion
             duration = time.time() - start_time
             self.metrics.add_task_execution(duration, True)
-            
+
             return result
-            
+
         except Exception as e:
             # Track failed task completion
             duration = time.time() - start_time
             self.metrics.add_task_execution(duration, False)
-            
+
             # Re-raise exception
             raise
-    
+
     # For execution through the plugin, just pass through to the task executor
     # which will handle metrics tracking
     return task_executor(task_id, task_config)

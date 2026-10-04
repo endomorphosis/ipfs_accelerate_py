@@ -10,7 +10,9 @@ from unittest.mock import patch
 import anyio
 
 from ipfs_accelerate_py.mcp.server import create_mcp_server
-from ipfs_accelerate_py.mcp_server.tools.software_engineering_tools import native_software_engineering_tools
+from ipfs_accelerate_py.mcp_server.tools.software_engineering_tools import (
+    native_software_engineering_tools,
+)
 
 
 class TestMCPServerUNI281SoftwareEngineeringDispatchCompat(unittest.TestCase):
@@ -30,7 +32,9 @@ class TestMCPServerUNI281SoftwareEngineeringDispatchCompat(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -45,17 +49,20 @@ class TestMCPServerUNI281SoftwareEngineeringDispatchCompat(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failure"}
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.dict(
-                native_software_engineering_tools._API,
-                {"search_repositories": _contradictory_failure},
-                clear=False,
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.dict(
+                    native_software_engineering_tools._API,
+                    {"search_repositories": _contradictory_failure},
+                    clear=False,
+                ),
             ):
                 server = create_mcp_server(name="software-engineering-dispatch-compat-errors")
                 dispatch = server.tools["tools_dispatch"]["function"]

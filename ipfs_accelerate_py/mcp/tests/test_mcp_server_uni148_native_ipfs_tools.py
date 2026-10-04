@@ -65,7 +65,9 @@ class TestMCPServerUNI148NativeIPFSTools(unittest.TestCase):
 
     def test_validation_error_envelopes(self) -> None:
         self.assertFalse(ipfs_mod.ipfs_files_validate_cid("   ")["success"])
-        self.assertIn("non-empty string", str(ipfs_mod.ipfs_files_validate_cid("   ").get("error", "")))
+        self.assertIn(
+            "non-empty string", str(ipfs_mod.ipfs_files_validate_cid("   ").get("error", ""))
+        )
 
         self.assertFalse(ipfs_mod.ipfs_files_list_files("   ")["success"])
         self.assertFalse(ipfs_mod.ipfs_files_add_file("", pin=True)["success"])

@@ -190,52 +190,49 @@ The `RegressionDetector` class has been significantly improved with advanced sta
 ```python
 class RegressionDetector:
     """Advanced regression detection for performance data with statistical significance testing and visualization."""
-    
+
     def __init__(self, db_conn=None):
         """Initialize the regression detector."""
         self.db_conn = db_conn
         self.config = {
             # Basic configuration
-            "min_samples": 5,                 # Minimum samples required for detection
-            "window_size": 10,                # Window size for moving average
-            "regression_threshold": 10.0,     # Percentage change to trigger detection (%)
-            "confidence_level": 0.95,         # Statistical confidence level (1-alpha)
-            
+            "min_samples": 5,  # Minimum samples required for detection
+            "window_size": 10,  # Window size for moving average
+            "regression_threshold": 10.0,  # Percentage change to trigger detection (%)
+            "confidence_level": 0.95,  # Statistical confidence level (1-alpha)
             # Advanced configuration
-            "change_point_penalty": 2,        # Penalty term for change point detection
-            "change_point_model": "l2",       # Model for change point detection
-            "smoothing_factor": 0.2,          # Smoothing factor for time series
-            "allow_positive_regressions": False, # Whether to include improvements
-            
+            "change_point_penalty": 2,  # Penalty term for change point detection
+            "change_point_model": "l2",  # Model for change point detection
+            "smoothing_factor": 0.2,  # Smoothing factor for time series
+            "allow_positive_regressions": False,  # Whether to include improvements
             # Severity classification thresholds
             "severity_thresholds": {
-                "critical": 30.0,            # >30% change
-                "high": 20.0,                # >20% change
-                "medium": 10.0,              # >10% change
-                "low": 5.0                   # >5% change
+                "critical": 30.0,  # >30% change
+                "high": 20.0,  # >20% change
+                "medium": 10.0,  # >10% change
+                "low": 5.0,  # >5% change
             },
-            
             # Metrics configuration
             "metrics_config": {
                 "latency_ms": {
                     "higher_is_better": False,
                     "unit": "ms",
                     "display_name": "Latency",
-                    "regression_direction": "increase"
+                    "regression_direction": "increase",
                 },
                 "throughput_items_per_second": {
                     "higher_is_better": True,
                     "unit": "items/sec",
                     "display_name": "Throughput",
-                    "regression_direction": "decrease"
+                    "regression_direction": "decrease",
                 },
                 "memory_usage_mb": {
                     "higher_is_better": False,
                     "unit": "MB",
                     "display_name": "Memory Usage",
-                    "regression_direction": "increase"
-                }
-            }
+                    "regression_direction": "increase",
+                },
+            },
         }
 ```
 

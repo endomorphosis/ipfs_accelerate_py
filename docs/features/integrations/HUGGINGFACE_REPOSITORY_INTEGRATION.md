@@ -22,24 +22,20 @@ The Model Manager now includes comprehensive support for storing and managing Hu
 
 ```python
 from ipfs_accelerate_py.model_manager import (
-    ModelManager, 
+    ModelManager,
     create_model_from_huggingface,
-    fetch_huggingface_repo_structure
+    fetch_huggingface_repo_structure,
 )
 
 # Create a model with repository structure
-hf_config = {
-    "architectures": ["GPT2LMHeadModel"],
-    "model_type": "gpt2",
-    "vocab_size": 50257
-}
+hf_config = {"architectures": ["GPT2LMHeadModel"], "model_type": "gpt2", "vocab_size": 50257}
 
 # Automatically fetch repository structure when creating model
 model = create_model_from_huggingface(
     model_id="gpt2",
     hf_config=hf_config,
     fetch_repo_structure=True,  # Enable repository fetching
-    branch="main"  # Optional: specify branch (default: "main")
+    branch="main",  # Optional: specify branch (default: "main")
 )
 
 # Add to model manager
@@ -76,10 +72,7 @@ print(f"Models with PyTorch files: {len(models_with_pytorch)}")
 ### Repository Structure Utilities
 
 ```python
-from ipfs_accelerate_py.model_manager import (
-    get_file_hash_from_structure,
-    list_files_by_extension
-)
+from ipfs_accelerate_py.model_manager import get_file_hash_from_structure, list_files_by_extension
 
 # Get repository structure
 repo_structure = fetch_huggingface_repo_structure("bert-base-uncased")
@@ -88,11 +81,11 @@ if repo_structure:
     # Get hash for specific file
     config_hash = get_file_hash_from_structure(repo_structure, "config.json")
     print(f"Config hash: {config_hash}")
-    
+
     # List all JSON files
     json_files = list_files_by_extension(repo_structure, ".json")
     print(f"JSON files: {json_files}")
-    
+
     # List all model files
     bin_files = list_files_by_extension(repo_structure, ".bin")
     safetensors_files = list_files_by_extension(repo_structure, ".safetensors")
@@ -119,11 +112,11 @@ print(f"Models with repository structure: {stats['models_with_repo_structure']}"
 print(f"Total tracked files across all models: {stats['total_tracked_files']:,}")
 
 # Repository-specific analytics
-if stats['models_with_repo_structure'] > 0:
+if stats["models_with_repo_structure"] > 0:
     models_with_readme = manager.get_models_with_file("README")
     models_with_license = manager.get_models_with_file("LICENSE")
     models_with_requirements = manager.get_models_with_file("requirements")
-    
+
     print(f"Models with README: {len(models_with_readme)}")
     print(f"Models with LICENSE: {len(models_with_license)}")
     print(f"Models with requirements: {len(models_with_requirements)}")
@@ -138,14 +131,12 @@ if stats['models_with_repo_structure'] > 0:
 model = create_model_from_huggingface(
     model_id="distilbert-base-uncased",
     hf_config=config,
-    fetch_repo_structure=True  # Default: True
+    fetch_repo_structure=True,  # Default: True
 )
 
 # Manual fetching disabled (for offline use or performance)
 model = create_model_from_huggingface(
-    model_id="distilbert-base-uncased",
-    hf_config=config,
-    fetch_repo_structure=False
+    model_id="distilbert-base-uncased", hf_config=config, fetch_repo_structure=False
 )
 
 # Manual fetching with custom branch
@@ -153,7 +144,7 @@ model = create_model_from_huggingface(
     model_id="distilbert-base-uncased",
     hf_config=config,
     fetch_repo_structure=True,
-    branch="development"  # Custom branch
+    branch="development",  # Custom branch
 )
 ```
 

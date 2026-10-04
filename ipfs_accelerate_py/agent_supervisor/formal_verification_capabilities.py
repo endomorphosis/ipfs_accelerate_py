@@ -94,9 +94,7 @@ def _context_limit_from(
             continue
         value = source[key]
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-            raise ValueError(
-                f"{source_name}.{key} context limit must be a positive integer"
-            )
+            raise ValueError(f"{source_name}.{key} context limit must be a positive integer")
         return value
 
     # Common router responses nest the actual limits one level below the
@@ -181,9 +179,7 @@ def discover_effective_context_limit(
             raise ValueError(f"{name} must be a non-negative integer")
 
     limits = {
-        "configured_route": _context_limit_from(
-            configured_route, source_name="configured_route"
-        ),
+        "configured_route": _context_limit_from(configured_route, source_name="configured_route"),
         "server": _context_limit_from(server, source_name="server"),
         "model": _context_limit_from(model, source_name="model"),
     }
@@ -194,9 +190,7 @@ def discover_effective_context_limit(
         effective_limit = None
     else:
         limiting_source, raw_limit = min(present, key=lambda item: (item[1], item[0]))
-        effective_limit = max(
-            0, raw_limit - output_reserve_tokens - safety_margin_tokens
-        )
+        effective_limit = max(0, raw_limit - output_reserve_tokens - safety_margin_tokens)
     return EffectiveContextLimit(
         route_context_limit_tokens=limits["configured_route"],
         server_context_limit_tokens=limits["server"],
@@ -275,8 +269,7 @@ class InferenceCanaryResult:
             CapabilityHealth.DISABLED,
         }:
             raise ValueError(
-                "inference canary status must be available, degraded, unavailable, "
-                "or disabled"
+                "inference canary status must be available, degraded, unavailable, or disabled"
             )
         reason = str(self.reason).strip()
         if not reason:
@@ -287,9 +280,7 @@ class InferenceCanaryResult:
             or not math.isfinite(float(self.duration_seconds))
             or self.duration_seconds < 0
         ):
-            raise ValueError(
-                "inference canary duration_seconds must be finite and non-negative"
-            )
+            raise ValueError("inference canary duration_seconds must be finite and non-negative")
         if (
             isinstance(self.response_bytes, bool)
             or not isinstance(self.response_bytes, int)
@@ -307,9 +298,7 @@ class InferenceCanaryResult:
                 )
             )
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
-            raise ValueError(
-                "inference canary metadata must contain strict JSON values"
-            ) from exc
+            raise ValueError("inference canary metadata must contain strict JSON values") from exc
         object.__setattr__(self, "status", status)
         object.__setattr__(self, "reason", reason)
         object.__setattr__(self, "duration_seconds", float(self.duration_seconds))
@@ -393,12 +382,8 @@ class ProofProviderCapability:
     provider_id: str
     provider_version: str
     protocol_versions: tuple[int, ...] = (1,)
-    operations: tuple[ProofProviderOperation | str, ...] = (
-        ProofProviderOperation.CAPABILITY,
-    )
-    isolation: tuple[ProofProviderIsolation | str, ...] = (
-        ProofProviderIsolation.IN_PROCESS,
-    )
+    operations: tuple[ProofProviderOperation | str, ...] = (ProofProviderOperation.CAPABILITY,)
+    isolation: tuple[ProofProviderIsolation | str, ...] = (ProofProviderIsolation.IN_PROCESS,)
     network_access_required: bool = False
     resource_limits_supported: bool = False
     metadata: Mapping[str, Any] = field(default_factory=dict)
@@ -434,8 +419,7 @@ class ProofProviderCapability:
         if ProofProviderOperation.CAPABILITY not in operations:
             raise ValueError("proof providers must support the capability operation")
         isolation = {
-            ProofProviderIsolation(str(getattr(mode, "value", mode)))
-            for mode in self.isolation
+            ProofProviderIsolation(str(getattr(mode, "value", mode))) for mode in self.isolation
         }
         if not isolation:
             raise ValueError("at least one proof-provider isolation mode is required")
@@ -498,10 +482,7 @@ class ProofProviderCapability:
         return (
             protocol_version in self.protocol_versions
             and normalized_operation in self.operations
-            and (
-                normalized_isolation is None
-                or normalized_isolation in self.isolation
-            )
+            and (normalized_isolation is None or normalized_isolation in self.isolation)
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -666,28 +647,21 @@ class FormalVerificationProviderCapability:
             expected = {capability.value for capability in LeanstralCapability}
             if len(tagged) != len(expected) or set(tagged) != expected:
                 raise ValueError(
-                    "leanstral provider must report each independent capability "
-                    "exactly once"
+                    "leanstral provider must report each independent capability exactly once"
                 )
 
-    def health_for(
-        self, dimension: CapabilityDimension | str
-    ) -> tuple[CapabilityHealthCheck, ...]:
+    def health_for(self, dimension: CapabilityDimension | str) -> tuple[CapabilityHealthCheck, ...]:
         normalized = CapabilityDimension(str(getattr(dimension, "value", dimension)))
         return tuple(check for check in self.checks if check.dimension is normalized)
 
-    def leanstral_capability(
-        self, capability: LeanstralCapability | str
-    ) -> CapabilityHealthCheck:
+    def leanstral_capability(self, capability: LeanstralCapability | str) -> CapabilityHealthCheck:
         """Return one independent Leanstral surface from the aggregate row."""
 
         if self.provider_id != "leanstral":
             raise ValueError(
                 "independent Leanstral capabilities exist only on the leanstral provider"
             )
-        normalized = LeanstralCapability(
-            str(getattr(capability, "value", capability))
-        )
+        normalized = LeanstralCapability(str(getattr(capability, "value", capability)))
         for check in self.provider_health:
             if check.metadata.get("leanstral_capability") == normalized.value:
                 return check
@@ -732,9 +706,7 @@ class FormalVerificationProviderCapability:
 
     def to_dict(self) -> dict[str, Any]:
         health = {
-            dimension.value: [
-                check.to_dict() for check in self.health_for(dimension)
-            ]
+            dimension.value: [check.to_dict() for check in self.health_for(dimension)]
             for dimension in _DIMENSION_ORDER
         }
         return {
@@ -786,8 +758,7 @@ class FormalVerificationCapabilityReport:
             return CapabilityHealth.UNAVAILABLE
         statuses = tuple(provider.status for provider in self.providers)
         if all(
-            status in {CapabilityHealth.AVAILABLE, CapabilityHealth.VERIFIED}
-            for status in statuses
+            status in {CapabilityHealth.AVAILABLE, CapabilityHealth.VERIFIED} for status in statuses
         ):
             return CapabilityHealth.AVAILABLE
         if all(status is CapabilityHealth.UNAVAILABLE for status in statuses):
@@ -812,10 +783,7 @@ class FormalVerificationCapabilityReport:
             "overall_status": self.overall_status.value,
             "proof_attempted": False,
             "proof_success": False,
-            "providers": {
-                provider.provider_id: provider.to_dict()
-                for provider in self.providers
-            },
+            "providers": {provider.provider_id: provider.to_dict() for provider in self.providers},
         }
 
 
@@ -834,14 +802,10 @@ class FormalVerificationProbeConfig:
     leanstral_output_reserve_tokens: int = 0
     leanstral_safety_margin_tokens: int = 0
     run_leanstral_inference_canary: bool = False
-    leanstral_canary_timeout_seconds: float = (
-        DEFAULT_LEANSTRAL_CANARY_TIMEOUT_SECONDS
-    )
+    leanstral_canary_timeout_seconds: float = DEFAULT_LEANSTRAL_CANARY_TIMEOUT_SECONDS
     leanstral_canary_input_tokens: int = DEFAULT_LEANSTRAL_CANARY_INPUT_TOKENS
     leanstral_canary_output_tokens: int = DEFAULT_LEANSTRAL_CANARY_OUTPUT_TOKENS
-    leanstral_canary_max_response_bytes: int = (
-        DEFAULT_LEANSTRAL_CANARY_MAX_RESPONSE_BYTES
-    )
+    leanstral_canary_max_response_bytes: int = DEFAULT_LEANSTRAL_CANARY_MAX_RESPONSE_BYTES
     groth16_artifacts_path: str | None = None
     provekit_artifacts_path: str | None = None
 
@@ -873,9 +837,7 @@ class FormalVerificationProbeConfig:
                 raise ValueError(f"{name} must be a positive integer")
         discover_effective_context_limit(
             configured_route=(
-                self.leanstral_route
-                if isinstance(self.leanstral_route, Mapping)
-                else None
+                self.leanstral_route if isinstance(self.leanstral_route, Mapping) else None
             ),
             server=self.leanstral_server,
             model=self.leanstral_model,
@@ -892,9 +854,7 @@ class FormalVerificationProbeConfig:
             route_id = str(
                 route_payload.get(
                     "route_id",
-                    route_payload.get(
-                        "provider", route_payload.get("route", "")
-                    ),
+                    route_payload.get("provider", route_payload.get("route", "")),
                 )
             ).strip()
             if not route_id:
@@ -917,9 +877,7 @@ class FormalVerificationProbeConfig:
         return str(
             self.leanstral_route.get(
                 "route_id",
-                self.leanstral_route.get(
-                    "provider", self.leanstral_route.get("route", "")
-                ),
+                self.leanstral_route.get("provider", self.leanstral_route.get("route", "")),
             )
         ).strip()
 
@@ -937,9 +895,7 @@ class FormalVerificationProbeConfig:
     def leanstral_context_limit(self) -> EffectiveContextLimit:
         return discover_effective_context_limit(
             configured_route=(
-                self.leanstral_route
-                if isinstance(self.leanstral_route, Mapping)
-                else None
+                self.leanstral_route if isinstance(self.leanstral_route, Mapping) else None
             ),
             server=self.leanstral_server,
             model=self.leanstral_model,
@@ -1013,9 +969,7 @@ class FormalVerificationCapabilityProbe:
         self.config = config or FormalVerificationProbeConfig()
         self._find_spec = find_spec or _find_spec_without_import
         self._which = which or shutil.which
-        self._distribution_version = (
-            distribution_version or importlib.metadata.version
-        )
+        self._distribution_version = distribution_version or importlib.metadata.version
         self._inference_canary = inference_canary
         self._environ = environ if environ is not None else os.environ
         self._monotonic = monotonic or time.monotonic
@@ -1030,9 +984,7 @@ class FormalVerificationCapabilityProbe:
         with self._cache_lock:
             self._cached = None
 
-    def probe(
-        self, *, force_refresh: bool = False
-    ) -> FormalVerificationCapabilityReport:
+    def probe(self, *, force_refresh: bool = False) -> FormalVerificationCapabilityReport:
         """Return a cached snapshot or perform one bounded metadata probe."""
 
         with self._cache_lock:
@@ -1061,9 +1013,7 @@ class FormalVerificationCapabilityProbe:
             finished = self._monotonic()
             report = FormalVerificationCapabilityReport(
                 providers=providers,
-                generated_at=datetime.fromtimestamp(
-                    self._wall_clock(), tz=timezone.utc
-                )
+                generated_at=datetime.fromtimestamp(self._wall_clock(), tz=timezone.utc)
                 .isoformat()
                 .replace("+00:00", "Z"),
                 duration_seconds=max(0.0, finished - self._started),
@@ -1078,8 +1028,7 @@ class FormalVerificationCapabilityProbe:
     def _budget_reason(self) -> str | None:
         if self._probe_count >= self.config.max_checks:
             return (
-                f"probe check limit ({self.config.max_checks}) exhausted; "
-                "health was not inspected"
+                f"probe check limit ({self.config.max_checks}) exhausted; health was not inspected"
             )
         if self._monotonic() >= self._deadline:
             return (
@@ -1141,8 +1090,10 @@ class FormalVerificationCapabilityProbe:
         worker.start()
         worker.join(remaining)
         if worker.is_alive():
-            return False, None, TimeoutError(
-                f"metadata operation exceeded {remaining:g}s remaining probe budget"
+            return (
+                False,
+                None,
+                TimeoutError(f"metadata operation exceeded {remaining:g}s remaining probe budget"),
             )
         if not outcome:
             return False, None, RuntimeError("metadata operation returned no outcome")
@@ -1161,9 +1112,7 @@ class FormalVerificationCapabilityProbe:
         label = name or module
         limited = self._budget_reason()
         if limited:
-            return self._not_inspected(
-                dimension, label, limited, required=required
-            )
+            return self._not_inspected(dimension, label, limited, required=required)
         completed, spec, error = self._bounded_call(self._find_spec, module)
         if not completed:
             return CapabilityHealthCheck(
@@ -1261,9 +1210,7 @@ class FormalVerificationCapabilityProbe:
                     dimension=CapabilityDimension.EXECUTABLE,
                     name=name,
                     status=CapabilityHealth.AVAILABLE,
-                    reason=(
-                        f"executable configured by {env_name}; it was not invoked"
-                    ),
+                    reason=(f"executable configured by {env_name}; it was not invoked"),
                     required=required,
                     location=str(path),
                     metadata={"environment_variable": env_name},
@@ -1272,10 +1219,7 @@ class FormalVerificationCapabilityProbe:
                 dimension=CapabilityDimension.EXECUTABLE,
                 name=name,
                 status=CapabilityHealth.UNAVAILABLE,
-                reason=(
-                    f"{env_name} points to {configured!r}, which is not an "
-                    "executable file"
-                ),
+                reason=(f"{env_name} points to {configured!r}, which is not an executable file"),
                 required=required,
                 location=configured,
                 metadata={"environment_variable": env_name},
@@ -1297,10 +1241,7 @@ class FormalVerificationCapabilityProbe:
                     dimension=CapabilityDimension.EXECUTABLE,
                     name=name,
                     status=CapabilityHealth.UNAVAILABLE,
-                    reason=(
-                        f"executable discovery failed safely: "
-                        f"{type(error).__name__}: {error}"
-                    ),
+                    reason=(f"executable discovery failed safely: {type(error).__name__}: {error}"),
                     required=required,
                 )
             if found:
@@ -1308,9 +1249,7 @@ class FormalVerificationCapabilityProbe:
                     dimension=CapabilityDimension.EXECUTABLE,
                     name=name,
                     status=CapabilityHealth.AVAILABLE,
-                    reason=(
-                        f"executable {candidate!r} is on PATH; it was not invoked"
-                    ),
+                    reason=(f"executable {candidate!r} is on PATH; it was not invoked"),
                     required=required,
                     location=str(found),
                     metadata={"candidate": candidate},
@@ -1383,9 +1322,7 @@ class FormalVerificationCapabilityProbe:
                     ]
                 return True, missing_exact, missing_groups
             missing_exact = [
-                filename
-                for filename in required_files
-                if not (path / filename).is_file()
+                filename for filename in required_files if not (path / filename).is_file()
             ]
             for patterns in required_pattern_groups:
                 if not any(
@@ -1412,8 +1349,7 @@ class FormalVerificationCapabilityProbe:
                 name=name,
                 status=CapabilityHealth.UNAVAILABLE,
                 reason=(
-                    f"could not inspect configured artifact {path}: "
-                    f"{type(error).__name__}: {error}"
+                    f"could not inspect configured artifact {path}: {type(error).__name__}: {error}"
                 ),
                 required=required,
                 location=str(path),
@@ -1431,8 +1367,7 @@ class FormalVerificationCapabilityProbe:
         if missing or missing_groups:
             missing_descriptions = list(missing)
             missing_descriptions.extend(
-                "one of [" + ", ".join(patterns) + "]"
-                for patterns in missing_groups
+                "one of [" + ", ".join(patterns) + "]" for patterns in missing_groups
             )
             return CapabilityHealthCheck(
                 dimension=dimension,
@@ -1462,9 +1397,7 @@ class FormalVerificationCapabilityProbe:
         )
 
     @staticmethod
-    def _provider_check(
-        name: str, status: CapabilityHealth, reason: str
-    ) -> CapabilityHealthCheck:
+    def _provider_check(name: str, status: CapabilityHealth, reason: str) -> CapabilityHealthCheck:
         return CapabilityHealthCheck(
             dimension=CapabilityDimension.PROVIDER,
             name=name,
@@ -1500,9 +1433,7 @@ class FormalVerificationCapabilityProbe:
         names = {
             LeanstralCapability.ROUTE_READINESS: "Leanstral route readiness",
             LeanstralCapability.LOCAL_MODEL_EXECUTION: "local model execution",
-            LeanstralCapability.LEGAL_LANGUAGE_PREPROCESSING: (
-                "legal-language preprocessing"
-            ),
+            LeanstralCapability.LEGAL_LANGUAGE_PREPROCESSING: ("legal-language preprocessing"),
             LeanstralCapability.CODEC_AVAILABILITY: "codec availability",
             LeanstralCapability.KERNEL_VERIFICATION: "kernel verification",
         }
@@ -1531,8 +1462,7 @@ class FormalVerificationCapabilityProbe:
             return InferenceCanaryResult(
                 status=CapabilityHealth.UNAVAILABLE,
                 reason=(
-                    "bounded inference canary was enabled but no diagnostic callback "
-                    "was supplied"
+                    "bounded inference canary was enabled but no diagnostic callback was supplied"
                 ),
                 duration_seconds=0.0,
                 metadata={"enabled": True, "callback_configured": False},
@@ -1580,10 +1510,7 @@ class FormalVerificationCapabilityProbe:
         if error is not None:
             return InferenceCanaryResult(
                 status=CapabilityHealth.UNAVAILABLE,
-                reason=(
-                    "bounded inference canary failed safely: "
-                    f"{type(error).__name__}: {error}"
-                ),
+                reason=(f"bounded inference canary failed safely: {type(error).__name__}: {error}"),
                 duration_seconds=duration,
                 metadata=base_metadata,
             )
@@ -1622,13 +1549,8 @@ class FormalVerificationCapabilityProbe:
                 if key in raw_result:
                     succeeded = raw_result[key] is True
                     break
-            response = raw_result.get(
-                "output", raw_result.get("text", raw_result.get("response"))
-            )
-            if not any(
-                key in raw_result
-                for key in ("ok", "success", "available", "passed")
-            ):
+            response = raw_result.get("output", raw_result.get("text", raw_result.get("response")))
+            if not any(key in raw_result for key in ("ok", "success", "available", "passed")):
                 succeeded = isinstance(response, str) and bool(response.strip())
             for key in ("input_tokens", "output_tokens", "status_code"):
                 value = raw_result.get(key)
@@ -1801,9 +1723,7 @@ class FormalVerificationCapabilityProbe:
             "z3",
             name="Z3 Python binding",
             distribution="z3-solver",
-            missing_reason=(
-                "Z3 Python bindings are not installed; the Z3 bridge is unavailable"
-            ),
+            missing_reason=("Z3 Python bindings are not installed; the Z3 bridge is unavailable"),
         )
         cvc5_binding = self._package(
             "cvc5",
@@ -1914,9 +1834,7 @@ class FormalVerificationCapabilityProbe:
             name="llm_router model service",
             dimension=CapabilityDimension.PROVIDER,
             required=True,
-            missing_reason=(
-                "llm_router is unavailable; no isolated Leanstral model route can run"
-            ),
+            missing_reason=("llm_router is unavailable; no isolated Leanstral model route can run"),
         )
         package = self._package(
             "ipfs_datasets_py.logic.modal.leanstral",
@@ -1941,8 +1859,7 @@ class FormalVerificationCapabilityProbe:
             distribution="spacy",
             dimension=CapabilityDimension.OPTIONAL_DEPENDENCY,
             missing_reason=(
-                "spaCy is not installed; Leanstral legal-language preprocessing "
-                "is degraded"
+                "spaCy is not installed; Leanstral legal-language preprocessing is degraded"
             ),
         )
         spacy_model = self._package(
@@ -1986,9 +1903,7 @@ class FormalVerificationCapabilityProbe:
                 "an explicitly managed provider callback"
             ),
             required_files=("config.json",),
-            required_pattern_groups=(
-                ("*.safetensors", "pytorch_model*.bin", "*.gguf", "*.pt"),
-            ),
+            required_pattern_groups=(("*.safetensors", "pytorch_model*.bin", "*.gguf", "*.pt"),),
         )
         lean = self._executable(
             "Lean 4",
@@ -2024,8 +1939,7 @@ class FormalVerificationCapabilityProbe:
         ):
             route_status = CapabilityHealth.UNAVAILABLE
             route_reason = (
-                "the configured route has no usable context after output reserve "
-                "and safety margin"
+                "the configured route has no usable context after output reserve and safety margin"
             )
         elif self.config.run_leanstral_inference_canary and not canary.passed:
             route_status = CapabilityHealth.DEGRADED
@@ -2036,8 +1950,7 @@ class FormalVerificationCapabilityProbe:
         else:
             route_status = CapabilityHealth.AVAILABLE
             route_reason = (
-                "the configured Leanstral route and isolated supervisor adapter "
-                "are discoverable"
+                "the configured Leanstral route and isolated supervisor adapter are discoverable"
             )
         route_capability = self._leanstral_capability_check(
             LeanstralCapability.ROUTE_READINESS,
@@ -2054,15 +1967,9 @@ class FormalVerificationCapabilityProbe:
             CapabilityHealth.AVAILABLE,
             CapabilityHealth.VERIFIED,
         }
-        if (
-            model.status in configured_model_states
-            and transformers.available
-            and torch.available
-        ):
+        if model.status in configured_model_states and transformers.available and torch.available:
             local_status = CapabilityHealth.AVAILABLE
-            local_reason = (
-                "local Leanstral weights, Transformers, and PyTorch are discoverable"
-            )
+            local_reason = "local Leanstral weights, Transformers, and PyTorch are discoverable"
         elif model.status in configured_model_states:
             local_status = CapabilityHealth.DEGRADED
             local_reason = (
@@ -2084,8 +1991,7 @@ class FormalVerificationCapabilityProbe:
         if package.available and spacy.available and spacy_model.available:
             legal_status = CapabilityHealth.AVAILABLE
             legal_reason = (
-                "legal-modal integration, spaCy, and configured language model "
-                "are discoverable"
+                "legal-modal integration, spaCy, and configured language model are discoverable"
             )
         elif package.available:
             legal_status = CapabilityHealth.DEGRADED
@@ -2095,9 +2001,7 @@ class FormalVerificationCapabilityProbe:
             )
         else:
             legal_status = CapabilityHealth.UNAVAILABLE
-            legal_reason = (
-                "legal-language preprocessing integration is unavailable"
-            )
+            legal_reason = "legal-language preprocessing integration is unavailable"
         legal_capability = self._leanstral_capability_check(
             LeanstralCapability.LEGAL_LANGUAGE_PREPROCESSING,
             legal_status,
@@ -2105,9 +2009,7 @@ class FormalVerificationCapabilityProbe:
         )
 
         codec_status = (
-            CapabilityHealth.AVAILABLE
-            if codec.available
-            else CapabilityHealth.UNAVAILABLE
+            CapabilityHealth.AVAILABLE if codec.available else CapabilityHealth.UNAVAILABLE
         )
         codec_capability = self._leanstral_capability_check(
             LeanstralCapability.CODEC_AVAILABILITY,
@@ -2119,9 +2021,7 @@ class FormalVerificationCapabilityProbe:
             ),
         )
         kernel_status = (
-            CapabilityHealth.AVAILABLE
-            if lean.available
-            else CapabilityHealth.UNAVAILABLE
+            CapabilityHealth.AVAILABLE if lean.available else CapabilityHealth.UNAVAILABLE
         )
         kernel_capability = self._leanstral_capability_check(
             LeanstralCapability.KERNEL_VERIFICATION,
@@ -2196,10 +2096,7 @@ class FormalVerificationCapabilityProbe:
             reason = package.reason
         elif not ergo.available:
             status = CapabilityHealth.DEGRADED
-            reason = (
-                "frame-logic structures are available, but theorem queries cannot "
-                "use ErgoAI"
-            )
+            reason = "frame-logic structures are available, but theorem queries cannot use ErgoAI"
         else:
             status = CapabilityHealth.AVAILABLE
             reason = "frame-logic package and ErgoAI executable are discoverable"
@@ -2228,8 +2125,7 @@ class FormalVerificationCapabilityProbe:
             distribution="spacy",
             dimension=CapabilityDimension.OPTIONAL_DEPENDENCY,
             missing_reason=(
-                "spaCy is not installed; knowledge-graph extraction uses rule-based "
-                "fallbacks only"
+                "spaCy is not installed; knowledge-graph extraction uses rule-based fallbacks only"
             ),
         )
         transformers = self._package(
@@ -2238,8 +2134,7 @@ class FormalVerificationCapabilityProbe:
             distribution="transformers",
             dimension=CapabilityDimension.OPTIONAL_DEPENDENCY,
             missing_reason=(
-                "Transformers is not installed; neural entity/relation extraction "
-                "is unavailable"
+                "Transformers is not installed; neural entity/relation extraction is unavailable"
             ),
         )
         networkx = self._package(
@@ -2304,9 +2199,7 @@ class FormalVerificationCapabilityProbe:
         simulated = CapabilityHealthCheck(
             dimension=CapabilityDimension.PROVIDER,
             name="simulated ZKP backend",
-            status=CapabilityHealth.DEGRADED
-            if package.available
-            else CapabilityHealth.UNAVAILABLE,
+            status=CapabilityHealth.DEGRADED if package.available else CapabilityHealth.UNAVAILABLE,
             reason=(
                 "simulated backend is discoverable but is educational and "
                 "non-cryptographic; it cannot satisfy proof assurance"
@@ -2323,9 +2216,7 @@ class FormalVerificationCapabilityProbe:
             "Groth16 Rust backend",
             ("groth16",),
             explicit_env=("IPFS_DATASETS_GROTH16_BINARY", "GROTH16_BINARY"),
-            missing_reason=(
-                "Groth16 Rust prover executable is not built or configured"
-            ),
+            missing_reason=("Groth16 Rust prover executable is not built or configured"),
         )
         provekit = self._executable(
             "ProveKit CLI",
@@ -2342,9 +2233,7 @@ class FormalVerificationCapabilityProbe:
                 "GROTH16_ARTIFACTS_DIR",
             ),
             required_files=("proving_key.bin", "verifying_key.bin"),
-            missing_reason=(
-                "Groth16 proving/verifying circuit artifacts are not configured"
-            ),
+            missing_reason=("Groth16 proving/verifying circuit artifacts are not configured"),
         )
         provekit_artifacts = self._configured_artifact(
             CapabilityDimension.CIRCUIT,
@@ -2354,9 +2243,7 @@ class FormalVerificationCapabilityProbe:
                 "IPFS_DATASETS_PROVEKIT_ARTIFACTS_DIR",
                 "PROVEKIT_ARTIFACTS_DIR",
             ),
-            missing_reason=(
-                "ProveKit prover/verifier circuit artifacts are not configured"
-            ),
+            missing_reason=("ProveKit prover/verifier circuit artifacts are not configured"),
             required_pattern_groups=(
                 ("*.pkp", "*prover*.key", "prover_key*"),
                 ("*.pkv", "*verifier*.key", "verifier_key*"),
@@ -2377,17 +2264,11 @@ class FormalVerificationCapabilityProbe:
             CapabilityHealth.AVAILABLE,
             CapabilityHealth.VERIFIED,
         }
-        groth16_ready = (
-            groth16.available and groth16_artifacts.status in configured_states
-        )
-        provekit_ready = (
-            provekit.available and provekit_artifacts.status in configured_states
-        )
+        groth16_ready = groth16.available and groth16_artifacts.status in configured_states
+        provekit_ready = provekit.available and provekit_artifacts.status in configured_states
         if not package.available or not circuits_package.available:
             status = CapabilityHealth.UNAVAILABLE
-            reason = (
-                package.reason if not package.available else circuits_package.reason
-            )
+            reason = package.reason if not package.available else circuits_package.reason
         elif groth16_ready or provekit_ready:
             status = CapabilityHealth.AVAILABLE
             reason = "at least one cryptographic ZKP backend and its artifacts are discoverable"

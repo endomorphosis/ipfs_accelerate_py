@@ -176,9 +176,7 @@ def _bounded_public(value: Any, *, max_string_bytes: int = 2048, depth: int = 0)
         if len(encoded) <= max_string_bytes:
             return value
         suffix = "...<truncated>"
-        kept = encoded[: max(0, max_string_bytes - len(suffix))].decode(
-            "utf-8", errors="ignore"
-        )
+        kept = encoded[: max(0, max_string_bytes - len(suffix))].decode("utf-8", errors="ignore")
         return kept + suffix
     if isinstance(value, Mapping):
         return {
@@ -270,9 +268,7 @@ class TemporalProperty:
             version=int(payload.get("version") or 0),
             formula=_text(payload.get("formula")),
             bound_seconds=(
-                None
-                if payload.get("bound_seconds") is None
-                else float(payload["bound_seconds"])
+                None if payload.get("bound_seconds") is None else float(payload["bound_seconds"])
             ),
         )
 
@@ -352,9 +348,7 @@ class TemporalMonitorPolicy:
             or self.max_retries < 0
         ):
             raise ValueError("max_retries must be a non-negative integer")
-        _finite_nonnegative(
-            self.terminal_deadline_seconds, name="terminal_deadline_seconds"
-        )
+        _finite_nonnegative(self.terminal_deadline_seconds, name="terminal_deadline_seconds")
         _finite_nonnegative(
             self.resource_release_deadline_seconds,
             name="resource_release_deadline_seconds",
@@ -402,9 +396,7 @@ class TemporalMonitorPolicy:
             raw_properties, (str, bytes, bytearray)
         ):
             properties = tuple(
-                item
-                if isinstance(item, TemporalProperty)
-                else TemporalProperty.from_dict(item)
+                item if isinstance(item, TemporalProperty) else TemporalProperty.from_dict(item)
                 for item in raw_properties
                 if isinstance(item, (TemporalProperty, Mapping))
             )
@@ -412,9 +404,7 @@ class TemporalMonitorPolicy:
             policy_name=_text(payload.get("policy_name"), "supervisor-runtime-mtl"),
             version=int(payload.get("version") or 1),
             max_retries=int(payload.get("max_retries", 3)),
-            terminal_deadline_seconds=float(
-                payload.get("terminal_deadline_seconds", 3600.0)
-            ),
+            terminal_deadline_seconds=float(payload.get("terminal_deadline_seconds", 3600.0)),
             resource_release_deadline_seconds=float(
                 payload.get("resource_release_deadline_seconds", 60.0)
             ),
@@ -608,9 +598,7 @@ class TemporalCounterexample:
             counterexample_id=_text(payload.get("counterexample_id")),
             property_id=_text(payload.get("property_id")),
             property_version=int(payload.get("property_version") or 0),
-            property_kind=TemporalPropertyKind(
-                str(payload.get("property_kind") or "")
-            ),
+            property_kind=TemporalPropertyKind(str(payload.get("property_kind") or "")),
             policy_id=_text(payload.get("policy_id")),
             partition=TracePartition.from_dict(partition),
             reason=_text(payload.get("reason")),
@@ -754,9 +742,7 @@ def _existing_identities(
     return identities
 
 
-def _durable_has_identity(
-    path: Path | None, field_name: str, identity: str
-) -> bool:
+def _durable_has_identity(path: Path | None, field_name: str, identity: str) -> bool:
     """Check an old durable identity without retaining an unbounded index."""
 
     if path is None or not path.exists() or path.is_dir():
@@ -795,9 +781,7 @@ load_runtime_temporal_counterexamples = load_temporal_counterexamples
 @dataclass
 class _PartitionState:
     history: deque[NormalizedSupervisorEvent]
-    pending: list[tuple[float, int, int, NormalizedSupervisorEvent]] = field(
-        default_factory=list
-    )
+    pending: list[tuple[float, int, int, NormalizedSupervisorEvent]] = field(default_factory=list)
     max_seen_timestamp: float | None = None
     last_timestamp: float | None = None
     sequences: OrderedDict[str, int] = field(default_factory=OrderedDict)
@@ -927,26 +911,21 @@ def _event_schema(event: NormalizedSupervisorEvent) -> str:
 
 def _is_lifecycle_event(event: NormalizedSupervisorEvent) -> bool:
     schema = _event_schema(event)
-    return (
-        schema
-        in {
-            LIFECYCLE_STATUS_SCHEMA,
-            LIFECYCLE_EVENT_SCHEMA,
-            CONTROL_MUTATION_EVENT_SCHEMA,
-        }
-        or event.event_type
-        in {
-            "lifecycle_event",
-            "lifecycle_status",
-            "lifecycle_transition",
-            "lifecycle_mutation",
-            "lifecycle_mutation_accepted",
-            "lifecycle_mutation_rejected",
-            "control_mutation_event",
-            "control_mutation_accepted",
-            "control_mutation_rejected",
-        }
-    )
+    return schema in {
+        LIFECYCLE_STATUS_SCHEMA,
+        LIFECYCLE_EVENT_SCHEMA,
+        CONTROL_MUTATION_EVENT_SCHEMA,
+    } or event.event_type in {
+        "lifecycle_event",
+        "lifecycle_status",
+        "lifecycle_transition",
+        "lifecycle_mutation",
+        "lifecycle_mutation_accepted",
+        "lifecycle_mutation_rejected",
+        "control_mutation_event",
+        "control_mutation_accepted",
+        "control_mutation_rejected",
+    }
 
 
 def _status_is_terminal(event: NormalizedSupervisorEvent) -> bool:
@@ -956,9 +935,7 @@ def _status_is_terminal(event: NormalizedSupervisorEvent) -> bool:
     if _is_lifecycle_event(event):
         return False
     status = _text(
-        event.payload.get("status")
-        or event.payload.get("state")
-        or event.payload.get("phase")
+        event.payload.get("status") or event.payload.get("state") or event.payload.get("phase")
     ).lower()
     return event.event_type in _TERMINAL_TYPES or status in {
         "completed",
@@ -1040,10 +1017,7 @@ class RuntimeTemporalMonitor:
                     ),
                 }
             )
-        if (
-            base_config.counterexample_path is not None
-            and base_config.reopen_path is None
-        ):
+        if base_config.counterexample_path is not None and base_config.reopen_path is None:
             counterexample_file = Path(base_config.counterexample_path)
             base_config = TemporalMonitorConfig(
                 **{
@@ -1302,8 +1276,7 @@ class RuntimeTemporalMonitor:
             prior_watermark = (
                 None
                 if state.max_seen_timestamp is None
-                else state.max_seen_timestamp
-                - self.config.out_of_order_window_seconds
+                else state.max_seen_timestamp - self.config.out_of_order_window_seconds
             )
             if prior_watermark is not None and event.timestamp < prior_watermark:
                 self._notice(
@@ -1328,19 +1301,13 @@ class RuntimeTemporalMonitor:
                     state.pending,
                     (
                         event.timestamp,
-                        (
-                            event.sequence
-                            if event.sequence is not None
-                            else event.arrival_index
-                        ),
+                        (event.sequence if event.sequence is not None else event.arrival_index),
                         event.arrival_index,
                         event,
                     ),
                 )
                 if len(state.pending) > self.config.max_pending_events_per_partition:
-                    _timestamp_value, _order, _arrival, forced = heapq.heappop(
-                        state.pending
-                    )
+                    _timestamp_value, _order, _arrival, forced = heapq.heappop(state.pending)
                     self._notice(
                         NoticeCode.OUT_OF_ORDER_WINDOW_EXCEEDED,
                         NoticeSeverity.INCONCLUSIVE,
@@ -1401,8 +1368,7 @@ class RuntimeTemporalMonitor:
             else (
                 -float("inf")
                 if state.max_seen_timestamp is None
-                else state.max_seen_timestamp
-                - self.config.out_of_order_window_seconds
+                else state.max_seen_timestamp - self.config.out_of_order_window_seconds
             )
         )
         while state.pending and state.pending[0][0] <= watermark:
@@ -1414,9 +1380,7 @@ class RuntimeTemporalMonitor:
             self._drain(partition, state, flush_all=True)
         return self.report()
 
-    def _append_history(
-        self, state: _PartitionState, event: NormalizedSupervisorEvent
-    ) -> None:
+    def _append_history(self, state: _PartitionState, event: NormalizedSupervisorEvent) -> None:
         full = len(state.history) == state.history.maxlen
         state.history.append(event)
         if full and not state.history_truncation_reported:
@@ -1494,11 +1458,11 @@ class RuntimeTemporalMonitor:
                 "lease_cancelled",
                 "lease_canceled",
             }:
-                state.cancelled_or_revoked = (
-                    state.cancelled_or_revoked
-                    or event.event_type
-                    in {"lease_revoked", "lease_cancelled", "lease_canceled"}
-                )
+                state.cancelled_or_revoked = state.cancelled_or_revoked or event.event_type in {
+                    "lease_revoked",
+                    "lease_cancelled",
+                    "lease_canceled",
+                }
 
         if is_action:
             if self.policy.require_lease_for_actions and not state.lease_active:
@@ -1528,9 +1492,7 @@ class RuntimeTemporalMonitor:
             state.terminal = False
             state.terminal_deadline_reported = False
             if event.timestamp is not None:
-                state.terminal_deadline = (
-                    event.timestamp + self.policy.terminal_deadline_seconds
-                )
+                state.terminal_deadline = event.timestamp + self.policy.terminal_deadline_seconds
         if event.event_type in _IMPLEMENTATION_FINISH_TYPES:
             if not state.started:
                 self._violate(
@@ -1595,10 +1557,7 @@ class RuntimeTemporalMonitor:
                 self._notice(
                     NoticeCode.PARTITION_EVICTED,
                     NoticeSeverity.INCONCLUSIVE,
-                    (
-                        "bounded resource capacity evicted live resource "
-                        f"{evicted_resource}"
-                    ),
+                    (f"bounded resource capacity evicted live resource {evicted_resource}"),
                     event.partition,
                     event.event_id,
                 )
@@ -1621,11 +1580,9 @@ class RuntimeTemporalMonitor:
 
         is_terminal = _status_is_terminal(event)
         if is_terminal:
-            successful_terminal = (
-                event.event_type in {"task_completed", "task_merged"}
-                or _text(event.payload.get("status") or event.payload.get("state")).lower()
-                in {"completed", "complete", "merged"}
-            )
+            successful_terminal = event.event_type in {"task_completed", "task_merged"} or _text(
+                event.payload.get("status") or event.payload.get("state")
+            ).lower() in {"completed", "complete", "merged"}
             if successful_terminal and not state.started:
                 self._violate(
                     TemporalPropertyKind.EVENT_ORDERING,
@@ -1645,13 +1602,10 @@ class RuntimeTemporalMonitor:
             if event.timestamp is not None:
                 for resource_id in state.resources:
                     state.resource_release_deadlines[resource_id] = (
-                        event.timestamp
-                        + self.policy.resource_release_deadline_seconds
+                        event.timestamp + self.policy.resource_release_deadline_seconds
                     )
 
-        status_value = _text(
-            event.payload.get("status") or event.payload.get("state")
-        ).lower()
+        status_value = _text(event.payload.get("status") or event.payload.get("state")).lower()
         if event.event_type in _STOP_TYPES or status_value in {
             "cancelled",
             "canceled",
@@ -1661,8 +1615,7 @@ class RuntimeTemporalMonitor:
             if event.timestamp is not None:
                 for resource_id in state.resources:
                     state.resource_release_deadlines[resource_id] = (
-                        event.timestamp
-                        + self.policy.resource_release_deadline_seconds
+                        event.timestamp + self.policy.resource_release_deadline_seconds
                     )
 
         self._append_history(state, event)
@@ -1712,10 +1665,7 @@ class RuntimeTemporalMonitor:
 
         if not accepted:
             return
-        if (
-            current != previous
-            and current not in SUPERVISOR_LIFECYCLE_TRANSITIONS[previous]
-        ):
+        if current != previous and current not in SUPERVISOR_LIFECYCLE_TRANSITIONS[previous]:
             self._violate(
                 TemporalPropertyKind.EVENT_ORDERING,
                 event,
@@ -1787,9 +1737,7 @@ class RuntimeTemporalMonitor:
             self._check_deadlines(state, timestamp, trigger)
         return self.report()
 
-    def finalize(
-        self, now: datetime | str | float | int | None = None
-    ) -> TemporalMonitorReport:
+    def finalize(self, now: datetime | str | float | int | None = None) -> TemporalMonitorReport:
         """Close the finite prefix, optionally checking deadlines at ``now``."""
 
         if self._finalized:
@@ -1798,11 +1746,7 @@ class RuntimeTemporalMonitor:
         if now is not None:
             self.advance_time(now)
         for partition, state in self._states.items():
-            if (
-                state.started
-                and not state.terminal
-                and not state.terminal_deadline_reported
-            ):
+            if state.started and not state.terminal and not state.terminal_deadline_reported:
                 self._notice(
                     NoticeCode.OPEN_OBLIGATION,
                     NoticeSeverity.INCONCLUSIVE,
@@ -1851,10 +1795,7 @@ class RuntimeTemporalMonitor:
             "trigger_event_id": event.event_id,
         }
         counterexample_id = _identity("runtime-counterexample", identity_payload)
-        if any(
-            item.counterexample_id == counterexample_id
-            for item in self._counterexamples
-        ):
+        if any(item.counterexample_id == counterexample_id for item in self._counterexamples):
             return
         counterexample = TemporalCounterexample(
             counterexample_id=counterexample_id,
@@ -1869,10 +1810,7 @@ class RuntimeTemporalMonitor:
             events=tuple(context_events),
         )
         self._counterexamples_observed += 1
-        if (
-            len(self._counterexamples)
-            >= self.config.max_counterexamples_in_memory
-        ):
+        if len(self._counterexamples) >= self.config.max_counterexamples_in_memory:
             self._counterexamples.pop(0)
             self._retained_observations_truncated = True
         self._counterexamples.append(counterexample)
@@ -1886,14 +1824,9 @@ class RuntimeTemporalMonitor:
             )
         )
         if novel_durable and self.config.counterexample_path is not None:
-            _append_durable_jsonl(
-                self.config.counterexample_path, counterexample.to_dict()
-            )
+            _append_durable_jsonl(self.config.counterexample_path, counterexample.to_dict())
             self._persisted_counterexamples[counterexample_id] = None
-            while (
-                len(self._persisted_counterexamples)
-                > self.config.max_duplicate_identities
-            ):
+            while len(self._persisted_counterexamples) > self.config.max_duplicate_identities:
                 self._persisted_counterexamples.popitem(last=False)
         if novel_durable:
             self._reopen(counterexample)
@@ -1924,10 +1857,7 @@ class RuntimeTemporalMonitor:
             while len(self._persisted_reopens) > self.config.max_duplicate_identities:
                 self._persisted_reopens.popitem(last=False)
         self._reopen_requests_observed += 1
-        if (
-            len(self._reopen_requests)
-            >= self.config.max_reopen_requests_in_memory
-        ):
+        if len(self._reopen_requests) >= self.config.max_reopen_requests_in_memory:
             self._reopen_requests.pop(0)
             self._retained_observations_truncated = True
         self._reopen_requests.append(request)
@@ -2018,9 +1948,7 @@ def monitor_event_logs(
         reopen_path=reopen_path,
         reopen_callback=reopen_callback,
     )
-    monitor.ingest_logs(
-        paths, include_rotated=include_rotated, repair_active=repair_active
-    )
+    monitor.ingest_logs(paths, include_rotated=include_rotated, repair_active=repair_active)
     return monitor.finalize(now)
 
 

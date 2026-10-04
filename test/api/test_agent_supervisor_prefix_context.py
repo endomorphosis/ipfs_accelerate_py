@@ -141,13 +141,9 @@ def test_stage_input_has_three_canonical_sections_and_preserves_core() -> None:
     evidence_offset = rendered.index('"volatile_evidence_delta"')
     assert policy_offset < task_offset < evidence_offset
     assert capsule.stable_policy_objective_prefix["goal"] == CORE["goal"]
+    assert capsule.stable_policy_objective_prefix["authority"] == capsule.context_capsule.authority
     assert (
-        capsule.stable_policy_objective_prefix["authority"]
-        == capsule.context_capsule.authority
-    )
-    assert (
-        capsule.stable_policy_objective_prefix["acceptance"]
-        == capsule.context_capsule.acceptance
+        capsule.stable_policy_objective_prefix["acceptance"] == capsule.context_capsule.acceptance
     )
     assert capsule.stable_task_core["scope"] == capsule.context_capsule.scope
     assert capsule.required_field_names == (
@@ -184,23 +180,12 @@ def test_warm_evidence_delta_reuses_prefix_without_stale_evidence() -> None:
     assert warm.capsule.semantic_prefix_id == cold.capsule.semantic_prefix_id
     assert warm.capsule.evidence_digest != cold.capsule.evidence_digest
     assert warm.receipt.cache_decision is PrefixCacheDecision.HIT
-    assert (
-        warm.receipt.reuse_source
-        is PrefixReuseSource.CONSERVATIVE_ESTIMATE
-    )
+    assert warm.receipt.reuse_source is PrefixReuseSource.CONSERVATIVE_ESTIMATE
     assert warm.receipt.reuse_bps >= MIN_WARM_PREFIX_REUSE_BPS
-    assert warm.receipt.evidence_claim_references == (
-        PREFIX_REUSE_REQUIREMENT_ID,
-    )
+    assert warm.receipt.evidence_claim_references == (PREFIX_REUSE_REQUIREMENT_ID,)
     assert warm.receipt.evidence_digest == warm.capsule.evidence_digest
-    selected = {
-        item.reference_id: item
-        for item in warm.capsule.volatile_evidence_delta
-    }
-    assert (
-        selected["diagnostic"].referenced_content_id
-        == "sha256:diagnostic-current"
-    )
+    selected = {item.reference_id: item for item in warm.capsule.volatile_evidence_delta}
+    assert selected["diagnostic"].referenced_content_id == "sha256:diagnostic-current"
     assert "diagnostic-current" in warm.provider_input
     assert "diagnostic-old" not in warm.provider_input
 
@@ -219,17 +204,9 @@ def test_fallback_tokenizer_derives_a_conservative_qualifying_estimate() -> None
 
     assert not compiler.estimator.provider_aware
     assert warm.receipt.reuse_source is PrefixReuseSource.CONSERVATIVE_ESTIMATE
-    assert (
-        MIN_WARM_PREFIX_REUSE_BPS
-        <= warm.receipt.reuse_bps
-        < 10_000
-    )
-    assert warm.receipt.reused_prefix_tokens < (
-        warm.receipt.eligible_stable_prefix_tokens
-    )
-    assert warm.receipt.evidence_claim_references == (
-        PREFIX_REUSE_REQUIREMENT_ID,
-    )
+    assert MIN_WARM_PREFIX_REUSE_BPS <= warm.receipt.reuse_bps < 10_000
+    assert warm.receipt.reused_prefix_tokens < (warm.receipt.eligible_stable_prefix_tokens)
+    assert warm.receipt.evidence_claim_references == (PREFIX_REUSE_REQUIREMENT_ID,)
 
 
 def test_segment_overhead_defers_optional_evidence_but_never_required_evidence() -> None:
@@ -248,9 +225,7 @@ def test_segment_overhead_defers_optional_evidence_but_never_required_evidence()
     )
 
     base = compiler.compile(**BINDING, **CORE, evidence=(optional,))
-    assert tuple(item.reference_id for item in base.capsule.evidence) == (
-        "near-limit",
-    )
+    assert tuple(item.reference_id for item in base.capsule.evidence) == ("near-limit",)
     prefix = _compile(compiler, evidence=(optional,))
     assert prefix.capsule.provider_input_tokens <= 80
     assert prefix.capsule.volatile_evidence_delta == ()
@@ -291,9 +266,7 @@ def test_segment_overhead_defers_optional_evidence_but_never_required_evidence()
         ("model_id", "model:other"),
     ),
 )
-def test_semantic_prefix_dependencies_invalidate_exactly(
-    field: str, value: object
-) -> None:
+def test_semantic_prefix_dependencies_invalidate_exactly(field: str, value: object) -> None:
     compiler = _compiler()
     cold = _compile(compiler)
 
@@ -321,15 +294,9 @@ def test_native_prompt_and_kv_cache_usage_bind_actual_reuse() -> None:
         provider_cache_kind=PrefixCacheKind.PROMPT_CACHE,
         provider_reused_tokens=prompt_actual,
     )
-    assert (
-        prompt.receipt.reuse_source
-        is PrefixReuseSource.PROVIDER_PROMPT_CACHE
-    )
+    assert prompt.receipt.reuse_source is PrefixReuseSource.PROVIDER_PROMPT_CACHE
     assert prompt.receipt.provider_reused_tokens == prompt_actual
-    assert (
-        prompt.receipt.cache_identity.provider_cache_id
-        == "prompt-cache:abc"
-    )
+    assert prompt.receipt.cache_identity.provider_cache_id == "prompt-cache:abc"
     assert prompt.receipt.cache_identity.cache_kind is PrefixCacheKind.PROMPT_CACHE
     assert prompt.receipt.reuse_bps == 10_000
 
@@ -338,9 +305,7 @@ def test_native_prompt_and_kv_cache_usage_bind_actual_reuse() -> None:
         previous=prompt,
         provider_cache_id="kv-cache:xyz",
         provider_cache_kind="provider_kv_cache",
-        provider_reused_tokens=max(
-            1, prompt.capsule.stable_prefix_tokens * 3 // 4
-        ),
+        provider_reused_tokens=max(1, prompt.capsule.stable_prefix_tokens * 3 // 4),
     )
     assert kv.receipt.reuse_source is PrefixReuseSource.PROVIDER_KV_CACHE
     assert kv.receipt.cache_identity.cache_kind is PrefixCacheKind.KV_CACHE
@@ -359,19 +324,10 @@ def test_provider_cache_identity_uses_estimate_when_native_count_is_absent() -> 
         provider_cache_kind=PrefixCacheKind.PROMPT_CACHE,
     )
 
-    assert (
-        warm.receipt.cache_identity.cache_kind
-        is PrefixCacheKind.PROMPT_CACHE
-    )
-    assert (
-        warm.receipt.cache_identity.provider_cache_id
-        == "prompt-cache:no-counter"
-    )
+    assert warm.receipt.cache_identity.cache_kind is PrefixCacheKind.PROMPT_CACHE
+    assert warm.receipt.cache_identity.provider_cache_id == "prompt-cache:no-counter"
     assert warm.receipt.provider_reused_tokens is None
-    assert (
-        warm.receipt.reuse_source
-        is PrefixReuseSource.CONSERVATIVE_ESTIMATE
-    )
+    assert warm.receipt.reuse_source is PrefixReuseSource.CONSERVATIVE_ESTIMATE
     assert warm.receipt.reuse_bps >= MIN_WARM_PREFIX_REUSE_BPS
 
 
@@ -418,22 +374,15 @@ def test_prefix_contracts_round_trip_and_reject_forged_reuse() -> None:
         previous=cold,
     )
 
+    assert PrefixStableContextCapsule.from_json(warm.capsule.to_json()) == warm.capsule
     assert (
-        PrefixStableContextCapsule.from_json(warm.capsule.to_json())
-        == warm.capsule
-    )
-    assert (
-        PrefixCacheIdentity.from_json(
-            warm.receipt.cache_identity.to_json()
-        )
+        PrefixCacheIdentity.from_json(warm.receipt.cache_identity.to_json())
         == warm.receipt.cache_identity
     )
     assert PrefixReuseReceipt.from_json(warm.receipt.to_json()) == warm.receipt
 
     forged_wire = warm.receipt.to_dict()
-    forged_wire["reused_prefix_tokens"] = (
-        warm.receipt.eligible_stable_prefix_tokens + 1
-    )
+    forged_wire["reused_prefix_tokens"] = warm.receipt.eligible_stable_prefix_tokens + 1
     with pytest.raises(PrefixContextError, match="exceed"):
         PrefixReuseReceipt.from_dict(forged_wire)
 

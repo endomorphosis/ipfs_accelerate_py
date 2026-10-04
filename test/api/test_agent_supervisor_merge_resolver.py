@@ -145,7 +145,9 @@ def test_resolution_validation_rejects_markers_and_invalid_python(tmp_path: Path
     marked = tmp_path / "marked.py"
     invalid = tmp_path / "invalid.py"
     clean.write_text("value = 1\n", encoding="utf-8")
-    marked.write_text("<<<<<<< HEAD\nvalue = 1\n=======\nvalue = 2\n>>>>>>> branch\n", encoding="utf-8")
+    marked.write_text(
+        "<<<<<<< HEAD\nvalue = 1\n=======\nvalue = 2\n>>>>>>> branch\n", encoding="utf-8"
+    )
     invalid.write_text("def broken(\n", encoding="utf-8")
 
     result = validate_resolved_paths(tmp_path, ["clean.py", "marked.py", "invalid.py"])

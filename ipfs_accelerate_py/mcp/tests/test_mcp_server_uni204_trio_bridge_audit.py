@@ -10,8 +10,12 @@ import unittest
 class TestMCPServerUNI204TrioBridgeAudit(unittest.TestCase):
     def setUp(self) -> None:
         self.repo_root = Path(__file__).resolve().parents[3]
-        self.plan_text = (self.repo_root / "mcpplusplus" / "SERVER_UNIFICATION_PLAN.md").read_text(encoding="utf-8")
-        self.matrix_text = (self.repo_root / "mcpplusplus" / "SPEC_GAP_MATRIX.md").read_text(encoding="utf-8")
+        self.plan_text = (self.repo_root / "mcpplusplus" / "SERVER_UNIFICATION_PLAN.md").read_text(
+            encoding="utf-8"
+        )
+        self.matrix_text = (self.repo_root / "mcpplusplus" / "SPEC_GAP_MATRIX.md").read_text(
+            encoding="utf-8"
+        )
 
     def test_uni204_completion_is_recorded_in_plan_and_matrix(self) -> None:
         self.assertIn("UNI-204", self.plan_text)

@@ -23,10 +23,19 @@ def _minimal_wav() -> bytes:
     chunk_size = 36 + data_size
     return struct.pack(
         "<4sI4s4sIHHIIHH4sI",
-        b"RIFF", chunk_size, b"WAVE", b"fmt ", 16,
-        1, num_channels, sample_rate, byte_rate,
-        block_align, bits_per_sample,
-        b"data", data_size,
+        b"RIFF",
+        chunk_size,
+        b"WAVE",
+        b"fmt ",
+        16,
+        1,
+        num_channels,
+        sample_rate,
+        byte_rate,
+        block_align,
+        bits_per_sample,
+        b"data",
+        data_size,
     )
 
 
@@ -43,11 +52,13 @@ def test_imports():
             voice_router_available,
         )
         from ipfs_accelerate_py.voice_router import VoiceProvider, text_to_speech
+
         print("  ✓ All imports successful")
         return True
     except Exception as e:
         print(f"  ✗ Import failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -74,6 +85,7 @@ def test_router_deps():
     except Exception as e:
         print(f"  ✗ RouterDeps test failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -91,12 +103,21 @@ def test_provider_registry():
         wav = _minimal_wav()
 
         class FixedVoiceProvider:
-            def synthesize(self, text, *, voice=None, model_name=None,
-                           device=None, output_format=None, **kwargs) -> bytes:
+            def synthesize(
+                self,
+                text,
+                *,
+                voice=None,
+                model_name=None,
+                device=None,
+                output_format=None,
+                **kwargs,
+            ) -> bytes:
                 return wav
 
-            def transcribe(self, audio, *, model_name=None, language=None,
-                           device=None, **kwargs) -> str:
+            def transcribe(
+                self, audio, *, model_name=None, language=None, device=None, **kwargs
+            ) -> str:
                 return f"transcribed: {len(audio) if isinstance(audio, bytes) else audio}"
 
         clear_voice_router_caches()
@@ -117,6 +138,7 @@ def test_provider_registry():
     except Exception as e:
         print(f"  ✗ Provider registry test failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -134,8 +156,16 @@ def test_text_to_speech_custom_provider():
         wav = _minimal_wav()
 
         class SimpleTTSProvider:
-            def synthesize(self, text, *, voice=None, model_name=None,
-                           device=None, output_format=None, **kwargs) -> bytes:
+            def synthesize(
+                self,
+                text,
+                *,
+                voice=None,
+                model_name=None,
+                device=None,
+                output_format=None,
+                **kwargs,
+            ) -> bytes:
                 return wav
 
             def transcribe(self, audio, **kwargs) -> str:
@@ -153,6 +183,7 @@ def test_text_to_speech_custom_provider():
     except Exception as e:
         print(f"  ✗ text_to_speech() test failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -162,14 +193,18 @@ def test_speech_to_text_custom_provider():
     print("\nTesting speech_to_text() with custom provider...")
     try:
         from ipfs_accelerate_py import speech_to_text
-        from ipfs_accelerate_py.voice_router import register_voice_provider, clear_voice_router_caches
+        from ipfs_accelerate_py.voice_router import (
+            register_voice_provider,
+            clear_voice_router_caches,
+        )
 
         class SimpleSTTProvider:
             def synthesize(self, text, **kwargs) -> bytes:
                 raise NotImplementedError
 
-            def transcribe(self, audio, *, model_name=None, language=None,
-                           device=None, **kwargs) -> str:
+            def transcribe(
+                self, audio, *, model_name=None, language=None, device=None, **kwargs
+            ) -> str:
                 return "hello world"
 
         clear_voice_router_caches()
@@ -183,6 +218,7 @@ def test_speech_to_text_custom_provider():
     except Exception as e:
         print(f"  ✗ speech_to_text() test failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -191,6 +227,7 @@ def test_output_path():
     """Test that text_to_speech() writes to a file when output_path is given."""
     print("\nTesting output_path parameter...")
     import tempfile
+
     try:
         from ipfs_accelerate_py.voice_router import (
             register_voice_provider,
@@ -226,6 +263,7 @@ def test_output_path():
     except Exception as e:
         print(f"  ✗ output_path test failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -266,13 +304,16 @@ def test_response_caching():
         audio2 = text_to_speech(text, provider="test_cache_voice", deps=deps)
 
         assert audio1 == audio2 == wav
-        assert call_count[0] == 1, f"Expected 1 provider call (cache hit on 2nd), got {call_count[0]}"
+        assert call_count[0] == 1, (
+            f"Expected 1 provider call (cache hit on 2nd), got {call_count[0]}"
+        )
 
         print(f"  ✓ Response caching tests passed ({call_count[0]} provider call for 2 requests)")
         return True
     except Exception as e:
         print(f"  ✗ Response caching test failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -295,6 +336,7 @@ def test_unknown_provider_raises():
     except Exception as e:
         print(f"  ✗ Error during test: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -306,20 +348,32 @@ def test_voice_provider_protocol():
         from ipfs_accelerate_py.voice_router import VoiceProvider
 
         class GoodProvider:
-            def synthesize(self, text, *, voice=None, model_name=None,
-                           device=None, output_format=None, **kwargs) -> bytes:
+            def synthesize(
+                self,
+                text,
+                *,
+                voice=None,
+                model_name=None,
+                device=None,
+                output_format=None,
+                **kwargs,
+            ) -> bytes:
                 return b""
 
-            def transcribe(self, audio, *, model_name=None, language=None,
-                           device=None, **kwargs) -> str:
+            def transcribe(
+                self, audio, *, model_name=None, language=None, device=None, **kwargs
+            ) -> str:
                 return ""
 
-        assert isinstance(GoodProvider(), VoiceProvider), "GoodProvider should satisfy VoiceProvider"
+        assert isinstance(GoodProvider(), VoiceProvider), (
+            "GoodProvider should satisfy VoiceProvider"
+        )
         print("  ✓ VoiceProvider protocol tests passed")
         return True
     except Exception as e:
         print(f"  ✗ VoiceProvider protocol test failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 

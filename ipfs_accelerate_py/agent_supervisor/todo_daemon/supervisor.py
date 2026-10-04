@@ -65,7 +65,9 @@ class HeartbeatSnapshot:
     def to_payload(self, *, prefix: str = "heartbeat") -> JsonDict:
         return {
             f"{prefix}_at": None if self.heartbeat_at is None else self.heartbeat_at.isoformat(),
-            f"{prefix}_age_seconds": None if self.age_seconds is None else round(self.age_seconds, 3),
+            f"{prefix}_age_seconds": None
+            if self.age_seconds is None
+            else round(self.age_seconds, 3),
             "daemon_pid": self.pid,
             "daemon_pid_alive": self.pid_alive,
             f"{prefix}_stale_after_seconds": self.stale_after_seconds,
@@ -90,7 +92,9 @@ def heartbeat_snapshot(
         if heartbeat_at is not None:
             break
     now_at = _aware_utc(now) or now_utc()
-    age_seconds = None if heartbeat_at is None else max(0.0, (now_at - heartbeat_at).total_seconds())
+    age_seconds = (
+        None if heartbeat_at is None else max(0.0, (now_at - heartbeat_at).total_seconds())
+    )
     pid = None
     for key in pid_keys:
         pid = status.get(key)
@@ -208,9 +212,8 @@ def _is_agent_worker_command(cmdline: str) -> bool:
     while index < len(tokens):
         token = tokens[index]
         if token == "-m":
-            return (
-                index + 1 < len(tokens)
-                and tokens[index + 1].lower().endswith("llm_router_merge_resolver")
+            return index + 1 < len(tokens) and tokens[index + 1].lower().endswith(
+                "llm_router_merge_resolver"
             )
         if token.startswith("-"):
             index += 1
@@ -246,8 +249,12 @@ def worktree_phase_worker_status(
     age = None if started is None else max(0.0, (now_at - started).total_seconds())
     root_pid = daemon_pid or current.get("heartbeat_pid") or current.get("pid")
     descendants = descendant_processes(root_pid)
-    workers = [item for item in descendants if _is_agent_worker_command(str(item.get("cmdline") or ""))]
-    stalled = bool(age is not None and threshold_seconds > 0 and age >= threshold_seconds and not workers)
+    workers = [
+        item for item in descendants if _is_agent_worker_command(str(item.get("cmdline") or ""))
+    ]
+    stalled = bool(
+        age is not None and threshold_seconds > 0 and age >= threshold_seconds and not workers
+    )
     return {
         "required": True,
         "phase": phase,

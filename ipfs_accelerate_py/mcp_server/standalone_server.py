@@ -88,13 +88,19 @@ def run_fastapi_server(
 
 def main() -> None:
     """CLI entrypoint for canonical standalone startup wrappers."""
-    parser = argparse.ArgumentParser(description="IPFS Accelerate MCP Standalone Server (canonical facade)")
+    parser = argparse.ArgumentParser(
+        description="IPFS Accelerate MCP Standalone Server (canonical facade)"
+    )
     parser.add_argument("--host", default="localhost", help="Host to bind to")
     parser.add_argument("--port", type=int, default=8080, help="Port to bind to")
     parser.add_argument("--name", default="ipfs-accelerate", help="Name of the MCP server")
-    parser.add_argument("--description", default="IPFS Accelerate MCP Server", help="Description of the MCP server")
+    parser.add_argument(
+        "--description", default="IPFS Accelerate MCP Server", help="Description of the MCP server"
+    )
     parser.add_argument("--fastapi", action="store_true", help="Use FastAPI integration")
-    parser.add_argument("--mount-path", default="/mcp", help="Path to mount the MCP server at (for FastAPI)")
+    parser.add_argument(
+        "--mount-path", default="/mcp", help="Path to mount the MCP server at (for FastAPI)"
+    )
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
     args = parser.parse_args()
 

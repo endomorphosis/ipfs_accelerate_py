@@ -128,8 +128,10 @@ A **production-ready, content-addressed cache infrastructure** that provides:
 def put(operation: str, data: Any, **params) -> str:
     """Store data with CID-based key"""
 
+
 def get(operation: str, **params) -> Optional[Any]:
     """Retrieve data by CID"""
+
 
 def get_stats() -> Dict[str, Any]:
     """Get cache statistics"""
@@ -146,8 +148,10 @@ def get_stats() -> Dict[str, Any]:
 def add(cid: str, operation: str, metadata: Dict):
     """Add CID to index"""
 
+
 def get(cid: str) -> Optional[Dict]:
     """Get metadata by CID"""
+
 
 def find_by_operation(operation: str) -> List[str]:
     """Find all CIDs for operation"""
@@ -303,9 +307,9 @@ from ipfs_accelerate_py.cli_integrations import get_all_cli_integrations
 clis = get_all_cli_integrations()
 
 # All CLI calls are automatically cached
-repos = clis['github'].list_repos(owner="endomorphosis")
-models = clis['huggingface'].list_models(search="llama")
-response = clis['groq'].chat("Explain transformers")
+repos = clis["github"].list_repos(owner="endomorphosis")
+models = clis["huggingface"].list_models(search="llama")
+response = clis["groq"].chat("Explain transformers")
 ```
 
 ## Usage Examples
@@ -320,20 +324,17 @@ api = get_cached_openai_api(api_key="sk-...")
 
 # First call - API request (1-5s)
 response1 = api.chat(
-    messages=[{"role": "user", "content": "What is Python?"}],
-    model="gpt-4",
-    temperature=0.0
+    messages=[{"role": "user", "content": "What is Python?"}], model="gpt-4", temperature=0.0
 )
 
 # Second call - cached (< 1ms)
 response2 = api.chat(
-    messages=[{"role": "user", "content": "What is Python?"}],
-    model="gpt-4",
-    temperature=0.0
+    messages=[{"role": "user", "content": "What is Python?"}], model="gpt-4", temperature=0.0
 )
 
 # Check cache stats
 from ipfs_accelerate_py.common.llm_cache import get_global_llm_cache
+
 stats = get_global_llm_cache().get_stats()
 print(f"Hit rate: {stats['hit_rate']:.1%}")
 ```
@@ -341,10 +342,7 @@ print(f"Hit rate: {stats['hit_rate']:.1%}")
 ### Example 2: Multi-API Workflow
 
 ```python
-from ipfs_accelerate_py.api_integrations import (
-    get_cached_openai_api,
-    get_cached_hf_tgi_api
-)
+from ipfs_accelerate_py.api_integrations import get_cached_openai_api, get_cached_hf_tgi_api
 from ipfs_accelerate_py.common.hf_hub_cache import get_global_hf_hub_cache
 
 # Use multiple APIs with caching
@@ -387,10 +385,7 @@ from ipfs_accelerate_py.common.kubernetes_cache import get_global_kubernetes_cac
 cache = get_global_kubernetes_cache()
 
 # Cache pod status
-pod_data = {
-    "metadata": {"name": "my-pod"},
-    "status": {"phase": "Running"}
-}
+pod_data = {"metadata": {"name": "my-pod"}, "status": {"phase": "Running"}}
 cache.put("pod_status", pod_data, pod_name="my-pod", namespace="default")
 
 # Retrieve from cache (30s TTL for pod status)
@@ -408,11 +403,7 @@ cache = get_global_llm_cache()
 
 # Cache miss flow: local → IPFS → API
 # All happens automatically!
-response = cache.get_completion(
-    prompt="What is AI?",
-    model="gpt-4",
-    temperature=0.0
-)
+response = cache.get_completion(prompt="What is AI?", model="gpt-4", temperature=0.0)
 
 # Check IPFS fallback stats
 stats = cache.get_stats()
@@ -565,16 +556,13 @@ from ipfs_accelerate_py.cli_integrations import ClaudeCodeCLIIntegration
 claude = ClaudeCodeCLIIntegration()
 
 # Make request (automatically tries CLI first, falls back to SDK)
-response = claude.chat(
-    message="Explain Python decorators",
-    model="claude-3-sonnet-20240229"
-)
+response = claude.chat(message="Explain Python decorators", model="claude-3-sonnet-20240229")
 
 # Response includes mode information
-print(response["response"])        # The actual response
-print(response.get("mode"))        # "CLI" or "SDK"
-print(response.get("cached"))      # True if from cache
-print(response.get("fallback"))    # True if fallback was used
+print(response["response"])  # The actual response
+print(response.get("mode"))  # "CLI" or "SDK"
+print(response.get("cached"))  # True if from cache
+print(response.get("fallback"))  # True if fallback was used
 ```
 
 ### Configuration
@@ -675,8 +663,8 @@ export GROQ_API_KEY="gsk_..."
 ```python
 # These work automatically (no explicit setup needed)
 claude = ClaudeCodeCLIIntegration()  # Uses ANTHROPIC_API_KEY from env
-gemini = GeminiCLIIntegration()      # Uses GOOGLE_API_KEY from env
-groq = GroqCLIIntegration()          # Uses GROQ_API_KEY from env
+gemini = GeminiCLIIntegration()  # Uses GOOGLE_API_KEY from env
+groq = GroqCLIIntegration()  # Uses GROQ_API_KEY from env
 ```
 
 ### Security Features
@@ -742,6 +730,7 @@ See [PHASES_3_4_IMPLEMENTATION.md](../summaries/PHASES_3_4_IMPLEMENTATION.md) fo
 ```python
 # Check if cache is enabled
 from ipfs_accelerate_py.common.llm_cache import get_global_llm_cache
+
 cache = get_global_llm_cache()
 stats = cache.get_stats()
 print(stats)  # Should show hits/misses
@@ -771,10 +760,12 @@ which npm
 
 ```python
 import logging
+
 logging.basicConfig(level=logging.DEBUG)
 
 # Now all cache operations will be logged
 from ipfs_accelerate_py.common.llm_cache import get_global_llm_cache
+
 cache = get_global_llm_cache()
 # Will see DEBUG logs
 ```

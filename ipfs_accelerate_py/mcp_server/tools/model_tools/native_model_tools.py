@@ -227,9 +227,7 @@ def _redact_catalog_payload(value: Any) -> Any:
         if isinstance(item, Mapping):
             return {
                 str(key): (
-                    _REDACTED
-                    if str(key).casefold() == "endpoint_uri"
-                    else hide_endpoints(child)
+                    _REDACTED if str(key).casefold() == "endpoint_uri" else hide_endpoints(child)
                 )
                 for key, child in item.items()
             }
@@ -290,9 +288,7 @@ def _validate_refresh_sources(sources: Any) -> Sequence[str]:
         or len(sources) > MAX_CATALOG_SOURCES
         or any(not isinstance(item, str) or not item for item in sources)
     ):
-        raise ValueError(
-            "sources must be a non-empty bounded array of source names"
-        )
+        raise ValueError("sources must be a non-empty bounded array of source names")
     return tuple(sources)
 
 
@@ -467,8 +463,7 @@ async def model_catalog_resolve(
         data = _redact_catalog_payload(result.to_dict())
         if not result.found:
             ambiguous = any(
-                "ambiguous" in str(reason).casefold()
-                for reason in data.get("reasons", ())
+                "ambiguous" in str(reason).casefold() for reason in data.get("reasons", ())
             )
             code = "ambiguous_identifier" if ambiguous else "no_match"
             message = (
@@ -537,12 +532,8 @@ async def model_catalog_refresh(
                 "refreshed": list(result.refreshed),
                 "failed": list(result.failed),
                 "unchanged": list(result.unchanged),
-                "source_states": [
-                    item.to_dict() for item in result.source_states
-                ],
-                "diagnostics": [
-                    item.to_dict() for item in result.diagnostics
-                ],
+                "source_states": [item.to_dict() for item in result.source_states],
+                "diagnostics": [item.to_dict() for item in result.diagnostics],
             }
             if result.failed:
                 return _catalog_error_result(
@@ -639,9 +630,7 @@ async def model_get_served(
 
         manager = get_default_model_manager()
         model = await anyio.to_thread.run_sync(
-            lambda: manager.get_served_model(
-                model_id, endpoint_url=endpoint_url, timeout=timeout
-            )
+            lambda: manager.get_served_model(model_id, endpoint_url=endpoint_url, timeout=timeout)
         )
         if model is None:
             return _error_result(f"Model is not currently served: {model_id}", model_id=model_id)
@@ -935,7 +924,10 @@ def register_native_model_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "task_type": {"type": "string", "description": "Task type (e.g., 'text-generation')."},
+                "task_type": {
+                    "type": "string",
+                    "description": "Task type (e.g., 'text-generation').",
+                },
                 "hardware": {
                     "type": "string",
                     "description": "Target hardware (e.g., 'cpu', 'cuda').",
@@ -1033,9 +1025,7 @@ def register_native_model_tools(manager: Any) -> None:
         description="Get metadata for a HuggingFace inference model.",
         input_schema={
             "type": "object",
-            "properties": {
-                "model_id": {"type": "string", "description": "HuggingFace model ID."}
-            },
+            "properties": {"model_id": {"type": "string", "description": "HuggingFace model ID."}},
             "required": ["model_id"],
         },
         runtime="fastapi",
@@ -1110,9 +1100,7 @@ def register_native_model_tools(manager: Any) -> None:
         description="Load a HuggingFace model IPLD document from IPFS by CID.",
         input_schema={
             "type": "object",
-            "properties": {
-                "cid": {"type": "string", "description": "IPFS content identifier."}
-            },
+            "properties": {"cid": {"type": "string", "description": "IPFS content identifier."}},
             "required": ["cid"],
         },
         runtime="fastapi",

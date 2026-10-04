@@ -33,16 +33,10 @@ CONTRACT_VERSION = CONTEXT_CONTRACT_VERSION
 SCHEMA_VERSION = CONTEXT_CONTRACT_VERSION
 
 CONTEXT_BUDGET_SCHEMA = "ipfs_accelerate_py/agent-supervisor/context-budget@1"
-CONTEXT_BUDGET_RESOLUTION_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/context-budget-resolution@1"
-)
-CONTEXT_REFERENCE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/context-reference@1"
-)
+CONTEXT_BUDGET_RESOLUTION_SCHEMA = "ipfs_accelerate_py/agent-supervisor/context-budget-resolution@1"
+CONTEXT_REFERENCE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/context-reference@1"
 CONTEXT_CAPSULE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/context-capsule@1"
-CONTEXT_DELTA_CAPSULE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/context-delta-capsule@1"
-)
+CONTEXT_DELTA_CAPSULE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/context-delta-capsule@1"
 
 ABSOLUTE_MAX_CONTEXT_BYTES = 1_048_576
 ABSOLUTE_MAX_ITEM_BYTES = 65_536
@@ -85,14 +79,10 @@ class _ContextCanonicalContract(CanonicalContract):
         except (TypeError, json.JSONDecodeError) as exc:
             raise ContextContractError("context contract JSON is malformed") from exc
         if not isinstance(value, Mapping):
-            raise ContextContractError(
-                "context contract JSON must contain an object"
-            )
+            raise ContextContractError("context contract JSON must contain an object")
         decoder = getattr(cls, "from_dict", None)
         if decoder is None:
-            raise ContextContractError(
-                f"{cls.__name__} does not support from_dict"
-            )
+            raise ContextContractError(f"{cls.__name__} does not support from_dict")
         return decoder(value)
 
 
@@ -150,17 +140,13 @@ def _schema(payload: Mapping[str, Any], expected: str) -> None:
         raise ContextContractError("context contract payload must be an object")
     supplied = payload.get("schema")
     if supplied not in (None, "", expected):
-        raise ContextContractError(
-            f"unsupported context schema {supplied!r}; expected {expected}"
-        )
+        raise ContextContractError(f"unsupported context schema {supplied!r}; expected {expected}")
     version = payload.get("contract_version", payload.get("schema_version"))
     if version not in (None, CONTEXT_CONTRACT_VERSION):
         raise ContextContractError("unsupported context contract version")
 
 
-def _reject_unknown(
-    payload: Mapping[str, Any], allowed: Iterable[str], noun: str
-) -> None:
+def _reject_unknown(payload: Mapping[str, Any], allowed: Iterable[str], noun: str) -> None:
     if set(payload).difference(allowed):
         raise ContextContractError(
             f"{noun} contains unsupported fields; rebuild its canonical payload"
@@ -226,30 +212,20 @@ def _freeze_canonical(
                 raise ContextContractError(f"{name} object keys must be strings")
             frozen: dict[str, Any] = {}
             for key in sorted(item):
-                normalized_key = _text(
-                    key, f"{name} key", max_bytes=max_text_bytes
-                )
+                normalized_key = _text(key, f"{name} key", max_bytes=max_text_bytes)
                 raw = item[key]
                 if normalized_key in _PATH_KEYS and normalized_key.endswith("paths"):
                     if isinstance(raw, str) or not isinstance(raw, Sequence):
-                        raise ContextContractError(
-                            f"{normalized_key} must be a sequence of paths"
-                        )
+                        raise ContextContractError(f"{normalized_key} must be a sequence of paths")
                     frozen[normalized_key] = tuple(
                         _relative_path(member, normalized_key) for member in raw
                     )
                 else:
-                    frozen[normalized_key] = visit(
-                        raw, depth + 1, normalized_key
-                    )
+                    frozen[normalized_key] = visit(raw, depth + 1, normalized_key)
             return MappingProxyType(frozen)
-        if isinstance(item, Sequence) and not isinstance(
-            item, (str, bytes, bytearray, memoryview)
-        ):
+        if isinstance(item, Sequence) and not isinstance(item, (str, bytes, bytearray, memoryview)):
             return tuple(visit(member, depth + 1, key_name) for member in item)
-        raise ContextContractError(
-            f"{name} contains unsupported value type {type(item).__name__}"
-        )
+        raise ContextContractError(f"{name} contains unsupported value type {type(item).__name__}")
 
     return visit(value, 0)
 
@@ -263,9 +239,7 @@ def _identity(payload: Mapping[str, Any], actual: str, noun: str) -> None:
 def _coerce_references(value: Any, name: str) -> tuple["ContextReference", ...]:
     if value is None:
         return ()
-    if isinstance(value, (str, bytes, bytearray, memoryview)) or not isinstance(
-        value, Sequence
-    ):
+    if isinstance(value, (str, bytes, bytearray, memoryview)) or not isinstance(value, Sequence):
         raise ContextContractError(f"{name} must be a sequence")
     result: list[ContextReference] = []
     for item in value:
@@ -309,17 +283,13 @@ class ContextBudget(_ContextCanonicalContract):
         ):
             object.__setattr__(self, name, _positive(getattr(self, name), name))
         for name in ("reserved_output_tokens", "reserved_tool_tokens"):
-            object.__setattr__(
-                self, name, _nonnegative(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _nonnegative(getattr(self, name), name))
         if self.max_items > ABSOLUTE_MAX_ITEMS:
             raise ContextBoundsError("max_items exceeds the absolute limit")
         if self.max_item_bytes > ABSOLUTE_MAX_ITEM_BYTES:
             raise ContextBoundsError("max_item_bytes exceeds the absolute limit")
         if self.max_serialized_bytes > ABSOLUTE_MAX_CONTEXT_BYTES:
-            raise ContextBoundsError(
-                "max_serialized_bytes exceeds the absolute limit"
-            )
+            raise ContextBoundsError("max_serialized_bytes exceeds the absolute limit")
         if self.max_depth > ABSOLUTE_MAX_DEPTH:
             raise ContextBoundsError("max_depth exceeds the absolute limit")
         if self.max_text_bytes > self.max_item_bytes:
@@ -327,11 +297,7 @@ class ContextBudget(_ContextCanonicalContract):
 
     @property
     def total_token_window(self) -> int:
-        return (
-            self.max_input_tokens
-            + self.reserved_output_tokens
-            + self.reserved_tool_tokens
-        )
+        return self.max_input_tokens + self.reserved_output_tokens + self.reserved_tool_tokens
 
     @property
     def input_token_limit(self) -> int:
@@ -382,9 +348,7 @@ class ContextBudget(_ContextCanonicalContract):
                 else reserved_output_tokens
             ),
             reserved_tool_tokens=(
-                self.reserved_tool_tokens
-                if reserved_tool_tokens is None
-                else reserved_tool_tokens
+                self.reserved_tool_tokens if reserved_tool_tokens is None else reserved_tool_tokens
             ),
         )
 
@@ -399,9 +363,7 @@ class ContextBudget(_ContextCanonicalContract):
 
         effective = _positive(limit, "effective_input_limit")
         if effective > self.max_input_tokens:
-            raise ContextBoundsError(
-                "effective_input_limit cannot exceed max_input_tokens"
-            )
+            raise ContextBoundsError("effective_input_limit cannot exceed max_input_tokens")
         return ContextBudget(
             max_input_tokens=effective,
             reserved_output_tokens=(
@@ -471,20 +433,12 @@ class ContextBudget(_ContextCanonicalContract):
             reserved_output_tokens=payload.get(
                 "reserved_output_tokens", defaults.reserved_output_tokens
             ),
-            reserved_tool_tokens=payload.get(
-                "reserved_tool_tokens", defaults.reserved_tool_tokens
-            ),
+            reserved_tool_tokens=payload.get("reserved_tool_tokens", defaults.reserved_tool_tokens),
             max_items=payload.get("max_items", defaults.max_items),
-            max_item_bytes=payload.get(
-                "max_item_bytes", defaults.max_item_bytes
-            ),
-            max_serialized_bytes=payload.get(
-                "max_serialized_bytes", defaults.max_serialized_bytes
-            ),
+            max_item_bytes=payload.get("max_item_bytes", defaults.max_item_bytes),
+            max_serialized_bytes=payload.get("max_serialized_bytes", defaults.max_serialized_bytes),
             max_depth=payload.get("max_depth", defaults.max_depth),
-            max_text_bytes=payload.get(
-                "max_text_bytes", defaults.max_text_bytes
-            ),
+            max_text_bytes=payload.get("max_text_bytes", defaults.max_text_bytes),
         )
         _identity(payload, result.content_id, "context budget")
         return result
@@ -537,20 +491,20 @@ class ContextBudgetResolution(_ContextCanonicalContract):
             )
         limits = [supervisor]
         if provider_window is not None:
-            limits.append(
-                max(0, provider_window - output_reserve - tool_reserve)
-            )
+            limits.append(max(0, provider_window - output_reserve - tool_reserve))
         if provider_input is not None:
             limits.append(provider_input)
         derived = min(limits)
         claimed = self.effective_input_limit
-        if claimed is not None and _nonnegative(
-            claimed,
-            "effective_input_limit",
-        ) != derived:
-            raise ContextContractError(
-                "effective_input_limit does not match the negotiated limits"
+        if (
+            claimed is not None
+            and _nonnegative(
+                claimed,
+                "effective_input_limit",
             )
+            != derived
+        ):
+            raise ContextContractError("effective_input_limit does not match the negotiated limits")
         object.__setattr__(self, "supervisor_max_input_tokens", supervisor)
         object.__setattr__(self, "reserved_output_tokens", output_reserve)
         object.__setattr__(self, "reserved_tool_tokens", tool_reserve)
@@ -592,16 +546,10 @@ class ContextBudgetResolution(_ContextCanonicalContract):
             "context budget resolution",
         )
         result = cls(
-            supervisor_max_input_tokens=payload.get(
-                "supervisor_max_input_tokens", 0
-            ),
+            supervisor_max_input_tokens=payload.get("supervisor_max_input_tokens", 0),
             provider_context_window=payload.get("provider_context_window"),
-            provider_max_input_tokens=payload.get(
-                "provider_max_input_tokens"
-            ),
-            reserved_output_tokens=payload.get(
-                "reserved_output_tokens", 0
-            ),
+            provider_max_input_tokens=payload.get("provider_max_input_tokens"),
+            reserved_output_tokens=payload.get("reserved_output_tokens", 0),
             reserved_tool_tokens=payload.get("reserved_tool_tokens", 0),
             effective_input_limit=payload.get("effective_input_limit"),
         )
@@ -647,9 +595,7 @@ class ContextReference(_ContextCanonicalContract):
         values: dict[str, Any] = {
             "reference_id": reference_id,
             "kind": kind,
-            "referenced_content_id": (
-                referenced_content_id or target_content_id or content_id
-            ),
+            "referenced_content_id": (referenced_content_id or target_content_id or content_id),
             "repository_id": repository_id,
             "tree_id": tree_id,
             "summary": summary,
@@ -668,13 +614,9 @@ class ContextReference(_ContextCanonicalContract):
                 _text(values[name], name, required=required),
             )
         object.__setattr__(self, "tier", _enum(tier, ContextTier, "tier"))
-        object.__setattr__(
-            self, "path", _relative_path(path, "path", required=False)
-        )
+        object.__setattr__(self, "path", _relative_path(path, "path", required=False))
         for name, value in (("byte_count", byte_count), ("token_count", token_count)):
-            object.__setattr__(
-                self, name, _nonnegative(value, name)
-            )
+            object.__setattr__(self, name, _nonnegative(value, name))
         selected_metadata = metadata or {}
         if not isinstance(selected_metadata, Mapping):
             raise ContextContractError("metadata must be a mapping")
@@ -713,9 +655,7 @@ class ContextReference(_ContextCanonicalContract):
     def required(self) -> bool:
         """Whether the compiler must select this reference or fail closed."""
 
-        return self.tier is ContextTier.INVARIANT or bool(
-            self.metadata.get("required", False)
-        )
+        return self.tier is ContextTier.INVARIANT or bool(self.metadata.get("required", False))
 
     @property
     def priority(self) -> int:
@@ -730,21 +670,13 @@ class ContextReference(_ContextCanonicalContract):
     def coverage_ids(self) -> tuple[str, ...]:
         """Stable requirement identifiers covered by this reference."""
 
-        raw = self.metadata.get(
-            "coverage_ids", self.metadata.get("requirement_ids", ())
-        )
+        raw = self.metadata.get("coverage_ids", self.metadata.get("requirement_ids", ()))
         if isinstance(raw, str):
             raw = (raw,)
         if not isinstance(raw, Sequence):
             return ()
         return tuple(
-            sorted(
-                {
-                    item.strip()
-                    for item in raw
-                    if isinstance(item, str) and item.strip()
-                }
-            )
+            sorted({item.strip() for item in raw if isinstance(item, str) and item.strip()})
         )
 
     @classmethod
@@ -797,9 +729,7 @@ class ContextReference(_ContextCanonicalContract):
         if not claimed and serialized:
             claimed = payload.get("content_id")
         if claimed not in (None, "", result.reference_content_id):
-            raise ContextIdentityError(
-                "context reference identity does not match payload"
-            )
+            raise ContextIdentityError("context reference identity does not match payload")
         return result
 
 
@@ -845,21 +775,15 @@ class ContextCapsule(_ContextCanonicalContract):
             "caller",
             "stage",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=True)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=True))
         if not isinstance(self.budget, ContextBudget):
             if not isinstance(self.budget, Mapping):
                 raise ContextContractError("budget must be a ContextBudget")
-            object.__setattr__(
-                self, "budget", ContextBudget.from_dict(self.budget)
-            )
+            object.__setattr__(self, "budget", ContextBudget.from_dict(self.budget))
         for name in ("goal", "authority", "scope", "acceptance"):
             value = getattr(self, name)
             if value in (None, "", (), [], {}):
-                raise ContextContractError(
-                    f"invariant context field {name} must not be empty"
-                )
+                raise ContextContractError(f"invariant context field {name} must not be empty")
             frozen = _freeze_canonical(
                 value,
                 name=name,
@@ -871,51 +795,37 @@ class ContextCapsule(_ContextCanonicalContract):
                 raise ContextBoundsError(f"{name} exceeds max_item_bytes")
             object.__setattr__(self, name, frozen)
         evidence = _coerce_references(self.evidence, "evidence")
-        expansions = _coerce_references(
-            self.expansion_references, "expansion_references"
-        )
+        expansions = _coerce_references(self.expansion_references, "expansion_references")
         if any(item.tier is ContextTier.EXPANSION for item in evidence):
             raise ContextContractError(
                 "expansion references must not be embedded as selected evidence"
             )
         if any(item.tier is not ContextTier.EXPANSION for item in expansions):
-            raise ContextContractError(
-                "expansion_references must use the expansion tier"
-            )
+            raise ContextContractError("expansion_references must use the expansion tier")
         if any(item.required for item in expansions):
             raise ContextContractError(
                 "required evidence cannot be deferred as an expansion reference"
             )
         identifiers = [item.reference_id for item in evidence + expansions]
         if len(identifiers) != len(set(identifiers)):
-            raise ContextContractError(
-                "context reference IDs must be unique across the capsule"
-            )
+            raise ContextContractError("context reference IDs must be unique across the capsule")
         if len(identifiers) > self.budget.max_items:
             raise ContextBoundsError("capsule exceeds its reference-count limit")
         for item in evidence + expansions:
             if len(item.canonical_bytes()) > self.budget.max_item_bytes:
-                raise ContextBoundsError(
-                    "context reference exceeds max_item_bytes"
-                )
+                raise ContextBoundsError("context reference exceeds max_item_bytes")
             if item.repository_id and item.repository_id != self.repository_id:
                 raise ContextContractError(
                     "context reference repository identity does not match capsule"
                 )
             if item.tree_id and item.tree_id != self.tree_id:
-                raise ContextContractError(
-                    "context reference tree identity does not match capsule"
-                )
+                raise ContextContractError("context reference tree identity does not match capsule")
         object.__setattr__(self, "evidence", evidence)
         object.__setattr__(self, "expansion_references", expansions)
-        object.__setattr__(
-            self, "input_tokens", _nonnegative(self.input_tokens, "input_tokens")
-        )
+        object.__setattr__(self, "input_tokens", _nonnegative(self.input_tokens, "input_tokens"))
         if self.input_tokens > self.budget.max_input_tokens:
             raise ContextBoundsError("capsule exceeds its input-token budget")
-        declared_reference_tokens = sum(
-            item.token_count for item in evidence
-        )
+        declared_reference_tokens = sum(item.token_count for item in evidence)
         if declared_reference_tokens > self.input_tokens:
             raise ContextContractError(
                 "input_tokens cannot be lower than selected reference tokens"
@@ -935,11 +845,7 @@ class ContextCapsule(_ContextCanonicalContract):
         omitted_ids: set[str] = set()
         for omission in omissions:
             reference_id, separator, reason = omission.rpartition(":")
-            if (
-                not separator
-                or not reference_id
-                or reason not in {"item_limit", "token_budget"}
-            ):
+            if not separator or not reference_id or reason not in {"item_limit", "token_budget"}:
                 raise ContextContractError(
                     "omissions must use '<reference_id>:item_limit' or "
                     "'<reference_id>:token_budget'"
@@ -949,17 +855,13 @@ class ContextCapsule(_ContextCanonicalContract):
                     "invariant context fields cannot be recorded as omissions"
                 )
             omitted_ids.add(reference_id)
-        expansion_ids = {
-            item.reference_id for item in self.expansion_references
-        }
+        expansion_ids = {item.reference_id for item in self.expansion_references}
         if omitted_ids != expansion_ids or len(omitted_ids) != len(omissions):
             raise ContextContractError(
                 "omissions must describe every expansion reference exactly once"
             )
         if bool(omissions) != self.truncated:
-            raise ContextContractError(
-                "truncated must be true exactly when omissions are recorded"
-            )
+            raise ContextContractError("truncated must be true exactly when omissions are recorded")
         object.__setattr__(self, "omissions", tuple(sorted(omissions)))
         object.__setattr__(
             self,
@@ -996,17 +898,13 @@ class ContextCapsule(_ContextCanonicalContract):
     def invariant_core_id(self) -> str:
         """Content identity of the complete, non-truncatable context core."""
 
-        return "sha256:" + hashlib.sha256(
-            canonical_json_bytes(self.invariant_core)
-        ).hexdigest()
+        return "sha256:" + hashlib.sha256(canonical_json_bytes(self.invariant_core)).hexdigest()
 
     @property
     def omitted_reference_ids(self) -> tuple[str, ...]:
         """Reference IDs omitted from provider input, never core-field names."""
 
-        return tuple(
-            sorted(omission.rpartition(":")[0] for omission in self.omissions)
-        )
+        return tuple(sorted(omission.rpartition(":")[0] for omission in self.omissions))
 
     @property
     def provider_input_payload(self) -> Mapping[str, Any]:
@@ -1034,9 +932,7 @@ class ContextCapsule(_ContextCanonicalContract):
                 "authority": self.authority,
                 "scope": self.scope,
                 "acceptance": self.acceptance,
-                "evidence": tuple(
-                    item.to_record() for item in self.evidence
-                ),
+                "evidence": tuple(item.to_record() for item in self.evidence),
             }
         )
 
@@ -1081,9 +977,7 @@ class ContextCapsule(_ContextCanonicalContract):
             "scope": self.scope,
             "acceptance": self.acceptance,
             "evidence": tuple(item.to_record() for item in self.evidence),
-            "expansion_references": tuple(
-                item.to_record() for item in self.expansion_references
-            ),
+            "expansion_references": tuple(item.to_record() for item in self.expansion_references),
             "input_tokens": self.input_tokens,
             "truncated": self.truncated,
             "omissions": self.omissions,
@@ -1142,17 +1036,13 @@ class ContextCapsule(_ContextCanonicalContract):
             caller=payload.get("caller", ""),
             stage=payload.get("stage", ""),
             budget=(
-                budget
-                if isinstance(budget, ContextBudget)
-                else ContextBudget.from_dict(budget)
+                budget if isinstance(budget, ContextBudget) else ContextBudget.from_dict(budget)
             ),
             goal=payload.get("goal", core.get("goal")),
             authority=payload.get("authority", core.get("authority")),
             scope=payload.get("scope", core.get("scope")),
             acceptance=payload.get("acceptance", core.get("acceptance")),
-            evidence=payload.get(
-                "evidence", payload.get("selected_evidence", ())
-            ),
+            evidence=payload.get("evidence", payload.get("selected_evidence", ())),
             expansion_references=payload.get("expansion_references", ()),
             input_tokens=payload.get("input_tokens", 0),
             truncated=payload.get("truncated", False),
@@ -1193,22 +1083,14 @@ class ContextDeltaCapsule(_ContextCanonicalContract):
         object.__setattr__(self, "stage", _text(self.stage, "stage"))
         evidence = _coerce_references(self.evidence, "evidence")
         if not evidence:
-            raise ContextContractError(
-                "context delta must contain changed or requested evidence"
-            )
+            raise ContextContractError("context delta must contain changed or requested evidence")
         if any(item.tier is ContextTier.EXPANSION for item in evidence):
-            raise ContextContractError(
-                "context delta evidence must not use the expansion tier"
-            )
+            raise ContextContractError("context delta evidence must not use the expansion tier")
         if len(evidence) > ABSOLUTE_MAX_ITEMS:
-            raise ContextBoundsError(
-                "context delta exceeds its reference-count limit"
-            )
+            raise ContextBoundsError("context delta exceeds its reference-count limit")
         for item in evidence:
             if len(item.canonical_bytes()) > ABSOLUTE_MAX_ITEM_BYTES:
-                raise ContextBoundsError(
-                    "context delta reference exceeds its byte limit"
-                )
+                raise ContextBoundsError("context delta reference exceeds its byte limit")
         object.__setattr__(self, "evidence", evidence)
         object.__setattr__(
             self,
@@ -1220,22 +1102,14 @@ class ContextDeltaCapsule(_ContextCanonicalContract):
         )
         source: Any = self.requested_reference_ids
         if isinstance(source, str) or not isinstance(source, Sequence):
-            raise ContextContractError(
-                "requested_reference_ids must be a sequence"
-            )
-        requested = tuple(
-            sorted({_text(item, "requested_reference_id") for item in source})
-        )
+            raise ContextContractError("requested_reference_ids must be a sequence")
+        requested = tuple(sorted({_text(item, "requested_reference_id") for item in source}))
         evidence_ids = {item.reference_id for item in evidence}
         if not set(requested).issubset(evidence_ids):
-            raise ContextContractError(
-                "requested references must be transmitted by the delta"
-            )
+            raise ContextContractError("requested references must be transmitted by the delta")
         object.__setattr__(self, "requested_reference_ids", requested)
         if len(self.canonical_bytes()) > ABSOLUTE_MAX_CONTEXT_BYTES:
-            raise ContextBoundsError(
-                "context delta exceeds its serialized-byte limit"
-            )
+            raise ContextBoundsError("context delta exceeds its serialized-byte limit")
 
     @property
     def capsule_id(self) -> str:
@@ -1287,22 +1161,14 @@ class ContextDeltaCapsule(_ContextCanonicalContract):
         result = cls(
             parent_capsule_id=payload.get("parent_capsule_id", ""),
             stage=payload.get("stage", ""),
-            evidence=payload.get(
-                "evidence", payload.get("selected_evidence", ())
-            ),
-            reconstructed_input_tokens=payload.get(
-                "reconstructed_input_tokens", 0
-            ),
-            requested_reference_ids=payload.get(
-                "requested_reference_ids", ()
-            ),
+            evidence=payload.get("evidence", payload.get("selected_evidence", ())),
+            reconstructed_input_tokens=payload.get("reconstructed_input_tokens", 0),
+            requested_reference_ids=payload.get("requested_reference_ids", ()),
         )
         _identity(payload, result.content_id, "context delta capsule")
         claimed = payload.get("delta_capsule_id")
         if claimed not in (None, "", result.content_id):
-            raise ContextIdentityError(
-                "context delta capsule identity does not match payload"
-            )
+            raise ContextIdentityError("context delta capsule identity does not match payload")
         return result
 
 

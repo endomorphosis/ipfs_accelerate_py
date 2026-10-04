@@ -179,15 +179,12 @@ from refactored_benchmark_suite.examples import multimodal_hardware_aware_benchm
 
 # Benchmark multiple multimodal architectures
 results = multimodal_hardware_aware_benchmark.benchmark_modern_multimodal_models(
-    use_power_metrics=True,
-    use_bandwidth_metrics=True,
-    model_size="base"
+    use_power_metrics=True, use_bandwidth_metrics=True, model_size="base"
 )
 
 # Or benchmark a specific model with hardware metrics
 results = multimodal_hardware_aware_benchmark.benchmark_specific_multimodal_model(
-    model_id="llava-hf/llava-1.5-7b-hf",
-    use_hardware_metrics=True
+    model_id="llava-hf/llava-1.5-7b-hf", use_hardware_metrics=True
 )
 ```
 
@@ -203,7 +200,7 @@ benchmark = ModelBenchmark(
     batch_sizes=[1, 2, 4],
     metrics=["latency", "throughput", "memory", "power", "bandwidth"],
     use_flash_attention=True,
-    use_torch_compile=True
+    use_torch_compile=True,
 )
 
 # Run with hardware-aware metrics

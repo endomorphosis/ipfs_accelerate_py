@@ -13,15 +13,21 @@ import logging
 
 # Get the absolute path to the submodule directories
 # These submodules are now in the project root
-ipfs_model_manager_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../ipfs_model_manager_py/ipfs_model_manager_py"))
+ipfs_model_manager_path = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "../ipfs_model_manager_py/ipfs_model_manager_py")
+)
 print(f"ipfs_model_manager_path = {ipfs_model_manager_path}")
 sys.path.append(ipfs_model_manager_path)
 
-ipfs_kit_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../ipfs_kit_py/ipfs_kit_py"))
+ipfs_kit_path = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "../ipfs_kit_py/ipfs_kit_py")
+)
 print(f"ipfs_kit_path = {ipfs_kit_path}")
 sys.path.append(ipfs_kit_path)
 
-ipfs_transformers_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../ipfs_transformers_py/ipfs_transformers_py"))
+ipfs_transformers_path = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "../ipfs_transformers_py/ipfs_transformers_py")
+)
 print(f"ipfs_transformers_path = {ipfs_transformers_path}")
 sys.path.append(ipfs_transformers_path)
 
@@ -45,22 +51,15 @@ resources = {
     "queue_tasks": {},
     "caches": {},
     "tokenizer": {},
-
     # Add transformers configuration into resources
-    "transformers": {
-        "cache_dir": "./model_cache",
-        "revision": "main"
-    }
+    "transformers": {"cache_dir": "./model_cache", "revision": "main"},
 }
 
 metadata = {
     "description": "Integrated accelerator with IPFS support",
     "role": "leecher",  # Role is part of metadata
     # IPFS kit configuration in metadata
-    "ipfs_kit": {
-        "async_backend": "anyio",
-        "num_workers": 4
-    }
+    "ipfs_kit": {"async_backend": "anyio", "num_workers": 4},
 }
 
 # Create the accelerator with the correct parameter names
@@ -70,7 +69,7 @@ accelerator = ipfs_accelerate_py(resources=resources, metadata=metadata)
 result = accelerator.run_model(
     "bert-base-uncased",
     {"input_ids": [[101, 2054, 2003, 2026, 2171, 2024, 2059, 2038, 102]]},
-    "text_embedding"
+    "text_embedding",
 )
 
 # Check the result
@@ -102,20 +101,17 @@ device = get_optimal_backend()
 # Replace QmCID_HERE with an actual CID
 # See https://huggingface.co/datasets/buttercutter/models-metadata-dataset
 cid = "5c3eb3fb2a3b61094328465ba61fcd4272090d67"
-model_name = "bert-base-uncased" #cid,
+model_name = "bert-base-uncased"  # cid,
 input_ids = torch.tensor([[101, 2054, 2003, 2026, 2171, 2024, 2059, 2038, 102]]).to(device)
 attention_mask = torch.ones_like(input_ids).to(device)
 
 result_ipfs = accelerator.run_model(
     model_name,
-    {
-        "input_ids": input_ids,
-        "attention_mask": attention_mask
-    },
+    {"input_ids": input_ids, "attention_mask": attention_mask},
     "text_embedding",
     device=device,
     use_ipfs=True,
-    ipfs_cid=cid
+    ipfs_cid=cid,
 )
 
 # Check the IPFS result

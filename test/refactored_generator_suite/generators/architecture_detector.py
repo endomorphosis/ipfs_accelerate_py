@@ -11,7 +11,7 @@ import logging
 from typing import Dict, List, Optional, Tuple, Any
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 # List of supported architecture types
@@ -29,7 +29,7 @@ ARCHITECTURE_TYPES = [
     "rag",
     "text-to-image",
     "protein-folding",
-    "video-processing"
+    "video-processing",
 ]
 
 # Direct mapping of model names to architecture types
@@ -63,7 +63,6 @@ MODEL_NAME_MAPPING = {
     "mega": "encoder-only",
     "data2vec-text": "encoder-only",
     "poolformer": "encoder-only",
-    
     # Protein folding models (previously classified as encoder-only)
     "esm": "protein-folding",
     "esm1": "protein-folding",
@@ -79,7 +78,6 @@ MODEL_NAME_MAPPING = {
     "esmif": "protein-folding",
     "openfold": "protein-folding",
     "alphafold": "protein-folding",
-
     # Decoder-only models
     "gpt": "decoder-only",
     "gpt2": "decoder-only",
@@ -126,7 +124,6 @@ MODEL_NAME_MAPPING = {
     "gemma": "decoder-only",
     "mpt": "decoder-only",
     "jais": "decoder-only",
-
     # Encoder-decoder models
     "t5": "encoder-decoder",
     "mt5": "encoder-decoder",
@@ -158,7 +155,6 @@ MODEL_NAME_MAPPING = {
     "seamless-m4t": "encoder-decoder",
     "seamlessm4t": "encoder-decoder",
     "xlm-prophetnet": "encoder-decoder",
-
     # Vision models
     "vit": "vision",
     "deit": "vision",
@@ -195,7 +191,6 @@ MODEL_NAME_MAPPING = {
     "mlp-mixer": "vision",
     "van": "vision",
     "ssd": "vision",
-
     # Vision-encoder-text-decoder models
     "clip": "vision-encoder-text-decoder",
     "alt-clip": "vision-encoder-text-decoder",
@@ -222,7 +217,6 @@ MODEL_NAME_MAPPING = {
     "xvlm": "vision-encoder-text-decoder",
     "visual-bert": "vision-encoder-text-decoder",
     "vinvl": "vision-encoder-text-decoder",
-
     # Speech models
     "wav2vec2": "speech",
     "whisper": "speech",
@@ -243,7 +237,6 @@ MODEL_NAME_MAPPING = {
     "mbart-large-50-many-to-many-mmt": "speech",
     "xls-r": "speech",
     "xlsr": "speech",
-
     # Multimodal models
     "flava": "multimodal",
     "llava": "multimodal",
@@ -259,7 +252,6 @@ MODEL_NAME_MAPPING = {
     "gte": "multimodal",
     "clip-vision-model": "multimodal",
     "clvp": "multimodal",
-    
     # Video processing models (previously classified as multimodal)
     "videomae": "video-processing",
     "vivit": "video-processing",
@@ -282,7 +274,6 @@ MODEL_NAME_MAPPING = {
     "slowfast": "video-processing",
     "r3d": "video-processing",
     "x3d": "video-processing",
-
     # Text-to-image models (previously classified as diffusion)
     "stable-diffusion": "text-to-image",
     "latent-diffusion": "text-to-image",
@@ -291,17 +282,15 @@ MODEL_NAME_MAPPING = {
     "pixart": "text-to-image",
     "imagen": "text-to-image",
     "dalle": "text-to-image",
-    "dalle-mini": "text-to-image", 
+    "dalle-mini": "text-to-image",
     "dalle2": "text-to-image",
     "dalle3": "text-to-image",
     "sd-turbo": "text-to-image",
     "midjourney": "text-to-image",
     "deepfloyd-if": "text-to-image",
     "controlnet": "text-to-image",
-    
     # Segmentation models
     "sam": "diffusion",
-
     # Mixture of experts models
     "mixtral": "mixture-of-experts",
     "mixtral-8x7b": "mixture-of-experts",
@@ -311,19 +300,17 @@ MODEL_NAME_MAPPING = {
     "switch-transformers": "mixture-of-experts",
     "switchht": "mixture-of-experts",
     "olmoe": "mixture-of-experts",
-
     # State-space models
     "mamba": "state-space",
     "mamba-2": "state-space",
     "rwkv": "state-space",
     "s4": "state-space",
     "hyena": "state-space",
-
     # RAG models
     "rag": "rag",
     "rag-token": "rag",
     "rag-sequence": "rag",
-    "rag-document": "rag"
+    "rag-document": "rag",
 }
 
 # Patterns for model types when direct mapping doesn't work
@@ -430,79 +417,83 @@ MODEL_REGEX_PATTERNS = {
         r"slowfast",
         r"action[-_]recognition",
         r"google/vivit",
-    ]
+    ],
 }
 
 
 def normalize_model_name(model_name: str) -> str:
     """
     Normalize a model name for architecture detection.
-    
+
     Args:
         model_name: The model name or HF model ID
-        
+
     Returns:
         Normalized model name
     """
     # Convert to lowercase
     model_name = model_name.lower()
-    
+
     # Remove organization prefix if exists
     if "/" in model_name:
         model_name = model_name.split("/")[-1]
-    
+
     # Remove version numbers or suffixes
     model_name = re.sub(r"[-_]v\d+", "", model_name)
     model_name = re.sub(r"[-_]\d+b", "", model_name)
-    
+
     return model_name
 
 
 def get_architecture_type(model_name: str) -> str:
     """
     Get the architecture type for a model based on its name.
-    
+
     Args:
         model_name: The model name or Hugging Face model ID
-        
+
     Returns:
         The architecture type
     """
     normalized_name = normalize_model_name(model_name)
-    
+
     # Special cases for specific models
     if "google/vivit" in model_name.lower():
         return "video-processing"
-        
+
     if "prot-bert" in model_name.lower():
         return "protein-folding"
-    
+
     # First try direct mapping
     for name_pattern, arch_type in MODEL_NAME_MAPPING.items():
         if name_pattern in normalized_name:
             logger.debug(f"Matched {normalized_name} to {arch_type} via direct mapping")
             return arch_type
-    
+
     # Then try regex patterns
     for arch_type, patterns in MODEL_REGEX_PATTERNS.items():
         for pattern in patterns:
             if re.search(pattern, normalized_name):
-                logger.debug(f"Matched {normalized_name} to {arch_type} via regex pattern {pattern}")
+                logger.debug(
+                    f"Matched {normalized_name} to {arch_type} via regex pattern {pattern}"
+                )
                 return arch_type
-    
+
     # Default to encoder-only as a fallback
-    logger.warning(f"Could not determine architecture type for {model_name}, defaulting to encoder-only")
+    logger.warning(
+        f"Could not determine architecture type for {model_name}, defaulting to encoder-only"
+    )
     return "encoder-only"
 
 
 def get_model_class_name(model_name: str, arch_type: str) -> Tuple[str, str]:
     """
     Get the model class name for a given model and architecture type.
-    
+
     Args:
         model_name: The model name
         arch_type: The architecture type
-        
+
     Returns:
         Tuple of (model_class_name, processor_class_name)
     """
@@ -521,12 +512,12 @@ def get_model_class_name(model_name: str, arch_type: str) -> Tuple[str, str]:
         "rag": ("RagModel", "RagTokenizer"),
         "text-to-image": ("StableDiffusionPipeline", "CLIPTextProcessor"),
         "protein-folding": ("EsmModel", "AutoTokenizer"),
-        "video-processing": ("VideoMAEForVideoClassification", "VideoMAEImageProcessor")
+        "video-processing": ("VideoMAEForVideoClassification", "VideoMAEImageProcessor"),
     }
-    
+
     # Special cases based on specific model names
     normalized_name = normalize_model_name(model_name)
-    
+
     # Vision-encoder-text-decoder models
     if arch_type == "vision-encoder-text-decoder":
         if "clip" in normalized_name:
@@ -565,7 +556,7 @@ def get_model_class_name(model_name: str, arch_type: str) -> Tuple[str, str]:
             return "TimesformerForVideoClassification", "TimesformerImageProcessor"
         else:
             return "VideoMAEForVideoClassification", "VideoMAEImageProcessor"
-    
+
     # Default based on architecture type
     model_class, processor_class = arch_to_class.get(arch_type, ("AutoModel", "AutoTokenizer"))
     return model_class, processor_class
@@ -574,19 +565,19 @@ def get_model_class_name(model_name: str, arch_type: str) -> Tuple[str, str]:
 def get_model_class_name_short(model_class_name: str) -> str:
     """
     Get the short model class name (for use with frameworks like OpenVINO).
-    
+
     Args:
         model_class_name: The full model class name
-        
+
     Returns:
         Short model class name
     """
     # Remove "Auto" prefix and common suffixes
     short_name = model_class_name
-    
+
     if short_name.startswith("Auto"):
         short_name = short_name[4:]
-    
+
     # Special handling for specific model classes that don't follow the pattern
     if model_class_name == "CLIPModel":
         return "VisionText"
@@ -601,33 +592,41 @@ def get_model_class_name_short(model_class_name: str) -> str:
     elif model_class_name == "RagModel":
         return "Rag"
     # New architecture types
-    elif model_class_name == "StableDiffusionPipeline" or model_class_name == "DallePipeline" or model_class_name == "KandinskyPipeline":
+    elif (
+        model_class_name == "StableDiffusionPipeline"
+        or model_class_name == "DallePipeline"
+        or model_class_name == "KandinskyPipeline"
+    ):
         return "TextToImage"
     elif model_class_name == "StableDiffusionXLPipeline":
         return "TextToImage"
     elif model_class_name == "EsmModel" or model_class_name == "EsmFoldModel":
         return "ProteinFolding"
-    elif model_class_name == "VideoMAEForVideoClassification" or model_class_name == "VivitForVideoClassification" or model_class_name == "TimesformerForVideoClassification":
+    elif (
+        model_class_name == "VideoMAEForVideoClassification"
+        or model_class_name == "VivitForVideoClassification"
+        or model_class_name == "TimesformerForVideoClassification"
+    ):
         return "VideoProcessing"
-    
+
     return short_name
 
 
 def get_default_model_id(model_name: str, arch_type: str) -> str:
     """
     Get a default model ID for a given model type and architecture.
-    
+
     Args:
         model_name: The model name
         arch_type: The architecture type
-        
+
     Returns:
         Default model ID
     """
     # If model_name is already a full model ID (has a slash), use it
     if "/" in model_name:
         return model_name
-    
+
     # Default model IDs by architecture type
     defaults = {
         "encoder-only": "bert-base-uncased",
@@ -643,12 +642,12 @@ def get_default_model_id(model_name: str, arch_type: str) -> str:
         "rag": "facebook/rag-token-nq",
         "text-to-image": "runwayml/stable-diffusion-v1-5",
         "protein-folding": "facebook/esm2_t33_650M_UR50D",
-        "video-processing": "MCG-NJU/videomae-base-finetuned-kinetics"
+        "video-processing": "MCG-NJU/videomae-base-finetuned-kinetics",
     }
-    
+
     # Special case mappings based on model name
     normalized_name = normalize_model_name(model_name)
-    
+
     if arch_type == "encoder-only":
         if "roberta" in normalized_name:
             return "roberta-base"
@@ -692,7 +691,7 @@ def get_default_model_id(model_name: str, arch_type: str) -> str:
             return "google/vivit-b-16x2"
         elif "timesformer" in normalized_name:
             return "facebook/timesformer-base-finetuned-k400"
-    
+
     # Return the default for the architecture type
     return defaults.get(arch_type, model_name)
 
@@ -700,32 +699,32 @@ def get_default_model_id(model_name: str, arch_type: str) -> str:
 def get_model_metadata(model_name: str) -> Dict[str, Any]:
     """
     Get metadata for a model based on its name.
-    
+
     Args:
         model_name: The model name or HF model ID
-        
+
     Returns:
         A dictionary of model metadata
     """
     # Get architecture type
     arch_type = get_architecture_type(model_name)
-    
+
     # Get model class name and processor class name
     model_class_name, processor_class_name = get_model_class_name(model_name, arch_type)
-    
+
     # Get short model class name
     model_class_name_short = get_model_class_name_short(model_class_name)
-    
+
     # Get default model ID
     default_model_id = get_default_model_id(model_name, arch_type)
-    
+
     # Determine model type from model name
     normalized_name = normalize_model_name(model_name)
     if "/" in model_name:
         model_type = normalized_name.split("-")[0] if "-" in normalized_name else normalized_name
     else:
         model_type = normalized_name
-    
+
     # Create metadata
     metadata = {
         "model_name": model_name,
@@ -734,9 +733,9 @@ def get_model_metadata(model_name: str) -> Dict[str, Any]:
         "processor_class_name": processor_class_name,
         "model_class_name_short": model_class_name_short,
         "default_model_id": default_model_id,
-        "model_type": model_type
+        "model_type": model_type,
     }
-    
+
     return metadata
 
 
@@ -758,27 +757,24 @@ if __name__ == "__main__":
         "phi-2",
         "clip",
         "blip",
-        
         # New architecture types
         # Text-to-image models
         "runwayml/stable-diffusion-v1-5",
         "stabilityai/stable-diffusion-xl-base-1.0",
         "kandinsky-community/kandinsky-2-1",
         "dalle",
-        
         # Protein folding models
         "facebook/esm2_t33_650M_UR50D",
         "facebook/esm1b_t33_650M_UR50S",
         "facebook/esmfold_v1",
         "proteinbert",
-        
         # Video processing models
         "MCG-NJU/videomae-base-finetuned-kinetics",
         "google/vivit-b-16x2",
         "facebook/timesformer-base-finetuned-k400",
-        "video-classifier"
+        "video-classifier",
     ]
-    
+
     for model in test_models:
         metadata = get_model_metadata(model)
         print(f"\nModel: {model}")

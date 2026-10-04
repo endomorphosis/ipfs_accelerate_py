@@ -42,9 +42,7 @@ from ipfs_accelerate_py.mcp_server.tools.agent_supervisor_tools import (
 )
 
 
-PROMPT_OPS = tuple(
-    sorted(PROMPT_CONTROL_OPERATIONS, key=lambda item: item.value)
-)
+PROMPT_OPS = tuple(sorted(PROMPT_CONTROL_OPERATIONS, key=lambda item: item.value))
 
 
 @pytest.fixture(autouse=True)
@@ -70,9 +68,7 @@ def _binding(repository_root: Path, state_root: Path) -> dict[str, Any]:
 
 def _cli_command(operation: Operation) -> str:
     return next(
-        command
-        for command, candidate in COMMAND_OPERATIONS.items()
-        if candidate is operation
+        command for command, candidate in COMMAND_OPERATIONS.items() if candidate is operation
     )
 
 
@@ -236,9 +232,7 @@ async def _mcp_record(
     request: OperationRequest,
 ) -> dict[str, Any]:
     configure_agent_supervisor_control(service=service)
-    return await AGENT_SUPERVISOR_OPERATION_TOOLS[request.operation](
-        request=request.to_record()
-    )
+    return await AGENT_SUPERVISOR_OPERATION_TOOLS[request.operation](request=request.to_record())
 
 
 def _cli_record(
@@ -303,9 +297,7 @@ async def test_mutation_idempotent_replay_is_identical_across_surfaces(
         dry_run=False,
         key="materialize:idempotent",
     )
-    service = _service(
-        repository_root, state_root, operation, apply=True
-    )
+    service = _service(repository_root, state_root, operation, apply=True)
 
     first = service.execute(request)
     assert first.status is OperationStatus.SUCCEEDED
@@ -344,9 +336,7 @@ async def test_stale_root_rejection_is_identical_across_surfaces(
     assert python_result.error
     assert python_result.error.code is ErrorCode.FORBIDDEN
 
-    cli_record = _cli_record(
-        service, request, capsys, expected_exit=AGENT_CLI_EXIT_INVALID
-    )
+    cli_record = _cli_record(service, request, capsys, expected_exit=AGENT_CLI_EXIT_INVALID)
     mcp_record = await _mcp_record(service, request)
     assert cli_record == python_result.to_record()
     assert mcp_record == python_result.to_record()
@@ -382,9 +372,7 @@ async def test_authorization_denial_is_identical_across_surfaces(
     assert python_result.error
     assert python_result.error.code is ErrorCode.UNAUTHORIZED
 
-    cli_record = _cli_record(
-        service, request, capsys, expected_exit=AGENT_CLI_EXIT_INVALID
-    )
+    cli_record = _cli_record(service, request, capsys, expected_exit=AGENT_CLI_EXIT_INVALID)
     mcp_record = await _mcp_record(service, request)
     assert cli_record == python_result.to_record()
     assert mcp_record == python_result.to_record()
@@ -440,9 +428,7 @@ async def test_idempotency_conflict_is_identical_across_surfaces(
         fencing_epoch=9,
         dry_run=False,
     )
-    service = _service(
-        repository_root, state_root, operation, apply=True
-    )
+    service = _service(repository_root, state_root, operation, apply=True)
     applied = service.execute(first)
     assert applied.status is OperationStatus.SUCCEEDED
 
@@ -546,12 +532,8 @@ async def test_partial_saga_is_identical_across_surfaces(
     assert python_result.data["transaction"]["phase"] == (
         MutationTransactionPhase.COMPENSATION_REQUIRED.value
     )
-    assert python_result.data["transaction"]["applied_effect_ids"] == (
-        write_effect.effect_id,
-    )
-    applied_by_id = {
-        effect.effect_id: effect.applied for effect in python_result.effects
-    }
+    assert python_result.data["transaction"]["applied_effect_ids"] == (write_effect.effect_id,)
+    applied_by_id = {effect.effect_id: effect.applied for effect in python_result.effects}
     assert applied_by_id == {
         write_effect.effect_id: True,
         start_effect.effect_id: False,
@@ -572,4 +554,3 @@ async def test_partial_saga_is_identical_across_surfaces(
     assert cli_record == python_result.to_record()
     assert mcp_record == python_result.to_record()
     assert calls == 1
-

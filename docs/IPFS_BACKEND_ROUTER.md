@@ -81,16 +81,11 @@ from ipfs_accelerate_py.model_manager import ModelManager
 manager = ModelManager(enable_ipfs=True)
 
 # Store model to IPFS
-cid = manager.store_model_to_ipfs(
-    model_path="/path/to/model",
-    model_id="bert-base-uncased"
-)
+cid = manager.store_model_to_ipfs(model_path="/path/to/model", model_id="bert-base-uncased")
 
 # Retrieve model from IPFS
 success = manager.retrieve_model_from_ipfs(
-    cid=cid,
-    output_path="/path/to/cache",
-    model_id="bert-base-uncased"
+    cid=cid, output_path="/path/to/cache", model_id="bert-base-uncased"
 )
 ```
 
@@ -103,16 +98,10 @@ from ipfs_accelerate_py.hf_model_server.loader.cache import ModelCache
 cache = ModelCache(max_size=10, enable_ipfs=True)
 
 # Store model weights to IPFS
-cid = await cache.store_model_to_ipfs(
-    model_id="gpt2",
-    model_path="/path/to/gpt2"
-)
+cid = await cache.store_model_to_ipfs(model_id="gpt2", model_path="/path/to/gpt2")
 
 # Retrieve model from IPFS
-success = await cache.retrieve_model_from_ipfs(
-    cid=cid,
-    output_path="/path/to/cache/gpt2"
-)
+success = await cache.retrieve_model_from_ipfs(cid=cid, output_path="/path/to/cache/gpt2")
 ```
 
 ## Configuration
@@ -265,25 +254,25 @@ Register custom backend provider.
 ```python
 from ipfs_accelerate_py import ipfs_backend_router
 
+
 class CustomBackend:
     def add_bytes(self, data: bytes, *, pin: bool = True) -> str:
         # Custom implementation
         pass
-    
+
     def cat(self, cid: str) -> bytes:
         # Custom implementation
         pass
-    
+
     # Implement other required methods...
 
+
 # Register
-ipfs_backend_router.register_ipfs_backend(
-    "custom",
-    lambda: CustomBackend()
-)
+ipfs_backend_router.register_ipfs_backend("custom", lambda: CustomBackend())
 
 # Use
 import os
+
 os.environ["IPFS_BACKEND"] = "custom"
 cid = ipfs_backend_router.add_bytes(b"data")
 ```
@@ -371,6 +360,7 @@ model_retrieved = AutoModel.from_pretrained("/tmp/bert_from_ipfs")
 
 ```python
 import logging
+
 logging.basicConfig(level=logging.DEBUG)
 
 from ipfs_accelerate_py import ipfs_backend_router
@@ -411,10 +401,12 @@ The router is API-compatible with `ipfs_datasets_py.ipfs_backend_router`:
 ```python
 # Old code
 from ipfs_datasets_py import ipfs_backend_router
+
 cid = ipfs_backend_router.block_put(data)
 
 # New code (drop-in replacement)
 from ipfs_accelerate_py import ipfs_backend_router
+
 cid = ipfs_backend_router.block_put(data)
 ```
 

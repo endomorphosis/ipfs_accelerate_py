@@ -48,7 +48,10 @@ def test_task_identity_changes_when_semantic_acceptance_changes() -> None:
     second = _task("REF-001")
     second["acceptance"] = "A different implementation contract."
 
-    assert canonical_task_identity(first).canonical_task_cid != canonical_task_identity(second).canonical_task_cid
+    assert (
+        canonical_task_identity(first).canonical_task_cid
+        != canonical_task_identity(second).canonical_task_cid
+    )
 
 
 def test_explicit_dedupe_key_migrates_legacy_aliases_idempotently() -> None:
@@ -57,7 +60,10 @@ def test_explicit_dedupe_key_migrates_legacy_aliases_idempotently() -> None:
     first["metadata"] = {"dedupe key": "supervisor:durable-ledger"}
     second["metadata"] = {"dedupe key": "supervisor:durable-ledger"}
 
-    assert canonical_task_identity(first).canonical_task_cid == canonical_task_identity(second).canonical_task_cid
+    assert (
+        canonical_task_identity(first).canonical_task_cid
+        == canonical_task_identity(second).canonical_task_cid
+    )
 
 
 def test_bundle_identity_is_stable_across_bundle_and_display_names() -> None:
@@ -72,14 +78,20 @@ def test_bundle_identity_is_stable_across_bundle_and_display_names() -> None:
         "tasks": [_task("LOCAL-009")],
     }
 
-    assert canonical_bundle_identity(first).canonical_task_cid == canonical_bundle_identity(second).canonical_task_cid
+    assert (
+        canonical_bundle_identity(first).canonical_task_cid
+        == canonical_bundle_identity(second).canonical_task_cid
+    )
 
 
 def test_bundle_identity_preserves_metadata_poor_task_cardinality() -> None:
     single = {"bundle_key": "objective/refactor", "tasks": [{"task_id": "ONE"}]}
     pair = {"bundle_key": "objective/refactor", "tasks": [{"task_id": "ONE"}, {"task_id": "TWO"}]}
 
-    assert canonical_bundle_identity(single).canonical_task_cid != canonical_bundle_identity(pair).canonical_task_cid
+    assert (
+        canonical_bundle_identity(single).canonical_task_cid
+        != canonical_bundle_identity(pair).canonical_task_cid
+    )
 
 
 def test_bundle_identity_uses_nonempty_execution_slice() -> None:
@@ -107,15 +119,24 @@ def test_bundle_identity_uses_nonempty_execution_slice() -> None:
     second_identity = canonical_bundle_identity(second_slice).canonical_task_cid
 
     assert first_identity != second_identity
-    assert first_identity == canonical_bundle_identity(
-        {"bundle_key": "objective/g9", "tasks": [first_task]}
-    ).canonical_task_cid
-    assert second_identity == canonical_bundle_identity(
-        {"bundle_key": "objective/g9", "tasks": [second_task]}
-    ).canonical_task_cid
-    assert canonical_bundle_identity(
-        {**full_bundle, "execution_slice_task_ids": []}
-    ).canonical_task_cid == canonical_bundle_identity(full_bundle).canonical_task_cid
+    assert (
+        first_identity
+        == canonical_bundle_identity(
+            {"bundle_key": "objective/g9", "tasks": [first_task]}
+        ).canonical_task_cid
+    )
+    assert (
+        second_identity
+        == canonical_bundle_identity(
+            {"bundle_key": "objective/g9", "tasks": [second_task]}
+        ).canonical_task_cid
+    )
+    assert (
+        canonical_bundle_identity(
+            {**full_bundle, "execution_slice_task_ids": []}
+        ).canonical_task_cid
+        == canonical_bundle_identity(full_bundle).canonical_task_cid
+    )
 
 
 def test_bundle_slice_identity_ignores_member_status_changes() -> None:
@@ -133,9 +154,10 @@ def test_bundle_slice_identity_ignores_member_status_changes() -> None:
         ],
     }
 
-    assert canonical_bundle_identity(bundle).canonical_task_cid == canonical_bundle_identity(
-        changed
-    ).canonical_task_cid
+    assert (
+        canonical_bundle_identity(bundle).canonical_task_cid
+        == canonical_bundle_identity(changed).canonical_task_cid
+    )
 
 
 def test_provided_identity_uses_git_safe_execution_fingerprint() -> None:
@@ -218,7 +240,9 @@ def test_persistent_queue_coalesces_two_board_aliases_for_same_work(tmp_path) ->
     queue.register_task(second)
 
     assert len(queue.entries) == 1
-    assert queue.get_penalty(first.canonical_task_cid) == queue.get_penalty(second.canonical_task_cid)
+    assert queue.get_penalty(first.canonical_task_cid) == queue.get_penalty(
+        second.canonical_task_cid
+    )
     assert queue.entries[first.canonical_task_cid].attempt_count == 1
     assert queue.resolve_key("main::REF-001") == queue.resolve_key("bundle::LOCAL-009")
 
@@ -308,10 +332,13 @@ def test_implementation_daemon_coalesces_duplicate_work_before_selection(tmp_pat
     assert result["canonical_task_count"] == 1
     assert result["selectable_ready_count"] == 1
     assert state.active_task_cid
-    assert state.task_identities["REF-001"]["canonical_task_cid"] == state.task_identities["REF-009"][
-        "canonical_task_cid"
+    assert (
+        state.task_identities["REF-001"]["canonical_task_cid"]
+        == state.task_identities["REF-009"]["canonical_task_cid"]
+    )
+    events = [
+        json.loads(line) for line in (tmp_path / "state" / "events.jsonl").read_text().splitlines()
     ]
-    events = [json.loads(line) for line in (tmp_path / "state" / "events.jsonl").read_text().splitlines()]
     selected = next(event for event in events if event["type"] == "task_selected")
     assert selected["canonical_task_cid"] == state.active_task_cid
     queue = PersistentTaskQueue.load(tmp_path / "state" / "task_queue.json")

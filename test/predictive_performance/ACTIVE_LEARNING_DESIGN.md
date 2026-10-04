@@ -62,7 +62,9 @@ Measure uncertainty based on distance to training examples:
 ```python
 def calculate_distance_uncertainty(features, training_features, n_neighbors=5):
     """Calculate uncertainty based on distance to nearest training examples."""
-    distances, _ = NearestNeighbors(n_neighbors=n_neighbors).fit(training_features).kneighbors(features)
+    distances, _ = (
+        NearestNeighbors(n_neighbors=n_neighbors).fit(training_features).kneighbors(features)
+    )
     return np.mean(distances, axis=1)  # Average distance to k-nearest neighbors
 ```
 
@@ -78,18 +80,16 @@ def expected_model_change(model, features, uncertainty):
     """Estimate expected model change from new benchmark data."""
     # Simulate possible benchmark outcomes based on prediction distribution
     simulated_outcomes = np.random.normal(
-        model.predict(features), 
-        uncertainty, 
-        size=(n_simulations, len(features))
+        model.predict(features), uncertainty, size=(n_simulations, len(features))
     )
-    
+
     # Estimate model change for each simulation
     changes = []
     for outcomes in simulated_outcomes:
         model_copy = copy.deepcopy(model)
         model_copy.update(features, outcomes)
         changes.append(calculate_model_difference(model, model_copy))
-    
+
     return np.mean(changes, axis=0)
 ```
 
@@ -182,19 +182,20 @@ def diversity_sampling(features, uncertainty, n_samples=10, diversity_weight=0.5
 Generates optimized test batches:
 
 ```python
-def generate_test_batch(features, uncertainty, information_gain, 
-                        batch_size=10, hardware_constraints=None):
+def generate_test_batch(
+    features, uncertainty, information_gain, batch_size=10, hardware_constraints=None
+):
     """Generate optimized batch of test configurations."""
     # Calculate combined score for each configuration
     scores = 0.4 * normalize(uncertainty) + 0.6 * normalize(information_gain)
-    
+
     # Apply hardware constraints if provided
     if hardware_constraints is not None:
         scores = apply_hardware_constraints(scores, hardware_constraints)
-    
+
     # Select configurations with highest scores while ensuring diversity
     selected = diversity_sampling(features, scores, n_samples=batch_size)
-    
+
     return selected
 ```
 
@@ -243,23 +244,23 @@ def track_model_improvement(model_before, model_after, eval_features, eval_targe
     pred_before = model_before.predict(eval_features)
     rmse_before = np.sqrt(mean_squared_error(eval_targets, pred_before))
     r2_before = r2_score(eval_targets, pred_before)
-    
+
     # Calculate metrics after update
     pred_after = model_after.predict(eval_features)
     rmse_after = np.sqrt(mean_squared_error(eval_targets, pred_after))
     r2_after = r2_score(eval_targets, pred_after)
-    
+
     # Calculate improvement
     rmse_improvement = (rmse_before - rmse_after) / rmse_before * 100
     r2_improvement = (r2_after - r2_before) / (1 - r2_before) * 100
-    
+
     return {
         "rmse_improvement_percent": rmse_improvement,
         "r2_improvement_percent": r2_improvement,
         "rmse_before": rmse_before,
         "rmse_after": rmse_after,
         "r2_before": r2_before,
-        "r2_after": r2_after
+        "r2_after": r2_after,
     }
 ```
 
@@ -293,28 +294,24 @@ active_learner = ActiveLearningPipeline(trained_models, training_data)
 candidates = generate_candidate_configurations(
     model_types=["bert", "vit", "whisper"],
     hardware_platforms=["cpu", "cuda", "webgpu"],
-    batch_sizes=[1, 4, 16]
+    batch_sizes=[1, 4, 16],
 )
 
 # Identify high-value tests
 high_value_tests = active_learner.identify_high_value_tests(
-    candidates, 
-    uncertainty_threshold=0.3,
-    max_tests=100
+    candidates, uncertainty_threshold=0.3, max_tests=100
 )
 
 # Prioritize tests based on constraints
 prioritized_tests = active_learner.prioritize_tests(
     high_value_tests,
     hardware_availability={"cuda": 0.8, "webgpu": 0.3, "cpu": 1.0},
-    cost_weights={"time": 0.6, "resources": 0.4}
+    cost_weights={"time": 0.6, "resources": 0.4},
 )
 
 # Generate optimized test batch
 test_batch = active_learner.suggest_test_batch(
-    prioritized_tests,
-    batch_size=10,
-    ensure_diversity=True
+    prioritized_tests, batch_size=10, ensure_diversity=True
 )
 
 # Run benchmarks for the test batch
@@ -368,9 +365,7 @@ hardware_recommender = HardwareRecommender(predictor=predictor)
 
 # Generate integrated recommendations
 results = active_learner.integrate_with_hardware_recommender(
-    hardware_recommender=hardware_recommender,
-    test_budget=10,
-    optimize_for="throughput"
+    hardware_recommender=hardware_recommender, test_budget=10, optimize_for="throughput"
 )
 
 # Access recommended configurations

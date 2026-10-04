@@ -43,6 +43,7 @@ from starlette.routing import Route
 from transformers import pipeline
 import anyio
 
+
 async def homepage(request):
     payload = await request.body()
     string = payload.decode("utf-8")
@@ -51,18 +52,21 @@ async def homepage(request):
     output = await response_q.get()
     return JSONResponse(output)
 
+
 async def server_loop(q):
-    pipeline = pipeline(task="fill-mask",model="google-bert/bert-base-uncased")
+    pipeline = pipeline(task="fill-mask", model="google-bert/bert-base-uncased")
     while True:
         (string, response_q) = await q.get()
         out = pipeline(string)
         await response_q.put(out)
+
 
 app = Starlette(
     routes=[
         Route("/", homepage, methods=["POST"]),
     ],
 )
+
 
 @app.on_event("startup")
 async def startup_event():

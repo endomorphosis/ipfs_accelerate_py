@@ -33,11 +33,13 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf")
 inputs = tokenizer("I look forward to", return_tensors="pt").to("cuda")
 
-model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf", torch_dtype=torch.float16).to("cuda")
+model = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Llama-2-7b-hf", torch_dtype=torch.float16
+).to("cuda")
 # explicitly set to default length because Llama2 generation length is 4096
 outputs = model.generate(**inputs, max_new_tokens=20)
 tokenizer.batch_decode(outputs, skip_special_tokens=True)
-'Hugging Face is an open-source company that provides a suite of tools and services for building, deploying, and maintaining natural language processing'
+"Hugging Face is an open-source company that provides a suite of tools and services for building, deploying, and maintaining natural language processing"
 ```
 
 ## Contrastive search
@@ -53,11 +55,13 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf")
 inputs = tokenizer("Hugging Face is an open-source company", return_tensors="pt").to("cuda")
 
-model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf", torch_dtype=torch.float16).to("cuda")
+model = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Llama-2-7b-hf", torch_dtype=torch.float16
+).to("cuda")
 # explicitly set to 100 because Llama2 generation length is 4096
 outputs = model.generate(**inputs, max_new_tokens=100, penalty_alpha=0.6, top_k=4)
 tokenizer.batch_decode(outputs, skip_special_tokens=True)
-'Hugging Face is an open-source company that provides a platform for building and deploying AI models.\nHugging Face is an open-source company that provides a platform for building and deploying AI models. The platform allows developers to build and deploy AI models, as well as collaborate with other developers.\nHugging Face was founded in 2019 by Thibault Wittemberg and Clément Delangue. The company is based in Paris, France.\nHugging Face has'
+"Hugging Face is an open-source company that provides a platform for building and deploying AI models.\nHugging Face is an open-source company that provides a platform for building and deploying AI models. The platform allows developers to build and deploy AI models, as well as collaborate with other developers.\nHugging Face was founded in 2019 by Thibault Wittemberg and Clément Delangue. The company is based in Paris, France.\nHugging Face has"
 ```
 
 ## Beam search
@@ -76,7 +80,9 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf")
 inputs = tokenizer("Hugging Face is an open-source company", return_tensors="pt").to("cuda")
 
-model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf", torch_dtype=torch.float16).to("cuda")
+model = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Llama-2-7b-hf", torch_dtype=torch.float16
+).to("cuda")
 # explicitly set to 100 because Llama2 generation length is 4096
 outputs = model.generate(**inputs, max_new_tokens=50, num_beams=2)
 tokenizer.batch_decode(outputs, skip_special_tokens=True)
@@ -96,11 +102,20 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf")
 inputs = tokenizer("Hugging Face is an open-source company", return_tensors="pt").to("cuda")
 
-model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf", torch_dtype=torch.float16).to("cuda")
+model = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Llama-2-7b-hf", torch_dtype=torch.float16
+).to("cuda")
 # explicitly set to 100 because Llama2 generation length is 4096
-outputs = model.generate(**inputs, max_new_tokens=50, num_beams=6, num_beam_groups=3, diversity_penalty=1.0, do_sample=False)
+outputs = model.generate(
+    **inputs,
+    max_new_tokens=50,
+    num_beams=6,
+    num_beam_groups=3,
+    diversity_penalty=1.0,
+    do_sample=False,
+)
 tokenizer.batch_decode(outputs, skip_special_tokens=True)
-'Hugging Face is an open-source company 🤗\nWe are an open-source company. Our mission is to democratize AI and make it accessible to everyone. We believe that AI should be used for the benefit of humanity, not for the benefit of a'
+"Hugging Face is an open-source company 🤗\nWe are an open-source company. Our mission is to democratize AI and make it accessible to everyone. We believe that AI should be used for the benefit of humanity, not for the benefit of a"
 ```
 
 ## Multinomial sampling
@@ -116,11 +131,13 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf")
 inputs = tokenizer("Hugging Face is an open-source company", return_tensors="pt").to("cuda")
 
-model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf", torch_dtype=torch.float16).to("cuda")
+model = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Llama-2-7b-hf", torch_dtype=torch.float16
+).to("cuda")
 # explicitly set to 100 because Llama2 generation length is 4096
 outputs = model.generate(**inputs, max_new_tokens=50, do_sample=True, num_beams=1)
 tokenizer.batch_decode(outputs, skip_special_tokens=True)
-'Hugging Face is an open-source company 🤗\nWe are open-source and believe that open-source is the best way to build technology. Our mission is to make AI accessible to everyone, and we believe that open-source is the best way to achieve that.'
+"Hugging Face is an open-source company 🤗\nWe are open-source and believe that open-source is the best way to build technology. Our mission is to make AI accessible to everyone, and we believe that open-source is the best way to achieve that."
 ```
 
 ## Beam search multinomial sampling
@@ -136,10 +153,12 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf")
 inputs = tokenizer("Hugging Face is an open-source company", return_tensors="pt").to("cuda")
 
-model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf", torch_dtype=torch.float16).to("cuda")
+model = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Llama-2-7b-hf", torch_dtype=torch.float16
+).to("cuda")
 # explicitly set to 100 because Llama2 generation length is 4096
 outputs = model.generate(**inputs, max_new_tokens=50, do_sample=True, num_beams=4)
-'Hugging Face is an open-source company 100% dedicated to making AI more accessible. We believe that AI should be available to everyone, and we’re working hard to make that a reality.\nWe’re a team of passionate engineers, designers,'
+"Hugging Face is an open-source company 100% dedicated to making AI more accessible. We believe that AI should be available to everyone, and we’re working hard to make that a reality.\nWe’re a team of passionate engineers, designers,"
 ```
 
 ## Speculative decoding
@@ -163,7 +182,7 @@ inputs = tokenizer("Hugging Face is an open-source company", return_tensors="pt"
 
 outputs = model.generate(**inputs, assistant_model=assistant_model)
 tokenizer.batch_decode(outputs, skip_special_tokens=True)
-'Hugging Face is an open-source company that provides a platform for developers to build and deploy machine'
+"Hugging Face is an open-source company that provides a platform for developers to build and deploy machine"
 ```
 
 Speculative decoding is also supported in [`Pipeline`] with the `assistant_model` parameter.
@@ -176,7 +195,7 @@ pipe = pipeline(
     "text-generation",
     model="meta-llama/Llama-3.1-8B",
     assistant_model="meta-llama/Llama-3.2-1B",
-    torch_dtype=torch.bfloat16
+    torch_dtype=torch.bfloat16,
 )
 pipe_output = pipe("Once upon a time, ", max_new_tokens=50, do_sample=False)
 pipe_output[0]["generated_text"]
@@ -197,7 +216,7 @@ inputs = tokenizer("Hugging Face is an open-source company", return_tensors="pt"
 
 outputs = model.generate(**inputs, assistant_model=assistant_model, do_sample=True, temperature=0.5)
 tokenizer.batch_decode(outputs, skip_special_tokens=True)
-'Hugging Face is an open-source company that is dedicated to creating a better world through technology.'
+"Hugging Face is an open-source company that is dedicated to creating a better world through technology."
 ```
 
 </hfoption>
@@ -214,13 +233,19 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 tokenizer = AutoTokenizer.from_pretrained("HuggingFaceTB/SmolLM-1.7B")
-model = AutoModelForCausalLM.from_pretrained("HuggingFaceTB/SmolLM-1.7B", torch_dtype=torch.float16).to("cuda")
-assistant_model = AutoModelForCausalLM.from_pretrained("HuggingFaceTB/SmolLM-135M", torch_dtype=torch.float16).to("cuda")
+model = AutoModelForCausalLM.from_pretrained(
+    "HuggingFaceTB/SmolLM-1.7B", torch_dtype=torch.float16
+).to("cuda")
+assistant_model = AutoModelForCausalLM.from_pretrained(
+    "HuggingFaceTB/SmolLM-135M", torch_dtype=torch.float16
+).to("cuda")
 inputs = tokenizer("Hugging Face is an open-source company", return_tensors="pt").to("cuda")
 
-outputs = model.generate(**inputs, assistant_model=assistant_model, max_new_tokens=20, prompt_lookup_num_tokens=5)
+outputs = model.generate(
+    **inputs, assistant_model=assistant_model, max_new_tokens=20, prompt_lookup_num_tokens=5
+)
 tokenizer.batch_decode(outputs, skip_special_tokens=True)
-'Hugging Face is an open-source company that provides a platform for developers to build and deploy machine learning models. It offers a variety of tools'
+"Hugging Face is an open-source company that provides a platform for developers to build and deploy machine learning models. It offers a variety of tools"
 ```
 
 ### Self-speculative decoding
@@ -264,9 +289,14 @@ inputs = tokenizer(prompt, return_tensors="pt")
 
 model = AutoModelForCausalLM.from_pretrained("google/gemma-2-9b")
 assistant_model = AutoModelForCausalLM.from_pretrained("double7/vicuna-68m")
-outputs = model.generate(**inputs, assistant_model=assistant_model, tokenizer=tokenizer, assistant_tokenizer=assistant_tokenizer)
+outputs = model.generate(
+    **inputs,
+    assistant_model=assistant_model,
+    tokenizer=tokenizer,
+    assistant_tokenizer=assistant_tokenizer,
+)
 tokenizer.batch_decode(outputs, skip_special_tokens=True)
-['Alice and Bob are sitting in a bar. Alice is drinking a beer and Bob is drinking a']
+["Alice and Bob are sitting in a bar. Alice is drinking a beer and Bob is drinking a"]
 ```
 
 ## DoLa
@@ -296,7 +326,9 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 tokenizer = AutoTokenizer.from_pretrained("HuggingFaceTB/SmolLM-1.7B")
-model = AutoModelForCausalLM.from_pretrained("HuggingFaceTB/SmolLM-1.7B", torch_dtype=torch.float16).to("cuda")
+model = AutoModelForCausalLM.from_pretrained(
+    "HuggingFaceTB/SmolLM-1.7B", torch_dtype=torch.float16
+).to("cuda")
 inputs = tokenizer("What is the highest peak in the world??", return_tensors="pt").to("cuda")
 
 outputs = model.generate(**inputs, max_new_tokens=50, dola_layers="high", do_sample=False)
@@ -314,11 +346,15 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 tokenizer = AutoTokenizer.from_pretrained("HuggingFaceTB/SmolLM-1.7B")
-model = AutoModelForCausalLM.from_pretrained("HuggingFaceTB/SmolLM-1.7B", torch_dtype=torch.float16).to("cuda")
+model = AutoModelForCausalLM.from_pretrained(
+    "HuggingFaceTB/SmolLM-1.7B", torch_dtype=torch.float16
+).to("cuda")
 inputs = tokenizer("What is the highest peak in the world?", return_tensors="pt").to("cuda")
 
-outputs = model.generate(**inputs, max_new_tokens=50, dola_layers=[18,20], do_sample=False, repetition_penalty=1.2)
-tokenizer.batch_decode(outputs[:, inputs.input_ids.shape[-1]:], skip_special_tokens=True)
+outputs = model.generate(
+    **inputs, max_new_tokens=50, dola_layers=[18, 20], do_sample=False, repetition_penalty=1.2
+)
+tokenizer.batch_decode(outputs[:, inputs.input_ids.shape[-1] :], skip_special_tokens=True)
 " Mount EverestMount Everest, called Himalaya in Nepali, is the world's highest peak above sea level and it rises to an incredible height of 29,028 feet above the ocean. Its summit is over a mile taller than Mt"
 ```
 

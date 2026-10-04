@@ -11,14 +11,14 @@ from .base_hardware import BaseHardwareTemplate
 
 class CPUHardwareTemplate(BaseHardwareTemplate):
     """Template for CPU hardware."""
-    
+
     def __init__(self):
         """Initialize the CPU hardware template."""
         super().__init__()
         self.hardware_type = "cpu"
         self.hardware_name = "CPU"
         self.requires_specialized_code = False
-    
+
     def get_hardware_detection_code(self) -> str:
         """Get CPU hardware detection code."""
         return """
@@ -26,7 +26,7 @@ class CPUHardwareTemplate(BaseHardwareTemplate):
 def is_available():
     return True
 """
-    
+
     def get_hardware_init_code(self, model_class: str, task_type: str) -> str:
         """Get CPU hardware initialization code."""
         return f"""
@@ -39,7 +39,7 @@ model = {model_class}.from_pretrained(
 )
 model.eval()
 """
-    
+
     def get_handler_creation_code(self, model_class: str, task_type: str) -> str:
         """Get code for creating handler functions for CPU."""
         return f"""
@@ -61,7 +61,7 @@ def create_handler(model, tokenizer, device):
     
 handler = create_handler(model, tokenizer, device)
 """
-    
+
     def get_inference_code(self, task_type: str) -> str:
         """Get CPU inference code."""
         if task_type in ["text_embedding", "text_generation", "text2text_generation", "masked_lm"]:
@@ -94,7 +94,7 @@ with torch.no_grad():
 with torch.no_grad():
     outputs = model(**inputs)
 """
-    
+
     def get_cleanup_code(self) -> str:
         """Get cleanup code for CPU."""
         return """
@@ -105,7 +105,7 @@ gc.collect()
 if torch.cuda.is_available():
     torch.cuda.empty_cache()
 """
-    
+
     def get_mock_code(self, model_class: str, task_type: str) -> str:
         """Get mock implementation code for CPU."""
         return f"""
@@ -160,16 +160,16 @@ class MockTokenizer:
         
 tokenizer = MockTokenizer()
 """
-    
+
     def get_fallback_hardware(self) -> str:
         """Get fallback hardware if this one is not available."""
         return "cpu"  # CPU is always the fallback
-    
+
     def is_compatible_with_architecture(self, arch_type: str) -> bool:
         """Check if CPU hardware is compatible with the architecture type."""
         # CPU is compatible with all architecture types
         return True
-    
+
     def get_import_statements(self) -> str:
         """Get CPU-specific import statements."""
         return """

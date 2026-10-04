@@ -239,9 +239,7 @@ class Authorizer:
     def __init__(
         self,
         domain: RescueAuthorizationDomain,
-        verdict: RescueAuthorizationVerdict = (
-            RescueAuthorizationVerdict.PERMIT
-        ),
+        verdict: RescueAuthorizationVerdict = (RescueAuthorizationVerdict.PERMIT),
     ) -> None:
         self.domain = domain
         self.verdict = verdict
@@ -256,8 +254,7 @@ class Authorizer:
             root_binding_id=binding.roots.content_id,
             authority_id=f"authority:{self.domain.value}",
             reason_code=(
-                "" if self.verdict is RescueAuthorizationVerdict.PERMIT
-                else "explicit_denial"
+                "" if self.verdict is RescueAuthorizationVerdict.PERMIT else "explicit_denial"
             ),
             evaluated_at_ms=now_ms,
             expires_at_ms=now_ms + 1_000,
@@ -295,17 +292,13 @@ class PermitBoundary:
         expires_at_ms: int,
     ) -> RescuePermitUseReceipt:
         self.calls += 1
-        assert {item.domain for item in authorizations} == set(
-            REQUIRED_AUTHORIZATION_DOMAINS
-        )
+        assert {item.domain for item in authorizations} == set(REQUIRED_AUTHORIZATION_DOMAINS)
         return RescuePermitUseReceipt(
             permit_id=f"permit:{self.calls}:{binding.binding_id}",
             binding_id=binding.binding_id,
             root_binding_id=binding.roots.content_id,
             incident_cid=(
-                _cid("other-incident")
-                if self.changed_incident
-                else binding.roots.incident_cid
+                _cid("other-incident") if self.changed_incident else binding.roots.incident_cid
             ),
             lease_id=binding.lease_id,
             fencing_epoch=binding.fencing_epoch,
@@ -408,9 +401,7 @@ def test_rebinds_all_roots_and_executes_with_five_independent_checks() -> None:
     assert action.transaction_receipt_id == "control-transaction:1"
     assert action.health_receipt is not None
     assert action.health_receipt.state is RescueHealthState.HEALTHY
-    assert receipt.to_dict()["requirement_id"] == (
-        RESCUE_ORCHESTRATION_REQUIREMENT_ID
-    )
+    assert receipt.to_dict()["requirement_id"] == (RESCUE_ORCHESTRATION_REQUIREMENT_ID)
     assert deps["permit_boundary"].calls == 1
     assert deps["control_transaction"].calls == 1
 
@@ -454,9 +445,7 @@ def test_root_incident_lease_fence_cooldown_and_model_budgets_fail_closed() -> N
     cases: list[tuple[RescueRuntimeSnapshot, RescueStopReason]] = [
         (
             RescueRuntimeSnapshot(
-                roots=replace(
-                    request.roots, program_root=_cid("changed-program")
-                ),
+                roots=replace(request.roots, program_root=_cid("changed-program")),
                 lease_id=request.lease_id,
                 fencing_epoch=request.fencing_epoch,
             ),
@@ -464,9 +453,7 @@ def test_root_incident_lease_fence_cooldown_and_model_budgets_fail_closed() -> N
         ),
         (
             RescueRuntimeSnapshot(
-                roots=replace(
-                    request.roots, incident_cid=_cid("changed-incident")
-                ),
+                roots=replace(request.roots, incident_cid=_cid("changed-incident")),
                 lease_id=request.lease_id,
                 fencing_epoch=request.fencing_epoch,
             ),
@@ -530,9 +517,7 @@ def test_drift_between_authorization_and_effect_prevents_permit_and_dispatch() -
         state.snapshots[0],
         replace(
             state.snapshots[0],
-            roots=replace(
-                request.roots, security_ir_root=_cid("changed-security")
-            ),
+            roots=replace(request.roots, security_ir_root=_cid("changed-security")),
         ),
     ]
     permit = PermitBoundary()
@@ -641,9 +626,7 @@ def test_replay_changed_permit_and_schema_drift_fail_closed() -> None:
     assert deps["control_transaction"].calls == 1
 
     cross_incident = PermitBoundary(changed_incident=True)
-    second_orchestrator, second_deps = _orchestrator(
-        request, permit=cross_incident
-    )
+    second_orchestrator, second_deps = _orchestrator(request, permit=cross_incident)
     result = second_orchestrator.execute(request)
     assert result.stop_reason is RescueStopReason.PERMIT_DENIED
     assert second_deps["control_transaction"].calls == 0
@@ -669,9 +652,7 @@ def test_authorizers_must_be_complete_independent_and_non_model_authoritative() 
         _orchestrator(request, authorizers=incomplete)
 
     shared = Authorizer(RescueAuthorizationDomain.INTENT)
-    not_independent = {
-        domain: shared for domain in REQUIRED_AUTHORIZATION_DOMAINS
-    }
+    not_independent = {domain: shared for domain in REQUIRED_AUTHORIZATION_DOMAINS}
     with pytest.raises(RescueOrchestrationError, match="independent"):
         _orchestrator(request, authorizers=not_independent)
 

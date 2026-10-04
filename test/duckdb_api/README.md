@@ -58,7 +58,7 @@ result_id = api.store_performance_result(
     hardware_type="cuda",
     batch_size=4,
     throughput=120.5,
-    latency_avg=8.2
+    latency_avg=8.2,
 )
 
 # Query performance metrics
@@ -87,7 +87,7 @@ result = runner.run_single_benchmark(
     hardware_type="cuda",
     batch_size=4,
     sequence_length=128,
-    use_simulation=False
+    use_simulation=False,
 )
 
 # Store result in database
@@ -97,7 +97,7 @@ success = runner.store_benchmark_result(result)
 summary = runner.run_benchmarks(
     model_names=["bert-base-uncased", "t5-small"],
     hardware_types=["cpu", "cuda"],
-    batch_sizes=[1, 4, 16]
+    batch_sizes=[1, 4, 16],
 )
 ```
 
@@ -304,7 +304,7 @@ summary = runner.run_benchmarks(
     model_names=["bert-base-uncased", "t5-small", "vit-base"],
     hardware_types=["cpu", "cuda", "rocm"],
     batch_sizes=[1, 4, 16],
-    sequence_length=128
+    sequence_length=128,
 )
 
 print(f"Completed {summary['total']} benchmarks")
@@ -312,10 +312,10 @@ print(f"Successful: {summary['successful']}, Failed: {summary['failed']}")
 
 # Run a single benchmark with simulation awareness
 result = runner.run_single_benchmark(
-    model_name="bert-base-uncased", 
-    hardware_type="cuda", 
+    model_name="bert-base-uncased",
+    hardware_type="cuda",
     batch_size=8,
-    use_simulation=True  # Enable simulation if hardware not available
+    use_simulation=True,  # Enable simulation if hardware not available
 )
 
 # Manually store a result if needed
@@ -330,16 +330,18 @@ from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
 api = BenchmarkDBAPI()
 
 # Store performance result
-result_id = api.store_performance_result({
-    "model_name": "bert-base-uncased",
-    "hardware_type": "cuda",
-    "device_name": "NVIDIA RTX 4090",
-    "batch_size": 4,
-    "precision": "fp16",
-    "throughput": 162.5,
-    "latency_avg": 24.6,
-    "memory_peak": 2100.0
-})
+result_id = api.store_performance_result(
+    {
+        "model_name": "bert-base-uncased",
+        "hardware_type": "cuda",
+        "device_name": "NVIDIA RTX 4090",
+        "batch_size": 4,
+        "precision": "fp16",
+        "throughput": 162.5,
+        "latency_avg": 24.6,
+        "memory_peak": 2100.0,
+    }
+)
 ```
 
 ### Querying Benchmark Results
@@ -385,9 +387,7 @@ visualizer = BenchmarkVisualizer()
 
 # Create hardware comparison chart
 visualizer.create_hardware_comparison_chart(
-    model_name="bert-base-uncased",
-    metric="throughput",
-    output_file="hardware_comparison.png"
+    model_name="bert-base-uncased", metric="throughput", output_file="hardware_comparison.png"
 )
 
 # Create model comparison chart
@@ -395,7 +395,7 @@ visualizer.create_model_comparison_chart(
     hardware_type="cuda",
     model_names=["bert-base-uncased", "t5-small", "vit-base"],
     metric="throughput",
-    output_file="model_comparison.png"
+    output_file="model_comparison.png",
 )
 
 # Create batch size comparison chart
@@ -403,7 +403,7 @@ visualizer.create_batch_size_comparison_chart(
     model_name="bert-base-uncased",
     hardware_type="cuda",
     metric="throughput",
-    output_file="batch_size_comparison.png"
+    output_file="batch_size_comparison.png",
 )
 
 # Create hardware heatmap
@@ -411,7 +411,7 @@ visualizer.create_hardware_heatmap(
     model_names=["bert-base-uncased", "t5-small", "vit-base"],
     hardware_types=["cpu", "cuda", "rocm"],
     metric="throughput",
-    output_file="heatmap.png"
+    output_file="heatmap.png",
 )
 
 # Create comprehensive dashboard
@@ -419,7 +419,7 @@ visualizer.create_dashboard(
     output_dir="dashboard",
     metrics=["throughput", "latency", "memory"],
     model_names=["bert-base-uncased", "t5-small", "vit-base"],
-    hardware_types=["cpu", "cuda", "rocm"]
+    hardware_types=["cpu", "cuda", "rocm"],
 )
 ```
 
@@ -453,8 +453,7 @@ detector = SimulationDetection()
 
 # Mark hardware as simulated
 detector.mark_hardware_as_simulated(
-    hardware_type="cuda",
-    reason="Hardware not available on CI server"
+    hardware_type="cuda", reason="Hardware not available on CI server"
 )
 
 # Generate simulation report
@@ -464,12 +463,14 @@ report = detector.generate_simulation_report()
 simulated_df = detector.get_simulated_results()
 
 # Run benchmarks with simulation awareness
-benchmarks_df = pd.DataFrame([
-    {"model_name": "bert-base-uncased", "hardware_type": "cpu", "batch_size": 1},
-    {"model_name": "bert-base-uncased", "hardware_type": "cpu", "batch_size": 4},
-    {"model_name": "bert-base-uncased", "hardware_type": "cuda", "batch_size": 1},
-    {"model_name": "bert-base-uncased", "hardware_type": "cuda", "batch_size": 4}
-])
+benchmarks_df = pd.DataFrame(
+    [
+        {"model_name": "bert-base-uncased", "hardware_type": "cpu", "batch_size": 1},
+        {"model_name": "bert-base-uncased", "hardware_type": "cpu", "batch_size": 4},
+        {"model_name": "bert-base-uncased", "hardware_type": "cuda", "batch_size": 1},
+        {"model_name": "bert-base-uncased", "hardware_type": "cuda", "batch_size": 4},
+    ]
+)
 success = detector.run_benchmarks(benchmarks_df)
 ```
 
@@ -485,9 +486,7 @@ runner = IncrementalBenchmarkRunner(db_path="./benchmark_db.duckdb")
 
 # Identify missing benchmarks
 missing_df = runner.identify_missing_benchmarks(
-    models=["bert-base-uncased", "t5-small"],
-    hardware=["cpu", "cuda"],
-    batch_sizes=[1, 4, 16]
+    models=["bert-base-uncased", "t5-small"], hardware=["cpu", "cuda"], batch_sizes=[1, 4, 16]
 )
 print(f"Found {len(missing_df)} missing benchmark configurations")
 
@@ -496,14 +495,14 @@ outdated_df = runner.identify_outdated_benchmarks(
     models=["bert-base-uncased", "t5-small"],
     hardware=["cpu", "cuda"],
     batch_sizes=[1, 4, 16],
-    older_than_days=30
+    older_than_days=30,
 )
 print(f"Found {len(outdated_df)} outdated benchmark configurations")
 
 # Identify priority benchmarks for key models and hardware
 priority_df = runner.identify_priority_benchmarks(
     priority_models=["bert-base-uncased", "t5-small", "vit-base"],
-    priority_hardware=["cpu", "cuda", "openvino"]
+    priority_hardware=["cpu", "cuda", "openvino"],
 )
 print(f"Found {len(priority_df)} priority benchmark configurations")
 

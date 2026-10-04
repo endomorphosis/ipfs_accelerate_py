@@ -26,7 +26,9 @@ class TestMCPServerUNI226StorageTools(unittest.TestCase):
 
     def test_backend_alias_reports_invalid_unavailable_backends_list(self) -> None:
         async def _run() -> None:
-            result = await get_storage_backend_status(unavailable_backends=["ipfs", "tape", "legacy"])
+            result = await get_storage_backend_status(
+                unavailable_backends=["ipfs", "tape", "legacy"]
+            )
             self.assertEqual(result.get("status"), "error")
             self.assertIn(
                 "unavailable_backends contains unknown storage backends",

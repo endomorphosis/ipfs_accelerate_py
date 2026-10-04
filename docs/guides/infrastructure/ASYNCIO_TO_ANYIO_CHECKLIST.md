@@ -107,7 +107,8 @@ For each executor usage:
 ```python
 # Calling anyio.run inside an async context
 async def main():
-  anyio.run(some_func)  # WRONG
+    anyio.run(some_func)  # WRONG
+
 
 # Mixing AnyIO primitives with non-AnyIO sync loops
 # (avoid manual loop management)
@@ -118,6 +119,7 @@ async def main():
 # Just await directly
 async def main():
     await some_func()  # CORRECT
+
 
 # Use anyio primitives consistently
 send, recv = anyio.create_memory_object_stream()

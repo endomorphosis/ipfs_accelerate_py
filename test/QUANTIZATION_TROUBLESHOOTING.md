@@ -20,7 +20,7 @@ This guide provides solutions to common issues encountered when using WebGPU and
       model_type="text_generation",
       platform="webgpu",
       bits=4,
-      mixed_precision=True  # Crucial for large models
+      mixed_precision=True,  # Crucial for large models
   )
   ```
 - **Reduce batch size**: Lower batch sizes require less memory
@@ -31,7 +31,7 @@ This guide provides solutions to common issues encountered when using WebGPU and
       model_type="text_generation",
       platform="webgpu",
       bits=4,
-      progressive_loading=True
+      progressive_loading=True,
   )
   ```
 - **Try sharded loading**: Split model across multiple tabs if available
@@ -50,9 +50,9 @@ This guide provides solutions to common issues encountered when using WebGPU and
   precision_config = MixedPrecisionConfig(
       model_type="text",
       default_bits=4,
-      attention_bits=8,    # Critical for performance
-      embedding_bits=8,    # Important for token representation
-      output_bits=8        # Ensures clean outputs
+      attention_bits=8,  # Critical for performance
+      embedding_bits=8,  # Important for token representation
+      output_bits=8,  # Ensures clean outputs
   )
   ```
 - **Adjust block size**: Try larger block sizes for more stable quantization
@@ -61,7 +61,7 @@ This guide provides solutions to common issues encountered when using WebGPU and
       model_type="text",
       bits=4,
       block_size=256,  # Larger block size (default is 128)
-      mixed_precision=True
+      mixed_precision=True,
   )
   ```
 - **Verify model compatibility**: Some models are more sensitive to quantization
@@ -76,19 +76,11 @@ This guide provides solutions to common issues encountered when using WebGPU and
 #### Solutions
 - **Chrome/Edge**: Best overall support, use for most models
   ```python
-  config = setup_quantization_config(
-      model_type="text",
-      bits=4,
-      optimize_for_browser="chrome"
-  )
+  config = setup_quantization_config(model_type="text", bits=4, optimize_for_browser="chrome")
   ```
 - **Firefox**: Superior for audio models with compute shaders
   ```python
-  config = setup_quantization_config(
-      model_type="audio",
-      bits=8,
-      optimize_for_browser="firefox"
-  )
+  config = setup_quantization_config(model_type="audio", bits=8, optimize_for_browser="firefox")
   ```
 - **Safari**: Most limited, requires higher precision
   ```python
@@ -96,7 +88,7 @@ This guide provides solutions to common issues encountered when using WebGPU and
       model_type="text",
       bits=8,  # Minimum for Safari
       mixed_precision=False,  # Safari WebGPU implementation is more limited
-      conservative_mode=True  # Safer settings for Safari
+      conservative_mode=True,  # Safer settings for Safari
   )
   ```
 - **Feature detection**: Always check capabilities at runtime
@@ -125,7 +117,7 @@ This guide provides solutions to common issues encountered when using WebGPU and
       model_type="text",
       platform="webgpu",
       bits=4,
-      shader_precompilation=True
+      shader_precompilation=True,
   )
   ```
 - **Use browser-specific optimizations**: Each browser has different optimal settings
@@ -141,18 +133,14 @@ This guide provides solutions to common issues encountered when using WebGPU and
   config = setup_quantization_config(
       model_type="text",
       bits=4,
-      scheme="asymmetric"  # Try "symmetric" if performance isn't good
+      scheme="asymmetric",  # Try "symmetric" if performance isn't good
   )
   ```
 - **Optimize compute kernels**: Use specialized matrix multiplication kernels
   ```python
   from fixed_web_platform.webgpu_4bit_kernels import optimize_kernels_for_hardware
-  
-  config = setup_quantization_config(
-      model_type="text",
-      bits=4,
-      mixed_precision=True
-  )
+
+  config = setup_quantization_config(model_type="text", bits=4, mixed_precision=True)
   config = optimize_kernels_for_hardware(config)
   ```
 
@@ -195,7 +183,7 @@ with debugger.trace() as trace:
         model_type="text",
         platform="webgpu",
         bits=4,
-        mixed_precision=True
+        mixed_precision=True,
     )
     result = platform.run_inference({"input_text": "Sample text"})
 
@@ -219,19 +207,21 @@ results = analyze_precision_impact(
     model_type="text",
     test_input={"input_text": "Sample text"},
     precision_configurations=[
-        {"all": 16},                         # Baseline FP16
-        {"all": 8},                          # INT8 all layers
-        {"all": 4},                          # INT4 all layers
-        {"attention": 8, "others": 4},       # Mixed precision
-        {"attention": 8, "feedforward": 2, "others": 4}  # Ultra mixed
-    ]
+        {"all": 16},  # Baseline FP16
+        {"all": 8},  # INT8 all layers
+        {"all": 4},  # INT4 all layers
+        {"attention": 8, "others": 4},  # Mixed precision
+        {"attention": 8, "feedforward": 2, "others": 4},  # Ultra mixed
+    ],
 )
 
 # Print layer-by-layer analysis
 for layer_name, layer_results in results["layer_analysis"].items():
     print(f"Layer: {layer_name}")
     for precision, metrics in layer_results.items():
-        print(f"  Precision {precision}: Accuracy {metrics['accuracy']:.4f}, Speed {metrics['relative_speed']:.2f}x")
+        print(
+            f"  Precision {precision}: Accuracy {metrics['accuracy']:.4f}, Speed {metrics['relative_speed']:.2f}x"
+        )
 ```
 
 ## Browser-Specific Optimization Guide

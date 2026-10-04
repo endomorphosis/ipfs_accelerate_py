@@ -22,9 +22,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 
 
 def _git(repo: Path, *args: str) -> str:
-    result = subprocess.run(
-        ["git", *args], cwd=repo, text=True, capture_output=True, check=False
-    )
+    result = subprocess.run(["git", *args], cwd=repo, text=True, capture_output=True, check=False)
     assert result.returncode == 0, result.stderr
     return result.stdout.strip()
 
@@ -98,13 +96,9 @@ def test_queue_combines_priority_with_age_fairness(tmp_path: Path) -> None:
         priority_aging_seconds=10,
         max_age_seconds=1_000,
     )
-    old = queue.enqueue(
-        branch_name="old-low", task_id="OLD", priority="P3", commit_sha="1" * 40
-    )
+    old = queue.enqueue(branch_name="old-low", task_id="OLD", priority="P3", commit_sha="1" * 40)
     now[0] = 40.0
-    queue.enqueue(
-        branch_name="new-high", task_id="NEW", priority="P0", commit_sha="2" * 40
-    )
+    queue.enqueue(branch_name="new-high", task_id="NEW", priority="P0", commit_sha="2" * 40)
 
     claimed = queue.dequeue()
     assert claimed is not None
@@ -409,13 +403,8 @@ def test_isolated_daemon_lanes_share_only_one_target_scoped_train(
         task_header_prefix="## REF-",
         merge_target_branch="benchmark/semantic-roundtrip",
     )
-    assert (
-        benchmark_lane.merge_queue.database_path
-        != lane_a.merge_queue.database_path
-    )
-    assert benchmark_lane.merge_queue.target_branch == (
-        "benchmark/semantic-roundtrip"
-    )
+    assert benchmark_lane.merge_queue.database_path != lane_a.merge_queue.database_path
+    assert benchmark_lane.merge_queue.target_branch == ("benchmark/semantic-roundtrip")
     assert benchmark_lane.merge_queue.pending_count() == 0
     foreign_request, _foreign_result = benchmark_lane._enqueue_merge_candidate(
         branch_name="implementation/ref-038-benchmark",

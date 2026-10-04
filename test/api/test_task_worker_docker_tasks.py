@@ -3,7 +3,9 @@ import os
 import pytest
 
 
-def _fake_result(*, success=True, exit_code=0, stdout="ok", stderr="", execution_time=0.01, error_message=None):
+def _fake_result(
+    *, success=True, exit_code=0, stdout="ok", stderr="", execution_time=0.01, error_message=None
+):
     class R:
         pass
 
@@ -32,7 +34,9 @@ def test_worker_docker_hub_task(monkeypatch, tmp_path, task_type):
 
     called = {}
 
-    def fake_execute_docker_hub_container(*, image, command=None, entrypoint=None, environment=None, volumes=None, **kwargs):
+    def fake_execute_docker_hub_container(
+        *, image, command=None, entrypoint=None, environment=None, volumes=None, **kwargs
+    ):
         called["image"] = image
         called["command"] = command
         called["entrypoint"] = entrypoint
@@ -45,7 +49,9 @@ def test_worker_docker_hub_task(monkeypatch, tmp_path, task_type):
 
     import ipfs_accelerate_py.docker_executor as docker_executor
 
-    monkeypatch.setattr(docker_executor, "execute_docker_hub_container", fake_execute_docker_hub_container)
+    monkeypatch.setattr(
+        docker_executor, "execute_docker_hub_container", fake_execute_docker_hub_container
+    )
 
     queue_path = str(tmp_path / "q.duckdb")
     queue = TaskQueue(queue_path)
@@ -140,7 +146,9 @@ def test_worker_docker_github_task(monkeypatch, tmp_path, task_type):
 
     import ipfs_accelerate_py.docker_executor as docker_executor
 
-    monkeypatch.setattr(docker_executor, "build_and_execute_from_github", fake_build_and_execute_from_github)
+    monkeypatch.setattr(
+        docker_executor, "build_and_execute_from_github", fake_build_and_execute_from_github
+    )
 
     queue_path = str(tmp_path / "q.duckdb")
     queue = TaskQueue(queue_path)
@@ -230,13 +238,17 @@ def test_worker_docker_auto_enabled_when_daemon_available(monkeypatch, tmp_path)
 
     called = {}
 
-    def fake_execute_docker_hub_container(*, image, command=None, entrypoint=None, environment=None, volumes=None, **kwargs):
+    def fake_execute_docker_hub_container(
+        *, image, command=None, entrypoint=None, environment=None, volumes=None, **kwargs
+    ):
         called["image"] = image
         return _fake_result(stdout="hello", stderr="")
 
     import ipfs_accelerate_py.docker_executor as docker_executor
 
-    monkeypatch.setattr(docker_executor, "execute_docker_hub_container", fake_execute_docker_hub_container)
+    monkeypatch.setattr(
+        docker_executor, "execute_docker_hub_container", fake_execute_docker_hub_container
+    )
 
     queue_path = str(tmp_path / "q.duckdb")
     queue = TaskQueue(queue_path)
@@ -287,13 +299,17 @@ def test_worker_shell_runs_in_docker(monkeypatch, tmp_path):
 
     import ipfs_accelerate_py.docker_executor as docker_executor
 
-    monkeypatch.setattr(docker_executor, "execute_docker_hub_container", fake_execute_docker_hub_container)
+    monkeypatch.setattr(
+        docker_executor, "execute_docker_hub_container", fake_execute_docker_hub_container
+    )
 
     queue_path = str(tmp_path / "q.duckdb")
     queue = TaskQueue(queue_path)
     tid = queue.submit(task_type="shell", model_name="shell", payload={"argv": ["echo", "hi"]})
 
-    rc = run_worker(queue_path=queue_path, worker_id="w1", once=True, supported_task_types=["shell"])
+    rc = run_worker(
+        queue_path=queue_path, worker_id="w1", once=True, supported_task_types=["shell"]
+    )
     assert rc == 0
 
     task = queue.get(tid)

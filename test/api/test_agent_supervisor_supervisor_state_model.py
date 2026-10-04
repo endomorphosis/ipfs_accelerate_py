@@ -155,8 +155,7 @@ def test_generator_is_deterministic_canonical_and_schema_driven() -> None:
         "terminal_states": list(reversed(serialized["terminal_states"])),
         "transitions": list(reversed(serialized["transitions"])),
         "dependencies": {
-            key: serialized["dependencies"][key]
-            for key in reversed(serialized["dependencies"])
+            key: serialized["dependencies"][key] for key in reversed(serialized["dependencies"])
         },
         "required_evidence": {
             key: serialized["required_evidence"][key]
@@ -218,9 +217,7 @@ def test_model_contains_all_required_safety_and_bounded_liveness_properties() ->
     assert "RequiredEvidence[t] \\subseteq evidence[t]" in model.model_text
     assert "step = MaxSteps" in model.model_text
     assert model.tlc_config_text.startswith("SPECIFICATION Spec\n")
-    assert model.apalache_config_text == (
-        "INIT Init\nNEXT Next\nINVARIANT Safety\n"
-    )
+    assert model.apalache_config_text == ("INIT Init\nNEXT Next\nINVARIANT Safety\n")
     assert model.to_dict()["bounded"] is True
     assert model.to_dict()["unbounded_proof"] is False
 
@@ -321,9 +318,7 @@ def test_tlc_receipt_records_exact_bounded_experiment_and_never_claims_proof() -
     assert receipt.version_stdout == "ModelChecker 1.2.3\n"
     assert receipt.version_stderr == ""
     assert receipt.checked_safety_properties == tuple(sorted(SAFETY_PROPERTIES))
-    assert receipt.checked_liveness_properties == tuple(
-        sorted(LIVENESS_PROPERTIES)
-    )
+    assert receipt.checked_liveness_properties == tuple(sorted(LIVENESS_PROPERTIES))
     assert receipt.duration_ms == 125
     payload = receipt.to_dict()
     assert payload["model"]["model_text"] == receipt.model.model_text

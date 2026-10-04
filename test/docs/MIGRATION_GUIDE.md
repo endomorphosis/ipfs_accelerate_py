@@ -244,7 +244,8 @@ def test_webgpu_available():
 def test_webgpu_available(self):
     """Test WebGPU availability."""
     hardware_info = detect_hardware()
-    assert hardware_info['platforms']['webgpu']['available']
+    assert hardware_info["platforms"]["webgpu"]["available"]
+
 
 @pytest.mark.webgpu
 def test_webgpu_browser_launch(self, webgpu_browser):
@@ -258,14 +259,12 @@ def test_webgpu_browser_launch(self, webgpu_browser):
 ```python
 def test_openai_api():
     import openai
-    
+
     openai.api_key = "test_key"
     response = openai.Completion.create(
-        model="text-davinci-003",
-        prompt="Hello, world!",
-        max_tokens=5
+        model="text-davinci-003", prompt="Hello, world!", max_tokens=5
     )
-    
+
     assert response.choices[0].text
 ```
 
@@ -279,10 +278,10 @@ def test_chat_completion(self, openai_client):
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": "Hello!"}
-            ]
+                {"role": "user", "content": "Hello!"},
+            ],
         )
-        
+
         assert response is not None
         assert len(response.choices) > 0
         assert response.choices[0].message.content
