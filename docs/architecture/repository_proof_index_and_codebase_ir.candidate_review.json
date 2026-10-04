@@ -1,0 +1,272 @@
+{
+  "claims": {
+    "candidate_completed_task": false,
+    "completion_authority": false,
+    "convergence_proved": false,
+    "execution_authority": false,
+    "formal_decoder_available": false,
+    "generalization_verified": false,
+    "native_worker_successor_loop_qualified": false,
+    "omission_authority": false,
+    "parser_correctness_proved": false,
+    "portal_publication_performed": false,
+    "production_activated": false,
+    "public_terminal_bench_task_satisfied": false,
+    "signing_key_inaccessibility_verified": false,
+    "universal_python_semantics_proved": false,
+    "worker_isolation_verified": false
+  },
+  "complete_qualification_costs": {
+    "current_successful_namespace_attempted_epochs": 32,
+    "current_successful_namespace_wall_seconds": 230.6200666949153,
+    "failed_qualification_namespaces": 5,
+    "four_failed_namespace_attempted_epochs": 80,
+    "four_failed_namespace_wall_seconds": 415.06938163377345,
+    "historical_and_current_experiments_are_distinct_native_training_attempts": true,
+    "new_runner_extra_failed_namespace_attempted_epochs": 0,
+    "new_runner_extra_failed_namespace_wall_seconds": 30.44009316409938,
+    "previous_successful_namespace_attempted_epochs": 32,
+    "previous_successful_namespace_wall_seconds": 266.0628504711203,
+    "successful_qualification_namespaces": 2,
+    "total_actual_attempted_epochs": 144,
+    "total_qualification_namespaces": 7,
+    "total_qualification_wall_seconds": 942.1923919639084
+  },
+  "documentation_links": {
+    "checked": 311,
+    "concurrent_other_workstream_missing": [
+      {
+        "document": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+        "target": "repository_proof_index_and_codebase_ir.finite_worker_review.json"
+      },
+      {
+        "document": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+        "target": "repository_proof_index_and_codebase_ir.finite_worker_review.json"
+      },
+      {
+        "document": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+        "target": "repository_proof_index_and_codebase_ir.finite_worker_review.json"
+      }
+    ],
+    "note": "Only these selected ending observations are asserted; concurrently authored worker-review references remain owned by that workstream if absent.",
+    "owned_qualification_missing": 0
+  },
+  "ending_documents": [
+    {
+      "original": {
+        "bytes": 159116,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+        "sha256": "ea84651ae82e5299108798f76fa84bca95da411ef5918725ee2a0af199090e66"
+      },
+      "retained": {
+        "bytes": 159116,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-reviewed-candidate-qualification-20261002-07/selected-ending-documents/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+        "sha256": "ea84651ae82e5299108798f76fa84bca95da411ef5918725ee2a0af199090e66"
+      }
+    },
+    {
+      "original": {
+        "bytes": 64215,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+        "sha256": "7b9e1c6f5cadd1c90efdb28ee2b6f456daf7509c8e429e6436cd3b783950c3b9"
+      },
+      "retained": {
+        "bytes": 64215,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-reviewed-candidate-qualification-20261002-07/selected-ending-documents/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+        "sha256": "7b9e1c6f5cadd1c90efdb28ee2b6f456daf7509c8e429e6436cd3b783950c3b9"
+      }
+    },
+    {
+      "original": {
+        "bytes": 64541,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+        "sha256": "403a319bc4004b199435418861a9c57a83a5c14caea90ec920a372c6b8736163"
+      },
+      "retained": {
+        "bytes": 64541,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-reviewed-candidate-qualification-20261002-07/selected-ending-documents/repository_proof_index_and_codebase_ir.todo.md",
+        "sha256": "403a319bc4004b199435418861a9c57a83a5c14caea90ec920a372c6b8736163"
+      }
+    },
+    {
+      "original": {
+        "bytes": 21474,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/agent_supervisor/terminal_codebase_adaptation_qualification.md",
+        "sha256": "328e6704f1712525750357ad02af3937a8d51459d30ba0af2e4714dde17d36d0"
+      },
+      "retained": {
+        "bytes": 21474,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-reviewed-candidate-qualification-20261002-07/selected-ending-documents/terminal_codebase_adaptation_qualification.md",
+        "sha256": "328e6704f1712525750357ad02af3937a8d51459d30ba0af2e4714dde17d36d0"
+      }
+    },
+    {
+      "original": {
+        "bytes": 19415,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/agent_supervisor/finite_repository_candidate_qualification.md",
+        "sha256": "d53dfe49ee50bbe08db1c0a04177ebd6627aa9e3ab76ffcee85dbce42f3ad129"
+      },
+      "retained": {
+        "bytes": 19415,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-reviewed-candidate-qualification-20261002-07/selected-ending-documents/finite_repository_candidate_qualification.md",
+        "sha256": "d53dfe49ee50bbe08db1c0a04177ebd6627aa9e3ab76ffcee85dbce42f3ad129"
+      }
+    }
+  ],
+  "evidence": {
+    "REPORT.md": {
+      "bytes": 5645,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-reviewed-candidate-qualification-20261002-07/REPORT.md",
+      "sha256": "09ebf6cb2c19e7901aa3f1742f7b8666ddba6e7f856233457742f92b22cd2ad8"
+    },
+    "artifact-pins.json": {
+      "bytes": 340130,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-reviewed-candidate-qualification-20261002-07/artifact-pins.json",
+      "sha256": "32218932836a780fd4cd7e98ae1ea47fb810819121c8436acffb57a6eeada54b"
+    },
+    "audit-calibration-history.json": {
+      "bytes": 12471,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-reviewed-candidate-qualification-20261002-07/audit-calibration-history.json",
+      "sha256": "38c80778c913259b7bcad52e8ff54fd7849beb249739fb7a595d227820203c2c"
+    },
+    "audit-script-v4.py": {
+      "bytes": 113476,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-reviewed-candidate-qualification-20261002-07/audit-script-v4.py",
+      "sha256": "133471a16391ea7d1bbbe038117bf37acbd73d843b673adf4d1b83522458034d"
+    },
+    "before-lowering.json": {
+      "bytes": 33834,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-reviewed-candidate-qualification-20261002-07/before-lowering.json",
+      "sha256": "fe6113eed02a3db4d81b4753c5715140d43e7226c37f7267c5144e1ea8609106"
+    },
+    "experiment-native-training-accounting.json": {
+      "bytes": 85346,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-reviewed-candidate-qualification-20261002-07/experiment-native-training-accounting.json",
+      "sha256": "e2d9c8d5c4a0a828958cfd746d2a5cdec80ff04b3d32f00efad811b899e7467a"
+    },
+    "independent-audit.json": {
+      "bytes": 28040,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-reviewed-candidate-qualification-20261002-07/independent-audit.json",
+      "sha256": "4bb12ca1f975748fdfd0135c9d1f2a58b485eaac13783f95ea46e443fd20788e"
+    },
+    "metadata-replay.json": {
+      "bytes": 142992,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-reviewed-candidate-qualification-20261002-07/metadata-replay.json",
+      "sha256": "b4df5368e177c8bc617659da872dedc319db850a5d82f22acc691bf5bcd033df"
+    },
+    "metadata/manifest.json": {
+      "bytes": 137096,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-reviewed-candidate-qualification-20261002-07/metadata/manifest.json",
+      "sha256": "9757375f0da887c010066103385926ab06a66fc83975eada12f6376d51d334ea"
+    },
+    "new-failure-native-accounting.json": {
+      "bytes": 1919,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-reviewed-candidate-qualification-20261002-07/new-failure-native-accounting.json",
+      "sha256": "1800dae12a71d261e06d30cc553847f0cc1b24ff83e59c835fd06d566a328f2a"
+    },
+    "result.json": {
+      "bytes": 967119,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-reviewed-candidate-qualification-20261002-07/result.json",
+      "sha256": "ef8ad833d10438216bc0271693497d313a4abf114365e2650189e65371af4f4e"
+    },
+    "successor-lowering.json": {
+      "bytes": 33774,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-reviewed-candidate-qualification-20261002-07/successor-lowering.json",
+      "sha256": "f9ff125bc266e8e44b25be855dc0d9bd33cf9bffac038fd15af3890b7ee65cf2"
+    },
+    "tests.json": {
+      "bytes": 824221,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-reviewed-candidate-qualification-20261002-07/tests.json",
+      "sha256": "9a2ff607cc41a2f68a6385d9dc66254fac4ee3f8b9beaa23ccb7d3d4d4e3e3a9"
+    },
+    "training-measurements.json": {
+      "bytes": 18601,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-reviewed-candidate-qualification-20261002-07/training-measurements.json",
+      "sha256": "7e4bedcb20dcbc8687bc7bb6d9efe2f33acc1e56b4cbcc06ad11801a6787f279"
+    }
+  },
+  "latest_tests": {
+    "final_distinct_cases": 93,
+    "final_passed": 93,
+    "final_skips": 0,
+    "raw_run_count": 12,
+    "raw_status_counts": {
+      "error": 75,
+      "failed": 33,
+      "passed": 236
+    },
+    "raw_xml_records": 344,
+    "retained_test_ledger_available": true
+  },
+  "native_metadata": {
+    "complete_families": 23,
+    "complete_producers": 504,
+    "duckdb_rows": 1425,
+    "ducklake_commits": 94,
+    "ducklake_packets": 932,
+    "metadata_chunks": 921
+  },
+  "native_qualification_wall_seconds": 230.6200666949153,
+  "new_source_pins": [
+    {
+      "bytes": 42047,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_repository_candidate.py",
+      "sha256": "eba6a95ffbc2d9b0ed33d7616572f810b6fd69a4dfbdbca101289dca5be22610"
+    },
+    {
+      "bytes": 14849,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_finite_repository_candidate.py",
+      "sha256": "d43af2a1adfde5cc3c285f61e104a3135c9b49ee6b75b50d266fd853ab1ce323"
+    },
+    {
+      "bytes": 40917,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/finite_repository_candidate_experiment.py",
+      "sha256": "a1697ad55b0c93e821f8b240ba4a5dc7ea773db8542d79a0074b4a44f824a341"
+    },
+    {
+      "bytes": 44612,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_integer_lowering_lean.py",
+      "sha256": "c2f55e9c96d504ab357ce4fb8d8bd8044f6277a965812458784714de1a91dda3"
+    },
+    {
+      "bytes": 16703,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/tests/integration/logic/software_contracts/test_codebase_integer_lowering_lean.py",
+      "sha256": "a8c4f15f393a8207b799e0417915370e899b6cf782e1974ecf7ae3ae4e44706c"
+    }
+  ],
+  "next_gate": "Integrate with the separately qualified model-off worker crossing through its distinct native public handoff and new training/lowering joined-profile evidence. Semantic decoder, parser/runtime correspondence, scaling, authenticated baseline recovery and optimizer theory retain separate gates.",
+  "original_native_task_statuses": {
+    "FINITE-OFFSET": "in_progress",
+    "FINITE-TYPE": "completed"
+  },
+  "original_task_population": 2,
+  "preservation": {
+    "current_primary_artifact_pins": 1637,
+    "extra_failed_attempt_pins": 102,
+    "historical_success_primary_pins": 1604,
+    "original_failed_attempt_pins": 923,
+    "prior_immutable_pins": 1471
+  },
+  "production_acceptance_exits_closed": 0,
+  "production_acceptance_exits_open": 32,
+  "qualification_attempts_actual_training_epochs": [
+    32,
+    32,
+    16,
+    0,
+    32,
+    0,
+    32
+  ],
+  "reviewed_at": "2026-10-02T09:40:01.334074+00:00",
+  "schema": "repository-proof-index-codebase-ir-candidate-ending-review@1",
+  "scope": "Selected per-file ending observations and separately executed frozen native qualification. Not an atomic whole-workspace snapshot, release, process-origin attestation or production activation. Concurrent qualified worker crossing has separate evidence; its integration with these features/lowerings remains open.",
+  "selected_execution_source_count": 37,
+  "selected_execution_sources": {
+    "bytes": 26916,
+    "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-reviewed-candidate-qualification-20261002-07/execution-source-pins.json",
+    "sha256": "03f4be640b0b35aa5ba35c33ea51f4c14cd2dbbf39190c8aaf8b86b16900ee15"
+  },
+  "status": "qualified_bounded_prerequisites",
+  "successful_namespace_attempted_training_epochs": 32
+}

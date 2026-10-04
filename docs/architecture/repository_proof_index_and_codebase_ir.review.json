@@ -1,0 +1,650 @@
+{
+  "schema": "repository-proof-index-codebase-ir-source-review@1",
+  "environment_context_date": "2026-10-01",
+  "fingerprint_captured_at_utc": "2026-10-01T20:56:23.238387+00:00",
+  "status": "proposed_integration_all_RPI_tasks_open",
+  "scope": "Local source and documentation review with three read-only peer audits; digests identify the referenced working files at capture, not an entire repository snapshot or deployed archive.",
+  "repositories": {
+    "ipfs_accelerate": {
+      "path": "external/ipfs_accelerate",
+      "head": "18e0f79e56def8ba426cafdfad568fe6bf7440b7",
+      "tracked_working_tree_dirty": true,
+      "source_identity": "exact_local_file_digests_not_head_alone"
+    },
+    "ipfs_datasets": {
+      "path": "external/ipfs_datasets",
+      "head": "d5238def256d1c352793ee7d977e6b17b6d8cbee",
+      "tracked_working_tree_dirty": true,
+      "source_identity": "exact_local_file_digests_not_head_alone"
+    }
+  },
+  "peer_review_domains": [
+    "source_semantics_checkers_and_repository_training",
+    "durable_control_cache_identity_and_ducklake_history",
+    "symbolic_planner_admission_successors_and_benchmarks"
+  ],
+  "source_files": [
+    {
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "sha256": "eaa9cbf9addb90cd21e999e858fbeab353c0c81e0f6b4143b944a2ef33fd288d",
+      "bytes": 12519,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "sha256": "798308917911be224ff54be6f932ac7061a62ee2a1c0d566e737aaed0c78cfc6",
+      "bytes": 20216,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "867f7a8551aade949bbd7258127185670b8f34bd6789da63a39df7c654c66e87",
+      "bytes": 34890,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "sha256": "f8a1e14c6e35883e8736f161ba20d96e096b0458d0f91c8243e8fa3e298134bb",
+      "bytes": 48623,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+      "sha256": "5623268360c3be84cbb9560c57bfee89c7cfb072dead77052f364d8492913b38",
+      "bytes": 32205,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/analysis/planning_analysis_factory.py",
+      "sha256": "7fecb5f592900231991c5aafe9c5fe144e0ae20a4f0e6233fac2b8d12edb3dc6",
+      "bytes": 53971,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py",
+      "sha256": "6d9ae99151128a99b140524a54a0b11e8706d93b3085f26062c9b58b667f5d9d",
+      "bytes": 51556,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/intent_requirement_adapter.py",
+      "sha256": "66a0b30c01a70c710d8c6a2a12870f91ce91f4093bf84b6c19bd575412ea6b2d",
+      "bytes": 26435,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/intent_symbolic_planning.py",
+      "sha256": "33ae420f26b6645da4e1328954ece93da22831ca538dc95cbb1c8350b57efc6b",
+      "bytes": 15118,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/obligation_graph_compiler.py",
+      "sha256": "8a17f0fe2f756f75d4b49c358b77d9edba1f57fe8d85fea968ca7de628a8f9be",
+      "bytes": 135680,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/plan_critic.py",
+      "sha256": "6f566deb7e3d23a32789a42799a896fa60c8ed6cca4a7854c082b02a5c3f0ff2",
+      "bytes": 104897,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/symbolic_candidate_planner.py",
+      "sha256": "4a51d33888c34a24cd0a8733bcb5272c7927f1b3f61186f8322445ba72b7e7ee",
+      "bytes": 77845,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/prompt/intent_plan_coverage.py",
+      "sha256": "da7b280e67971468c335d21d86a2fa862d14eeeb7fb5a6cd609afd0ff4b66e7c",
+      "bytes": 22375,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/prompt/plan_create_service.py",
+      "sha256": "17e425276464b3556e9eee88594fcba6ceb81ac4c4c93735f6b24cd73fa6d365",
+      "bytes": 106298,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/proof/code_proof_obligations.py",
+      "sha256": "817879b8aae0ab7d385e3aecc8cef62c6ff1f6d4e676bfcefe22ab37c3cd054d",
+      "bytes": 268420,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/proof/code_proof_query.py",
+      "sha256": "7cd038d6637411d9524785a9a349c12a372d669b4d731efecadb208ea962a0df",
+      "bytes": 28101,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/proof/code_proof_reproof.py",
+      "sha256": "4e48fefd190e7395d258811c1d0766d61b6aa05fe743780f550045dc39016c14",
+      "bytes": 22061,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/proof/doctor_proof_cache.py",
+      "sha256": "08fdf045f68160b127b0e3a94ce2cfa045461bc04cc6c07d8beb247ce0881047",
+      "bytes": 80622,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/proof/formal_verification_cache.py",
+      "sha256": "c1f5f063bd6379410ba74310fb2fb2bb6e9c3cd664f5999cf6e5fd5ca5bb767f",
+      "bytes": 109558,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/proof/proof_scope_index.py",
+      "sha256": "6482376fe353704397470d2495b745cdc086b40652b832f88f24e05e048d7f6f",
+      "bytes": 149605,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/doctor_contract_proof.py",
+      "sha256": "4f98bc0aa2f465b2592a7d5d127039cc14fc5e51f44252023ca55f718a9c2093",
+      "bytes": 19855,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/doctor_security_ir.py",
+      "sha256": "6d707f442d78620cc9bfc6ee1016aa2e80a427c034401a59e0e4c4bc65f5d5d2",
+      "bytes": 12149,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/intent_requirement_context.py",
+      "sha256": "d293d3177366ab5b546f43555889f9fb6e5af04bc05347d3297c35be9f3836dd",
+      "bytes": 5309,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/intent_requirement_observation.py",
+      "sha256": "9601e06f4baf2fe77dda029ab508ad484d1d26cc635c9cb4897621a92f272490",
+      "bytes": 30945,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+      "sha256": "681b90188aaf1906aa02f8010cb44ea6106cf09c481c0daf783133b76ebe6c74",
+      "bytes": 72131,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py",
+      "sha256": "4957d73a10620c5849357d49eda6a0d43dceafb379cd5ec94a9af59c41338f69",
+      "bytes": 16194,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/supervisor_meta_index.py",
+      "sha256": "a35c5c5fddc906499845cdcfda61bb5e0e0277d1bce07a52a2e794ebdf0009e9",
+      "bytes": 52658,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/duckdb_control/autoencoder_ducklake.py",
+      "sha256": "0da701042c3efe8e5de383c04f90af7df125803d870b08872f7766c0b46aa949",
+      "bytes": 17103,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/duckdb_control/autoencoder_publication.py",
+      "sha256": "d77c7ab8c085831baf2a974469fb2b32e03f56fc2f654a0af945b673c91f6163",
+      "bytes": 25900,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/duckdb_control/autoencoder_registry.py",
+      "sha256": "0333ce963cf85f2843e0662db431e0554f0c449be20387f0badd909bc5d7840f",
+      "bytes": 51708,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/duckdb_control/autoencoder_shared_weight_control.py",
+      "sha256": "fd1b034799e8213d222d7ea6b0c552774bd80d475b44204c14f8bf717927ed34",
+      "bytes": 16776,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/duckdb_control/connections.py",
+      "sha256": "8d3cc05a89f2b337e584708e7c6dbc8d7d4deccef442265ccbd5ca848821a872",
+      "bytes": 57884,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/duckdb_control/source_corpus_catalog.py",
+      "sha256": "014ccabff3d5adc6e87b2ddd947ade8f85fa7902a44a704445f3cebe5a965322",
+      "bytes": 41791,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/duckdb_control/source_corpus_quack.py",
+      "sha256": "2d70e08f989d6a915dd3d086212e1a6d006485b9d5a4a3a55c137643f31fce42",
+      "bytes": 3558,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/ducklake/autoencoder_history.py",
+      "sha256": "846a8bd8640694cb5a47ec9fa91eb71e4345262f22b8c16e36e217f715e05079",
+      "bytes": 21476,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/ducklake/catalog_service.py",
+      "sha256": "26d95a5b6ccda3089282895708f758a4ff0fb89ad64d1c13069d340bc6a95658",
+      "bytes": 44891,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/ducklake/snapshots.py",
+      "sha256": "12cde24864f543f77c82b6bf05a83665ded6db2d705ec40c6a6dde353201562c",
+      "bytes": 62267,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/ducklake/source_corpus.py",
+      "sha256": "e283a77caf60762372bc52c2a97608a98e4a28456f5ce79cd4e6a2da51adf975",
+      "bytes": 26338,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/common/canonical_cache_key.py",
+      "sha256": "6cc3b52c8635f6400f4f4bc00974b6e3489ce853da9b79db6420eb243c10c58f",
+      "bytes": 25282,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/common/duckdb_proof_store.py",
+      "sha256": "dd60e509626b12fa58a0494bece5a86e8d94c751c3d163d2c543e64ecd53ee39",
+      "bytes": 86049,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/common/proof_repository.py",
+      "sha256": "04de1a38e816c44ad41b8bc4e65d08bec1c732ed502d2651c26cebd629d993f5",
+      "bytes": 94712,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/codebase_autoencoder.py",
+      "sha256": "035ca389848a37344025a69c8788fd66179f60ac21207c24779faeeb936c6f8a",
+      "bytes": 32609,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/codebase_autoencoder_security.py",
+      "sha256": "0cdf07a58e99e4fcf39a9263020ef36e21301ce4ebe19fc73a7cf7a6e09e5f3e",
+      "bytes": 7645,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/codebase_autoencoder_transfer.py",
+      "sha256": "4f8de202f497e26e272965dfebd455172cea23ba25acc6b2d96a03096600ac80",
+      "bytes": 15702,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/security_autoencoder_checkpoint.py",
+      "sha256": "2f442b4cd1c2b4a1f3f5f225e413ab646f69ac51cc186bb8df91b3dea067c9ba",
+      "bytes": 41073,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formalization_pipeline.py",
+      "sha256": "f774e10badf64689c018c7bce8aa6197ae4f9b5ae64a8a40492822a8231f16c5",
+      "bytes": 10071,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_decoder_v2.py",
+      "sha256": "e60f7e295e7b60dedf836fe33ee583633b7478ae59898d6b8dabaf12bf1e3e47",
+      "bytes": 31344,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_grammar_v2.py",
+      "sha256": "0798626264b0ad36580ff1e0ef86c37c98613e9404f1535a7a4c7c8ab9232bcf",
+      "bytes": 21521,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_lean.py",
+      "sha256": "2424130243fe287f021da3615499a4ffdecaa9ad4b8363de3c1dbc86f168d960",
+      "bytes": 12309,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_source_units.py",
+      "sha256": "ae9b5d94b17c05201dde08152c6f1f54a09736c76fcad8ba8e588dc1c5d59b07",
+      "bytes": 11735,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/formalization/code_structure.py",
+      "sha256": "c815f4d42d7248cfc20cab8beb61c5e355b5a1d0b251168f59fc19c5f1b44b9e",
+      "bytes": 22617,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/intent_ir/formalize/requirements.py",
+      "sha256": "4e3eb3cbadb5b87973e0b823c692aac66c5691e87cb3d6ba536dea99b99f6914",
+      "bytes": 29936,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/proof_corpus/duckdb_repository.py",
+      "sha256": "6e7a4dd09f31c408a572072e75d3e4a2c3d74f93480d744115740ee9b36237b9",
+      "bytes": 67324,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/proof_corpus/query.py",
+      "sha256": "e5f3c96dc6efd79904eac94f80648cd9d51a0a3293ca559ca4c98c391e8b993f",
+      "bytes": 14078,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/proof_corpus/verifier.py",
+      "sha256": "b3306709d7f22d12b85eb279ee670d408289ad9f97dd9e9c5db73d2f8be073ba",
+      "bytes": 68280,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/security_ir/code_header_derivation.py",
+      "sha256": "4ee28dd58079191d317581887d093db04fd52fd6ff54e1bf4646bf7dd390fcfb",
+      "bytes": 21812,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/security_ir/code_logic_projection.py",
+      "sha256": "e6328d747d54f26835b8da24c87a9a80eff6951bdc936c87243307574a85788b",
+      "bytes": 14373,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/security_ir/code_program_derivation.py",
+      "sha256": "2084ee42f760d7d59b560a04b24af3e47c8966b7909f800f2b4c88be8f7bbbae",
+      "bytes": 17773,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/semantic_index/identity.py",
+      "sha256": "373f6f4e99923b58487256b956ebdfd66248485713a91483eca4e6783b59e102",
+      "bytes": 8128,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/semantic_index/scanner.py",
+      "sha256": "0dd22f59cd1af93e229752194d0415506d2cf0177727da5f15cb09715297b8ba",
+      "bytes": 32114,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/semantic_index/snapshot.py",
+      "sha256": "5135e623a0a3f970252da63dce049be167e8bb73db5355f6c3116316b70aafa6",
+      "bytes": 48191,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_verification/pipeline.py",
+      "sha256": "2103f1d21076e79c381a2daa4ef2a70db44d40ee0a4f499b28332ac5a0c76fb2",
+      "bytes": 51594,
+      "review_basis": [
+        "plan_source_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_verification/source_adapters.py",
+      "sha256": "f6c038c20a258c729abc6c76483c83bafc75394794af58aa868e1f9b0e851bb1",
+      "bytes": 66476,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_corpus_index.py",
+      "sha256": "f4b71d03e6341602631387262d0efffb61c95bca40ad5307ecfcda3eb1d169b9",
+      "bytes": 21099,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_corpus_manifest.py",
+      "sha256": "b067f05b3cfc28cb213a83519530f7148b2a5fa7d5b25809e87e1f7c286f9a5d",
+      "bytes": 27947,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_schema_lake.py",
+      "sha256": "f78a630fc808278b6c82eaa248fbaeefd7f60462db7e974fccdb634938ac9d55",
+      "bytes": 24606,
+      "review_basis": [
+        "peer_source_audit_reference"
+      ]
+    }
+  ],
+  "documentation_artifacts": [
+    {
+      "path": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "sha256": "e31150bb6741a960c625370b4ed5edebc4eecad704a4dc7b46fc27e7a3641b87",
+      "bytes": 45468
+    },
+    {
+      "path": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "sha256": "2dea16fbf461cbc2b4c3b983d8d05834d3819ceab1291a5bb2d50560e2ceb20c",
+      "bytes": 13193
+    },
+    {
+      "path": "external/ipfs_accelerate/docs/architecture/TERMINAL_BENCH_INTENT_PLANNING_PLAN.md",
+      "sha256": "515f2a82b28557de57da8e09a0ed28091efb0136c6df05824bf9200588238d14",
+      "bytes": 51309
+    },
+    {
+      "path": "external/ipfs_accelerate/docs/architecture/terminal_bench_intent_planning.todo.md",
+      "sha256": "e789bce12a77009ab0250ae465e9a9347c1200d35c6df1ced1e6b1d19c807f38",
+      "bytes": 10272
+    },
+    {
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/README.md",
+      "sha256": "ac0c6c0fadf124ce12894b925d7711c426dee1cbc36a184f2a6e5abc1d3dcc6e",
+      "bytes": 23460
+    }
+  ],
+  "primary_documentation_urls": [
+    "https://ducklake.select/docs/stable/duckdb/unsupported_features",
+    "https://ducklake.select/docs/stable/duckdb/advanced_features/constraints",
+    "https://ducklake.select/docs/stable/duckdb/advanced_features/transactions",
+    "https://ducklake.select/docs/stable/duckdb/usage/time_travel",
+    "https://duckdb.org/docs/current/connect/concurrency"
+  ],
+  "execution": {
+    "source_review_read_only": true,
+    "documentation_written": true,
+    "implementation_source_changed_by_this_review": false,
+    "repository_under_test_pipeline_scan_run": false,
+    "numerical_training_run": false,
+    "learned_inference_run": false,
+    "solver_or_kernel_run": false,
+    "production_catalog_mutation": false,
+    "live_provider_or_benchmark_run": false,
+    "fresh_behavior_tests_run": false,
+    "official_reward_measured": false,
+    "prior_IntentIR_test_evidence_applies_to_this_pipeline": false
+  },
+  "qualification_limits": [
+    "Current components do not establish a complete repository proof pipeline.",
+    "Transductive feature reconstruction and candidate syntax decoding do not establish source semantics or prompt interpretation.",
+    "Behavioral discharge requires source correspondence, premise non-vacuity, request-domain coverage and current independently checked evidence.",
+    "Closed native catalogs and isolated native DuckLake sinks require explicit integration; SQL surfaces with memory-backed state do not establish restart durability.",
+    "Current administrative symbolic admission cannot accept proof-backed source facts unchanged; a new versioned profile and successor context API are proposed."
+  ],
+  "backlog": {
+    "path": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+    "task_ids": [
+      "RPI-001",
+      "RPI-002",
+      "RPI-003",
+      "RPI-004",
+      "RPI-005",
+      "RPI-006",
+      "RPI-007",
+      "RPI-008",
+      "RPI-009",
+      "RPI-010",
+      "RPI-011",
+      "RPI-012",
+      "RPI-013",
+      "RPI-014",
+      "RPI-015",
+      "RPI-016",
+      "RPI-017",
+      "RPI-018",
+      "RPI-019",
+      "RPI-020",
+      "RPI-021"
+    ],
+    "all_proposed_open": true
+  },
+  "documentation_validation": {
+    "performed_at_utc": "2026-10-01T20:59:08.798306+00:00",
+    "new_document_links_checked": 53,
+    "local_link_targets_exist": true,
+    "source_file_fingerprints_verified": 66,
+    "document_artifact_fingerprints_updated": 5,
+    "backlog_task_count": 21,
+    "backlog_dependencies_acyclic": true,
+    "external_TIP_references_exist": true,
+    "new_document_whitespace_and_fences_valid": true,
+    "validation_kind": "documentation_and_source_fingerprints_only"
+  }
+}

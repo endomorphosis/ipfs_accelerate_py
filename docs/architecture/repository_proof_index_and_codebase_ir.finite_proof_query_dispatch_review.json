@@ -1,0 +1,991 @@
+{
+  "actual_native_source_module_count": 29,
+  "actual_native_source_modules": [
+    "benchmarks.agent_supervisor.container_coding.finite_proof_query_worker_experiment",
+    "ipfs_accelerate_py.agent_supervisor.runtime.finite_proof_query_admission",
+    "ipfs_accelerate_py.agent_supervisor.runtime.finite_proof_query_execution",
+    "ipfs_accelerate_py.agent_supervisor.runtime.finite_proof_query_worker_context",
+    "ipfs_accelerate_py.agent_supervisor.runtime.finite_proof_query_worker_dispatch",
+    "ipfs_accelerate_py.agent_supervisor.runtime.finite_proof_query_worker_source_custody",
+    "ipfs_accelerate_py.agent_supervisor.runtime.finite_proof_query_worktree_allocation",
+    "ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle",
+    "ipfs_accelerate_py.agent_supervisor.planning.finite_proof_query_join",
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime",
+    "benchmarks.agent_supervisor.container_coding.container_worker_deployment",
+    "ipfs_datasets_py.duckdb_control.codebase_verification_catalog",
+    "ipfs_datasets_py.duckdb_control.codebase_verification_queries",
+    "ipfs_datasets_py.logic.software_contracts.codebase_verification",
+    "ipfs_datasets_py.logic.software_contracts.codebase_applicability",
+    "benchmarks.agent_supervisor.container_coding.finite_repository_admission_experiment",
+    "ipfs_accelerate_py.agent_supervisor.runtime.finite_repository_admission",
+    "ipfs_accelerate_py.agent_supervisor.runtime.finite_repository_execution",
+    "ipfs_accelerate_py.agent_supervisor.runtime.finite_repository_candidate_runner",
+    "ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime",
+    "ipfs_accelerate_py.agent_supervisor.runtime.candidate_execution",
+    "ipfs_accelerate_py.agent_supervisor.runtime.local_completion_bridge",
+    "ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission",
+    "ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner",
+    "ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source",
+    "ipfs_accelerate_py.agent_supervisor.task_sources.board_control_plane",
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge",
+    "ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository"
+  ],
+  "all_32_RPI_production_exits_open": true,
+  "all_logic_family_Lean_projections_qualified": false,
+  "as_of": "2026-10-03",
+  "attempt_cost_ledger": {
+    "bytes": 1496521,
+    "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/attempt-cost-ledger-final-01.json",
+    "sha256": "7203e8e5fabc7a8ff1af2dc0db5c035753e72b30cf625276ab0f37e508036caf"
+  },
+  "broad_host_training_census": null,
+  "complete_OS_launch_count": null,
+  "complete_public_natural_language_prompt_route_qualified": false,
+  "complete_same_generation_three_case_population_audited": true,
+  "comprehensive_plan": {
+    "bytes": 27024,
+    "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_FINITE_PROOF_QUERY_DISPATCH_ADDENDUM.md",
+    "sha256": "45a8a519e35e8c1ae193870f59b5223471069f84217730cfa68c148b5b720bbf"
+  },
+  "cost_scope": "actual driver effort can overlap; bounded logical solver/receipt counts differ from OS starts; unavailable timing/process-origin data stays unknown",
+  "current_selected_source_drift_count": 1,
+  "current_selected_source_drift_review": {
+    "bytes": 34940,
+    "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/current-selected-source-drift-review-01/review.json",
+    "sha256": "2dfa12365a983868b0a858a3434605029a9c80e5ad2517b381f9f6ae2621fb4b"
+  },
+  "final_retention": {
+    "independent_verification": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/final-retention-01/verification/readback-01.json",
+    "manifest": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/final-retention-01/seal.json",
+    "scope": "final separate byte-preservation evidence; no proof/execution authority; only selfseal and verification output namespace excluded"
+  },
+  "generation": {
+    "capsule": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12",
+    "generation_cid": "sha256:1097b564d4a40d6ad5264b5f19ea65284410586374196bacd6714fe01a509bb8",
+    "manifest": {
+      "bytes": 42374411,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/generation-manifest.json",
+      "sha256": "8e28675b0d996477f5f0b118dbe866a280138d5d660e0aabed11403ffd6447da"
+    },
+    "native_copy_bytes_per_case": 480880556,
+    "native_copy_files_per_case": 19365,
+    "runtime_file_counts_are_proved_target_units": false,
+    "runtime_package_bytes": 588119604,
+    "runtime_package_files": 22919,
+    "source_evidence_scope": "cooperative retained byte/stat evidence; no whole live atomicity/process-origin/ABI claim"
+  },
+  "global_optimizer_convergence_proved": false,
+  "historical_API_review_is_current_dispatch_qualification": false,
+  "historical_positive06": {
+    "bytes": 234297,
+    "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/docker-positive-06-independent-readback-04/independent_selected_docker_audit.json",
+    "sha256": "51eacd8502e21aa0d03a776150963d0440d5d75d41a7323ed4316bf7f10a5b2c"
+  },
+  "historical_positive06_scope": "separate generation11 full publication qualification, no generation transfer",
+  "historical_source_API_plan_review": {
+    "bytes": 31752,
+    "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/drafts/dispatch_architecture_addendum_03.api-plan-review.json",
+    "sha256": "213e0e1e8168fd6e34fbe514e9f0b804b03598e18e6c229c65aa39c3183bc464"
+  },
+  "host_readbacks": [
+    {
+      "actual_counts": {
+        "XML": {
+          "errors": 1,
+          "failures": 10,
+          "skipped": 0,
+          "tests": 37
+        },
+        "call_outcomes": {
+          "failed": 10,
+          "passed": 27
+        },
+        "count_scope": "Retained logical observations and receipt files only; no host-wide process count.",
+        "native_recorded_solver_observations": 50,
+        "native_unique_proof_bodies": 10,
+        "process_receipt_files": {
+          "lean_certificate.json": 50,
+          "lean_process.json": 50,
+          "python_process.json": 25
+        },
+        "unique_receipt_contents": {
+          "lean_certificate.json": 50,
+          "lean_process.json": 50,
+          "python_process.json": 25
+        }
+      },
+      "bytes": 50969,
+      "overall_test_qualification": "failed_or_partial",
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-run-11-independent-readback-03/review.json",
+      "scope": "Exact retained source capsule/import copies, public signatures/full source-domain-five-key planning closure, closed native execution SQL/refs and constructor STOP/resource cleanup only.",
+      "sha256": "5d0f4d49e3b838066ed8805beb8e131b7310d3b5dc229376b64f076bc17e172a"
+    },
+    {
+      "actual_counts": {
+        "XML": {
+          "errors": 0,
+          "failures": 1,
+          "skipped": 0,
+          "tests": 23
+        },
+        "call_outcomes": {
+          "failed": 1,
+          "passed": 22
+        },
+        "count_scope": "Retained logical observations and receipt files only; no host-wide process count.",
+        "native_recorded_solver_observations": 40,
+        "native_unique_proof_bodies": 8,
+        "process_receipt_files": {
+          "lean_certificate.json": 40,
+          "lean_process.json": 40,
+          "python_process.json": 20
+        },
+        "unique_receipt_contents": {
+          "lean_certificate.json": 40,
+          "lean_process.json": 40,
+          "python_process.json": 20
+        }
+      },
+      "bytes": 44274,
+      "overall_test_qualification": "failed_or_partial",
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-run-12-independent-readback-03/review.json",
+      "scope": "Exact retained source capsule/import copies, public signatures/full source-domain-five-key planning closure, closed native execution SQL/refs and constructor STOP/resource cleanup only.",
+      "sha256": "4df916300b56b9aec3812ef2fd8d0bff4346886b8f07863b4beb6b2582346dfc"
+    },
+    {
+      "actual_counts": {
+        "XML": {
+          "errors": 0,
+          "failures": 0,
+          "skipped": 0,
+          "tests": 1
+        },
+        "call_outcomes": {
+          "passed": 1
+        },
+        "count_scope": "Retained logical observations and receipt files only; no host-wide process count.",
+        "native_recorded_solver_observations": 10,
+        "native_unique_proof_bodies": 2,
+        "process_receipt_files": {
+          "lean_certificate.json": 10,
+          "lean_process.json": 10,
+          "python_process.json": 5
+        },
+        "unique_receipt_contents": {
+          "lean_certificate.json": 10,
+          "lean_process.json": 10,
+          "python_process.json": 5
+        }
+      },
+      "bytes": 16125,
+      "overall_test_qualification": "passed",
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-run-13-independent-readback-02/review.json",
+      "scope": "Exact retained source capsule/import copies, public signatures/full source-domain-five-key planning closure, closed native execution SQL/refs and constructor STOP/resource cleanup only.",
+      "sha256": "ffc0df3dd6cbafaf165657495646f472a9d7645ab266c3a72ae1ca97e4598a57"
+    }
+  ],
+  "host_test_scope": "20 allocation cases passed in generation11; source22/23 in generation12; corrected exact hardlink1/1 in generation13 with all29 native production files unchanged. No whole23-case same-test-generation pass claimed.",
+  "increment_native_learned_fits": 0,
+  "increment_native_learned_inference": 0,
+  "independent_native_readbacks": [
+    {
+      "bytes": 236656,
+      "checks": 11,
+      "complete_three_case_population_audited": false,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/docker-positive-07-independent-readback-01/independent_selected_docker_audit.json",
+      "selected_cases": [
+        "positive"
+      ],
+      "sha256": "344fa48bb848ade2d325fccd54555d283ba5e9149f83c815642564cbcdd887e3"
+    },
+    {
+      "bytes": 213227,
+      "checks": 11,
+      "complete_three_case_population_audited": false,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/docker-child-proof-02-independent-readback-01/independent_selected_docker_audit.json",
+      "selected_cases": [
+        "child-late-proof"
+      ],
+      "sha256": "111fd24a57370906da0c7f363ab3b4efa30d3c83cd164fd735dbff7e05cecc9e"
+    },
+    {
+      "bytes": 213224,
+      "checks": 11,
+      "complete_three_case_population_audited": false,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/docker-child-epoch-02-independent-readback-01/independent_selected_docker_audit.json",
+      "selected_cases": [
+        "child-late-epoch"
+      ],
+      "sha256": "61f328af068e089c0b86fcb1b50566f376a526bcc7c6a1c9d42e258c10b2d9ee"
+    },
+    {
+      "bytes": 366826,
+      "checks": 31,
+      "complete_three_case_population_audited": true,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/generation12-matched-three-case-independent-readback-01/independent_selected_docker_audit.json",
+      "selected_cases": [
+        "positive",
+        "child-late-proof",
+        "child-late-epoch"
+      ],
+      "sha256": "2782712c1a6e2411e15405d2ebc3bed3b07703dac199d3f05106145abd241a2d"
+    }
+  ],
+  "learned_semantic_decoder_qualified": false,
+  "matched_population_summary": {
+    "bytes": 36938,
+    "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/generation12-matched-three-case-independent-readback-01/joint-summary-03.json",
+    "sha256": "0c1d5626129049f647bb5bd58cc14fb997cffc93599773fa5be775b3ebc86a3c"
+  },
+  "native_child_unknown_scope": "one actual owner-wrapper ACK and final refusal before isolated coding ACK; callback UNKNOWN retained, no native failed/completed/no-external-effects claim",
+  "native_positive_publication": "both births, owner checks, native completed task, two-parent Git publication",
+  "new_complete_duckdb_ducklake_metadata_hydration": false,
+  "official_terminal_bench_score": null,
+  "old_join_full_preservation_readback": {
+    "bytes": 1071538,
+    "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/original-join-preservation-readback-02.json",
+    "sha256": "4b258476dc02eb334f71903cafb3bb5aece736ba85cfbdbe0f06f3a255700c73"
+  },
+  "post_ledger_finalization_cost_supplement": {
+    "bytes": 5608,
+    "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/finalization-cost-supplement-01.json",
+    "sha256": "0c4861fa0c24702ed3feeb846d766b93032353b0ac39a7d363b222bba9944815"
+  },
+  "post_ledger_supplement_scope": "Failed current-LIVE equality finalizer and successor retained separately; elapsed unknown, zero new native/training/proof/worker jobs, no whole changed LIVE runtime qualification.",
+  "producer_and_extra_dependency_pins": [
+    {
+      "bytes": 66709,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 66709,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/finite_proof_query_worker_experiment.py",
+        "sha256": "c1a575e8eda907384e17bf43347cda9c277c30d0b6c124878f82c80f692fc50b"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/finite_proof_query_worker_experiment.py",
+      "module": "benchmarks.agent_supervisor.container_coding.finite_proof_query_worker_experiment",
+      "native_declared": true,
+      "sha256": "c1a575e8eda907384e17bf43347cda9c277c30d0b6c124878f82c80f692fc50b",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/benchmarks/agent_supervisor/container_coding/finite_proof_query_worker_experiment.py"
+    },
+    {
+      "bytes": 18129,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 18129,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_admission.py",
+        "sha256": "2e5b0add5f19c1c31ad76dae67354d5bfadbfe59303a06590db14507c3abe7e4"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_admission.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.runtime.finite_proof_query_admission",
+      "native_declared": true,
+      "sha256": "2e5b0add5f19c1c31ad76dae67354d5bfadbfe59303a06590db14507c3abe7e4",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_admission.py"
+    },
+    {
+      "bytes": 31819,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 31819,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_execution.py",
+        "sha256": "5161d1aee23cc79e1e4c23cf102476f57bb0091ab0ee804cbda8c60fa73e14fb"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_execution.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.runtime.finite_proof_query_execution",
+      "native_declared": true,
+      "sha256": "5161d1aee23cc79e1e4c23cf102476f57bb0091ab0ee804cbda8c60fa73e14fb",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_execution.py"
+    },
+    {
+      "bytes": 37029,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 37029,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_worker_context.py",
+        "sha256": "1e55f5106adfd8bb788709d4fc475d8d233426aa968e8b29cebd3952eca6fe7e"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_worker_context.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.runtime.finite_proof_query_worker_context",
+      "native_declared": true,
+      "sha256": "1e55f5106adfd8bb788709d4fc475d8d233426aa968e8b29cebd3952eca6fe7e",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_worker_context.py"
+    },
+    {
+      "bytes": 55957,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 55957,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_worker_dispatch.py",
+        "sha256": "44989a7ccbc16c6366a58405d3ee51333f396fa65fb359fbf20d8d2dc5ed744d"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_worker_dispatch.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.runtime.finite_proof_query_worker_dispatch",
+      "native_declared": true,
+      "sha256": "44989a7ccbc16c6366a58405d3ee51333f396fa65fb359fbf20d8d2dc5ed744d",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_worker_dispatch.py"
+    },
+    {
+      "bytes": 31238,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 31238,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_worker_source_custody.py",
+        "sha256": "1534552a5edb33c8eda786958cb1716af2e0ef614b26bbd0711cab1bb0123fc7"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_worker_source_custody.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.runtime.finite_proof_query_worker_source_custody",
+      "native_declared": true,
+      "sha256": "1534552a5edb33c8eda786958cb1716af2e0ef614b26bbd0711cab1bb0123fc7",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_worker_source_custody.py"
+    },
+    {
+      "bytes": 15594,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 15594,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_worktree_allocation.py",
+        "sha256": "10fa918831cc37f12ed937cc9c3aa005933d2cb649b99858ccd46afe24bcdc59"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_worktree_allocation.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.runtime.finite_proof_query_worktree_allocation",
+      "native_declared": true,
+      "sha256": "10fa918831cc37f12ed937cc9c3aa005933d2cb649b99858ccd46afe24bcdc59",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_worktree_allocation.py"
+    },
+    {
+      "bytes": 121743,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 121743,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py",
+        "sha256": "e9386ed646ec704d3326de990b7af569203cae451e69c8ea425099b3d5a06c0a"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle",
+      "native_declared": true,
+      "sha256": "e9386ed646ec704d3326de990b7af569203cae451e69c8ea425099b3d5a06c0a",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py"
+    },
+    {
+      "bytes": 33934,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 33934,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/finite_proof_query_join.py",
+        "sha256": "d6e4a6187036f5942f4637dd24bec65c1a90ed32c24e3b39e3759e653be03b79"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/finite_proof_query_join.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.planning.finite_proof_query_join",
+      "native_declared": true,
+      "sha256": "d6e4a6187036f5942f4637dd24bec65c1a90ed32c24e3b39e3759e653be03b79",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/ipfs_accelerate_py/agent_supervisor/planning/finite_proof_query_join.py"
+    },
+    {
+      "bytes": 3183940,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 3183940,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "sha256": "87dcd21746683276635d64360a2534885eb2094625295d3331d0e0e130d875d9"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
+      "native_declared": true,
+      "sha256": "87dcd21746683276635d64360a2534885eb2094625295d3331d0e0e130d875d9",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"
+    },
+    {
+      "bytes": 82580,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 82580,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
+        "sha256": "7ce7f562f552ccb4ed69c60ae84d8748923f479fd65d5109f7039fbe11e93cf6"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime",
+      "native_declared": true,
+      "sha256": "7ce7f562f552ccb4ed69c60ae84d8748923f479fd65d5109f7039fbe11e93cf6",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py"
+    },
+    {
+      "bytes": 24396,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 24396,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+        "sha256": "1ed1ba67ba0e5bd183d89af5afbe21731f545cd7461761f4919c9d55758f0135"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+      "module": "benchmarks.agent_supervisor.container_coding.container_worker_deployment",
+      "native_declared": true,
+      "sha256": "1ed1ba67ba0e5bd183d89af5afbe21731f545cd7461761f4919c9d55758f0135",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py"
+    },
+    {
+      "bytes": 46767,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 46767,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/duckdb_control/codebase_verification_catalog.py",
+        "sha256": "b2cd58575e310150c5eaf5eeeba2be5ee94a5b94c10c3a91902128c7eac159e1"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/duckdb_control/codebase_verification_catalog.py",
+      "module": "ipfs_datasets_py.duckdb_control.codebase_verification_catalog",
+      "native_declared": true,
+      "sha256": "b2cd58575e310150c5eaf5eeeba2be5ee94a5b94c10c3a91902128c7eac159e1",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/datasets/ipfs_datasets_py/duckdb_control/codebase_verification_catalog.py"
+    },
+    {
+      "bytes": 14539,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 14539,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/duckdb_control/codebase_verification_queries.py",
+        "sha256": "a53b470737a7735c68360a9ddb1d09df74ce311044bcc5d17ebf57f31670e348"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/duckdb_control/codebase_verification_queries.py",
+      "module": "ipfs_datasets_py.duckdb_control.codebase_verification_queries",
+      "native_declared": true,
+      "sha256": "a53b470737a7735c68360a9ddb1d09df74ce311044bcc5d17ebf57f31670e348",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/datasets/ipfs_datasets_py/duckdb_control/codebase_verification_queries.py"
+    },
+    {
+      "bytes": 45851,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 45851,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_verification.py",
+        "sha256": "91b274e87434fba1e219dc2a988bd0f9f9b21b6a422d402d5832894466020035"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_verification.py",
+      "module": "ipfs_datasets_py.logic.software_contracts.codebase_verification",
+      "native_declared": true,
+      "sha256": "91b274e87434fba1e219dc2a988bd0f9f9b21b6a422d402d5832894466020035",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/datasets/ipfs_datasets_py/logic/software_contracts/codebase_verification.py"
+    },
+    {
+      "bytes": 30385,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 30385,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_applicability.py",
+        "sha256": "9618d6fbde4a47e77a1a5c09b3f0ffb6dd516cc002b8737c23abe210e2c9b189"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_applicability.py",
+      "module": "ipfs_datasets_py.logic.software_contracts.codebase_applicability",
+      "native_declared": true,
+      "sha256": "9618d6fbde4a47e77a1a5c09b3f0ffb6dd516cc002b8737c23abe210e2c9b189",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/datasets/ipfs_datasets_py/logic/software_contracts/codebase_applicability.py"
+    },
+    {
+      "bytes": 25945,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 25945,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/finite_repository_admission_experiment.py",
+        "sha256": "3d602a9b8ac28a4c65c6de3184c1e48355b970c020341ab8bc9f02bbbaf46832"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/finite_repository_admission_experiment.py",
+      "module": "benchmarks.agent_supervisor.container_coding.finite_repository_admission_experiment",
+      "native_declared": true,
+      "sha256": "3d602a9b8ac28a4c65c6de3184c1e48355b970c020341ab8bc9f02bbbaf46832",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/benchmarks/agent_supervisor/container_coding/finite_repository_admission_experiment.py"
+    },
+    {
+      "bytes": 42674,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 42674,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_repository_admission.py",
+        "sha256": "ae58271a7efed5dc9ddb99a4c62d5f5cefdfa1d59797c005d1b86e1843d3ac03"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_repository_admission.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.runtime.finite_repository_admission",
+      "native_declared": true,
+      "sha256": "ae58271a7efed5dc9ddb99a4c62d5f5cefdfa1d59797c005d1b86e1843d3ac03",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_repository_admission.py"
+    },
+    {
+      "bytes": 40115,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 40115,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_repository_execution.py",
+        "sha256": "d2d4e6a962d375d69922f6f61233fd9f0e22b3310cd4b8d5ca1ef2d517375eb6"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_repository_execution.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.runtime.finite_repository_execution",
+      "native_declared": true,
+      "sha256": "d2d4e6a962d375d69922f6f61233fd9f0e22b3310cd4b8d5ca1ef2d517375eb6",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_repository_execution.py"
+    },
+    {
+      "bytes": 25882,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 25882,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_repository_candidate_runner.py",
+        "sha256": "29b2166ca535c812f0cbdb465e2afb7378e083478e196d3fac1b95ec0a724293"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_repository_candidate_runner.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.runtime.finite_repository_candidate_runner",
+      "native_declared": true,
+      "sha256": "29b2166ca535c812f0cbdb465e2afb7378e083478e196d3fac1b95ec0a724293",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_repository_candidate_runner.py"
+    },
+    {
+      "bytes": 69323,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 69323,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py",
+        "sha256": "9a8b64e010a628669d1a519807d9288dd02697b7cdcb3f726e279f6dee7a718b"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime",
+      "native_declared": true,
+      "sha256": "9a8b64e010a628669d1a519807d9288dd02697b7cdcb3f726e279f6dee7a718b",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py"
+    },
+    {
+      "bytes": 9454,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 9454,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/candidate_execution.py",
+        "sha256": "f8bd110dd70d4d2c710d1953b883bd1c7779af9480d2fb4c1a3bba40b68a5054"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/candidate_execution.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.runtime.candidate_execution",
+      "native_declared": true,
+      "sha256": "f8bd110dd70d4d2c710d1953b883bd1c7779af9480d2fb4c1a3bba40b68a5054",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/ipfs_accelerate_py/agent_supervisor/runtime/candidate_execution.py"
+    },
+    {
+      "bytes": 28755,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 28755,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py",
+        "sha256": "6a174824161f7e489f61a1d1f60bbb870f63b7bf4644a7183fb88b9c441ee114"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.runtime.local_completion_bridge",
+      "native_declared": true,
+      "sha256": "6a174824161f7e489f61a1d1f60bbb870f63b7bf4644a7183fb88b9c441ee114",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py"
+    },
+    {
+      "bytes": 76043,
+      "current_bytes_equal": false,
+      "current_pin": {
+        "bytes": 78716,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+        "sha256": "bb1c0cdeea1042d2ca414cfbc6985e9754150c359f06aece75445400ad62d3b9"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission",
+      "native_declared": true,
+      "sha256": "7d6da4436671c302a98e7463b700f1a8ca60a33f944ad0d4ed2900f8b6250d14",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py"
+    },
+    {
+      "bytes": 606820,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 606820,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
+        "sha256": "3a14872b80c7889891626f9de00eeb672218b1bca45086c8af4f7059e164e9a7"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner",
+      "native_declared": true,
+      "sha256": "3a14872b80c7889891626f9de00eeb672218b1bca45086c8af4f7059e164e9a7",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py"
+    },
+    {
+      "bytes": 188856,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 188856,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",
+        "sha256": "5b12ecdfa91ff53297fd6c99094a6c4b6acca1ab3e050ce34468b6f0d74227db"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source",
+      "native_declared": true,
+      "sha256": "5b12ecdfa91ff53297fd6c99094a6c4b6acca1ab3e050ce34468b6f0d74227db",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py"
+    },
+    {
+      "bytes": 95017,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 95017,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py",
+        "sha256": "6fb26dfb137f996f731da62b84bf9887f5e5b21579f6272a63d17baf8e474b29"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.task_sources.board_control_plane",
+      "native_declared": true,
+      "sha256": "6fb26dfb137f996f731da62b84bf9887f5e5b21579f6272a63d17baf8e474b29",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py"
+    },
+    {
+      "bytes": 472996,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 472996,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+        "sha256": "0721431b4bae97649af43bb5110cc848e52b844de8448039359e1d211d2f9bca"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge",
+      "native_declared": true,
+      "sha256": "0721431b4bae97649af43bb5110cc848e52b844de8448039359e1d211d2f9bca",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py"
+    },
+    {
+      "bytes": 429497,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 429497,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+        "sha256": "3e2c313d5a43544bcacd590342e47ad20d5fcf62d02b4bdf2218cbfce7bd26bf"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository",
+      "native_declared": true,
+      "sha256": "3e2c313d5a43544bcacd590342e47ad20d5fcf62d02b4bdf2218cbfce7bd26bf",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py"
+    },
+    {
+      "bytes": 24290,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 24290,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/run_finite_proof_query_worker_docker.py",
+        "sha256": "d95df3a48741c054052d8c785bb0a23353faf22261fcd09017524be67d931742"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/run_finite_proof_query_worker_docker.py",
+      "module": "benchmarks.agent_supervisor.container_coding.run_finite_proof_query_worker_docker",
+      "native_declared": false,
+      "sha256": "d95df3a48741c054052d8c785bb0a23353faf22261fcd09017524be67d931742",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/benchmarks/agent_supervisor/container_coding/run_finite_proof_query_worker_docker.py"
+    },
+    {
+      "bytes": 33788,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 33788,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/finite_repository_worker_experiment.py",
+        "sha256": "827df4371800dd7f65ca5bbf72e7ac61031f2666f09310ce4efda9c859a6b987"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/finite_repository_worker_experiment.py",
+      "module": "benchmarks.agent_supervisor.container_coding.finite_repository_worker_experiment",
+      "native_declared": false,
+      "sha256": "827df4371800dd7f65ca5bbf72e7ac61031f2666f09310ce4efda9c859a6b987",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/benchmarks/agent_supervisor/container_coding/finite_repository_worker_experiment.py"
+    },
+    {
+      "bytes": 86668,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 86668,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/control/profile_authority.py",
+        "sha256": "b3822817d4d227eec71c646c71787da75fe77b2fc8842d83c596203654682100"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/control/profile_authority.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.control.profile_authority",
+      "native_declared": false,
+      "sha256": "b3822817d4d227eec71c646c71787da75fe77b2fc8842d83c596203654682100",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/ipfs_accelerate_py/agent_supervisor/control/profile_authority.py"
+    },
+    {
+      "bytes": 183439,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 183439,
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/analysis/program_ast_adapters.py",
+        "sha256": "a257e5b013854c6020f98dd97b1e79db73c09835c8501319417cbb2a4f70d3c4"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/analysis/program_ast_adapters.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.analysis.program_ast_adapters",
+      "native_declared": false,
+      "sha256": "a257e5b013854c6020f98dd97b1e79db73c09835c8501319417cbb2a4f70d3c4",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/ipfs_accelerate_py/agent_supervisor/analysis/program_ast_adapters.py"
+    },
+    {
+      "bytes": 25993,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 25993,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_integer_profile.py",
+        "sha256": "a059472331b2fbc0b5b0778bbd311912dffefb0d8f6c6557c4978070fc89e283"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_integer_profile.py",
+      "module": "ipfs_datasets_py.logic.software_contracts.codebase_integer_profile",
+      "native_declared": false,
+      "sha256": "a059472331b2fbc0b5b0778bbd311912dffefb0d8f6c6557c4978070fc89e283",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/datasets/ipfs_datasets_py/logic/software_contracts/codebase_integer_profile.py"
+    },
+    {
+      "bytes": 64410,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 64410,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_verification/pipeline.py",
+        "sha256": "f9311299d1b9cccb6ba954aa5687b0494f2997472223f93e93b5c7071ab1f3f6"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_verification/pipeline.py",
+      "module": "ipfs_datasets_py.logic.software_verification.pipeline",
+      "native_declared": false,
+      "sha256": "f9311299d1b9cccb6ba954aa5687b0494f2997472223f93e93b5c7071ab1f3f6",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/datasets/ipfs_datasets_py/logic/software_verification/pipeline.py"
+    },
+    {
+      "bytes": 71940,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 71940,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_verification/source_adapters.py",
+        "sha256": "a5e80acb207139d284ee64edff66d64be8265971e7da0aade8d98bce7275d67d"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_verification/source_adapters.py",
+      "module": "ipfs_datasets_py.logic.software_verification.source_adapters",
+      "native_declared": false,
+      "sha256": "a5e80acb207139d284ee64edff66d64be8265971e7da0aade8d98bce7275d67d",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/datasets/ipfs_datasets_py/logic/software_verification/source_adapters.py"
+    },
+    {
+      "bytes": 90191,
+      "current_bytes_equal": true,
+      "current_pin": {
+        "bytes": 90191,
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+        "sha256": "69f13438f2bbeb33056c50f106aa0e8a7cd86bc092a17cbfc29200365ac5df2e"
+      },
+      "current_source": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+      "module": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler",
+      "native_declared": false,
+      "sha256": "69f13438f2bbeb33056c50f106aa0e8a7cd86bc092a17cbfc29200365ac5df2e",
+      "source": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py"
+    }
+  ],
+  "production_default_activated": false,
+  "profile": "finite-repository-one-ready-proof-query-bound-native-worker@1",
+  "qualification_record": {
+    "bytes": 15821,
+    "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/agent_supervisor/finite_proof_query_dispatch_qualification.md",
+    "sha256": "d61152e1c50ad0569ba00e1efe3738680f88e0634568ab3dffcf83707ad01b15"
+  },
+  "remaining_gates": [
+    "complete public prompt/clause ledger and current source-to-model correspondence",
+    "independent actual native attempt-coordination lease owner join at both gates",
+    "successor source/dependency invalidation and independently cold-equivalent reproof",
+    "recoverable complete AST/KG/vector/contract/proof metadata generation and DuckLake journal/outbox",
+    "bounded repository-private learned CodebaseIR with exact splits/checkpoints/resume/evaluation/promotion",
+    "typed family projections and exact Lean theorem/premise/axiom/tool/library checks",
+    "restricted convergence theorem plus actual finite-precision update correspondence",
+    "representative matched Terminal Bench arms and all governing activation exits",
+    "coherent expired authorization decisions and explicitly authorized STOP/cleanup",
+    "closed private cached descriptive schema/body rebuild and genuine mutation controls"
+  ],
+  "repository_under_test": "authored two-task, five-input Python integer fixture",
+  "schema": "repository-proof-index-codebase-ir-finite-proof-query-dispatch-review@1",
+  "selected_native_cases": [
+    {
+      "attempt": "docker-positive-07",
+      "broker_retired": true,
+      "child_control": null,
+      "container_removed": true,
+      "driver": {
+        "bytes": 9242,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/docker-positive-07/container-execution-final.json",
+        "sha256": "0146ec999af5f4aab7613256a56627dc94dd768da7a51d0e59dc6888c0a459c5"
+      },
+      "driver_seconds": 634.4602259339954,
+      "fixture_control_status": "completed",
+      "manager_launched": true,
+      "name": "positive",
+      "native_failed_claim": null,
+      "native_result": {
+        "bytes": 1867891,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/docker-positive-07/native/positive/result.json",
+        "sha256": "b4d40d68e36106c95117a0bd85d982b0f3d9f8d7eb2dd228ca7a7fc4a58b22a2"
+      },
+      "native_settlement": "see native completed-task publication readback",
+      "worker_launched": true,
+      "zero_remaining_fixture_leases_waiters_processes": true
+    },
+    {
+      "attempt": "docker-child-proof-02",
+      "broker_retired": true,
+      "child_control": {
+        "boundary": "registered owner wrapper before sudo and UID1001 worker Popen",
+        "case": "proof",
+        "genuine_dispatch_returned": true,
+        "injected": true,
+        "inventory_before": {
+          "epoch": 2,
+          "inventory_cid": "baguqeerav34p7gzrkqblkh3bvuc4564dwfm2hf25prq7nruvmwrzgl46tobq"
+        },
+        "observations": [
+          {
+            "allocation_cid": "baguqeerapxbzkvtbxyjxz2ixjigmwhht4bdyer4rdmc5kjuujxmtdjc27kba",
+            "attempt_id": "attempt:1d4b0d3d534f4612ba02b5fad3a847cb",
+            "boundary": "native_daemon_to_owner_wrapper",
+            "claim_id": "claim:e7d541c000f845dfad6a3397fb68339c",
+            "completion_authority": false,
+            "context_cid": "baguqeerafpve25y5cifewg3sv4v6rzcb3lhbo5blwvsh4sjv6e473hknysta",
+            "convergence_proved": false,
+            "daemon_pid": 24894,
+            "grant_ACK_budget_checked": true,
+            "grant_expires_at_ms": 1791031065927,
+            "isolated_uid_observed": false,
+            "native_worktree_lease_checked": true,
+            "pid": 25436,
+            "process_birth_id": "birth:c508331fc241b9602b2ee80baed57ad9",
+            "proof_authority": false,
+            "schema": "supervisor-finite-proof-query-worker-dispatch@1",
+            "status": "spawned",
+            "task_cid": "baguqeerai4j3hkrvdxlc7n6wdaqnvrsakd7ui4yht2avmlx5ypic55fd7gpq",
+            "task_revision": 3,
+            "worker_birth_observed": true
+          },
+          {
+            "boundary": "isolated_worker",
+            "error_type": "CacheIntegrityError",
+            "message_sha256": "39744cd1f93fdd42f5c65db6721cacffaaecbdf99deff2adc4dd9f8db0e21600",
+            "schema": "supervisor-finite-proof-query-worker-dispatch@1",
+            "stage": "detached_proof_close",
+            "status": "refused",
+            "unacknowledged_child_birth_possible": false,
+            "worker_birth_observed": false
+          }
+        ],
+        "proof_after_sha256": "79d8a94508ef6b192d635d39d3a8e5afbf028a0758e730898eec428c11e5e00e",
+        "proof_before_sha256": "2970a9fed3fcd9c0aa31a28fe2b12f41657669c87eb326c9766888f6fc7fe769",
+        "proof_restored_bytes_equal": true,
+        "real_dispatch_calls": 2,
+        "schema": "finite-proof-query-isolated-child-late-control@1"
+      },
+      "container_removed": true,
+      "driver": {
+        "bytes": 9265,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/docker-child-proof-02/container-execution-final.json",
+        "sha256": "e84cf35a78b7e06a5e8ad70f0f600de609e43a834e41ba4c9463cfae208c804b"
+      },
+      "driver_seconds": 295.9190553160006,
+      "fixture_control_status": "completed",
+      "manager_launched": true,
+      "name": "child-late-proof",
+      "native_failed_claim": false,
+      "native_result": {
+        "bytes": 1670039,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/docker-child-proof-02/native/child-late-proof/result.json",
+        "sha256": "d54c9daf9eee12bdcbc6ec673095c4c15d11d1a6e2372e081642da5c735194c2"
+      },
+      "native_settlement": "unknown-retained",
+      "worker_launched": false,
+      "zero_remaining_fixture_leases_waiters_processes": true
+    },
+    {
+      "attempt": "docker-child-epoch-02",
+      "broker_retired": true,
+      "child_control": {
+        "boundary": "registered owner wrapper before sudo and UID1001 worker Popen",
+        "case": "epoch",
+        "genuine_dispatch_returned": true,
+        "injected": true,
+        "inventory_after": {
+          "epoch": 3,
+          "inventory_cid": "baguqeerasjxtfjss5cgzxw2fyu2k2qbzq2u264siddc5nebhg6hiwu56qeeq"
+        },
+        "inventory_before": {
+          "epoch": 2,
+          "inventory_cid": "baguqeerab4pzg6a3dl6l2qlu4qjhesudb2vxk26dz4akkzeibizatrv2fgwq"
+        },
+        "observations": [
+          {
+            "allocation_cid": "baguqeeramcnmgg4ldwrh6v7buenzo3lfuiwcktmskuoiit575bjfze6xqmca",
+            "attempt_id": "attempt:41d1d3093a5d40d6a50c2d58f3803dad",
+            "boundary": "native_daemon_to_owner_wrapper",
+            "claim_id": "claim:b35d89fe965644198d6b4602da83f4f9",
+            "completion_authority": false,
+            "context_cid": "baguqeera2jpmhiu73ag2b566r7gutjkhdxquswt6pmdi6bcvcxo6uevu64ra",
+            "convergence_proved": false,
+            "daemon_pid": 24894,
+            "grant_ACK_budget_checked": true,
+            "grant_expires_at_ms": 1791031774817,
+            "isolated_uid_observed": false,
+            "native_worktree_lease_checked": true,
+            "pid": 25436,
+            "process_birth_id": "birth:a692f960c60be5ec7bdd636e59ac2376",
+            "proof_authority": false,
+            "schema": "supervisor-finite-proof-query-worker-dispatch@1",
+            "status": "spawned",
+            "task_cid": "baguqeerai4j3hkrvdxlc7n6wdaqnvrsakd7ui4yht2avmlx5ypic55fd7gpq",
+            "task_revision": 3,
+            "worker_birth_observed": true
+          },
+          {
+            "boundary": "isolated_worker",
+            "error_type": "FiniteProofQueryJoinError",
+            "message_sha256": "803a4f69c650a6214da4cd4ffc8e88a3911b7d910f98f3389ff6a0198dbe3ce1",
+            "schema": "supervisor-finite-proof-query-worker-dispatch@1",
+            "stage": "detached_proof_close",
+            "status": "refused",
+            "unacknowledged_child_birth_possible": false,
+            "worker_birth_observed": false
+          }
+        ],
+        "real_dispatch_calls": 2,
+        "schema": "finite-proof-query-isolated-child-late-control@1"
+      },
+      "container_removed": true,
+      "driver": {
+        "bytes": 9265,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/docker-child-epoch-02/container-execution-final.json",
+        "sha256": "6977658d7e66d9c83a71592a8743be53bdd35e385a7211f955929d8247c4214f"
+      },
+      "driver_seconds": 287.47280751400103,
+      "fixture_control_status": "completed",
+      "manager_launched": true,
+      "name": "child-late-epoch",
+      "native_failed_claim": false,
+      "native_result": {
+        "bytes": 1669952,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/docker-child-epoch-02/native/child-late-epoch/result.json",
+        "sha256": "9ee685cf07ebb710f3c283465ec04bbfbba02ffcea0a87368a63f3e52b7dd934"
+      },
+      "native_settlement": "unknown-retained",
+      "worker_launched": false,
+      "zero_remaining_fixture_leases_waiters_processes": true
+    }
+  ],
+  "selected_test_generation_pins": [
+    {
+      "bytes": 30703,
+      "generation": 11,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-11/accelerate/test/api/test_finite_proof_query_worktree_allocation.py",
+      "sha256": "d1d5fde8c9b60ee8fb6330a3382323a56952d77b1b92ee2537f117553f5d7c4a"
+    },
+    {
+      "bytes": 17509,
+      "generation": 12,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-12/accelerate/test/api/test_finite_proof_query_worker_source_custody.py",
+      "sha256": "1530837d8c23cb1ba21f778ff7569048b41651e4848747f1e377841d0df454a7"
+    },
+    {
+      "bytes": 17721,
+      "generation": 13,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-dispatch-20261003-01/host-generation-13/accelerate/test/api/test_finite_proof_query_worker_source_custody.py",
+      "sha256": "810b8c25327d43f602f7097cf2188aeb7343758574a0982ad68c65f24cd3223f"
+    }
+  ],
+  "status": "qualified_bounded_opt_in_model_off_dispatch",
+  "universal_source_or_CPython_semantics_proved": false,
+  "whole_current_live_runtime_qualified": false
+}

@@ -1,0 +1,441 @@
+{
+  "closed_host_test_attempts": [
+    {
+      "actual_call_fail": 2,
+      "actual_call_pass": 126,
+      "actual_setup_pass": 128,
+      "actual_teardown_pass": 128,
+      "driver_seconds": 66.40928182299831,
+      "failed_cause": "logical-completion expectation used wrong existing exception family; correct native NotReadyError refusal observed",
+      "generation": "source-generation-02",
+      "id": "host-run-01",
+      "preserved": true,
+      "pytest_seconds": 61.56,
+      "status": "FAILED"
+    },
+    {
+      "actual_call_fail": 0,
+      "actual_call_pass": 128,
+      "actual_setup_pass": 128,
+      "actual_teardown_pass": 128,
+      "all128_OS_launch_complete_census": null,
+      "all128_inference_complete_census": null,
+      "all128_training_complete_census": null,
+      "closed_DB_witnesses_including_invalid": 62,
+      "driver_seconds": 52.22759562099236,
+      "existing_native_regression_cases": 52,
+      "external_markers": 11,
+      "generation": "source-generation-03",
+      "guard_operations": 72,
+      "guard_witnesses": 64,
+      "id": "host-run-02",
+      "import_label_count": 355,
+      "known_contender_OS_process_controls": 1,
+      "known_model_fits_new64_guard_fixtures": 0,
+      "known_model_inference_new64_guard_fixtures": 0,
+      "live_source_fallback": false,
+      "new_native_guard_cases": 64,
+      "owned_source_inventory_stable": true,
+      "pytest_seconds": 47.23,
+      "recorded_proof_observations": 0,
+      "status": "PASS",
+      "structural_dispatch_daemon_cases": 12,
+      "unique_import_source_paths": 353
+    }
+  ],
+  "cost_accounting": {
+    "captured_source_generations": 3,
+    "closed_independent_readbacks": 6,
+    "closed_native_attempts": 2,
+    "final_attempt_sum_seconds": 654.6822566919727,
+    "final_ledger_bytes": 94864,
+    "final_ledger_path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-20261003-01/accounting-preparation-01/final-ledger-03.json",
+    "final_ledger_sha256": "2fb9fb6c0012a64e2aaa08c647acb3b88875c97919c7af29603bfb57ddcaeea1",
+    "measured_attempt_rows": 13,
+    "nested_Docker_prover_wall_time_double_counted": false,
+    "never_executed_source_generations": [
+      "source-generation-01"
+    ],
+    "scope": "Sum of measured attempt durations, not unique calendar/CPU/GPU usage; unreceipted preparation/inline costs remain unknown.",
+    "status": "CLOSED_SELECTED_ATTEMPTS",
+    "whole_host_OS_launch_count": null,
+    "whole_host_inference_count": null,
+    "whole_host_training_count": null
+  },
+  "document_date_utc": "2026-10-04",
+  "ending_selected_live_pin_observation": {
+    "matches": 32,
+    "native_worker_qualification_conferred": false,
+    "observed_at_utc": "2026-10-04T00:15:49Z",
+    "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-20261003-01/ending-selected-live-pins-01.json",
+    "selected_pin_count": 32,
+    "whole_live_qualified": false
+  },
+  "evidence_root": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-20261003-01",
+  "frozen_source": {
+    "atomic_live_snapshot_claimed": false,
+    "changed_production_file_count": 5,
+    "changed_production_paths": [
+      "ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_worker_dispatch.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/finite_repository_execution.py",
+      "benchmarks/agent_supervisor/container_coding/finite_proof_query_worker_experiment.py"
+    ],
+    "generation": "source-generation-03",
+    "generation_cid": "sha256:70b4b0e14f2c3f3ff63061af73ca51b8660c4e9a95b2dd3d2e91938e3ee33ceb",
+    "manifest_sha256": "15afb9d38a4e9afe3a35226a99d148fe83f875e57aa0c4c099ed6c3228484f82",
+    "owned_runtime_source_bytes": 587929540,
+    "owned_runtime_source_files": 22866,
+    "process_origin_attestation_claimed": false,
+    "runtime_file_count_is_UUT_formal_coverage": false,
+    "selected_native_production_pin_count": 30,
+    "selected_native_production_pins": {
+      "benchmarks.agent_supervisor.container_coding.container_worker_deployment": {
+        "bytes": 24396,
+        "path": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+        "sha256": "1ed1ba67ba0e5bd183d89af5afbe21731f545cd7461761f4919c9d55758f0135"
+      },
+      "benchmarks.agent_supervisor.container_coding.finite_proof_query_worker_experiment": {
+        "bytes": 66780,
+        "path": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/finite_proof_query_worker_experiment.py",
+        "sha256": "aa852416c23538398b65171366d271e002d6d7f503f5ca86a85a4001020c5760"
+      },
+      "benchmarks.agent_supervisor.container_coding.finite_repository_admission_experiment": {
+        "bytes": 25945,
+        "path": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/finite_repository_admission_experiment.py",
+        "sha256": "3d602a9b8ac28a4c65c6de3184c1e48355b970c020341ab8bc9f02bbbaf46832"
+      },
+      "ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime": {
+        "bytes": 72225,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py",
+        "sha256": "f30b7bb77a142c69205ba403ba0c3357d37739fd62c7347978e3e9b00fa0696e"
+      },
+      "ipfs_accelerate_py.agent_supervisor.merge.database_coordination": {
+        "bytes": 321499,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py",
+        "sha256": "13386f3db7a3fee0103c5443416fe036d23c4f92953923e91cbd42f69582008c"
+      },
+      "ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle": {
+        "bytes": 121743,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py",
+        "sha256": "e9386ed646ec704d3326de990b7af569203cae451e69c8ea425099b3d5a06c0a"
+      },
+      "ipfs_accelerate_py.agent_supervisor.planning.finite_proof_query_join": {
+        "bytes": 33934,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/planning/finite_proof_query_join.py",
+        "sha256": "d6e4a6187036f5942f4637dd24bec65c1a90ed32c24e3b39e3759e653be03b79"
+      },
+      "ipfs_accelerate_py.agent_supervisor.runtime.candidate_execution": {
+        "bytes": 9454,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/candidate_execution.py",
+        "sha256": "f8bd110dd70d4d2c710d1953b883bd1c7779af9480d2fb4c1a3bba40b68a5054"
+      },
+      "ipfs_accelerate_py.agent_supervisor.runtime.finite_proof_query_admission": {
+        "bytes": 18129,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_admission.py",
+        "sha256": "2e5b0add5f19c1c31ad76dae67354d5bfadbfe59303a06590db14507c3abe7e4"
+      },
+      "ipfs_accelerate_py.agent_supervisor.runtime.finite_proof_query_execution": {
+        "bytes": 31819,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_execution.py",
+        "sha256": "5161d1aee23cc79e1e4c23cf102476f57bb0091ab0ee804cbda8c60fa73e14fb"
+      },
+      "ipfs_accelerate_py.agent_supervisor.runtime.finite_proof_query_worker_context": {
+        "bytes": 37029,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_worker_context.py",
+        "sha256": "1e55f5106adfd8bb788709d4fc475d8d233426aa968e8b29cebd3952eca6fe7e"
+      },
+      "ipfs_accelerate_py.agent_supervisor.runtime.finite_proof_query_worker_dispatch": {
+        "bytes": 64741,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_worker_dispatch.py",
+        "sha256": "ef57a607fbe19806be72fc103747268d28dc9bf3427ffde4b7c8470c4b13dbc4"
+      },
+      "ipfs_accelerate_py.agent_supervisor.runtime.finite_proof_query_worker_source_custody": {
+        "bytes": 31238,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_worker_source_custody.py",
+        "sha256": "1534552a5edb33c8eda786958cb1716af2e0ef614b26bbd0711cab1bb0123fc7"
+      },
+      "ipfs_accelerate_py.agent_supervisor.runtime.finite_proof_query_worktree_allocation": {
+        "bytes": 15594,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/finite_proof_query_worktree_allocation.py",
+        "sha256": "10fa918831cc37f12ed937cc9c3aa005933d2cb649b99858ccd46afe24bcdc59"
+      },
+      "ipfs_accelerate_py.agent_supervisor.runtime.finite_repository_admission": {
+        "bytes": 42674,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/finite_repository_admission.py",
+        "sha256": "ae58271a7efed5dc9ddb99a4c62d5f5cefdfa1d59797c005d1b86e1843d3ac03"
+      },
+      "ipfs_accelerate_py.agent_supervisor.runtime.finite_repository_candidate_runner": {
+        "bytes": 25882,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/finite_repository_candidate_runner.py",
+        "sha256": "29b2166ca535c812f0cbdb465e2afb7378e083478e196d3fac1b95ec0a724293"
+      },
+      "ipfs_accelerate_py.agent_supervisor.runtime.finite_repository_execution": {
+        "bytes": 40161,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/finite_repository_execution.py",
+        "sha256": "0c62707a45a6eab06ced03693f9e8426a6fd5ae253eb5cf4377e80d2afd36b10"
+      },
+      "ipfs_accelerate_py.agent_supervisor.runtime.local_completion_bridge": {
+        "bytes": 31678,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py",
+        "sha256": "45da53b7321f7a475fd3be125dd337a52ad509f72e865ee3be8e5e3cf7cb3209"
+      },
+      "ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission": {
+        "bytes": 81513,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+        "sha256": "6136102abbfd45456dddfca9732e3ef706632e870e57753df62f790e79c19741"
+      },
+      "ipfs_accelerate_py.agent_supervisor.task_sources.board_control_plane": {
+        "bytes": 95017,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py",
+        "sha256": "6fb26dfb137f996f731da62b84bf9887f5e5b21579f6272a63d17baf8e474b29"
+      },
+      "ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source": {
+        "bytes": 188856,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",
+        "sha256": "5b12ecdfa91ff53297fd6c99094a6c4b6acca1ab3e050ce34468b6f0d74227db"
+      },
+      "ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository": {
+        "bytes": 429497,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+        "sha256": "3e2c313d5a43544bcacd590342e47ad20d5fcf62d02b4bdf2218cbfce7bd26bf"
+      },
+      "ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner": {
+        "bytes": 606820,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
+        "sha256": "3a14872b80c7889891626f9de00eeb672218b1bca45086c8af4f7059e164e9a7"
+      },
+      "ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge": {
+        "bytes": 472996,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+        "sha256": "0721431b4bae97649af43bb5110cc848e52b844de8448039359e1d211d2f9bca"
+      },
+      "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon": {
+        "bytes": 3185922,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "sha256": "45f64db38f63bd78b58a225f062dc00d446ec362f45316d7e4ce6b03119d4fcd"
+      },
+      "ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime": {
+        "bytes": 82580,
+        "path": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
+        "sha256": "7ce7f562f552ccb4ed69c60ae84d8748923f479fd65d5109f7039fbe11e93cf6"
+      },
+      "ipfs_datasets_py.duckdb_control.codebase_verification_catalog": {
+        "bytes": 46767,
+        "path": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/duckdb_control/codebase_verification_catalog.py",
+        "sha256": "b2cd58575e310150c5eaf5eeeba2be5ee94a5b94c10c3a91902128c7eac159e1"
+      },
+      "ipfs_datasets_py.duckdb_control.codebase_verification_queries": {
+        "bytes": 14539,
+        "path": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/duckdb_control/codebase_verification_queries.py",
+        "sha256": "a53b470737a7735c68360a9ddb1d09df74ce311044bcc5d17ebf57f31670e348"
+      },
+      "ipfs_datasets_py.logic.software_contracts.codebase_applicability": {
+        "bytes": 30385,
+        "path": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/codebase_applicability.py",
+        "sha256": "9618d6fbde4a47e77a1a5c09b3f0ffb6dd516cc002b8737c23abe210e2c9b189"
+      },
+      "ipfs_datasets_py.logic.software_contracts.codebase_verification": {
+        "bytes": 45851,
+        "path": "/opt/ipfs-supervisor/datasets/ipfs_datasets_py/logic/software_contracts/codebase_verification.py",
+        "sha256": "91b274e87434fba1e219dc2a988bd0f9f9b21b6a422d402d5832894466020035"
+      }
+    }
+  },
+  "limits": {
+    "all32_governing_RPI_activation_exits": "OPEN",
+    "all_logic_family_projections_qualified": false,
+    "complete_metadata_hydration_qualified": false,
+    "earlier_worker_qualification_transferred": false,
+    "global_model_convergence_proved": false,
+    "governing_RPI_activation_exit_count": 32,
+    "learned_codebase_ir_training_qualified": false,
+    "prior_four_protected_sources_mutated": false,
+    "prior_sealed_roots_mutated": false,
+    "prior_six_qualified_documents_mutated": false,
+    "production_activation": false,
+    "proof_or_completion_authority_granted_by_review": false
+  },
+  "native_attempts": [
+    {
+      "Docker_driver_seconds": 84.31945084600011,
+      "actual_retained_tool_receipts": {
+        "CPython_process_elapsed_ms": 32,
+        "Lean_compilations": 2,
+        "Lean_compile_elapsed_ms": 768,
+        "Lean_version_elapsed_ms": 115,
+        "Lean_version_receipts": 2,
+        "SMT_observations": 10,
+        "SMT_subprocess_phases": 30,
+        "model_convergence_proved": false,
+        "source_runtime_correspondence_proved": false,
+        "these_are_whole_native_process_census": false
+      },
+      "before_supervisor_runtime_creation": true,
+      "cause": "proof_memory_stall",
+      "complete_seven_check_audit_repeated": false,
+      "configured_backoff_threshold_percent": 2.0,
+      "container_removed": true,
+      "exact_PSI_at_failure": null,
+      "final_fixture_inference_counter": null,
+      "final_fixture_provider_counter": null,
+      "final_fixture_training_counter": null,
+      "generation": "source-generation-03",
+      "host_active_leases_after_cleanup": 0,
+      "host_waiters_after_cleanup": 0,
+      "id": "docker-positive-01",
+      "independent_partial_readback_status": "COMPOSITE_PASS_6_OF_7_PLUS_1_CORRECTION",
+      "initial_native_proof_publication_returned": true,
+      "native_OS_launch_complete_census": null,
+      "native_inference_complete_census": null,
+      "native_training_complete_census": null,
+      "nested_wall_seconds_double_counted": false,
+      "new_two_birth_guard_qualified": false,
+      "outer_wrapper_seconds": 92.65912019400275,
+      "partial_readback_correction_path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-20261003-01/docker-positive-01-partial-readback-01/driver-correction-review-02.json",
+      "partial_readback_correction_seconds": 0.16872353499638848,
+      "partial_readback_original_passed_checks": 6,
+      "partial_readback_original_path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-20261003-01/docker-positive-01-partial-readback-01/review.json",
+      "partial_readback_original_seconds": 32.50654314199346,
+      "partial_readback_original_total_checks": 7,
+      "same_closed_run_composite_checks_passed": 7,
+      "status": "FAILED_UNQUALIFIED"
+    },
+    {
+      "Docker_driver_seconds": 67.2774061270029,
+      "actual_retained_tool_receipts": {
+        "CPython_process_elapsed_ms": 24,
+        "Lean_compilations": 2,
+        "Lean_compile_elapsed_ms": 2994,
+        "Lean_version_elapsed_ms": 414,
+        "Lean_version_receipts": 2,
+        "SMT_observation_elapsed_ms": 1234,
+        "SMT_observations": 10,
+        "SMT_phase_elapsed_ms": 379,
+        "SMT_subprocess_phases": 30,
+        "model_convergence_proved": false,
+        "source_runtime_correspondence_proved": false,
+        "these_are_whole_native_process_census": false
+      },
+      "actual_timeout_wait_seconds": 30.000649937,
+      "balanced_resource_lease_count": 76,
+      "before_supervisor_handoff": true,
+      "cause": "LeaseTimeout with proof_memory_stall backoff",
+      "configured_backoff_threshold_percent": 2.0,
+      "container_removed": true,
+      "copied_runtime_source_bytes": 483069585,
+      "copied_runtime_source_file_count": 19446,
+      "exact_PSI_at_failure": null,
+      "extra_dependency_pins": 8,
+      "final_fixture_inference_counter": null,
+      "final_fixture_provider_counter": null,
+      "final_fixture_training_counter": null,
+      "generation": "source-generation-03",
+      "host_active_leases_after_cleanup": 0,
+      "host_waiters_after_cleanup": 0,
+      "id": "docker-positive-02",
+      "independent_partial_readback_bytes": 44482,
+      "independent_partial_readback_path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-20261003-01/docker-positive-02-partial-readback-01/review.json",
+      "independent_partial_readback_seconds": 26.103224161008256,
+      "independent_partial_readback_sha256": "5731a26c04dc9f4f352de0b40f8bc89bfff6e5edd2db95d306852e9cf20fbb23",
+      "independent_partial_readback_status": "PASS_7_OF_7",
+      "native_OS_launch_complete_census": null,
+      "native_inference_complete_census": null,
+      "native_training_complete_census": null,
+      "nested_wall_seconds_double_counted": false,
+      "new_two_birth_guard_qualified": false,
+      "observed_failure_context": "integer-model fence -> CodebaseIR.observe_current -> nested child-resource acquisition",
+      "outer_wrapper_seconds": 89.40813335299026,
+      "partial_artifact_bytes": 22284589,
+      "partial_artifact_file_count": 136,
+      "resource_timeout_count": 1,
+      "saturation_events": 5,
+      "selected_native_producer_pins": 30,
+      "status": "FAILED_UNQUALIFIED",
+      "total_resource_wait_seconds": 46.004900378
+    }
+  ],
+  "native_guard_contract": {
+    "attempt_sidecar_differs_from_runtime_run_lease": true,
+    "before_and_after_same_native_write_transaction": true,
+    "callback_external_effects_can_be_rolled_back_here": false,
+    "callback_receives_actual_immutable_native_lease": true,
+    "coordinator_before_server_lock_order": true,
+    "existing_path_is_derived_not_worker_supplied": true,
+    "guard_error_establishes_no_external_effect": false,
+    "identity_fields": [
+      "task_cid",
+      "claim_id",
+      "attempt_id",
+      "attempt_number",
+      "lease_id",
+      "owner_session_id",
+      "fencing_token",
+      "fence_epoch"
+    ],
+    "late_prepared_budget_rechecked": true,
+    "missing_or_damaged_authority_installed_or_repaired": false,
+    "native_failed_intent_rewritten_completed_or_no_effect": false,
+    "native_tables": [
+      "task_claims",
+      "fenced_leases",
+      "task_attempts",
+      "token_history",
+      "task_completions"
+    ],
+    "postcheck_requires_full_repeated_5000ms": false,
+    "serialized_outer_and_native_inner_file_locks_span_callback": true,
+    "strict_entry_remaining_budget_ms": 5000
+  },
+  "native_retry_policy_for_this_increment": {
+    "prerequisite_failure_is_failure_of_executed_attempt_guard": false,
+    "proof_memory_threshold_weakened": false,
+    "proof_safe_policy_disabled": false,
+    "remaining_native_jobs_scheduled": 0
+  },
+  "outcome_gates": {
+    "actual_supplied_lease_and_shortened_deadline": "PASS",
+    "all_logic_family_correspondence": "OPEN",
+    "closed_selected_native_test_population": "PASS",
+    "complete_AST_KG_vector_contract_DuckDB_DuckLake_hydration": "OPEN",
+    "complete_prompt_current_codebase_correspondence": "OPEN",
+    "default_terminal_bench_activation": "OPEN",
+    "entry_full_budget_strict_equality_refusal": "PASS",
+    "exact_Lean_formalization_general_correspondence": "OPEN",
+    "expired_policy_STOP_lifecycle": "OPEN",
+    "fresh_positive_two_birth_supervisor_dispatch": "OPEN",
+    "general_learned_model_convergence": "OPEN",
+    "independent_closed_native_SQL_replay": "PASS",
+    "leased_private_CodebaseIR_train_checkpoint_resume_promotion": "OPEN",
+    "native_failed_after_birth_cleanup_controls": "OPEN",
+    "native_full_tuple_before_after_SQL_guard": "PASS",
+    "native_thread_and_OS_lock_contention": "PASS",
+    "native_unacknowledged_birth_cleanup_controls": "OPEN",
+    "official_terminal_bench_score": null,
+    "postcheck_possible_effect_retention": "PASS",
+    "private_cached_presentation_field_completeness": "OPEN",
+    "strict_existing_native_registry_no_install_or_repair": "PASS",
+    "suppressed_callback_alias_reentry_refusal": "PASS"
+  },
+  "qualified_independent_native_SQL_readback": {
+    "actual_native_engine_read_only": true,
+    "aggregate_checks": 4,
+    "confers_native_supervisor_worker_qualification": false,
+    "malformed_registry_fixtures_qualified": false,
+    "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-20261003-01/host-run-02-independent-readback-01/review.json",
+    "seconds": 4.473789294992457,
+    "status": "PASS"
+  },
+  "retention": {
+    "actual_seal_and_readback_artifacts_required": true,
+    "document_self_sha_embedded": false,
+    "planned_independent_verification_path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-20261003-01/final-retention-01/verification/readback-01.json",
+    "planned_seal_path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/finite-proof-query-attempt-lease-20261003-01/final-retention-01/seal.json",
+    "seal_pass_claimed": false,
+    "status": "VERIFY_SEPARATELY",
+    "verification_pass_claimed": false
+  },
+  "schema": "repository-proof-index-codebase-ir-native-attempt-lease-review@1",
+  "status": "native_primitive_qualified"
+}

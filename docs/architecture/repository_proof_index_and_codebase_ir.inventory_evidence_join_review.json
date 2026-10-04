@@ -1,0 +1,942 @@
+{
+  "attempts": [
+    {
+      "all_source_and_owner_connections_closed_before_independent_audit": true,
+      "failure_explanation": "Harness assumed a bare Python worker; native prlimit wrapper was rejected before numerical inference.",
+      "known_actual_setup_epochs": 3,
+      "qualified": false,
+      "recorded_seconds": 53.41940151899962,
+      "result": {
+        "bytes": 1791326,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-evidence-join-qualification-20261003-01/result.json",
+        "sha256": "c712f352dc0c32ee2d3f7a5b3880696f4cb4bbeb694c84bbc6e12429596f428a"
+      },
+      "unknown_fitting_epochs": false
+    },
+    {
+      "all_source_and_owner_connections_closed_before_independent_audit": true,
+      "failure_explanation": "Fault-control preparation used the dag-json path default for a raw captured-source CID; refused before mutation.",
+      "known_actual_setup_epochs": 3,
+      "qualified": false,
+      "recorded_seconds": 182.26525041199966,
+      "result": {
+        "bytes": 5054661,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-evidence-join-qualification-20261003-02/result.json",
+        "sha256": "d73a1cecc1e308dc2a7fd60c870813807f83cd04ae030f4ce8762e488f5c3a85"
+      },
+      "unknown_fitting_epochs": false
+    },
+    {
+      "all_source_and_owner_connections_closed_before_independent_audit": true,
+      "failure_explanation": "Selected source fence detected concurrent native catalog/query changes after sixteen controls.",
+      "known_actual_setup_epochs": 3,
+      "qualified": false,
+      "recorded_seconds": 229.30824458699954,
+      "result": {
+        "bytes": 6421654,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-evidence-join-qualification-20261003-03/result.json",
+        "sha256": "9c361ebfadc8bd3a32b8db4d3b368c0861c7179bf0fbe1c59c940eeabace774c"
+      },
+      "unknown_fitting_epochs": false
+    },
+    {
+      "all_source_and_owner_connections_closed_before_independent_audit": true,
+      "failure_explanation": null,
+      "known_actual_setup_epochs": 3,
+      "qualified": true,
+      "recorded_seconds": 281.5950183010009,
+      "result": {
+        "bytes": 7071436,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-evidence-join-qualification-20261003-04/result.json",
+        "sha256": "6c55977f2f774b54e16ae80a382b8553d564998b0e7e34b2569dfdbe253a0b1b"
+      },
+      "unknown_fitting_epochs": false
+    }
+  ],
+  "costs": {
+    "accounting_scope": "Native attempt totals exclude staging, focused units, earlier audit receipts and final read-only audits. Each native attempt includes its own three setup epochs.",
+    "failed_known_setup_epochs": 9,
+    "failed_native_attempt_seconds": 464.9928965179988,
+    "final_independent_audit_seconds": 6.104607068000405,
+    "stage_copy_closure_seconds": 62.23369461499988,
+    "stage_final_seal_seconds": 4.442561556999863,
+    "successful_post_setup_fit_attempts": 0,
+    "total_known_setup_epochs": 12,
+    "total_recorded_native_attempt_seconds": 746.5879148189997,
+    "total_staging_seconds": 66.67625617199974,
+    "unknown_fitting_epochs": false
+  },
+  "date": "2026-10-03",
+  "documentation_validation": {
+    "checked_at_utc": "2026-10-03T01:36:41.832846+00:00",
+    "compiled_new_python_files_without_import": 6,
+    "document_paths": [
+      "external/ipfs_accelerate/docs/agent_supervisor/codebase_inventory_evidence_join_qualification.md",
+      "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md"
+    ],
+    "final_validation_receipt": "artifacts/codebase_ir_terminal_bench/inventory-evidence-join-final-review-validation-20261003-01.json",
+    "finite_review_json_valid": true,
+    "independent_implementation_and_report_review": "Datasets producer author reviewed final report and review JSON read-only; no material scope overclaims or API mismatches found.",
+    "join_report_local_links_all_resolve": true,
+    "local_links_checked": 344,
+    "local_links_resolved": 341,
+    "pending_link_scope": "These three pre-existing links in shared architecture documents point to the concurrently developed batch-query report; that separate report was absent at this observation. All added inventory/evidence join links resolve.",
+    "read_only_review_pin_checks": 36,
+    "shared_document_pending_links": [
+      {
+        "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+        "target": "../../../ipfs_datasets/workspace/codebase-query-many-qualification-20261003/REPORT.md"
+      },
+      {
+        "document": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+        "target": "../../../ipfs_datasets/workspace/codebase-query-many-qualification-20261003/REPORT.md"
+      },
+      {
+        "document": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+        "target": "../../../ipfs_datasets/workspace/codebase-query-many-qualification-20261003/REPORT.md"
+      }
+    ],
+    "trailing_whitespace_found": false,
+    "working_and_staged_source_hashes_match": true
+  },
+  "implementation": {
+    "authority_flags": {
+      "admission_authority": false,
+      "authoritative_cache_eligible": false,
+      "behavioral_satisfaction": false,
+      "completion_authority": false,
+      "decoded_formulas_generated": false,
+      "execution_authority": false,
+      "mutation_authority": false,
+      "proof_authority": false,
+      "repository_code_executed": false,
+      "runtime_behavior_verified": false,
+      "scan_execution_attested": false,
+      "source_execution_attested": false,
+      "source_semantics_verified": false,
+      "training_executed": false
+    },
+    "default_optimized": true,
+    "opt_out": "optimized=False",
+    "planning_model_calls": 0,
+    "producer_api": "scan_current_codebase_evidence",
+    "receiving_api": "validate_current_inventory_evidence",
+    "reserved_advisory_material_key": "codebase_inventory_evidence",
+    "source_pins": [
+      {
+        "compiled_without_import": true,
+        "staged": {
+          "bytes": 50830,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-evidence-join-integration-20261003-01/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_evidence.py",
+          "sha256": "655851ad7a062f565591af761fd00972ea8dff005ea1dd13d472565da842a726"
+        },
+        "working": {
+          "bytes": 50830,
+          "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_evidence.py",
+          "sha256": "655851ad7a062f565591af761fd00972ea8dff005ea1dd13d472565da842a726"
+        }
+      },
+      {
+        "compiled_without_import": true,
+        "staged": {
+          "bytes": 26762,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-evidence-join-integration-20261003-01/external/ipfs_datasets/tests/unit/logic/software_contracts/test_codebase_inventory_evidence.py",
+          "sha256": "4423c82032846bb879233768ad7542b0d0906e83665d7a33633073bb55baf3a0"
+        },
+        "working": {
+          "bytes": 26762,
+          "path": "external/ipfs_datasets/tests/unit/logic/software_contracts/test_codebase_inventory_evidence.py",
+          "sha256": "4423c82032846bb879233768ad7542b0d0906e83665d7a33633073bb55baf3a0"
+        }
+      },
+      {
+        "compiled_without_import": true,
+        "staged": {
+          "bytes": 24020,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-evidence-join-integration-20261003-01/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/codebase_inventory_evidence_context.py",
+          "sha256": "57dc2a7590556613bcf289efe67892a24d7990f00beb99e7b4becf72a49a596f"
+        },
+        "working": {
+          "bytes": 24020,
+          "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/codebase_inventory_evidence_context.py",
+          "sha256": "57dc2a7590556613bcf289efe67892a24d7990f00beb99e7b4becf72a49a596f"
+        }
+      },
+      {
+        "compiled_without_import": true,
+        "staged": {
+          "bytes": 18514,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-evidence-join-integration-20261003-01/external/ipfs_accelerate/test/api/test_codebase_inventory_evidence_context.py",
+          "sha256": "901cb907682dfbf2459dc911e314d50b049b1f2d64ca89aa524ce2f41f4f2f41"
+        },
+        "working": {
+          "bytes": 18514,
+          "path": "external/ipfs_accelerate/test/api/test_codebase_inventory_evidence_context.py",
+          "sha256": "901cb907682dfbf2459dc911e314d50b049b1f2d64ca89aa524ce2f41f4f2f41"
+        }
+      },
+      {
+        "compiled_without_import": true,
+        "staged": {
+          "bytes": 62041,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-evidence-join-integration-20261003-01/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/qualify_codebase_inventory_evidence_join.py",
+          "sha256": "8b62ba38d56e5df40e7f97cfcde1502aaef69a8e88c01e308e4f7277c0867d02"
+        },
+        "working": {
+          "bytes": 62041,
+          "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/qualify_codebase_inventory_evidence_join.py",
+          "sha256": "8b62ba38d56e5df40e7f97cfcde1502aaef69a8e88c01e308e4f7277c0867d02"
+        }
+      },
+      {
+        "compiled_without_import": true,
+        "staged": {
+          "bytes": 5032,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-evidence-join-integration-20261003-01/external/ipfs_accelerate/test/benchmarks/test_codebase_inventory_evidence_join_launch_audit.py",
+          "sha256": "49a7830c61d754c426aae0a02c692c7bd4db46ee183185af05cb41799ab83d2b"
+        },
+        "working": {
+          "bytes": 5032,
+          "path": "external/ipfs_accelerate/test/benchmarks/test_codebase_inventory_evidence_join_launch_audit.py",
+          "sha256": "49a7830c61d754c426aae0a02c692c7bd4db46ee183185af05cb41799ab83d2b"
+        }
+      }
+    ],
+    "supervisor_api": "preview_current_inventory_evidence_plan"
+  },
+  "independent_audits": [
+    {
+      "check_count": 328775,
+      "checked_at_utc": "2026-10-03T01:28:27.121504+00:00",
+      "elapsed_seconds": 4.039863265999884,
+      "passed": true,
+      "receipt": {
+        "bytes": 4969945,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-evidence-integration-stage-readonly-audit-20261003-02.json",
+        "sha256": "a743d4a07fd79dd4e31b84971ed9fe880750d40c55865ba7f43ab60ed716a483"
+      },
+      "scope_limitations": [
+        "stdlib read-only streaming bytes/modes/mtime audit; no package imports, native owners, inference, fits, jobs or stage writes",
+        "manifest-bound staged generation only; recorded working-source changes are separate unqualified observations",
+        "sequential source locator observations do not provide an atomic multi-file checkout snapshot",
+        "three copied package trees and explicit helpers/tests are not an installed dependency or execution attestation closure",
+        "staged modes equal captured source modes masked by 0555, outer root 0500 and manifest 0400; owner can still alter them later"
+      ],
+      "script": {
+        "bytes": 19788,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-evidence-integration-stage-readonly-audit-20261003-01.py",
+        "sha256": "face29890d7a1be0752d7de544fe580ef78af131652ec353bdfaf5e4d30dd2ea"
+      },
+      "staged_namespace_unchanged": true
+    },
+    {
+      "check_count": 83653,
+      "checked_at_utc": "2026-10-03T01:28:54.996563+00:00",
+      "elapsed_seconds": 2.064743802000521,
+      "model_artifact_count": 2,
+      "native_execution_observation_count": 50,
+      "passed": true,
+      "primary_namespace_entry_count": 292,
+      "primary_namespace_unchanged": true,
+      "receipt": {
+        "bytes": 263983,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-evidence-join-readonly-audit-20261003-02.json",
+        "sha256": "46f73d7b64af1e320655cbb0f26ccc3b7cf1f08d9d0b0d2396b5f1c554a40fba"
+      },
+      "scope_limitations": [
+        "stdlib archived-byte audit only; no native imports, owner opens, inference, training, jobs, or primary writes",
+        "CID and source pins bind retained observations; no execution attestation or proof/runtime authority",
+        "when staged sources are used, qualified producer paths bind that frozen stage; mutable working checkout updates remain unqualified",
+        "sequential point-in-time head/source/model/evidence fences are not an atomic cross-owner snapshot",
+        "full model eight-table export plus selected source/evidence SQL export; not a full AST database SQL audit",
+        "parent Popen events exclude nested solver descendants; native phase receipts describe those separately",
+        "native receipt byte/script/argv/limit bindings checked for this finite generated script profile; no kernel proof or general SMT parser replay",
+        "finite 8D CPU float64 model-off preview fixture; no CUDA, 384D, production activation, gradient synchronization",
+        "all runtime tasks/goals remain residual; learned feature vectors are advisory and are not numerically replayed here",
+        "body-free authored material digests compared to native baseline; authored typed object bodies not reconstructed",
+        "pre-cancel only; no running-child cancellation or fresh-process owner reopen qualification in this increment",
+        "fault owner restoration is a private fixture operation; no production epoch rollback or crash recovery qualification"
+      ],
+      "script": {
+        "bytes": 67924,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-evidence-join-readonly-audit-20261003-01.py",
+        "sha256": "ffd921be721562e02240c6cc865d628cd6673788d44a20fee0fc919fd1ffe9bf"
+      },
+      "source_artifact_count": 73
+    }
+  ],
+  "integration_stage": {
+    "checkpoint_pinned_native_producers": [
+      {
+        "bytes": 47987,
+        "mode": "0444",
+        "name": "ipfs_datasets_py.logic.software_contracts.codebase_source_training",
+        "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_training.py",
+        "sha256": "aea5fa8803ae6b6dde7c4e71b81f68a7f95257b3a5d76cea693ee13e66710aa0",
+        "source_mode": "0664",
+        "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_training.py",
+        "stage_mode": "0444"
+      },
+      {
+        "bytes": 29578,
+        "mode": "0444",
+        "name": "ipfs_datasets_py.logic.software_contracts.codebase_ir_targets",
+        "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir_targets.py",
+        "sha256": "88d619efdc83f8e207b13b05f879c956655a7b5825f5647b46457ca92539c3cf",
+        "source_mode": "0664",
+        "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir_targets.py",
+        "stage_mode": "0444"
+      },
+      {
+        "bytes": 58156,
+        "mode": "0444",
+        "name": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.autoencoder_runtime_registry",
+        "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_runtime_registry.py",
+        "sha256": "ca31983a5f514c7f5cf8b1b9250ef92e1beb13c0a2305381aac575931e79b4ac",
+        "source_mode": "0664",
+        "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_runtime_registry.py",
+        "stage_mode": "0444"
+      },
+      {
+        "bytes": 32125,
+        "mode": "0444",
+        "name": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.autoencoder_projection_features",
+        "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_projection_features.py",
+        "sha256": "0d93a2e56d0b46cff34f15c4792042bca33f47af00da80e21fa501ddf442de06",
+        "source_mode": "0664",
+        "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_projection_features.py",
+        "stage_mode": "0444"
+      },
+      {
+        "bytes": 5967,
+        "mode": "0444",
+        "name": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.codebase_feature_worker",
+        "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_feature_worker.py",
+        "sha256": "91174cb51a0832e4cd691e56f94c0d6b34af1f06e6afec2c0d780d58fa3196db",
+        "source_mode": "0664",
+        "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_feature_worker.py",
+        "stage_mode": "0444"
+      },
+      {
+        "bytes": 69046,
+        "mode": "0444",
+        "name": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.modal_autoencoder_cuda",
+        "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/modal_autoencoder_cuda.py",
+        "sha256": "954bcdee38c8f55f0d9d57045b9f2648aac7efcdf105b3655f410dea1249f2e1",
+        "source_mode": "0664",
+        "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/modal_autoencoder_cuda.py",
+        "stage_mode": "0444"
+      }
+    ],
+    "concurrent_batch_query_api": "Pinned stage includes query_many_current and typed request; this join calls the backward-compatible single-request query_current entrypoint. No batch speed or multi-query coverage claim.",
+    "copied_bytes": 1297593612,
+    "copy_hashes_recomputed": true,
+    "current_working_differences": [],
+    "current_working_locators_matching_captured_files": 14399,
+    "current_working_package_membership": {
+      "added_regular_paths": [],
+      "complete": true,
+      "declared_font_alias_duplicate_subtree_profile": true,
+      "directories_observed": 2046,
+      "missing_regular_paths": [],
+      "other_symlinks_not_followed": [],
+      "qualified": false,
+      "regular_members_observed": 14385,
+      "same_exclusions_as_stage": true,
+      "unknown_observations": []
+    },
+    "directories": 2061,
+    "files": 14399,
+    "final_seal_source_and_copy_hashes_recomputed": true,
+    "final_seal_source_and_copy_membership_equal": true,
+    "fitting_epochs_during_staging": 0,
+    "installed_dependencies_hermetic": false,
+    "manifest": {
+      "bytes": 6339118,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-evidence-join-integration-20261003-01/integration-manifest.json",
+      "sha256": "f8d53de742ef630678977a9a354a6e38d411db7669004c210f634e810d6ccc99"
+    },
+    "native_jobs_started_during_staging": 0,
+    "recorded_selected_input_count": 46,
+    "source_directory_aliases": [
+      {
+        "copy_profile": "duplicate_regular_subtree_no_staged_symlink",
+        "link_bytes_sha256": "2415a1f4475820431e0d25435793082e2392b8c4194adc3dd1a934155b45631b",
+        "link_text": "../webfonts",
+        "path": "external/ipfs_datasets/ipfs_datasets_py/static/admin/webfonts",
+        "resolved_target": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/static/webfonts",
+        "source_path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/static/admin/webfonts"
+      }
+    ],
+    "stage_namespace": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/inventory-evidence-join-integration-20261003-01",
+    "staged_symlinks": 0,
+    "working_checkout_qualified": false
+  },
+  "limits": {
+    "closing_observations_atomic": false,
+    "default_memory_reservation_mb": 1024,
+    "dependency_selectors_supported": false,
+    "native_catalog_result_bytes": 67108864,
+    "normalized_inventory_bytes": 67108864,
+    "output_bytes": 33554432,
+    "query_evidence_entries": 256,
+    "query_page_size_ceiling": 64,
+    "query_page_size_default": 16,
+    "query_pages": 16,
+    "receiving_numerical_outputs_execution_attested": false,
+    "retained_query_bytes": 16777216,
+    "running_child_cancellation_qualified": false,
+    "scan_file_bytes": 65536,
+    "scan_inventory_members": 256,
+    "serialized_estimates_are_rss_or_kernel_limits": false,
+    "serialized_nested_scan_phase_estimate_mb": 244,
+    "serialized_query_phase_estimate_mb": 200
+  },
+  "native": {
+    "coverage": {
+      "complete": {
+        "evidence_complete_absent_members": 24,
+        "evidence_entries": 5,
+        "evidence_matched_members": 4,
+        "evidence_unknown_members": 0,
+        "inferred_rows": 22,
+        "inventory_entries": 28
+      },
+      "exact_canonical_key": {
+        "evidence_complete_absent_members": 27,
+        "evidence_entries": 1,
+        "evidence_matched_members": 1,
+        "evidence_unknown_members": 0,
+        "inferred_rows": 22,
+        "inventory_entries": 28
+      },
+      "inference_budget_four": {
+        "evidence_complete_absent_members": 24,
+        "evidence_entries": 5,
+        "evidence_matched_members": 4,
+        "evidence_unknown_members": 0,
+        "inferred_rows": 4,
+        "inventory_entries": 28
+      },
+      "partial": {
+        "evidence_complete_absent_members": 0,
+        "evidence_entries": 1,
+        "evidence_matched_members": 1,
+        "evidence_unknown_members": 27,
+        "inferred_rows": 22,
+        "inventory_entries": 28
+      },
+      "zero_consumed_pages": {
+        "evidence_complete_absent_members": 0,
+        "evidence_entries": 0,
+        "evidence_matched_members": 0,
+        "evidence_unknown_members": 28,
+        "inferred_rows": 22,
+        "inventory_entries": 28
+      }
+    },
+    "current_fact_count": 0,
+    "final_owner_preservation": true,
+    "final_resources": {
+      "active_lease_count": 0,
+      "waiting_request_count": 0
+    },
+    "frozen_feature_columns": 53,
+    "independently_authored_runtime_task_count": 4,
+    "known_actual_setup_epochs": 3,
+    "latent_width": 8,
+    "native_plan_preview_count": 4,
+    "native_scan_profile_count": 5,
+    "not_a_throughput_comparison": true,
+    "numerical_after": {
+      "adam_steps": [
+        3,
+        3,
+        3,
+        3
+      ],
+      "completed_epochs": 3,
+      "state_sha256": "589f322ff74e66df1e65b192e3d83d791382bf3857a9483607f70d92da4054a3"
+    },
+    "numerical_before": {
+      "adam_steps": [
+        3,
+        3,
+        3,
+        3
+      ],
+      "completed_epochs": 3,
+      "state_sha256": "589f322ff74e66df1e65b192e3d83d791382bf3857a9483607f70d92da4054a3"
+    },
+    "overall_deadline_seconds": 600.0,
+    "parent_process_audit": {
+      "counts": {
+        "canonical_key_scan_join:git": 630,
+        "canonical_key_scan_join:other": 1,
+        "cas_integrity_control:git": 504,
+        "cas_missing_control:git": 378,
+        "closing_join_fault:git": 2656,
+        "closing_join_fault:other": 3,
+        "complete_scan_join:git": 1134,
+        "complete_scan_join:other": 1,
+        "empty_budget_receiving_validation:git": 378,
+        "empty_budget_scan_join:git": 630,
+        "empty_budget_scan_join:other": 1,
+        "epoch_drift_join:git": 1071,
+        "epoch_drift_join:other": 2,
+        "epoch_drift_preview:git": 1827,
+        "fixture:git": 131,
+        "inference_budget_scan_join:git": 1134,
+        "inference_budget_scan_join:other": 1,
+        "late_evidence_epoch_control:git": 1134,
+        "native_plan_preview:git": 5796,
+        "native_publish_setup:git": 945,
+        "native_verification_setup:git": 1890,
+        "native_verification_setup:other": 150,
+        "partial_scan_join:git": 630,
+        "partial_scan_join:other": 1,
+        "receiving_and_matcher:git": 1512,
+        "receiving_validation:git": 1008,
+        "rehashed_receiving_control:git": 504,
+        "sql_membership_control:git": 126,
+        "training_setup:git": 567,
+        "training_setup:other": 2
+      },
+      "event_bytes_high_water": 6700539,
+      "event_count_high_water": 24747,
+      "launch_policy_failure": false,
+      "launch_policy_failure_aborts_qualification": true,
+      "limits": {
+        "max_events": 32768,
+        "max_serialized_event_bytes": 16777216
+      },
+      "overflow_aborts_qualification": true,
+      "retained_events": 24747,
+      "retained_serialized_event_bytes": 6700539,
+      "retention_overflow": false,
+      "scope": "main_parent_process_Popen_events_only_not_native_worker_descendant_solver_observation",
+      "serialized_scope": "exact_canonical_JSON_event_array_including_classification_and_delimiters"
+    },
+    "positive_join_records": {
+      "complete": "bafkreiapsagkpfg2ir6vvchtj7udkh6mw44ci5jty4pxz6fu4jebf3awyq",
+      "exact_canonical_key": "bafkreiewxxnihcbewan63lo4yezxnjk66wdjaeo6iimc35v3wkqqzecgnq",
+      "inference_budget_four": "bafkreigaxbgmewsxughrydlgnejvunm5lcsjc6yb5kolovjmtwvcfkqqni",
+      "partial": "bafkreihyjerqmpx5uyn3lclbehhtna4ida2orxxmxxivtvf7fry6mljb3q",
+      "zero_consumed_pages": "bafkreif76mer5udmrvfm63gvi5tsnreusghqiyj43o4vidhbm7gesifcbm"
+    },
+    "positive_phase_observations": [
+      {
+        "elapsed_seconds": 14.55980876600006,
+        "name": "complete_page_size_one_join",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 10.299697094000294,
+        "name": "validate_current_without_inference",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 9.506380791999618,
+        "name": "partial_max_pages_one_join",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 9.39312701200106,
+        "name": "one_byte_query_budget_zero_page_join",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 3.670435287998771,
+        "name": "validate_current_zero_page_join",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 13.869747458000347,
+        "name": "inference_budget_four_join",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 8.989222253001572,
+        "name": "exact_canonical_key_join",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 2.740192921999551,
+        "name": "preview_independent_authored_plan",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 23.238996918998964,
+        "name": "preview_complete_join",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 13.501165699999547,
+        "name": "preview_partial_join",
+        "status": "completed"
+      },
+      {
+        "elapsed_seconds": 10.560767675999159,
+        "name": "preview_zero_page_join",
+        "status": "completed"
+      }
+    ],
+    "positive_plan_preview": {
+      "advisory_record_changes_input_snapshot": true,
+      "current_facts_supplied": 0,
+      "materials_unchanged": true,
+      "runtime_requirements_residual": true,
+      "task_population_preserved": true
+    },
+    "post_setup_fit_attempt_count": 0,
+    "post_setup_training_executed": false,
+    "qualified": true,
+    "receiving_validation_count": 2,
+    "refusal_controls": [
+      {
+        "error_type": "CodebaseInventoryEvidenceError",
+        "expected_pre_cancellation_accepted": false,
+        "name": "rehashed_scan_source_identity",
+        "refused": true,
+        "resource_pressure_or_timeout_failure_accepted": false,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "error_type": "CodebaseInventoryEvidenceError",
+        "expected_pre_cancellation_accepted": false,
+        "name": "rehashed_scan_model_identity",
+        "refused": true,
+        "resource_pressure_or_timeout_failure_accepted": false,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "error_type": "CodebaseInventoryEvidenceError",
+        "expected_pre_cancellation_accepted": false,
+        "name": "rehashed_inventory_membership",
+        "refused": true,
+        "resource_pressure_or_timeout_failure_accepted": false,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "error_type": "CodebaseInventoryEvidenceError",
+        "expected_pre_cancellation_accepted": false,
+        "name": "rehashed_exact_selector",
+        "refused": true,
+        "resource_pressure_or_timeout_failure_accepted": false,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "error_type": "CodebaseInventoryEvidenceError",
+        "expected_pre_cancellation_accepted": false,
+        "name": "rehashed_page_epoch_type",
+        "refused": true,
+        "resource_pressure_or_timeout_failure_accepted": false,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "error_type": "CodebaseInventoryEvidenceError",
+        "expected_pre_cancellation_accepted": false,
+        "name": "rehashed_continuation_cursor",
+        "refused": true,
+        "resource_pressure_or_timeout_failure_accepted": false,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "error_type": "CodebaseInventoryEvidenceError",
+        "expected_pre_cancellation_accepted": false,
+        "name": "rehashed_recorded_conditional_status",
+        "refused": true,
+        "resource_pressure_or_timeout_failure_accepted": false,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "error_type": "CodebaseVerificationCatalogError",
+        "expected_pre_cancellation_accepted": false,
+        "name": "deleted_actual_normalized_membership",
+        "refused": true,
+        "resource_pressure_or_timeout_failure_accepted": false,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "error_type": "CacheIntegrityError",
+        "expected_pre_cancellation_accepted": false,
+        "name": "tampered_captured_source",
+        "refused": true,
+        "resource_pressure_or_timeout_failure_accepted": false,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "error_type": "CodebaseVerificationCatalogError",
+        "expected_pre_cancellation_accepted": false,
+        "name": "tampered_conditional_verification",
+        "refused": true,
+        "resource_pressure_or_timeout_failure_accepted": false,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "error_type": "CodebaseVerificationCatalogError",
+        "expected_pre_cancellation_accepted": false,
+        "name": "tampered_conditional_projection",
+        "refused": true,
+        "resource_pressure_or_timeout_failure_accepted": false,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "error_type": "CodebaseVerificationCatalogError",
+        "expected_pre_cancellation_accepted": false,
+        "name": "missing_conditional_verification",
+        "refused": true,
+        "resource_pressure_or_timeout_failure_accepted": false,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "error_type": "CodebaseVerificationCatalogError",
+        "expected_pre_cancellation_accepted": false,
+        "name": "same_head_append_during_join",
+        "refused": true,
+        "resource_pressure_or_timeout_failure_accepted": false,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "error_type": "CodebaseVerificationCatalogError",
+        "expected_pre_cancellation_accepted": false,
+        "name": "same_head_rebuild_during_join",
+        "refused": true,
+        "resource_pressure_or_timeout_failure_accepted": false,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "error_type": "CodebaseInventoryEvidenceError",
+        "expected_pre_cancellation_accepted": false,
+        "name": "same_head_rebuild_during_preview",
+        "refused": true,
+        "resource_pressure_or_timeout_failure_accepted": false,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "error_type": "CodebaseInventoryEvidenceError",
+        "expected_pre_cancellation_accepted": false,
+        "name": "same_head_rebuild_after_closing_model_fence",
+        "refused": true,
+        "resource_pressure_or_timeout_failure_accepted": false,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "error_type": "StaleCodebaseError",
+        "expected_pre_cancellation_accepted": false,
+        "name": "source_change_after_terminal_native_page",
+        "refused": true,
+        "resource_pressure_or_timeout_failure_accepted": false,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "error_type": "CodebaseCatalogError",
+        "expected_pre_cancellation_accepted": false,
+        "name": "head_change_after_terminal_native_page",
+        "refused": true,
+        "resource_pressure_or_timeout_failure_accepted": false,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "error_type": "RegistryError",
+        "expected_pre_cancellation_accepted": false,
+        "name": "checkpoint_change_after_terminal_native_page",
+        "refused": true,
+        "resource_pressure_or_timeout_failure_accepted": false,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "error_type": "LeaseCancelledError",
+        "expected_pre_cancellation_accepted": true,
+        "name": "pre_cancelled_join",
+        "refused": true,
+        "resource_pressure_or_timeout_failure_accepted": false,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      }
+    ],
+    "removed_task_count": 0,
+    "result": {
+      "bytes": 7071436,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-evidence-join-qualification-20261003-04/result.json",
+      "sha256": "6c55977f2f774b54e16ae80a382b8553d564998b0e7e34b2569dfdbe253a0b1b"
+    }
+  },
+  "next_milestone": "Larger resumable captures and bounded operation-local query reuse, followed by separately qualified signed evidence admission and native worker integration.",
+  "profile": "fresh_fixed_8d_cpu_float64_structural_conditional_evidence_model_off_preview",
+  "remaining_gates": {
+    "384d_codebase_ir_qualified": false,
+    "automatic_recovery_qualified": false,
+    "cuda_qualified": false,
+    "fresh_process_owner_reopen_qualified": false,
+    "general_source_semantics_qualified": false,
+    "gradient_synchronization_qualified": false,
+    "learned_semantic_decoding_qualified": false,
+    "partial_tasks": [
+      "RPI-013",
+      "RPI-022",
+      "RPI-023",
+      "RPI-029",
+      "RPI-032"
+    ],
+    "production_default_activated": false,
+    "production_tasks_closed_by_this_milestone": 0,
+    "production_tasks_open": 32,
+    "runtime_requirements_residual": true,
+    "scan_execution_attested": false,
+    "signed_admission_qualified": false,
+    "source_execution_attested": false,
+    "worker_execution_qualified": false
+  },
+  "restart": {
+    "prior_archive_audit": {
+      "bytes": 42755,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-inference-reuse-restart-archive-audit-20261003-01.json",
+      "sha256": "639f5c55c229a043ec2706100c3a80b82961889960749cd3c061c4597da8224b"
+    },
+    "prior_optimization_latency_reduction_percent": 37.8,
+    "readiness": {
+      "bytes": 13665,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-inference-reuse-restart-readiness-20261003-01.json",
+      "sha256": "ff999cbe0162ec9b20115d7eb03dd1c27f48085103f2aa72d638f6341c983024"
+    },
+    "scope": "Earlier 8D CPU fixture comparison belongs to its retained source generation; two resource modules changed before this join. No current-generation throughput result inferred."
+  },
+  "reviewed_at_utc": "2026-10-03T01:34:18.438393+00:00",
+  "schema": "repository-proof-index-codebase-ir-inventory-evidence-join-review@1",
+  "source_endpoint_observation": {
+    "bytes": 38080,
+    "path": "artifacts/codebase_ir_terminal_bench/inventory-evidence-join-selected-ending-observation-20261003-04.json",
+    "sha256": "682850ea7b62087ce498430e4271f9e3f00bf155482ea1784f1517b43daa98ae"
+  },
+  "status": "bounded_staged_native_integration_qualified_production_acceptance_open",
+  "units": {
+    "distinct_focused_passing_cases": 424,
+    "historical_all_skipped_run": {
+      "cases": 57,
+      "counted_as_passing_execution": false,
+      "receipt": {
+        "bytes": 22146,
+        "path": "artifacts/codebase_ir_terminal_bench/inventory-evidence-context-unit-20261003-02.xml",
+        "sha256": "bee7dc06fc67ecbeceb69264dd0f3da1a1b3d4102bbc51964de6c52dae3f5381"
+      },
+      "skipped": 57
+    },
+    "new_boundary_cases": 204,
+    "suites": [
+      {
+        "cases": 205,
+        "evidence": "observed native Python pytest tool output after restart; no standalone receipt",
+        "passed": 205,
+        "recorded_seconds": 1.35,
+        "skipped": 0,
+        "suite": "existing_inventory_scan_replay_lineage_response"
+      },
+      {
+        "cases": 147,
+        "evidence": "observed native Python pytest tool output after final source freeze; no standalone receipt",
+        "passed": 147,
+        "recorded_seconds": 0.71,
+        "skipped": 0,
+        "suite": "datasets_inventory_evidence"
+      },
+      {
+        "cases": 57,
+        "fresh_seal_database": {
+          "bytes": 1323008,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-evidence-context-unit-20261003-03-seal.duckdb",
+          "sha256": "c56e7db3a68d47b5b19d4a619bda813aca54b2498b001247894f2260c86a62d9"
+        },
+        "mandatory_ast_sealing": true,
+        "passed": 57,
+        "receipt": {
+          "bytes": 10004,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-evidence-context-unit-20261003-03.xml",
+          "sha256": "7aa8073d9dff3b991b4d49c96178c433099bf0a2b8231b99b821553b7c6da6ca"
+        },
+        "recorded_seconds": 16.957,
+        "skipped": 0,
+        "suite": "supervisor_inventory_evidence_context"
+      },
+      {
+        "cases": 15,
+        "fresh_seal_database": {
+          "bytes": 1323008,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-evidence-join-launch-unit-controls-seal-20261003-02.duckdb",
+          "sha256": "9b5f8f0f53842195b5b94c4565e4a45b3049fb22172f799d178113d38e05e9cc"
+        },
+        "mandatory_ast_sealing": true,
+        "passed": 15,
+        "receipt": {
+          "bytes": 5109,
+          "path": "artifacts/codebase_ir_terminal_bench/inventory-evidence-join-launch-unit-controls-20261003-02.log",
+          "sha256": "54b533c179d8aac6add6f21a180acbb1711d60fe692ddb7ee76bfbd48e9d2779"
+        },
+        "recorded_seconds": 14.15,
+        "skipped": 0,
+        "suite": "native_harness_parent_launch_audit"
+      }
+    ]
+  }
+}

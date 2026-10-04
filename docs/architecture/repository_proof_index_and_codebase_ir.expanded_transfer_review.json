@@ -1,0 +1,529 @@
+{
+  "all_four_leases_released_and_drained": true,
+  "as_of_utc": "2026-10-04T15:51:31.861915+00:00",
+  "authority": {
+    "all_32_repository_proof_index_criteria": "OPEN",
+    "behavioral_satisfaction": false,
+    "completion": false,
+    "default_supervisor_activation": false,
+    "execution": false,
+    "exit_criteria": {
+      "RPI-001": "OPEN",
+      "RPI-002": "OPEN",
+      "RPI-003": "OPEN",
+      "RPI-004": "OPEN",
+      "RPI-005": "OPEN",
+      "RPI-006": "OPEN",
+      "RPI-007": "OPEN",
+      "RPI-008": "OPEN",
+      "RPI-009": "OPEN",
+      "RPI-010": "OPEN",
+      "RPI-011": "OPEN",
+      "RPI-012": "OPEN",
+      "RPI-013": "OPEN",
+      "RPI-014": "OPEN",
+      "RPI-015": "OPEN",
+      "RPI-016": "OPEN",
+      "RPI-017": "OPEN",
+      "RPI-018": "OPEN",
+      "RPI-019": "OPEN",
+      "RPI-020": "OPEN",
+      "RPI-021": "OPEN",
+      "RPI-022": "OPEN",
+      "RPI-023": "OPEN",
+      "RPI-024": "OPEN",
+      "RPI-025": "OPEN",
+      "RPI-026": "OPEN",
+      "RPI-027": "OPEN",
+      "RPI-028": "OPEN",
+      "RPI-029": "OPEN",
+      "RPI-030": "OPEN",
+      "RPI-031": "OPEN",
+      "RPI-032": "OPEN"
+    },
+    "formalization": false,
+    "general_convergence": false,
+    "mutation": false,
+    "official_score": null,
+    "omission": false,
+    "proof": false,
+    "semantic_alignment": false,
+    "source_semantics": false,
+    "whole_program": false
+  },
+  "complete_all_loaded_manual_or_fresh_child_import_census": false,
+  "corpus": {
+    "FEAL_RNG_candidate_included": true,
+    "FEAL_RNG_executed": false,
+    "blind_holdout": false,
+    "frozen_before_historical_fit": false,
+    "frozen_before_transfer_inference": true,
+    "functions": 375,
+    "global_pretraining_exposure": null,
+    "history_reference_growth_only": true,
+    "judgments": 22,
+    "native_split_guard_passed": true,
+    "new_public_input_allowlist": [
+      {
+        "captured": {
+          "bytes": 4365,
+          "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/public-inputs/batching/instruction.md",
+          "sha256": "0817374767533fbf51bb93345ee1bba266263c216c6cc55c096e71b4a1d37dfc"
+        },
+        "codebase_id": "batching",
+        "original": {
+          "bytes": 4365,
+          "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/llm-inference-batching-scheduler/instruction.md",
+          "sha256": "0817374767533fbf51bb93345ee1bba266263c216c6cc55c096e71b4a1d37dfc"
+        },
+        "relative_path": "instruction.md",
+        "role": "instruction",
+        "role_scope": "new_public_initial_only",
+        "task_id": "llm-inference-batching-scheduler"
+      },
+      {
+        "captured": {
+          "bytes": 4380,
+          "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/public-inputs/batching/environment/task_file/scripts/baseline_packer.py",
+          "sha256": "547d230d5e6d93197803480cb81cab0ec6ac63fcfa0a24b246f549523f216c4e"
+        },
+        "codebase_id": "batching",
+        "original": {
+          "bytes": 4380,
+          "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/llm-inference-batching-scheduler/environment/task_file/scripts/baseline_packer.py",
+          "sha256": "547d230d5e6d93197803480cb81cab0ec6ac63fcfa0a24b246f549523f216c4e"
+        },
+        "relative_path": "environment/task_file/scripts/baseline_packer.py",
+        "role": "code",
+        "role_scope": "new_public_initial_only",
+        "task_id": "llm-inference-batching-scheduler"
+      },
+      {
+        "captured": {
+          "bytes": 548,
+          "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/public-inputs/feal/instruction.md",
+          "sha256": "b4093780b283e5c9838997769fb7bca090e3f4cbbd2d7cb275ba60cdfd722572"
+        },
+        "codebase_id": "feal",
+        "original": {
+          "bytes": 548,
+          "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/feal-differential-cryptanalysis/instruction.md",
+          "sha256": "b4093780b283e5c9838997769fb7bca090e3f4cbbd2d7cb275ba60cdfd722572"
+        },
+        "relative_path": "instruction.md",
+        "role": "instruction",
+        "role_scope": "new_public_initial_only",
+        "task_id": "feal-differential-cryptanalysis"
+      },
+      {
+        "captured": {
+          "bytes": 1951,
+          "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/public-inputs/feal/environment/feal.py",
+          "sha256": "23cc077b9dce176a3aa3078681d1c8dff8c1b7959556c9457db57036d2885dfe"
+        },
+        "codebase_id": "feal",
+        "original": {
+          "bytes": 1951,
+          "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/feal-differential-cryptanalysis/environment/feal.py",
+          "sha256": "23cc077b9dce176a3aa3078681d1c8dff8c1b7959556c9457db57036d2885dfe"
+        },
+        "relative_path": "environment/feal.py",
+        "role": "code",
+        "role_scope": "new_public_initial_only",
+        "task_id": "feal-differential-cryptanalysis"
+      }
+    ],
+    "old_query_result_objects_unchanged": 5,
+    "old_sources_queries_banks_judgments_exact": true,
+    "old_training_pairs": 4,
+    "queries": 9,
+    "query_roles": {
+      "test": 4,
+      "train": 2,
+      "validation": 3
+    },
+    "source_files": 6,
+    "training_pairs_unchanged": true,
+    "whole_program_semantics": false,
+    "within_role_duplicate_groups": 13
+  },
+  "cost_scope": "Four measured producer outers, one failed; owned times nested; preparation/readers/docs/retention excluded.",
+  "currentness": "selected pinned admitted files before/after; not atomic whole checkout",
+  "evidence_pins": [
+    {
+      "bytes": 5300,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/source-manifest.json",
+      "sha256": "ca04796f7a59be297d2b437b9ee9fa485b0a136329a6fcf4e135bd4c4f884d50"
+    },
+    {
+      "bytes": 5321,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/source-manifest-02.json",
+      "sha256": "c0f5542be05526eefb684387af9d4357b0a903d2b9c759f6592fe46262be6f29"
+    },
+    {
+      "bytes": 12023,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/expanded_inputs.py",
+      "sha256": "89e26b2e8fd51446cc51fc3711858bbecfbe48fbd8bcd761b0b6a4e0d5083ae5"
+    },
+    {
+      "bytes": 19843,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/run_transfer_controls.py",
+      "sha256": "cf506c8415b7bb8025f9d950a382ddfb8a090ced7656aaa9cc95aedae32a606d"
+    },
+    {
+      "bytes": 19882,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/run_transfer_controls_02.py",
+      "sha256": "7548f4874d86597d118a6218a65c66fb1c4555eb49e69e58497043b79c38255e"
+    },
+    {
+      "bytes": 14823,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/preparation/input-pins.json",
+      "sha256": "9ab49799cffd90e9f59bafa8c233edb72f348f0c473e11dc3cc4e394497ea01e"
+    },
+    {
+      "bytes": 1108,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/preparation/producer-pins.json",
+      "sha256": "9a936cda0b7ead6779f28d4358e63857ed452e8b40634f3164cbc30b25c7ba2d"
+    },
+    {
+      "bytes": 1114,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/preparation/producer-pins-02.json",
+      "sha256": "bec07afbfe392edb364b993225809bc4a11f083638116c6a6068c68dc6ae284b"
+    },
+    {
+      "bytes": 12578,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/audit_transfer_evidence.py",
+      "sha256": "d35fdab37504b123e2e19aae1ab038b02bc7e9a1a43efd795ae14d45a40c5c6c"
+    },
+    {
+      "bytes": 4988,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/file-only-audit-01.json",
+      "sha256": "22db0c067bd7c41e50ef518956429ad73cbf6cf6c0a48ccdddadb94e1ff489a6"
+    },
+    {
+      "bytes": 665,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/evidence/freeze-01/frozen.json",
+      "sha256": "cbf9a22bbedb94291ab441f74ddb1ef7909d8c856aa674965321bef0c835b0f6"
+    },
+    {
+      "bytes": 7242392,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/evidence/actual-01/transfer-arguments.json",
+      "sha256": "63f19ab7e6682640c855ed98be1908194f48e41a84aa69c885ad4945a2e90873"
+    },
+    {
+      "bytes": 698711,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/evidence/actual-01/transfer-result.json",
+      "sha256": "0dfcd7292f91a7535de7926e2fb141afd3935f36cd6b48b31685d1b7020691b3"
+    },
+    {
+      "bytes": 7238278,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/evidence/actual-01/metadata-inputs.json",
+      "sha256": "35cbf203c8a47acd0e76bc9c2210fcec82a7c8f5cde21038014a3c876156b2ca"
+    },
+    {
+      "bytes": 17082,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/evidence/actual-01/metadata-readback.json",
+      "sha256": "d6d3d02076d9f7a767c22dac1af67900ada16319d912ccb8e41402dc066bf0a0"
+    },
+    {
+      "bytes": 39278,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/evidence/tests-01/tests.xml",
+      "sha256": "01e5e05985d7733e41f5ad9f91baac2f1150edd641d884231b3d5af8a6d1e568"
+    },
+    {
+      "bytes": 22542,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/evidence/tests-02/phases.json",
+      "sha256": "4cda2bbd7abffad54278b46e6bc50097432e4fddde8d530ae99d8cc76ecf3104"
+    },
+    {
+      "bytes": 5728,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/evidence/tests-02/tests.xml",
+      "sha256": "8b27861b67b4e89eaecfaca511dbf5fb79df87ec9bed3a26535f6d4ecfb8d448"
+    },
+    {
+      "bytes": 1076,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/evidence/tests-01-closed.json",
+      "sha256": "f3e48656d0bf6cfa48e2ad00e8a576955d8c2d7fad2b28366a6dd37e2828cfb6"
+    },
+    {
+      "bytes": 81266,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/evidence/tests-01/closed.json",
+      "sha256": "3589fa9501c3e7d4fc5f2a21409cb70e8ce2ef569c6b7085393cf02e20f189a2"
+    },
+    {
+      "bytes": 1084,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/evidence/tests-02-closed.json",
+      "sha256": "b342a6ad1be0c2169ff6eadcc38e440fe3c7507500e77c5ec9f3075f9d010fcb"
+    },
+    {
+      "bytes": 82009,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/evidence/tests-02/closed.json",
+      "sha256": "0251b16c0cf35598e69f838de326288b68991139a734cb40f898533a4418f347"
+    },
+    {
+      "bytes": 1086,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/evidence/freeze-01-closed.json",
+      "sha256": "a2d3313452a4f634d336494cb4df6bd1e95ae3c9af11c5fe746490618931e94b"
+    },
+    {
+      "bytes": 76620,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/evidence/freeze-01/closed.json",
+      "sha256": "72253b2dec68be0be98cb0da5d1bbce44b224715ea40f9b9c248452ac4e4d332"
+    },
+    {
+      "bytes": 1086,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/evidence/actual-01-closed.json",
+      "sha256": "ff64778907b474a5804a24255f55e560c9c4d30a99e97363900c799c13c0b17c"
+    },
+    {
+      "bytes": 82739,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/evidence/actual-01/closed.json",
+      "sha256": "ea4c99b7daa02c5ed0d1c3fa63d116f8c282365dc350504fdbe7daf8ed2ae9f2"
+    }
+  ],
+  "final_retention": {
+    "artifact_root": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01",
+    "final_closure": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/final-retention-01/verification/final-closure.json",
+    "status_as_of_document_write": "pending_separate_last_writer"
+  },
+  "frozen_publication": {
+    "corpus_sha256": "sha256:43da7b53f322e21b495d0352b6ca90378399ffe0fc49864e729a9edf2a8306c6",
+    "envelope": {
+      "bytes": 2248025,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/frozen-corpus/baf3ea631e06ff366768f489d67026d0caabd26a87d5561818db6d03b40eb508.json",
+      "sha256": "baf3ea631e06ff366768f489d67026d0caabd26a87d5561818db6d03b40eb508"
+    },
+    "published_at_monotonic_seconds": 146259.943372769,
+    "scope": "Development source/query/labels/splits/history closed and fsynced before later transfer inference; original head predates expansion, no refit or blind-test claim."
+  },
+  "full_session_measurements": {
+    "CPU_seconds": null,
+    "GPU_seconds": null,
+    "OS_process_count": null,
+    "memory_peak": null
+  },
+  "independent_reader": {
+    "elapsed_seconds": 0.31723007099935785,
+    "fit_calls": 0,
+    "native_SQL_calls": 0,
+    "product_imports": 0,
+    "prover_calls": 0
+  },
+  "metadata": {
+    "KG_scope": "syntactic containment and authored navigation judgments",
+    "SQL_statement_count": null,
+    "contracts": "unknown_empty",
+    "families": 13,
+    "family_counts": {
+      "ast": 375,
+      "contracts": 0,
+      "coverage_status": 1,
+      "judgments": 22,
+      "kg": 397,
+      "queries": 9,
+      "ranker_checkpoint": 1,
+      "ranker_training": 1,
+      "ranker_transfer": 1,
+      "ranking": 2984,
+      "sources": 6,
+      "split_history": 2,
+      "vectors": 375
+    },
+    "fresh_process_readback": {
+      "lake_snapshot_digest": "sha256:24bd5005d88348b131dbfb522851a64d75b1f3f716e22e695b47aef47b753675",
+      "manifest_sha256": "sha256:26ba2b872f6bcce6240895ca9f80280f90bf5a422c8c5511d53f1bd6256abe3d",
+      "method": "new_python_process_native_duckdb_and_ducklake_readback",
+      "row_count": 4174,
+      "row_root_sha256": "sha256:cc7655826d4b8cff777e22f4184d1d91ed21295bfcc76c84a509433ee24bd8e7",
+      "verified": true
+    },
+    "lake_packets": 67,
+    "lake_snapshot_digest": "sha256:24bd5005d88348b131dbfb522851a64d75b1f3f716e22e695b47aef47b753675",
+    "manifest_sha256": "sha256:26ba2b872f6bcce6240895ca9f80280f90bf5a422c8c5511d53f1bd6256abe3d",
+    "native_hydration_and_fresh_restart_passed": true,
+    "native_hydration_attempts_here": 1,
+    "native_runtime": {
+      "duckdb": "1.5.5",
+      "extensions": {
+        "ducklake": "d0b57c8e261b89a1ae367c7224f0857cfde72ab6cf2609f188e0de9b897b1088",
+        "httpfs": "eba6e263e395a83966090f1f11ade63630b1b21422f0f2813858d179d42ea1e9",
+        "quack": "41b2b9292bfb860c5ca8c5f818f9dd7a2c6bc24f9c750cffbc3169286fe59f08"
+      },
+      "platform": "linux_arm64"
+    },
+    "production_activated": false,
+    "row_root_sha256": "sha256:cc7655826d4b8cff777e22f4184d1d91ed21295bfcc76c84a509433ee24bd8e7",
+    "rows": 4174,
+    "typed_vector_columns": false,
+    "vector_kind": "native_44_dimensional_AST_features",
+    "whole_repository_or_all_metadata_coverage": false
+  },
+  "next_work": [
+    "Ground original mandatory requirements against supported native AST/contracts/formulas",
+    "Qualify source-to-logic projections, supported semantics and Lean checker/compiler bridges",
+    "Validate proof-cache dependency invalidation and independent optimizer/arithmetic obligations",
+    "Predeclare new training/evaluation corpus before any adaptation; preserve mixed transfer evidence",
+    "Review complete supervisor evidence coverage and explicit analysis-consumer profile migration"
+  ],
+  "old_training_identity": {
+    "checkpoint_sha256": "ab63f45bb3b6bc54038cc4ea4ff44b14c17a6f9f8b0426441a15933772227046",
+    "ranker_result": {
+      "bytes": 640834,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-intent-corpus-head-20261004-01/evidence/actual-02/ranker-result.json",
+      "sha256": "6a6b7eaa20bf1a82a958ff6c9a6ab6f64c613fb880569a76b625de156284d60a"
+    },
+    "training_receipt_sha256": "89e5b20348bb6439a71d1aec72c962c4775a0b5fd1f6716243102f41ac7384e6"
+  },
+  "public": {
+    "PlanCreate_calls": 0,
+    "default_supervisor_integration": false,
+    "existing_analysis_consumer_accepts_transfer_profile": false,
+    "new_Lean_compilations": 0,
+    "new_autoencoder_fit_calls": 0,
+    "new_optimizer_steps": 0,
+    "new_prover_calls": 0,
+    "new_public_fit_calls": 0,
+    "planning_handoff": "abstained",
+    "unknown_residuals_per_query": 2,
+    "verified_proof_cache_hits": 0
+  },
+  "qualification_document": {
+    "bytes": 8266,
+    "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/agent_supervisor/terminal_codebase_ir_expanded_transfer_qualification.md",
+    "sha256": "26b710006f295ba2ece99e2e695f26ef73d702f002a3e9fe40e80a882c194c0e"
+  },
+  "qualified_scope": "Opt-in frozen development transfer of the unchanged historical intent relevance head; metadata hydration/readback only, symbolic planning abstains.",
+  "ranking": {
+    "feature_score_pairs_independently_replayed": 746,
+    "finding": "batching_improves_FEAL_worsens_no_generalized_gain",
+    "full_ranking_rows": 2984,
+    "mean_reciprocal_first_positive": {
+      "lexical": 0.6875,
+      "trained": 0.55
+    },
+    "new_query_count": 4,
+    "new_query_results": [
+      {
+        "candidate_count": 6,
+        "first_positive_ranks": {
+          "lexical": 2,
+          "model_off": null,
+          "reverse": 6,
+          "trained": 1,
+          "zero": 6
+        },
+        "new_query": true,
+        "query_id": "batching-build-plan",
+        "task_role": "validation"
+      },
+      {
+        "candidate_count": 6,
+        "first_positive_ranks": {
+          "lexical": 4,
+          "model_off": null,
+          "reverse": 5,
+          "trained": 2,
+          "zero": 3
+        },
+        "new_query": true,
+        "query_id": "batching-representative",
+        "task_role": "validation"
+      },
+      {
+        "candidate_count": 7,
+        "first_positive_ranks": {
+          "lexical": 1,
+          "model_off": null,
+          "reverse": 6,
+          "trained": 2,
+          "zero": 1
+        },
+        "new_query": true,
+        "query_id": "feal-encryption",
+        "task_role": "test"
+      },
+      {
+        "candidate_count": 7,
+        "first_positive_ranks": {
+          "lexical": 1,
+          "model_off": null,
+          "reverse": 3,
+          "trained": 5,
+          "zero": 5
+        },
+        "new_query": true,
+        "query_id": "feal-round-transform",
+        "task_role": "test"
+      }
+    ],
+    "post_score_refit_relabel_or_repartition": false
+  },
+  "schema": "terminal-codebase-expanded-transfer-qualification-review@1",
+  "selected_costs": [
+    {
+      "mode": "tests-01",
+      "native_metadata_hydration_attempts": 0,
+      "outer_seconds": 1.9748108130006585,
+      "owned_seconds_nested": 1.7760082540044095,
+      "returncode": 1,
+      "selected_parent_imports": 91,
+      "unit_fits": [
+        {
+          "epochs": 4,
+          "scope": "synthetic_unit_fixture",
+          "status": "completed"
+        }
+      ]
+    },
+    {
+      "mode": "tests-02",
+      "native_metadata_hydration_attempts": 0,
+      "outer_seconds": 4.174669894011458,
+      "owned_seconds_nested": 4.008754753973335,
+      "returncode": 0,
+      "selected_parent_imports": 91,
+      "unit_fits": [
+        {
+          "epochs": 4,
+          "scope": "synthetic_unit_fixture",
+          "status": "completed"
+        }
+      ]
+    },
+    {
+      "mode": "freeze-01",
+      "native_metadata_hydration_attempts": 0,
+      "outer_seconds": 1.6207145399821457,
+      "owned_seconds_nested": 1.4799569449969567,
+      "returncode": 0,
+      "selected_parent_imports": 85,
+      "unit_fits": []
+    },
+    {
+      "mode": "actual-01",
+      "native_metadata_hydration_attempts": 1,
+      "outer_seconds": 23.770827291999012,
+      "owned_seconds_nested": 23.516790227993624,
+      "returncode": 0,
+      "selected_parent_imports": 92,
+      "unit_fits": []
+    }
+  ],
+  "selected_parent_imports_before_after_equal": true,
+  "selected_producer_outer_seconds": 31.541022538993275,
+  "source_generation": {
+    "bytes": 5321,
+    "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-expanded-transfer-20261004-01/source-manifest-02.json",
+    "sha256": "c0f5542be05526eefb684387af9d4357b0a903d2b9c759f6592fe46262be6f29"
+  },
+  "tests": {
+    "completed_synthetic_fits": 2,
+    "first_run_failed": 16,
+    "first_run_passed": 13,
+    "passed_final": 29,
+    "passed_final_phases": 87,
+    "production_fix": "explicit bool for added-query set before strict-True guard",
+    "tests_changed_between_attempts": false,
+    "unit_epochs_total": 8
+  }
+}

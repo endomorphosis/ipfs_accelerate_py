@@ -37,6 +37,8 @@ Recommended initial sequence: TIP-001, TIP-002, TIP-004, TIP-005, TIP-006. TIP-0
 
 The local change set includes the ledger, provider coverage envelope, versioned admission, complete semantic input identities, reviewed operation bindings through the existing symbolic planner, worker requirement context and read-only residual repair nominations. Selection, coverage and worker inclusion receipts are inspectable and replayed. Continue with held-out source interpretation evaluation, generic public-input task contracts and independently admitted successor/repair execution before deployed strategy comparisons.
 
+The [repository proof index and codebase IR backlog](repository_proof_index_and_codebase_ir.todo.md) expands the open software-effect grounding in TIP-003, evidence and reproof in TIP-009, and repository preparation in TIP-010. It adds complete source snapshots, optional immutable repository model generations, checked formal properties and strict intent-to-code planning materials. Those proposed tasks do not mark these TIP requirements complete.
+
 Candidate module placement, subject to the package ownership map:
 
 - Datasets `logic/intent_ir/formalize/requirements.py` for ledger construction and validation over existing reports.

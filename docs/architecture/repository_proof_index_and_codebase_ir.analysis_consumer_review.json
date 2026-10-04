@@ -1,0 +1,287 @@
+{
+  "as_of_utc": "2026-10-04T13:18:20.777546+00:00",
+  "authority": {
+    "all_32_repository_proof_index_criteria": "OPEN",
+    "behavioral_satisfaction": false,
+    "completion": false,
+    "default_supervisor_activation": false,
+    "execution": false,
+    "exit_criteria": {
+      "RPI-001": "OPEN",
+      "RPI-002": "OPEN",
+      "RPI-003": "OPEN",
+      "RPI-004": "OPEN",
+      "RPI-005": "OPEN",
+      "RPI-006": "OPEN",
+      "RPI-007": "OPEN",
+      "RPI-008": "OPEN",
+      "RPI-009": "OPEN",
+      "RPI-010": "OPEN",
+      "RPI-011": "OPEN",
+      "RPI-012": "OPEN",
+      "RPI-013": "OPEN",
+      "RPI-014": "OPEN",
+      "RPI-015": "OPEN",
+      "RPI-016": "OPEN",
+      "RPI-017": "OPEN",
+      "RPI-018": "OPEN",
+      "RPI-019": "OPEN",
+      "RPI-020": "OPEN",
+      "RPI-021": "OPEN",
+      "RPI-022": "OPEN",
+      "RPI-023": "OPEN",
+      "RPI-024": "OPEN",
+      "RPI-025": "OPEN",
+      "RPI-026": "OPEN",
+      "RPI-027": "OPEN",
+      "RPI-028": "OPEN",
+      "RPI-029": "OPEN",
+      "RPI-030": "OPEN",
+      "RPI-031": "OPEN",
+      "RPI-032": "OPEN"
+    },
+    "formalization": false,
+    "general_convergence": false,
+    "mutation": false,
+    "official_score": null,
+    "omission": false,
+    "proof": false,
+    "semantic_alignment": false,
+    "source_semantics": false,
+    "whole_program": false
+  },
+  "currentness": "declared admitted files before and after, not atomic whole checkout",
+  "evidence_pins": [
+    {
+      "bytes": 5020,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-analysis-consumer-20261004-01/source-manifest-02.json",
+      "sha256": "25d4b82e0074009edebe07daf405d3c4d0a182d9f55c28c5e8378f4d6902e1f5"
+    },
+    {
+      "bytes": 18574,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-analysis-consumer-20261004-01/preparation/request.json",
+      "sha256": "061b1326792b176164e1f00dd3e10f4570760a3352026888635325e047e5d332"
+    },
+    {
+      "bytes": 20222,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-analysis-consumer-20261004-01/run_analysis_controls_03.py",
+      "sha256": "025ea471e2136a1271164dd597c0ed56163d4ff6216ec45c67de280768dd558d"
+    },
+    {
+      "bytes": 2169,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-analysis-consumer-20261004-01/file-only-audit-01.json",
+      "sha256": "0b3b529312a8ef1e22782b115f147de3c6a41c89ff544e23209d42bf0e242d45"
+    },
+    {
+      "bytes": 2533,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-analysis-consumer-20261004-01/file-only-audit-02.json",
+      "sha256": "94e2fc0dccc03f7971cd59d495621f117ef01a583a9b286ed09bf9bff960ff6b"
+    },
+    {
+      "bytes": 11790,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-analysis-consumer-20261004-01/audit_analysis_evidence_02.py",
+      "sha256": "1524fc768dde95e238c44d8d739cbf0443a1d4151ea76a185e6f544486b36a49"
+    },
+    {
+      "bytes": 7346,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-analysis-consumer-20261004-01/evidence/actual-02/inspection-summary.json",
+      "sha256": "8f4b36f71234ace0b77ed728c3b492e32c9493aa170f3eb85d734277aea90d22"
+    },
+    {
+      "bytes": 22155,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-analysis-consumer-20261004-01/evidence/tests-04/phases.json",
+      "sha256": "1b2dc41ba388e72c9c0a7f9e24a8585a2f18c31854d926a5ea9a5dc14ce82a21"
+    },
+    {
+      "bytes": 5452,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-analysis-consumer-20261004-01/evidence/tests-04/tests.xml",
+      "sha256": "5ebb381c8b0c367d286727e81538cd9b4a337972939864181cab9f4f38270333"
+    },
+    {
+      "bytes": 845,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-analysis-consumer-20261004-01/evidence/tests-01-closed.json",
+      "sha256": "29bd261c4a513f5218ebfdda4e46838a8eaa39ee50c2aa21e0fc9419c6c3cf38"
+    },
+    {
+      "bytes": 17422,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-analysis-consumer-20261004-01/evidence/tests-01/closed.json",
+      "sha256": "2533de3aba585ee6b2fb96ede8d876822f509c245f8db31e3bffd7ef1caf138a"
+    },
+    {
+      "bytes": 845,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-analysis-consumer-20261004-01/evidence/tests-02-closed.json",
+      "sha256": "8f32fee53bc3d5aab61b9f2c168e29de6342578ea6c19e1a7ddd31b0fb8b8ea2"
+    },
+    {
+      "bytes": 80045,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-analysis-consumer-20261004-01/evidence/tests-02/closed.json",
+      "sha256": "d63c7377e55576054b86e1e3c500f9e48e6192aa95b96a45f62ff845f1ef7502"
+    },
+    {
+      "bytes": 852,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-analysis-consumer-20261004-01/evidence/tests-03-closed.json",
+      "sha256": "b0f0bb7705c561a8f59c93f28e78a76615d9fc0692aad74f4011a8419deafe27"
+    },
+    {
+      "bytes": 16938,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-analysis-consumer-20261004-01/evidence/tests-03/closed.json",
+      "sha256": "9df929ab61c6333724df2ecb0c4e7cbb5866c16e59920843affe5abc20b7815d"
+    },
+    {
+      "bytes": 851,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-analysis-consumer-20261004-01/evidence/tests-04-closed.json",
+      "sha256": "e5b6d749768b613403fe125dc0aef78ebfd36a5b69590cf0695646bb622e0d1e"
+    },
+    {
+      "bytes": 80784,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-analysis-consumer-20261004-01/evidence/tests-04/closed.json",
+      "sha256": "320123beeb65ec11451a758d85c9b74d1717111a7ee521f34c1ae8795d77aff7"
+    },
+    {
+      "bytes": 852,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-analysis-consumer-20261004-01/evidence/actual-01-closed.json",
+      "sha256": "4c24d242d94dcc35b0f889f1bfd5a3f775f1d8cfd80a22466eeb0d8043ad8e7e"
+    },
+    {
+      "bytes": 17436,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-analysis-consumer-20261004-01/evidence/actual-01/closed.json",
+      "sha256": "108f61b151cdd62cbe04c1b2048f48fe69060a797bfb758771f3b05135bedb38"
+    },
+    {
+      "bytes": 852,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-analysis-consumer-20261004-01/evidence/actual-02-closed.json",
+      "sha256": "216af7ebdc61750c82e4fc44700702c75aabe5b8a87b1c444bd1f481540e2ddb"
+    },
+    {
+      "bytes": 78202,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-analysis-consumer-20261004-01/evidence/actual-02/closed.json",
+      "sha256": "5236d1ec54eb863e809cdb01f2e3b772b6ca1ecbed1fa7b3d60a373d329b9ed4"
+    }
+  ],
+  "final_retention": {
+    "artifact_root": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-analysis-consumer-20261004-01",
+    "final_closure": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-analysis-consumer-20261004-01/final-retention-01/verification/final-closure.json",
+    "status_as_of_document_write": "pending_separate_last_writer"
+  },
+  "full_session_measurements": {
+    "CPU_seconds": null,
+    "GPU_seconds": null,
+    "OS_process_count": null,
+    "memory_peak": null
+  },
+  "metadata": {
+    "families": 12,
+    "historical_native_readback_association": true,
+    "manifest_sha256": "sha256:13a8246837d0a21b4a4b2a85e82b8d9f28cd611eb8639a04659b296e23c2cbd3",
+    "native_SQL_calls_here": 0,
+    "native_stores_reopened_here": false,
+    "row_root_sha256": "sha256:cf8f58ba7d9fdd036b5f2c4441ca5de1a2c74b919a60839ced6599e544627d5f",
+    "rows": 4000,
+    "whole_repository_coverage": false
+  },
+  "next_work": [
+    "Freeze substantive development banks and independent judgments before any fit",
+    "Resolve full original prompt into reviewed mandatory native requirements",
+    "Review canonical query sorting/eight-query evidence prefix without omission",
+    "Qualify logic projections/source semantics/Lean bridges and cache invalidation separately",
+    "Formalize optimizer and arithmetic assumptions independently of finite binary64 loss descent"
+  ],
+  "public": {
+    "PlanCreate_calls": 0,
+    "all_planning_handoffs": "abstained",
+    "consumer_calls": 10,
+    "new_public_fit_calls": 0,
+    "query_count": 5,
+    "source_span_visits": 2510,
+    "unique_admitted_functions": 362
+  },
+  "qualification_document": {
+    "bytes": 6845,
+    "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/agent_supervisor/terminal_codebase_ir_analysis_consumer_qualification.md",
+    "sha256": "8c77e45d2130a031bed22ac9c9bc1fc3db286e6e8e622be9d2e0a0426f574379"
+  },
+  "qualified_scope": "Complete opt-in source-span inspection order with original IntentIR preserved; symbolic planning abstains.",
+  "schema": "terminal-codebase-analysis-consumer-qualification-review@1",
+  "selected_costs": [
+    {
+      "mode": "tests-01",
+      "outer_seconds": 30.281721107981866,
+      "owned_seconds_nested": 30.183686210977612,
+      "returncode": 1,
+      "selected_parent_imports": 10,
+      "unit_fits": []
+    },
+    {
+      "mode": "tests-02",
+      "outer_seconds": 1.8724515069916379,
+      "owned_seconds_nested": 1.720810419996269,
+      "returncode": 1,
+      "selected_parent_imports": 90,
+      "unit_fits": [
+        {
+          "epochs": 4,
+          "scope": "synthetic_unit_fixture",
+          "status": "completed"
+        }
+      ]
+    },
+    {
+      "mode": "tests-03",
+      "outer_seconds": 0.46847474001697265,
+      "owned_seconds_nested": 0.31272159502259456,
+      "returncode": 1,
+      "selected_parent_imports": 13,
+      "unit_fits": []
+    },
+    {
+      "mode": "tests-04",
+      "outer_seconds": 11.892203465977218,
+      "owned_seconds_nested": 11.749122127977898,
+      "returncode": 0,
+      "selected_parent_imports": 90,
+      "unit_fits": [
+        {
+          "epochs": 4,
+          "scope": "synthetic_unit_fixture",
+          "status": "completed"
+        }
+      ]
+    },
+    {
+      "mode": "actual-01",
+      "outer_seconds": 30.291131757985568,
+      "owned_seconds_nested": 30.161478043999523,
+      "returncode": 1,
+      "selected_parent_imports": 10,
+      "unit_fits": []
+    },
+    {
+      "mode": "actual-02",
+      "outer_seconds": 27.726427323999815,
+      "owned_seconds_nested": 27.557909613009542,
+      "returncode": 0,
+      "selected_parent_imports": 88,
+      "unit_fits": []
+    }
+  ],
+  "selected_parent_imports": {
+    "all_loaded_manual_loader_or_subprocess_census": false,
+    "all_matches": true,
+    "passing_public_consumer": 88,
+    "passing_tests": 90
+  },
+  "selected_producer_outer_seconds": 102.53240990295308,
+  "source_generation": {
+    "bytes": 5020,
+    "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-analysis-consumer-20261004-01/source-manifest-02.json",
+    "sha256": "25d4b82e0074009edebe07daf405d3c4d0a182d9f55c28c5e8378f4d6902e1f5"
+  },
+  "tests": {
+    "completed_synthetic_fits": 2,
+    "earlier_collection_refusal": "old_capsule_path_import_guard",
+    "earlier_fixture_failure": "30pass_1fail_original_current_alias",
+    "final_passed_phases": 93,
+    "passed_final": 31,
+    "unit_epochs_total": 8
+  }
+}

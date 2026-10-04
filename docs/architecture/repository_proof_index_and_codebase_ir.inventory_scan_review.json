@@ -1,0 +1,758 @@
+{
+  "attempt_02_explanation": "Native changed-metadata rejection was correct; harness omitted identity in its expected message and stopped before later controls. Receipt remains failed.",
+  "attempts": [
+    {
+      "actual_setup_epochs": 3,
+      "bytes": 15369,
+      "error": null,
+      "error_type": null,
+      "generation_scope": "historical_generation_or_harness",
+      "passed_refusal_controls": 10,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-scan-qualification-20261002-01/result.json",
+      "qualified": true,
+      "recorded_seconds": 44.40199691709131,
+      "sha256": "74b1ab3e673bb1b6bbabe689e5fde8fa12ae9ba0b0f700a4e6e7dfe031f7d2bb"
+    },
+    {
+      "actual_setup_epochs": 3,
+      "bytes": 14079,
+      "error": "changed_registry_candidate_metadata failed for an unrelated reason: RuntimeVersionError: registry version content identity differs",
+      "error_type": "AssertionError",
+      "generation_scope": "historical_generation_or_harness",
+      "passed_refusal_controls": 7,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-scan-qualification-20261002-02/result.json",
+      "qualified": false,
+      "recorded_seconds": 29.303138528950512,
+      "sha256": "2cf0df82ddaa0d7ef2682a6a5f53f2c2e54a295c325a503a381de44c9377a71a"
+    },
+    {
+      "actual_setup_epochs": 3,
+      "bytes": 27964,
+      "error": null,
+      "error_type": null,
+      "generation_scope": "historical_generation_or_harness",
+      "passed_refusal_controls": 13,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-scan-qualification-20261002-03/result.json",
+      "qualified": true,
+      "recorded_seconds": 59.403018875047565,
+      "sha256": "c354c66a2e0e5c0d4697ea997fb8d9fca0a088a518d8bd82f9a0de72ac7e3a52"
+    },
+    {
+      "actual_setup_epochs": 3,
+      "bytes": 27968,
+      "error": null,
+      "error_type": null,
+      "generation_scope": "current_strict_authority_record_selected_producers",
+      "passed_refusal_controls": 13,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-scan-qualification-20261002-04/result.json",
+      "qualified": true,
+      "recorded_seconds": 59.3474078590516,
+      "sha256": "00a52f57d708bf57cade1f8a81844b2932e1ac4985eef233646935b6e0767a7e"
+    }
+  ],
+  "date": "2026-10-02",
+  "documentation_validation": {
+    "local_links_checked": 317,
+    "new_increment_document_links_resolved": true,
+    "python_files_compiled": 5,
+    "resolved": 317,
+    "scope": "Selected source/receipt pins and current shared documentation links; independent concurrent additions retained.",
+    "selected_source_copy_and_receipt_pin_checks": 62,
+    "unresolved_existing_concurrent_references": [],
+    "whitespace_files_checked": 10
+  },
+  "historical_native_03_read_only_audit": {
+    "bounded_regular_reads": 169,
+    "original_and_retained_sources_matching_at_review": 21,
+    "reported_structured_string_key_checks": 8345,
+    "reported_substantive_assertions": 881,
+    "reported_total_checks": 9226,
+    "result_sha256": "c354c66a2e0e5c0d4697ea997fb8d9fca0a088a518d8bd82f9a0de72ac7e3a52",
+    "review_timing": "Before strict boolean constructor and regression test edit; does not assert current original files match historical generation."
+  },
+  "implementation": {
+    "additive": true,
+    "codec": "canonical-finite-native-json/raw-cidv1",
+    "default_optimized": true,
+    "execution_attestation": false,
+    "existing_cohort_api_and_checkpoint_bound_producers_edited": false,
+    "input_scope": "complete_admitted_inventory_of_exact_current_head_model",
+    "opt_out": "optimized=False",
+    "selected_original_and_copy_files_unchanged": true,
+    "selected_source_closure": [
+      {
+        "bytes": 34159,
+        "copy": "producers/ipfs_datasets_py.logic.software_contracts.codebase_inventory_scan.py",
+        "name": "ipfs_datasets_py.logic.software_contracts.codebase_inventory_scan",
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_scan.py",
+        "sha256": "962ef6dd554d4f3504964a34b965d3e455e2a9dcca926b108aae512945ee632f"
+      },
+      {
+        "bytes": 32298,
+        "copy": "producers/ipfs_datasets_py.logic.software_contracts.codebase_inventory_targets.py",
+        "name": "ipfs_datasets_py.logic.software_contracts.codebase_inventory_targets",
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_inventory_targets.py",
+        "sha256": "a31a7d974d040ab5820bb8b53f2dbb88ee8cbdc39765132be128bc66381ae060"
+      },
+      {
+        "bytes": 19064,
+        "copy": "producers/ipfs_datasets_py.optimizers.logic_theorem_optimizer.codebase_inventory_feature_worker.py",
+        "name": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.codebase_inventory_feature_worker",
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_inventory_feature_worker.py",
+        "sha256": "1209463d13b33977a762b8c742eda970437ece16954cf83c788831e57a35fcbf"
+      },
+      {
+        "bytes": 47987,
+        "copy": "producers/ipfs_datasets_py.logic.software_contracts.codebase_source_training.py",
+        "name": "ipfs_datasets_py.logic.software_contracts.codebase_source_training",
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_training.py",
+        "sha256": "aea5fa8803ae6b6dde7c4e71b81f68a7f95257b3a5d76cea693ee13e66710aa0"
+      },
+      {
+        "bytes": 29578,
+        "copy": "producers/ipfs_datasets_py.logic.software_contracts.codebase_ir_targets.py",
+        "name": "ipfs_datasets_py.logic.software_contracts.codebase_ir_targets",
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir_targets.py",
+        "sha256": "88d619efdc83f8e207b13b05f879c956655a7b5825f5647b46457ca92539c3cf"
+      },
+      {
+        "bytes": 58156,
+        "copy": "producers/ipfs_datasets_py.optimizers.logic_theorem_optimizer.autoencoder_runtime_registry.py",
+        "name": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.autoencoder_runtime_registry",
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_runtime_registry.py",
+        "sha256": "ca31983a5f514c7f5cf8b1b9250ef92e1beb13c0a2305381aac575931e79b4ac"
+      },
+      {
+        "bytes": 32125,
+        "copy": "producers/ipfs_datasets_py.optimizers.logic_theorem_optimizer.autoencoder_projection_features.py",
+        "name": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.autoencoder_projection_features",
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_projection_features.py",
+        "sha256": "0d93a2e56d0b46cff34f15c4792042bca33f47af00da80e21fa501ddf442de06"
+      },
+      {
+        "bytes": 5967,
+        "copy": "producers/ipfs_datasets_py.optimizers.logic_theorem_optimizer.codebase_feature_worker.py",
+        "name": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.codebase_feature_worker",
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/codebase_feature_worker.py",
+        "sha256": "91174cb51a0832e4cd691e56f94c0d6b34af1f06e6afec2c0d780d58fa3196db"
+      },
+      {
+        "bytes": 69046,
+        "copy": "producers/ipfs_datasets_py.optimizers.logic_theorem_optimizer.modal_autoencoder_cuda.py",
+        "name": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.modal_autoencoder_cuda",
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/modal_autoencoder_cuda.py",
+        "sha256": "954bcdee38c8f55f0d9d57045b9f2648aac7efcdf105b3655f410dea1249f2e1"
+      },
+      {
+        "bytes": 28715,
+        "copy": "producers/ipfs_datasets_py.logic.software_contracts.codebase_ir.py",
+        "name": "ipfs_datasets_py.logic.software_contracts.codebase_ir",
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+        "sha256": "0fc2945f5c42eb2cdf068fab23885560dd8add30c3d4e751f3862f02fce72ba4"
+      },
+      {
+        "bytes": 57876,
+        "copy": "producers/ipfs_datasets_py.logic.software_contracts.cache.py",
+        "name": "ipfs_datasets_py.logic.software_contracts.cache",
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/cache.py",
+        "sha256": "d708bb536860334a43a97244652765bf926d949286207cc25ff68788bf85751f"
+      },
+      {
+        "bytes": 21152,
+        "copy": "producers/ipfs_datasets_py.logic.software_contracts.content.py",
+        "name": "ipfs_datasets_py.logic.software_contracts.content",
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/content.py",
+        "sha256": "a7036a66ec6b476a78cb3e9a2384eaf9dca72cb8c7cf57ed0b25cd3b592720c9"
+      },
+      {
+        "bytes": 94154,
+        "copy": "producers/ipfs_datasets_py.logic.software_contracts.duckdb_ast_store.py",
+        "name": "ipfs_datasets_py.logic.software_contracts.duckdb_ast_store",
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py",
+        "sha256": "34f728f42076b66c564eef64edfa1f9ee7039ae29148ab68f75679dcddcc42c3"
+      },
+      {
+        "bytes": 29575,
+        "copy": "producers/ipfs_datasets_py.duckdb_control.codebase_catalog.py",
+        "name": "ipfs_datasets_py.duckdb_control.codebase_catalog",
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/duckdb_control/codebase_catalog.py",
+        "sha256": "e7c85582d965a1e72eb97795e711b77856daf3767cde02f4152127a1fa876140"
+      },
+      {
+        "bytes": 51708,
+        "copy": "producers/ipfs_datasets_py.duckdb_control.autoencoder_registry.py",
+        "name": "ipfs_datasets_py.duckdb_control.autoencoder_registry",
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/duckdb_control/autoencoder_registry.py",
+        "sha256": "0333ce963cf85f2843e0662db431e0554f0c449be20387f0badd909bc5d7840f"
+      },
+      {
+        "bytes": 3454,
+        "copy": "producers/ipfs_datasets_py.logic.software_contracts.codebase_resources.py",
+        "name": "ipfs_datasets_py.logic.software_contracts.codebase_resources",
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_resources.py",
+        "sha256": "207f5b168f0cacf2ed6356c622a87e2bc8531c9a252c79de2c19ce5bca710700"
+      },
+      {
+        "bytes": 87518,
+        "copy": "producers/ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.py",
+        "name": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler",
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+        "sha256": "00257f921b48bc78c6971378ff2e688a2cf5b6ae1330965f85627bbbfb23968d"
+      },
+      {
+        "bytes": 8008,
+        "copy": "producers/ipfs_datasets_py.optimizers.logic_theorem_optimizer.proof_resource_safety.py",
+        "name": "ipfs_datasets_py.optimizers.logic_theorem_optimizer.proof_resource_safety",
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py",
+        "sha256": "3cc2de908a6d24708f81818932415694c6866878c9dae670dea49dde547f5e48"
+      },
+      {
+        "bytes": 68367,
+        "copy": "producers/ipfs_datasets_py.logic.backends.process.py",
+        "name": "ipfs_datasets_py.logic.backends.process",
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/backends/process.py",
+        "sha256": "9035ba1982cf5fbd0db40ec994a3829902d9f4a25cc7aeb0c0ae2705f233cbf5"
+      },
+      {
+        "bytes": 36166,
+        "copy": "producers/qualification_harness.py",
+        "name": "qualification_harness",
+        "path": "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/qualify_codebase_inventory_scan.py",
+        "sha256": "d3f2ed54b99ab2d62d0892576db2375f17eebafccb2eb1ddda5a6691f128fd4a"
+      },
+      {
+        "bytes": 8909,
+        "copy": "producers/qualification_unit_controls.py",
+        "name": "qualification_unit_controls",
+        "path": "/home/barberb/lift_coding/external/ipfs_datasets/tests/unit/logic/software_contracts/test_codebase_inventory_scan.py",
+        "sha256": "47400544711e3d670c9c64e54a2aa409e6e619d3020d95e73cf953769033a392"
+      }
+    ],
+    "source_closure_atomic": false,
+    "typed_record_authority": "Exact boolean False required; numeric 0 refused by reproduced regression control."
+  },
+  "independent_read_only_audit": {
+    "artifact": {
+      "bytes": 17958,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-scan-readonly-audit-20261002-04.json",
+      "sha256": "d84f16e65d78f2325218e6e5b9987cf9218d8e4eb5bd0b056a36593863a3beee"
+    },
+    "bounded_regular_file_reads": 214,
+    "current_and_retained_selected_files": 21,
+    "execution_attestation": false,
+    "fitting": 0,
+    "inference": 0,
+    "owner_or_native_API_opens": 0,
+    "passed": true,
+    "primary_archive_mutations": 0,
+    "scope": "Read-only integrity and finite agreement, no proof/current-authority grant.",
+    "script": {
+      "bytes": 19958,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-scan-readonly-audit-20261002-04.py",
+      "sha256": "e983a678309debb913470da28e3f42d0599cc969edcddfe3cc077f1fb7bde5fa"
+    },
+    "structured_string_key_checks": 8345,
+    "substantive_assertions": 996,
+    "total_checks": 9341
+  },
+  "native": {
+    "actual_setup_epochs": 3,
+    "ancestry_version_ids": [
+      "sha256:e0c3beed97c1a146a1c1cd7d243e9e9615b06f27a072f616c27f76af87be2a36",
+      "sha256:c33f3d568c19424bc2640e3cd8c4e4f36e952921f0f8b01aac6af638e7b9e7f3"
+    ],
+    "comparison": {
+      "absolute_tolerance": 1e-12,
+      "dispositions": {
+        "README.md": "unindexed",
+        "canary.py": "inferred",
+        "malformed.py": "parse_failed",
+        "non_utf8.py": "opaque",
+        "oversized.dat": "opaque",
+        "source00.py": "inferred",
+        "source01.py": "inferred",
+        "source02.py": "inferred",
+        "source03.py": "inferred",
+        "source04.py": "inferred",
+        "source05.py": "inferred",
+        "source06.py": "inferred",
+        "source07.py": "inferred",
+        "source08.py": "inferred",
+        "source09.py": "inferred",
+        "source10.py": "inferred",
+        "source11.py": "inferred",
+        "source12.py": "inferred",
+        "source13.py": "inferred",
+        "source14.py": "inferred",
+        "source15.py": "inferred",
+        "source16.py": "inferred",
+        "source17.py": "inferred",
+        "source18.py": "inferred",
+        "source19.py": "inferred",
+        "source_alias.py": "opaque",
+        "tune.py": "inferred",
+        "unsupported.py": "unsupported_target"
+      },
+      "exact_source_and_structural_identity": true,
+      "inferred_rows": 22,
+      "inventory_entries": 28,
+      "maximum_absolute_numerical_difference": 0.0,
+      "shard_row_counts": [
+        16,
+        6
+      ]
+    },
+    "control_scope": "same_head_root_child_depth_2; actual_child_cancel_before_numerical_import_completed",
+    "final_resources": {
+      "active_lease_count": 0,
+      "waiting_request_count": 0
+    },
+    "fixture_mutations": "private_new_fixture_in_place_then_exact_byte_and_control_restoration",
+    "no_fit_and_owner_preservation": true,
+    "numerical_after": {
+      "adam_steps": [
+        3,
+        3,
+        3,
+        3
+      ],
+      "completed_epochs": 3,
+      "state_sha256": "c31718e684371bf3a28514e3138f602d1a567ff63b89e96feb1dbf139bd57a16"
+    },
+    "numerical_before": {
+      "adam_steps": [
+        3,
+        3,
+        3,
+        3
+      ],
+      "completed_epochs": 3,
+      "state_sha256": "c31718e684371bf3a28514e3138f602d1a567ff63b89e96feb1dbf139bd57a16"
+    },
+    "positive_budget_scans": [
+      {
+        "deferred_rows": 18,
+        "exact_membership_and_target_identity": true,
+        "frontier_reasons": [
+          "explicit_inferred_row_budget"
+        ],
+        "inferred_rows": 4,
+        "inventory_entries": 28,
+        "limits": {
+          "max_entries": 256,
+          "max_file_bytes": 65536,
+          "max_inferred_rows": 4,
+          "max_input_bytes": 33554432,
+          "max_output_bytes": 16777216,
+          "max_registry_bytes": 8388608,
+          "max_registry_rows": 4096,
+          "max_rows_per_shard": 16,
+          "max_shard_bytes": 8388608,
+          "max_shards": 16,
+          "max_target_bytes": 4194304
+        },
+        "name": "bounded-four-rows",
+        "owner_state_preserved": true,
+        "record_raw_cid": "bafkreidfbzfo3ed76lop7bu5jdl6n5yacyizvbjanon7ulhmm7cqka377a",
+        "worker_receipt": {
+          "elapsed_ms": 1540,
+          "executable_sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+          "input_bytes": 339675,
+          "input_sha256": "c9659cd36fb9191c94336cf9a079065681334f3aa4bb61358b7302bb97f0761e",
+          "limits": {
+            "max_input_bytes": 33554432,
+            "max_output_bytes": 16777216,
+            "resident_memory_bytes": 1073741824
+          },
+          "memory_enforcement": "sampled_process_tree_rss_with_possible_overshoot",
+          "output_bytes": 8401,
+          "output_sha256": "a8eca778edbe283439d9470f2976e37d383ab7ffef31d82c8d99d2b3d0ed4467",
+          "returncode": 0,
+          "source_execution_attested": false,
+          "worker_sha256": "1209463d13b33977a762b8c742eda970437ece16954cf83c788831e57a35fcbf",
+          "workspace_cleaned": true
+        }
+      },
+      {
+        "deferred_rows": 22,
+        "exact_membership_and_target_identity": true,
+        "frontier_reasons": [
+          "explicit_worker_input_byte_budget"
+        ],
+        "inferred_rows": 0,
+        "inventory_entries": 28,
+        "limits": {
+          "max_entries": 256,
+          "max_file_bytes": 65536,
+          "max_inferred_rows": 256,
+          "max_input_bytes": 1,
+          "max_output_bytes": 16777216,
+          "max_registry_bytes": 8388608,
+          "max_registry_rows": 4096,
+          "max_rows_per_shard": 16,
+          "max_shard_bytes": 8388608,
+          "max_shards": 16,
+          "max_target_bytes": 4194304
+        },
+        "name": "bounded-one-byte",
+        "owner_state_preserved": true,
+        "record_raw_cid": "bafkreigixji6k2vij3fvtwlwk5z3ybbp2k4dbriz2rfy2dew3rdi5eqgjy",
+        "worker_receipt": null
+      },
+      {
+        "deferred_rows": 2,
+        "exact_membership_and_target_identity": true,
+        "frontier_reasons": [
+          "explicit_worker_input_byte_budget"
+        ],
+        "inferred_rows": 20,
+        "inventory_entries": 28,
+        "limits": {
+          "max_entries": 256,
+          "max_file_bytes": 65536,
+          "max_inferred_rows": 256,
+          "max_input_bytes": 973786,
+          "max_output_bytes": 16777216,
+          "max_registry_bytes": 8388608,
+          "max_registry_rows": 4096,
+          "max_rows_per_shard": 16,
+          "max_shard_bytes": 8388608,
+          "max_shards": 16,
+          "max_target_bytes": 4194304
+        },
+        "name": "bounded-partial-input",
+        "owner_state_preserved": true,
+        "record_raw_cid": "bafkreicw2ys3fybzu25x3zehqonl7kzz47rkwkfamzdl353wxcxzwggpza",
+        "worker_receipt": {
+          "elapsed_ms": 2253,
+          "executable_sha256": "1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+          "input_bytes": 936843,
+          "input_sha256": "11a6156914db3166ef28878747b8245854e99ee1c17eb420834b4cebb0082e5e",
+          "limits": {
+            "max_input_bytes": 973786,
+            "max_output_bytes": 16777216,
+            "resident_memory_bytes": 1073741824
+          },
+          "memory_enforcement": "sampled_process_tree_rss_with_possible_overshoot",
+          "output_bytes": 34623,
+          "output_sha256": "b62c33549ea85ca8ad42498d21e88678b28a235268ec834edba305a803895677",
+          "returncode": 0,
+          "source_execution_attested": false,
+          "worker_sha256": "1209463d13b33977a762b8c742eda970437ece16954cf83c788831e57a35fcbf",
+          "workspace_cleaned": true
+        }
+      }
+    ],
+    "qualified": true,
+    "recorded_seconds": 59.3474078590516,
+    "refusal_controls": [
+      {
+        "elapsed_seconds": 0.09148549707606435,
+        "error": "stored source object CID mismatch",
+        "error_type": "CacheIntegrityError",
+        "name": "tampered_source_cas",
+        "refused": true,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "elapsed_seconds": 0.09418558282777667,
+        "error": "stored structured object is not canonical",
+        "error_type": "CacheIntegrityError",
+        "name": "tampered_ast_cas",
+        "refused": true,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "elapsed_seconds": 0.09450411610305309,
+        "error": "[Errno 2] No such file or directory: '/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/inventory-scan-qualification-20261002-04/source-artifacts/source/bafk/bafkreihsf7enej7cidlmbcmssh225bn76rtxes7exaltpl7incm32bmwq4'",
+        "error_type": "FileNotFoundError",
+        "name": "missing_source_cas",
+        "refused": true,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "elapsed_seconds": 0.13673987914808095,
+        "error": "[Errno 2] No such file or directory: '/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/inventory-scan-qualification-20261002-04/source-artifacts/structured/bagu/baguqeerar6ktsbgvqadlofso2g6hvfphuitcttkygmunatchdqtfjmjpiggq'",
+        "error_type": "FileNotFoundError",
+        "name": "missing_ast_cas",
+        "refused": true,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "elapsed_seconds": 0.3284738129004836,
+        "error": "artifact is missing or unreadable",
+        "error_type": "RegistryError",
+        "name": "missing_selected_checkpoint",
+        "refused": true,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "elapsed_seconds": 0.3362518430221826,
+        "error": "artifact bytes or digest mismatch",
+        "error_type": "RegistryError",
+        "name": "tampered_selected_checkpoint",
+        "refused": true,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "elapsed_seconds": 0.40617498802021146,
+        "error": "artifact bytes or digest mismatch",
+        "error_type": "RegistryError",
+        "name": "tampered_ancestor_checkpoint",
+        "refused": true,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "elapsed_seconds": 0.3285010929685086,
+        "error": "registry version content identity differs",
+        "error_type": "RuntimeVersionError",
+        "name": "changed_registry_candidate_metadata",
+        "refused": true,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "details": {
+          "genuine_numerical_worker_returned": true
+        },
+        "elapsed_seconds": 6.064477748936042,
+        "error": "current repository differs from sealed inventory",
+        "error_type": "StaleCodebaseError",
+        "name": "source_change_after_native_worker",
+        "refused": true,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "details": {
+          "genuine_numerical_worker_returned": true
+        },
+        "elapsed_seconds": 5.658579553943127,
+        "error": "model owner state changed during scan",
+        "error_type": "CodebaseInventoryScanError",
+        "name": "registry_control_change_after_native_worker",
+        "refused": true,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "elapsed_seconds": 0.01995616895146668,
+        "error": "resource lease request was cancelled",
+        "error_type": "LeaseCancelledError",
+        "name": "pre_cancelled_scan",
+        "refused": true,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "details": {
+          "actual_child_pids": [
+            4068288
+          ],
+          "cancellation_triggered_after_child_observed": true,
+          "native_process_observation": {
+            "cancelled": true,
+            "elapsed_ms": 23,
+            "returncode": -15,
+            "termination_reason": "cancelled",
+            "timed_out": false,
+            "workspace_cleaned": true
+          }
+        },
+        "elapsed_seconds": 3.3963829318527132,
+        "error": "inventory scan cancelled",
+        "error_type": "LeaseCancelledError",
+        "name": "cancel_actual_running_numerical_child",
+        "refused": true,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      },
+      {
+        "elapsed_seconds": 0.34450303902849555,
+        "error": "captured inventory exceeds scan profile",
+        "error_type": "CodebaseInventoryScanError",
+        "name": "bounded_inventory_refusal",
+        "refused": true,
+        "resources_after": {
+          "active_lease_count": 0,
+          "waiting_request_count": 0
+        }
+      }
+    ],
+    "resource_sampler": "genuine_ProofHostResources_for_proof_host_no_override",
+    "result": {
+      "bytes": 27968,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-scan-qualification-20261002-04/result.json",
+      "sha256": "00a52f57d708bf57cade1f8a81844b2932e1ac4985eef233646935b6e0767a7e"
+    }
+  },
+  "next_milestone": {
+    "tasks": [
+      "RPI-029",
+      "RPI-032"
+    ],
+    "work": [
+      "Join scan records to existing CodebaseVerificationCatalog.query_current canonical-key membership/reverse dependencies and source/evidence-root-bound pages; qualify complete IntentIR planning consumption.",
+      "Persist or deterministically rebuild derived scan/query projection under existing owners.",
+      "Measure operation-scoped native target/ancestry declaration reuse with exact artifact/producer identities and final fences.",
+      "Qualify bounded cancellable Git object batching and later globally sealed resumable captures."
+    ]
+  },
+  "performance": {
+    "compact_plus_shared_target_bytes": 941916,
+    "end_to_end_throughput_improvement_demonstrated": false,
+    "full_native_target_bytes": 3471834,
+    "lineage_replays_per_path": 1,
+    "live_observations_per_path": 2,
+    "old_cohort_surrounding_work_benchmarked": false,
+    "optimized_actual_worker_input_bytes": 1011077,
+    "optimized_seconds": 6.153074843110517,
+    "optimized_vocabulary_builds": 1,
+    "optimized_weight_tensors": 4,
+    "process_starts_per_path": 1,
+    "public_phase_optimized_seconds": 6.167094514006749,
+    "public_phase_reference_seconds": 5.81521325185895,
+    "reduced_target_transport_fraction": 0.7286978582501352,
+    "reference": "unchanged_native_v1_numerical_inference_per_shard_in_identical_scanner_custody",
+    "reference_seconds": 5.801358352880925,
+    "reference_vocabulary_builds": 2,
+    "reference_weight_tensors": 8,
+    "time_scope": "admission_through_final_fences_before_record_serialization"
+  },
+  "primary_artifact_pins": [
+    {
+      "bytes": 27968,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-scan-qualification-20261002-04/result.json",
+      "sha256": "00a52f57d708bf57cade1f8a81844b2932e1ac4985eef233646935b6e0767a7e"
+    },
+    {
+      "bytes": 8007,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-scan-qualification-20261002-04/generation-inputs.json",
+      "sha256": "7f210959fd676e1fffc4c4e8e4536573181b341a99969cd7b6868aaf50d84b54"
+    },
+    {
+      "bytes": 70187,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-scan-qualification-20261002-04/optimized.json",
+      "sha256": "05a015bd2a213d0c8bf36e58deb4b4984ed440e30bf824ead143b54264fc01c5"
+    },
+    {
+      "bytes": 69968,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-scan-qualification-20261002-04/reference.json",
+      "sha256": "6db82667137167e90cb38094360e3492f1b29200a05b0c03e2c28189da4cba1f"
+    },
+    {
+      "bytes": 43805,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-scan-qualification-20261002-04/bounded-four-rows.json",
+      "sha256": "0b140a8596f32f7ea48be6a42b9f0ba17db5ea8a71a21078692dd7e1b6ec35d0"
+    },
+    {
+      "bytes": 35940,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-scan-qualification-20261002-04/bounded-one-byte.json",
+      "sha256": "e5487fc2996da20eb61f8d95ceaef8cdd8b8f6b561615a890fdcb44759faccae"
+    },
+    {
+      "bytes": 67295,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-scan-qualification-20261002-04/bounded-partial-input.json",
+      "sha256": "9a53148953a0f57b1560dd9b7e3b6a741da4daa4d455f449243cd00d5a0630ca"
+    },
+    {
+      "bytes": 22078,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-scan-qualification-20261002-04/owners-before-scans.json",
+      "sha256": "e4f8776b172b5bee18cd43348a8c8b14390baec3cc5d11368447fb33fa0de027"
+    },
+    {
+      "bytes": 22078,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-scan-qualification-20261002-04/owners-after-scans.json",
+      "sha256": "e4f8776b172b5bee18cd43348a8c8b14390baec3cc5d11368447fb33fa0de027"
+    },
+    {
+      "bytes": 725586,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-scan-qualification-20261002-04/root.json",
+      "sha256": "7ffe79bcd087434fe82d055aead7b84d3ecc913d7874e61c29842a8c697d1e03"
+    },
+    {
+      "bytes": 728193,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-scan-qualification-20261002-04/child.json",
+      "sha256": "82ccbddd5d8d8d4829be084fca48c6619e83f1e5a8fa3cc14d42fc79edffd809"
+    },
+    {
+      "bytes": 2709,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-scan-qualification-20261002-04/admission.json",
+      "sha256": "f080818256ae6792517541aa32a82e706174e51e548cfc930847f9592e34c9cb"
+    }
+  ],
+  "profile": "source_bound_inventory_scan_v1",
+  "remaining_gates": [
+    "All 32 production acceptance rows remain open.",
+    "Different historical source-head CAS tamper and source transitions.",
+    "Additional native parser-failure envelope, capture-pressure refusals, mid-matrix cancellation, crash recovery and cold/incremental equivalence.",
+    "Large globally sealed/resumable captures and cross-operation model residency.",
+    "Source-runtime semantics, learned semantic formalization, independent proofs and authoritative proof reuse.",
+    "CUDA 384D CodebaseIR, remote federation/Quack delivery and future accelerator/MCP++ gradient collectives.",
+    "Production default activation, public prompt binding and unrestricted source execution assurance."
+  ],
+  "schema": "repository-proof-index-codebase-ir-inventory-scan-review@1",
+  "status": "bounded_native_qualified_all_32_production_exits_open",
+  "total_actual_setup_epochs": 12,
+  "total_recorded_attempt_seconds": 192.455562180141,
+  "units": {
+    "automatic_pytest_plugin_loading_disabled": true,
+    "command": "env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /home/barberb/.local/bin/python -m pytest -q tests/unit/logic/software_contracts/test_codebase_inventory_scan.py",
+    "earlier_assertion_error": "One nonfinite-protocol test used too narrow an exception-message expression; corrected before 83 passing controls.",
+    "latest_distinct_passed": 84,
+    "latest_failed": 0,
+    "latest_output": {
+      "bytes": 179,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-scan-qualification-20261002-04.unit-tests.stdout",
+      "sha256": "372886b443c18d312faeee21f126121495e5b0c9d1a6fced47b8b406661d96dc"
+    },
+    "latest_recorded_run_seconds": 0.42,
+    "latest_skipped": 0,
+    "latest_stderr": {
+      "bytes": 0,
+      "path": "artifacts/codebase_ir_terminal_bench/inventory-scan-qualification-20261002-04.unit-tests.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "native_evidence_distinct": true,
+    "parent_current_run_seconds": null,
+    "typed_authority_regression": {
+      "after_fix_failed": 0,
+      "after_fix_passed": 84,
+      "before_fix_failed": 1,
+      "before_fix_passed": 83,
+      "cause": "Numeric authority zero was accepted by equality against False."
+    }
+  },
+  "unknown_fitting": 0
+}

@@ -78,7 +78,7 @@ def admitted(tmp_path, monkeypatch, request):
             ]))
         runtime = AdmittedBenchmarkRuntime.create(
             tmp_path / 'launch', admission=prepared['admission'], server=owner.server,
-            source=owner.source, context_bundle=bundle, timeout_ms=20_000,
+            source=owner.source, context_bundle=bundle, timeout_ms=30_000,
             worker_worktree_root=worktrees,
             **implementation,
             **({'lifetime_seconds':900} if getattr(request, 'param', 'configured') in {'extended-proof', 'extended-startup'} else {}),

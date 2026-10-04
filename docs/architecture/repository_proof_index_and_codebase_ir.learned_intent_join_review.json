@@ -1,0 +1,718 @@
+{
+  "advisory_model_controls": [
+    {
+      "control_weights_sha256": null,
+      "fixed_candidate_ids": [
+        "sha256:2e71c478691b73a251fdf9e36890f2b46d7c3e77c56d1cce60c87b5fd9785df5",
+        "sha256:f316f4374c6dc26bfe1f47cd86007377b30ce3c0a475538bf3bc082b20801b00"
+      ],
+      "fixed_candidates_sha256": "8a9b1335c68839f5f5e51e24160fcb91b81f618cf451b465469a88845e0dc10e",
+      "inference_policy": "model_off_no_inference",
+      "learned_candidate_order": [],
+      "name": "model_off",
+      "original_checkpoint_sha256": "09cf19d2b5b2ac1e5727ca2b4ff72c56c7ad24e8f1739921799f9ab85c2ed81b",
+      "ranking_row_count": 0,
+      "residual_count": 2,
+      "source_focus_reconstruction_errors": {},
+      "training_executed_by_this_control": false
+    },
+    {
+      "control_weights_sha256": null,
+      "fixed_candidate_ids": [
+        "sha256:2e71c478691b73a251fdf9e36890f2b46d7c3e77c56d1cce60c87b5fd9785df5",
+        "sha256:f316f4374c6dc26bfe1f47cd86007377b30ce3c0a475538bf3bc082b20801b00"
+      ],
+      "fixed_candidates_sha256": "8a9b1335c68839f5f5e51e24160fcb91b81f618cf451b465469a88845e0dc10e",
+      "inference_policy": "same_trained_rank_reverse_permutation",
+      "learned_candidate_order": [
+        "sha256:f316f4374c6dc26bfe1f47cd86007377b30ce3c0a475538bf3bc082b20801b00",
+        "sha256:2e71c478691b73a251fdf9e36890f2b46d7c3e77c56d1cce60c87b5fd9785df5"
+      ],
+      "name": "shuffled_order",
+      "original_checkpoint_sha256": "09cf19d2b5b2ac1e5727ca2b4ff72c56c7ad24e8f1739921799f9ab85c2ed81b",
+      "ranking_row_count": 358,
+      "residual_count": 2,
+      "source_focus_reconstruction_errors": {
+        "_hkey": 0.002203296637162566,
+        "_hval": 0.004801355302333832
+      },
+      "training_executed_by_this_control": false
+    },
+    {
+      "control_weights_sha256": null,
+      "fixed_candidate_ids": [
+        "sha256:2e71c478691b73a251fdf9e36890f2b46d7c3e77c56d1cce60c87b5fd9785df5",
+        "sha256:f316f4374c6dc26bfe1f47cd86007377b30ce3c0a475538bf3bc082b20801b00"
+      ],
+      "fixed_candidates_sha256": "8a9b1335c68839f5f5e51e24160fcb91b81f618cf451b465469a88845e0dc10e",
+      "inference_policy": "trained_checkpoint_reconstruction",
+      "learned_candidate_order": [
+        "sha256:2e71c478691b73a251fdf9e36890f2b46d7c3e77c56d1cce60c87b5fd9785df5",
+        "sha256:f316f4374c6dc26bfe1f47cd86007377b30ce3c0a475538bf3bc082b20801b00"
+      ],
+      "name": "trained",
+      "original_checkpoint_sha256": "09cf19d2b5b2ac1e5727ca2b4ff72c56c7ad24e8f1739921799f9ab85c2ed81b",
+      "ranking_row_count": 358,
+      "residual_count": 2,
+      "source_focus_reconstruction_errors": {
+        "_hkey": 0.002203296637162566,
+        "_hval": 0.004801355302333832
+      },
+      "training_executed_by_this_control": false
+    },
+    {
+      "control_weights_sha256": "abf1383ea191a54a470267d0fa4316fdd65f27bfa3aaffe83b72cf5ce38f4b41",
+      "fixed_candidate_ids": [
+        "sha256:2e71c478691b73a251fdf9e36890f2b46d7c3e77c56d1cce60c87b5fd9785df5",
+        "sha256:f316f4374c6dc26bfe1f47cd86007377b30ce3c0a475538bf3bc082b20801b00"
+      ],
+      "fixed_candidates_sha256": "8a9b1335c68839f5f5e51e24160fcb91b81f618cf451b465469a88845e0dc10e",
+      "inference_policy": "all_parameters_zero_diagnostic",
+      "learned_candidate_order": [
+        "sha256:2e71c478691b73a251fdf9e36890f2b46d7c3e77c56d1cce60c87b5fd9785df5",
+        "sha256:f316f4374c6dc26bfe1f47cd86007377b30ce3c0a475538bf3bc082b20801b00"
+      ],
+      "name": "zero_heads",
+      "original_checkpoint_sha256": "09cf19d2b5b2ac1e5727ca2b4ff72c56c7ad24e8f1739921799f9ab85c2ed81b",
+      "ranking_row_count": 358,
+      "residual_count": 2,
+      "source_focus_reconstruction_errors": {
+        "_hkey": 0.022727273404598236,
+        "_hval": 0.022727273404598236
+      },
+      "training_executed_by_this_control": false
+    }
+  ],
+  "as_of_utc": "2026-10-04T07:18:45.825299+00:00",
+  "authority": {
+    "all_32_repository_proof_index_exit_criteria": "OPEN",
+    "asymptotic_convergence": false,
+    "behavioral_satisfaction": false,
+    "completion": false,
+    "default_supervisor_activation": false,
+    "execution": false,
+    "formalization": false,
+    "mutation": false,
+    "official_terminal_bench_score": null,
+    "omission": false,
+    "proof": false,
+    "semantic_alignment": false,
+    "whole_program": false
+  },
+  "context": {
+    "actual_native_match_status": "unknown",
+    "automatic_complete_prompt_interpretation": false,
+    "explicit_context_required_for_join": true,
+    "full_original_request_opaque_guard_preserved": true,
+    "genuine_proof_index_evidence_row_count": 0,
+    "goal_and_header_focus_authored": true,
+    "instruction_used_as_training_label": false,
+    "public_instruction_bytes": 3873,
+    "public_instruction_sha256": "89b1abdf0af19399f720233b5cdf6b2e8e0ff7b6e3fe3e2a3af0d4d298a8641a",
+    "residual_count": 2,
+    "schema": "terminal-codebase-intent-matching-context@1",
+    "source_context": {
+      "checkpoint": {
+        "checkpoint_sha256": "09cf19d2b5b2ac1e5727ca2b4ff72c56c7ad24e8f1739921799f9ab85c2ed81b",
+        "features_sha256": "26446fff44ec664c4c52f7a59e68aab110628c813280a143d27892d1b47312a7",
+        "index_sha256": "c5cd58395deec6ffa0385a4fe5087a893c14e19587b97b20f767bf4c9b2fa71e",
+        "receipt_sha256": "08b7622fb214505176da60144f2a4bfd2e3711e2c85f2d8790105df06ef1f60a"
+      },
+      "model_domain": "security-code@1",
+      "schema": "terminal-codebase-training-source-context@1",
+      "source_bytes": 175565,
+      "source_path": "bottle.py",
+      "source_sha256": "761756ce31753e526c48d28ccbca13a5d2493b16fe37aff3e1e4d2efaf3a2bba",
+      "training_source_hashes": {
+        ".supervisor-public-smoke.py": "288c73dbd2d7ed0e6e1a6b87f70bd5fe4262ecf50bd3be19988c1c5554b12d55",
+        "bottle.py": "761756ce31753e526c48d28ccbca13a5d2493b16fe37aff3e1e4d2efaf3a2bba"
+      }
+    }
+  },
+  "cost_scope": {
+    "cold_recovery_outer_seconds": 22.277101026993478,
+    "complete_increment_cost_ledger": "NOT_CLAIMED_SELECTED_OUTERS_ONLY",
+    "file_only_unit_custody_correction_outer_seconds": 0.5232378370128572,
+    "global_OS_jobs": null,
+    "global_inference_calls": null,
+    "global_training_steps": null,
+    "nested_durations_not_added_again": true,
+    "new_native_restart_test_outer_seconds": 5.879741991011542,
+    "original_failed_fit_outer_seconds": 127.11782936399686,
+    "original_unit_outer_seconds": 15.09897425500094,
+    "selected_outer_ledger": {
+      "all_closed_operations_counted_claimed": false,
+      "preparation_file_review_documentation_outer_CPU_calendar_totals": null,
+      "receipt": {
+        "bytes": 4497,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/selected-closed-attempt-ledger-01.json",
+        "sha256": "9c71a0ae657ad0bd6140981e66195e9a4eb8daf2d95203f26a7e7a7c988925b4"
+      },
+      "selected_closed_attempt_count": 7,
+      "sum_known_selected_outer_seconds": 366.9956488170137
+    }
+  },
+  "current_selected_source_pins": {
+    "experiment": {
+      "bytes": 33298,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/terminal_codebase_ir_experiment.py",
+      "sha256": "9937054025df0a981a76b17d52841ba7f6c3b49613dfe6ca7481f4d4c712a4cd"
+    },
+    "experiment_tests": {
+      "bytes": 11816,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_terminal_codebase_ir_experiment.py",
+      "sha256": "679214e765e61c8c13c3cc3f1f2b4d453f07f18ce8fd27d65f8caf8ee45caf36"
+    },
+    "metadata_restart": {
+      "bytes": 32204,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/codebase_ir_metadata.py",
+      "sha256": "6de19b39635eef7c682a3171b9d5e3afe3e656e10767080023002188c39f62f5"
+    },
+    "pure_join": {
+      "bytes": 17681,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/terminal_codebase_intent_training_join.py",
+      "sha256": "f279a9121300392a0af4df98fd31366643b069944294a1b99efc25ba2bd664af"
+    },
+    "pure_join_tests": {
+      "bytes": 14592,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_terminal_codebase_intent_training_join.py",
+      "sha256": "6f94d840c98efd50781820ce39936418ab86337d79bcdb64c44d3f35e749d0b9"
+    },
+    "restart_regression_test": {
+      "bytes": 2984,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_codebase_ir_metadata_restart_paths.py",
+      "sha256": "81cfad1b6dc1460168e9107d91e369657e734b3f999dfb7ce0e53a2e8701ffa0"
+    }
+  },
+  "evidence_pins": {
+    "actual-bottle-training-01/closed-attempt.json": {
+      "bytes": 9002,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/actual-bottle-training-01/closed-attempt.json",
+      "sha256": "7da42ef3e35020a1b76e5c29805f485402046a588d221de297a921411e29d7f6"
+    },
+    "actual-bottle-training-01/experiment/fixture.json": {
+      "bytes": 198196,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/actual-bottle-training-01/experiment/fixture.json",
+      "sha256": "6c93fe231c588c4967b6f81071c3587bc948c19ba9e2b9b77564fa93c40beaa1"
+    },
+    "actual-bottle-training-01/experiment/intent-training-nomination.json": {
+      "bytes": 3457893,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/actual-bottle-training-01/experiment/intent-training-nomination.json",
+      "sha256": "b500adc95cc263a8c27f699f4f5ae10389b7f9c2095cd8bb914f48b30b029b4f"
+    },
+    "actual-bottle-training-01/experiment/logic-result.json": {
+      "bytes": 453653,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/actual-bottle-training-01/experiment/logic-result.json",
+      "sha256": "b18eb5fd45e9222accb6b20ab573e6f2c39c91378c503d97597ea32b0f9f287d"
+    },
+    "actual-bottle-training-01/owned-attempt-closed.json": {
+      "bytes": 464760,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/actual-bottle-training-01/owned-attempt-closed.json",
+      "sha256": "20bb221dd1e014d377dc099df2c399f179e6c5e11d93dbe84693ec383267b03a"
+    },
+    "actual-cold-recovery-01/closed-attempt.json": {
+      "bytes": 5922,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/actual-cold-recovery-01/closed-attempt.json",
+      "sha256": "0706a5303d3fb2bb0bfae2e88fcaf6b07621b830f76ada857efc368518b3011a"
+    },
+    "actual-cold-recovery-01/native-metadata-readback.json": {
+      "bytes": 67396,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/actual-cold-recovery-01/native-metadata-readback.json",
+      "sha256": "37d6198c14abc150859bf53449b1733f706d36112136677fb97aaee6a629d455"
+    },
+    "actual-cold-recovery-01/owned-reader-closed.json": {
+      "bytes": 104689,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/actual-cold-recovery-01/owned-reader-closed.json",
+      "sha256": "e9b809d003e2dbbae9ebd6d54b82c8a022daf20e700b2dbd580a4e5baaf1ad5a"
+    },
+    "captured-tests-01-closed.json": {
+      "bytes": 1052,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/captured-tests-01-closed.json",
+      "sha256": "b7991a47a8f8c77cb759a60e263228c45a80413af6eac421afe77de247ae811a"
+    },
+    "captured-tests-01/review.json": {
+      "bytes": 115157,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/captured-tests-01/review.json",
+      "sha256": "9dae6b91d62ecb981acfa99262d5d09eb4909218d0169025a0fea4383bc222cc"
+    },
+    "captured-tests-01/tests.xml": {
+      "bytes": 10280,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/captured-tests-01/tests.xml",
+      "sha256": "58d042cddadef78a4e7f1f957adf07df7ced2fafb7bf344cb1f368b9d85e6d1b"
+    },
+    "cold-recovery-independent-file-audit-01/review.json": {
+      "bytes": 667626,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/cold-recovery-independent-file-audit-01/review.json",
+      "sha256": "21f08af12d58aeea6ed9fbb9ba6579e0deadf501031342d35f6204d368f6ceb9"
+    },
+    "experiment-integration-preparation-01/freeze.json": {
+      "bytes": 2750,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/experiment-integration-preparation-01/freeze.json",
+      "sha256": "3ef946cff3e93d6ffb6650a316d0154cb5dfa2f747c15200cb77872466124d29"
+    },
+    "failure-review-01/review.json": {
+      "bytes": 107903,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/failure-review-01/review.json",
+      "sha256": "05667b7c63f89aa4b0d55e05ef29e7f4e652c9072685dc4a0dc8cd1b0b5e58ae"
+    },
+    "final-advisory-control-review-01/review.json": {
+      "bytes": 29752,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/final-advisory-control-review-01/review.json",
+      "sha256": "57f3fb3ff8d78f1c9dd7e7ceb5bf53eaa6d3ac70402b47d4178bde426cde5b5b"
+    },
+    "intent-training-join-preparation-02/freeze.json": {
+      "bytes": 1093,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/intent-training-join-preparation-02/freeze.json",
+      "sha256": "5f0c8ba589f84fe4e2b66cbeca5f1f675591ea34fb98c0577782b83fb3a1aedc"
+    },
+    "metadata-restart-path-preparation-01/freeze.json": {
+      "bytes": 2597,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/metadata-restart-path-preparation-01/freeze.json",
+      "sha256": "c7bd6c793e602750c669e2e4a61ebcc84d3e9ec49199e9698b7a9ad8f4892504"
+    },
+    "restart-regression-01-closed.json": {
+      "bytes": 1057,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/restart-regression-01-closed.json",
+      "sha256": "c1e6937d70f4efbf058d98800e1b2e6d61a8902c06dd0c8db6d372e5014fb81b"
+    },
+    "restart-regression-01/review.json": {
+      "bytes": 15103,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/restart-regression-01/review.json",
+      "sha256": "403a2197bfe08b83b087e0b8e13c9e80055d5e16bf90fab278400ec0ee5f2718"
+    },
+    "restart-regression-01/tests.xml": {
+      "bytes": 354,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/restart-regression-01/tests.xml",
+      "sha256": "761e82828217be612989c3e3e2641db129ebdbed39df85956d1d4048f40051db"
+    },
+    "selected-closed-attempt-ledger-01.json": {
+      "bytes": 4497,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/selected-closed-attempt-ledger-01.json",
+      "sha256": "9c71a0ae657ad0bd6140981e66195e9a4eb8daf2d95203f26a7e7a7c988925b4"
+    },
+    "source-generation-07-preparation.json": {
+      "bytes": 1149,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/source-generation-07-preparation.json",
+      "sha256": "836094a865512fe110c7d808e5dbc8255ed961a4900ea7902f1098f587b386cc"
+    },
+    "source-generation-08-preparation.json": {
+      "bytes": 1149,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/source-generation-08-preparation.json",
+      "sha256": "e466fd66c802dfe4d55c15b06ee2cee52d9ec3f0ca9f454d9e12f5bbabb5f5ed"
+    },
+    "test-custody-correction-01/actual-readback-01/closed-attempt.json": {
+      "bytes": 1942,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/test-custody-correction-01/actual-readback-01/closed-attempt.json",
+      "sha256": "1dbf4816b36b7b70ec5b48cce4d4e44c57948e02593a179463c6ea54ac200da6"
+    },
+    "test-custody-correction-01/actual-readback-01/review.json": {
+      "bytes": 547539,
+      "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/test-custody-correction-01/actual-readback-01/review.json",
+      "sha256": "4725e054e045aea24ca49c2e8aaae284207c535a53379516ab38d3f3619a4556"
+    }
+  },
+  "foreign_governing_document_appendices": {
+    "preserved": true,
+    "their_test_proof_cost_or_authority_claims_transferred_here": false
+  },
+  "independent_final_file_reviews": {
+    "advisory_controls": {
+      "actual_file_only_outer_elapsed_seconds": 0.09909363200131338,
+      "check_count": 8,
+      "checks_passed": 8,
+      "new_SQL_model_or_test_jobs": false,
+      "receipt": {
+        "bytes": 29752,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/final-advisory-control-review-01/review.json",
+        "sha256": "57f3fb3ff8d78f1c9dd7e7ceb5bf53eaa6d3ac70402b47d4178bde426cde5b5b"
+      },
+      "status": "PASS_ADVISORY_ARTIFACT_CONTROL_SCOPE_ONLY"
+    },
+    "current_bytes": {
+      "check_count": 17,
+      "checks_passed": 17,
+      "enclosing_outer_aggregate_seconds": null,
+      "new_SQL_model_or_test_jobs": false,
+      "own_file_review_seconds": 1.4402767819992732,
+      "receipt": {
+        "bytes": 667626,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/cold-recovery-independent-file-audit-01/review.json",
+        "sha256": "21f08af12d58aeea6ed9fbb9ba6579e0deadf501031342d35f6204d368f6ceb9"
+      },
+      "status": "PASS_CLOSED_RECOVERY_AND_CURRENT_BYTES_ONLY"
+    }
+  },
+  "local_logic": {
+    "Lean_check_receipts": 4,
+    "Lean_false_compile_controls_rejected": 2,
+    "Lean_olean_files": [
+      {
+        "bytes": 49576,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/actual-bottle-training-01/experiment/logic/SourceHeaderModel.olean",
+        "sha256": "c4b0224acf937805942257899a2085de2d83d646edd3d927269cb3fee5bf2442"
+      },
+      {
+        "bytes": 10008,
+        "path": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/actual-bottle-training-01/experiment/logic/RecordedLoss.olean",
+        "sha256": "1d673c8e8c2b7c2dd74631e5f819e7ff4ab884c9be7a04321f457cb05042834d"
+      }
+    ],
+    "Lean_positive_compiles": 2,
+    "SMT_answers": [
+      {
+        "expected_model_answer": "sat",
+        "kind": "unsafe_converted_input_accepted",
+        "matches_model_expectation": true,
+        "solver_answer": "sat",
+        "symbol": "_hkey"
+      },
+      {
+        "expected_model_answer": "unsat",
+        "kind": "safe_normalization_preserved",
+        "matches_model_expectation": true,
+        "solver_answer": "unsat",
+        "symbol": "_hkey"
+      },
+      {
+        "expected_model_answer": "sat",
+        "kind": "forbidden_output_accepted",
+        "matches_model_expectation": true,
+        "solver_answer": "sat",
+        "symbol": "_hkey"
+      },
+      {
+        "expected_model_answer": "sat",
+        "kind": "unsafe_converted_input_accepted",
+        "matches_model_expectation": true,
+        "solver_answer": "sat",
+        "symbol": "_hval"
+      },
+      {
+        "expected_model_answer": "unsat",
+        "kind": "safe_normalization_preserved",
+        "matches_model_expectation": true,
+        "solver_answer": "unsat",
+        "symbol": "_hval"
+      },
+      {
+        "expected_model_answer": "sat",
+        "kind": "forbidden_output_accepted",
+        "matches_model_expectation": true,
+        "solver_answer": "sat",
+        "symbol": "_hval"
+      }
+    ],
+    "SMT_model_result_count": 6,
+    "complete_OS_prover_job_count": null,
+    "feature_autoencoder_generated_these_formulas": false,
+    "formula_attribution": "deterministic_native_header_model_independently_replayed_from_source",
+    "scope": "declared finite conditional source model and recorded loss inequalities only",
+    "status": "qualified_local_model_and_recorded_losses"
+  },
+  "native_metadata_cold_recovery": {
+    "detached_alteration_controls": [
+      {
+        "name": "deleted_source_row",
+        "rejected": true,
+        "scope": "detached in-memory alteration only; original native SQL and files unchanged"
+      },
+      {
+        "name": "changed_training_checkpoint",
+        "rejected": true,
+        "scope": "detached in-memory alteration only; original native SQL and files unchanged"
+      },
+      {
+        "name": "reassigned_vector_symbol",
+        "rejected": true,
+        "scope": "detached in-memory alteration only; original native SQL and files unchanged"
+      },
+      {
+        "name": "deleted_feature_row",
+        "rejected": true,
+        "scope": "detached in-memory alteration only; original native SQL and files unchanged"
+      },
+      {
+        "name": "resealed_removed_residual",
+        "rejected": true,
+        "scope": "detached in-memory alteration only; original native SQL and files unchanged"
+      }
+    ],
+    "exact_pre_hydration_nomination_replayed": true,
+    "join_sha256": "sha256:8cc275d10160bd496bc51411d1adde2c0988accadd547fa7610954ce0e63ba2d",
+    "lake_packet_count": 435,
+    "lake_snapshot_count": 46,
+    "lost_pre_hydration_in_memory_record_root_compared": false,
+    "metadata_chunk_count": 304,
+    "metadata_manifest_sha256": "sha256:7392058ee7407befb3b6ee3b3ec69e37148fe5f85d7f8f33f7132304cc8c258e",
+    "outer_elapsed_seconds": 22.277101026993478,
+    "owned_reader_elapsed_seconds_nested": 21.312370569998166,
+    "reconstructed_original_family_count": 28,
+    "reconstructed_original_family_counts": {
+      "artifacts": 2,
+      "ast": 2153,
+      "ast_indexes": 1,
+      "contracts": 2,
+      "convergence_observations": 1,
+      "execution_sources": 6,
+      "experiment_training_controls": 1,
+      "feature_frontiers": 0,
+      "features": 358,
+      "finite_loss_ordering_evidence": 1,
+      "intent_codebase_training_nominations": 1,
+      "kg": 4652,
+      "logic_family_projection_status": 40,
+      "logic_qualification": 1,
+      "native_formalization_claims": 12,
+      "native_formalization_obligations": 2,
+      "native_security_declarations": 1,
+      "planning": 1,
+      "retrieval_vectors": 426,
+      "semantic_indexes": 1,
+      "source_bound_lean_check_receipts": 4,
+      "source_bound_smt_check_receipts": 1,
+      "source_bound_smt_obligations": 6,
+      "source_header_contracts": 1,
+      "sources": 3,
+      "symbols": 531,
+      "training": 1,
+      "vectors": 358
+    },
+    "reconstructed_original_payload_count": 8567,
+    "record_root_provenance": "independently reconstructed durable export bytes selected after original failure; not lost prehydration memory root",
+    "recovered_original_records_sha256": "c43ee1288f68664c557dcc79333ca581d89946dff555d52b7c082e76a34458ed",
+    "row_root_sha256": "sha256:4c1ef766b282f70a7695a7799c92a2bcf7ea7fb0d711dce665b76f7bd3dbb5b2",
+    "selected_owned_reader_import_count": 46,
+    "selected_owned_reader_import_drift": [],
+    "source_context": {
+      "checkpoint": {
+        "checkpoint_sha256": "09cf19d2b5b2ac1e5727ca2b4ff72c56c7ad24e8f1739921799f9ab85c2ed81b",
+        "features_sha256": "26446fff44ec664c4c52f7a59e68aab110628c813280a143d27892d1b47312a7",
+        "index_sha256": "c5cd58395deec6ffa0385a4fe5087a893c14e19587b97b20f767bf4c9b2fa71e",
+        "receipt_sha256": "08b7622fb214505176da60144f2a4bfd2e3711e2c85f2d8790105df06ef1f60a"
+      },
+      "model_domain": "security-code@1",
+      "schema": "terminal-codebase-training-source-context@1",
+      "source_bytes": 175565,
+      "source_path": "bottle.py",
+      "source_sha256": "761756ce31753e526c48d28ccbca13a5d2493b16fe37aff3e1e4d2efaf3a2bba",
+      "training_source_hashes": {
+        ".supervisor-public-smoke.py": "288c73dbd2d7ed0e6e1a6b87f70bd5fe4262ecf50bd3be19988c1c5554b12d55",
+        "bottle.py": "761756ce31753e526c48d28ccbca13a5d2493b16fe37aff3e1e4d2efaf3a2bba"
+      }
+    },
+    "status": "passed_failed_parent_artifact_recovery_only",
+    "stored_family_count": 29,
+    "stored_family_counts": {
+      "artifacts": 2,
+      "ast": 2153,
+      "ast_indexes": 1,
+      "contracts": 2,
+      "convergence_observations": 1,
+      "execution_sources": 6,
+      "experiment_training_controls": 1,
+      "feature_frontiers": 0,
+      "features": 358,
+      "finite_loss_ordering_evidence": 1,
+      "intent_codebase_training_nominations": 1,
+      "kg": 4652,
+      "logic_family_projection_status": 40,
+      "logic_qualification": 1,
+      "metadata_chunks": 304,
+      "native_formalization_claims": 12,
+      "native_formalization_obligations": 2,
+      "native_security_declarations": 1,
+      "planning": 1,
+      "retrieval_vectors": 426,
+      "semantic_indexes": 1,
+      "source_bound_lean_check_receipts": 4,
+      "source_bound_smt_check_receipts": 1,
+      "source_bound_smt_obligations": 6,
+      "source_header_contracts": 1,
+      "sources": 3,
+      "symbols": 531,
+      "training": 1,
+      "vectors": 358
+    },
+    "stored_native_rows": 8871,
+    "stores": [
+      "native DuckDB",
+      "native DuckLake"
+    ],
+    "training_fit_or_tensor_inference_or_checker_rerun": false,
+    "typed_vector_indexes_created": false,
+    "unchanged_family_bound": 32
+  },
+  "original_attempt": {
+    "actual_foreign_child_package_origin": null,
+    "actual_primary_error_type": "MetadataError",
+    "actual_primary_message": "fresh-process native metadata readback failed: Traceback (most recent call last):\n  File \"/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/source-generation-07/accelerate/benchmarks/agent_supervisor/container_coding/codebase_ir_metadata.py\", line 569, in validate_codebase_ir_metadata\n    report = _checked(output)\n             ^^^^^^^^^^^^^^^^\n  File \"/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/source-generation-07/accelerate/benchmarks/agent_supervisor/container_coding/codebase_ir_metadata.py\", line 497, in _checked\n    history = _history()\n              ^^^^^^^^^^\n  File \"/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/source-generation-07/accelerate/benchmarks/agent_supervisor/container_coding/codebase_ir_metadata.py\", line 192, in _history\n    from ipfs_datasets_py.ducklake import autoencoder_history\nModuleNotFoundError: No module named 'ipfs_datasets_py.ducklake'\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/source-generation-07/accelerate/benchmarks/agent_supervisor/container_coding/codebase_ir_metadata.py\", line 590, in <module>\n    print(json.dumps(validate_codebase_ir_metadata(output=arguments.validate,\n                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/source-generation-07/accelerate/benchmarks/agent_supervisor/container_coding/codebase_ir_metadata.py\", line 573, in validate_codebase_ir_metadata\n    raise MetadataError(\"native metadata validation failed: \" + str(exc)) from exc\nMetadataError: native metadata validation failed: No module named 'ipfs_datasets_py.ducklake'\n",
+    "diagnosis": "missing ducklake consistent with inherited import-path precedence failure; targeted genuine shadow regression confirms mechanism, not original child package origin",
+    "elapsed_seconds_outer": 127.11782936399686,
+    "elapsed_seconds_owned_nested": 124.90007978799986,
+    "reclassified_successful": false,
+    "result_json_absent": true,
+    "returncode": 1,
+    "status": "closed_child_failure"
+  },
+  "producer_generation": {
+    "cid": "sha256:a04e751ec52bd548399a7af777979d9ebb48b8af50eb8bf5adc689dba4b88d5a",
+    "manifest_sha256": "3188312edad6d02875ee312051f84c54d4e396f4d56a7a6fee00d7811a74ac9a",
+    "root": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/source-generation-07"
+  },
+  "reader_generation": {
+    "cid": "sha256:30d08864e562515c29af9c138f944a70626361137a8ae3721f532a6b6014a5fa",
+    "manifest_sha256": "5efc3725539ced8b5a0f6e172c3b4c7e92fccc158940feaa71b4890a054203a3",
+    "root": "/home/barberb/lift_coding/artifacts/codebase_ir_terminal_bench/terminal-codebase-ir-learned-intent-join-20261004-01/source-generation-08"
+  },
+  "resource_scope": {
+    "admission_timeout_seconds": 30,
+    "cold_cleanup_errors": [],
+    "cold_final_active_leases": 0,
+    "cold_final_waiters": 0,
+    "cold_own_state_acquisitions": 1,
+    "cold_own_state_releases": 1,
+    "complete_descendant_disappearance_independently_verified": false,
+    "default_proof_safe_scheduler": true,
+    "kernel_memory_CPU_containment": false,
+    "nested_root_parent_propagation": false,
+    "original_internal_scheduler_states_censused": false,
+    "policy_memory_CPU_IO_percent": [
+      2,
+      50,
+      10
+    ],
+    "proof_backoff_seconds": 2,
+    "root_request": {
+      "child_process_slots": 4,
+      "cpu_slots": 1,
+      "memory_mb": 2048
+    },
+    "wall_seconds": 900
+  },
+  "retention": {
+    "future_seal_qualification_not_predicted": true,
+    "status": "PENDING_AS_OF_DOCUMENT_WRITE"
+  },
+  "schema": "terminal-codebase-ir-learned-intent-join-review@1",
+  "source_import_populations": {
+    "CAP07_original_unit": 142,
+    "CAP07_producer": 318,
+    "CAP08_cold_reader": 46,
+    "scope": "Separate selected import records, not process or complete host module counts."
+  },
+  "source_scope": "Exact captured producer generation07 and separately captured reader/restart generation08; point-in-time selected LIVE pins only, no complete LIVE transfer.",
+  "source_unit_nominations": [
+    {
+      "candidate_id": "sha256:2e71c478691b73a251fdf9e36890f2b46d7c3e77c56d1cce60c87b5fd9785df5",
+      "feature_row_id": "80f33603fdff04d4a3136dc1ab22eecbe1535f1be7606ddd503c013378847c47",
+      "source_unit": {
+        "conversion_symbol": "touni",
+        "end_line": 1567,
+        "guarded": false,
+        "line": 1565,
+        "normalization_ops": [
+          "identity"
+        ],
+        "role": "field_value",
+        "source_ast_sha256": "6f8bcccc201e1149a0a7c45cde208695f4ef2ed633d8a8f6bfc55a8fd3fe679b",
+        "source_span": {
+          "end_byte": 63155,
+          "sha256": "831e33977263d1bc8153c24bb1c33ce425c5989159ce5a6c8c3e31982c6f7e26",
+          "start_byte": 63096
+        },
+        "symbol": "_hval"
+      },
+      "symbol": "_hval",
+      "trained_reconstruction_error": 0.004801355302333832
+    },
+    {
+      "candidate_id": "sha256:f316f4374c6dc26bfe1f47cd86007377b30ce3c0a475538bf3bc082b20801b00",
+      "feature_row_id": "d026bb51edec3ffb26df15111522582d77b2abde5a60a654b9c656f24d28414d",
+      "source_unit": {
+        "conversion_symbol": "touni",
+        "end_line": 1562,
+        "guarded": false,
+        "line": 1560,
+        "normalization_ops": [
+          "title",
+          "replace_underscore_hyphen"
+        ],
+        "role": "field_name",
+        "source_ast_sha256": "a443d26b00caea6120eba7c19ff4cc74d304c2fa4303c9a77f8861edd175d916",
+        "source_span": {
+          "end_byte": 63093,
+          "sha256": "fdc5c4c393b979f837fbd5afc0347506854767306ba8a5a1a9b1d1df3c62f29e",
+          "start_byte": 63016
+        },
+        "symbol": "_hkey"
+      },
+      "symbol": "_hkey",
+      "trained_reconstruction_error": 0.002203296637162566
+    }
+  ],
+  "status": "qualified_finite_training_and_separate_failed_parent_cold_recovery_only",
+  "tests": {
+    "CAP08_new_native_restart_test_count": 1,
+    "CAP08_restart_XML_seconds": 2.142,
+    "CAP08_restart_outer_seconds": 5.879741991011542,
+    "CAP08_restart_qualification": "passed",
+    "file_only_custody_correction_seconds_outer": 0.5232378370128572,
+    "file_only_custody_correction_status": "PASS_COMPOSITE_ORIGINAL_84_UNIT_CALLS_PLUS_FILE_ONLY_CLASSIFICATION",
+    "original_CAP07_XML_seconds": 8.299,
+    "original_CAP07_pytest_exit_code": 0,
+    "original_CAP07_unit_phases": 252,
+    "original_CAP07_unit_tests": 84,
+    "original_driver_import_retention_errors": 2,
+    "original_unit_outer_returncode": 1,
+    "original_unit_outer_seconds": 15.09897425500094,
+    "original_unit_outer_status": "failed_or_partial",
+    "pytest_rerun_for_correction": false,
+    "shadow_package_marker_observed": false,
+    "whole_capsule_recensus_by_file_only_correction": false
+  },
+  "training": {
+    "all_recorded_gradient_norms_nonzero_finite": true,
+    "all_recorded_objective_losses_finite": true,
+    "asymptotic_optimizer_convergence_proved": false,
+    "epochs": 24,
+    "final_reconstruction_MSE": 0.004241029956955566,
+    "final_weights_sha256": "2aa4ebddcd7522fcdd7518293db8f9dcb7307d8d60f1f5ce56fac67dee96b6ba",
+    "finite_window_four_absolute_tail_changes": [
+      0.00038514379411935806,
+      0.0003840764984488487,
+      0.00039508379995822906,
+      0.00039800768718123436
+    ],
+    "finite_window_stable": false,
+    "finite_window_tolerance": 0.0002,
+    "fit_count_selected_pipeline": 1,
+    "fit_seconds_nested": 1.7376583200093592,
+    "holdout_evaluated": false,
+    "initial_reconstruction_MSE": 0.02193685047141167,
+    "initial_weights_sha256": "d120e4a950516e8ba99465bc54d77e37dc605b6f5d35bfd1b3d4fc9475f984f0",
+    "loss_reduction_fraction": 0.8066709730057868,
+    "microbatch_count": 3,
+    "native_kernel_calls_recorded": 72,
+    "repeat_training_controls_requested": false,
+    "same_seed_and_independent_seed_repeat_status": "not_exercised_explicit_opt_out",
+    "sample_count": 358,
+    "seed": 1729,
+    "source_count": 2,
+    "source_hashes": {
+      ".supervisor-public-smoke.py": "288c73dbd2d7ed0e6e1a6b87f70bd5fe4262ecf50bd3be19988c1c5554b12d55",
+      "bottle.py": "761756ce31753e526c48d28ccbca13a5d2493b16fe37aff3e1e4d2efaf3a2bba"
+    },
+    "training_scope": "transductive_admitted_code_functions",
+    "weights_changed": true
+  },
+  "useful_intent_ranking_gain": {
+    "assessment": "UNMEASURED",
+    "intent_similarity_or_formula_generation": false,
+    "learned_role": "reconstruction_nomination_order_only",
+    "qualified": false,
+    "trained_and_zero_same_selected_order": [
+      "_hval",
+      "_hkey"
+    ]
+  }
+}

@@ -1,0 +1,222 @@
+{
+  "authority_limits": {
+    "independent_held_worker_launch_envelope_qualified": false,
+    "integer_model_theorem": "mathematical model only",
+    "native_worker_successor_loop_qualified": false,
+    "observed_facts": "BOUNDED_OBSERVATION; context only",
+    "production_activated": false,
+    "task_omission_authority": false,
+    "training_steps": 0,
+    "universal_python_semantics_proved": false,
+    "worker_launched": false
+  },
+  "capacity_native_lease_refusals_retained": 3,
+  "current_boundary_cases": 38,
+  "current_boundary_errors": 0,
+  "current_boundary_failures": 0,
+  "current_boundary_skips": 0,
+  "current_boundary_summary": {
+    "bytes": 1475,
+    "path": "artifacts/codebase_ir_terminal_bench/finite-admission-tests-20261002-04/current-summary.json",
+    "sha256": "db64464ad2fa901e6255c19c0414c3c651c34c916d559ea5d8dd01df68cc7c7d"
+  },
+  "current_capacity_cases_latest_passed": 21,
+  "documentation_pins": [
+    {
+      "bytes": 152933,
+      "path": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "sha256": "d33aa26452fe524b8a5e12947693a2c2db62d5f9cfa1af46b836f9f95923d8c0"
+    },
+    {
+      "bytes": 57761,
+      "path": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "sha256": "252831cf696d9497e6d00e92be5f6146eff45429ba31f79cfeace3b4892ed412"
+    },
+    {
+      "bytes": 58812,
+      "path": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "sha256": "59276b34e26aa9f180ac740e4ef4b54829d90df2cc3d027037cd3fa53e113184"
+    },
+    {
+      "bytes": 9367,
+      "path": "external/ipfs_accelerate/docs/agent_supervisor/finite_repository_admission_qualification.md",
+      "sha256": "20a644d1dd6624d0024feb50d4f06a457d63f3e70882252b5aa4f9b13c113708"
+    }
+  ],
+  "execution_result": {
+    "bytes": 17894,
+    "path": "artifacts/codebase_ir_terminal_bench/finite-admission-qualification-20261002-04/result.json",
+    "sha256": "8f0e2ed23481e2ca9410bd2536a971e993e35859aa89717316f82ae4b8fb6629"
+  },
+  "experiment_seconds": 50.72043634788133,
+  "fixture_execution_sources": [
+    {
+      "bytes": 25945,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/finite_repository_admission_experiment.py",
+      "sha256": "3d602a9b8ac28a4c65c6de3184c1e48355b970c020341ab8bc9f02bbbaf46832"
+    },
+    {
+      "bytes": 42674,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_repository_admission.py",
+      "sha256": "ae58271a7efed5dc9ddb99a4c62d5f5cefdfa1d59797c005d1b86e1843d3ac03"
+    },
+    {
+      "bytes": 72131,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+      "sha256": "681b90188aaf1906aa02f8010cb44ea6106cf09c481c0daf783133b76ebe6c74"
+    },
+    {
+      "bytes": 20617,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/finite_integer_capacity_preview.py",
+      "sha256": "d40812ae9b3d72f66e1fdfec183734775a24a0304486cff5dcfbb88c990f5098"
+    },
+    {
+      "bytes": 22196,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/finite_integer_source_custody.py",
+      "sha256": "b3edc537cf98be9518038e2b842c885275cb7155c5b64ae13d5bdabb25bb5344"
+    },
+    {
+      "bytes": 86490,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/control/profile_authority.py",
+      "sha256": "ac317966efe97582026f045c2a0acfc5c58151f7f3dd62d81d506b4e57dc9377"
+    },
+    {
+      "bytes": 429497,
+      "path": "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+      "sha256": "3e2c313d5a43544bcacd590342e47ad20d5fcf62d02b4bdf2218cbfce7bd26bf"
+    },
+    {
+      "bytes": 28715,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+      "sha256": "0fc2945f5c42eb2cdf068fab23885560dd8add30c3d4e751f3862f02fce72ba4"
+    },
+    {
+      "bytes": 41332,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_finite_integer_observation.py",
+      "sha256": "5613f32adc9212dab0a68c2f1ffe161255f4b27fae3a948f2d01bbd32229778b"
+    },
+    {
+      "bytes": 31360,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_integer_model_lean.py",
+      "sha256": "ab1e5bba2c9b63767068b5f5709af09145efd30e730c40d2474bb7143e369217"
+    }
+  ],
+  "historical_legacy_coupling_cases_passed": 119,
+  "historical_records_unchanged": true,
+  "observed_profile": {
+    "accepted_other_manifest_versions_not_independently_join_qualified": [
+      2,
+      3
+    ],
+    "capacity_schema": "finite-integer-capacity-bound-plan-preview@2",
+    "current_verification": "separate fresh native source and evidence observation",
+    "finite_inputs": [
+      -2,
+      -1,
+      0,
+      1,
+      2
+    ],
+    "historical_verification": "owner-local, active profile/key state and selected producer/tools/retained artifacts required",
+    "inventory_units": 7,
+    "manifest": "supervisor-local-benchmark-manifest@1",
+    "manifest_4_rejected": true,
+    "mode": "model_off",
+    "storage": "exclusive native DuckDB file; no live Quack server"
+  },
+  "open_acceptance_tasks": [
+    "RPI-001",
+    "RPI-002",
+    "RPI-003",
+    "RPI-004",
+    "RPI-005",
+    "RPI-006",
+    "RPI-007",
+    "RPI-008",
+    "RPI-009",
+    "RPI-010",
+    "RPI-011",
+    "RPI-012",
+    "RPI-013",
+    "RPI-014",
+    "RPI-015",
+    "RPI-016",
+    "RPI-017",
+    "RPI-018",
+    "RPI-019",
+    "RPI-020",
+    "RPI-021",
+    "RPI-022",
+    "RPI-023",
+    "RPI-024",
+    "RPI-025",
+    "RPI-026",
+    "RPI-027",
+    "RPI-028",
+    "RPI-029",
+    "RPI-030",
+    "RPI-031",
+    "RPI-032"
+  ],
+  "partial_evidence_tasks": [
+    "RPI-013",
+    "RPI-014",
+    "RPI-015",
+    "RPI-016",
+    "RPI-022",
+    "RPI-023",
+    "RPI-032"
+  ],
+  "qualification_directory": "artifacts/codebase_ir_terminal_bench/finite-admission-qualification-20261002-04",
+  "qualified_results": {
+    "active_leases": 0,
+    "atomic_complete_original_task_population": true,
+    "existing_native_completion_guards_preserved": true,
+    "fresh_native_finite_context": true,
+    "historical_parent_artifacts_unchanged": true,
+    "late_source_or_artifact_mutation_rolls_back_native_rows": true,
+    "no_work_review_cannot_materialize": true,
+    "owner_signed_complete_declaration": true,
+    "public_offset_check_passed": false,
+    "public_type_check_passed": true,
+    "successor_cold_nine_field_outcomes_agree": true,
+    "type_completed_only_after_actual_owner_checks": true,
+    "waiting_requests": 0
+  },
+  "remaining": [
+    "Add versioned finite multi-task native launch profile preserving complete population and exact residual revision/claim/fence.",
+    "Hold independent full supervisor/daemon/worker/check process resource envelope through successful STOP and cleanup.",
+    "Qualify actual worker edit and publication, explicit successor capture/recheck/rematch and newly signed baseline/context.",
+    "Retain live Quack/typed remote claim, complete public prompt meaning, general source semantics, learned semantic decoding, whole-inventory inference, proof reuse and zero/reduced-task policy gates."
+  ],
+  "reviewed_at_utc": "2026-10-02T07:22:41.899542+00:00",
+  "schema": "repository-proof-index-codebase-ir-finite-admission-review@1",
+  "scope": "Selected ending source/document observations and retained local model-off finite admission execution. No atomic working-tree capture, portable absent-key archive verifier, process-origin attestation or native worker successor loop.",
+  "selected_ending_verification": {
+    "bytes": 1557,
+    "path": "artifacts/codebase_ir_terminal_bench/finite-admission-qualification-20261002-04/verification.json",
+    "sha256": "82a003683d13bb1a17621efce2bbc40bd397f88b31fa0d3d2b83e7a368066c1b"
+  },
+  "source_pins": [
+    {
+      "bytes": 42674,
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/finite_repository_admission.py",
+      "sha256": "ae58271a7efed5dc9ddb99a4c62d5f5cefdfa1d59797c005d1b86e1843d3ac03"
+    },
+    {
+      "bytes": 25676,
+      "path": "external/ipfs_accelerate/test/api/test_finite_repository_admission.py",
+      "sha256": "9019d2e61019a3ff83ea7b06dc0d8a9ead99422adf511fba6fac466b5881c888"
+    },
+    {
+      "bytes": 25945,
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/finite_repository_admission_experiment.py",
+      "sha256": "3d602a9b8ac28a4c65c6de3184c1e48355b970c020341ab8bc9f02bbbaf46832"
+    }
+  ],
+  "test_ledger": {
+    "bytes": 168597,
+    "path": "artifacts/codebase_ir_terminal_bench/finite-admission-qualification-20261002-04/test-ledger.json",
+    "sha256": "7541bf88685dacd55ad9dd2b91eeca8edd073ea6a7431419c1356951507c8c14"
+  }
+}

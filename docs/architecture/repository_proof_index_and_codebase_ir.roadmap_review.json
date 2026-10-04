@@ -1,0 +1,268 @@
+{
+  "all_production_task_ids_open": [
+    "RPI-001",
+    "RPI-002",
+    "RPI-003",
+    "RPI-004",
+    "RPI-005",
+    "RPI-006",
+    "RPI-007",
+    "RPI-008",
+    "RPI-009",
+    "RPI-010",
+    "RPI-011",
+    "RPI-012",
+    "RPI-013",
+    "RPI-014",
+    "RPI-015",
+    "RPI-016",
+    "RPI-017",
+    "RPI-018",
+    "RPI-019",
+    "RPI-020",
+    "RPI-021",
+    "RPI-022",
+    "RPI-023",
+    "RPI-024",
+    "RPI-025",
+    "RPI-026",
+    "RPI-027",
+    "RPI-028",
+    "RPI-029",
+    "RPI-030",
+    "RPI-031",
+    "RPI-032"
+  ],
+  "captured_at_utc": "2026-10-02T02:30:42.072446+00:00",
+  "current_implementation_observations": [
+    "FullSupervisorAgent.run still reaches administrative intent planning at terminal_indexed_preparation._plan_symbolic; initial repository/model summaries are not symbolic selection inputs.",
+    "Both codebase_ir/codebase_feature_v1 and codebase_ir/source_bound_feature_v1 are registered feature runtimes; neither has a formal decoder, behavioral authority or eligible planner admission.",
+    "Frozen-basis feature continuation preserves Adam state and evaluation/replay ancestry; completed-operation replay is not durable interrupted-job resume.",
+    "The old AST-count feature encoder omits integer values. Positional projection features preserve known literals, but unknown atoms are omitted from vectors; the two current coordinators enforce different unknown-coverage policies.",
+    "Source-bound targets retain captured source/head/AST/ProgramIR/contracts/spans and feature-only projections. Their structural replay is not operational source semantics.",
+    "Source-bound ancestral split checks currently protect path/raw-content roles; normalized near-clones and dependency-connected groups need production qualification.",
+    "Native conditional evidence lookup is historical and non-authoritative; finite index queries return no current facts and require fresh owner observation.",
+    "The finite fixture uses authored candidates and empty critic effects without service admission. Public service integration needs reviewed operations, complete critic/worker evidence, mandatory owner root observations and a new signed profile.",
+    "Successor dispatch requires a new signed baseline and independently admitted context through a successor-capable API; the current initial binder is insufficient.",
+    "Logic-family, source-bound lake-build and code-state requirements are declarations only, not checker execution evidence or universal per-span projections."
+  ],
+  "documentation_pins": [
+    {
+      "bytes": 126759,
+      "path": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_PLAN.md",
+      "sha256": "17210919feb5bbfbfa7a49d15d758ef41a1b48bad85363509133f06ba7ecb432"
+    },
+    {
+      "bytes": 19229,
+      "path": "external/ipfs_accelerate/docs/architecture/REPOSITORY_PROOF_INDEX_AND_CODEBASE_IR_ROADMAP.md",
+      "sha256": "56b4177de815fb8424674a72032e557d069fd6d62a2673d35ae6d3ebec8c6153"
+    },
+    {
+      "bytes": 40555,
+      "path": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
+      "sha256": "19be73ece8a9c477dcf35ad5261aa7495ae7d88184fb3b92d2c319da3f99c3ec"
+    }
+  ],
+  "evidence_distinctions": {
+    "finite_experiment": "Retained completed qualification: 89 distinct current-at-execution passing cases; exact five-input observations, recorded Lean arithmetic, historical typed indexes and complete native metadata replay. Not general Bottle source behavior or production admission.",
+    "integer_feature_experiment": "Retained benchmark/test artifacts exist; implementation description excludes source_bound_feature_v1. The previously linked qualification.md was missing, so current plan links the actual benchmark and description.",
+    "old_review_document_digests": "Historical observations retained unchanged; this refresh writes a new review rather than rewriting their captured documentation identities.",
+    "source_bound_feature": "Current source and test specifications; no retained end-to-end qualification located in the reviewed paths. No new execution performed by this refresh."
+  },
+  "identity_scope": "Selected ending per-file observations; source and documentation may change independently in this shared dirty workspace. Not an atomic whole-repository capture, transitive environment attestation or current-source qualification of prior experiments.",
+  "implementation_phases": [
+    "capture_and_corpus",
+    "native_metadata_join",
+    "operational_property_route",
+    "public_service_and_admission",
+    "repository_adaptation",
+    "learned_formalization",
+    "actual_successor_loop",
+    "scale_and_default_qualification"
+  ],
+  "official_sources_checked": [
+    "https://ducklake.select/docs/stable/duckdb/advanced_features/constraints",
+    "https://ducklake.select/docs/stable/duckdb/unsupported_features",
+    "https://duckdb.org/docs/current/connect/concurrency",
+    "https://ducklake.select/docs/stable/duckdb/usage/choosing_a_catalog_database",
+    "https://ducklake.select/docs/stable/duckdb/usage/time_travel"
+  ],
+  "peer_review_domains": [
+    "entrypoint_service_admission_and_finite_authority",
+    "training_resume_unknown_atoms_family_and_lean_scopes"
+  ],
+  "retained_input_pins": [
+    {
+      "bytes": 9817,
+      "path": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.finite_review.json",
+      "sha256": "dcd1fd2836938797385008dba95869a1b57823dba68a436f4a165ad2d74632a0"
+    },
+    {
+      "bytes": 16836,
+      "path": "external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.planning_review.json",
+      "sha256": "41abc15bdfe44fc02e3ce81d0f66158e1751825b3721f207933f847c52defadf"
+    },
+    {
+      "bytes": 234642,
+      "path": "artifacts/codebase_ir_terminal_bench/finite-observation-qualification-20261002-03/result.json",
+      "sha256": "5ce118a25ef8d66936d1f6222a00a8129b4fadb8fb632cf7d1ee90be0555c118"
+    },
+    {
+      "bytes": 6224,
+      "path": "artifacts/codebase_ir_terminal_bench/finite-observation-qualification-20261002-03/REPORT.md",
+      "sha256": "4da45dec77ace74e0d4c425fdecaaabc17ee7d862672755067c102c66d1d6545"
+    },
+    {
+      "bytes": 17927,
+      "path": "artifacts/codebase_ir_terminal_bench/finite-observation-qualification-20261002-03/audit.json",
+      "sha256": "1c6731f70f9c328005310e736f383841bffdf08ab62acbe6ddac0d0a7e61b898"
+    },
+    {
+      "bytes": 23830,
+      "path": "artifacts/codebase_ir_terminal_bench/finite-observation-qualification-20261002-03/tests.json",
+      "sha256": "3b30a8757050ab81dfd3230aba6fc9c58a685c738461c742a7c0441c51c17603"
+    },
+    {
+      "bytes": 55795,
+      "path": "artifacts/codebase_ir_terminal_bench/finite-observation-qualification-20261002-03/independent-audit.json",
+      "sha256": "2f098ffd842eff5b8a4eadb5a3e1529ec9d4f56379c2f03e0fa68de6a620e9e2"
+    },
+    {
+      "bytes": 655012,
+      "path": "external/ipfs_datasets/workspace/codebase-feature-qualification-20261002/benchmark.json",
+      "sha256": "490c426a223ed590daea1d166e033fc1e86984e33cd5e1f2d8cb039301f6f8a2"
+    },
+    {
+      "bytes": 2893,
+      "path": "external/ipfs_datasets/workspace/codebase-feature-qualification-20261002/test-commands.json",
+      "sha256": "ce07d8c2efaf7a7437bb71e0a6227012cbb20f9f05d76c9a4ad1d75859e5c328"
+    },
+    {
+      "bytes": 14305,
+      "path": "external/ipfs_datasets/docs/software_contracts/CODEBASE_FEATURE_TRAINING.md",
+      "sha256": "ccd0720f6471d75f52338e0dc5a830a6156294b9ab80ec9e657f2e51c5739abd"
+    }
+  ],
+  "schema": "repository-proof-index-codebase-ir-roadmap-review@1",
+  "scope": "Read-only current source and retained artifact review plus three documentation updates. No new target execution, inference, fitting, checker, tests, native database openings, service activation or benchmark.",
+  "source_pins": [
+    {
+      "bytes": 20216,
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "sha256": "798308917911be224ff54be6f932ac7061a62ee2a1c0d566e737aaed0c78cfc6"
+    },
+    {
+      "bytes": 34890,
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "867f7a8551aade949bbd7258127185670b8f34bd6789da63a39df7c654c66e87"
+    },
+    {
+      "bytes": 48623,
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "sha256": "f8a1e14c6e35883e8736f161ba20d96e096b0458d0f91c8243e8fa3e298134bb"
+    },
+    {
+      "bytes": 72131,
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+      "sha256": "681b90188aaf1906aa02f8010cb44ea6106cf09c481c0daf783133b76ebe6c74"
+    },
+    {
+      "bytes": 32205,
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+      "sha256": "5623268360c3be84cbb9560c57bfee89c7cfb072dead77052f364d8492913b38"
+    },
+    {
+      "bytes": 106298,
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/prompt/plan_create_service.py",
+      "sha256": "17e425276464b3556e9eee88594fcba6ceb81ac4c4c93735f6b24cd73fa6d365"
+    },
+    {
+      "bytes": 9491,
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/structural_codebase_context.py",
+      "sha256": "e85c3516c809c7a918b4d330439fb9970f6f4816a2f919746104d55b8ac37511"
+    },
+    {
+      "bytes": 28822,
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/finite_integer_codebase.py",
+      "sha256": "18be1fa7562fc60f2ecb1814f289db8ea5f5e376339376c04d0fb73cc573a226"
+    },
+    {
+      "bytes": 26885,
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/terminal_codebase_finite_experiment.py",
+      "sha256": "11a9273909d8ba9e1c0226e627d63d8487aea3fe1d56bbbf87ab7515a8df88d9"
+    },
+    {
+      "bytes": 10960,
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/terminal_codebase_finite_index.py",
+      "sha256": "a9a277ccf82e3089dc01b04f0014dda51f3e480d0884a941ec6decc2f16ddc06"
+    },
+    {
+      "bytes": 58156,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_runtime_registry.py",
+      "sha256": "ca31983a5f514c7f5cf8b1b9250ef92e1beb13c0a2305381aac575931e79b4ac"
+    },
+    {
+      "bytes": 32125,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_projection_features.py",
+      "sha256": "0d93a2e56d0b46cff34f15c4792042bca33f47af00da80e21fa501ddf442de06"
+    },
+    {
+      "bytes": 11622,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_logic_requirements.py",
+      "sha256": "b75b67d5201a377a55d53aa7f0dbe09d31f2ec903446718bc01c8fd1efc1e4f0"
+    },
+    {
+      "bytes": 9202,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/codebase_targets.py",
+      "sha256": "926f5c6bddc4c568f84221d70bd23cad8cb7dcad9b9b1663204ed32a2dfbbb2e"
+    },
+    {
+      "bytes": 32609,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/codebase_autoencoder.py",
+      "sha256": "035ca389848a37344025a69c8788fd66179f60ac21207c24779faeeb936c6f8a"
+    },
+    {
+      "bytes": 29578,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir_targets.py",
+      "sha256": "88d619efdc83f8e207b13b05f879c956655a7b5825f5647b46457ca92539c3cf"
+    },
+    {
+      "bytes": 47987,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_training.py",
+      "sha256": "aea5fa8803ae6b6dde7c4e71b81f68a7f95257b3a5d76cea693ee13e66710aa0"
+    },
+    {
+      "bytes": 25128,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_feature_training.py",
+      "sha256": "79daf492ff30659135644146272cfbe661b9210ad67ff7f416eece4cbd6ae3f6"
+    },
+    {
+      "bytes": 28715,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+      "sha256": "0fc2945f5c42eb2cdf068fab23885560dd8add30c3d4e751f3862f02fce72ba4"
+    },
+    {
+      "bytes": 29575,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/duckdb_control/codebase_catalog.py",
+      "sha256": "e7c85582d965a1e72eb97795e711b77856daf3767cde02f4152127a1fa876140"
+    },
+    {
+      "bytes": 39109,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/duckdb_control/codebase_verification_catalog.py",
+      "sha256": "1a8041f0bee49eaa788d37c80e757ffd4abf4a1b9242e3159bb9c878094acf71"
+    },
+    {
+      "bytes": 36479,
+      "path": "external/ipfs_datasets/ipfs_datasets_py/duckdb_control/codebase_evidence_index.py",
+      "sha256": "68b83b5921e2577d260c1f9e97ed12fe815135c180ec68247c571e41dac79ebd"
+    }
+  ],
+  "status": "comprehensive_roadmap_updated_all_32_production_exits_open",
+  "validation": {
+    "local_document_links": 149,
+    "model_steps_executed": 0,
+    "new_tests_executed": 0,
+    "unchanged_finite_artifact_pins_checked": 64,
+    "unique_production_task_ids": 32
+  }
+}

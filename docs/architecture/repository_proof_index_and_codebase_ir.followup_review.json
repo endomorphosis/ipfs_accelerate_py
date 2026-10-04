@@ -1,0 +1,425 @@
+{
+  "schema": "repository-proof-index-codebase-ir-followup-review@1",
+  "environment_context_date": "2026-10-01",
+  "fingerprint_captured_at_utc": "2026-10-01T22:51:46.794805+00:00",
+  "status": "proposed_integration_all_27_RPI_tasks_open",
+  "scope": "Documentation and local source review; no pipeline implementation, training, inference, proof execution, live benchmark or runtime qualification in this follow-up. Referenced experiment reports were read, not rerun. File hashes identify bytes captured now, not an atomic whole-repository snapshot.",
+  "prior_review": "repository_proof_index_and_codebase_ir.review.json",
+  "repositories": {
+    "ipfs_accelerate": {
+      "path": "external/ipfs_accelerate",
+      "head": "18e0f79e56def8ba426cafdfad568fe6bf7440b7",
+      "tracked_working_tree_dirty": true,
+      "identity_scope": "per-file digests; not a complete repository snapshot"
+    },
+    "ipfs_datasets": {
+      "path": "external/ipfs_datasets",
+      "head": "d5238def256d1c352793ee7d977e6b17b6d8cbee",
+      "tracked_working_tree_dirty": true,
+      "identity_scope": "per-file digests; not a complete repository snapshot"
+    }
+  },
+  "peer_review_domains": [
+    "intent_and_codebase_semantics",
+    "indexes_and_incremental_training",
+    "supervisor_planning_and_resource_contracts"
+  ],
+  "official_documentation_checked": [
+    "https://duckdb.org/docs/current/connect/concurrency",
+    "https://duckdb.org/docs/current/guides/troubleshooting/oom_errors",
+    "https://ducklake.select/docs/stable/duckdb/unsupported_features",
+    "https://ducklake.select/docs/stable/duckdb/usage/time_travel"
+  ],
+  "source_files": [
+    {
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/INDEXED_ABLATIONS.md",
+      "sha256": "9932202d1db323fb4aaac28f44d8f4deb6c6e69c93446a09c4bd24382e0b0b4d",
+      "bytes": 14728,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "sha256": "f8a1e14c6e35883e8736f161ba20d96e096b0458d0f91c8243e8fa3e298134bb",
+      "bytes": 48623,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+      "sha256": "5623268360c3be84cbb9560c57bfee89c7cfb072dead77052f364d8492913b38",
+      "bytes": 32205,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_accelerate/docs/agent_supervisor/terminal_codebase_decoder_qualification.md",
+      "sha256": "e7765ee32c09e99a7554d6e89356874f9a74de27088b6569090f31e0f07ab21d",
+      "bytes": 10089,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_accelerate/docs/agent_supervisor/terminal_codebase_ir_qualification.md",
+      "sha256": "ea6787ec24c558809bdba5841df065d2496235d648f55d78f39d5f5e6564c520",
+      "bytes": 11543,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/intent_requirement_adapter.py",
+      "sha256": "66a0b30c01a70c710d8c6a2a12870f91ce91f4093bf84b6c19bd575412ea6b2d",
+      "bytes": 26435,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/ir_learning_campaign_planner.py",
+      "sha256": "30ab82142caf7ebed8bd86b4722fff7d39fa1e5aebd43957fca4d1957035b5e8",
+      "bytes": 13870,
+      "review_basis": "read-only peer source audit"
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/obligation_graph_compiler.py",
+      "sha256": "8a17f0fe2f756f75d4b49c358b77d9edba1f57fe8d85fea968ca7de628a8f9be",
+      "bytes": 135680,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/prompt/plan_create_service.py",
+      "sha256": "17e425276464b3556e9eee88594fcba6ceb81ac4c4c93735f6b24cd73fa6d365",
+      "bytes": 106298,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/proof/code_proof_obligations.py",
+      "sha256": "817879b8aae0ab7d385e3aecc8cef62c6ff1f6d4e676bfcefe22ab37c3cd054d",
+      "bytes": 268420,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/proof/code_proof_query.py",
+      "sha256": "7cd038d6637411d9524785a9a349c12a372d669b4d731efecadb208ea962a0df",
+      "bytes": 28101,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/proof/doctor_proof_cache.py",
+      "sha256": "08fdf045f68160b127b0e3a94ce2cfa045461bc04cc6c07d8beb247ce0881047",
+      "bytes": 80622,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/proof/formal_verification_cache.py",
+      "sha256": "c1f5f063bd6379410ba74310fb2fb2bb6e9c3cd664f5999cf6e5fd5ca5bb767f",
+      "bytes": 109558,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/proof/multi_prover_resources.py",
+      "sha256": "8bffb5e3d977615cc44d5cc99bf3bd097686e34817a093e48799af58fc2276b4",
+      "bytes": 74397,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/proof/proof_scope_index.py",
+      "sha256": "6482376fe353704397470d2495b745cdc086b40652b832f88f24e05e048d7f6f",
+      "bytes": 149605,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/intent_requirement_observation.py",
+      "sha256": "9601e06f4baf2fe77dda029ab508ad484d1d26cc635c9cb4897621a92f272490",
+      "bytes": 30945,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+      "sha256": "681b90188aaf1906aa02f8010cb44ea6106cf09c481c0daf783133b76ebe6c74",
+      "bytes": 72131,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py",
+      "sha256": "67d4e84d542ebbc167da4488df53ab72a1b258c6722b1f1ff9c77fdb85af841c",
+      "bytes": 258517,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py",
+      "sha256": "4957d73a10620c5849357d49eda6a0d43dceafb379cd5ec94a9af59c41338f69",
+      "bytes": 16194,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/benchmarks/bench_proving_real_stress.py",
+      "sha256": "818b30a3683f4f53493ec7f1f4ed60c4fb08869301fa78b7373bd613479b28a8",
+      "bytes": 8597,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/benchmarks/bench_resource_aware_proving.py",
+      "sha256": "411af717a731dd2a8a4f684f1f57ee546a32527a7c61a871754f5b66765354c5",
+      "bytes": 11931,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/duckdb_control/autoencoder_ducklake.py",
+      "sha256": "0da701042c3efe8e5de383c04f90af7df125803d870b08872f7766c0b46aa949",
+      "bytes": 17103,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/duckdb_control/autoencoder_publication.py",
+      "sha256": "d77c7ab8c085831baf2a974469fb2b32e03f56fc2f654a0af945b673c91f6163",
+      "bytes": 25900,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/duckdb_control/autoencoder_registry.py",
+      "sha256": "0333ce963cf85f2843e0662db431e0554f0c449be20387f0badd909bc5d7840f",
+      "bytes": 51708,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/duckdb_control/source_corpus_catalog.py",
+      "sha256": "014ccabff3d5adc6e87b2ddd947ade8f85fa7902a44a704445f3cebe5a965322",
+      "bytes": 41791,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/ducklake/autoencoder_history.py",
+      "sha256": "846a8bd8640694cb5a47ec9fa91eb71e4345262f22b8c16e36e217f715e05079",
+      "bytes": 21476,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/ducklake/source_corpus.py",
+      "sha256": "e283a77caf60762372bc52c2a97608a98e4a28456f5ce79cd4e6a2da51adf975",
+      "bytes": 26338,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/knowledge_graphs/adapters/duckdb_code_evidence.py",
+      "sha256": "6fb6a243f783d738d9d204abce1087a013589aa011812f45fea44f8707adff97",
+      "bytes": 43259,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/backends/registry.py",
+      "sha256": "1f23870b82c98c8d34d0ac7c380244940c63d0fa4176dd6e8b7ef023c3d162eb",
+      "bytes": 67564,
+      "review_basis": "read-only peer source audit"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/backends/tla/execution_v2.py",
+      "sha256": "f3f45a04e6db463bdb3cb925a3af5eee33113f2479dde23b220ce0b8199babce",
+      "bytes": 123550,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/backends/tla/runners.py",
+      "sha256": "308f6ee904f1cf2048da6d7f261dff5387a4766a44bed983ecf96b0ec13d4f7f",
+      "bytes": 49297,
+      "review_basis": "read-only peer source audit"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/common/canonical_cache_key.py",
+      "sha256": "6cc3b52c8635f6400f4f4bc00974b6e3489ce853da9b79db6420eb243c10c58f",
+      "bytes": 25282,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/common/duckdb_proof_store.py",
+      "sha256": "dd60e509626b12fa58a0494bece5a86e8d94c751c3d163d2c543e64ecd53ee39",
+      "bytes": 86049,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/common/proof_repository.py",
+      "sha256": "04de1a38e816c44ad41b8bc4e65d08bec1c732ed502d2651c26cebd629d993f5",
+      "bytes": 94712,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/codebase_autoencoder.py",
+      "sha256": "035ca389848a37344025a69c8788fd66179f60ac21207c24779faeeb936c6f8a",
+      "bytes": 32609,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formalization_pipeline.py",
+      "sha256": "f774e10badf64689c018c7bce8aa6197ae4f9b5ae64a8a40492822a8231f16c5",
+      "bytes": 10071,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_decoder_v2.py",
+      "sha256": "e60f7e295e7b60dedf836fe33ee583633b7478ae59898d6b8dabaf12bf1e3e47",
+      "bytes": 31344,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_grammar_v2.py",
+      "sha256": "0798626264b0ad36580ff1e0ef86c37c98613e9404f1535a7a4c7c8ab9232bcf",
+      "bytes": 21521,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_lean.py",
+      "sha256": "2424130243fe287f021da3615499a4ffdecaa9ad4b8363de3c1dbc86f168d960",
+      "bytes": 12309,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_source_units.py",
+      "sha256": "ae9b5d94b17c05201dde08152c6f1f54a09736c76fcad8ba8e588dc1c5d59b07",
+      "bytes": 11735,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/security/source_program_binding_384_v2.py",
+      "sha256": "fce62d147c82612cf5c59f1bbbbc56516b93e02e4440cc1ada3c5f27071c9a66",
+      "bytes": 10770,
+      "review_basis": "read-only peer source audit"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/source_program_runtime_384.py",
+      "sha256": "7bd46875786f05f6cc19fda3cf3ebc1529617fb4a65c9e9000991a906124e277",
+      "bytes": 5669,
+      "review_basis": "read-only peer source audit"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/hammers/semantic_routing.py",
+      "sha256": "5e8cd8a4abf194fc16591ffc323860a56cadcd22b016598f366e3926227f4922",
+      "bytes": 9280,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/intent_ir/formalize/requirements.py",
+      "sha256": "4e3eb3cbadb5b87973e0b823c692aac66c5691e87cb3d6ba536dea99b99f6914",
+      "bytes": 29936,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/proof_corpus/duckdb_repository.py",
+      "sha256": "6e7a4dd09f31c408a572072e75d3e4a2c3d74f93480d744115740ee9b36237b9",
+      "bytes": 67324,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/proof_corpus/query.py",
+      "sha256": "e5f3c96dc6efd79904eac94f80648cd9d51a0a3293ca559ca4c98c391e8b993f",
+      "bytes": 14078,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/proof_corpus/verifier.py",
+      "sha256": "b3306709d7f22d12b85eb279ee670d408289ad9f97dd9e9c5db73d2f8be073ba",
+      "bytes": 68280,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/security_ir/code_logic_projection.py",
+      "sha256": "e6328d747d54f26835b8da24c87a9a80eff6951bdc936c87243307574a85788b",
+      "bytes": 14373,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/security_ir/code_program_derivation.py",
+      "sha256": "2084ee42f760d7d59b560a04b24af3e47c8966b7909f800f2b4c88be8f7bbbae",
+      "bytes": 17773,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py",
+      "sha256": "bbfb50388daeff7864f01ba172cd6ad490f714fcf10d0dac4b6cf783ed5c407b",
+      "bytes": 74724,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/duckdb_ingest.py",
+      "sha256": "18cdbb15f20118d9dafea108c85064369f2b163b84f29f6b6e7b8c87778120ee",
+      "bytes": 52043,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/semantic_index/scanner.py",
+      "sha256": "0dd22f59cd1af93e229752194d0415506d2cf0177727da5f15cb09715297b8ba",
+      "bytes": 32114,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/semantic_index/snapshot.py",
+      "sha256": "5135e623a0a3f970252da63dce049be167e8bb73db5355f6c3116316b70aafa6",
+      "bytes": 48191,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_contracts/semantic_state/api.py",
+      "sha256": "e172654ef7f51901f003de2fbe85573e38e0c6544941b36a003fc9392d8e4f51",
+      "bytes": 43440,
+      "review_basis": "read-only peer source audit"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_verification/incremental_verification.py",
+      "sha256": "bc5bee5461be237b5ff83320d8bfa5409a188a026bee8a0d409fc19e5eeb7029",
+      "bytes": 40466,
+      "review_basis": "read-only peer source audit"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_verification/pipeline.py",
+      "sha256": "2103f1d21076e79c381a2daa4ef2a70db44d40ee0a4f499b28332ac5a0c76fb2",
+      "bytes": 51594,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_verification/tactician/goal_compiler.py",
+      "sha256": "6a1c5da91065facd33ca21c3e04ead23f49d764998b1cb643bbd6dc7bedb808e",
+      "bytes": 53646,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_verification/tactician/proof_graph.py",
+      "sha256": "f26f8e5c87969ba02692ae63ecf57b32b5867687f0c6b5fa4489f79492d0a10f",
+      "bytes": 83285,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/software_verification/tactician/proof_plan.py",
+      "sha256": "c2a9b78691f17c2c6698f033ec7bfc749ede7eba70f96aaca713b397ae47983c",
+      "bytes": 82265,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py",
+      "sha256": "15fcce3aba498e502b3c98122e33a748028d6e042795ac101f65a2c5ec3b0475",
+      "bytes": 36554,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_incremental_training.py",
+      "sha256": "0f76f56a53d67867f2447ef97f63d05db2cce80aaf32c46ef662b64cff398fd2",
+      "bytes": 22784,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_modality_contracts.py",
+      "sha256": "5a6a88054e2b60dbe205625ffcb1d1c798c869ca5801a1ad1f4907467360de7f",
+      "bytes": 20688,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_runtime_registry.py",
+      "sha256": "d7d9c8f93d4423438fd2965fe36ba70950eddce081875623f3d7a58790bc5cc4",
+      "bytes": 38006,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py",
+      "sha256": "23569b40b44d9130c30c62be564d58908a509fb1f40c6377e89f2fc1e3c799c5",
+      "bytes": 4534,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+      "sha256": "a418e84f70ed8509ba0518feea69e7a8c27865139f83b6c81349eefdfd5893a4",
+      "bytes": 82754,
+      "review_basis": "source_or_document_reference; selected contracts inspected by root or read-only peer audits"
+    }
+  ]
+}
