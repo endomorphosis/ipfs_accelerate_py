@@ -1,8 +1,0 @@
-{
-  "returncode": 0,
-  "rows": [],
-  "cleanup_verified": true,
-  "query_filter": "fix-code-vulnerability",
-  "matched_trial_case_insensitive": "qwowups",
-  "other_container_rows_exported": false
-}

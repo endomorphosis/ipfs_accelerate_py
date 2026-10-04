@@ -33,18 +33,26 @@ MANIFEST_SCHEMA = "supervisor-local-benchmark-manifest@1"
 PLANNER_MANIFEST_SCHEMA = "supervisor-local-benchmark-manifest@2"
 CREATE_MANIFEST_SCHEMA = "supervisor-local-benchmark-manifest@3"
 INTENT_MANIFEST_SCHEMA = "supervisor-local-benchmark-manifest@4"
+INVENTORY_MANIFEST_SCHEMA = "supervisor-local-benchmark-manifest@5"
+SUCCESSOR_MANIFEST_SCHEMA = "supervisor-local-benchmark-manifest@6"
+INVENTORY_MANIFEST_SCHEMAS = frozenset({INVENTORY_MANIFEST_SCHEMA, SUCCESSOR_MANIFEST_SCHEMA})
 SUPPORTED_MANIFEST_SCHEMAS = frozenset({
     MANIFEST_SCHEMA, PLANNER_MANIFEST_SCHEMA, CREATE_MANIFEST_SCHEMA, INTENT_MANIFEST_SCHEMA,
+    INVENTORY_MANIFEST_SCHEMA, SUCCESSOR_MANIFEST_SCHEMA,
 })
 CONTRACT_SCHEMA = "supervisor-local-pending-completion@1"
 INTENT_CONTRACT_SCHEMA = "supervisor-local-pending-completion@2"
 PLANNING_RECEIPT_SCHEMA = "supervisor-local-planning-receipt@1"
 INTENT_PLANNING_RECEIPT_SCHEMA = "supervisor-local-planning-receipt@2"
+INVENTORY_PLANNING_RECEIPT_SCHEMA = "supervisor-local-planning-receipt@3"
+SUCCESSOR_PLANNING_RECEIPT_SCHEMA = "supervisor-local-planning-receipt@4"
 INTENT_REQUIREMENT_ARTIFACT_SCHEMA = "supervisor-local-intent-requirement-artifact@1"
 RESULT_SCHEMA = "supervisor-local-observed-validation@1"
 CONTRACT_KEY = "local_planning_contract"
 PLANNING_RECEIPT_REFERENCE_SCHEMA = "supervisor-local-planning-receipt-reference@1"
 INTENT_PLANNING_RECEIPT_REFERENCE_SCHEMA = "supervisor-local-planning-receipt-reference@2"
+INVENTORY_PLANNING_RECEIPT_REFERENCE_SCHEMA = "supervisor-local-planning-receipt-reference@3"
+SUCCESSOR_PLANNING_RECEIPT_REFERENCE_SCHEMA = "supervisor-local-planning-receipt-reference@4"
 MAX_PLANNING_RECEIPT_BYTES = 4 * 1024 * 1024
 LOCAL_POLICY = {
     "schema": "supervisor-isolated-benchmark-planning-policy@1",
@@ -62,7 +70,14 @@ class LocalPlanningError(ValueError):
 
 def supports_created_outputs(manifest: Mapping) -> bool:
     """Share the declared-create capability across manifest readers."""
-    return manifest.get("schema") in {CREATE_MANIFEST_SCHEMA, INTENT_MANIFEST_SCHEMA}
+    return manifest.get("schema") in {CREATE_MANIFEST_SCHEMA, INTENT_MANIFEST_SCHEMA, *INVENTORY_MANIFEST_SCHEMAS}
+
+
+def source_inventory_limit(manifest: Mapping) -> int:
+    """The large source allowance belongs only to the explicit inventory profile."""
+    if manifest.get("schema") in INVENTORY_MANIFEST_SCHEMAS:
+        return 1024
+    return 256 if supports_created_outputs(manifest) else 128
 
 
 def _plain(value):
@@ -147,6 +162,44 @@ def _tree(sources: Mapping) -> str:
     return content_identity({"schema": "supervisor-local-source-tree@1", "sources": sources})
 
 
+def _manifest_observation_git(root: Path, *args: str, public_readonly: bool = False) -> str:
+    """Use exact-root public Git trust only for the three inventory reads."""
+    if type(public_readonly) is not bool:
+        raise LocalPlanningError("exact public read route required")
+    if not public_readonly:
+        return _git(root, *args)
+    root = Path(root)
+    if not root.is_absolute() or root.resolve(strict=True) != root:
+        raise LocalPlanningError("public inventory requires an exact non-symlink root")
+    tree_read = (len(args) == 5 and args[:4] == ("ls-tree", "-r", "--name-only", "-z")
+                 and type(args[4]) is str and len(args[4]) in (40, 64)
+                 and all(character in "0123456789abcdef" for character in args[4]))
+    if (any(type(argument) is not str for argument in args)
+            or (not tree_read and args not in (("ls-files", "-z"), ("ls-files", "--others", "-z")))):
+        raise LocalPlanningError("public inventory permits only fixed Git reads")
+    from .candidate_execution import GIT_OWNER_ENV
+    return subprocess.check_output(
+        ["/usr/bin/git", "--no-replace-objects", "-c", "safe.directory=" + str(root),
+         "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-C", str(root), *args],
+        env={"PATH": "/usr/bin:/bin", **GIT_OWNER_ENV}, text=True, timeout=10,
+    ).strip()
+
+
+def observe_public_inventory_manifest_sources(root: Path, manifest: Mapping, *, initial=False) -> dict:
+    """Read an already verified inventory manifest across the public UID boundary.
+
+    This only selects literal per-command Git trust for the exact canonical
+    root. The caller must verify the public signature and worktree binding;
+    source, tracked-membership and declared-output checks remain shared with
+    the ordinary owner observation and confer no dispatch authority.
+    """
+    root = Path(root)
+    if (manifest.get("schema") not in INVENTORY_MANIFEST_SCHEMAS or type(initial) is not bool
+            or not root.is_absolute() or root.resolve(strict=True) != root):
+        raise LocalPlanningError("public inventory requires its explicit schema and canonical root")
+    return _observe_local_manifest_sources(root, manifest, initial=initial, public_readonly=True)
+
+
 def observe_local_manifest_sources(root: Path, manifest: Mapping, *, initial=False) -> dict:
     """Observe the exact @3 baseline plus explicitly absent-to-created outputs.
 
@@ -154,17 +207,23 @@ def observe_local_manifest_sources(root: Path, manifest: Mapping, *, initial=Fal
     This helper is also used by the signed Portal transition verifier so a
     newly created output cannot disappear from the resulting source binding.
     """
+    return _observe_local_manifest_sources(root, manifest, initial=initial)
+
+
+def _observe_local_manifest_sources(root: Path, manifest: Mapping, *, initial=False,
+                                    public_readonly=False) -> dict:
     if not supports_created_outputs(manifest):
         raise LocalPlanningError("declared-create observation requires manifest version 3 or 4")
     created = manifest.get("created_outputs")
     declared = [item["path"] for spec in manifest["tasks"] for item in spec["outputs"]
                 if item.get("effect") == "create"]
-    minimum = 0 if manifest.get("schema") == INTENT_MANIFEST_SCHEMA else 1
+    minimum = 0 if manifest.get("schema") in {INTENT_MANIFEST_SCHEMA, *INVENTORY_MANIFEST_SCHEMAS} else 1
     if (not isinstance(created, list) or not minimum <= len(created) <= 32
             or created != sorted(set(declared)) or len(declared) != len(set(declared))):
         raise LocalPlanningError("exact unique declared-create output population required")
     baseline = set(manifest["sources"])
-    baseline_git = set(filter(None, _git(root, "ls-tree", "-r", "--name-only", "-z", manifest["baseline_commit"]).split("\0")))
+    baseline_git = set(filter(None, _manifest_observation_git(root, "ls-tree", "-r", "--name-only", "-z",
+        manifest["baseline_commit"], public_readonly=public_readonly).split("\0")))
     if baseline_git != baseline:
         raise LocalPlanningError("baseline source inventory differs from its signed commit")
     for name in created:
@@ -174,14 +233,16 @@ def observe_local_manifest_sources(root: Path, manifest: Mapping, *, initial=Fal
             raise LocalPlanningError("created output must be absent at baseline and never symlinked")
         if initial and path.exists():
             raise LocalPlanningError("created output must be absent before admission")
-    tracked = set(filter(None, _git(root, "ls-files", "-z").split("\0")))
+    tracked = set(filter(None, _manifest_observation_git(root, "ls-files", "-z",
+        public_readonly=public_readonly).split("\0")))
     if not baseline <= tracked <= baseline | set(created) or (initial and tracked != baseline):
         raise LocalPlanningError("tracked source inventory escaped declared creations")
-    untracked = set(filter(None, _git(root, "ls-files", "--others", "-z").split("\0")))
+    untracked = set(filter(None, _manifest_observation_git(root, "ls-files", "--others", "-z",
+        public_readonly=public_readonly).split("\0")))
     if any(name not in created and not name.startswith(".runtime/") for name in untracked):
         raise LocalPlanningError("undeclared new source outside runtime directory")
     current_names = baseline | {name for name in created if (root / name).exists()}
-    current = _sources(root, sorted(current_names), max_files=256)
+    current = _sources(root, sorted(current_names), max_files=source_inventory_limit(manifest))
     outputs = {item["path"] for spec in manifest["tasks"] for item in spec["outputs"]}
     if initial and current != manifest["sources"]:
         raise LocalPlanningError("source changed since independent manifest")
@@ -226,6 +287,8 @@ def author_local_benchmark_manifest(
     planning_roots: Mapping[str, str],
     planning_inputs: Mapping | None = None,
     intent_requirements: Mapping | None = None,
+    codebase_inventory_context: Mapping | None = None,
+    codebase_successor_context: Mapping | None = None,
 ) -> dict:
     """Sign independently declared benchmark inputs, before model planning.
 
@@ -251,7 +314,8 @@ def author_local_benchmark_manifest(
         "profile_content_id": profile.content_id,
         "profile_dir": str(Path(profile_dir).resolve(strict=True)),
         "lifecycle_dir": str(Path(lifecycle_dir).resolve(strict=True)),
-        "sources": _sources(root, names, max_files=256 if created else 128),
+        "sources": _sources(root, names, max_files=1024 if codebase_inventory_context is not None
+                            else 256 if created else 128),
         "policy": LOCAL_POLICY,
         "planning_roots": dict(planning_roots),
         "tasks": list(task_specs),
@@ -277,6 +341,25 @@ def author_local_benchmark_manifest(
                 separators=(",", ":"), ensure_ascii=False, allow_nan=False),
             "contract_cid": cid_for_dag_json(requirement_contract),
         }
+    if codebase_inventory_context is not None:
+        if intent_requirements is not None:
+            raise LocalPlanningError("inventory and IntentIR manifest profiles must be explicitly separate")
+        from .codebase_inventory_evidence_worker_context import (
+            DECLARATION_SCHEMA, inventory_declaration, validate_inventory_declaration,
+        )
+
+        payload.update(schema=INVENTORY_MANIFEST_SCHEMA, created_outputs=created,
+            codebase_inventory_context=(validate_inventory_declaration(codebase_inventory_context)
+                if codebase_inventory_context.get("schema") == DECLARATION_SCHEMA
+                else inventory_declaration(codebase_inventory_context)))
+    if codebase_successor_context is not None:
+        if codebase_inventory_context is None:
+            raise LocalPlanningError("successor profile requires the complete current inventory declaration")
+        from .codebase_successor_dispatch_context import validate_successor_declaration
+
+        payload.update(schema=SUCCESSOR_MANIFEST_SCHEMA, codebase_successor_context=
+            validate_successor_declaration(codebase_successor_context,
+                inventory_declaration=payload["codebase_inventory_context"], sources=payload["sources"]))
     envelope = _signed(payload, payload)
     _manifest(envelope, initial=True)
     return envelope
@@ -314,10 +397,16 @@ def _validate_local_manifest_declarations(payload: Mapping) -> set[str]:
         expected.update({"created_outputs", "intent_requirements"})
         if "planning_inputs" in payload:
             expected.add("planning_inputs")
+    if payload.get("schema") in INVENTORY_MANIFEST_SCHEMAS:
+        expected.update({"created_outputs", "codebase_inventory_context"})
+        if "planning_inputs" in payload:
+            expected.add("planning_inputs")
+    if payload.get("schema") == SUCCESSOR_MANIFEST_SCHEMA:
+        expected.add("codebase_successor_context")
     if set(payload) != expected or payload.get("schema") not in SUPPORTED_MANIFEST_SCHEMAS:
         raise LocalPlanningError("unsupported manifest contract")
     sources = payload["sources"]
-    maximum = 256 if supports_created_outputs(payload) else 128
+    maximum = source_inventory_limit(payload)
     if not isinstance(sources, Mapping) or not 1 <= len(sources) <= maximum:
         raise LocalPlanningError("local source inventory bound exceeded")
     for name, source in sources.items():
@@ -331,6 +420,17 @@ def _validate_local_manifest_declarations(payload: Mapping) -> set[str]:
             raise LocalPlanningError("exact signed source binding required")
     if payload["policy"] != LOCAL_POLICY:
         raise LocalPlanningError("external or explicit proof obligations are unsupported")
+    if payload["schema"] in INVENTORY_MANIFEST_SCHEMAS:
+        from .codebase_inventory_evidence_worker_context import validate_inventory_declaration
+
+        validate_inventory_declaration(payload["codebase_inventory_context"], sources=sources)
+        if _receipt_bytes(payload["policy"]) != _receipt_bytes(LOCAL_POLICY):
+            raise LocalPlanningError("inventory profile requires the exact local policy")
+    if payload["schema"] == SUCCESSOR_MANIFEST_SCHEMA:
+        from .codebase_successor_dispatch_context import validate_successor_declaration
+
+        validate_successor_declaration(payload["codebase_successor_context"],
+            inventory_declaration=payload["codebase_inventory_context"], sources=sources)
     roots = payload["planning_roots"]
     if not isinstance(roots, Mapping) or set(roots) != {"request_cid", "scan_cid", "program_root"} or not all(
         isinstance(value, str) and value for value in roots.values()
@@ -424,7 +524,7 @@ def _validate_local_manifest_declarations(payload: Mapping) -> set[str]:
     if supports_created_outputs(payload):
         declared = [output["path"] for spec in specs for output in spec["outputs"]
                     if output["effect"] == "create"]
-        minimum = 0 if payload["schema"] == INTENT_MANIFEST_SCHEMA else 1
+        minimum = 0 if payload["schema"] in {INTENT_MANIFEST_SCHEMA, *INVENTORY_MANIFEST_SCHEMAS} else 1
         if (not minimum <= len(payload["created_outputs"]) <= 32
                 or payload["created_outputs"] != sorted(set(declared))
                 or len(declared) != len(set(declared))):
@@ -755,8 +855,10 @@ def _graph_contract(graph: PromptGoalGraph, manifest: dict, tree_id: str) -> tup
                 for name, rows in value.items()
             }
 
+        spec_differs = (_receipt_bytes(ordered(observed)) != _receipt_bytes(ordered(spec))
+            if manifest["schema"] in INVENTORY_MANIFEST_SCHEMAS else ordered(observed) != ordered(spec))
         if (
-            ordered(observed) != ordered(spec)
+            spec_differs
             or task.assumptions
             or not set(task.evidence_cids) <= {item.evidence_cid for item in allowed_evidence}
             or task.policy_roots != policy_roots
@@ -865,6 +967,19 @@ def _planning_payload(graph, manifest, declared, profile, sources, requirement_b
             payload["intent_symbolic_planning"] = planned["receipt"]
     elif requirement_bindings is not None:
         raise LocalPlanningError("requirement bindings require the intent manifest version")
+    if declared["schema"] in INVENTORY_MANIFEST_SCHEMAS:
+        from .codebase_inventory_evidence_worker_context import validate_inventory_declaration
+
+        context = validate_inventory_declaration(declared["codebase_inventory_context"], sources=declared["sources"])
+        payload.update(schema=INVENTORY_PLANNING_RECEIPT_SCHEMA,
+            codebase_inventory_context_cid=context["full_context_cid"],
+            administrator_task_cids=sorted(task.task_cid for task in graph.tasks),
+            current_facts=[], removed_task_cids=[], runtime_requirements_preserved=True)
+    if declared["schema"] == SUCCESSOR_MANIFEST_SCHEMA:
+        context = declared["codebase_successor_context"]
+        payload.update(schema=SUCCESSOR_PLANNING_RECEIPT_SCHEMA,
+            codebase_successor_context_cid=context["full_context_cid"],
+            successor_selection_cid=context["selection_cid"], source_delta_cid=context["source_delta_cid"])
     return payload
 
 
@@ -923,7 +1038,9 @@ def verify_local_benchmark_admission(admission: Mapping, *, initial: bool = True
         source_applicability_nomination=_header_nomination(receipt),
     )
     _post_header_manifest(admission["manifest"], manifest, current, initial=initial)
-    if receipt != expected:
+    differs = (_receipt_bytes(receipt) != _receipt_bytes(expected)
+        if manifest["schema"] in INVENTORY_MANIFEST_SCHEMAS else receipt != expected)
+    if differs:
         raise LocalPlanningError("planning receipt does not match recomputed contract")
     return {"manifest": manifest, "profile": profile, "receipt": receipt,
             "graph": graph, "current_source_tree_id": _tree(current)}
@@ -956,6 +1073,13 @@ def _receipt_reference(envelope: Mapping, raw: bytes) -> dict:
             requirement_contract_cid=coverage["contract_cid"],
             requirement_coverage_cid=content_identity(coverage),
         )
+    if payload["schema"] == INVENTORY_PLANNING_RECEIPT_SCHEMA:
+        reference.update(schema=INVENTORY_PLANNING_RECEIPT_REFERENCE_SCHEMA,
+            codebase_inventory_context_cid=payload["codebase_inventory_context_cid"])
+    if payload["schema"] == SUCCESSOR_PLANNING_RECEIPT_SCHEMA:
+        reference.update(schema=SUCCESSOR_PLANNING_RECEIPT_REFERENCE_SCHEMA,
+            **{key: payload[key] for key in ("codebase_inventory_context_cid", "codebase_successor_context_cid",
+                "successor_selection_cid", "source_delta_cid")})
     return reference
 
 
@@ -996,6 +1120,14 @@ def load_local_planning_receipt(reference: Mapping, *, manifest: Mapping) -> dic
         expected_keys.update({"requirement_contract_cid", "requirement_coverage_cid"})
         schema = INTENT_PLANNING_RECEIPT_REFERENCE_SCHEMA
         receipt_schema = INTENT_PLANNING_RECEIPT_SCHEMA
+    if declared["schema"] in INVENTORY_MANIFEST_SCHEMAS:
+        expected_keys.add("codebase_inventory_context_cid")
+        schema = INVENTORY_PLANNING_RECEIPT_REFERENCE_SCHEMA
+        receipt_schema = INVENTORY_PLANNING_RECEIPT_SCHEMA
+    if declared["schema"] == SUCCESSOR_MANIFEST_SCHEMA:
+        expected_keys.update({"codebase_successor_context_cid", "successor_selection_cid", "source_delta_cid"})
+        schema = SUCCESSOR_PLANNING_RECEIPT_REFERENCE_SCHEMA
+        receipt_schema = SUCCESSOR_PLANNING_RECEIPT_SCHEMA
     if (not isinstance(reference, Mapping) or set(reference) != expected_keys
             or reference.get("schema") != schema
             or type(reference.get("bytes")) is not int
@@ -1031,6 +1163,16 @@ def load_local_planning_receipt(reference: Mapping, *, manifest: Mapping) -> dic
         or payload["requirement_coverage"].get("contract_cid") != declared["intent_requirements"]["contract_cid"]
     ):
         raise LocalPlanningError("planning receipt requirement contract differs")
+    if declared["schema"] in INVENTORY_MANIFEST_SCHEMAS and (
+        payload.get("codebase_inventory_context_cid") != declared["codebase_inventory_context"]["full_context_cid"]
+        or payload.get("current_facts") != [] or payload.get("removed_task_cids") != []
+        or payload.get("runtime_requirements_preserved") is not True
+    ):
+        raise LocalPlanningError("planning receipt inventory binding or residual requirements differ")
+    if declared["schema"] == SUCCESSOR_MANIFEST_SCHEMA and any(payload.get(key) != declared["codebase_successor_context"][field]
+            for key, field in (("codebase_successor_context_cid", "full_context_cid"),
+                ("successor_selection_cid", "selection_cid"), ("source_delta_cid", "source_delta_cid"))):
+        raise LocalPlanningError("planning receipt successor selection or source transition differs")
     if declared["schema"] == INTENT_MANIFEST_SCHEMA:
         requirements = _verify_intent_requirements(declared)
         if requirements["schema"] in {"intent-plan-requirement-contract@2", "intent-plan-requirement-contract@3"}:

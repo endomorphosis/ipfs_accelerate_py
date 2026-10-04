@@ -7,7 +7,6 @@ verifier runs afterwards and remains outside this process's indexed context.
 from __future__ import annotations
 
 import argparse
-from collections import deque
 import hashlib
 import json
 import os
@@ -20,7 +19,13 @@ import time
 import uuid
 
 from benchmarks.agent_supervisor.container_coding import terminal_indexed_preparation as preparation
+from benchmarks.agent_supervisor.container_coding.native_quack_qualification import open_existing_native_owner
+from benchmarks.agent_supervisor.container_coding.terminal_doctor_dispatch import (
+    implementation_argv, prepare_terminal_doctor_dispatch,
+)
+from ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime import AdmittedBenchmarkRuntime
 from ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission import verify_local_benchmark_admission
+from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import GROK_CODEX_EXECUTION_MODE
 
 ROOT = Path("/opt/ipfs-supervisor")
 ROUTER = ROOT / "bin/router-worker"
@@ -97,50 +102,6 @@ def _native_diagnostics(state: Path) -> dict:
                 ) if key in value and type(value[key]) in (str, int, bool, type(None))}
             except (OSError, ValueError, TypeError):
                 result[name] = {"readable_json": False}
-    return result
-
-
-def _failure_diagnostics(error: Exception, *, phase: str) -> dict:
-    """Observe a failure without exporting source, locals or exception chains.
-
-    These observations grant no authority and never change admission. Resource
-    values are a new sample at error handling, not the earlier lease decision.
-    A bounded traceback walk avoids source/linecache reads during unwinding.
-    """
-    result = {"error_phase": phase}
-    try:
-        frames = deque(maxlen=20)
-        current = error.__traceback__
-        walked = 0
-        while current is not None and walked < 256:
-            code = current.tb_frame.f_code
-            frames.append({"file": code.co_filename[:512],
-                           "function": code.co_name[:128], "line": current.tb_lineno})
-            current = current.tb_next
-            walked += 1
-        result["error_traceback"] = {"frames": list(frames),
-            "frames_walked": walked, "frames_omitted": walked - len(frames),
-            "walk_truncated": current is not None}
-    except Exception as diagnostic_error:
-        result["failure_traceback_error"] = type(diagnostic_error).__name__[:128]
-    try:
-        from dataclasses import asdict
-        from ipfs_datasets_py.optimizers.logic_theorem_optimizer.proof_resource_safety import (
-            collect_proof_host_resources,
-        )
-        result["failure_resources"] = asdict(collect_proof_host_resources())
-    except Exception as diagnostic_error:
-        result["failure_resource_error"] = type(diagnostic_error).__name__[:128]
-    try:
-        from benchmarks.agent_supervisor.container_coding.terminal_resource_diagnostics import collect_failure_scheduler
-        result["failure_scheduler"] = collect_failure_scheduler()
-    except Exception:
-        result["failure_scheduler_error"] = "collection_unavailable"
-    try:
-        from benchmarks.agent_supervisor.container_coding.terminal_resource_diagnostics import collect_failure_admission
-        result["failure_admission"] = collect_failure_admission(error)
-    except Exception:
-        result["failure_admission_error"] = "collection_unavailable"
     return result
 
 
@@ -334,8 +295,6 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
         security_checkpoint_hub_descriptor: Path | None = None,
         formula_decoder_descriptor: Path | None = None, header_protocol_descriptor: Path | None = None,
         intent_checkpoint_descriptor: Path | None = None,
-        intent_action_384_config: Path | None = None,
-        source384_config: Path | None = None,
         intent_projection_request: Path | None = None,
         intent_projection_request_sha256: str | None = None,
         disable_intent_autoencoder: bool = False,
@@ -345,13 +304,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
     if arm != "full" and any(value is not None for value in (
             security_initializer, canonical_cve_export, canonical_cve_manifest_sha256,
             security_checkpoint, security_checkpoint_manifest_sha256, security_checkpoint_hub_descriptor,
-            formula_decoder_descriptor, header_protocol_descriptor, source384_config)):
-        raise ValueError("security training assets require the full indexed arm")
-    if source384_config is not None and any(value is not None for value in (
-            security_initializer, canonical_cve_export, canonical_cve_manifest_sha256,
-            security_checkpoint, security_checkpoint_manifest_sha256, security_checkpoint_hub_descriptor,
             formula_decoder_descriptor, header_protocol_descriptor)):
-        raise ValueError("Source384 pinned-parent and legacy security profiles are mutually exclusive")
+        raise ValueError("security training assets require the full indexed arm")
     if os.geteuid() != 1000 or not state.is_relative_to(ROOT / "state"):
         raise ValueError("container task must run as the deployed private supervisor owner")
     # Canonical files remain read-only to the model identity. The trusted
@@ -426,13 +380,11 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
             raise RuntimeError("isolated planning router did not complete successfully")
         return {"text": text, "observation": receipt.get("usage", {}), "execution_receipt": receipt}
 
-    phase = "prepare"
     try:
         before = time.monotonic()
         try:
             prepared = preparation.prepare(repository=Path("/app"), instruction=instruction, state=state,
                 intent_checkpoint_descriptor=intent_checkpoint_descriptor,
-                intent_action_384_config=intent_action_384_config,
                 intent_projection_request=intent_projection_request,
                 intent_projection_request_sha256=intent_projection_request_sha256,
                 disable_intent_autoencoder=disable_intent_autoencoder,
@@ -441,23 +393,20 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
         finally:
             report["phases"]["prepare_seconds"] = time.monotonic() - before
         if arm == "full":
-            phase = "initial_context"
             before = time.monotonic()
             try:
                 report["initial_context"] = preparation.initial_context(state=state,
                     model_snapshot=model_snapshot, model_revision=model_revision,
-                    **({"source384_config": source384_config, "train_autoencoder": False}
-                       if source384_config is not None else _security_runtime_inputs(security_checkpoint=security_checkpoint,
+                    **_security_runtime_inputs(security_checkpoint=security_checkpoint,
                         security_checkpoint_manifest_sha256=security_checkpoint_manifest_sha256,
                         security_checkpoint_hub_descriptor=security_checkpoint_hub_descriptor,
                         formula_decoder_descriptor=formula_decoder_descriptor,
                         header_protocol_descriptor=header_protocol_descriptor,
                         security_initializer=security_initializer,
                         canonical_cve_export=canonical_cve_export,
-                        canonical_cve_manifest_sha256=canonical_cve_manifest_sha256)))
+                        canonical_cve_manifest_sha256=canonical_cve_manifest_sha256))
             finally:
                 report["phases"]["initial_context_seconds"] = time.monotonic() - before
-        phase = "planning"
         before = time.monotonic()
         try:
             planned = preparation.plan(state=state, provider_callable=isolated_planner,
@@ -469,7 +418,6 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
             raise RuntimeError("the model proposal did not pass independent admission")
         bundle = None
         if arm == "full":
-            phase = "context"
             before = time.monotonic()
             try:
                 context = preparation.context(state=state, model_snapshot=model_snapshot,
@@ -478,32 +426,21 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
                 report["phases"]["context_seconds"] = time.monotonic() - before
             report["context"] = context
             bundle = context["context_bundle"]
-        phase = "admission"
         admission = json.loads((state / "admission.json").read_text())
         verified = verify_local_benchmark_admission(admission, initial=True)
         task = verified["graph"].tasks[0]
         doctor = None
         if arm == "full":
-            phase = "doctor"
             before = time.monotonic()
             try:
-                # Keep execution-only imports out of the numerical indexing
-                # lifetime. Their loading remains inside the work deadline and
-                # the phase that needs them, including on import failure.
-                from benchmarks.agent_supervisor.container_coding.terminal_doctor_dispatch import prepare_terminal_doctor_dispatch
                 doctor = prepare_terminal_doctor_dispatch(repository=Path("/app"), state=state,
                     admission=admission, task_cid=task.task_cid, contract_profile="wsgi-header-controls@1")
             finally:
                 report["phases"]["doctor_seconds"] = time.monotonic() - before
             report["doctor_dispatch"] = doctor
-        phase = "implementation_setup"
-        from benchmarks.agent_supervisor.container_coding.terminal_doctor_dispatch import implementation_argv
         report["implementation_route"] = doctor["route"] if doctor is not None else "model_router"
-        # Candidate routes carry no provider timeout. Check the same work
-        # deadline without charging them the model route's unused reserve.
-        provider_free_candidate = report["implementation_route"] in {"doctor_candidate", "doctor_contract_candidate"}
         implementation = implementation_argv(router=ROUTER, model=preparation.MODEL,
-            reasoning=preparation.REASONING, timeout=remaining(0 if provider_free_candidate else 25),
+            reasoning=preparation.REASONING, timeout=remaining(25),
             semantic_repository=Path("/app") if bundle is not None else None, doctor=doctor)
         if report["implementation_route"] == "model_router":
             from ipfs_accelerate_py.agent_supervisor.runtime.router_public_instruction import prepare_public_instruction_context
@@ -515,10 +452,6 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
                 "--public-instruction-sha256", instruction_context["sha256"],
                 "--public-instruction-task-cid", task.task_cid]
         command = shlex.join(implementation)
-        phase = "native_execution"
-        from benchmarks.agent_supervisor.container_coding.native_quack_qualification import open_existing_native_owner
-        from ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime import AdmittedBenchmarkRuntime
-        from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import GROK_CODEX_EXECUTION_MODE
         with open_existing_native_owner(
             database=state / "intent.duckdb", checkout=Path("/app"), state_dir=state / "owner",
             repository_id=verified["manifest"]["repository_cid"],
@@ -578,13 +511,6 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
         )
     except Exception as error:
         report["error"] = {"type": type(error).__name__, "message": str(error)[:2048]}
-        report["error_phase"] = phase
-        try:
-            report.update(_failure_diagnostics(error, phase=phase))
-        except Exception as diagnostic_error:
-            # Optional observation must never suppress the primary failure or
-            # prevent the existing cleanup and durable result publication.
-            report["failure_diagnostics_error"] = type(diagnostic_error).__name__[:128]
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, previous_alarm)
@@ -650,8 +576,6 @@ def main():
     parser.add_argument("--formula-decoder-descriptor", type=Path)
     parser.add_argument("--header-protocol-descriptor", type=Path)
     parser.add_argument("--intent-checkpoint-descriptor", type=Path)
-    parser.add_argument("--intent-action-384-config", type=Path)
-    parser.add_argument("--source384-config", type=Path)
     parser.add_argument("--intent-projection-request", type=Path)
     parser.add_argument("--intent-projection-request-sha256")
     parser.add_argument("--disable-intent-autoencoder", action="store_true")

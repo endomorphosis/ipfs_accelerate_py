@@ -30745,6 +30745,12 @@ class PortalImplementationDaemon:
                                 input_text=prompt,
                                 env=provider_environment,
                                 inherit_environment=False,
+                                **({"dispatch_binding": {
+                                    key: (self._database_attempt_authority or {}).get(key)
+                                    for key in ("database_task_cid", "task_id", "database_attempt_id",
+                                                "database_claim_id", "database_attempt_number")
+                                }} if any(str(part) == flag or str(part).startswith(flag + "=")
+                                          for part in command for flag in ("--finite-proof-query-context", "--finite-proof-query-sha256", "--finite-proof-query-context-cid")) else {}),
                                 pass_fds=self._accepted_control_plane_pass_fds(
                                     command
                                 ),
@@ -70138,7 +70144,8 @@ class DatabaseImplementationDaemon:
                         )
                     else:
                         coord_target = self.coordination_path
-                    if self.task_shard_count > 1:
+                    finite_serialized = self._finite_proof_query_serialized_coordinator()
+                    if self.task_shard_count > 1 or finite_serialized:
                         # Strict lanes retain one shared dependency/claim/fence
                         # authority.  The adapter releases DuckDB's exclusive
                         # file handle after every complete coordinator method
@@ -70161,6 +70168,35 @@ class DatabaseImplementationDaemon:
             except Exception:
                 self.close()
                 raise
+
+    def _finite_proof_query_serialized_coordinator(self) -> bool:
+        """Select shared serialization only for the bootstrapped finite route.
+
+        These routing values select transport; they grant no attempt or proof
+        authority. The owner later checks the actual native SQL claim/fence.
+        """
+        socket_value = os.environ.get("IPFS_ACCELERATE_FINITE_PROOF_QUERY_DISPATCH_SOCKET", "")
+        context_value = os.environ.get("IPFS_ACCELERATE_FINITE_PROOF_QUERY_CONTEXT_CID", "")
+        if not socket_value and not context_value:
+            return False
+        if (self._typed_quack_authority_binding is None or self.authority_mode != "quack"
+                or self.task_shard_count != 1 or self.task_shard_index != 0
+                or not socket_value or not context_value
+                or len(context_value.encode("utf-8")) > 4096
+                or any(character in context_value for character in ("\x00", "\n", "\r"))):
+            raise DatabaseImplementationAuthorityError(
+                "finite shared coordination requires complete typed owner routing and one native lane")
+        endpoint = Path(socket_value)
+        if not endpoint.is_absolute() or endpoint.resolve() != endpoint:
+            raise DatabaseImplementationAuthorityError("finite coordination routing socket is not canonical")
+        metadata, parent = endpoint.lstat(), endpoint.parent.lstat()
+        if (not stat_module.S_ISSOCK(metadata.st_mode) or metadata.st_uid != os.geteuid()
+                or stat_module.S_IMODE(metadata.st_mode) != 0o600
+                or not stat_module.S_ISDIR(parent.st_mode) or parent.st_uid != os.geteuid()
+                or parent.st_mode & 0o077):
+            raise DatabaseImplementationAuthorityError("finite coordination routing socket is not owner private")
+        self._require_live_typed_owner()
+        return True
 
     def _shutdown_boundary(self) -> None:
         shutdown = getattr(self, "_cooperative_shutdown", None)

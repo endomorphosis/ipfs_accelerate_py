@@ -1,5 +1,4 @@
-"""Native context producers with weak ownership witnesses; no RSS claims."""
-import gc
+"""Native context producers with weak lifetime witnesses; no GC or RSS claims."""
 import weakref
 from pathlib import Path
 
@@ -9,7 +8,7 @@ import pytest
 from benchmarks.agent_supervisor.container_coding import terminal_initial_context as initial
 from benchmarks.agent_supervisor.container_coding import terminal_indexed_preparation as prep
 from benchmarks.agent_supervisor.container_coding import vector_index_preflight
-from benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation import original, _proposal_graph
+from benchmarks.agent_supervisor.container_coding.test_terminal_indexed_preparation import original
 from ipfs_accelerate_py.agent_supervisor.analysis.code_symbol_vector_index import CodeVectorIndexSnapshot
 
 
@@ -18,10 +17,6 @@ class _WeakDict(dict):
 
 
 class _WeakText(str):
-    pass
-
-
-class _WeakList(list):
     pass
 
 
@@ -189,96 +184,3 @@ def test_selected_source384_manifest_temporary_released_before_final_replay(orig
     assert calls == [config]
     assert result["provider_calls"] == 0
     assert result["source384_context"]["completion_authority"] is False
-
-
-@pytest.mark.parametrize("refuse_gate", [False, True])
-def test_admitted_construction_releases_native_view_before_fresh_gate(original, monkeypatch, refuse_gate):
-    """Native persisted world and semantic payload; only the refusal is authored."""
-    from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission as local
-    from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import IntentRepository
-
-    root, instruction, state = original
-    prepared = prep.prepare(repository=root, instruction=instruction, state=state)
-    initial_receipt = prep.initial_context(state=state)
-    admission = local.admit_local_benchmark_plan(graph=_proposal_graph(prepared), manifest=prepared["manifest"])
-    prep._write(state / "admission.json", admission)
-    with IntentRepository(state / "intent.duckdb") as intent:
-        local.materialize_local_benchmark_plan(admission=admission, intent=intent)
-
-    refs, capture_refs, contract_refs = [], {}, []
-    native_view = initial._semantic_view
-
-    def view(*args, **kwargs):
-        payload, verified, reader = native_view(*args, **kwargs)
-        payload, verified = _WeakDict(payload), _ViewWitness(verified)
-        refs.append({"payload": weakref.ref(payload), "view": weakref.ref(verified)})
-        return payload, verified, reader
-
-    monkeypatch.setattr(initial, "_semantic_view", view)
-    native_capture = initial.capture_intent_world_snapshot
-
-    def capture(*args, **kwargs):
-        payload = _WeakDict(native_capture(*args, **kwargs))
-        assert kwargs["task_cids"]
-        records = _WeakList(payload["plan_projection"]["tasks"])
-        records[0] = _WeakDict(records[0])
-        payload["plan_projection"]["tasks"] = records
-        capture_refs.update(capture=weakref.ref(payload), records=weakref.ref(records),
-                            record=weakref.ref(records[0]))
-        return payload
-
-    monkeypatch.setattr(initial, "capture_intent_world_snapshot", capture)
-    native_contract = local._contract
-
-    def contract(*args, **kwargs):
-        payload, manifest, profile, current = native_contract(*args, **kwargs)
-        payload = _WeakDict(payload)
-        contract_refs.append(weakref.ref(payload))
-        return payload, manifest, profile, current
-
-    monkeypatch.setattr(local, "_contract", contract)
-    native_load = initial.load_initial_context
-    observed = []
-
-    def fresh_gate(**kwargs):
-        # One view came from nomination staging, the second from admitted
-        # world construction. Assert this caller's completed construction;
-        # returned native/instrumentation frames can survive in collectable
-        # cycles. Test-only collection proves the caller no longer owns these
-        # objects; it does not promise immediate reclamation or reduced RSS.
-        gc.collect()
-        assert len(refs) == 2
-        assert refs[1]["payload"]() is None
-        assert refs[1]["view"]() is None
-        assert set(capture_refs) == {"capture", "records", "record"}
-        assert all(ref() is None for ref in capture_refs.values())
-        assert contract_refs and all(ref() is None for ref in contract_refs)
-        assert kwargs["require_empty_owner"] is False
-        observed.append(True)
-        if refuse_gate:
-            raise ValueError("authored fresh admission refusal")
-        return native_load(**kwargs)
-
-    monkeypatch.setattr(initial, "load_initial_context", fresh_gate)
-    if refuse_gate:
-        with pytest.raises(ValueError, match="authored fresh admission refusal"):
-            prep.context(state=state)
-        assert not (root / ".runtime/terminal-context/result.json").exists()
-        assert not (root / ".runtime/terminal-context-bundle.json").exists()
-        assert not (state / "context-result.json").exists()
-        assert not (state / "doctor-repair-eligibility.json").exists()
-    else:
-        result = prep.context(state=state)
-        assert result["initial_indexes_reused"] is True
-        assert result["semantic_root_cid"] == initial_receipt["semantic_root_cid"]
-        assert result["world_snapshot_cid"] != initial_receipt["world_snapshot_cid"]
-        assert result["new_embedding_calls"] == 0
-        assert result["provider_calls"] == 0
-        assert (root / ".runtime/terminal-context/result.json").is_file()
-        assert (root / ".runtime/terminal-context-bundle.json").is_file()
-    assert observed == [True]
-    # The private admitted capture precedes the gate; its existence is not a
-    # published task context or authority to execute the worker.
-    assert (root / ".runtime/terminal-context/world/intent-world.json").is_file()
-    assert not (root / "report.jsonl").exists()
-    assert not (state / "planner-invoked.json").exists()

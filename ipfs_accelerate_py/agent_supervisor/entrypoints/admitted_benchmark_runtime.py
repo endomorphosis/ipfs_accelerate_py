@@ -16,6 +16,7 @@ import sys
 import threading
 import time
 import uuid
+from contextlib import ExitStack, nullcontext
 from dataclasses import replace
 from pathlib import Path
 
@@ -214,7 +215,74 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                lifetime_seconds: int = 300, worker_worktree_root: Path | None = None,
                candidate_runner_argv=(), refresh_context_on_completion: bool = False,
                published_retrieval_policy: str | None = None,
-               published_learned_artifacts: dict | None = None):
+               published_learned_artifacts: dict | None = None,
+               finite_execution_scope=None, inventory_execution_scope=None):
+        if finite_execution_scope is not None and inventory_execution_scope is not None:
+            raise ValueError("finite and inventory execution scopes are mutually exclusive")
+        arguments = dict(admission=admission, server=server, source=source, implement=implement,
+            implementation_command=implementation_command, timeout_ms=timeout_ms,
+            max_task_attempts=max_task_attempts, context_bundle=context_bundle,
+            lifetime_seconds=lifetime_seconds, worker_worktree_root=worker_worktree_root,
+            candidate_runner_argv=candidate_runner_argv,
+            refresh_context_on_completion=refresh_context_on_completion,
+            published_retrieval_policy=published_retrieval_policy,
+            published_learned_artifacts=published_learned_artifacts,
+            finite_execution_scope=finite_execution_scope, inventory_execution_scope=inventory_execution_scope)
+        if finite_execution_scope is not None:
+            from ..runtime.finite_repository_execution import FrozenFiniteRepositoryExecutionScope
+            if (type(finite_execution_scope) is FrozenFiniteRepositoryExecutionScope
+                    and finite_execution_scope._uses_paired_receiving()):
+                with finite_execution_scope._receiving_operation(purpose="create"):
+                    runtime = cls._create(directory, **arguments)
+                    try:
+                        finite_execution_scope._finish_creation_receiving(runtime)
+                    except BaseException:
+                        try:
+                            stopped = runtime.stop()
+                            if not stopped.succeeded or not runtime._context_refresh_stopped():
+                                raise RuntimeError("refused proof-query construction lacks native STOP cleanup")
+                            runtime.close()
+                        except BaseException as cleanup_error:
+                            runtime._construction_cleanup_failed = True
+                            raise RuntimeError("proof-query receiving cleanup unproven; resource custody retained") from cleanup_error
+                        raise
+                return runtime
+        if inventory_execution_scope is not None:
+            from ..runtime.codebase_inventory_execution import FrozenInventoryExecutionScope
+            if (type(inventory_execution_scope) is FrozenInventoryExecutionScope
+                    and inventory_execution_scope._uses_paired_receiving()):
+                with inventory_execution_scope._receiving_operation(purpose="create"):
+                    runtime = cls._create(directory, **arguments)
+                    try:
+                        inventory_execution_scope._finish_creation_receiving(runtime)
+                    except BaseException:
+                        # No process was launched, but the constructor has
+                        # installed an owner completion handler. Its existing
+                        # native STOP/UID cleanup contract still governs close.
+                        inventory_execution_scope._retain_constructor_cleanup(runtime)
+                        try:
+                            stopped = runtime.stop()
+                            if not stopped.succeeded or not runtime._context_refresh_stopped():
+                                raise RuntimeError("refused inventory construction lacks native STOP cleanup")
+                            runtime.close()
+                        except BaseException as cleanup_error:
+                            runtime._construction_cleanup_failed = True
+                            raise RuntimeError("inventory receiving cleanup unproven; resource custody retained") from cleanup_error
+                        raise
+                return runtime
+        return cls._create(directory, **arguments)
+
+    @classmethod
+    def _create(cls, directory: Path, *, admission, server, source,
+               implement: bool = False, implementation_command: str = "",
+               timeout_ms: int = 30_000, max_task_attempts: int = 1, context_bundle: dict | None = None,
+               lifetime_seconds: int = 300, worker_worktree_root: Path | None = None,
+               candidate_runner_argv=(), refresh_context_on_completion: bool = False,
+               published_retrieval_policy: str | None = None,
+               published_learned_artifacts: dict | None = None,
+               finite_execution_scope=None, inventory_execution_scope=None):
+        if finite_execution_scope is not None and inventory_execution_scope is not None:
+            raise ValueError("finite and inventory execution scopes are mutually exclusive")
         if type(refresh_context_on_completion) is not bool or (refresh_context_on_completion and context_bundle is None):
             raise ValueError("automatic context refresh requires an explicit context bundle")
         if published_retrieval_policy is not None and (
@@ -249,9 +317,29 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                     or worker_worktree_root.stat().st_mode & 0o022):
                 raise ValueError("worker_worktree_root must be an existing exact owner-controlled directory")
         verified = verify_local_benchmark_admission(admission, initial=True)
+        from ..runtime.local_planning_admission import INVENTORY_MANIFEST_SCHEMAS
+        if verified["manifest"]["schema"] in INVENTORY_MANIFEST_SCHEMAS and inventory_execution_scope is None:
+            raise ValueError("inventory admission requires an exact native inventory execution scope")
         if refresh_context_on_completion and len(verified["graph"].tasks) != 1:
             raise ValueError("published context refresh currently requires one admitted task")
-        if candidate_runner is not None and len(verified["graph"].tasks) != 1:
+        if finite_execution_scope is not None:
+            from ..runtime.finite_repository_execution import FrozenFiniteRepositoryExecutionScope
+            if type(finite_execution_scope) is not FrozenFiniteRepositoryExecutionScope:
+                raise ValueError("an exact native finite execution scope is required")
+            finite_execution_scope.require_launch(admission=admission, server=server, source=source,
+                implement=implement, candidate_runner=candidate_runner, context_bundle=context_bundle,
+                refresh_context_on_completion=refresh_context_on_completion,
+                implementation_command=implementation_command)
+        if inventory_execution_scope is not None:
+            from ..runtime.codebase_inventory_execution import FrozenInventoryExecutionScope
+            if type(inventory_execution_scope) is not FrozenInventoryExecutionScope:
+                raise ValueError("an exact native inventory execution scope is required")
+            inventory_execution_scope.require_launch(admission=admission, server=server, source=source,
+                implement=implement, candidate_runner=candidate_runner, context_bundle=context_bundle,
+                refresh_context_on_completion=refresh_context_on_completion,
+                implementation_command=implementation_command)
+        if (candidate_runner is not None and len(verified["graph"].tasks) != 1
+                and finite_execution_scope is None and inventory_execution_scope is None):
             raise ValueError("isolated candidate runner requires one admitted task and one worker")
         if type(server) is not QuackStateServer or server.lifecycle is not ServerLifecycle.READY:
             raise ValueError("a live native Quack owner is required")
@@ -274,190 +362,299 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             raise ValueError("worker_worktree_root must be separate from canonical repository and owner launch state")
         directory.mkdir(parents=True, mode=0o700)
         runtime = cls()
-        runtime.directory, runtime.state, runtime.repository = directory, directory / "state", repository
-        runtime.state.mkdir(mode=0o700)
-        (runtime.state / "run").mkdir(mode=0o700)
-        runtime.admission = json.loads(json.dumps(admission))
-        runtime.server, runtime.source, runtime.owner_identity = server, source, server.identity
-        runtime.route_policy = source.execution_route_policy
-        runtime.baseline = declared["baseline_commit"]
-        runtime.tree_id = _git(repository, "rev-parse", "HEAD^{tree}")
-        runtime.repository_id = declared["repository_cid"]
-        runtime.profile_dir, runtime.lifecycle_dir = Path(declared["profile_dir"]), Path(declared["lifecycle_dir"])
-        runtime.local_profile, runtime.timeout_ms = profile, timeout_ms
-        runtime.context_bundle = dict(context_bundle) if context_bundle is not None else None
-        runtime._verify_context(verified)
-        retrieval_binding = None
-        if published_retrieval_policy is not None:
-            task = verified["graph"].tasks[0]
-            if published_retrieval_policy == "local-safetensors-symbols@1":
-                from ..runtime.published_learned_retrieval import bind_published_learned_retrieval_policy
-                retrieval_binding = bind_published_learned_retrieval_policy(repository=repository,
-                    bundle=runtime.context_bundle, task_cid=task.task_cid, task_id=task.task_key,
-                    artifacts=published_learned_artifacts)
-            else:
-                from ..runtime.published_retrieval import bind_published_retrieval_policy
-                retrieval_binding = bind_published_retrieval_policy(repository=repository,
-                    bundle=runtime.context_bundle, task_cid=task.task_cid, task_id=task.task_key)
-        runtime.run_id = "admitted-" + uuid.uuid4().hex
-        runtime._published_context = {}
-        runtime._context_refresh_attempts = {}
-        runtime._context_refresh_stop_receipt = None
-        runtime.client_id = "database-implementation-daemon:" + runtime.run_id
-        runtime._verify_tasks(verified)
-        runtime._listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        runtime._listener.bind("\0ipfs-local-" + uuid.uuid4().hex)
-        runtime._listener.listen(4)
-        runtime._listener.settimeout(0.25)
-        runtime._bootstrap_stop = threading.Event()
-        runtime.bootstrap_receipts = []
-        runtime.bootstrap_errors = []
-        options = [
-            "--todo-path", str(server.config.database_path), "--state-dir", str(runtime.state / "run"),
-            "--state-prefix", "admitted", "--task-prefix", "## ",
-            "--task-source-kind", "duckdb", "--authority-mode", "quack",
-            "--quack-endpoint", server.identity.listen_uri,
-            "--endpoint-secret-handle", server.identity.secret_handle,
-            "--state-store-id", server.identity.store_id,
-            "--state-store-generation", str(server.identity.generation),
-            "--state-schema-revision", str(server.identity.schema_revision),
-            "--state-owner-bootstrap-fd", str(runtime._listener.fileno()),
-            "--state-owner-client-id", runtime.client_id,
-            "--check-interval", "0.25", "--daemon-interval", "0.25", "--max-restarts", "1",
-            "--max-task-attempts", str(max_task_attempts), "--strict-task-sharding",
-            "--no-worktree-reconciliation", "--no-retry-budget-guardrail",
-            "--no-dependency-guardrail", "--no-reconciliation-guardrail",
-            "--no-objective-task-janitor", "--no-objective-goal-refinement",
-            "--no-objective-goal-completion-reconcile", "--no-objective-goal-migration",
-            "--no-objective-ast-dataset", "--no-objective-todo-vector-index",
-            "--merge-target-branch", _git(repository, "branch", "--show-current"),
-            "--merge-queue-dir", str(runtime.state / "merge_queue"),
-            "--worktree-root", str(worker_worktree_root or runtime.state / "worktrees"),
-        ]
-        for task in verified["graph"].tasks:
-            options += ["--execution-slice-task-cid", task.task_cid,
-                        "--execution-slice-task-id", task.task_key]
-        if runtime.context_bundle is not None:
-            options += ["--task-context-bundle-artifact", runtime.context_bundle["artifact"],
-                        "--task-context-bundle-sha256", runtime.context_bundle["sha256"]]
-        options += ["--implement", "--implementation-command", implementation_command] if implement else ["--no-implement"]
-        from ..todo_daemon.implementation_supervisor import parse_args
-        parse_args(options)
-        argv = (sys.executable, "-P", "-m",
-                "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor", *options)
-        pythonpath = os.pathsep.join(filter(None, (str(Path(__file__).resolve().parents[3]), os.environ.get("PYTHONPATH", ""))))
-        from ..task_sources.board_control_plane import ORCHESTRATION_DIR_ENV
-        # Derived execution/coordination sidecars belong to this signed run.
-        # An unconfigured lookup also migrates every legacy account catalog;
-        # that unrelated recursive scan must not precede the first heartbeat
-        # of an isolated admitted daemon. Override ambient account settings in
-        # the signed child environment, without altering production defaults.
-        orchestration = runtime.state / "orchestration"
-        orchestration.mkdir(mode=0o700)
-        environment = (("PYTHONPATH", pythonpath), ("PYTHONUNBUFFERED", "1"),
-                       (ORCHESTRATION_DIR_ENV, str(orchestration)))
-        environment += tuple(_bounded_git_environment(candidate_runner=candidate_runner is not None).items())
-        if candidate_runner is not None:
-            environment += ((CANDIDATE_RUNNER_ENV, json.dumps(candidate_runner, sort_keys=True)),)
-        runtime.manifest = {
-            "schema": "isolated-admitted-supervisor-launch@1", "run_id": runtime.run_id,
-            "repository_root": str(repository), "repository_id": runtime.repository_id,
-            "baseline_commit": runtime.baseline, "baseline_tree_id": runtime.tree_id,
-            "state_root": str(runtime.state),
-            "local_admission": runtime.admission, "owner_identity": server.identity.to_dict(),
-            "execution_route_policy_id": runtime.route_policy.policy_id,
-            "argv": list(argv), "argv_digest": _digest(argv),
-            "environment": [list(item) for item in environment],
-            "bootstrap_listener_inode": os.fstat(runtime._listener.fileno()).st_ino,
-            "bootstrap_client_id": runtime.client_id, "provider_dispatch_allowed": implement,
-            "coordination_attempt_safety_cap": max_task_attempts,
-            "lifetime_seconds": lifetime_seconds,
-            "worker_worktree_root": str(worker_worktree_root) if worker_worktree_root else None,
-            "candidate_runner": candidate_runner,
-            "task_context_bundle": runtime.context_bundle,
-            "published_retrieval_policy": retrieval_binding,
-            "context_refresh_policy": ({
-                "schema": "admitted-context-refresh-policy@1",
-                "output_root": ".runtime/published-context/" + runtime.run_id,
-                "trigger": "after_native_stop",
-                "max_attempts_per_task": 2,
-                "completion_authority": False,
-            } if refresh_context_on_completion else None),
-            "production_activation": False, "completion_authority": False,
-        }
-        runtime.manifest_id = _digest(runtime.manifest)
-        runtime.signature = sign_profile_binding(profile_dir=runtime.profile_dir,
-                                                lifecycle_dir=runtime.lifecycle_dir, payload=runtime.manifest)
-        (runtime.state / "local-process-grant.json").write_text(json.dumps({
-            "manifest": runtime.manifest, "signature": runtime.signature,
-        }, sort_keys=True, indent=2) + "\n")
-        runtime.profile = LifecycleProfile(
-            target_id=runtime.repository_id, run_id=runtime.run_id, configuration_root=runtime.manifest_id,
-            repository_root=str(repository), state_root=str(runtime.state), run_root=str(runtime.state / "run"),
-            argv=argv, cwd=str(repository), environment=environment,
-            health_path=str(runtime.state / "run" / "admitted_supervisor_status.json"), health_stale_ms=5_000,
-        )
-        runtime.coordinator = open_database_coordinator(runtime.state / "coordination.duckdb")
-        runtime.lease = runtime.coordinator.acquire(
-            lease_kind="resource", scope=runtime.run_id, owner_session_id=profile.identity_did,
-            lease_ms=lifetime_seconds * 1000, resource_kind="supervisor_run", resource_id=runtime.run_id,
-            repository_id=runtime.repository_id, idempotency_key=runtime.manifest_id,
-            body={"local_profile_id": profile.profile_id, "launch_grant": runtime.manifest_id},
-        )
-        runtime._children = []
-        if implement:
-            from ..runtime.local_completion_bridge import bind_owner_local_completion_service
-            from ..task_sources.board_control_plane import infer_board_namespace
-            target_branch = _git(repository, "branch", "--show-current")
-            runtime.completion_service = bind_owner_local_completion_service(
-                server=server, portal_attempt_root=runtime.state / "run" / "admitted_database_portal_attempts",
-                repo_root=repository, merge_queue_dir=runtime.state / "merge_queue",
-                board_namespace=infer_board_namespace(merge_target_branch=target_branch,
-                                                       todo_path=Path(server.config.database_path), state_prefix="admitted"),
-                target_branch=target_branch,
-                candidate_runner=candidate_runner,
+        try:
+            runtime.directory, runtime.state, runtime.repository = directory, directory / "state", repository
+            runtime.state.mkdir(mode=0o700)
+            (runtime.state / "run").mkdir(mode=0o700)
+            runtime.admission = json.loads(json.dumps(admission))
+            runtime.finite_execution_scope = finite_execution_scope
+            runtime.inventory_execution_scope = inventory_execution_scope
+            runtime.server, runtime.source, runtime.owner_identity = server, source, server.identity
+            if inventory_execution_scope is not None:
+                inventory_execution_scope._remember_constructor_cleanup(runtime)
+            runtime.route_policy = source.execution_route_policy
+            runtime.baseline = declared["baseline_commit"]
+            runtime.tree_id = _git(repository, "rev-parse", "HEAD^{tree}")
+            runtime.repository_id = declared["repository_cid"]
+            runtime.profile_dir, runtime.lifecycle_dir = Path(declared["profile_dir"]), Path(declared["lifecycle_dir"])
+            runtime.local_profile, runtime.timeout_ms = profile, timeout_ms
+            runtime.context_bundle = dict(context_bundle) if context_bundle is not None else None
+            runtime._verify_context(verified)
+            retrieval_binding = None
+            if published_retrieval_policy is not None:
+                task = verified["graph"].tasks[0]
+                if published_retrieval_policy == "local-safetensors-symbols@1":
+                    from ..runtime.published_learned_retrieval import bind_published_learned_retrieval_policy
+                    retrieval_binding = bind_published_learned_retrieval_policy(repository=repository,
+                        bundle=runtime.context_bundle, task_cid=task.task_cid, task_id=task.task_key,
+                        artifacts=published_learned_artifacts)
+                else:
+                    from ..runtime.published_retrieval import bind_published_retrieval_policy
+                    retrieval_binding = bind_published_retrieval_policy(repository=repository,
+                        bundle=runtime.context_bundle, task_cid=task.task_cid, task_id=task.task_key)
+            runtime.run_id = "admitted-" + uuid.uuid4().hex
+            runtime._published_context = {}
+            runtime._context_refresh_attempts = {}
+            runtime._context_refresh_stop_receipt = None
+            runtime.client_id = "database-implementation-daemon:" + runtime.run_id
+            runtime._verify_tasks(verified)
+            runtime._listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            if inventory_execution_scope is not None:
+                inventory_execution_scope._remember_constructor_cleanup(runtime)
+            runtime._listener.bind("\0ipfs-local-" + uuid.uuid4().hex)
+            runtime._listener.listen(4)
+            runtime._listener.settimeout(0.25)
+            runtime._bootstrap_stop = threading.Event()
+            if inventory_execution_scope is not None:
+                inventory_execution_scope._remember_constructor_cleanup(runtime)
+            runtime.bootstrap_receipts = []
+            runtime.bootstrap_errors = []
+            options = [
+                "--todo-path", str(server.config.database_path), "--state-dir", str(runtime.state / "run"),
+                "--state-prefix", "admitted", "--task-prefix", "## ",
+                "--task-source-kind", "duckdb", "--authority-mode", "quack",
+                "--quack-endpoint", server.identity.listen_uri,
+                "--endpoint-secret-handle", server.identity.secret_handle,
+                "--state-store-id", server.identity.store_id,
+                "--state-store-generation", str(server.identity.generation),
+                "--state-schema-revision", str(server.identity.schema_revision),
+                "--state-owner-bootstrap-fd", str(runtime._listener.fileno()),
+                "--state-owner-client-id", runtime.client_id,
+                "--check-interval", "0.25", "--daemon-interval", "0.25", "--max-restarts", "1",
+                "--max-task-attempts", str(max_task_attempts), "--strict-task-sharding",
+                "--no-worktree-reconciliation", "--no-retry-budget-guardrail",
+                "--no-dependency-guardrail", "--no-reconciliation-guardrail",
+                "--no-objective-task-janitor", "--no-objective-goal-refinement",
+                "--no-objective-goal-completion-reconcile", "--no-objective-goal-migration",
+                "--no-objective-ast-dataset", "--no-objective-todo-vector-index",
+                "--merge-target-branch", _git(repository, "branch", "--show-current"),
+                "--merge-queue-dir", str(runtime.state / "merge_queue"),
+                "--worktree-root", str(worker_worktree_root or runtime.state / "worktrees"),
+            ]
+            for task in verified["graph"].tasks:
+                options += ["--execution-slice-task-cid", task.task_cid,
+                            "--execution-slice-task-id", task.task_key]
+            if runtime.context_bundle is not None:
+                options += ["--task-context-bundle-artifact", runtime.context_bundle["artifact"],
+                            "--task-context-bundle-sha256", runtime.context_bundle["sha256"]]
+            options += ["--implement", "--implementation-command", implementation_command] if implement else ["--no-implement"]
+            from ..todo_daemon.implementation_supervisor import parse_args
+            parse_args(options)
+            argv = (sys.executable, "-P", "-m",
+                    "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor", *options)
+            pythonpath = os.pathsep.join(filter(None, (str(Path(__file__).resolve().parents[3]), os.environ.get("PYTHONPATH", ""))))
+            environment = (("PYTHONPATH", pythonpath), ("PYTHONUNBUFFERED", "1"))
+            environment += tuple(_bounded_git_environment(candidate_runner=candidate_runner is not None).items())
+            if candidate_runner is not None:
+                environment += ((CANDIDATE_RUNNER_ENV, json.dumps(candidate_runner, sort_keys=True)),)
+            runtime.manifest = {
+                "schema": "isolated-admitted-supervisor-launch@1", "run_id": runtime.run_id,
+                "repository_root": str(repository), "repository_id": runtime.repository_id,
+                "baseline_commit": runtime.baseline, "baseline_tree_id": runtime.tree_id,
+                "state_root": str(runtime.state),
+                "local_admission": runtime.admission, "owner_identity": server.identity.to_dict(),
+                "execution_route_policy_id": runtime.route_policy.policy_id,
+                "argv": list(argv), "argv_digest": _digest(argv),
+                "environment": [list(item) for item in environment],
+                "bootstrap_listener_inode": os.fstat(runtime._listener.fileno()).st_ino,
+                "bootstrap_client_id": runtime.client_id, "provider_dispatch_allowed": implement,
+                "coordination_attempt_safety_cap": max_task_attempts,
+                "lifetime_seconds": lifetime_seconds,
+                "worker_worktree_root": str(worker_worktree_root) if worker_worktree_root else None,
+                "candidate_runner": candidate_runner,
+                "task_context_bundle": runtime.context_bundle,
+                "published_retrieval_policy": retrieval_binding,
+                "context_refresh_policy": ({
+                    "schema": "admitted-context-refresh-policy@1",
+                    "output_root": ".runtime/published-context/" + runtime.run_id,
+                    "trigger": "after_native_stop",
+                    "max_attempts_per_task": 2,
+                    "completion_authority": False,
+                } if refresh_context_on_completion else None),
+                "production_activation": False, "completion_authority": False,
+            }
+            if finite_execution_scope is not None:
+                runtime.manifest["finite_execution_scope"] = finite_execution_scope.material_binding
+                runtime.manifest["finite_worker_launcher"] = finite_execution_scope.worker_launcher_binding
+                finite_execution_scope.bind_runtime(runtime)
+                if finite_execution_scope._uses_paired_receiving():
+                    from ..runtime.finite_proof_query_worker_dispatch import start_owner_finite_proof_query_dispatch_broker
+                    runtime.proof_query_dispatch_broker = start_owner_finite_proof_query_dispatch_broker(
+                        scope=finite_execution_scope, runtime=runtime)
+                    environment += tuple(runtime.proof_query_dispatch_broker.daemon_environment().items())
+                    runtime.manifest["environment"] = [list(item) for item in environment]
+            if inventory_execution_scope is not None:
+                runtime.manifest["inventory_execution_scope"] = inventory_execution_scope.material_binding
+                runtime.manifest["inventory_worker_launcher"] = inventory_execution_scope.worker_launcher_binding
+                inventory_execution_scope.bind_runtime(runtime)
+            runtime.manifest_id = _digest(runtime.manifest)
+            runtime.signature = sign_profile_binding(profile_dir=runtime.profile_dir,
+                                                    lifecycle_dir=runtime.lifecycle_dir, payload=runtime.manifest)
+            if finite_execution_scope is not None:
+                finite_execution_scope.require_runtime(runtime, before_spawn=True)
+            if inventory_execution_scope is not None:
+                inventory_execution_scope.require_runtime(runtime, before_spawn=True)
+            (runtime.state / "local-process-grant.json").write_text(json.dumps({
+                "manifest": runtime.manifest, "signature": runtime.signature,
+            }, sort_keys=True, indent=2) + "\n")
+            runtime.profile = LifecycleProfile(
+                target_id=runtime.repository_id, run_id=runtime.run_id, configuration_root=runtime.manifest_id,
+                repository_root=str(repository), state_root=str(runtime.state), run_root=str(runtime.state / "run"),
+                argv=argv, cwd=str(repository), environment=environment,
+                health_path=str(runtime.state / "run" / "admitted_supervisor_status.json"), health_stale_ms=5_000,
             )
+            runtime.coordinator = open_database_coordinator(runtime.state / "coordination.duckdb")
+            if inventory_execution_scope is not None:
+                inventory_execution_scope._remember_constructor_cleanup(runtime)
+            runtime.lease = runtime.coordinator.acquire(
+                lease_kind="resource", scope=runtime.run_id, owner_session_id=profile.identity_did,
+                lease_ms=lifetime_seconds * 1000, resource_kind="supervisor_run", resource_id=runtime.run_id,
+                repository_id=runtime.repository_id, idempotency_key=runtime.manifest_id,
+                body={"local_profile_id": profile.profile_id, "launch_grant": runtime.manifest_id},
+            )
+            runtime._children = []
+            if inventory_execution_scope is not None:
+                inventory_execution_scope._remember_constructor_cleanup(runtime)
 
-        def popen(*args, **kwargs):
-            from ..task_sources.duckdb_state import QUACK_TOKEN_ENV
-            runtime._verify()
-            # Resolve through this live native owner, never ambient credentials
-            # or a possibly stale filesystem handoff for another generation.
-            token = server._vault.resolve(runtime.owner_identity.secret_handle)
-            if not token:
-                raise ValueError("native owner's read-only Quack transport credential is unavailable")
-            environment = dict(kwargs["env"])
-            environment.pop(TYPED_STATE_OWNER_SOCKET_ENV, None)
-            environment.pop(TYPED_STATE_OWNER_TOKEN_ENV, None)
-            environment[QUACK_TOKEN_ENV] = token
-            kwargs["env"] = environment
-            kwargs["pass_fds"] = (runtime._listener.fileno(),)
-            with (runtime.state / "supervisor-process.log").open("ab") as output:
-                kwargs["stdout"], kwargs["stderr"] = output, subprocess.STDOUT
-                child = subprocess.Popen(*args, **kwargs)
-            runtime._children.append(child)
-            return child
+            def popen(*args, **kwargs):
+                from ..task_sources.duckdb_state import QUACK_TOKEN_ENV
+                runtime._verify()
+                # Resolve through this live native owner, never ambient credentials
+                # or a possibly stale filesystem handoff for another generation.
+                token = server._vault.resolve(runtime.owner_identity.secret_handle)
+                if not token:
+                    raise ValueError("native owner's read-only Quack transport credential is unavailable")
+                environment = dict(kwargs["env"])
+                environment.pop(TYPED_STATE_OWNER_SOCKET_ENV, None)
+                environment.pop(TYPED_STATE_OWNER_TOKEN_ENV, None)
+                environment[QUACK_TOKEN_ENV] = token
+                kwargs["env"] = environment
+                kwargs["pass_fds"] = (runtime._listener.fileno(),)
+                with (runtime.state / "supervisor-process.log").open("ab") as output:
+                    kwargs["stdout"], kwargs["stderr"] = output, subprocess.STDOUT
+                    if runtime.finite_execution_scope is not None:
+                        runtime.finite_execution_scope.require_runtime(runtime, before_spawn=True)
+                    if runtime.inventory_execution_scope is not None:
+                        runtime.inventory_execution_scope.require_runtime(runtime, before_spawn=True)
+                        runtime.inventory_execution_scope.prepare_spawn_fence(runtime)
+                    with server._lock if (runtime.finite_execution_scope is not None
+                                          or runtime.inventory_execution_scope is not None) else nullcontext():
+                        # The index lock stays held across literal supervisor birth.
+                        # Only failures while entering this guard can mint a no-effect refusal.
+                        with ExitStack() as dispatch_fence:
+                            if runtime.finite_execution_scope is not None:
+                                try:
+                                    runtime.finite_execution_scope.require_spawn_fence(runtime)
+                                    dispatch_fence.enter_context(runtime.finite_execution_scope._proof_query_spawn_guard(runtime))
+                                except Exception as error:
+                                    from ..runtime.finite_repository_execution import ADVISORY_PROFILE
+                                    from ..runtime.finite_proof_query_execution import PROFILE as PROOF_QUERY_PROFILE
+                                    selected = runtime.finite_execution_scope.to_dict()["payload"]["profile"]
+                                    if selected == ADVISORY_PROFILE:
+                                        from ..control.before_popen_refusal import refuse_finite_advisory_before_popen
+                                        raise refuse_finite_advisory_before_popen(runtime, error) from error
+                                    if selected == PROOF_QUERY_PROFILE:
+                                        from ..control.before_popen_refusal import refuse_finite_proof_query_before_popen
+                                        raise refuse_finite_proof_query_before_popen(runtime, error) from error
+                                    raise
+                            if runtime.inventory_execution_scope is not None:
+                                runtime.inventory_execution_scope.require_spawn_fence(runtime)
+                            child = subprocess.Popen(*args, **kwargs)
+                            runtime._children.append(child)
+                            if runtime.finite_execution_scope is not None:
+                                runtime.finite_execution_scope.note_spawned(runtime)
+                            if runtime.inventory_execution_scope is not None:
+                                runtime.inventory_execution_scope.note_spawned(runtime)
+                return child
 
-        runtime.process = AdmittedSupervisorHealthAdapter(popen=popen)
-        runtime.process.owner_identity = runtime.owner_identity
-        runtime.process.route_policy_id = runtime.route_policy.policy_id
-        runtime.process.client_id = runtime.client_id
-        runtime.orchestrator = LifecycleOrchestrator(
-            state_root=runtime.state, profiles=(runtime.profile,), process_adapter=runtime.process,
-            poll_interval_ms=50, stop_grace_ms=1_000,
-        )
-        runtime._permits, runtime._requests = {}, {}
-        runtime.service = SupervisorControlService(
-            repository_allowlist=(repository,), state_allowlist=(runtime.state,),
-            handlers={Operation.START: runtime._bounded_lifecycle_response,
-                      Operation.STOP: runtime._bounded_lifecycle_response},
-            authorization_validator=ControlMutationAuthorizer(runtime._policy),
-            identity_validator=runtime._validate_identity, lease_validator=runtime._validate_lease,
-        )
-        runtime._bootstrap_thread = threading.Thread(target=runtime._serve_bootstrap, daemon=True,
-                                                     name="admitted-supervisor-bootstrap")
-        runtime._bootstrap_thread.start()
-        return runtime
+            runtime.process = AdmittedSupervisorHealthAdapter(popen=popen)
+            runtime.process.owner_identity = runtime.owner_identity
+            runtime.process.route_policy_id = runtime.route_policy.policy_id
+            runtime.process.client_id = runtime.client_id
+            runtime.orchestrator = LifecycleOrchestrator(
+                state_root=runtime.state, profiles=(runtime.profile,), process_adapter=runtime.process,
+                poll_interval_ms=50, stop_grace_ms=1_000,
+            )
+            runtime._permits, runtime._requests = {}, {}
+            runtime.service = SupervisorControlService(
+                repository_allowlist=(repository,), state_allowlist=(runtime.state,),
+                handlers={Operation.START: runtime._bounded_lifecycle_response,
+                          Operation.STOP: runtime._bounded_lifecycle_response},
+                authorization_validator=ControlMutationAuthorizer(runtime._policy),
+                identity_validator=runtime._validate_identity, lease_validator=runtime._validate_lease,
+            )
+            runtime._bootstrap_thread = threading.Thread(target=runtime._serve_bootstrap, daemon=True,
+                                                         name="admitted-supervisor-bootstrap")
+            if inventory_execution_scope is not None:
+                inventory_execution_scope._remember_constructor_cleanup(runtime)
+            runtime._bootstrap_thread.start()
+            if implement:
+                from ..runtime.local_completion_bridge import bind_owner_local_completion_service
+                from ..runtime.finite_repository_execution import ADVISORY_PROFILE
+                from ..runtime.finite_proof_query_execution import PROFILE as PROOF_QUERY_PROFILE
+                from ..task_sources.board_control_plane import infer_board_namespace
+                target_branch = _git(repository, "branch", "--show-current")
+                runtime.completion_service = bind_owner_local_completion_service(
+                    server=server, portal_attempt_root=runtime.state / "run" / "admitted_database_portal_attempts",
+                    repo_root=repository, merge_queue_dir=runtime.state / "merge_queue",
+                    board_namespace=infer_board_namespace(merge_target_branch=target_branch,
+                                                           todo_path=Path(server.config.database_path), state_prefix="admitted"),
+                    target_branch=target_branch,
+                    candidate_runner=candidate_runner,
+                    retirable=(inventory_execution_scope is not None or (finite_execution_scope is not None
+                        and finite_execution_scope.to_dict()["payload"]["profile"] in {ADVISORY_PROFILE, PROOF_QUERY_PROFILE})),
+                )
+
+            return runtime
+        except BaseException as construction_error:
+            if inventory_execution_scope is None and (
+                    finite_execution_scope is None or not finite_execution_scope._uses_paired_receiving()):
+                raise
+            cleanup_kind = "inventory" if inventory_execution_scope is not None else "proof-query"
+            from ..runtime.local_completion_bridge import _CompletionBindingCleanupError
+            if type(construction_error) is _CompletionBindingCleanupError:
+                runtime._pending_completion_binding = construction_error._custody
+            if inventory_execution_scope is not None:
+                inventory_execution_scope._retain_constructor_cleanup(runtime)
+            try:
+                if all(hasattr(runtime, name) for name in
+                       ("service", "process", "profile", "lease", "_bootstrap_thread")):
+                    stopped = runtime.stop()
+                    if not stopped.succeeded or not runtime._context_refresh_stopped():
+                        raise RuntimeError(f"failed {cleanup_kind} construction lacks native STOP cleanup")
+                    runtime.close()
+                else:
+                    # No lifecycle or completion service exists at this stage,
+                    # and no process has been launched. This is transport/run
+                    # lease disposal, never an invented STOP receipt.
+                    if getattr(runtime, "_children", ()) or getattr(runtime, "completion_service", None):
+                        raise RuntimeError(f"partial {cleanup_kind} construction has undisposed process custody")
+                    broker = getattr(runtime, "proof_query_dispatch_broker", None)
+                    if broker is not None:
+                        broker.close_unlaunched_construction()
+                    listener = getattr(runtime, "_listener", None)
+                    if listener is not None:
+                        listener.close()
+                    coordinator = getattr(runtime, "coordinator", None)
+                    if coordinator is not None:
+                        if inventory_execution_scope is not None:
+                            inventory_execution_scope._close_constructor_run_coordinator(runtime)
+                        else:
+                            lease = getattr(runtime, "lease", None)
+                            if lease is not None:
+                                coordinator.release(lease, expected_fencing_token=lease.fencing_token,
+                                                    expected_fence_epoch=lease.fence_epoch)
+                            coordinator.close()
+            except BaseException as cleanup_error:
+                runtime._construction_cleanup_failed = True
+                if hasattr(runtime, "state"):
+                    (runtime.state / "construction-cleanup-failure.json").write_text(json.dumps({
+                        "construction_error_type": type(construction_error).__name__,
+                        "cleanup_error_type": type(cleanup_error).__name__,
+                        "native_STOP_proved": False, "resources_retained": True,
+                    }, sort_keys=True) + "\n")
+                raise RuntimeError(f"{cleanup_kind} constructor cleanup unproven; resource custody retained") from cleanup_error
+            raise
 
     def _bounded_lifecycle_response(self, request):
         response = self.orchestrator(request)
@@ -577,6 +774,10 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             raise ValueError("persisted admitted launch grant changed")
         verify_did_key_signature(identity_did=self.local_profile.identity_did,
                                  payload=self.manifest, signature=self.signature["signature"])
+        if self.finite_execution_scope is not None:
+            self.finite_execution_scope.require_runtime(self)
+        if self.inventory_execution_scope is not None:
+            self.inventory_execution_scope.require_runtime(self)
         return observations
 
     def _verify_observation(self):
@@ -637,6 +838,10 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
         if manifest.get("candidate_runner") is not None:
             from ..runtime.candidate_execution import verify_candidate_runner
             verify_candidate_runner(manifest["candidate_runner"])
+        if self.finite_execution_scope is not None:
+            self.finite_execution_scope.require_runtime(self, stopping=True)
+        if self.inventory_execution_scope is not None:
+            self.inventory_execution_scope.require_runtime(self, stopping=True)
 
     def _serve_bootstrap(self):
         while not self._bootstrap_stop.is_set():
@@ -713,7 +918,41 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                     self.bootstrap_errors.append({"type": type(exc).__name__, "message": str(exc)[:512]})
 
     def start(self):
+        if self.finite_execution_scope is not None and self.finite_execution_scope._uses_paired_receiving():
+            from ..runtime.finite_proof_query_execution import _ProofQueryStartRefused, FiniteProofQueryExecutionError
+            try:
+                with self.finite_execution_scope._receiving_operation(purpose="start", runtime=self) as operation:
+                    verify_local_benchmark_admission(self.admission, initial=True)
+                    self.finite_execution_scope.require_runtime(self, before_spawn=True)
+                    self._context_refresh_stop_receipt = None
+                    result = super().start()
+                    if not operation.closed:
+                        if result.succeeded:
+                            raise FiniteProofQueryExecutionError("native START succeeded without its closing proof-query fence")
+                        raise _ProofQueryStartRefused(result)
+                return result
+            except _ProofQueryStartRefused as refused:
+                return refused.result
+        if self.inventory_execution_scope is not None and self.inventory_execution_scope._uses_paired_receiving():
+            from ..runtime.codebase_inventory_execution import _InventoryStartRefused, InventoryExecutionError
+            try:
+                with self.inventory_execution_scope._receiving_operation(purpose="start", runtime=self) as operation:
+                    verify_local_benchmark_admission(self.admission, initial=True)
+                    self.inventory_execution_scope.require_runtime(self, before_spawn=True)
+                    self._context_refresh_stop_receipt = None
+                    result = super().start()
+                    if not operation.closed:
+                        if result.succeeded:
+                            raise InventoryExecutionError("native START succeeded without its closing receiving fence")
+                        raise _InventoryStartRefused(result)
+                return result
+            except _InventoryStartRefused as refused:
+                return refused.result
         verify_local_benchmark_admission(self.admission, initial=True)
+        if self.finite_execution_scope is not None:
+            self.finite_execution_scope.require_runtime(self, before_spawn=True)
+        if self.inventory_execution_scope is not None:
+            self.inventory_execution_scope.require_runtime(self, before_spawn=True)
         self._context_refresh_stop_receipt = None
         return super().start()
 
@@ -722,6 +961,10 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
         result = super().stop()
         if result.succeeded:
             self._context_refresh_stop_receipt = result
+            if self.finite_execution_scope is not None:
+                self.finite_execution_scope.finish_runtime(self)
+            if self.inventory_execution_scope is not None:
+                self.inventory_execution_scope.finish_runtime(self)
         return result
 
     def _context_refresh_stopped(self):
@@ -862,7 +1105,29 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
         return result
 
     def close(self):
-        super().close()
+        inventory_scope = getattr(self, "inventory_execution_scope", None)
+        if self.finite_execution_scope is not None:
+            self.finite_execution_scope.require_close(self)
+        if inventory_scope is not None:
+            inventory_scope.require_close(self)
+        from ..runtime.local_completion_bridge import OwnerLocalCompletionService, _OwnerCompletionBindingCustody
+        pending = getattr(self, "_pending_completion_binding", None)
+        if pending is not None:
+            if type(pending) is not _OwnerCompletionBindingCustody:
+                raise RuntimeError("completion rollback requires its exact native binding custody")
+            self._record("completion-binding-rollback-close", pending.close(self))
+        completion = getattr(self, "completion_service", None)
+        if type(completion) is OwnerLocalCompletionService:
+            self._record("completion-service-close", completion.close(self))
+        broker = getattr(self, "proof_query_dispatch_broker", None)
+        if broker is not None:
+            self._record("proof-query-dispatch-broker-close", broker.close_after_native_stop())
+        if inventory_scope is not None:
+            if self.process.snapshot(self.profile).members:
+                raise RuntimeError("stop the exact supervisor tree before closing its coordinator")
+            inventory_scope._close_constructor_run_coordinator(self)
+        else:
+            super().close()
         self._bootstrap_stop.set()
         self._listener.close()
         self._bootstrap_thread.join(timeout=2)

@@ -19,12 +19,10 @@ from .terminal_deployment import (
     SECURITY_INITIALIZER_PATH, SECURITY_CHECKPOINT_PATH, SECURITY_CHECKPOINT_HUB, deploy_supervisor, runtime_environment,
     SECURITY_FORMULA_PATH, SECURITY_FORMULA_DESCRIPTOR, SECURITY_HEADER_PROTOCOL,
     INTENT_CHECKPOINT_PATH, INTENT_ROUNDTRIP_PATH, INTENT_CHECKPOINT_DESCRIPTOR,
-    INTENT_PROJECTION_REQUEST_PATH, INTENT_ACTION_384_CONFIG, validate_intent_action_384_binding,
-    SOURCE384_CONFIG, validate_source384_binding,
+    INTENT_PROJECTION_REQUEST_PATH,
 )
-from .benchmark_resource_profile import SOURCE384_PROFILE
 from .native_codex_baseline import MODEL, CLI_VERSION
-from .full_supervisor_benchmark import _intent_selection, validate_header_planning_selection
+from .full_supervisor_benchmark import _intent_selection
 from .terminal_public_outputs import capture_public_inputs, export_public_outputs
 
 
@@ -149,14 +147,6 @@ def intent_asset_arguments(manifest: dict, *, enabled: bool = True) -> tuple[lis
         raise ValueError("explicit boolean Intent preprocessing selection required")
     if not enabled:
         return ["--disable-intent-autoencoder"], {"enabled": False, "status": "disabled"}
-    selected = validate_intent_action_384_binding(manifest)
-    if selected is not None:
-        if manifest.get("intent_checkpoint") is not None or manifest.get("intent_projection_request") is not None:
-            raise ValueError("Intent384 and legacy Intent selections are mutually exclusive")
-        return ["--intent-action-384-config", ROOT + "/" + INTENT_ACTION_384_CONFIG], {
-            "enabled": True, "sha256": selected["checkpoint_sha256"], "config_sha256": selected["config_sha256"],
-            "embedding_revision": selected["embedding_revision"], "mode": selected["mode"],
-            "execution_authority": False}
     binding = manifest.get("intent_checkpoint")
     if binding is None:
         if manifest.get("intent_projection_request") is not None:
@@ -205,28 +195,10 @@ def intent_asset_arguments(manifest: dict, *, enabled: bool = True) -> tuple[lis
     return arguments, observation
 
 
-def source384_asset_arguments(manifest, arm, resource_profile=None):
-    """Make selected parent use explicit; the no-index ablation never invokes it."""
-    if arm not in {"full", "no-index"}:
-        raise ValueError("unknown Source384 ablation")
-    binding = validate_source384_binding(manifest)
-    enabled = binding is not None and arm == "full"
-    if enabled and resource_profile != SOURCE384_PROFILE:
-        raise ValueError("Source384 requires the explicit common source384-5cpu-12gib@1 profile")
-    return (["--source384-config", ROOT + "/" + SOURCE384_CONFIG] if enabled else []), {
-        "selected": binding is not None, "enabled": enabled,
-        "disabled_reason": "no_index_ablation" if binding is not None and not enabled else None,
-        "config_sha256": binding["config_sha256"] if binding else None,
-        "checkpoint_sha256": binding["config"]["checkpoint_sha256"] if binding else None,
-        "training_steps": 0, "download_calls": 0, "execution_authority": False,
-    }
-
-
 class FullSupervisorAgent(BaseAgent):
     def __init__(self, *args, runtime_archive: str, arm="full", auth_json: str | None = None,
                  model_revision="", disable_intent_autoencoder: bool = False,
-                 intent_requirement_contract: dict | None = None, resource_profile=None,
-                 setup_cache_selection: dict | None = None, **kwargs):
+                 intent_requirement_contract: dict | None = None, **kwargs):
         super().__init__(*args, **kwargs)
         if self.model_name != MODEL or arm not in {"full", "no-index"}:
             raise ValueError("the isolated comparison requires the pinned model and explicit arm")
@@ -234,14 +206,6 @@ class FullSupervisorAgent(BaseAgent):
         self.auth_json = Path(auth_json or Path.home() / ".codex/auth.json")
         self.arm = arm
         self.model_revision = model_revision
-        if resource_profile not in (None, SOURCE384_PROFILE):
-            raise ValueError("unknown benchmark resource profile")
-        self.resource_profile = resource_profile
-        from .terminal_setup_cache_advice import validate_setup_cache_selection, validate_setup_cache_prerequisites
-        validate_setup_cache_selection(self.runtime_archive, setup_cache_selection)
-        validate_setup_cache_prerequisites(setup_cache_selection, install_codex=True,
-            auth_json=self.auth_json, arm=arm, resource_profile=resource_profile)
-        self.setup_cache_selection = json.loads(json.dumps(setup_cache_selection))
         if type(disable_intent_autoencoder) is not bool:
             raise ValueError("Intent ablation switch must be boolean")
         self.disable_intent_autoencoder = disable_intent_autoencoder
@@ -263,31 +227,11 @@ class FullSupervisorAgent(BaseAgent):
         return "isolated-native-v1+codex-" + CLI_VERSION
 
     async def setup(self, environment):
-        from .terminal_setup_cache_advice import (
-            validate_setup_cache_selection, validate_setup_cache_prerequisites, apply_setup_cache_advice,
-        )
-        selection = getattr(self, "setup_cache_selection", None)
-        manifest, _ = validate_setup_cache_selection(self.runtime_archive, selection)
-        validate_header_planning_selection(validate_source384_binding(manifest),
-            getattr(self, "intent_requirement_contract", None), self.arm)
-        validate_setup_cache_prerequisites(selection, install_codex=True, auth_json=self.auth_json,
-            arm=self.arm, resource_profile=getattr(self, "resource_profile", None))
         await deploy_supervisor(environment, archive_dir=self.runtime_archive,
-                                output=self.logs_dir / "deployment", auth_json=self.auth_json,
-                                **({"setup_cache_selection": selection} if selection is not None else {}))
-        boundary = self.logs_dir / "worker-boundary"
-        await deploy_worker_boundary(environment, output=boundary)
-        if selection is not None:
-            self.setup_cache_receipt = await apply_setup_cache_advice(environment,
-                archive_dir=self.runtime_archive, expected=selection,
-                boundary_output=boundary, output=self.logs_dir / "setup-cache")
+                                output=self.logs_dir / "deployment", auth_json=self.auth_json)
+        await deploy_worker_boundary(environment, output=self.logs_dir / "worker-boundary")
 
     async def run(self, instruction: str, environment, context: AgentContext):
-        from .terminal_setup_cache_advice import validate_setup_cache_selection
-        manifest, _ = validate_setup_cache_selection(self.runtime_archive,
-            getattr(self, "setup_cache_selection", None))
-        validate_header_planning_selection(validate_source384_binding(manifest),
-            getattr(self, "intent_requirement_contract", None), self.arm)
         public = self.logs_dir / "instruction.md"
         public.write_text(instruction)
         instruction_path = ROOT + "/instruction.md"
@@ -307,6 +251,7 @@ class FullSupervisorAgent(BaseAgent):
             requirement_path = ROOT + "/intent-requirements.json"
             await environment.upload_file(artifact, requirement_path)
             argv += ["--intent-requirement-contract", requirement_path]
+        manifest = json.loads((self.runtime_archive / "manifest.json").read_text())
         if self.arm == "full" and manifest["learned_requirements"]:
             argv += ["--model-snapshot", ROOT + "/models/embedding", "--model-revision", self.model_revision]
         asset_arguments, asset_observation = security_asset_arguments(manifest, self.arm)
@@ -314,18 +259,12 @@ class FullSupervisorAgent(BaseAgent):
         intent_arguments, intent_observation = intent_asset_arguments(manifest,
             enabled=not self.disable_intent_autoencoder)
         argv += intent_arguments
-        source384_arguments, source384_observation = source384_asset_arguments(
-            manifest, self.arm, getattr(self, "resource_profile", None))
-        argv += source384_arguments
         context.metadata = {"arm": self.arm, "task_completed": False, "official_reward": None,
                             **_intent_selection(requirement_contract),
                             "runtime_archive_sha256": manifest["archive_sha256"],
                             "security_training_assets": asset_observation,
                             "security_model_assets": asset_observation,
                             "intent_model_assets": intent_observation,
-                            "source384_assets": source384_observation,
-                            "resource_profile": getattr(self, "resource_profile", None),
-                            **({"setup_cache": self.setup_cache_receipt} if hasattr(self, "setup_cache_receipt") else {}),
                             "planning_and_cold_index_charged_to_agent_time": True}
         try:
             context.metadata["public_input_capture"] = await asyncio.wait_for(

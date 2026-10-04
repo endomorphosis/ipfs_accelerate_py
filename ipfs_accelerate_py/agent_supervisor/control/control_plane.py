@@ -2105,6 +2105,9 @@ _LEGAL_MUTATION_TRANSACTION_TRANSITIONS: Final[
         MutationTransactionPhase.DISPATCHING: frozenset(
             {
                 MutationTransactionPhase.COMMITTED,
+                # The exact verified before-Popen token permits a no-op
+                # compensation after native proof of no process effect.
+                MutationTransactionPhase.COMPENSATED,
                 MutationTransactionPhase.COMPENSATION_REQUIRED,
                 MutationTransactionPhase.REPAIR_REQUIRED,
             }
@@ -5649,6 +5652,12 @@ class SupervisorControlService:
             if recovery_action is MutationRecoveryAction.COMPENSATE
             else MutationTransactionPhase.REPAIR_REQUIRED
         )
+        from .before_popen_refusal import verified_refusal_for_request
+        no_process_effect = (transaction_state is not None and not applied_effect_ids
+                            and verified_refusal_for_request(exc, request))
+        if no_process_effect:
+            recovery_phase = MutationTransactionPhase.COMPENSATED
+            recovery_action = MutationRecoveryAction.NONE
         transaction_data: dict[str, Any] = {}
         if transaction_state is not None:
             transaction_data = {
@@ -5660,6 +5669,11 @@ class SupervisorControlService:
                     "recovery_action": recovery_action.value,
                     "failure_code": error.code.value,
                 }
+            }
+        if no_process_effect:
+            transaction_data["before_popen_refusal"] = {
+                "proof": json.loads(exc._proof),
+                "compensation_scope": "no-op after native empty-tree observation; no signal, repair or job executed",
             }
         result = OperationResult(
             request_id=request.request_id,

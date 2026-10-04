@@ -21,6 +21,99 @@ from ..task_sources.typed_state_owner import TYPED_DATABASE_ATTEMPT_ADMISSION_SC
 
 
 SOURCE_TRANSITION_SCHEMA = "supervisor-local-published-source-transition@1"
+_COMPLETION_SERVICE_SEAL = object()
+
+
+class OwnerLocalCompletionService(dict):
+    """A fixed owner callback with opt-in, exact-runtime retirement custody."""
+
+    def __init__(self, seal, *, server, gateway, handler, binding):
+        if seal is not _COMPLETION_SERVICE_SEAL:
+            raise local.LocalPlanningError("completion retirement needs its native binding")
+        super().__init__(schema="supervisor-local-owner-validation-service@1", bound=True,
+                         operation="local.task.validation.run", completion_authority=False)
+        self._server, self._gateway = server, gateway
+        self._handler, self._binding, self._retired = handler, binding, False
+
+    @property
+    def retired(self):
+        return self._retired
+
+    def close(self, runtime):
+        from ..entrypoints.admitted_benchmark_runtime import AdmittedBenchmarkRuntime
+        from .finite_repository_execution import ADVISORY_PROFILE, FrozenFiniteRepositoryExecutionScope
+        from .finite_proof_query_execution import PROFILE as PROOF_QUERY_PROFILE
+        scope = getattr(runtime, "finite_execution_scope", None)
+        from .codebase_inventory_execution import PROFILE as INVENTORY_PROFILE, FrozenInventoryExecutionScope
+        inventory_scope = getattr(runtime, "inventory_execution_scope", None)
+        qualified_scope = (
+            type(scope) is FrozenFiniteRepositoryExecutionScope
+            and inventory_scope is None and scope.to_dict()["payload"]["profile"] in {ADVISORY_PROFILE, PROOF_QUERY_PROFILE}
+        ) or (
+            type(inventory_scope) is FrozenInventoryExecutionScope
+            and scope is None and inventory_scope.to_dict()["payload"]["profile"] == INVENTORY_PROFILE
+        )
+        if (type(runtime) is not AdmittedBenchmarkRuntime
+                or getattr(runtime, "completion_service", None) is not self
+                or runtime.server is not self._server
+                or not qualified_scope
+                or self._server._command_gateway is not self._gateway
+                or not runtime._context_refresh_stopped()):
+            raise local.LocalPlanningError("completion retirement requires exact native STOP and isolated UID cleanup")
+        if inventory_scope is not None:
+            inventory_scope.require_close(runtime)
+        if not self._server._lock.acquire(blocking=False):
+            raise local.LocalPlanningError("completion retirement cannot interrupt owner callback custody")
+        try:
+            if not runtime._context_refresh_stopped():
+                raise local.LocalPlanningError("completion retirement lost native STOP cleanup")
+            if not self._retired:
+                if not self._gateway.unbind_local_task_validation_handler(self._handler, self._binding):
+                    raise local.LocalPlanningError("completion retirement cannot detach a foreign handler")
+                self._retired = True
+        finally:
+            self._server._lock.release()
+        return {**self, "retired": True, "detached_exact_handler": True}
+
+
+class _OwnerCompletionBindingCustody:
+    """Retain one failed service construction's exact installed callback."""
+
+    def __init__(self, seal, *, server, gateway, handler, binding):
+        if seal is not _COMPLETION_SERVICE_SEAL:
+            raise local.LocalPlanningError("native completion binding custody required")
+        self._seal, self._server, self._gateway = seal, server, gateway
+        self._handler, self._binding = handler, binding
+        self._service = None
+
+    def close(self, runtime):
+        # Reuse the ordinary native STOP/UID-cleanup retirement contract. A
+        # failed constructor never grants a replacement callback or token.
+        if (self._seal is not _COMPLETION_SERVICE_SEAL
+                or runtime.server is not self._server
+                or self._server._command_gateway is not self._gateway
+                or not runtime._context_refresh_stopped()):
+            raise local.LocalPlanningError("pending completion binding requires exact native STOP cleanup")
+        current = getattr(runtime, "completion_service", None)
+        if self._service is None:
+            if current is not None:
+                raise local.LocalPlanningError("pending completion binding cannot replace a foreign service")
+            self._service = OwnerLocalCompletionService(_COMPLETION_SERVICE_SEAL,
+                server=self._server, gateway=self._gateway, handler=self._handler, binding=self._binding)
+            runtime.completion_service = self._service
+        elif current is not self._service:
+            raise local.LocalPlanningError("pending completion binding lost its original service")
+        return self._service.close(runtime)
+
+
+class _CompletionBindingCleanupError(local.LocalPlanningError):
+    """An exact handler remains installed after constructor rollback failed."""
+
+    def __init__(self, seal, custody):
+        if seal is not _COMPLETION_SERVICE_SEAL or type(custody) is not _OwnerCompletionBindingCustody:
+            raise local.LocalPlanningError("native completion rollback custody required")
+        super().__init__("completion service construction failed; exact callback binding custody retained")
+        self._custody = custody
 
 
 def verify_owner_local_benchmark_observation(*, server: QuackStateServer, admission: Mapping) -> dict:
@@ -285,7 +378,7 @@ def authorize_owner_portal_source_transition(
 def bind_owner_local_completion_service(
     *, server: QuackStateServer, portal_attempt_root: Path, repo_root: Path,
     merge_queue_dir: Path, board_namespace: str, target_branch: str,
-    candidate_runner=None,
+    candidate_runner=None, retirable=False,
 ) -> dict:
     """Bind a closed grant-authenticated service to owner-chosen native paths.
 
@@ -304,6 +397,8 @@ def bind_owner_local_completion_service(
 
     if type(server) is not QuackStateServer or server.identity is None:
         raise local.LocalPlanningError("live native owner required for local completion service")
+    if type(retirable) is not bool:
+        raise local.LocalPlanningError("completion retirement opt-in must be an exact boolean")
     repository = Path(repo_root).resolve(strict=True)
     attempts = Path(portal_attempt_root).absolute()
     queue_dir = Path(merge_queue_dir).absolute()
@@ -380,7 +475,22 @@ def bind_owner_local_completion_service(
     gateway = server._command_gateway
     if gateway is None:
         raise local.LocalPlanningError("native typed owner gateway is unavailable")
-    gateway.bind_local_task_validation_handler(handler)
+    binding = gateway.bind_local_task_validation_handler(handler, retirable=retirable)
+    if retirable:
+        try:
+            return OwnerLocalCompletionService(_COMPLETION_SERVICE_SEAL, server=server,
+                gateway=gateway, handler=handler, binding=binding)
+        except BaseException as construction_error:
+            custody = _OwnerCompletionBindingCustody(_COMPLETION_SERVICE_SEAL,
+                server=server, gateway=gateway, handler=handler, binding=binding)
+            try:
+                if not gateway.unbind_local_task_validation_handler(handler, binding):
+                    raise local.LocalPlanningError("completion rollback cannot detach a foreign handler")
+            except BaseException as cleanup_error:
+                retained = _CompletionBindingCleanupError(_COMPLETION_SERVICE_SEAL, custody)
+                retained.construction_error = construction_error
+                raise retained from cleanup_error
+            raise
     return {"schema": "supervisor-local-owner-validation-service@1", "bound": True,
             "operation": "local.task.validation.run", "completion_authority": False}
 

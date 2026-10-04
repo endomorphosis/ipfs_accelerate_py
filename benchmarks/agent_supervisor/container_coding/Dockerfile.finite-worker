@@ -1,0 +1,20 @@
+ARG BASE_IMAGE=ipfs-supervisor-intent384:20261002
+FROM ${BASE_IMAGE}
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends sudo procps \
+    && rm -rf /var/lib/apt/lists/*
+RUN python -m venv --system-site-packages /opt/ipfs-supervisor/venv \
+    && useradd --uid 1001 --gid supervisor --home-dir /opt/ipfs-supervisor/worker-home \
+       --shell /usr/sbin/nologin benchmarkworker \
+    && install -d -o root -g root -m 0755 /opt/ipfs-supervisor/bin \
+    && install -d -o supervisor -g supervisor -m 0750 /opt/ipfs-supervisor/worktrees \
+    && install -d -o supervisor -g supervisor -m 0700 /opt/ipfs-supervisor/state \
+    && install -d -o supervisor -g supervisor -m 0755 /opt/ipfs-supervisor/finite-handoffs \
+    && install -d -o benchmarkworker -g supervisor -m 0700 /opt/ipfs-supervisor/worker-home
+ENV PYTHONPATH=/opt/ipfs-supervisor/source:/opt/ipfs-supervisor/datasets:/opt/ipfs-supervisor/kit \
+    PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
+    HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 TOKENIZERS_PARALLELISM=false \
+    OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
+USER supervisor
+WORKDIR /opt/ipfs-supervisor/source
+ENTRYPOINT ["/opt/ipfs-supervisor/venv/bin/python"]

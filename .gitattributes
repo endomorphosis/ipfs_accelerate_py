@@ -57,3 +57,5 @@ docs/agent_supervisor/evidence/worker-context-bundle-snapshot-20261003/** -white
 docs/agent_supervisor/evidence/source384-setup-cache-production-20261003/** -whitespace
 docs/agent_supervisor/evidence/source384-replay-lifetime-20261003/** -whitespace
 docs/agent_supervisor/evidence/source384-production-cache-qualification-20261003/** -whitespace
+
+# Historical large evidence and datasets retained through Git LFS.

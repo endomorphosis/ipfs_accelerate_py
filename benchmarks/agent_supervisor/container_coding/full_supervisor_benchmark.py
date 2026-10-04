@@ -14,8 +14,6 @@ import time
 from benchmarks.agent_supervisor.container_coding.native_codex_baseline import (
     TASK, MODEL, CLI_VERSION, REASONING, _hash, _json, _task_hashes, config_for as baseline_config,
 )
-from benchmarks.agent_supervisor.container_coding import benchmark_controls
-from .benchmark_resource_profile import PROFILES, validate_resource_profile
 
 ADAPTER = "benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_agent:FullSupervisorAgent"
 INTENT_SOURCE_PATH = ".supervisor-instruction.md"
@@ -39,13 +37,6 @@ def _load_intent_requirement_contract(path: Path | None, *, dataset: Path) -> di
     """Validate candidate requirements against the selected public task instruction."""
     if path is None:
         return None
-    return load_intent_requirements_for_instruction(path, Path(dataset).resolve(strict=True) / TASK / "instruction.md")
-
-
-def load_intent_requirements_for_instruction(path: Path | None, instruction: Path) -> dict | None:
-    """Read a bounded reviewed mapping for one explicitly selected public instruction."""
-    if path is None:
-        return None
     from ipfs_accelerate_py.agent_supervisor.prompt.intent_plan_coverage import (
         validate_intent_requirement_contract,
     )
@@ -66,7 +57,7 @@ def load_intent_requirements_for_instruction(path: Path | None, instruction: Pat
         return result
     def nonfinite(value):
         raise ValueError("nonfinite intent requirement contract value")
-    public = Path(instruction).absolute()
+    public = Path(dataset).resolve(strict=True) / TASK / "instruction.md"
     if public.resolve(strict=True) != public or public.is_symlink() or not public.is_file():
         raise ValueError("public instruction must be a regular canonical file")
     with public.open("rb") as stream:
@@ -85,7 +76,7 @@ def load_intent_requirements_for_instruction(path: Path | None, instruction: Pat
 
 
 def _intent_selection(contract: dict | None) -> dict:
-    strategy = ("intent_symbolic" if contract is not None and contract.get("schema") in {"intent-plan-requirement-contract@2", "intent-plan-requirement-contract@3"}
+    strategy = ("intent_symbolic" if contract is not None and contract.get("schema") == "intent-plan-requirement-contract@2"
                 else "intent_coverage" if contract is not None else "direct")
     result = {"planning_strategy": strategy,
               "intent_requirement_contract_cid": None, "intent_requirement_contract_sha256": None}
@@ -101,11 +92,10 @@ def _intent_selection(contract: dict | None) -> dict:
 
 
 def config_for(dataset: Path, output: Path, archive: Path, arm: str,
-               *, intent_requirement_contract: dict | None = None, resource_profile=None,
-               setup_cache_selection: dict | None = None) -> dict:
+               *, intent_requirement_contract: dict | None = None) -> dict:
     if arm not in {"full", "no-index"}:
         raise ValueError("unknown supervisor ablation")
-    config = baseline_config(dataset, output, resource_profile=resource_profile)
+    config = baseline_config(dataset, output)
     config["job_name"] = "supervisor-" + arm + "-" + TASK
     config["agents"] = [{
         "import_path": ADAPTER, "model_name": MODEL,
@@ -116,39 +106,11 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
     }]
     if intent_requirement_contract is not None:
         config["agents"][0]["kwargs"]["intent_requirement_contract"] = _transport_intent_contract(intent_requirement_contract)
-    if resource_profile is not None:
-        config["agents"][0]["kwargs"]["resource_profile"] = resource_profile
-    if setup_cache_selection is not None:
-        from .terminal_setup_cache_advice import _selection_shape
-        _selection_shape(setup_cache_selection)
-        config["agents"][0]["kwargs"]["setup_cache_selection"] = json.loads(json.dumps(setup_cache_selection))
     return config
 
 
-def validate_header_planning_selection(binding, contract, arm):
-    """Bind explicit reviewed intent to its portable runtime profile before setup."""
-    profile = None if binding is None else binding["config"].get("header_applicability")
-    header = isinstance(contract, dict) and contract.get("schema") == "intent-plan-requirement-contract@3"
-    if profile is None and not header:
-        return
-    if arm != "full" or profile is None or not header:
-        raise ValueError("header applicability requires the full arm, reviewed intent and selected Source384 profile")
-    from ipfs_accelerate_py.agent_supervisor.prompt.intent_plan_coverage import validate_intent_requirement_contract
-    from ipfs_accelerate_py.agent_supervisor.runtime.header_intent_applicability import validate_runtime_profile
-    from ipfs_accelerate_py.agent_supervisor.core.multiformats_identity import cid_for_dag_json
-    selected = validate_intent_requirement_contract(contract)["source_applicability"]
-    profile = validate_runtime_profile(profile)
-    if (binding["config"]["schema"] != "terminal-source384-config@2"
-            or profile["selector_cid"] != cid_for_dag_json(selected)
-            or profile["checker_profile"] != selected["checker_profile"]):
-        raise ValueError("header runtime profile differs from reviewed intent selector")
-
-
 def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
-            intent_requirement_contract: Path | None = None,
-            intent_action_384_config: Path | None = None,
-            source384_config: Path | None = None, resource_profile=None,
-            setup_cache_policy: str | None = None) -> dict:
+            intent_requirement_contract: Path | None = None) -> dict:
     from harbor.models.job.config import JobConfig
     dataset = dataset.resolve(strict=True)
     archive = archive.resolve(strict=True)
@@ -158,37 +120,9 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     manifest = json.loads((archive / "manifest.json").read_text())
     if _hash(archive / "runtime.tar.gz") != manifest["archive_sha256"]:
         raise ValueError("runtime archive integrity failed")
-    from .terminal_deployment import (
-        load_intent_action_384_config, _intent_action_384_assets,
-        validate_intent_action_384_binding, verify_intent_action_384_archive,
-        load_source384_config, _source384_assets, validate_source384_binding, verify_source384_archive,
-    )
-    selected_intent = validate_intent_action_384_binding(manifest)
-    verify_intent_action_384_archive(archive / "runtime.tar.gz", manifest)
-    selected_source384 = validate_source384_binding(manifest)
-    verify_source384_archive(archive / "runtime.tar.gz", manifest)
-    if source384_config is not None:
-        _, expected_binding = _source384_assets(load_source384_config(source384_config))
-        if selected_source384 != expected_binding:
-            raise ValueError("selected Source384 config differs from the runtime archive")
-    if intent_action_384_config is not None:
-        host_config = load_intent_action_384_config(intent_action_384_config)
-        _, expected_binding = _intent_action_384_assets(host_config)
-        if selected_intent != expected_binding:
-            raise ValueError("selected Intent384 config differs from the runtime archive")
-    from .terminal_setup_cache_advice import select_setup_cache, validate_setup_cache_prerequisites
-    setup_cache_selection = select_setup_cache(archive, setup_cache_policy)
-    validate_setup_cache_prerequisites(setup_cache_selection, install_codex=True,
-        auth_json=Path.home() / ".codex/auth.json", arm=arm, resource_profile=resource_profile)
     requirements = _load_intent_requirement_contract(intent_requirement_contract, dataset=dataset)
-    validate_header_planning_selection(selected_source384, requirements, arm)
-    task_hashes = _task_hashes(dataset / TASK)
-    declared_config = config_for(dataset, output, archive, arm,
-        intent_requirement_contract=requirements, resource_profile=resource_profile,
-        setup_cache_selection=setup_cache_selection)
-    if selected_source384 is not None and arm == "full":
-        validate_resource_profile(declared_config, resource_profile)
-    config = JobConfig.model_validate(declared_config, extra="forbid")
+    config = JobConfig.model_validate(config_for(dataset, output, archive, arm,
+        intent_requirement_contract=requirements), extra="forbid")
     output.mkdir(parents=True)
     _json(output / "config.json", config.model_dump(mode="json", context={"redact_sensitive_env": False}))
     harbor = Path(sys.executable).with_name("harbor")
@@ -196,26 +130,16 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     dry = subprocess.run([*command, "--dry-run"], capture_output=True, text=True, timeout=60)
     (output / "dry-run.stdout").write_text(dry.stdout)
     (output / "dry-run.stderr").write_text(dry.stderr)
-    if _task_hashes(dataset / TASK) != task_hashes:
-        raise ValueError("original task changed during supervisor preflight")
     sources = {str(path): _hash(path) for path in Path(__file__).parent.glob("*.py")}
     result = {"schema": "terminal-full-supervisor-preparation@1", "prepared": dry.returncode == 0,
               "arm": arm, "task": TASK, "dataset": str(dataset), "archive": str(archive),
               "archive_sha256": manifest["archive_sha256"], "manifest_sha256": _hash(archive / "manifest.json"),
               "host_source_sha256": sources,
-              "task_input_sha256": task_hashes, "config_sha256": _hash(output / "config.json"),
-              "comparison_controls": benchmark_controls.build_controls(
-                  json.loads((output / "config.json").read_text()),
-                  task_input_sha256=task_hashes, task=TASK, model=MODEL,
-                  reasoning_effort=REASONING, cli_version=CLI_VERSION),
+              "task_input_sha256": _task_hashes(dataset / TASK), "config_sha256": _hash(output / "config.json"),
               "command": command, "model": MODEL, "reasoning_effort": REASONING, "cli_version": CLI_VERSION,
               "agent_timeout_seconds": 300, "provider_calls": 0,
               "planning_and_cold_index_charged_to_agent_time": True,
-              "benchmark_advantage_claimed": False, **_intent_selection(requirements),
-              "intent_action_384": selected_intent, "source384": selected_source384,
-              "source384_enabled": selected_source384 is not None and arm == "full",
-              "resource_profile": resource_profile,
-              **({"setup_cache_selection": setup_cache_selection} if setup_cache_selection is not None else {})}
+              "benchmark_advantage_claimed": False, **_intent_selection(requirements)}
     _json(output / "preparation.json", result)
     if dry.returncode:
         raise RuntimeError("Harbor preflight failed; see retained logs")
@@ -246,14 +170,9 @@ def collect(output: Path) -> dict:
     result = {"schema": "terminal-full-supervisor-receipt@1", "arm": prepared["arm"],
               "task": TASK, "model": MODEL, "reasoning_effort": REASONING, "cli_version": CLI_VERSION,
               "original_task_inputs_unchanged": _task_hashes(Path(prepared["dataset"]) / TASK) == prepared["task_input_sha256"],
-              "comparison_controls": benchmark_controls.observe_controls(
-                  prepared, config, current_task_hashes=_task_hashes(Path(prepared["dataset"]) / TASK)),
               "trials": trials, "trial_count": len(trials), "native_job_result_present": (job / "result.json").is_file(),
               "planning_and_cold_index_charged_to_agent_time": True, "benchmark_advantage_claimed": False,
               "parallel_workers": 1, "dollar_cost": None, **selection,
-              "intent_action_384": prepared.get("intent_action_384"),
-              "source384": prepared.get("source384"), "source384_enabled": prepared.get("source384_enabled", False),
-              "resource_profile": prepared.get("resource_profile"),
               "intent_selection_config_unchanged": configured_selection == selection}
     _json(output / "receipt.json", result)
     return result
@@ -289,13 +208,6 @@ def main():
     parser.add_argument("--dataset", type=Path)
     parser.add_argument("--archive", type=Path)
     parser.add_argument("--arm", choices=("full", "no-index"), default="full")
-    parser.add_argument("--source384-config", type=Path, help="Verify the offline pinned parent matches the archive")
-    from .terminal_setup_cache_advice import POLICIES
-    parser.add_argument("--setup-cache-policy", choices=POLICIES,
-        help="Explicit matching runtime setup-cache policy; absent preserves default")
-    parser.add_argument("--resource-profile", choices=PROFILES, help="Explicit common limits; select identically for all comparison arms")
-    parser.add_argument("--intent-action-384-config", type=Path,
-        help="Verify the explicit local Intent384 configuration matches the packaged assets")
     parser.add_argument("--intent-requirement-contract", type=Path,
         help="Use source-bound @1 provider coverage or @2 reviewed symbolic operations before admission")
     args = parser.parse_args()
@@ -303,10 +215,7 @@ def main():
         if args.dataset is None or args.archive is None:
             parser.error("prepare requires --dataset and --archive")
         result = prepare(dataset=args.dataset, output=args.output, archive=args.archive, arm=args.arm,
-                         intent_requirement_contract=args.intent_requirement_contract,
-                         intent_action_384_config=args.intent_action_384_config,
-                         source384_config=args.source384_config, resource_profile=args.resource_profile,
-                         setup_cache_policy=args.setup_cache_policy)
+                         intent_requirement_contract=args.intent_requirement_contract)
     else:
         result = {"execute": execute, "collect": collect}[args.operation](args.output)
     print(json.dumps(result, sort_keys=True, indent=2))
