@@ -1,0 +1,93 @@
+{
+  "benchmark_result": false,
+  "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+  "config_sha256": "ea88e10e882fab20c158fc3d1e7ebdd66fb8afc4826a6080f9ca7b51ad554b84",
+  "context_nonoverlapping_seconds": {
+    "empty_native_world_capture": 0.40235730400308967,
+    "final_evidence_verification": 10.790894049001508,
+    "persisted_snapshot_reopen": 0.33401025700732134,
+    "retrieval_persistence": 1.1548846060031792,
+    "semantic_build_reconstruction_and_hydration": 35.77829723499599,
+    "source384_capture_and_inference": 77.20298253001238,
+    "vector_qualification": 7.4527321710047545
+  },
+  "context_seconds": 133.12304234399926,
+  "coverage": {
+    "candidate_statuses": {
+      "fail_open_source_contract_unsupported": 127
+    },
+    "file_dispositions": {
+      "inventoried": 27,
+      "no_function_units": 4
+    },
+    "files": 31,
+    "functions": 944,
+    "selected_units": 128,
+    "unit_dispositions": {
+      "decoded_unverified_candidate": 127,
+      "deferred_gte_token_limit": 1,
+      "deferred_selection_budget": 737,
+      "unsupported_normalization": 79
+    }
+  },
+  "download_calls": 0,
+  "execution_budget": {
+    "cleanup_seconds": 60,
+    "driver_seconds": 900,
+    "exec_seconds": 910,
+    "harbor_seconds": 960,
+    "native_start_seconds": 120,
+    "qualification_exec_seconds": 630,
+    "qualification_seconds": 600,
+    "source384_seconds": 180
+  },
+  "header_consumer_sha256": "0c43e38d202fdb00bd61ed51d2a2b56f9864fb7bded43bd95df8bdf8cebb53eb",
+  "inference_executed": true,
+  "inference_sha256": "9fb1f867dafd72b90aebf267031c6562e0878c918d955fabe759d592c6e708e8",
+  "initial_context_seconds": 133.2343537419947,
+  "intent_requirement_contract_cid": "baguqeeraf3jyjd5ovvjqawi3racqdnpt2q43m4q464hky6l7pnfrvr5bypna",
+  "native_worker_executed": true,
+  "neural_inference_replayed": false,
+  "official_verifier_executed": false,
+  "prepare_seconds": 10.791490175004583,
+  "producer": {
+    "byte_reader": "a3b3943bacb0becc7789c86414adab9f92e6977021919fb3e84b5e3c2baba491",
+    "config": "01f2377728f89eccc24958512ce6ab7f212b9ca9f5230945c59febb73da68270",
+    "consumer": "661f9feb9a830d38ac936626adaa1c691f8af93d2b69f389ea9de989147079dd",
+    "source_owners": {
+      "ipfs_datasets_py.duckdb_control.codebase_catalog": "91986bf58356b2917483884661237c49448c0f91f3dc40d4cd3d79fa4811afdf",
+      "ipfs_datasets_py.logic.software_contracts.codebase_ir": "6ca72bea0a321fd07b0ea785356b0d6b7e311c43be8a17c2475ab7f4a7bc00fc",
+      "ipfs_datasets_py.logic.software_contracts.content": "f21ad1d38a7bc5e2d7514696c943e6fedac439741252b39a677130dfa3e88fff",
+      "ipfs_datasets_py.logic.software_contracts.duckdb_ast_store": "2432a160769b9beba678ea646f0204a29229bb9d4ec8111dc0ac23f8fd8da51e",
+      "ipfs_datasets_py.logic.software_contracts.duckdb_ingest": "cec3c3686d10dc5d9a0d5ccf853cd873284f3e4098e41ecdd6dc517a2b73c50e",
+      "ipfs_datasets_py.logic.software_contracts.python_frontend": "baf1c1ec5e6a5f83a0eb640b988850264d35311cdcedc87d22cff610d05308df",
+      "ipfs_datasets_py.logic.software_contracts.semantic_index.python_analysis": "5b95b014af601305eeb6d0d424d3baf3861e641a62ccfc892a5f3bcc5c9754b0",
+      "ipfs_datasets_py.logic.software_contracts.semantic_index.scanner": "002957f910a0bc1ff29de1ed72aca9c2464218ac5f65478be34a7c8f04e166a1",
+      "ipfs_datasets_py.logic.software_contracts.semantic_index.snapshot": "5135e623a0a3f970252da63dce049be167e8bb73db5355f6c3116316b70aafa6"
+    }
+  },
+  "provider_calls": 0,
+  "qualified": true,
+  "resource_profile": "source384-5cpu-16gib-extended@1",
+  "schema": "terminal-source384-original-container-qualification@1",
+  "seconds": 153.94637151100324,
+  "source384_resource_profile": {
+    "memory_enforcement": "sampled_process_tree_RSS_may_overshoot",
+    "numerical_worker_memory_mb": 4096,
+    "parent_cpu_slots": 3,
+    "parent_memory_mb": 6144
+  },
+  "source384_seconds": 77.11793777500861,
+  "source_head": {
+    "ast_revision_id": "rev:terminal-source384:e468e82318b8a7313af7d960d86dd17d71bbaf9b2d9ddb326878808e5e0910b6:snapshot:baguqeeracpbrhmdr45cntkrcxxayu44whnp3hywhyevhnwbazxlh3vkljgsq",
+    "generation": 1,
+    "manifest_cid": "baguqeera4g4ia46ee2npsx45g3p6fejir7j7qubva54wptl3hzkx2qxeo4sq",
+    "receipt_cid": "baguqeeradjkpb7j524lq47np5eyzsi5crue2z265gxj4ikvcpig3rmblk4sa",
+    "repository_id": "terminal-source384:e468e82318b8a7313af7d960d86dd17d71bbaf9b2d9ddb326878808e5e0910b6",
+    "schema": "codebase-head@1",
+    "snapshot_cid": "baguqeeracpbrhmdr45cntkrcxxayu44whnp3hywhyevhnwbazxlh3vkljgsq"
+  },
+  "source_qualified_proof_claimed": false,
+  "training_steps": 0,
+  "warm_observation_seconds": 8.91353398199135
+}

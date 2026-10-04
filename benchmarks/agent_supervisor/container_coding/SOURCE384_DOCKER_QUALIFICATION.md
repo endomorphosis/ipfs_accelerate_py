@@ -1114,3 +1114,13 @@ add 84 distinct passing cases. The delayed native control verified real START,
 bootstrap, STOP and child reaping. Five older missing-method API tests reproduce
 against the original owner modules and remain failing; they are not counted as
 passing. One legacy startup fixture required its own orchestration directory.
+
+The [startup-budget Docker retry](../../../docs/agent_supervisor/evidence/extended-supervisor-startup-20261004/README.md)
+qualified checkpoint preparation, then scored 0. Doctor again verified its local
+contract, but runtime-constructor admission replay timed out under recorded host
+memory pressure before START. The 120-second startup allowance was therefore
+not exercised by this trial. Driver work ended at 269.311 seconds; the separate
+45-second applicability ceiling shortened the local scheduler's admission wait.
+The pressure observation identifies the refusing gate, not its underlying cause.
+Leanstral was restored and model readiness passed. Native publication, completion
+and matched-arm efficiency remain open.

@@ -1,0 +1,11 @@
+{
+  "matched_baseline_campaign": false,
+  "performance_advantage_claimed": false,
+  "previous_archive_retained": "../extended-supervisor-checker-20261004",
+  "prior_qualification_service_condition": "Leanstral temporarily stopped",
+  "prior_trial_service_condition": "Leanstral temporarily stopped",
+  "profile": "source384-5cpu-16gib-extended@1",
+  "purpose": "Validate explicit signed native START and bootstrap allowance within the extended work budget, with phase timing observations and retained official task outcome; no retroactive diagnosis of prior startup phase timings.",
+  "qualification_and_trial_service_condition": "Leanstral temporarily stopped under explicit user authorization; restart and HTTP model health required afterward",
+  "schema": "completion-retry-scope@1"
+}
