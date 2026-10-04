@@ -16,9 +16,12 @@ import inspect
 import json
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 import sys
 import time
+
+from benchmarks.agent_supervisor.container_coding import benchmark_controls
 
 
 TASK = "fix-code-vulnerability"
@@ -45,20 +48,28 @@ def _hash(path: Path) -> str:
 
 def _task_hashes(task: Path) -> dict:
     # Hash verifier inputs for integrity, but never inspect or send the oracle.
+    if not task.is_dir() or task.is_symlink() or task.resolve() != task:
+        raise ValueError("canonical regular task directory required")
     files = [task / "instruction.md", task / "task.toml"]
-    files += [
-        path
-        for name in ("environment", "tests")
-        for path in (task / name).rglob("*")
-        if path.is_file()
-    ]
-    if any(path.is_symlink() or not path.resolve().is_relative_to(task) for path in files):
+    for name in ("environment", "tests"):
+        root = task / name
+        if not root.is_dir() or root.is_symlink():
+            raise ValueError("regular environment and verifier directories required")
+        for path in root.rglob("*"):
+            mode = path.lstat().st_mode
+            if path.is_symlink() or not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
+                raise ValueError("task input inventory cannot omit links or special files")
+            if stat.S_ISREG(mode):
+                files.append(path)
+    if any(path.is_symlink() or not stat.S_ISREG(path.lstat().st_mode)
+           or not path.resolve().is_relative_to(task) for path in files):
         raise ValueError("task inputs must be local regular files")
     return {path.relative_to(task).as_posix(): _hash(path) for path in sorted(files)}
 
 
-def config_for(dataset: Path, output: Path) -> dict:
-    return {
+def config_for(dataset: Path, output: Path, *, resource_profile=None) -> dict:
+    from .benchmark_resource_profile import apply_resource_profile
+    return apply_resource_profile({
         "job_name": "native-codex-" + TASK,
         "jobs_dir": str(output / "jobs"),
         "n_attempts": 1,
@@ -73,15 +84,16 @@ def config_for(dataset: Path, output: Path) -> dict:
                 "model_name": MODEL,
                 "override_timeout_sec": 300.0,
                 "max_timeout_sec": 300.0,
+                "override_setup_timeout_sec": 1800.0,
                 "kwargs": {"version": CLI_VERSION, "reasoning_effort": REASONING},
                 "env": {"CODEX_AUTH_JSON_PATH": str(Path.home() / ".codex/auth.json")},
             }
         ],
         "tasks": [{"path": str(dataset / TASK)}],
-    }
+    }, resource_profile)
 
 
-def prepare(*, dataset: Path, output: Path, harbor: Path | None = None) -> dict:
+def prepare(*, dataset: Path, output: Path, harbor: Path | None = None, resource_profile=None) -> dict:
     from harbor.agents.factory import AgentFactory
     from harbor.agents.installed.codex import Codex
     from harbor.models.job.config import JobConfig
@@ -103,7 +115,7 @@ def prepare(*, dataset: Path, output: Path, harbor: Path | None = None) -> dict:
     original = Task(dataset / TASK)
     if original.has_steps:
         raise ValueError("baseline profile requires exactly one original task step")
-    config = JobConfig.model_validate(config_for(dataset, output), extra="forbid")
+    config = JobConfig.model_validate(config_for(dataset, output, resource_profile=resource_profile), extra="forbid")
     AgentFactory.run_preflight(config.agents[0])
     adapter = AgentFactory.create_agent_from_config(
         config.agents[0], logs_dir=output / "adapter-preflight"
@@ -129,6 +141,7 @@ def prepare(*, dataset: Path, output: Path, harbor: Path | None = None) -> dict:
         raise ValueError("original task changed during baseline preflight")
     source_files = [Path(inspect.getfile(item)) for item in (Codex, AgentFactory, JobConfig, Task)]
     record = {
+        "resource_profile": resource_profile,
         "schema": "native-codex-harbor-baseline-preparation@1",
         "prepared": dry.returncode == 0,
         "native_dry_run_returncode": dry.returncode,
@@ -141,6 +154,10 @@ def prepare(*, dataset: Path, output: Path, harbor: Path | None = None) -> dict:
         "native_adapter_source_sha256": {str(path): _hash(path) for path in source_files},
         "config_sha256": _hash(output / "config.json"),
         "collector_source_sha256": _hash(Path(__file__)),
+        "controls_source_sha256": _hash(Path(benchmark_controls.__file__)),
+        "comparison_controls": benchmark_controls.build_controls(
+            wire, task_input_sha256=hashes, task=TASK, model=MODEL,
+            reasoning_effort=REASONING, cli_version=CLI_VERSION),
         "model": MODEL,
         "reasoning_effort": REASONING,
         "cli_version": CLI_VERSION,
@@ -374,6 +391,9 @@ def collect(output: Path) -> dict:
         "reasoning_effort": REASONING,
         "cli_version": CLI_VERSION,
         "original_task_inputs_unchanged": integrity,
+        "comparison_controls": benchmark_controls.observe_controls(
+            prepared, json.loads((output / "config.json").read_text()),
+            current_task_hashes=_task_hashes(Path(prepared["dataset"]) / TASK)),
         "trial_count": len(rows),
         "trials": rows,
         "complete_single_trial_receipt": integrity
@@ -404,6 +424,8 @@ def execute(output: Path) -> dict:
         raise ValueError("original benchmark task changed")
     if _hash(Path(__file__)) != prepared["collector_source_sha256"]:
         raise ValueError("prepared baseline driver changed")
+    if _hash(Path(benchmark_controls.__file__)) != prepared.get("controls_source_sha256"):
+        raise ValueError("prepared benchmark controls owner changed")
     if any(
         _hash(Path(path)) != digest
         for path, digest in prepared["native_adapter_source_sha256"].items()
@@ -435,12 +457,14 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--dataset", type=Path)
     parser.add_argument("--harbor", type=Path)
+    from .benchmark_resource_profile import PROFILES
+    parser.add_argument("--resource-profile", choices=PROFILES)
     args = parser.parse_args()
     output = args.output.absolute()
     if args.operation == "prepare":
         if args.dataset is None:
             parser.error("prepare requires --dataset")
-        result = prepare(dataset=args.dataset, output=output, harbor=args.harbor)
+        result = prepare(dataset=args.dataset, output=output, harbor=args.harbor, resource_profile=args.resource_profile)
     else:
         result = {"execute": execute, "collect": collect}[args.operation](output)
     print(json.dumps(result, sort_keys=True, indent=2))

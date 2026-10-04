@@ -1,6 +1,7 @@
 """Receipt accounting preserves native cumulative totals and missing fields."""
 
 import json
+import os
 from pathlib import Path
 import shutil
 
@@ -10,7 +11,32 @@ from benchmarks.agent_supervisor.container_coding.native_codex_baseline import (
     TOKEN_FIELDS,
     config_for,
     rollout_usage,
+    _task_hashes,
 )
+
+
+@pytest.mark.parametrize("kind", ["linked_directory", "broken_link", "fifo", "linked_root"])
+def test_task_inventory_cannot_silently_omit_nonregular_inputs(tmp_path, kind):
+    task = tmp_path / "task"
+    task.mkdir()
+    (task / "instruction.md").write_text("Fix the defect.\n")
+    (task / "task.toml").write_text("version = 1\n")
+    (task / "environment").mkdir()
+    (task / "tests").mkdir()
+    (task / "tests/test.sh").write_text("exit 0\n")
+    assert set(_task_hashes(task)) == {"instruction.md", "task.toml", "tests/test.sh"}
+    if kind == "linked_directory":
+        (task / "environment/linked").symlink_to(task / "tests", target_is_directory=True)
+    elif kind == "broken_link":
+        (task / "environment/broken").symlink_to(tmp_path / "missing")
+    elif kind == "fifo":
+        os.mkfifo(task / "environment/pipe")
+    else:
+        link = tmp_path / "linked-task"
+        link.symlink_to(task, target_is_directory=True)
+        task = link
+    with pytest.raises(ValueError):
+        _task_hashes(task)
 
 
 def write_session(agent, identity, totals):

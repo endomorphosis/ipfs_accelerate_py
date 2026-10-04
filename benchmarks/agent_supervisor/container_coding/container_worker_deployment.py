@@ -24,22 +24,16 @@ for signum in (signal.SIGTERM,signal.SIGINT,signal.SIGHUP):signal.signal(signum,
 code=1
 try:
  process=subprocess.Popen(command)
- guard=globals().get("proof_query_guard")
- if guard is not None:guard.note_spawned(process)
  code=process.wait()
-except BaseException:
+except InterruptedError:
  if process is not None:
-  try:process.terminate()
-  except ProcessLookupError:pass
+  process.terminate()
   try:process.wait(timeout=5)
   except subprocess.TimeoutExpired:process.kill();process.wait()
- raise
 finally:
  for signum in (signal.SIGTERM,signal.SIGINT,signal.SIGHUP):signal.signal(signum,signal.SIG_IGN)
  cleanup=subprocess.run(['/usr/bin/sudo','-n','-u','benchmarkworker','--','/opt/ipfs-supervisor/bin/worker-entry','--cleanup'],cwd='/',stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,start_new_session=True,timeout=15)
  if cleanup.returncode:code=1
- guard=globals().get("proof_query_guard")
- if guard is not None:guard.abort()
 raise SystemExit(code)
 """
 
@@ -66,11 +60,6 @@ for base,dirs,files in os.walk(cwd,followlinks=False):
   if q.is_symlink() or not q.is_file() or q.stat().st_uid not in (1000,1001) or q.stat().st_nlink!=1:raise SystemExit('candidate input is not one allocated regular file')
   if q.stat().st_uid==1000:q.chmod(0o440 if q==cwd/'.git' else (0o770 if q.stat().st_mode&0o111 else 0o660))
 command=['/usr/bin/sudo','-n','-u','benchmarkworker','--',str(root/'bin/worker-entry'),*sys.argv[1:]]
-proof_query_guard=None
-if any(part==flag or part.startswith(flag+'=') for part in sys.argv[1:] for flag in ('--finite-proof-query-context','--finite-proof-query-sha256','--finite-proof-query-context-cid')):
- sys.path[:0]=[str(root/'source'),str(root/'datasets'),str(root/'kit')]
- from ipfs_accelerate_py.agent_supervisor.runtime.finite_proof_query_worker_dispatch import require_finite_proof_query_isolated_worker_dispatch
- proof_query_guard=require_finite_proof_query_isolated_worker_dispatch(command=command,environment=dict(os.environ),worktree=cwd)
 """
     + OWNER_MONITOR
 )
@@ -137,12 +126,6 @@ parser.add_argument('--doctor-task-cid')
 parser.add_argument('--doctor-contract-artifact',type=pathlib.Path)
 parser.add_argument('--doctor-contract-sha256')
 parser.add_argument('--doctor-contract-task-cid')
-parser.add_argument('--finite-repository-artifact',type=pathlib.Path)
-parser.add_argument('--finite-repository-sha256')
-parser.add_argument('--finite-repository-task-cid')
-parser.add_argument('--finite-proof-query-context',type=pathlib.Path)
-parser.add_argument('--finite-proof-query-sha256')
-parser.add_argument('--finite-proof-query-context-cid')
 parser.add_argument('--doctor-residual-artifact',type=pathlib.Path)
 parser.add_argument('--doctor-residual-sha256')
 parser.add_argument('--doctor-residual-task-cid')
@@ -154,11 +137,7 @@ args=parser.parse_args()
 doctor_values=(args.doctor_candidate_artifact,args.doctor_candidate_sha256,args.doctor_task_cid)
 residual_values=(args.doctor_residual_artifact,args.doctor_residual_sha256,args.doctor_residual_task_cid)
 contract_values=(args.doctor_contract_artifact,args.doctor_contract_sha256,args.doctor_contract_task_cid)
-finite_values=(args.finite_repository_artifact,args.finite_repository_sha256,args.finite_repository_task_cid)
-proof_query_values=(args.finite_proof_query_context,args.finite_proof_query_sha256,args.finite_proof_query_context_cid)
 instruction_values=(args.public_instruction_artifact,args.public_instruction_sha256,args.public_instruction_task_cid)
-if any(finite_values) and (not all(finite_values) or any(contract_values) or any(doctor_values) or any(residual_values) or any(instruction_values) or args.preflight or args.semantic_repository is not None or args.purpose!='coding'):raise SystemExit('exact finite repository candidate invocation required')
-if any(proof_query_values) and (not all(proof_query_values) or not all(finite_values) or any(contract_values) or any(doctor_values) or any(residual_values) or any(instruction_values) or args.preflight or args.semantic_repository is not None or args.purpose!='coding'):raise SystemExit('exact finite proof-query context invocation required')
 if any(instruction_values) and (not all(instruction_values) or args.preflight or any(contract_values) or any(doctor_values) or args.purpose!='coding'):raise SystemExit('exact public instruction binding requires router coding')
 if any(contract_values) and (not all(contract_values) or any(doctor_values) or any(residual_values) or args.preflight or args.semantic_repository is not None or args.purpose!='coding'):raise SystemExit('exact local contract candidate invocation required')
 if any(doctor_values) and (not all(doctor_values) or args.preflight or args.semantic_repository is not None or any(residual_values)):raise SystemExit('exact Doctor handoff or router invocation required')
@@ -189,14 +168,6 @@ if args.preflight:
  if args.preflight_sleep:subprocess.Popen(['/bin/sleep','30'],start_new_session=True)
  print(json.dumps({'schema':'container-worker-preflight@1','pid':os.getpid(),'uid':os.getuid(),'gid':os.getgid(),'groups':os.getgroups(),'boundary':evidence,'candidate_write':target.read_text()=='worker candidate edit\n','private_denials':denied,'workspace':str(pathlib.Path.cwd()),'prompt_bytes':len(prompt),'prompt_sha256':hashlib.sha256(prompt).hexdigest(),'original_task_python':subprocess.check_output(['python3','--version'],text=True).strip(),'runtime_python':sys.version.split()[0],'provider_calls':0}),flush=True)
  if args.preflight_sleep:time.sleep(args.preflight_sleep)
-elif args.finite_proof_query_context is not None:
- from ipfs_accelerate_py.agent_supervisor.runtime.finite_proof_query_worker_context import main
- sys.argv=[sys.argv[0],'--artifact',str(args.finite_repository_artifact),'--sha256',args.finite_repository_sha256,'--task-cid',args.finite_repository_task_cid,'--context',str(args.finite_proof_query_context),'--context-sha256',args.finite_proof_query_sha256,'--context-cid',args.finite_proof_query_context_cid]
- raise SystemExit(main())
-elif args.finite_repository_artifact is not None:
- from ipfs_accelerate_py.agent_supervisor.runtime.finite_repository_candidate_runner import main
- sys.argv=[sys.argv[0],'--artifact',str(args.finite_repository_artifact),'--sha256',args.finite_repository_sha256,'--task-cid',args.finite_repository_task_cid]
- raise SystemExit(main())
 elif args.doctor_contract_artifact is not None:
  from ipfs_accelerate_py.agent_supervisor.runtime.doctor_contract_candidate_runner import main
  sys.argv=[sys.argv[0],'--artifact',str(args.doctor_contract_artifact),'--sha256',args.doctor_contract_sha256,'--task-cid',args.doctor_contract_task_cid]

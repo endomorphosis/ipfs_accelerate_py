@@ -97,7 +97,7 @@ def _constraints(spec, text):
 def _planning_strategy(contract):
     if contract is None:
         return "direct"
-    if contract.get("schema") == "intent-plan-requirement-contract@2":
+    if contract.get("schema") in {"intent-plan-requirement-contract@2", "intent-plan-requirement-contract@3"}:
         return "intent_symbolic"
     return "intent_coverage"
 
@@ -152,6 +152,7 @@ def _load_intent_requirement_contract(path: Path | None, text: str) -> dict | No
 
 def prepare(*, repository: Path, instruction: Path, state: Path,
             intent_checkpoint_descriptor: Path | None = None,
+            intent_action_384_config: Path | None = None,
             intent_projection_request: Path | None = None,
             intent_projection_request_sha256: str | None = None,
             disable_intent_autoencoder: bool = False,
@@ -171,6 +172,9 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
     if (type(disable_intent_autoencoder) is not bool or type(enable_source_unit_autoencoder) is not bool
             or type(source_unit_project_logic_families) is not bool):
         raise ValueError("Intent preprocessing ablation requires a boolean")
+    if intent_action_384_config is not None and (enable_source_unit_autoencoder or any(value is not None for value in (
+            intent_checkpoint_descriptor, intent_projection_request, intent_projection_request_sha256))):
+        raise ValueError("select one explicit Intent preprocessing route")
     repository = Path(repository).resolve(strict=True)
     instruction = Path(instruction).resolve(strict=True)
     state = Path(state).absolute()
@@ -185,12 +189,19 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
     strategy = _planning_strategy(requirements)
     # This optional datasets-owned stage precedes any goal/task declarations.
     # Its output never replaces the raw instruction or independent domain roots.
-    from ipfs_accelerate_py.agent_supervisor.runtime.intent_autoencoder_advisor import prepare_intent_advice
-    intent_advice = prepare_intent_advice(instruction=text,
-        checkpoint_descriptor_path=intent_checkpoint_descriptor,
-        projection_request_path=intent_projection_request,
-        projection_request_sha256=intent_projection_request_sha256,
-        enabled=not disable_intent_autoencoder and not enable_source_unit_autoencoder)
+    intent_action_selection = None
+    if intent_action_384_config is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.intent_advisor_selection import prepare_intent_384_selection
+        intent_advice, intent_action_selection, intent_elapsed_ns = prepare_intent_384_selection(
+            instruction=text, config_path=intent_action_384_config, enabled=not disable_intent_autoencoder)
+    else:
+        from ipfs_accelerate_py.agent_supervisor.runtime.intent_autoencoder_advisor import prepare_intent_advice
+        intent_advice = prepare_intent_advice(instruction=text,
+            checkpoint_descriptor_path=intent_checkpoint_descriptor,
+            projection_request_path=intent_projection_request,
+            projection_request_sha256=intent_projection_request_sha256,
+            enabled=not disable_intent_autoencoder and not enable_source_unit_autoencoder)
+        intent_elapsed_ns = intent_advice["elapsed_ns"]
     from .terminal_source_unit_advice import prepare_source_unit_advice, _wire as source_unit_wire
     source_unit_advice = prepare_source_unit_advice(instruction=text,
         enabled=enable_source_unit_autoencoder,
@@ -217,9 +228,11 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
     intent_preplanning = {"artifact": "intent-advice.json", "artifact_sha256": None,
         "advice_sha256": intent_advice["advice_sha256"], "status": intent_advice["status"],
         "instruction_sha256": intent_advice["instruction_sha256"],
-        "seconds": intent_advice["elapsed_ns"] / 1_000_000_000,
+        "seconds": intent_elapsed_ns / 1_000_000_000,
         "before_goal_decomposition": True, "execution_authority": False,
         "completion_authority": False}
+    if intent_action_selection is not None:
+        intent_preplanning["intent_action_384_selection"] = intent_action_selection
     try:
         _write(state / "intent-advice.json", intent_advice)
         intent_preplanning["artifact_sha256"] = hashlib.sha256((state / "intent-advice.json").read_bytes()).hexdigest()
@@ -355,7 +368,8 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
 def initial_context(*, state: Path, model_snapshot: Path | None = None, model_revision: str = "",
                     train_autoencoder: bool = False, weight_transfer: dict | None = None,
                     canonical_cve_training: dict | None = None, security_checkpoint: dict | None = None,
-                    security_checkpoint_hub: dict | None = None) -> dict:
+                    security_checkpoint_hub: dict | None = None, formula_decoder: dict | None = None,
+                    header_protocol: dict | None = None, source384_config: Path | None = None) -> dict:
     """Prepare source indexes and a real empty-owner observation before planning.
 
     This cost belongs to the full arm's agent time. The subsequent context()
@@ -368,16 +382,31 @@ def initial_context(*, state: Path, model_snapshot: Path | None = None, model_re
         model_snapshot=model_snapshot, model_revision=model_revision,
         required_raw_paths=[INSTRUCTION, SMOKE], train_autoencoder=train_autoencoder,
         weight_transfer=weight_transfer, canonical_cve_training=canonical_cve_training,
-        security_checkpoint=security_checkpoint, security_checkpoint_hub=security_checkpoint_hub)
+        security_checkpoint=security_checkpoint, security_checkpoint_hub=security_checkpoint_hub,
+        formula_decoder=formula_decoder, header_protocol=header_protocol,
+        **({"source384_config": source384_config} if source384_config is not None else {}))
 
 
-def prepare_repository_preview(**controls):
-    """Explicit opt-in capture; retain the native owner outside serialized inputs."""
-    from .terminal_repository_preview import prepare_repository_preview as prepare_native
-    return prepare_native(**controls)
+def _require_same_initial_selection(current, initial):
+    if (current["receipt"]["descriptor"] != initial["receipt"]["descriptor"]
+            or current["descriptor"] != initial["descriptor"]
+            or current["summaries"] != initial["summaries"]):
+        raise ValueError("selected initial context changed during planning")
 
 
-def _plan_symbolic(*, state, prepared, initial, timeout_seconds, repository_preview=None):
+def _plan_symbolic(*, state, prepared, initial, timeout_seconds):
+    if prepared["intent_requirement_contract"]["schema"] == "intent-plan-requirement-contract@3":
+        from ipfs_accelerate_py.agent_supervisor.runtime.header_intent_applicability import applicability_budget
+        # Includes nested verify/store/load calls performed by materialization.
+        # A serialized receipt never renews this caller's remaining deadline.
+        with applicability_budget(timeout_seconds):
+            return _plan_symbolic_in_budget(state=state, prepared=prepared,
+                initial=initial, timeout_seconds=timeout_seconds)
+    return _plan_symbolic_in_budget(state=state, prepared=prepared,
+        initial=initial, timeout_seconds=timeout_seconds)
+
+
+def _plan_symbolic_in_budget(*, state, prepared, initial, timeout_seconds):
     """Select checked operations and admit them through the existing local gate."""
     from ipfs_accelerate_py.agent_supervisor.planning.intent_symbolic_planning import build_intent_symbolic_plan
 
@@ -401,37 +430,34 @@ def _plan_symbolic(*, state, prepared, initial, timeout_seconds, repository_prev
             raise ValueError("preparation changed before symbolic planning")
         if initial is not None:
             from .terminal_initial_context import load_initial_context
-            load_initial_context(state=state, prepared=current, require_empty_owner=True)
-        if repository_preview is not None:
-            from .terminal_repository_preview import preview_prepared_repository_plan
-            observed_preview = preview_prepared_repository_plan(state=state, prepared=prepared,
-                owner=repository_preview, timeout_seconds=timeout_seconds - (time.monotonic() - started))
+            current_initial = load_initial_context(state=state, prepared=current, require_empty_owner=True)
+            _require_same_initial_selection(current_initial, initial)
+        header_kwargs = {}
+        if prepared["intent_requirement_contract"]["schema"] == "intent-plan-requirement-contract@3":
+            if initial is None:
+                raise ValueError("header planning requires the runtime captured initial context")
+            header_kwargs["source_applicability_nomination"] = current_initial["descriptor"]["source384_context"]["source_applicability_nomination"]
             require_remaining_budget()
-            _write(state / "repository-planning-preview.json", observed_preview)
-            result["repository_preview"] = observed_preview
-        planned = build_intent_symbolic_plan(prepared["intent_requirement_contract"], manifest=prepared["manifest"])
+            header_kwargs["applicability_timeout_seconds"] = min(45., timeout_seconds - (time.monotonic() - started))
+        planned = build_intent_symbolic_plan(prepared["intent_requirement_contract"],
+            manifest=prepared["manifest"], **header_kwargs)
         require_remaining_budget()
         result["symbolic_planning"] = planned["receipt"]
         _write(state / "symbolic-planning-receipt.json", planned["receipt"])
-        if repository_preview is not None:
-            from .terminal_repository_preview import require_current_repository_preview
-            require_current_repository_preview(state=state, prepared=prepared,
-                owner=repository_preview, timeout_seconds=timeout_seconds - (time.monotonic() - started))
+        if initial is not None:
+            current_initial = load_initial_context(state=state, prepared=_load_prepared(state), require_empty_owner=True)
+            _require_same_initial_selection(current_initial, initial)
+            require_remaining_budget()
+        if header_kwargs:
+            require_remaining_budget()
+            header_kwargs["applicability_timeout_seconds"] = min(45., timeout_seconds - (time.monotonic() - started))
         admission = local.admit_local_benchmark_plan(graph=planned["graph"], manifest=prepared["manifest"],
-            requirement_bindings=planned["requirement_bindings"])
+            requirement_bindings=planned["requirement_bindings"], **header_kwargs)
         require_remaining_budget()
-        if repository_preview is not None:
-            from .terminal_repository_preview import materialize_repository_preview_administration
-            require_current_repository_preview(state=state, prepared=prepared,
-                owner=repository_preview, timeout_seconds=timeout_seconds - (time.monotonic() - started))
-            materialized = materialize_repository_preview_administration(state=state,
-                prepared=prepared, owner=repository_preview, admission=admission,
-                remaining=lambda: timeout_seconds - (time.monotonic() - started))
-            _write(state / "admission.json", admission)
-        else:
-            _write(state / "admission.json", admission)
-            with IntentRepository(state / "intent.duckdb") as intent:
-                materialized = local.materialize_local_benchmark_plan(admission=admission, intent=intent)
+        _write(state / "admission.json", admission)
+        with IntentRepository(state / "intent.duckdb") as intent:
+            materialized = local.materialize_local_benchmark_plan(admission=admission, intent=intent)
+        require_remaining_budget()
         result.update(qualified=True, task_cids=materialized["task_cids"],
             goals=len(planned["graph"].goals), tasks=len(planned["graph"].tasks),
             requirement_coverage=admission["receipt"]["payload"]["requirement_coverage"])
@@ -457,7 +483,7 @@ def _plan_symbolic(*, state, prepared, initial, timeout_seconds, repository_prev
     return result
 
 
-def plan(state: Path, *, provider_callable=None, timeout_seconds: int = 90, repository_preview=None) -> dict:
+def plan(state: Path, *, provider_callable=None, timeout_seconds: int = 90) -> dict:
     """Select v2 operations symbolically, otherwise call the qualified router once.
 
     The callable receives pinned provider/model/reasoning/timeout options and
@@ -465,28 +491,45 @@ def plan(state: Path, *, provider_callable=None, timeout_seconds: int = 90, repo
     runs the model CLI: a read-only filesystem is insufficient to hide owner
     signing keys. The deployment must qualify its UID/tool boundary separately.
     """
+    outer_started = time.monotonic()
     if not callable(provider_callable) and not (Path(state) / "prepared.json").is_file():
         raise ValueError("planning requires an independently qualified isolated worker router callable")
     if type(timeout_seconds) is not int or not 1 <= timeout_seconds <= 90:
         raise ValueError("planner timeout must be an integer from 1 to 90 seconds within the overall trial budget")
     state = state.resolve(strict=True)
     prepared = _load_prepared(state)
+    if (prepared.get("intent_requirement_contract") or {}).get("schema") == "intent-plan-requirement-contract@3":
+        from ipfs_accelerate_py.agent_supervisor.runtime.header_intent_applicability import applicability_budget
+        left = timeout_seconds - (time.monotonic() - outer_started)
+        if left <= 0:
+            raise TimeoutError("symbolic planning exhausted the declared planner time budget")
+        with applicability_budget(left):
+            result = _plan_prepared(state, prepared=prepared, provider_callable=provider_callable,
+                timeout_seconds=left, aggregate_started=outer_started)
+        result["elapsed_seconds"] = time.monotonic() - outer_started
+        result["planner_timeout_seconds"] = timeout_seconds
+        _write(state / "planning-result.json", result)
+        return result
+    return _plan_prepared(state, prepared=prepared, provider_callable=provider_callable, timeout_seconds=timeout_seconds)
+
+
+def _plan_prepared(state, *, prepared, provider_callable, timeout_seconds, aggregate_started=None):
     strategy = _planning_strategy(prepared.get("intent_requirement_contract"))
-    if repository_preview is not None and strategy != "intent_symbolic":
-        raise ValueError("repository preview requires explicit symbolic operation preparation")
     if strategy != "intent_symbolic" and not callable(provider_callable):
         raise ValueError("planning requires an independently qualified isolated worker router callable")
     repository = Path(prepared["repository"])
     constraints = prepared["constraints"]
     initial = None
     if (state / "initial-context-result.json").exists():
-        from .terminal_initial_context import load_initial_context
-        initial = load_initial_context(state=state, prepared=prepared, require_empty_owner=True)
+        from .terminal_initial_context import load_initial_context, stage_initial_context_nomination
+        initial = stage_initial_context_nomination(state=state, prepared=prepared, require_empty_owner=True)
         constraints = {**constraints, "constraint_summaries": [
             *constraints["constraint_summaries"], *initial["summaries"]]}
     if strategy == "intent_symbolic":
-        return _plan_symbolic(state=state, prepared=prepared, initial=initial,
-            timeout_seconds=timeout_seconds, repository_preview=repository_preview)
+        if aggregate_started is not None:
+            from ipfs_accelerate_py.agent_supervisor.runtime.header_intent_applicability import require_applicability_budget
+            require_applicability_budget()
+        return _plan_symbolic(state=state, prepared=prepared, initial=initial, timeout_seconds=timeout_seconds)
     version = subprocess.run(["codex", "--version"], check=True, capture_output=True, text=True).stdout.strip()
     if version != "codex-cli 0.158.0":
         raise ValueError("native baseline parity requires codex-cli 0.158.0")
@@ -502,10 +545,20 @@ def plan(state: Path, *, provider_callable=None, timeout_seconds: int = 90, repo
     selected_source_unit = prepared.get("source_unit_preplanning")
     if type(selected_source_unit) is not dict:
         selected_source_unit = {}
-    intent_advice = load_intent_advice(path=state / "intent-advice.json",
-        expected_sha256=selected_intent.get("artifact_sha256", ""), instruction=prepared["query"])
-    intent_summary, intent_advice = intent_planner_summary(intent_advice,
-        instruction=prepared["query"], maximum_bytes=_config(repository).max_summary_bytes)
+    if "intent_action_384_selection" in selected_intent:
+        from ipfs_accelerate_py.agent_supervisor.runtime.intent_advisor_selection import (
+            load_intent_384_selection, intent_384_planner_summary,
+        )
+        intent_advice = load_intent_384_selection(path=state / "intent-advice.json",
+            expected_sha256=selected_intent.get("artifact_sha256", ""), instruction=prepared["query"],
+            selection=selected_intent["intent_action_384_selection"])
+        intent_summary, intent_advice = intent_384_planner_summary(intent_advice,
+            instruction=prepared["query"], maximum_bytes=_config(repository).max_summary_bytes)
+    else:
+        intent_advice = load_intent_advice(path=state / "intent-advice.json",
+            expected_sha256=selected_intent.get("artifact_sha256", ""), instruction=prepared["query"])
+        intent_summary, intent_advice = intent_planner_summary(intent_advice,
+            instruction=prepared["query"], maximum_bytes=_config(repository).max_summary_bytes)
     intent_delivery = {"status": intent_advice["status"],
         "instruction_sha256": intent_advice["instruction_sha256"],
         "advice_sha256": intent_advice["advice_sha256"],
@@ -567,8 +620,7 @@ def plan(state: Path, *, provider_callable=None, timeout_seconds: int = 90, repo
             raise RuntimeError("one planner provider call maximum")
         if initial is not None:
             current = load_initial_context(state=state, prepared=_load_prepared(state), require_empty_owner=True)
-            if current["summaries"] != initial["summaries"]:
-                raise ValueError("initial indexed planning evidence changed before dispatch")
+            _require_same_initial_selection(current, initial)
         if requirement_contract is not None:
             from ipfs_accelerate_py.agent_supervisor.prompt.intent_plan_coverage import (
                 build_intent_plan_provider_request,
@@ -628,7 +680,8 @@ def plan(state: Path, *, provider_callable=None, timeout_seconds: int = 90, repo
         if planning.receipt.outcome != "provider" or planning.receipt.fallback.used:
             raise ValueError("real provider proposal required; fallback cannot qualify")
         if initial is not None:
-            load_initial_context(state=state, prepared=_load_prepared(state), require_empty_owner=True)
+            current_initial = load_initial_context(state=state, prepared=_load_prepared(state), require_empty_owner=True)
+            _require_same_initial_selection(current_initial, initial)
         admission = local.admit_local_benchmark_plan(
             graph=planning.graph, manifest=prepared["manifest"],
             requirement_bindings=requirement_bindings,
@@ -799,6 +852,7 @@ def main():
     prep.add_argument("--instruction", type=Path, required=True)
     prep.add_argument("--state", type=Path, required=True)
     prep.add_argument("--intent-checkpoint-descriptor", type=Path)
+    prep.add_argument("--intent-action-384-config", type=Path)
     prep.add_argument("--intent-projection-request", type=Path)
     prep.add_argument("--intent-projection-request-sha256")
     prep.add_argument("--disable-intent-autoencoder", action="store_true")
