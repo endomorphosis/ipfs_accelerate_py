@@ -68,6 +68,8 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     open_duckdb_connection,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client import (
+    _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2,
+    _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3,
     DEFAULT_STATEMENT_TEMPLATES,
     QUACK_STATE_CLIENT_INTERFACE,
     QuackClientError,
@@ -1356,6 +1358,134 @@ def test_open_embedded_client_helper(tmp_path: Path) -> None:
         assert client.attached
         generation = client.load_generation()
         assert generation.generation >= 1
+    finally:
+        client.close()
+
+
+@pytest.mark.parametrize(
+    ("marker_kind", "seed_schema"),
+    [
+        ("complete", _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2),
+        ("complete", _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3),
+        ("source-only", _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2),
+        ("seed-only", _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2),
+        ("complete", "database-post-merge-completion-recovery-seed@unknown"),
+        (
+            "complete",
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-post-merge-completion-recovery-seed@1",
+        ),
+    ],
+    ids=(
+        "v2",
+        "v3",
+        "partial-source",
+        "partial-seed",
+        "unknown-schema",
+        "legacy-v1",
+    ),
+)
+def test_embedded_dead_claim_recovery_never_admits_post_merge_seed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    marker_kind: str,
+    seed_schema: str,
+) -> None:
+    """Only the exclusive typed owner may prove deep post-merge lineage."""
+
+    database = tmp_path / "embedded-post-merge-dead-claim.duckdb"
+    _install(database)
+    client = open_embedded_client(
+        database,
+        owner_id="database-implementation-daemon:embedded-denial",
+        seed_generation=True,
+    )
+    historic = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "typed-database-claim-process@1"
+        ),
+        "grant_id": "owner-grant:historic",
+        "client_id": client.owner_id,
+        "process_birth_id": "birth:historic",
+        "pid": 12345,
+        "uid": 1000,
+        "start_time_ticks": 7,
+        "boot_id": "boot:historic",
+        "parent_pid": 1,
+    }
+    current = {
+        **historic,
+        "grant_id": "owner-grant:current",
+        "process_birth_id": "birth:current",
+        "pid": 12346,
+        "start_time_ticks": 8,
+    }
+    route = {
+        "policy_id": "route-policy:embedded-denial",
+        "task_revision": 1,
+        "task_cid": "task:embedded-denial",
+    }
+    seed = {
+        "schema": seed_schema,
+        "attempt_id": "attempt:post-merge-source",
+    }
+    reservation: dict[str, Any] = {
+        "operation": "database_claim",
+        "claim_phase_schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "typed-database-claim-reservation@1"
+        ),
+        "claim_process_attestation": historic,
+        "claim_id": "claim:embedded-denial",
+        "attempt_id": "attempt:embedded-denial",
+        "attempt_number": 2,
+        "lease_id": "lease:embedded-denial",
+        "owner_session_id": "session:embedded-denial",
+        "fencing_token": 2,
+        "fence_epoch": 2,
+        "claimed_from_revision": 1,
+        "execution_route_binding": route,
+        "execution_route_policy_id": route["policy_id"],
+        "execution_route_origin_revision": route["task_revision"],
+    }
+    if marker_kind != "seed-only":
+        reservation["post_merge_completion_recovery_source_attempt_id"] = (
+            seed["attempt_id"]
+        )
+    if marker_kind != "source-only":
+        reservation["post_merge_completion_recovery_seed"] = seed
+    submitted: list[object] = []
+    monkeypatch.setattr(
+        client,
+        "claim_process_attestation",
+        lambda: current,
+    )
+    monkeypatch.setattr(
+        client,
+        "submit_command",
+        lambda *args, **kwargs: submitted.append((args, kwargs)),
+    )
+    try:
+        expected = (
+            "exclusive remote typed owner"
+            if marker_kind == "complete"
+            and seed_schema
+            in {
+                _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2,
+                _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3,
+            }
+            else "partial or unsupported post-merge marker"
+        )
+        with pytest.raises(QuackClientError, match=expected):
+            client.recover_dead_claim_reservation(
+                task_cid="task:embedded-denial",
+                expected_task_revision=2,
+                task_body={"completion_receipt": reservation},
+                reservation_receipt=reservation,
+                now_ms=1_000,
+            )
+        assert submitted == []
     finally:
         client.close()
 
