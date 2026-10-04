@@ -20,6 +20,7 @@ cp tools/huggingface_search_engine.py ipfs_accelerate_py/huggingface_search_engi
 **Solution**: Updated import to use correct name with alias:
 ```python
 from .huggingface_search_engine import HuggingFaceModelInfo, HuggingFaceModelSearchEngine
+
 HuggingFaceSearchEngine = HuggingFaceModelSearchEngine  # Alias for compatibility
 ```
 

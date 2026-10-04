@@ -169,9 +169,7 @@ def test_typed_runtime_signal_change_forces_one_bounded_formal_replan() -> None:
         observed_at=100,
         details={"previous": "v1", "current": "v2"},
     )
-    operation = _operation(
-        RepairRuleKind.ADD_EVIDENCE, counterexample.semantic_id
-    )
+    operation = _operation(RepairRuleKind.ADD_EVIDENCE, counterexample.semantic_id)
     replanner = FormalReplanner()
 
     changed = replanner.replan_for_signal(
@@ -197,9 +195,7 @@ def test_typed_runtime_signal_change_forces_one_bounded_formal_replan() -> None:
     assert changed.trigger_evidence_id == signal.evidence_id
     assert changed.trigger_signal_kind == RefinementSignalKind.INTERFACE_CHANGE.value
     assert changed.requirement_ids == ()
-    assert unchanged.stop_reason is (
-        ReplanStopReason.UNCHANGED_COUNTEREXAMPLE_BACKOFF
-    )
+    assert unchanged.stop_reason is (ReplanStopReason.UNCHANGED_COUNTEREXAMPLE_BACKOFF)
     assert not unchanged.changed
     assert unchanged.result is None
     assert unchanged.backoff_seconds == 2
@@ -226,9 +222,7 @@ def test_every_typed_repair_rule_recompiles_checks_and_preserves_goal(kind) -> N
     assert result.selected.compilation.plan is not None
     assert result.selected.validation is not None
     assert result.selected.validation.consistent
-    assert {
-        goal.goal_id for goal in result.selected.compilation.plan.goals
-    } == {"goal:cid:g12-s4"}
+    assert {goal.goal_id for goal in result.selected.compilation.plan.goals} == {"goal:cid:g12-s4"}
     transition = result.selected_transition
     assert transition is not None
     assert transition.repair.kind is kind
@@ -257,22 +251,16 @@ def test_repair_transition_deserialization_fails_closed() -> None:
 
     unsupported = transition.to_dict()
     unsupported["replanner_version"] += 1
-    with pytest.raises(
-        ReplannerValidationError, match="replanner version"
-    ):
+    with pytest.raises(ReplannerValidationError, match="replanner version"):
         RepairTransition.from_dict(unsupported)
     inconsistent = transition.to_dict()
     inconsistent.pop("transition_id")
     inconsistent["progress"]["improved"] = not transition.progress.improved
-    with pytest.raises(
-        ReplannerValidationError, match="progress projection"
-    ):
+    with pytest.raises(ReplannerValidationError, match="progress projection"):
         RepairTransition.from_dict(inconsistent)
     unknown = transition.to_dict()
     unknown["untrusted_metadata"] = {"claim": "safe"}
-    with pytest.raises(
-        ReplannerValidationError, match="unknown repair transition fields"
-    ):
+    with pytest.raises(ReplannerValidationError, match="unknown repair transition fields"):
         RepairTransition.from_dict(unknown)
 
 
@@ -375,22 +363,12 @@ def test_semantic_dedup_retry_and_refinement_budgets_stop_infinite_repair() -> N
     source = _source()
     counterexample = _counterexample(source)
     operation = _operation(RepairRuleKind.ADD_EVIDENCE, counterexample.semantic_id)
-    replanner = FormalReplanner(
-        limits=ReplanLimits(max_retry_attempts=2, max_refinement_depth=2)
-    )
+    replanner = FormalReplanner(limits=ReplanLimits(max_retry_attempts=2, max_refinement_depth=2))
 
-    first = replanner.replan(
-        source, counterexample, candidate_repairs=(operation,)
-    )
-    duplicate = replanner.replan(
-        source, counterexample, candidate_repairs=(operation,)
-    )
-    exhausted = replanner.replan(
-        source, counterexample, candidate_repairs=(operation,)
-    )
-    too_deep = FormalReplanner(
-        limits=ReplanLimits(max_refinement_depth=1)
-    ).replan(
+    first = replanner.replan(source, counterexample, candidate_repairs=(operation,))
+    duplicate = replanner.replan(source, counterexample, candidate_repairs=(operation,))
+    exhausted = replanner.replan(source, counterexample, candidate_repairs=(operation,))
+    too_deep = FormalReplanner(limits=ReplanLimits(max_refinement_depth=1)).replan(
         source,
         counterexample,
         candidate_repairs=(operation,),
@@ -471,9 +449,10 @@ def test_codex_receives_only_selected_transition_and_bounded_redacted_capsule() 
         "limits",
     }
     assert len(record["counterexample_capsule"]["counterexamples"]) == 1
-    assert record["counterexample_capsule"]["counterexamples"][0][
-        "counterexample_id"
-    ] == counterexample.semantic_id
+    assert (
+        record["counterexample_capsule"]["counterexamples"][0]["counterexample_id"]
+        == counterexample.semantic_id
+    )
     assert packet.byte_size <= packet.max_bytes
     assert packet.estimated_tokens <= packet.max_tokens
     assert "must-never-enter-the-prompt" not in encoded
@@ -528,10 +507,7 @@ def test_unchanged_counterexample_backs_off_before_compile_or_generation() -> No
     assert decision.refined is False
     assert decision.model_call_required is False
     assert decision.result is None
-    assert (
-        decision.stop_reason
-        is ReplanStopReason.UNCHANGED_COUNTEREXAMPLE_BACKOFF
-    )
+    assert decision.stop_reason is ReplanStopReason.UNCHANGED_COUNTEREXAMPLE_BACKOFF
     assert decision.backoff_attempt == 5
     assert decision.backoff_seconds == 20
     assert compiler.calls == validator.calls == 0
@@ -545,18 +521,10 @@ def test_unchanged_counterexample_backs_off_before_compile_or_generation() -> No
         "completion_criterion_coverage",
         "completion_exhaustion_quorum",
     )
-    assert payload["requirement_ids"] == [
-        UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID
-    ]
-    assert decision.requirement_ids == (
-        UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID,
-    )
-    assert UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID == (
-        "312819945606360295782005228058369235550"
-    )
-    assert BOUNDED_REFINEMENT_EVIDENCE_ID == (
-        "003778425160038348524906247302938706902"
-    )
+    assert payload["requirement_ids"] == [UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID]
+    assert decision.requirement_ids == (UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID,)
+    assert UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID == ("312819945606360295782005228058369235550")
+    assert BOUNDED_REFINEMENT_EVIDENCE_ID == ("003778425160038348524906247302938706902")
 
 
 def test_changed_counterexample_delegates_once_and_preserves_frozen_root() -> None:
@@ -578,9 +546,7 @@ def test_changed_counterexample_delegates_once_and_preserves_frozen_root() -> No
     # The wrapper routes the requirement; only the durable adaptive-refiner
     # receipt is an authoritative objective evidence producer.
     assert decision.evidence_ids == ()
-    assert decision.to_dict()["requirement_ids"] == [
-        BOUNDED_REFINEMENT_EVIDENCE_ID
-    ]
+    assert decision.to_dict()["requirement_ids"] == [BOUNDED_REFINEMENT_EVIDENCE_ID]
     assert decision.result is not None
     assert decision.result.admitted
     assert decision.stop_reason is ReplanStopReason.ADMITTED
@@ -638,9 +604,7 @@ def test_identical_failure_reuses_diagnostic_then_escalates_at_bound() -> None:
         previous_diagnostic_receipt_id=first.diagnostic_receipt_id,
         max_identical_failures=2,
     )
-    assert repeated.stop_reason is (
-        ReplanStopReason.UNCHANGED_COUNTEREXAMPLE_BACKOFF
-    )
+    assert repeated.stop_reason is (ReplanStopReason.UNCHANGED_COUNTEREXAMPLE_BACKOFF)
     assert repeated.diagnostic_reused
     assert repeated.diagnostic_receipt_id == first.diagnostic_receipt_id
 

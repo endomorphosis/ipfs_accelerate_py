@@ -55,9 +55,7 @@ def _result(spec, *, returncode: int = 0) -> dict[str, object]:
 
 
 def _git(cwd: Path, *args: str) -> str:
-    result = subprocess.run(
-        ["git", *args], cwd=cwd, text=True, capture_output=True, check=True
-    )
+    result = subprocess.run(["git", *args], cwd=cwd, text=True, capture_output=True, check=True)
     return result.stdout.strip()
 
 
@@ -66,7 +64,9 @@ def _repo(path: Path) -> str:
     _git(path, "init", "-q")
     _git(path, "config", "user.name", "Validation Test")
     _git(path, "config", "user.email", "validation@example.invalid")
-    (path / "pyproject.toml").write_text("[project]\nname='fixture'\nversion='1'\n", encoding="utf-8")
+    (path / "pyproject.toml").write_text(
+        "[project]\nname='fixture'\nversion='1'\n", encoding="utf-8"
+    )
     (path / "src").mkdir()
     (path / "src" / "alpha.py").write_text("VALUE = 1\n", encoding="utf-8")
     _git(path, "add", "-A")
@@ -96,9 +96,7 @@ def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
         "RUSTUP_HOME": str(tmp_path / "rustup-home"),
         VALIDATION_NPM_CACHE_ENV: str(approved_npm_cache),
         VALIDATION_PATH_ENV: str(trusted_bin),
-        VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV: str(
-            approved_playwright_browsers
-        ),
+        VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV: str(approved_playwright_browsers),
     }
 
     environment = build_validation_environment(source)
@@ -109,15 +107,10 @@ def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
     assert environment["PYTHONNOUSERSITE"] == "1"
     assert environment["NPM_CONFIG_CACHE"] == str(approved_npm_cache.resolve())
     assert environment["NPM_CONFIG_OFFLINE"] == "true"
-    assert environment["PLAYWRIGHT_BROWSERS_PATH"] == str(
-        approved_playwright_browsers.resolve()
-    )
+    assert environment["PLAYWRIGHT_BROWSERS_PATH"] == str(approved_playwright_browsers.resolve())
     assert environment["NPM_CONFIG_GLOBALCONFIG"] == "/dev/null"
     assert environment["NPM_CONFIG_USERCONFIG"] == "/dev/null/npmrc"
-    assert (
-        environment["NPM_CONFIG_USERCONFIG"]
-        != environment["NPM_CONFIG_GLOBALCONFIG"]
-    )
+    assert environment["NPM_CONFIG_USERCONFIG"] != environment["NPM_CONFIG_GLOBALCONFIG"]
     assert environment["GIT_TERMINAL_PROMPT"] == "0"
     assert environment["PYTHONHASHSEED"] == "0"
     assert not {
@@ -135,8 +128,7 @@ def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
     shell_command = validation_shell_command("test -f artifact")
     assert shell_command[:4] == ["/bin/bash", "--noprofile", "--norc", "-c"]
     assert shell_command[4].endswith(
-        "readonly -f _ipfs_accelerate_validation_python python python3 pytest; "
-        "test -f artifact"
+        "readonly -f _ipfs_accelerate_validation_python python python3 pytest; test -f artifact"
     )
     for nested_shell in (
         "bash -lc 'python -c \"raise SystemExit(0)\"'",
@@ -271,7 +263,7 @@ def test_validation_runtime_reuses_supervisor_python_and_installed_pytest(
     expected_python = str(Path(sys.executable).resolve())
     command = (
         "TASK_PREFIX=works python -c 'import os, sys; "
-        "assert os.environ[\"TASK_PREFIX\"] == \"works\"; print(sys.executable)' "
+        'assert os.environ["TASK_PREFIX"] == "works"; print(sys.executable)\' '
         "&& python -m pytest --version "
         "&& pytest --version"
     )
@@ -306,7 +298,7 @@ def test_validation_runtime_extends_task_local_pythonpath_with_approved_packages
     )
     command = (
         "PYTHONPATH=. python -c 'import fixture_value, pytest; "
-        "assert fixture_value.VALUE == \"workspace-import\"; "
+        'assert fixture_value.VALUE == "workspace-import"; '
         "print(pytest.__version__)' "
         "&& PYTHONPATH=. pytest --version"
     )
@@ -345,13 +337,11 @@ def test_validation_runtime_canonicalizes_replaceable_python_launcher(
     )
 
     assert report["passed"] is True
-    assert str(report["results"][0]["output"]).strip() == str(
+    assert str(report["results"][0]["output"]).strip() == str(Path(sys.executable).resolve())
+    child_environment = build_validation_environment(environment)
+    assert child_environment["IPFS_ACCELERATE_VALIDATION_PYTHON_EXECUTABLE"] == str(
         Path(sys.executable).resolve()
     )
-    child_environment = build_validation_environment(environment)
-    assert child_environment[
-        "IPFS_ACCELERATE_VALIDATION_PYTHON_EXECUTABLE"
-    ] == str(Path(sys.executable).resolve())
     assert "PYTHONPATH" not in child_environment
     assert child_environment["PYTHONNOUSERSITE"] == "1"
     assert validation_python_executable(environment) != str(interpreter)
@@ -367,13 +357,9 @@ def test_validation_runtime_does_not_reinject_inherited_pythonpath(
 
     environment = build_validation_environment()
 
-    assert str(hostile.resolve()) not in environment.get("PYTHONPATH", "").split(
-        os.pathsep
-    )
+    assert str(hostile.resolve()) not in environment.get("PYTHONPATH", "").split(os.pathsep)
     with pytest.raises(ValidationRuntimeError, match="must not be writable"):
-        build_validation_environment(
-            {VALIDATION_PYTHONPATH_ENV: str(hostile)}
-        )
+        build_validation_environment({VALIDATION_PYTHONPATH_ENV: str(hostile)})
 
 
 def test_legacy_argv_validation_normalizes_login_shell_and_scrubs_bash_env(
@@ -434,9 +420,7 @@ def test_legacy_adapter_forwards_sanitized_validation_environment(
         environment=None,
     ):
         assert environment is not None
-        captured_environment.update(
-            {str(key): str(value) for key, value in environment.items()}
-        )
+        captured_environment.update({str(key): str(value) for key, value in environment.items()})
         completed = subprocess.run(
             list(command),
             cwd=cwd,
@@ -721,9 +705,7 @@ def test_pre_merge_escalation_runs_unrelated_targeted_validation(tmp_path: Path)
     assert set(calls) == {"pytest tests/test_alpha.py", "pytest tests/test_beta.py"}
     assert report["passed"] is False
     assert report["selection"]["escalated"] is True
-    beta = next(
-        item for item in report["selection"]["decisions"] if "beta" in item["command"]
-    )
+    beta = next(item for item in report["selection"]["decisions"] if "beta" in item["command"])
     assert beta["reason"] == "pre_merge_broad_escalation"
     assert beta["stage"] == "broad"
 
@@ -853,9 +835,7 @@ def test_daemon_binds_task_validation_to_proposal_local_impact_graph(
     assert commands[0].validation_id.startswith("declared:")
     assert graph.graph_version == "declared-validation-plan-v1"
     assert graph.required_validations(
-        graph.affected_paths(
-            ("src/identity.py", "tests/unit/test_identity.py")
-        )
+        graph.affected_paths(("src/identity.py", "tests/unit/test_identity.py"))
     )
     assert report["passed"] is True
     assert report["validation_plan_binding"]["graph_id"] == graph.graph_id

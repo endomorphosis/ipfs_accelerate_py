@@ -45,8 +45,8 @@ platform = UnifiedWebPlatform(
         "precision": "fp16",
         "batch_size": 32,  # Higher batch sizes work well for CLIP
         "cuda_optimization_level": "highest",
-        "parallel_encoder_execution": True  # Process text and vision in parallel
-    }
+        "parallel_encoder_execution": True,  # Process text and vision in parallel
+    },
 )
 
 # LLaVA on CUDA
@@ -56,13 +56,13 @@ platform = UnifiedWebPlatform(
     platform="cuda",
     config={
         "precision": "int8",  # or "fp16" for higher quality
-        "batch_size": 1,      # LLaVA is memory-intensive
+        "batch_size": 1,  # LLaVA is memory-intensive
         "cuda_optimization_level": "highest",
         "vision_precision": "fp16",
         "llm_precision": "int8",
         "kv_cache_enabled": True,
-        "kv_cache_max_length": 2048
-    }
+        "kv_cache_max_length": 2048,
+    },
 )
 
 # BLIP-2 on CUDA
@@ -71,13 +71,13 @@ platform = UnifiedWebPlatform(
     model_type="multimodal",
     platform="cuda",
     config={
-        "precision": "fp16",  
+        "precision": "fp16",
         "batch_size": 4,
         "cuda_optimization_level": "highest",
         "vision_precision": "fp16",
         "text_precision": "fp16",
-        "parallel_encoder_execution": True
-    }
+        "parallel_encoder_execution": True,
+    },
 )
 ```
 
@@ -107,8 +107,8 @@ platform = UnifiedWebPlatform(
         "precision": "fp16",
         "batch_size": 16,  # Lower than CUDA
         "rocm_optimization_level": "high",
-        "parallel_encoder_execution": True
-    }
+        "parallel_encoder_execution": True,
+    },
 )
 
 # BLIP on ROCm
@@ -120,8 +120,8 @@ platform = UnifiedWebPlatform(
         "precision": "fp16",
         "batch_size": 4,
         "rocm_optimization_level": "high",
-        "parallel_encoder_execution": True
-    }
+        "parallel_encoder_execution": True,
+    },
 )
 ```
 
@@ -149,8 +149,8 @@ platform = UnifiedWebPlatform(
         "batch_size": 8,
         "use_mps_graph": True,
         "parallel_encoder_execution": True,
-        "power_efficient": True  # For laptop battery life
-    }
+        "power_efficient": True,  # For laptop battery life
+    },
 )
 
 # LLaVA on MPS
@@ -165,8 +165,8 @@ platform = UnifiedWebPlatform(
         "vision_precision": "fp16",
         "llm_precision": "int8",
         "kv_cache_enabled": True,
-        "kv_cache_max_length": 512  # Lower for better memory usage
-    }
+        "kv_cache_max_length": 512,  # Lower for better memory usage
+    },
 )
 ```
 
@@ -195,8 +195,8 @@ platform = UnifiedWebPlatform(
         "batch_size": 1,
         "power_mode": "efficient",
         "hexagon_enabled": True,
-        "vision_feature_level": "high"  # For vision tasks
-    }
+        "vision_feature_level": "high",  # For vision tasks
+    },
 )
 
 # Small BLIP on Qualcomm
@@ -210,8 +210,8 @@ platform = UnifiedWebPlatform(
         "power_mode": "efficient",
         "hexagon_enabled": True,
         "vision_feature_level": "high",
-        "text_precision": "int8"
-    }
+        "text_precision": "int8",
+    },
 )
 ```
 
@@ -240,13 +240,13 @@ platform = UnifiedWebPlatform(
         "batch_size": 1,
         "use_wasm_threads": True,
         "use_simd": True,
-        "parallel_encoder_execution": True
-    }
+        "parallel_encoder_execution": True,
+    },
 )
 
 # Tiny BLIP on WebNN
 platform = UnifiedWebPlatform(
-    model_name="Salesforce/blip-image-captioning-base", # Use small variants
+    model_name="Salesforce/blip-image-captioning-base",  # Use small variants
     model_type="multimodal",
     platform="webnn",
     config={
@@ -254,8 +254,8 @@ platform = UnifiedWebPlatform(
         "batch_size": 1,
         "use_wasm_threads": True,
         "use_simd": True,
-        "progressive_loading": True  # Load components progressively
-    }
+        "progressive_loading": True,  # Load components progressively
+    },
 )
 ```
 
@@ -285,8 +285,8 @@ platform = UnifiedWebPlatform(
         "shader_precompile": True,
         "optimize_for_browser": "auto",
         "parallel_loading": True,  # March 2025 optimization
-        "compute_shader_optimizations": True
-    }
+        "compute_shader_optimizations": True,
+    },
 )
 
 # Smaller LLaVA on WebGPU
@@ -301,10 +301,10 @@ platform = UnifiedWebPlatform(
         "optimize_for_browser": "auto",
         "parallel_loading": True,  # March 2025 optimization
         "vision_precision": "int8",
-        "llm_precision": "int4",   # Ultra-low precision for LLM
+        "llm_precision": "int4",  # Ultra-low precision for LLM
         "kv_cache_enabled": True,
-        "memory_efficient": True
-    }
+        "memory_efficient": True,
+    },
 )
 
 # X-CLIP (video-text) on WebGPU
@@ -318,8 +318,8 @@ platform = UnifiedWebPlatform(
         "shader_precompile": True,
         "optimize_for_browser": "auto",
         "parallel_loading": True,  # March 2025 optimization
-        "temporal_resolution": "low"  # For video models
-    }
+        "temporal_resolution": "low",  # For video models
+    },
 )
 ```
 
@@ -336,18 +336,20 @@ loader = MultimodalLoader(
     config={
         "vision_encoder": {
             "precision": "int8",
-            "preload": True  # Load vision encoder immediately
+            "preload": True,  # Load vision encoder immediately
         },
         "language_model": {
             "precision": "int4",
-            "load_strategy": "lazy"  # Load LLM components as needed
-        }
-    }
+            "load_strategy": "lazy",  # Load LLM components as needed
+        },
+    },
 )
+
 
 # Initialize with progress callback
 async def on_progress(component, progress, message):
     print(f"Loading {component}: {progress}% - {message}")
+
 
 platform = await loader.load(progress_callback=on_progress)
 ```

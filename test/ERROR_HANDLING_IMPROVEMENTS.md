@@ -198,7 +198,7 @@ try:
     result = await with_timeout(
         complex_async_operation(),
         timeout_seconds=30,
-        timeout_message="Operation timed out after 30 seconds"
+        timeout_message="Operation timed out after 30 seconds",
     )
 except TimeoutError as e:
     # Handle timeout specifically
@@ -213,6 +213,7 @@ except Exception as e:
 ```python
 from fixed_web_platform.unified_framework.error_handling import with_retry
 
+
 # Define async function that might need retries
 async def fetch_data_with_retry():
     result = await with_retry(
@@ -222,7 +223,7 @@ async def fetch_data_with_retry():
         max_delay=10.0,
         retry_on=[ConnectionError, TimeoutError],
         timeout_seconds=5,
-        retry_condition=lambda e: "temporary" in str(e).lower()
+        retry_condition=lambda e: "temporary" in str(e).lower(),
     )
     return result
 ```

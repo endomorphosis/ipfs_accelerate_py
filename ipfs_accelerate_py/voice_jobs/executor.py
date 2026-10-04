@@ -68,7 +68,9 @@ class ArtifactPolicy:
     def __post_init__(self) -> None:
         output_root = Path(self.output_root).expanduser().resolve()
         roots = tuple(Path(root).expanduser().resolve() for root in self.allowed_file_roots)
-        schemes = frozenset(str(item).strip().lower() for item in self.allowed_schemes if str(item).strip())
+        schemes = frozenset(
+            str(item).strip().lower() for item in self.allowed_schemes if str(item).strip()
+        )
         if not schemes:
             raise ValueError("allowed_schemes must not be empty")
         for name in ("max_input_bytes", "max_decoded_bytes", "max_duration_ms"):
@@ -128,22 +130,17 @@ class ArtifactResolver:
         host = str(parsed.hostname or "").strip().lower()
         if not host:
             raise VoiceJobExecutionError("artifact_host_missing")
-        if (
-            host in {"localhost", "localhost.localdomain"}
-            or host.endswith((".local", ".internal", ".localhost"))
+        if host in {"localhost", "localhost.localdomain"} or host.endswith(
+            (".local", ".internal", ".localhost")
         ):
             raise VoiceJobExecutionError("artifact_ssrf_rejected")
         try:
             ip = ipaddress.ip_address(host)
         except ValueError:
             try:
-                addresses = {
-                    item[4][0] for item in socket.getaddrinfo(host, None)
-                }
+                addresses = {item[4][0] for item in socket.getaddrinfo(host, None)}
             except socket.gaierror as exc:
-                raise VoiceJobExecutionError(
-                    "artifact_host_unresolvable", retryable=True
-                ) from exc
+                raise VoiceJobExecutionError("artifact_host_unresolvable", retryable=True) from exc
             for address in addresses:
                 try:
                     resolved = ipaddress.ip_address(address)
@@ -284,7 +281,11 @@ class ArtifactResolver:
 
         raw = self._fetch(uri, parsed)
         declared_size = descriptor.get("size_bytes")
-        if isinstance(declared_size, bool) or not isinstance(declared_size, int) or declared_size < 0:
+        if (
+            isinstance(declared_size, bool)
+            or not isinstance(declared_size, int)
+            or declared_size < 0
+        ):
             raise VoiceJobExecutionError("artifact_size_required")
         if len(raw) != declared_size:
             raise VoiceJobExecutionError("artifact_size_mismatch")
@@ -339,9 +340,7 @@ class ArtifactResolver:
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
             if not target.exists():
-                fd, temporary = tempfile.mkstemp(
-                    prefix=f".{digest}.", dir=str(target.parent)
-                )
+                fd, temporary = tempfile.mkstemp(prefix=f".{digest}.", dir=str(target.parent))
                 try:
                     with os.fdopen(fd, "wb") as handle:
                         handle.write(data)
@@ -354,9 +353,7 @@ class ArtifactResolver:
                     except FileNotFoundError:
                         pass
         except OSError as exc:
-            raise VoiceJobExecutionError(
-                "artifact_persistence_failed", retryable=True
-            ) from exc
+            raise VoiceJobExecutionError("artifact_persistence_failed", retryable=True) from exc
         stored = self._read_bounded(target)
         if stored != data or hashlib.sha256(stored).hexdigest() != digest:
             raise VoiceJobExecutionError("artifact_persistence_mismatch")
@@ -421,11 +418,7 @@ def _result(
     receipt: Mapping[str, Any],
     quality_metrics: Mapping[str, int] | None = None,
 ) -> dict[str, Any]:
-    artifacts = (
-        (ArtifactDescriptor.from_dict(artifact),)
-        if artifact is not None
-        else ()
-    )
+    artifacts = (ArtifactDescriptor.from_dict(artifact),) if artifact is not None else ()
     return VoiceJobResult.from_job(
         job,
         status="completed",
@@ -463,7 +456,9 @@ def _inspect_wav(data: bytes, policy: ArtifactPolicy) -> dict[str, int]:
     }
 
 
-def _audio_metrics(data: bytes, descriptor: Mapping[str, Any], policy: ArtifactPolicy) -> dict[str, int]:
+def _audio_metrics(
+    data: bytes, descriptor: Mapping[str, Any], policy: ArtifactPolicy
+) -> dict[str, int]:
     media_type = str(descriptor.get("media_type") or "").lower()
     uri = str(descriptor.get("uri") or "").lower()
     if media_type in {"audio/wav", "audio/x-wav", "audio/wave"} or uri.endswith(".wav"):
@@ -502,9 +497,7 @@ def execute_voice_tts_job(
             voice=payload.get("voice") or None,
             model_name=payload.get("model_name") or None,
             device=payload.get("device") or None,
-            output_format=payload.get("codec")
-            or payload.get("output_format")
-            or None,
+            output_format=payload.get("codec") or payload.get("output_format") or None,
             provider=payload.get("provider") or None,
             **kwargs,
         )
@@ -524,7 +517,9 @@ def execute_voice_tts_job(
         raise VoiceJobExecutionError("voice_provider_invalid_audio")
     codec = str(payload.get("codec") or payload.get("output_format") or "wav").lower()
     media_type = "audio/mpeg" if codec in {"mp3", "mpeg"} else f"audio/{codec}"
-    metrics = _audio_metrics(audio, {"media_type": media_type, "uri": f"output.{codec}"}, active_resolver.policy)
+    metrics = _audio_metrics(
+        audio, {"media_type": media_type, "uri": f"output.{codec}"}, active_resolver.policy
+    )
     artifact = active_resolver.persist(audio, suffix=codec, media_type=media_type)
     latency_ms = round(max(0.0, clock() - started) * 1000)
     return _result(
@@ -592,7 +587,10 @@ def execute_voice_asr_job(
         canonical_job,
         artifact=artifact,
         receipt=receipt,
-        quality_metrics={**{key: int(value) for key, value in metrics.items()}, "transcript_bytes": len(transcript_bytes)},
+        quality_metrics={
+            **{key: int(value) for key, value in metrics.items()},
+            "transcript_bytes": len(transcript_bytes),
+        },
     )
     return result
 

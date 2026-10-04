@@ -106,6 +106,7 @@ Example usage:
 import pytest
 from common.hardware_detection import skip_if_no_webgpu
 
+
 @skip_if_no_webgpu
 def test_webgpu_matmul():
     # This test will be skipped if WebGPU is not available
@@ -120,6 +121,7 @@ The framework provides common fixtures for hardware setup, model loading, and te
 import pytest
 from common.fixtures import cuda_device, bert_model
 
+
 def test_bert_inference(bert_model, cuda_device):
     # Use bert_model and cuda_device fixtures
     ...
@@ -132,10 +134,11 @@ The framework includes template-based test generation for common test patterns:
 ```python
 from template_system.templates.model_test_template import ModelTestTemplate
 
+
 class BertTest(ModelTestTemplate):
     model_name = "bert-base-uncased"
     model_type = "text"
-    
+
     def test_inference(self):
         # Test inference with the model
         ...

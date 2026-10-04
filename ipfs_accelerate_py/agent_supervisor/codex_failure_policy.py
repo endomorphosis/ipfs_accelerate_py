@@ -149,7 +149,10 @@ def classify_codex_program_outcome(
             return CodexProgramOutcome("failed_validation", reason, rescue=True)
         return CodexProgramOutcome("requeue", reason)
 
-    if patch.startswith(TERMINAL_TARGET_METRIC_REGRESSION_PREFIX) or target_metric_status == "regressed":
+    if (
+        patch.startswith(TERMINAL_TARGET_METRIC_REGRESSION_PREFIX)
+        or target_metric_status == "regressed"
+    ):
         return CodexProgramOutcome("failed_validation", "target_metric_regression", rescue=True)
 
     if patch.startswith("main_apply_baseline_validation_failed"):

@@ -75,7 +75,9 @@ def _load_workflow_tools_api() -> Dict[str, Any]:
             "enhanced_data_pipeline": _enhanced_data_pipeline,
         }
     except Exception:
-        logger.warning("Source workflow_tools import unavailable, using fallback workflow-tools functions")
+        logger.warning(
+            "Source workflow_tools import unavailable, using fallback workflow-tools functions"
+        )
 
         async def _execute_fallback(
             workflow_definition: Optional[Dict[str, Any]] = None,
@@ -660,9 +662,13 @@ async def schedule_p2p_workflow(
         if not isinstance(workflow_id, str) or not workflow_id.strip():
             return _error_result("workflow_id must be a non-empty string", workflow_id=workflow_id)
         if not isinstance(name, str) or not name.strip():
-            return _error_result("name must be a non-empty string", name=name, workflow_id=workflow_id)
-        if not isinstance(tags, list) or not tags or not all(
-            isinstance(tag, str) and tag.strip() for tag in tags
+            return _error_result(
+                "name must be a non-empty string", name=name, workflow_id=workflow_id
+            )
+        if (
+            not isinstance(tags, list)
+            or not tags
+            or not all(isinstance(tag, str) and tag.strip() for tag in tags)
         ):
             return _error_result(
                 "tags must be a non-empty list of non-empty strings",
@@ -819,13 +825,17 @@ async def merge_merkle_clock(
             )
 
         other_peer_id = other_peer_id.strip()
-        parent_hash = other_parent_hash.strip() if isinstance(other_parent_hash, str) else other_parent_hash
+        parent_hash = (
+            other_parent_hash.strip() if isinstance(other_parent_hash, str) else other_parent_hash
+        )
 
         result = _API["merge_merkle_clock"](
             other_peer_id=other_peer_id,
             other_counter=other_counter,
             other_parent_hash=parent_hash,
-            other_timestamp=float(other_timestamp) if isinstance(other_timestamp, (int, float)) else None,
+            other_timestamp=float(other_timestamp)
+            if isinstance(other_timestamp, (int, float))
+            else None,
         )
         if hasattr(result, "__await__"):
             result = await result
@@ -867,26 +877,45 @@ async def enhanced_workflow_management(
         if normalized_action in {"execute", "get_status", "cancel", "pause", "resume"} and (
             not isinstance(workflow_id, str) or not workflow_id.strip()
         ):
-            return _error_result("workflow_id is required for the selected action", action=normalized_action, workflow_id=workflow_id)
-        if normalized_action == "create" and (not isinstance(workflow_definition, dict) or not workflow_definition):
+            return _error_result(
+                "workflow_id is required for the selected action",
+                action=normalized_action,
+                workflow_id=workflow_id,
+            )
+        if normalized_action == "create" and (
+            not isinstance(workflow_definition, dict) or not workflow_definition
+        ):
             return _error_result(
                 "workflow_definition must be a non-empty object for action=create",
                 action=normalized_action,
                 workflow_definition=workflow_definition,
             )
         if workflow_definition is not None and not isinstance(workflow_definition, dict):
-            return _error_result("workflow_definition must be an object when provided", workflow_definition=workflow_definition)
+            return _error_result(
+                "workflow_definition must be an object when provided",
+                workflow_definition=workflow_definition,
+            )
         if execution_params is not None and not isinstance(execution_params, dict):
-            return _error_result("execution_params must be an object when provided", execution_params=execution_params)
-        if status_filter is not None and (not isinstance(status_filter, str) or not status_filter.strip()):
-            return _error_result("status_filter must be a non-empty string when provided", status_filter=status_filter)
+            return _error_result(
+                "execution_params must be an object when provided",
+                execution_params=execution_params,
+            )
+        if status_filter is not None and (
+            not isinstance(status_filter, str) or not status_filter.strip()
+        ):
+            return _error_result(
+                "status_filter must be a non-empty string when provided",
+                status_filter=status_filter,
+            )
 
         result = _API["enhanced_workflow_management"](
             action=normalized_action,
             workflow_id=workflow_id.strip() if isinstance(workflow_id, str) else workflow_id,
             workflow_definition=workflow_definition,
             execution_params=execution_params,
-            status_filter=status_filter.strip() if isinstance(status_filter, str) else status_filter,
+            status_filter=status_filter.strip()
+            if isinstance(status_filter, str)
+            else status_filter,
         )
         if hasattr(result, "__await__"):
             result = await result
@@ -912,13 +941,20 @@ async def enhanced_batch_processing(
     """Expose enhanced batch-processing orchestration from the source surface."""
     try:
         if not isinstance(operation_type, str) or not operation_type.strip():
-            return _error_result("operation_type must be a non-empty string", operation_type=operation_type)
+            return _error_result(
+                "operation_type must be a non-empty string", operation_type=operation_type
+            )
         if not isinstance(data_source, dict) or not data_source:
             return _error_result("data_source must be a non-empty object", data_source=data_source)
         if not isinstance(output_config, dict) or not output_config:
-            return _error_result("output_config must be a non-empty object", output_config=output_config)
+            return _error_result(
+                "output_config must be a non-empty object", output_config=output_config
+            )
         if processing_params is not None and not isinstance(processing_params, dict):
-            return _error_result("processing_params must be an object when provided", processing_params=processing_params)
+            return _error_result(
+                "processing_params must be an object when provided",
+                processing_params=processing_params,
+            )
 
         result = _API["enhanced_batch_processing"](
             operation_type=operation_type.strip(),
@@ -947,7 +983,9 @@ async def enhanced_data_pipeline(
     """Expose enhanced ETL pipeline orchestration from the source surface."""
     try:
         if not isinstance(pipeline_config, dict) or not pipeline_config:
-            return _error_result("pipeline_config must be a non-empty object", pipeline_config=pipeline_config)
+            return _error_result(
+                "pipeline_config must be a non-empty object", pipeline_config=pipeline_config
+            )
         for required_key in ("name", "extract", "load"):
             if required_key not in pipeline_config:
                 return _error_result(
@@ -955,7 +993,10 @@ async def enhanced_data_pipeline(
                     pipeline_config=pipeline_config,
                 )
         if execution_options is not None and not isinstance(execution_options, dict):
-            return _error_result("execution_options must be an object when provided", execution_options=execution_options)
+            return _error_result(
+                "execution_options must be an object when provided",
+                execution_options=execution_options,
+            )
 
         result = _API["enhanced_data_pipeline"](
             pipeline_config=pipeline_config,
@@ -1354,7 +1395,18 @@ def register_native_workflow_tools_category(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "action": {"type": "string", "enum": ["create", "execute", "get_status", "list", "cancel", "pause", "resume"]},
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "create",
+                        "execute",
+                        "get_status",
+                        "list",
+                        "cancel",
+                        "pause",
+                        "resume",
+                    ],
+                },
                 "workflow_id": {"type": ["string", "null"]},
                 "workflow_definition": {"type": ["object", "null"]},
                 "execution_params": {"type": ["object", "null"]},

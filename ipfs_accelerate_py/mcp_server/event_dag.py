@@ -88,7 +88,9 @@ class EventDAG:
     def frontier(self) -> List[str]:
         snapshot = self._store.export_snapshot()
         events = snapshot.get("events", []) if isinstance(snapshot, dict) else []
-        all_cids = [e.get("event_cid") for e in events if isinstance(e, dict) and e.get("event_cid")]
+        all_cids = [
+            e.get("event_cid") for e in events if isinstance(e, dict) and e.get("event_cid")
+        ]
         parents = []
         for item in events:
             if not isinstance(item, dict):

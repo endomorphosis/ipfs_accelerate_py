@@ -110,7 +110,7 @@ except ImportError:
 ### Option 3: Add to Package
 ```python
 # In setup.py, ensure tools are included
-packages=find_packages(include=['ipfs_accelerate_py', 'ipfs_accelerate_py.*', 'tools', 'tools.*'])
+packages = find_packages(include=["ipfs_accelerate_py", "ipfs_accelerate_py.*", "tools", "tools.*"])
 ```
 
 ## Proper Test Strategy
@@ -127,7 +127,7 @@ mv test_playwright_e2e_with_screenshots.py test_playwright_ui_mock.py
 ```python
 # test_playwright_integration_real.py
 @pytest.mark.integration  # Skip in CI without HF token
-@pytest.mark.slow         # Skip in fast test runs
+@pytest.mark.slow  # Skip in fast test runs
 def test_real_huggingface_search():
     """Test with actual HuggingFace Hub API"""
     # Search for known model: "microsoft/phi-2"

@@ -91,7 +91,7 @@ task = P2PTask(
     name="Code Generation",
     tags=[WorkflowTag.P2P_ONLY, WorkflowTag.CODE_GENERATION],
     priority=8,
-    created_at=time.time()
+    created_at=time.time(),
 )
 scheduler.submit_task(task)
 

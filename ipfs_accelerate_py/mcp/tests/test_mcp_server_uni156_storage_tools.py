@@ -53,7 +53,9 @@ class TestMCPServerUNI156StorageTools(unittest.TestCase):
                 tags=["ok", ""],
             )
             self.assertEqual(invalid_tags.get("status"), "error")
-            self.assertIn("tags must be an array of non-empty strings", str(invalid_tags.get("error", "")))
+            self.assertIn(
+                "tags must be an array of non-empty strings", str(invalid_tags.get("error", ""))
+            )
 
             with patch.dict(native_storage_tools._API, {"store_data": _boom}, clear=False):
                 result = await native_storage_tools.store_data(data={"x": 1})
@@ -66,9 +68,14 @@ class TestMCPServerUNI156StorageTools(unittest.TestCase):
         async def _run() -> None:
             invalid_item_ids = await native_storage_tools.retrieve_data(item_ids=["id-1", ""])
             self.assertEqual(invalid_item_ids.get("status"), "error")
-            self.assertIn("item_ids must be an array of non-empty strings", str(invalid_item_ids.get("error", "")))
+            self.assertIn(
+                "item_ids must be an array of non-empty strings",
+                str(invalid_item_ids.get("error", "")),
+            )
 
-            invalid_collection = await native_storage_tools.manage_collections(action="delete", collection_name="   ")
+            invalid_collection = await native_storage_tools.manage_collections(
+                action="delete", collection_name="   "
+            )
             self.assertEqual(invalid_collection.get("status"), "error")
             self.assertIn(
                 "collection_name must be a non-empty string when provided",
@@ -81,7 +88,10 @@ class TestMCPServerUNI156StorageTools(unittest.TestCase):
         async def _run() -> None:
             invalid_size_range = await native_storage_tools.query_storage(size_range=[10, 1])
             self.assertEqual(invalid_size_range.get("status"), "error")
-            self.assertIn("size_range must be non-negative and ordered", str(invalid_size_range.get("error", "")))
+            self.assertIn(
+                "size_range must be non-negative and ordered",
+                str(invalid_size_range.get("error", "")),
+            )
 
             invalid_limit = await native_storage_tools.query_storage(limit=0)
             self.assertEqual(invalid_limit.get("status"), "error")
@@ -93,15 +103,22 @@ class TestMCPServerUNI156StorageTools(unittest.TestCase):
         async def _run() -> None:
             invalid_list_limit = await native_storage_tools.list_storage(limit=0)
             self.assertEqual(invalid_list_limit.get("status"), "error")
-            self.assertIn("limit must be a positive integer", str(invalid_list_limit.get("error", "")))
+            self.assertIn(
+                "limit must be a positive integer", str(invalid_list_limit.get("error", ""))
+            )
 
             invalid_stats_format = await native_storage_tools.get_storage_stats(report_format="xml")
             self.assertEqual(invalid_stats_format.get("status"), "error")
-            self.assertIn("report_format must be one of", str(invalid_stats_format.get("error", "")))
+            self.assertIn(
+                "report_format must be one of", str(invalid_stats_format.get("error", ""))
+            )
 
             invalid_delete_ids = await native_storage_tools.delete_data(item_ids=["id-1", ""])
             self.assertEqual(invalid_delete_ids.get("status"), "error")
-            self.assertIn("item_ids must be an array of non-empty strings", str(invalid_delete_ids.get("error", "")))
+            self.assertIn(
+                "item_ids must be an array of non-empty strings",
+                str(invalid_delete_ids.get("error", "")),
+            )
 
             stored = await native_storage_tools.store_data(data={"x": 1}, collection="default")
             item_id = stored.get("item_id")
@@ -120,7 +137,9 @@ class TestMCPServerUNI156StorageTools(unittest.TestCase):
             self.assertEqual(deleted.get("status"), "success")
             self.assertEqual(deleted.get("deleted_count"), 1)
 
-            missing = await native_storage_tools.delete_data(item_ids=[str(item_id)], missing_ok=True)
+            missing = await native_storage_tools.delete_data(
+                item_ids=[str(item_id)], missing_ok=True
+            )
             self.assertEqual(missing.get("status"), "success")
             self.assertEqual(missing.get("missing_count"), 1)
 

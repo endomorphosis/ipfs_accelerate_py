@@ -171,9 +171,7 @@ def _candidate(
             producer_id=f"trusted:{constraint.value}:v1",
             evidence_ids=(f"evidence:{candidate_id}:{constraint.value}",),
             reason_codes=(
-                ()
-                if constraint is not failed
-                else (f"{constraint.value}_policy_denied",)
+                () if constraint is not failed else (f"{constraint.value}_policy_denied",)
             ),
         )
         for constraint in HardPlanConstraint
@@ -239,17 +237,13 @@ def test_cheaper_authority_violating_plan_is_absolutely_rejected() -> None:
     receipt = select_adaptive_plan(goal, (cheap_invalid, valid))
 
     assert receipt.selected_candidate_id == "valid"
-    assert [item.candidate_id for item in receipt.evaluation.rejected] == [
-        "cheap-invalid"
-    ]
+    assert [item.candidate_id for item in receipt.evaluation.rejected] == ["cheap-invalid"]
     rejected = receipt.evaluation.rejected[0]
     assert PlanEvaluationDimension.CONFLICT_SCOPE_AND_AUTHORITY.value in (
         rejected.hard_gate_failures
     )
     assert receipt.proves_authority_non_compensation
-    assert receipt.proved_requirement_ids == (
-        "173075880069453142914839090434430341799",
-    )
+    assert receipt.proved_requirement_ids == ("173075880069453142914839090434430341799",)
     evidence = receipt.authority_non_compensation_evidence
     assert evidence is not None
     assert evidence.requirement_id == AUTHORITY_NON_COMPENSATION_REQUIREMENT_ID
@@ -300,8 +294,7 @@ def test_g097_completion_requires_fresh_complete_current_tree_proof() -> None:
                 "status": "passed",
                 "tree_id": tree_id,
                 "command": (
-                    "python -m pytest "
-                    "test/api/test_agent_supervisor_adaptive_planner.py -q"
+                    "python -m pytest test/api/test_agent_supervisor_adaptive_planner.py -q"
                 ),
             },
             validation_passed=True,
@@ -327,13 +320,8 @@ def test_g097_completion_requires_fresh_complete_current_tree_proof() -> None:
                 "criterion": criterion,
                 "status": "verified",
                 "verified": True,
-                "implementation": (
-                    "ipfs_accelerate_py/agent_supervisor/"
-                    "adaptive_planner.py"
-                ),
-                "validation": (
-                    "test/api/test_agent_supervisor_adaptive_planner.py"
-                ),
+                "implementation": ("ipfs_accelerate_py/agent_supervisor/adaptive_planner.py"),
+                "validation": ("test/api/test_agent_supervisor_adaptive_planner.py"),
             }
             for criterion in criteria
         ],
@@ -407,10 +395,7 @@ def test_g097_completion_requires_fresh_complete_current_tree_proof() -> None:
     )
     assert no_completion_proof.state is GoalState.PROVISIONALLY_COMPLETE
     assert not no_completion_proof.verified
-    assert (
-        no_completion_proof.gate is not None
-        and not no_completion_proof.gate.passed
-    )
+    assert no_completion_proof.gate is not None and not no_completion_proof.gate.passed
 
     # A fully passing first evaluation still cannot jump directly from active
     # to verified; verification requires a later evaluation of the provisional
@@ -421,9 +406,7 @@ def test_g097_completion_requires_fresh_complete_current_tree_proof() -> None:
     )
     assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
     assert not provisional.verified
-    assert (
-        provisional.gate is not None and provisional.gate.passed
-    ), tuple(
+    assert provisional.gate is not None and provisional.gate.passed, tuple(
         (check.name, check.reason_code, check.evidence)
         for check in provisional.gate.checks
         if not check.passed
@@ -462,10 +445,7 @@ def test_g097_completion_requires_fresh_complete_current_tree_proof() -> None:
     )
     assert failed_submission.state is GoalState.PROVISIONALLY_COMPLETE
     assert "failed_validation" in failed_submission.reason_codes
-    assert (
-        "validation_evidence_incomplete"
-        in failed_submission.gate.fail_reason_codes
-    )
+    assert "validation_evidence_incomplete" in failed_submission.gate.fail_reason_codes
 
     stale = replace(
         evidence[0],
@@ -520,9 +500,7 @@ def test_g097_completion_requires_fresh_complete_current_tree_proof() -> None:
                 quorum["members"][0],
                 {
                     **quorum["members"][1],
-                    "analyzer_version": (
-                        quorum["members"][0]["analyzer_version"]
-                    ),
+                    "analyzer_version": (quorum["members"][0]["analyzer_version"]),
                 },
             ],
         },
@@ -582,10 +560,7 @@ def test_g097_completion_requires_fresh_complete_current_tree_proof() -> None:
             **{**values, "exhaustion_quorum": invalid_quorum},
         )
         assert no_quorum.state is GoalState.PROVISIONALLY_COMPLETE
-        assert any(
-            code.startswith("exhaustion_quorum")
-            for code in no_quorum.reason_codes
-        )
+        assert any(code.startswith("exhaustion_quorum") for code in no_quorum.reason_codes)
 
     foreign = replace(
         evidence[0],
@@ -666,9 +641,9 @@ def test_every_quality_dimension_is_evaluated_and_weighting_is_deterministic() -
     assert forward.selected_candidate_id == "alpha"
     assert reverse.selected_candidate_id == "alpha"
     assert forward.receipt_id == reverse.receipt_id
-    assert {
-        item.dimension for item in forward.evaluation.selected.dimensions
-    } == set(PlanEvaluationDimension)
+    assert {item.dimension for item in forward.evaluation.selected.dimensions} == set(
+        PlanEvaluationDimension
+    )
     assert forward.evaluation.covers_every_planning_dimension
     assert forward.evaluation.completion_dimension_population == tuple(
         item.value for item in PlanEvaluationDimension
@@ -692,9 +667,7 @@ def test_stale_frozen_binding_fails_closed_before_ranking() -> None:
         binding_overrides={"repository_tree_id": "tree:old"},
     )
 
-    with pytest.raises(
-        AdaptivePlannerValidationError, match="frozen goal bindings"
-    ):
+    with pytest.raises(AdaptivePlannerValidationError, match="frozen goal bindings"):
         AdaptivePlanner().select(goal, (stale,))
 
 
@@ -734,9 +707,7 @@ def test_selection_receipt_round_trips_persists_and_detects_tampering(
     tmp_path,
 ) -> None:
     goal = _goal()
-    cheap_invalid = _candidate(
-        goal, "cheap-invalid", cost=0.1, failed=HardPlanConstraint.AUTHORITY
-    )
+    cheap_invalid = _candidate(goal, "cheap-invalid", cost=0.1, failed=HardPlanConstraint.AUTHORITY)
     valid = _candidate(goal, "valid", cost=2.0)
     receipt = AdaptivePlanner().select(goal, (cheap_invalid, valid))
 
@@ -781,39 +752,23 @@ def test_requirement_witness_is_recomputed_from_evaluation_and_gate_matrix() -> 
         return result
 
     payload = tampered_payload()
-    payload["authority_non_compensation_evidence"][
-        "selected_candidate_id"
-    ] = "cheap-invalid"
-    with pytest.raises(
-        AdaptivePlannerValidationError, match="selected candidate"
-    ):
+    payload["authority_non_compensation_evidence"]["selected_candidate_id"] = "cheap-invalid"
+    with pytest.raises(AdaptivePlannerValidationError, match="selected candidate"):
         AdaptivePlanSelectionReceipt.from_dict(payload)
 
     payload = tampered_payload()
-    payload["authority_non_compensation_evidence"][
-        "rejected_candidate_ids"
-    ] = ["valid"]
-    with pytest.raises(
-        AdaptivePlannerValidationError, match="incomplete or inconsistent"
-    ):
+    payload["authority_non_compensation_evidence"]["rejected_candidate_ids"] = ["valid"]
+    with pytest.raises(AdaptivePlannerValidationError, match="incomplete or inconsistent"):
         AdaptivePlanSelectionReceipt.from_dict(payload)
 
     payload = tampered_payload()
-    payload["authority_non_compensation_evidence"][
-        "rejected_cost_millionths"
-    ] = [1]
-    with pytest.raises(
-        AdaptivePlannerValidationError, match="incomplete or inconsistent"
-    ):
+    payload["authority_non_compensation_evidence"]["rejected_cost_millionths"] = [1]
+    with pytest.raises(AdaptivePlannerValidationError, match="incomplete or inconsistent"):
         AdaptivePlanSelectionReceipt.from_dict(payload)
 
     payload = tampered_payload()
-    payload["authority_non_compensation_evidence"][
-        "authority_receipt_ids"
-    ] = ["receipt:forged"]
-    with pytest.raises(
-        AdaptivePlannerValidationError, match="incomplete or inconsistent"
-    ):
+    payload["authority_non_compensation_evidence"]["authority_receipt_ids"] = ["receipt:forged"]
+    with pytest.raises(AdaptivePlannerValidationError, match="incomplete or inconsistent"):
         AdaptivePlanSelectionReceipt.from_dict(payload)
 
     payload = tampered_payload()
@@ -821,19 +776,15 @@ def test_requirement_witness_is_recomputed_from_evaluation_and_gate_matrix() -> 
     cheap_authority = next(
         item
         for item in receipts
-        if item["candidate_id"] == "cheap-invalid"
-        and item["constraint"] == "authority"
+        if item["candidate_id"] == "cheap-invalid" and item["constraint"] == "authority"
     )
     cheap_scope_index = next(
         index
         for index, item in enumerate(receipts)
-        if item["candidate_id"] == "cheap-invalid"
-        and item["constraint"] == "scope"
+        if item["candidate_id"] == "cheap-invalid" and item["constraint"] == "scope"
     )
     receipts[cheap_scope_index] = copy.deepcopy(cheap_authority)
-    with pytest.raises(
-        AdaptivePlannerValidationError, match="candidate/constraint pair"
-    ):
+    with pytest.raises(AdaptivePlannerValidationError, match="candidate/constraint pair"):
         AdaptivePlanSelectionReceipt.from_dict(payload)
 
 
@@ -860,9 +811,7 @@ def test_hard_gate_receipt_cannot_be_replayed_onto_changed_plan_content() -> Non
         failed=HardPlanConstraint.AUTHORITY,
     )
 
-    with pytest.raises(
-        AdaptivePlannerValidationError, match="candidate content"
-    ):
+    with pytest.raises(AdaptivePlannerValidationError, match="candidate content"):
         replace(
             inspected,
             plan=_plan("same-branch-id", cost=0.01),
@@ -888,9 +837,7 @@ def test_hard_gate_receipt_cannot_be_replayed_after_formal_provenance_change() -
         cost=1.0,
         formal_plan_id="formal-plan:v1",
     )
-    with pytest.raises(
-        AdaptivePlannerValidationError, match="candidate content"
-    ):
+    with pytest.raises(AdaptivePlannerValidationError, match="candidate content"):
         replace(plan_only, formal_plan_id="formal-plan:v2")
 
     # A coherent new formal plan plus transition also cannot reuse the four
@@ -899,9 +846,7 @@ def test_hard_gate_receipt_cannot_be_replayed_after_formal_provenance_change() -
         repaired_plan_id="formal-plan:repaired:v2",
         counterexample_id="counterexample:authority:v2",
     )
-    with pytest.raises(
-        AdaptivePlannerValidationError, match="candidate content"
-    ):
+    with pytest.raises(AdaptivePlannerValidationError, match="candidate content"):
         replace(
             inspected,
             formal_plan_id=changed_transition.repaired_plan_id,
@@ -951,18 +896,14 @@ def test_authority_witness_is_complete_for_every_qualifying_rejection() -> None:
         "authority_receipt_ids",
     ):
         witness[field].pop()
-    with pytest.raises(
-        AdaptivePlannerValidationError, match="incomplete or inconsistent"
-    ):
+    with pytest.raises(AdaptivePlannerValidationError, match="incomplete or inconsistent"):
         AdaptivePlanSelectionReceipt.from_dict(omitted)
 
     stripped = copy.deepcopy(receipt.to_dict())
     stripped.pop("receipt_id")
     stripped["authority_non_compensation_evidence"] = None
     stripped["proved_requirement_ids"] = []
-    with pytest.raises(
-        AdaptivePlannerValidationError, match="exactly cover"
-    ):
+    with pytest.raises(AdaptivePlannerValidationError, match="exactly cover"):
         AdaptivePlanSelectionReceipt.from_dict(stripped)
 
 
@@ -1044,17 +985,13 @@ def test_selection_receipt_recomputes_persisted_evaluation() -> None:
     payload["evaluation"]["selected"]["score_millionths"] += 1
     payload["evaluation"]["admissible"][0]["score_millionths"] += 1
 
-    with pytest.raises(
-        AdaptivePlannerValidationError, match="deterministic recomputation"
-    ):
+    with pytest.raises(AdaptivePlannerValidationError, match="deterministic recomputation"):
         AdaptivePlanSelectionReceipt.from_dict(payload)
 
     payload = receipt.to_dict()
     payload.pop("receipt_id")
     payload["evaluation"]["evaluator_version"] = "unsupported"
-    with pytest.raises(
-        AdaptivePlannerValidationError, match="evaluator version"
-    ):
+    with pytest.raises(AdaptivePlannerValidationError, match="evaluator version"):
         AdaptivePlanSelectionReceipt.from_dict(payload)
 
 
@@ -1078,9 +1015,7 @@ def _planning_context() -> dict[str, Any]:
         "outputs": ["src/planner.py", "tests/test_planner.py"],
         "predicted_symbols": ["AdaptivePlanner.plan"],
         "dependencies": ["dependency:context"],
-        "validation_commands": [
-            "python -m pytest tests/test_planner.py -q"
-        ],
+        "validation_commands": ["python -m pytest tests/test_planner.py -q"],
         "estimated_tokens": 100,
         "estimated_runtime_seconds": 1.0,
         "estimated_resource_cost": 1.0,
@@ -1127,10 +1062,7 @@ def test_full_pipeline_routes_all_optional_providers_over_one_frozen_context() -
     assert [item.provider_kind for item in result.routing.outcomes] == list(
         AdaptiveCandidateProviderKind
     )
-    assert all(
-        item.status is CandidateProviderStatus.SUCCEEDED
-        for item in result.routing.outcomes
-    )
+    assert all(item.status is CandidateProviderStatus.SUCCEEDED for item in result.routing.outcomes)
     assert not result.fallback_used
     assert result.selected_candidate_id == "ipfs_datasets_py:candidate"
     payload = result.to_dict()
@@ -1150,9 +1082,7 @@ def test_optional_provider_unavailability_timeout_and_malformed_output_fall_back
 
     def slow(_request: Any) -> Any:
         time.sleep(0.05)
-        return _provider_plan(
-            "late", AdaptiveCandidateProviderKind.LEANSTRAL
-        )
+        return _provider_plan("late", AdaptiveCandidateProviderKind.LEANSTRAL)
 
     result = AdaptivePlanner().plan(
         _goal(),
@@ -1160,9 +1090,7 @@ def test_optional_provider_unavailability_timeout_and_malformed_output_fall_back
         providers={
             AdaptiveCandidateProviderKind.LLM: unavailable,
             AdaptiveCandidateProviderKind.LEANSTRAL: slow,
-            AdaptiveCandidateProviderKind.IPFS_DATASETS: (
-                lambda _request: {"not": "a candidate"}
-            ),
+            AdaptiveCandidateProviderKind.IPFS_DATASETS: (lambda _request: {"not": "a candidate"}),
         },
         bounds=CandidateGenerationBounds(timeout_seconds=0.005),
     )
@@ -1184,14 +1112,10 @@ def test_optional_provider_unavailability_timeout_and_malformed_output_fall_back
 
 def test_adversarial_high_quality_candidate_cannot_compensate_for_authority() -> None:
     adversarial = replace(
-        _provider_plan(
-            "adversarial", AdaptiveCandidateProviderKind.LLM, cost=0.0001
-        ),
+        _provider_plan("adversarial", AdaptiveCandidateProviderKind.LLM, cost=0.0001),
         novelty=1.0,
         branch=replace(
-            _provider_plan(
-                "adversarial", AdaptiveCandidateProviderKind.LLM, cost=0.0001
-            ).branch,
+            _provider_plan("adversarial", AdaptiveCandidateProviderKind.LLM, cost=0.0001).branch,
             expected_objective_delta=1.0,
             risk=0.0,
         ),
@@ -1218,11 +1142,7 @@ def test_adversarial_high_quality_candidate_cannot_compensate_for_authority() ->
     result = AdaptivePlanner().plan(
         _goal(),
         _planning_context(),
-        providers={
-            AdaptiveCandidateProviderKind.LLM: (
-                lambda _request: (adversarial,)
-            )
-        },
+        providers={AdaptiveCandidateProviderKind.LLM: (lambda _request: (adversarial,))},
         hard_gate_evaluator=gates,
     )
 

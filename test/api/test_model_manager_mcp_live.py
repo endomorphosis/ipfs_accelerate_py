@@ -90,11 +90,7 @@ def _request_url(request: urllib.request.Request | str) -> str:
 
 
 def _identity_token(value: object) -> str:
-    return "".join(
-        character
-        for character in str(value).casefold()
-        if character.isalnum()
-    )
+    return "".join(character for character in str(value).casefold() if character.isalnum())
 
 
 @pytest.fixture
@@ -139,9 +135,7 @@ def _assert_pinned_identity(
     assert model["provider"] == PINNED_TRANSPORT_PROVIDER
     assert model["transport"] == PINNED_TRANSPORT_PROVIDER
     assert model["provider"] != PINNED_ROUTING_PROVIDER
-    assert _identity_token(model["provider"]) == _identity_token(
-        PINNED_SERVER_BUILD
-    )
+    assert _identity_token(model["provider"]) == _identity_token(PINNED_SERVER_BUILD)
     assert model["endpoint"] == PINNED_ENDPOINT
     assert model["status"] == "available"
     assert model["served"] is True
@@ -168,9 +162,7 @@ def test_contract_distinguishes_logical_route_from_llamacpp_transport() -> None:
         "server_build": PINNED_SERVER_BUILD,
     }
     assert PINNED_ROUTING_PROVIDER != PINNED_TRANSPORT_PROVIDER
-    assert _identity_token(PINNED_TRANSPORT_PROVIDER) == _identity_token(
-        PINNED_SERVER_BUILD
-    )
+    assert _identity_token(PINNED_TRANSPORT_PROVIDER) == _identity_token(PINNED_SERVER_BUILD)
 
 
 def test_model_manager_reports_exact_shared_leanstral_identity(
@@ -260,6 +252,7 @@ def test_mcp_client_lists_and_gets_the_same_pinned_leanstral_identity(
 
     server = TrioMCPServer(name="hssl-leanstral-live-contract")
     server.mcp = mcp
+
     async def _call_tools() -> tuple[dict[str, Any], dict[str, Any]]:
         list_response = await server._handle_jsonrpc(
             {

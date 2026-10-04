@@ -185,21 +185,13 @@ print(response.json())
 # Generate text (OpenAI-compatible)
 response = requests.post(
     "http://localhost:8000/v1/completions",
-    json={
-        "model": "hf_gpt2",
-        "prompt": "The future of AI is",
-        "max_tokens": 50
-    }
+    json={"model": "hf_gpt2", "prompt": "The future of AI is", "max_tokens": 50},
 )
 print(response.json()["choices"][0]["text"])
 
 # Get embeddings
 response = requests.post(
-    "http://localhost:8000/v1/embeddings",
-    json={
-        "model": "hf_bert",
-        "input": "Hello world"
-    }
+    "http://localhost:8000/v1/embeddings", json={"model": "hf_bert", "input": "Hello world"}
 )
 print(response.json()["data"][0]["embedding"])
 ```

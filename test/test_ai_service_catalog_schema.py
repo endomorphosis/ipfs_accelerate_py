@@ -182,9 +182,7 @@ def test_canonical_serialization_is_deterministic_bounded_and_order_aware():
     }
     assert canonical_json_bytes(left) == canonical_json_bytes(right)
     assert content_cid(left) == content_cid(right)
-    assert canonical_json({"ordered": ["a", "b"]}) != canonical_json(
-        {"ordered": ["b", "a"]}
-    )
+    assert canonical_json({"ordered": ["a", "b"]}) != canonical_json({"ordered": ["b", "a"]})
     assert content_cid({"x": 1}).startswith("bafkrei")
     with pytest.raises(CanonicalizationError, match="byte bound"):
         canonical_json({"large": ["x" * 65_536] * 17})
@@ -198,9 +196,7 @@ def test_canonical_serialization_is_deterministic_bounded_and_order_aware():
 
 def test_stable_ids_use_framed_collision_resistant_inputs():
     assert stable_id("model", "ab", "c") != stable_id("model", "a", "bc")
-    assert stable_id("model", {"a": 1, "b": 2}) == stable_id(
-        "model", {"b": 2, "a": 1}
-    )
+    assert stable_id("model", {"a": 1, "b": 2}) == stable_id("model", {"b": 2, "a": 1})
     assert stable_id("model", ["a", "b"]) != stable_id("model", ["b", "a"])
     with pytest.raises(ValueError, match="identity kind"):
         stable_id("../model", "unsafe")
@@ -307,21 +303,13 @@ def test_size_and_capability_combination_bounds():
     with pytest.raises(SchemaValidationError, match="batch and stream"):
         CapabilityDescriptor(operations=(Operation.STREAM, Operation.BATCH))
     with pytest.raises(SchemaValidationError, match="embedding_dimensions"):
-        CapabilityDescriptor(
-            operations=(Operation.TEXT_GENERATE,), embedding_dimensions=1536
-        )
+        CapabilityDescriptor(operations=(Operation.TEXT_GENERATE,), embedding_dimensions=1536)
     with pytest.raises(SchemaValidationError, match="max_batch_size"):
-        CapabilityDescriptor(
-            operations=(Operation.TEXT_GENERATE,), max_batch_size=4
-        )
+        CapabilityDescriptor(operations=(Operation.TEXT_GENERATE,), max_batch_size=4)
     with pytest.raises(SchemaValidationError, match="between"):
-        CapabilityDescriptor(
-            operations=(Operation.TEXT_GENERATE,), max_input_bytes=0
-        )
+        CapabilityDescriptor(operations=(Operation.TEXT_GENERATE,), max_input_bytes=0)
     with pytest.raises(SchemaValidationError, match="description"):
-        ProviderDescriptor(
-            name="provider", description="x" * (MAX_DESCRIPTION_LENGTH + 1)
-        )
+        ProviderDescriptor(name="provider", description="x" * (MAX_DESCRIPTION_LENGTH + 1))
 
 
 @pytest.mark.parametrize(
@@ -396,9 +384,7 @@ def test_credentials_are_rejected_or_explicitly_redacted():
     with pytest.raises(SchemaValidationError, match="credential-bearing label"):
         ProviderDescriptor(name="provider", labels={"api_key": "not-even-a-key"})
     with pytest.raises(SchemaValidationError, match="credential-shaped"):
-        ProviderDescriptor(
-            name="provider", labels={"note": "sk-0123456789abcdef0123456789abcdef"}
-        )
+        ProviderDescriptor(name="provider", labels={"note": "sk-0123456789abcdef0123456789abcdef"})
 
 
 def test_snapshot_order_is_identity_independent_and_content_sensitive():
@@ -431,7 +417,7 @@ def test_snapshot_rejects_duplicate_and_excessive_records():
 def test_cold_import_does_not_start_provider_process_network_install_or_model_load(tmp_path):
     """An isolated interpreter makes import-time side effects observable."""
 
-    script = r'''
+    script = r"""
 import json
 import os
 import socket
@@ -468,7 +454,7 @@ for forbidden in (
 ):
     assert forbidden not in __import__("sys").modules, forbidden
 print(json.dumps(events))
-'''
+"""
     env = dict(os.environ)
     env["PYTHONPATH"] = os.getcwd()
     result = subprocess.run(

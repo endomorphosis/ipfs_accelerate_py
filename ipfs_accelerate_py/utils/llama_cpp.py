@@ -750,9 +750,15 @@ def build_llama_cpp_server_command(
 
     model_path = str(config.model_path or "").strip()
     if command_kind == "llama-server":
-        cmd = [executable, "-m", model_path] if model_path else [executable, "-hf", config.model_ref]
+        cmd = (
+            [executable, "-m", model_path] if model_path else [executable, "-hf", config.model_ref]
+        )
     else:
-        cmd = [executable, "serve", "-m", model_path] if model_path else [executable, "serve", "-hf", config.model_ref]
+        cmd = (
+            [executable, "serve", "-m", model_path]
+            if model_path
+            else [executable, "serve", "-hf", config.model_ref]
+        )
 
     if not model_path and str(config.hf_file or "").strip():
         cmd.extend(["--hf-file", str(config.hf_file).strip()])
@@ -826,11 +832,14 @@ def _model_artifact_ipfs_enabled() -> bool:
 
 
 def _model_cid_from_config(config: LlamaCppServerConfig) -> str:
-    return str(config.model_cid or _coalesce_env(
-        "IPFS_ACCELERATE_LLAMA_CPP_MODEL_CID",
-        "IPFS_ACCELERATE_PY_LLAMA_CPP_MODEL_CID",
-        "ipfs_accelerate_py_LLAMA_CPP_MODEL_CID",
-    )).strip()
+    return str(
+        config.model_cid
+        or _coalesce_env(
+            "IPFS_ACCELERATE_LLAMA_CPP_MODEL_CID",
+            "IPFS_ACCELERATE_PY_LLAMA_CPP_MODEL_CID",
+            "ipfs_accelerate_py_LLAMA_CPP_MODEL_CID",
+        )
+    ).strip()
 
 
 def _model_ref_manifest_path(config: LlamaCppServerConfig) -> Path:
@@ -890,9 +899,7 @@ def _status_from_existing_model_path(
     root_text = cache_root or str(resolved.parent)
     repo_cache_text = repo_cache_dir or str(resolved.parent)
     if content_sha256 and (not content_multihash_sha256 or not content_cid_v1):
-        content_multihash_sha256, content_cid_v1 = _raw_sha256_cid_v1_from_digest(
-            content_sha256
-        )
+        content_multihash_sha256, content_cid_v1 = _raw_sha256_cid_v1_from_digest(content_sha256)
     return LlamaCppModelCacheStatus(
         repo_id=repo_id,
         filename=filename,
@@ -919,9 +926,13 @@ def _status_from_existing_model_path(
     )
 
 
-def _model_artifact_status_from_manifest(config: LlamaCppServerConfig) -> Optional[LlamaCppModelCacheStatus]:
+def _model_artifact_status_from_manifest(
+    config: LlamaCppServerConfig,
+) -> Optional[LlamaCppModelCacheStatus]:
     payload = _read_json_file(_model_ref_manifest_path(config))
-    local_path = str(payload.get("content_addressed_path") or payload.get("local_path") or "").strip()
+    local_path = str(
+        payload.get("content_addressed_path") or payload.get("local_path") or ""
+    ).strip()
     if not local_path:
         return None
     candidate = Path(local_path).expanduser()
@@ -938,9 +949,7 @@ def _model_artifact_status_from_manifest(config: LlamaCppServerConfig) -> Option
         content_cid_v1_path=str(payload.get("content_cid_v1_path") or ""),
         content_addressed_path=str(candidate),
         content_hash_pending=bool(
-            payload.get("content_hash_pending")
-            or payload.get("hash_pending")
-            or False
+            payload.get("content_hash_pending") or payload.get("hash_pending") or False
         ),
         content_hash_job_pid=int(payload.get("content_hash_job_pid") or 0),
         content_hash_job_path=str(payload.get("content_hash_job_path") or ""),
@@ -974,9 +983,7 @@ def _model_artifact_status_from_cid_alias(
         content_cid_v1_path=str(candidate),
         content_addressed_path=str(payload.get("content_addressed_path") or candidate),
         content_hash_pending=bool(
-            payload.get("content_hash_pending")
-            or payload.get("hash_pending")
-            or False
+            payload.get("content_hash_pending") or payload.get("hash_pending") or False
         ),
         content_hash_job_pid=int(payload.get("content_hash_job_pid") or 0),
         content_hash_job_path=str(payload.get("content_hash_job_path") or ""),
@@ -1077,11 +1084,7 @@ def _should_hash_model_async(
     *,
     async_hash: Optional[bool] = None,
 ) -> bool:
-    enabled = (
-        _async_model_hash_enabled(default=True)
-        if async_hash is None
-        else bool(async_hash)
-    )
+    enabled = _async_model_hash_enabled(default=True) if async_hash is None else bool(async_hash)
     if not enabled:
         return False
     try:
@@ -1470,7 +1473,11 @@ def _register_llama_cpp_model_artifact(
             pin=pin,
         )
         stored_cid = remote_cid or stored_cid
-    cache_backend = "ipfs_kit" if stored_cid and (ipfs_available or source_backend == "ipfs_kit") else "content_addressed_disk"
+    cache_backend = (
+        "ipfs_kit"
+        if stored_cid and (ipfs_available or source_backend == "ipfs_kit")
+        else "content_addressed_disk"
+    )
     manifest = {
         "repo_id": _repo_id_from_model_ref(config.model_ref),
         "filename": filename,
@@ -1493,7 +1500,9 @@ def _register_llama_cpp_model_artifact(
     }
     _write_json_atomic(_model_ref_manifest_path(config), manifest)
     if cid_v1_destination:
-        _write_json_atomic(cid_v1_destination.with_name(f"{cid_v1_destination.name}.json"), manifest)
+        _write_json_atomic(
+            cid_v1_destination.with_name(f"{cid_v1_destination.name}.json"), manifest
+        )
     return _status_from_existing_model_path(
         config,
         destination,
@@ -1526,11 +1535,7 @@ def _finalize_llama_cpp_model_artifact_hash(
 ) -> LlamaCppModelCacheStatus:
     """Finalize SHA/CID identity for a usable local model path."""
 
-    job_path = (
-        Path(job_path)
-        if str(job_path or "").strip() not in {"", "."}
-        else Path()
-    )
+    job_path = Path(job_path) if str(job_path or "").strip() not in {"", "."} else Path()
     try:
         status = _register_llama_cpp_model_artifact(
             config,
@@ -1587,11 +1592,7 @@ def _module_pythonpath_env() -> Mapping[str, str]:
         package_root = ""
     existing = str(env.get("PYTHONPATH") or "")
     if package_root and package_root not in existing.split(os.pathsep):
-        env["PYTHONPATH"] = (
-            package_root
-            if not existing
-            else package_root + os.pathsep + existing
-        )
+        env["PYTHONPATH"] = package_root if not existing else package_root + os.pathsep + existing
     env["IPFS_ACCELERATE_LLAMA_CPP_ASYNC_MODEL_HASH"] = "0"
     return env
 
@@ -1769,7 +1770,9 @@ def _retrieve_llama_cpp_model_artifact_from_cid(
             content_cid=cid,
             ipfs_remote_attempted=bool(allow_remote),
         )
-    downloads_dir = _model_artifact_cache_root() / "downloads" / _safe_path_component(cid, default="cid")
+    downloads_dir = (
+        _model_artifact_cache_root() / "downloads" / _safe_path_component(cid, default="cid")
+    )
     candidate_path = downloads_dir / _model_cache_filename(config)
     source_path, remote_loaded = _retrieve_model_cid_to_source_path(
         storage,
@@ -2463,7 +2466,9 @@ def _select_llama_cpp_device(devices: Sequence[LlamaCppDeviceInfo]) -> Optional[
     return candidates[0]
 
 
-def _auto_sizing_model_traits(config: LlamaCppServerConfig, sizing: LlamaCppGgufSizingInfo) -> dict[str, bool]:
+def _auto_sizing_model_traits(
+    config: LlamaCppServerConfig, sizing: LlamaCppGgufSizingInfo
+) -> dict[str, bool]:
     text = " ".join(
         [
             str(config.model_ref or ""),
@@ -2584,7 +2589,9 @@ def calculate_llama_cpp_auto_sizing(
     reserve_mib_default = 8192 if cuda13_large_nvfp4 else 16384 if legacy_large_nvfp4 else 8192
     workspace_mib_default = 8192 if cuda13_large_nvfp4 else 16384 if legacy_large_nvfp4 else 4096
     reserve_fraction_default = 0.12 if cuda13_large_nvfp4 else 0.30 if legacy_large_nvfp4 else 0.15
-    target_utilization_default = 0.85 if cuda13_large_nvfp4 else 0.60 if legacy_large_nvfp4 else 0.82
+    target_utilization_default = (
+        0.85 if cuda13_large_nvfp4 else 0.60 if legacy_large_nvfp4 else 0.82
+    )
     layer_multiplier_default = 1.25 if cuda13_large_nvfp4 else 4.0 if legacy_large_nvfp4 else 1.50
     reserve_bytes = max(
         _env_int(
@@ -2605,14 +2612,20 @@ def calculate_llama_cpp_auto_sizing(
         ),
         reserve_fraction_default,
     )
-    reserve_bytes = max(reserve_bytes, int(int(device.free_bytes or 0) * max(0.0, reserve_fraction)))
-    workspace_bytes = _env_int(
-        (
-            "IPFS_ACCELERATE_LLAMA_CPP_AUTO_SIZING_WORKSPACE_MIB",
-            "IPFS_ACCELERATE_PY_LLAMA_CPP_AUTO_SIZING_WORKSPACE_MIB",
-        ),
-        workspace_mib_default,
-    ) * 1024 * 1024
+    reserve_bytes = max(
+        reserve_bytes, int(int(device.free_bytes or 0) * max(0.0, reserve_fraction))
+    )
+    workspace_bytes = (
+        _env_int(
+            (
+                "IPFS_ACCELERATE_LLAMA_CPP_AUTO_SIZING_WORKSPACE_MIB",
+                "IPFS_ACCELERATE_PY_LLAMA_CPP_AUTO_SIZING_WORKSPACE_MIB",
+            ),
+            workspace_mib_default,
+        )
+        * 1024
+        * 1024
+    )
     kv_bytes = _estimate_kv_cache_bytes(
         sizing.metadata,
         layer_count=sizing.layer_count,
@@ -2641,7 +2654,9 @@ def calculate_llama_cpp_auto_sizing(
         ),
         0.20,
     )
-    estimated_non_layer_bytes = int(max(0, sizing.non_repeating_bytes) * max(0.0, non_layer_fraction))
+    estimated_non_layer_bytes = int(
+        max(0, sizing.non_repeating_bytes) * max(0.0, non_layer_fraction)
+    )
     layer_multiplier = _env_float(
         (
             "IPFS_ACCELERATE_LLAMA_CPP_AUTO_SIZING_LAYER_MULTIPLIER",
@@ -2652,7 +2667,9 @@ def calculate_llama_cpp_auto_sizing(
     per_layer_bytes = max(int(sizing.max_layer_bytes or 0), int(sizing.avg_layer_bytes or 0))
     effective_layer_bytes = max(1, int(per_layer_bytes * max(0.1, layer_multiplier)))
     layer_budget = max(0, usable_bytes - estimated_non_layer_bytes)
-    calculated_layers = min(max(0, int(sizing.layer_count or 0)), layer_budget // effective_layer_bytes)
+    calculated_layers = min(
+        max(0, int(sizing.layer_count or 0)), layer_budget // effective_layer_bytes
+    )
     # The llama.app build previously bundled on GB10 reported free CUDA memory
     # correctly but failed in cublasCreate_v2 for this large NVFP4 DeepSeek2 MoE
     # model at three or more offloaded layers.  CUDA 13-linked llama.cpp builds
@@ -2838,7 +2855,9 @@ def auto_size_llama_cpp_server_config(
     model_path = config.model_path
     if _serve_model_cache_via_local_path(model_cache):
         model_path = model_cache.local_path
-    return replace(config, model_path=model_path, gpu_layers=gpu_layers, extra_args=extra_args), plan
+    return replace(
+        config, model_path=model_path, gpu_layers=gpu_layers, extra_args=extra_args
+    ), plan
 
 
 def prefetch_llama_cpp_model(
@@ -2868,10 +2887,14 @@ def prefetch_llama_cpp_model(
     )
     status = llama_cpp_model_cache_status(config)
     if status.complete:
-        needs_cache_registration = status.cache_backend not in {
-            "content_addressed_disk",
-            "ipfs_kit",
-        } or not str(status.content_cid_v1_path or "").strip()
+        needs_cache_registration = (
+            status.cache_backend
+            not in {
+                "content_addressed_disk",
+                "ipfs_kit",
+            }
+            or not str(status.content_cid_v1_path or "").strip()
+        )
         if cache_enabled and needs_cache_registration:
             if _should_hash_model_async(Path(status.local_path), async_hash=async_hash):
                 return _register_llama_cpp_model_artifact_async(
@@ -3112,9 +3135,7 @@ def evict_llama_cpp_warm_servers(
         if str(payload.get("base_url") or "").rstrip("/") not in excluded
     ]
     servers.sort(
-        key=lambda item: float(
-            item[1].get("last_accessed_at") or item[1].get("started_at") or 0.0
-        )
+        key=lambda item: float(item[1].get("last_accessed_at") or item[1].get("started_at") or 0.0)
     )
     before_free = _device_free_bytes(device_identifier)
     evicted: list[dict[str, object]] = []
@@ -3165,7 +3186,9 @@ def _command_contains_subsequence(command: Sequence[object], expected: Sequence[
     return any(values[index : index + width] == needle for index in range(len(values) - width + 1))
 
 
-def _active_pidfile_matches_config(config: LlamaCppServerConfig, active: Mapping[str, object]) -> bool:
+def _active_pidfile_matches_config(
+    config: LlamaCppServerConfig, active: Mapping[str, object]
+) -> bool:
     command = tuple(str(arg) for arg in active.get("command") or ())
     if not command:
         return True
@@ -3314,7 +3337,9 @@ def _llama_cpp_launch_flag_args(config: LlamaCppServerConfig) -> dict[str, objec
     return launch_args
 
 
-def _llama_cpp_model_architecture(model_cache: LlamaCppModelCacheStatus) -> tuple[str, dict[str, object]]:
+def _llama_cpp_model_architecture(
+    model_cache: LlamaCppModelCacheStatus,
+) -> tuple[str, dict[str, object]]:
     path = str(model_cache.local_path or "").strip()
     if not path:
         return "gguf", {}
@@ -3324,9 +3349,7 @@ def _llama_cpp_model_architecture(model_cache: LlamaCppModelCacheStatus) -> tupl
         return "gguf", {}
     metadata = dict(sizing.metadata)
     architecture = str(
-        metadata.get("general.architecture")
-        or metadata.get("general.name")
-        or "gguf"
+        metadata.get("general.architecture") or metadata.get("general.name") or "gguf"
     )
     return f"gguf:{architecture}", {
         "layer_count": sizing.layer_count,
@@ -3594,7 +3617,9 @@ def _register_llama_cpp_model_with_manager(
                 pass
 
 
-def _terminate_active_pidfile_process(config: LlamaCppServerConfig, active: Mapping[str, object]) -> bool:
+def _terminate_active_pidfile_process(
+    config: LlamaCppServerConfig, active: Mapping[str, object]
+) -> bool:
     try:
         pid = int(active.get("pid") or 0)
     except Exception:
@@ -3656,9 +3681,7 @@ def ensure_llama_cpp_server(
 
     auto_sizing = LlamaCppAutoSizingPlan(False, reason="not_requested")
     track_model_enabled = (
-        _model_manager_tracking_enabled(default=False)
-        if track_model is None
-        else bool(track_model)
+        _model_manager_tracking_enabled(default=False) if track_model is None else bool(track_model)
     )
     if bool(config.auto_sizing):
         sizing_executable, sizing_command_kind = find_llama_cpp_executable(explicit_binary)
@@ -3890,7 +3913,9 @@ def ensure_llama_cpp_server(
         allowed_existing = max(0, _max_warm_servers() - 1)
         excess_to_evict = max(0, len(warm_servers) - allowed_existing)
         required_free = _plan_required_free_bytes(auto_sizing)
-        if excess_to_evict or (required_free and _device_free_bytes(auto_sizing.device_identifier) < required_free):
+        if excess_to_evict or (
+            required_free and _device_free_bytes(auto_sizing.device_identifier) < required_free
+        ):
             evict_llama_cpp_warm_servers(
                 exclude_base_urls=(base_url,),
                 required_free_bytes=required_free,
@@ -4172,7 +4197,27 @@ class llama_cpp_utils:
         return ensure_llama_cpp(**kwargs)
 
     def serve(self, **kwargs):
-        config = config_from_env(**{k: v for k, v in kwargs.items() if k in {"model_ref", "hf_file", "model_path", "model_cid", "host", "port", "context_size", "threads", "gpu_layers", "extra_args", "log_dir", "auto_sizing"}})
+        config = config_from_env(
+            **{
+                k: v
+                for k, v in kwargs.items()
+                if k
+                in {
+                    "model_ref",
+                    "hf_file",
+                    "model_path",
+                    "model_cid",
+                    "host",
+                    "port",
+                    "context_size",
+                    "threads",
+                    "gpu_layers",
+                    "extra_args",
+                    "log_dir",
+                    "auto_sizing",
+                }
+            }
+        )
         return ensure_llama_cpp_server(
             config,
             autostart=bool(kwargs.get("autostart", True)),
@@ -4193,48 +4238,142 @@ class llama_cpp_utils:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="Check or start a local llama.cpp OpenAI-compatible server.")
-    parser.add_argument("--serve", action="store_true", help="Start the server when it is not already reachable.")
+    parser = argparse.ArgumentParser(
+        description="Check or start a local llama.cpp OpenAI-compatible server."
+    )
+    parser.add_argument(
+        "--serve", action="store_true", help="Start the server when it is not already reachable."
+    )
     parser.add_argument("--probe", action="store_true", help="Only probe the configured server.")
-    parser.add_argument("--model-status", action="store_true", help="Report local Hugging Face GGUF cache status.")
-    parser.add_argument("--prefetch-model", action="store_true", help="Download the configured GGUF before serving.")
-    parser.add_argument("--install-llama-cpp", action="store_true", help="Build/install managed upstream llama.cpp.")
-    parser.add_argument("--warm-servers", action="store_true", help="List managed warm llama.cpp servers.")
-    parser.add_argument("--evict-warm-servers", action="store_true", help="Evict managed warm llama.cpp servers.")
-    parser.add_argument("--force-download", action="store_true", help="Force re-download when prefetching.")
-    parser.add_argument("--local-files-only", action="store_true", help="Do not use the network when prefetching.")
-    parser.add_argument("--auto-install", action="store_true", help="Run the configured installer if llama.cpp is missing.")
-    parser.add_argument("--auto-update", action="store_true", help="Run the configured updater/installer before serving.")
-    parser.add_argument("--model-ref", default="", help="HF model ref accepted by llama.cpp, e.g. repo:quant.")
-    parser.add_argument("--hf-file", default="", help="Exact Hugging Face GGUF file passed as --hf-file.")
+    parser.add_argument(
+        "--model-status", action="store_true", help="Report local Hugging Face GGUF cache status."
+    )
+    parser.add_argument(
+        "--prefetch-model", action="store_true", help="Download the configured GGUF before serving."
+    )
+    parser.add_argument(
+        "--install-llama-cpp", action="store_true", help="Build/install managed upstream llama.cpp."
+    )
+    parser.add_argument(
+        "--warm-servers", action="store_true", help="List managed warm llama.cpp servers."
+    )
+    parser.add_argument(
+        "--evict-warm-servers", action="store_true", help="Evict managed warm llama.cpp servers."
+    )
+    parser.add_argument(
+        "--force-download", action="store_true", help="Force re-download when prefetching."
+    )
+    parser.add_argument(
+        "--local-files-only", action="store_true", help="Do not use the network when prefetching."
+    )
+    parser.add_argument(
+        "--auto-install",
+        action="store_true",
+        help="Run the configured installer if llama.cpp is missing.",
+    )
+    parser.add_argument(
+        "--auto-update",
+        action="store_true",
+        help="Run the configured updater/installer before serving.",
+    )
+    parser.add_argument(
+        "--model-ref", default="", help="HF model ref accepted by llama.cpp, e.g. repo:quant."
+    )
+    parser.add_argument(
+        "--hf-file", default="", help="Exact Hugging Face GGUF file passed as --hf-file."
+    )
     parser.add_argument("--model-path", default="", help="Local GGUF path to serve with -m.")
-    parser.add_argument("--model-cid", default="", help="Optional IPFS/IPFS Kit CID used to populate the local model cache.")
-    parser.add_argument("--model-cache", action="store_true", help="Materialize GGUFs into local content-addressed cache.")
-    parser.add_argument("--model-cache-backend", default="", help="Model cache backend: local, auto, or ipfs_kit.")
-    parser.add_argument("--async-model-hash", dest="async_model_hash", action="store_true", default=None, help="Hash large downloaded GGUFs in a detached background finalizer.")
-    parser.add_argument("--sync-model-hash", dest="async_model_hash", action="store_false", help="Hash downloaded GGUFs before returning from prefetch/startup.")
-    parser.add_argument("--async-model-hash-min-bytes", type=int, default=-1, help="Minimum model size for async hashing; defaults to 1 GiB.")
-    parser.add_argument("--track-model", dest="track_model", action="store_true", default=True, help="Record cache and launch metadata in ModelManager.")
-    parser.add_argument("--no-track-model", dest="track_model", action="store_false", help="Do not update ModelManager metadata.")
-    parser.add_argument("--model-manager-path", default="", help="ModelManager JSON/DuckDB path for llama.cpp model records.")
-    parser.add_argument("--pin-model", action="store_true", help="Request pinning when the model cache uses IPFS Kit.")
+    parser.add_argument(
+        "--model-cid",
+        default="",
+        help="Optional IPFS/IPFS Kit CID used to populate the local model cache.",
+    )
+    parser.add_argument(
+        "--model-cache",
+        action="store_true",
+        help="Materialize GGUFs into local content-addressed cache.",
+    )
+    parser.add_argument(
+        "--model-cache-backend", default="", help="Model cache backend: local, auto, or ipfs_kit."
+    )
+    parser.add_argument(
+        "--async-model-hash",
+        dest="async_model_hash",
+        action="store_true",
+        default=None,
+        help="Hash large downloaded GGUFs in a detached background finalizer.",
+    )
+    parser.add_argument(
+        "--sync-model-hash",
+        dest="async_model_hash",
+        action="store_false",
+        help="Hash downloaded GGUFs before returning from prefetch/startup.",
+    )
+    parser.add_argument(
+        "--async-model-hash-min-bytes",
+        type=int,
+        default=-1,
+        help="Minimum model size for async hashing; defaults to 1 GiB.",
+    )
+    parser.add_argument(
+        "--track-model",
+        dest="track_model",
+        action="store_true",
+        default=True,
+        help="Record cache and launch metadata in ModelManager.",
+    )
+    parser.add_argument(
+        "--no-track-model",
+        dest="track_model",
+        action="store_false",
+        help="Do not update ModelManager metadata.",
+    )
+    parser.add_argument(
+        "--model-manager-path",
+        default="",
+        help="ModelManager JSON/DuckDB path for llama.cpp model records.",
+    )
+    parser.add_argument(
+        "--pin-model",
+        action="store_true",
+        help="Request pinning when the model cache uses IPFS Kit.",
+    )
     parser.add_argument("--finalize-model-artifact", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--finalize-source-path", default="", help=argparse.SUPPRESS)
     parser.add_argument("--finalize-source-backend", default="hf", help=argparse.SUPPRESS)
     parser.add_argument("--finalize-content-cid", default="", help=argparse.SUPPRESS)
     parser.add_argument("--finalize-job-path", default="", help=argparse.SUPPRESS)
-    parser.add_argument("--finalize-ipfs-remote-attempted", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument("--finalize-ipfs-remote-loaded", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--finalize-ipfs-remote-attempted", action="store_true", help=argparse.SUPPRESS
+    )
+    parser.add_argument(
+        "--finalize-ipfs-remote-loaded", action="store_true", help=argparse.SUPPRESS
+    )
     parser.add_argument("--host", default="", help="Server host.")
     parser.add_argument("--port", type=int, default=0, help="Server port.")
     parser.add_argument("--context-size", type=int, default=0, help="Context window passed as -c.")
     parser.add_argument("--threads", type=int, default=0, help="Thread count passed as -t.")
-    parser.add_argument("--gpu-layers", default=None, help="GPU layer count passed as -ngl; use 'auto' for analytical safe sizing.")
+    parser.add_argument(
+        "--gpu-layers",
+        default=None,
+        help="GPU layer count passed as -ngl; use 'auto' for analytical safe sizing.",
+    )
     parser.add_argument("--extra-args", default="", help="Additional llama.cpp server args.")
     parser.add_argument("--log-dir", default="", help="Directory for server logs.")
-    parser.add_argument("--auto-size", action="store_true", help="Apply analytical safe -ngl, -b, and -ub sizing.")
-    parser.add_argument("--auto-size-plan", action="store_true", help="Print the analytical sizing plan and command, then exit.")
-    parser.add_argument("--required-free-mib", type=int, default=0, help="Free-device-memory target for warm eviction.")
+    parser.add_argument(
+        "--auto-size", action="store_true", help="Apply analytical safe -ngl, -b, and -ub sizing."
+    )
+    parser.add_argument(
+        "--auto-size-plan",
+        action="store_true",
+        help="Print the analytical sizing plan and command, then exit.",
+    )
+    parser.add_argument(
+        "--required-free-mib",
+        type=int,
+        default=0,
+        help="Free-device-memory target for warm eviction.",
+    )
     parser.add_argument("--startup-timeout-seconds", type=float, default=60.0)
     args = parser.parse_args(argv)
 

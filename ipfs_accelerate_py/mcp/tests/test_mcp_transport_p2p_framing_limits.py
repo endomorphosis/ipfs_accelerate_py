@@ -16,7 +16,12 @@ class TestMCPP2PFraming(unittest.TestCase):
     """Validate deterministic framing and max-size enforcement."""
 
     def test_frame_round_trip(self) -> None:
-        payload = {"jsonrpc": "2.0", "id": "1", "method": "tools/list", "params": {"category": "ipfs"}}
+        payload = {
+            "jsonrpc": "2.0",
+            "id": "1",
+            "method": "tools/list",
+            "params": {"category": "ipfs"},
+        }
 
         frame = encode_jsonrpc_frame(payload)
         decoded, consumed = decode_jsonrpc_frame(frame)

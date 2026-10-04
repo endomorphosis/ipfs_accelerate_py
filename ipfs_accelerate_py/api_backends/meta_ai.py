@@ -33,8 +33,10 @@ except ImportError:
         from test.common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
     except ImportError:
         HAVE_STORAGE_WRAPPER = False
+
         def get_storage_wrapper(*args, **kwargs):
             return None
+
 
 try:
     from ..datasets_integration import (
@@ -42,6 +44,7 @@ try:
         ProvenanceLogger,
         DatasetsManager,
     )
+
     HAVE_DATASETS_INTEGRATION = True
 except ImportError:
     try:
@@ -50,6 +53,7 @@ except ImportError:
             ProvenanceLogger,
             DatasetsManager,
         )
+
         HAVE_DATASETS_INTEGRATION = True
     except ImportError:
         HAVE_DATASETS_INTEGRATION = False
@@ -59,6 +63,7 @@ except ImportError:
 
 try:
     import requests as _requests_lib
+
     REQUESTS_AVAILABLE = True
 except ImportError:
     REQUESTS_AVAILABLE = False
@@ -245,7 +250,7 @@ class meta_ai(BaseAPIBackend):
                 return data
             except Exception as exc:
                 last_exc = exc
-                retry_after = 2 ** attempt
+                retry_after = 2**attempt
                 time.sleep(min(retry_after, 16))
 
         self.track_request_result(False)
@@ -284,13 +289,7 @@ class meta_ai(BaseAPIBackend):
             "max_tokens",
             "timeout",
         }
-        payload.update(
-            {
-                k: v
-                for k, v in kwargs.items()
-                if v is not None and k not in ignored
-            }
-        )
+        payload.update({k: v for k, v in kwargs.items() if v is not None and k not in ignored})
         return self._make_request("chat/completions", payload, timeout=kwargs.get("timeout"))
 
     def generate(

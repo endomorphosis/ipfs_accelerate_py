@@ -46,16 +46,10 @@ from fixed_web_platform.resource_pool_integration import create_ipfs_web_acceler
 accelerator = create_ipfs_web_accelerator()
 
 # Load a model with WebGPU acceleration
-model = accelerator.accelerate_model(
-    model_name="bert-base-uncased",
-    platform="webgpu"
-)
+model = accelerator.accelerate_model(model_name="bert-base-uncased", platform="webgpu")
 
 # Create input data
-inputs = {
-    "input_ids": [101, 2023, 2003, 1037, 3231, 102],
-    "attention_mask": [1, 1, 1, 1, 1, 1]
-}
+inputs = {"input_ids": [101, 2023, 2003, 1037, 3231, 102], "attention_mask": [1, 1, 1, 1, 1, 1]}
 
 # Run inference
 result = accelerator.run_inference("bert-base-uncased", inputs)
@@ -181,14 +175,14 @@ The integration supports various quantization levels for reduced memory usage an
 model = accelerator.accelerate_model(
     model_name="bert-base-uncased",
     platform="webgpu",
-    quantization={"bits": 8, "mixed_precision": False}
+    quantization={"bits": 8, "mixed_precision": False},
 )
 
 # Use 4-bit mixed precision quantization
 model = accelerator.accelerate_model(
     model_name="bert-base-uncased",
     platform="webgpu",
-    quantization={"bits": 4, "mixed_precision": True}
+    quantization={"bits": 4, "mixed_precision": True},
 )
 ```
 
@@ -257,7 +251,7 @@ The system now automatically selects the optimal browser based on historical per
 model = accelerator.accelerate_model(
     model_name="whisper-tiny",
     model_type="audio",
-    use_performance_history=True  # Will select Firefox for audio models
+    use_performance_history=True,  # Will select Firefox for audio models
 )
 
 # Access performance trend analysis
@@ -282,7 +276,7 @@ sharding_manager = ModelShardingManager(
     num_shards=4,
     shard_type="layer",
     model_type="text",
-    enable_fault_tolerance=True
+    enable_fault_tolerance=True,
 )
 
 # Initialize model sharding
@@ -358,6 +352,7 @@ The integration is automatically registered with the global resource pool:
 ```python
 # Get integration from resource pool
 from resource_pool import get_global_resource_pool
+
 integration = get_global_resource_pool().get_resource("ipfs_web_integration")
 
 # Using existing integration
@@ -453,11 +448,13 @@ Common issues and solutions:
 5. For audio and vision models, use model-specific timeouts:
    ```python
    # Configure longer timeouts for audio models
-   integration.configure_model_timeouts({
-       'audio': 3.0,       # 3x standard timeout for audio
-       'vision': 2.0,      # 2x standard timeout for vision
-       'text': 1.5         # 1.5x standard timeout for text
-   })
+   integration.configure_model_timeouts(
+       {
+           "audio": 3.0,  # 3x standard timeout for audio
+           "vision": 2.0,  # 2x standard timeout for vision
+           "text": 1.5,  # 1.5x standard timeout for text
+       }
+   )
    ```
 
 ### Memory-Related Issues
@@ -471,11 +468,13 @@ Common issues and solutions:
 4. For very large models, use cross-browser sharding: `enable_cross_browser_sharding=True`
 5. Configure maximum memory usage per browser:
    ```python
-   integration.configure_memory_limits({
-       'chrome': 2048,     # 2GB for Chrome
-       'firefox': 1536,    # 1.5GB for Firefox
-       'edge': 1024        # 1GB for Edge
-   })
+   integration.configure_memory_limits(
+       {
+           "chrome": 2048,  # 2GB for Chrome
+           "firefox": 1536,  # 1.5GB for Firefox
+           "edge": 1024,  # 1GB for Edge
+       }
+   )
    ```
 
 ## Recent Enhancements

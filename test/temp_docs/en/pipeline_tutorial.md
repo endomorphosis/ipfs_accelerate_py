@@ -33,7 +33,7 @@ from transformers import pipeline
 
 pipeline = pipeline(task="text-generation", model="google/gemma-2-2b")
 pipeline("the secret to baking a really good cake is ")
-[{'generated_text': 'the secret to baking a really good cake is 1. the right ingredients 2. the'}]
+[{"generated_text": "the secret to baking a really good cake is 1. the right ingredients 2. the"}]
 ```
 
 When you have more than one input, pass them as a list.
@@ -43,8 +43,14 @@ from transformers import pipeline
 
 pipeline = pipeline(task="text-generation", model="google/gemma-2-2b", device="cuda")
 pipeline(["the secret to baking a really good cake is ", "a baguette is "])
-[[{'generated_text': 'the secret to baking a really good cake is 1. the right ingredients 2. the'}],
- [{'generated_text': 'a baguette is 100% bread.\n\na baguette is 100%'}]]
+[
+    [
+        {
+            "generated_text": "the secret to baking a really good cake is 1. the right ingredients 2. the"
+        }
+    ],
+    [{"generated_text": "a baguette is 100% bread.\n\na baguette is 100%"}],
+]
 ```
 
 This guide will introduce you to the [`Pipeline`], demonstrate its features, and show how to configure its various parameters.
@@ -62,8 +68,14 @@ Here are some examples of how to use [`Pipeline`] for different tasks and modali
 from transformers import pipeline
 
 pipeline = pipeline(task="summarization", model="google/pegasus-billsum")
-pipeline("Section was formerly set out as section 44 of this title. As originally enacted, this section contained two further provisions that 'nothing in this act shall be construed as in any wise affecting the grant of lands made to the State of California by virtue of the act entitled 'An act authorizing a grant to the State of California of the Yosemite Valley, and of the land' embracing the Mariposa Big-Tree Grove, approved June thirtieth, eighteen hundred and sixty-four; or as affecting any bona-fide entry of land made within the limits above described under any law of the United States prior to the approval of this act.' The first quoted provision was omitted from the Code because the land, granted to the state of California pursuant to the Act cite, was receded to the United States. Resolution June 11, 1906, No. 27, accepted the recession.")
-[{'summary_text': 'Instructs the Secretary of the Interior to convey to the State of California all right, title, and interest of the United States in and to specified lands which are located within the Yosemite and Mariposa National Forests, California.'}]
+pipeline(
+    "Section was formerly set out as section 44 of this title. As originally enacted, this section contained two further provisions that 'nothing in this act shall be construed as in any wise affecting the grant of lands made to the State of California by virtue of the act entitled 'An act authorizing a grant to the State of California of the Yosemite Valley, and of the land' embracing the Mariposa Big-Tree Grove, approved June thirtieth, eighteen hundred and sixty-four; or as affecting any bona-fide entry of land made within the limits above described under any law of the United States prior to the approval of this act.' The first quoted provision was omitted from the Code because the land, granted to the state of California pursuant to the Act cite, was receded to the United States. Resolution June 11, 1906, No. 27, accepted the recession."
+)
+[
+    {
+        "summary_text": "Instructs the Secretary of the Interior to convey to the State of California all right, title, and interest of the United States in and to specified lands which are located within the Yosemite and Mariposa National Forests, California."
+    }
+]
 ```
 
 </hfoption>
@@ -74,7 +86,9 @@ from transformers import pipeline
 
 pipeline = pipeline(task="automatic-speech-recognition", model="openai/whisper-large-v3")
 pipeline("https://huggingface.co/datasets/Narsil/asr_dummy/resolve/main/mlk.flac")
-{'text': ' I have a dream that one day this nation will rise up and live out the true meaning of its creed.'}
+{
+    "text": " I have a dream that one day this nation will rise up and live out the true meaning of its creed."
+}
 ```
 
 </hfoption>
@@ -84,14 +98,19 @@ pipeline("https://huggingface.co/datasets/Narsil/asr_dummy/resolve/main/mlk.flac
 from transformers import pipeline
 
 pipeline = pipeline(task="image-classification", model="google/vit-base-patch16-224")
-pipeline(images="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/pipeline-cat-chonk.jpeg")
-[{'label': 'lynx, catamount', 'score': 0.43350091576576233},
- {'label': 'cougar, puma, catamount, mountain lion, painter, panther, Felis concolor',
-  'score': 0.034796204417943954},
- {'label': 'snow leopard, ounce, Panthera uncia',
-  'score': 0.03240183740854263},
- {'label': 'Egyptian cat', 'score': 0.02394474856555462},
- {'label': 'tiger cat', 'score': 0.02288915030658245}]
+pipeline(
+    images="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/pipeline-cat-chonk.jpeg"
+)
+[
+    {"label": "lynx, catamount", "score": 0.43350091576576233},
+    {
+        "label": "cougar, puma, catamount, mountain lion, painter, panther, Felis concolor",
+        "score": 0.034796204417943954,
+    },
+    {"label": "snow leopard, ounce, Panthera uncia", "score": 0.03240183740854263},
+    {"label": "Egyptian cat", "score": 0.02394474856555462},
+    {"label": "tiger cat", "score": 0.02288915030658245},
+]
 ```
 
 </hfoption>
@@ -105,7 +124,7 @@ pipeline(
     image="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/transformers/tasks/idefics-few-shot.jpg",
     question="What is in the image?",
 )
-[{'answer': 'statue of liberty'}]
+[{"answer": "statue of liberty"}]
 ```
 
 </hfoption>
@@ -174,11 +193,23 @@ In the example below, when there are 4 inputs and `batch_size` is set to 2, [`Pi
 from transformers import pipeline
 
 pipeline = pipeline(task="text-generation", model="google/gemma-2-2b", device="cuda", batch_size=2)
-pipeline(["the secret to baking a really good cake is", "a baguette is", "paris is the", "hotdogs are"])
-[[{'generated_text': 'the secret to baking a really good cake is to use a good cake mix.\n\ni’'}],
- [{'generated_text': 'a baguette is'}],
- [{'generated_text': 'paris is the most beautiful city in the world.\n\ni’ve been to paris 3'}],
- [{'generated_text': 'hotdogs are a staple of the american diet. they are a great source of protein and can'}]]
+pipeline(
+    ["the secret to baking a really good cake is", "a baguette is", "paris is the", "hotdogs are"]
+)
+[
+    [
+        {
+            "generated_text": "the secret to baking a really good cake is to use a good cake mix.\n\ni’"
+        }
+    ],
+    [{"generated_text": "a baguette is"}],
+    [{"generated_text": "paris is the most beautiful city in the world.\n\ni’ve been to paris 3"}],
+    [
+        {
+            "generated_text": "hotdogs are a staple of the american diet. they are a great source of protein and can"
+        }
+    ],
+]
 ```
 
 Another good use case for batch inference is for streaming data in [`Pipeline`].
@@ -190,7 +221,11 @@ import datasets
 
 # KeyDataset is a utility that returns the item in the dict returned by the dataset
 dataset = datasets.load_dataset("imdb", name="plain_text", split="unsupervised")
-pipeline = pipeline(task="text-classification", model="distilbert/distilbert-base-uncased-finetuned-sst-2-english", device="cuda")
+pipeline = pipeline(
+    task="text-classification",
+    model="distilbert/distilbert-base-uncased-finetuned-sst-2-english",
+    device="cuda",
+)
 for out in pipeline(KeyDataset(dataset, "text"), batch_size=8, truncation="only_first"):
     print(out)
 ```
@@ -219,29 +254,36 @@ Pass the `return_timestamps="word"` parameter to [`Pipeline`] to return when eac
 from transformers import pipeline
 
 pipeline = pipeline(task="automatic-speech-recognition", model="openai/whisper-large-v3")
-pipeline(audio="https://huggingface.co/datasets/Narsil/asr_dummy/resolve/main/mlk.flac", return_timestamp="word")
-{'text': ' I have a dream that one day this nation will rise up and live out the true meaning of its creed.',
- 'chunks': [{'text': ' I', 'timestamp': (0.0, 1.1)},
-  {'text': ' have', 'timestamp': (1.1, 1.44)},
-  {'text': ' a', 'timestamp': (1.44, 1.62)},
-  {'text': ' dream', 'timestamp': (1.62, 1.92)},
-  {'text': ' that', 'timestamp': (1.92, 3.7)},
-  {'text': ' one', 'timestamp': (3.7, 3.88)},
-  {'text': ' day', 'timestamp': (3.88, 4.24)},
-  {'text': ' this', 'timestamp': (4.24, 5.82)},
-  {'text': ' nation', 'timestamp': (5.82, 6.78)},
-  {'text': ' will', 'timestamp': (6.78, 7.36)},
-  {'text': ' rise', 'timestamp': (7.36, 7.88)},
-  {'text': ' up', 'timestamp': (7.88, 8.46)},
-  {'text': ' and', 'timestamp': (8.46, 9.2)},
-  {'text': ' live', 'timestamp': (9.2, 10.34)},
-  {'text': ' out', 'timestamp': (10.34, 10.58)},
-  {'text': ' the', 'timestamp': (10.58, 10.8)},
-  {'text': ' true', 'timestamp': (10.8, 11.04)},
-  {'text': ' meaning', 'timestamp': (11.04, 11.4)},
-  {'text': ' of', 'timestamp': (11.4, 11.64)},
-  {'text': ' its', 'timestamp': (11.64, 11.8)},
-  {'text': ' creed.', 'timestamp': (11.8, 12.3)}]}
+pipeline(
+    audio="https://huggingface.co/datasets/Narsil/asr_dummy/resolve/main/mlk.flac",
+    return_timestamp="word",
+)
+{
+    "text": " I have a dream that one day this nation will rise up and live out the true meaning of its creed.",
+    "chunks": [
+        {"text": " I", "timestamp": (0.0, 1.1)},
+        {"text": " have", "timestamp": (1.1, 1.44)},
+        {"text": " a", "timestamp": (1.44, 1.62)},
+        {"text": " dream", "timestamp": (1.62, 1.92)},
+        {"text": " that", "timestamp": (1.92, 3.7)},
+        {"text": " one", "timestamp": (3.7, 3.88)},
+        {"text": " day", "timestamp": (3.88, 4.24)},
+        {"text": " this", "timestamp": (4.24, 5.82)},
+        {"text": " nation", "timestamp": (5.82, 6.78)},
+        {"text": " will", "timestamp": (6.78, 7.36)},
+        {"text": " rise", "timestamp": (7.36, 7.88)},
+        {"text": " up", "timestamp": (7.88, 8.46)},
+        {"text": " and", "timestamp": (8.46, 9.2)},
+        {"text": " live", "timestamp": (9.2, 10.34)},
+        {"text": " out", "timestamp": (10.34, 10.58)},
+        {"text": " the", "timestamp": (10.58, 10.8)},
+        {"text": " true", "timestamp": (10.8, 11.04)},
+        {"text": " meaning", "timestamp": (11.04, 11.4)},
+        {"text": " of", "timestamp": (11.4, 11.64)},
+        {"text": " its", "timestamp": (11.64, 11.8)},
+        {"text": " creed.", "timestamp": (11.8, 12.3)},
+    ],
+}
 ```
 
 </hfoption>
@@ -256,10 +298,20 @@ from transformers import pipeline
 
 pipeline = pipeline(task="text-generation", model="openai-community/gpt2")
 pipeline("the secret to baking a good cake is", num_return_sequences=4, return_full_text=False)
-[{'generated_text': ' how easy it is for me to do it with my hands. You must not go nuts, or the cake is going to fall out.'},
- {'generated_text': ' to prepare the cake before baking. The key is to find the right type of icing to use and that icing makes an amazing frosting cake.\n\nFor a good icing cake, we give you the basics'},
- {'generated_text': " to remember to soak it in enough water and don't worry about it sticking to the wall. In the meantime, you could remove the top of the cake and let it dry out with a paper towel.\n"},
- {'generated_text': ' the best time to turn off the oven and let it stand 30 minutes. After 30 minutes, stir and bake a cake in a pan until fully moist.\n\nRemove the cake from the heat for about 12'}]
+[
+    {
+        "generated_text": " how easy it is for me to do it with my hands. You must not go nuts, or the cake is going to fall out."
+    },
+    {
+        "generated_text": " to prepare the cake before baking. The key is to find the right type of icing to use and that icing makes an amazing frosting cake.\n\nFor a good icing cake, we give you the basics"
+    },
+    {
+        "generated_text": " to remember to soak it in enough water and don't worry about it sticking to the wall. In the meantime, you could remove the top of the cake and let it dry out with a paper towel.\n"
+    },
+    {
+        "generated_text": " the best time to turn off the oven and let it stand 30 minutes. After 30 minutes, stir and bake a cake in a pan until fully moist.\n\nRemove the cake from the heat for about 12"
+    },
+]
 ```
 
 </hfoption>
@@ -282,7 +334,7 @@ all_model_outputs = []
 for preprocessed in pipeline.preprocess(inputs):
     model_outputs = pipeline.model_forward(preprocessed)
     all_model_outputs.append(model_outputs)
-outputs =pipeline.postprocess(all_model_outputs)
+outputs = pipeline.postprocess(all_model_outputs)
 
 # Pipeline
 preprocessed = pipeline.preprocess(inputs)
@@ -300,7 +352,11 @@ from transformers import pipeline
 from datasets import load_dataset
 
 dataset = datasets.load_dataset("imdb", name="plain_text", split="unsupervised")
-pipeline = pipeline(task="text-classification", model="distilbert/distilbert-base-uncased-finetuned-sst-2-english", device="cuda")
+pipeline = pipeline(
+    task="text-classification",
+    model="distilbert/distilbert-base-uncased-finetuned-sst-2-english",
+    device="cuda",
+)
 for out in pipeline(KeyDataset(dataset, "text"), batch_size=8, truncation="only_first"):
     print(out)
 ```
@@ -311,6 +367,7 @@ Other ways to run inference on large datasets with [`Pipeline`] include using an
 def data():
     for i in range(1000):
         yield f"My example {i}"
+
 
 pipeline = pipeline(model="openai-community/gpt2", device=0)
 generated_characters = 0
@@ -339,7 +396,12 @@ Lastly, [`Pipeline`] also accepts quantized models to reduce memory usage even f
 import torch
 from transformers import pipeline, BitsAndBytesConfig
 
-pipeline = pipeline(model="google/gemma-7b", torch_dtype=torch.bfloat16, device_map="auto", model_kwargs={"quantization_config": BitsAndBytesConfig(load_in_8bit=True)})
+pipeline = pipeline(
+    model="google/gemma-7b",
+    torch_dtype=torch.bfloat16,
+    device_map="auto",
+    model_kwargs={"quantization_config": BitsAndBytesConfig(load_in_8bit=True)},
+)
 pipeline("the secret to baking a good cake is ")
-[{'generated_text': 'the secret to baking a good cake is 1. the right ingredients 2. the right'}]
+[{"generated_text": "the secret to baking a good cake is 1. the right ingredients 2. the right"}]
 ```

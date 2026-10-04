@@ -159,7 +159,7 @@ result = adapter.predict_optimal_hardware(
     model_family="embedding",
     batch_size=8,
     precision="fp16",
-    available_hardware=["cuda", "cpu", "rocm"]
+    available_hardware=["cuda", "cpu", "rocm"],
 )
 
 # Predict performance
@@ -168,7 +168,7 @@ performance = adapter.predict_performance(
     model_family="embedding",
     hardware="cuda",
     batch_size=8,
-    precision="fp16"
+    precision="fp16",
 )
 
 # Record actual measurement
@@ -180,14 +180,16 @@ measurement = adapter.record_actual_performance(
     precision="fp16",
     throughput=123.45,
     latency=7.89,
-    memory_usage=1024.5
+    memory_usage=1024.5,
 )
 ```
 
 ### ML Model Integration
 
 ```python
-from duckdb_api.predictive_performance.repository_adapter import ModelPerformancePredictorDuckDBAdapter
+from duckdb_api.predictive_performance.repository_adapter import (
+    ModelPerformancePredictorDuckDBAdapter,
+)
 from sklearn.ensemble import RandomForestRegressor
 import numpy as np
 
@@ -197,7 +199,7 @@ adapter = ModelPerformancePredictorDuckDBAdapter(repository=repository)
 
 # Train a model
 X = np.random.rand(100, 4)  # Features: model_size, batch_size, etc.
-y = np.random.rand(100)     # Target: throughput or latency
+y = np.random.rand(100)  # Target: throughput or latency
 features = ["model_size", "batch_size", "sequence_length", "precision_numeric"]
 model = RandomForestRegressor().fit(X, y)
 
@@ -211,14 +213,12 @@ model_id = adapter.store_model(
     features=features,
     training_score=0.95,
     validation_score=0.92,
-    test_score=0.90
+    test_score=0.90,
 )
 
 # Load the model later
 loaded_model, metadata = adapter.load_model(
-    target_metric="throughput",
-    hardware_platform="cuda",
-    model_family="embedding"
+    target_metric="throughput", hardware_platform="cuda", model_family="embedding"
 )
 ```
 
@@ -245,17 +245,15 @@ recommendation = adapter.predict_optimal_hardware(model_name="bert-base-uncased"
 The ModelPerformancePredictorDuckDBAdapter class integrates with the existing model_performance_predictor module, adding persistent storage for ML models and predictions.
 
 ```python
-from duckdb_api.predictive_performance.repository_adapter import ModelPerformancePredictorDuckDBAdapter
+from duckdb_api.predictive_performance.repository_adapter import (
+    ModelPerformancePredictorDuckDBAdapter,
+)
 
 # Create adapter
 adapter = ModelPerformancePredictorDuckDBAdapter()
 
 # Use the adapter to make predictions and store them in DuckDB
-prediction = adapter.predict(
-    model_name="bert-base-uncased",
-    hardware_platform="cuda",
-    batch_size=8
-)
+prediction = adapter.predict(model_name="bert-base-uncased", hardware_platform="cuda", batch_size=8)
 ```
 
 ## Advanced Features
@@ -267,9 +265,7 @@ The system automatically calculates prediction errors when measurements are reco
 ```python
 # Analyze prediction accuracy
 stats = repository.get_prediction_accuracy_stats(
-    model_name="bert-base-uncased",
-    hardware_platform="cuda",
-    metric="throughput"
+    model_name="bert-base-uncased", hardware_platform="cuda", metric="throughput"
 )
 
 # Get R² coefficient of determination
@@ -302,9 +298,7 @@ The system supports recording user feedback on hardware recommendations, enablin
 ```python
 # Record feedback on a recommendation
 adapter.record_recommendation_feedback(
-    recommendation_id="rec-123456",
-    was_accepted=True,
-    user_feedback="Works well for our use case"
+    recommendation_id="rec-123456", was_accepted=True, user_feedback="Works well for our use case"
 )
 
 # Analyze acceptance rate
@@ -344,16 +338,12 @@ print(f"Recommendation acceptance rate: {acceptance_rate:.2%}")
 ```python
 # 1. Predict optimal hardware
 recommendation = adapter.predict_optimal_hardware(
-    model_name="bert-base-uncased",
-    model_family="embedding",
-    batch_size=8,
-    precision="fp16"
+    model_name="bert-base-uncased", model_family="embedding", batch_size=8, precision="fp16"
 )
 
 # 2. Record user feedback
 adapter.record_recommendation_feedback(
-    recommendation_id=recommendation["recommendation_id"],
-    was_accepted=True
+    recommendation_id=recommendation["recommendation_id"], was_accepted=True
 )
 
 # 3. Predict performance on recommended hardware
@@ -362,7 +352,7 @@ performance = adapter.predict_performance(
     model_family="embedding",
     hardware=recommendation["primary_recommendation"],
     batch_size=8,
-    precision="fp16"
+    precision="fp16",
 )
 
 # 4. Record actual performance
@@ -375,13 +365,14 @@ measurement = adapter.record_actual_performance(
     throughput=120.5,
     latency=8.2,
     memory_usage=1050.3,
-    prediction_id=performance["predictions"][recommendation["primary_recommendation"]]["prediction_id"]
+    prediction_id=performance["predictions"][recommendation["primary_recommendation"]][
+        "prediction_id"
+    ],
 )
 
 # 5. Analyze prediction accuracy
 stats = repository.get_prediction_accuracy_stats(
-    model_name="bert-base-uncased",
-    hardware_platform=recommendation["primary_recommendation"]
+    model_name="bert-base-uncased", hardware_platform=recommendation["primary_recommendation"]
 )
 ```
 
@@ -393,24 +384,24 @@ import pandas as pd
 
 # 1. Prepare training data from historical measurements
 measurements = repository.get_measurements(
-    model_family="embedding",
-    hardware_platform="cuda",
-    limit=1000
+    model_family="embedding", hardware_platform="cuda", limit=1000
 )
 
 # Create DataFrame from measurements
-df = pd.DataFrame([
-    {
-        "model_name": m["model_name"],
-        "batch_size": m["batch_size"],
-        "sequence_length": m["sequence_length"],
-        "precision_numeric": 16 if m["precision"] == "fp16" else 32,
-        "throughput": m["throughput"],
-        "latency": m["latency"],
-        "memory_usage": m["memory_usage"]
-    }
-    for m in measurements
-])
+df = pd.DataFrame(
+    [
+        {
+            "model_name": m["model_name"],
+            "batch_size": m["batch_size"],
+            "sequence_length": m["sequence_length"],
+            "precision_numeric": 16 if m["precision"] == "fp16" else 32,
+            "throughput": m["throughput"],
+            "latency": m["latency"],
+            "memory_usage": m["memory_usage"],
+        }
+        for m in measurements
+    ]
+)
 
 # 2. Train a throughput prediction model
 X = df[["batch_size", "sequence_length", "precision_numeric"]]
@@ -427,22 +418,16 @@ model_id = adapter.store_model(
     hardware_platform="cuda",
     model_family="embedding",
     features=["batch_size", "sequence_length", "precision_numeric"],
-    training_score=model_throughput.score(X, y_throughput)
+    training_score=model_throughput.score(X, y_throughput),
 )
 
 # 4. Use the model for prediction
 loaded_model, _ = adapter.load_model(
-    target_metric="throughput",
-    hardware_platform="cuda",
-    model_family="embedding"
+    target_metric="throughput", hardware_platform="cuda", model_family="embedding"
 )
 
 # Make a prediction
-new_config = pd.DataFrame([{
-    "batch_size": 16,
-    "sequence_length": 256,
-    "precision_numeric": 16
-}])
+new_config = pd.DataFrame([{"batch_size": 16, "sequence_length": 256, "precision_numeric": 16}])
 
 predicted_throughput = loaded_model.predict(new_config)[0]
 print(f"Predicted throughput: {predicted_throughput:.2f} items/sec")

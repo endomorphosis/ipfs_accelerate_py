@@ -66,7 +66,9 @@ def _load_cli_tools_api() -> Dict[str, Any]:
             }
         )
     except Exception:
-        logger.warning("Source medical research CLI imports unavailable, using fallback cli medical functions")
+        logger.warning(
+            "Source medical research CLI imports unavailable, using fallback cli medical functions"
+        )
 
         def _scrape_pubmed_fallback(
             query: str,
@@ -228,7 +230,9 @@ def _validate_confidence(value: Any, field: str = "min_confidence") -> Optional[
     return None
 
 
-def _validate_choice(value: Any, field: str, allowed: set[str], optional: bool = False) -> Optional[Dict[str, Any]]:
+def _validate_choice(
+    value: Any, field: str, allowed: set[str], optional: bool = False
+) -> Optional[Dict[str, Any]]:
     if value is None and optional:
         return None
     invalid = _require_string(value, field)
@@ -252,8 +256,7 @@ async def execute_command(
     if not isinstance(command, str) or not command.strip():
         return _error_result("command must be a non-empty string", command=command)
     if args is not None and (
-        not isinstance(args, list)
-        or not all(isinstance(arg, str) and arg.strip() for arg in args)
+        not isinstance(args, list) or not all(isinstance(arg, str) and arg.strip() for arg in args)
     ):
         return _error_result("args must be null or a list of non-empty strings", args=args)
     if not isinstance(timeout_seconds, int) or timeout_seconds < 1:
@@ -268,9 +271,9 @@ async def execute_command(
     try:
         result = await _await_maybe(
             _API["execute_command"](
-            command=clean_command,
-            args=clean_args,
-            timeout_seconds=timeout_seconds,
+                command=clean_command,
+                args=clean_args,
+                timeout_seconds=timeout_seconds,
             )
         )
         envelope = _normalize_payload(result)
@@ -309,7 +312,9 @@ async def scrape_pubmed_cli(
     invalid = _optional_string(email, "email")
     if invalid:
         return invalid
-    invalid = _validate_choice(research_type, "research_type", _PUBMED_RESEARCH_TYPES, optional=True)
+    invalid = _validate_choice(
+        research_type, "research_type", _PUBMED_RESEARCH_TYPES, optional=True
+    )
     if invalid:
         return invalid
     invalid = _optional_string(output, "output")
@@ -648,7 +653,10 @@ def register_native_cli_tools(manager: Any) -> None:
                 "query": {"type": ["string", "null"]},
                 "condition": {"type": ["string", "null"]},
                 "intervention": {"type": ["string", "null"]},
-                "phase": {"type": ["string", "null"], "enum": ["Phase 1", "Phase 2", "Phase 3", "Phase 4", None]},
+                "phase": {
+                    "type": ["string", "null"],
+                    "enum": ["Phase 1", "Phase 2", "Phase 3", "Phase 4", None],
+                },
                 "max_results": {"type": "integer", "minimum": 1, "default": 50},
                 "output": {"type": ["string", "null"]},
                 "format": {"type": "string", "enum": ["json", "table"], "default": "json"},
@@ -668,7 +676,10 @@ def register_native_cli_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "target": {"type": "string", "minLength": 1},
-                "interaction": {"type": ["string", "null"], "enum": ["activation", "binding", "inhibition", None]},
+                "interaction": {
+                    "type": ["string", "null"],
+                    "enum": ["activation", "binding", "inhibition", None],
+                },
                 "min_confidence": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.5},
                 "max_results": {"type": "integer", "minimum": 1, "default": 50},
                 "output": {"type": ["string", "null"]},

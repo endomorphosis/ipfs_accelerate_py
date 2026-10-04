@@ -68,6 +68,7 @@ MODEL_FAMILIES = {
     },
 }
 
+
 def generate_imports():
     """Generate common import statements."""
     return """#!/usr/bin/env python3
@@ -84,6 +85,7 @@ except ImportError:
     # We'll detect hardware manually as fallback
     """
 
+
 def generate_docstring(family_info):
     """Generate file docstring."""
     class_name = family_info.get("class_name", "AutoModel")
@@ -92,6 +94,7 @@ Class-based test file for all {family_info["name"]}-family models.
 This file provides a unified testing interface for:
     - {class_name}
 """'''
+
 
 def generate_basic_imports():
     """Generate basic import statements."""
@@ -119,6 +122,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 """
 
+
 def generate_torch_imports():
     """Generate torch import statements with fallbacks."""
     return """
@@ -132,6 +136,7 @@ except ImportError:
     logger.warning("torch not available, using mock")
 """
 
+
 def generate_transformers_imports():
     """Generate transformers import statements with fallbacks."""
     return """
@@ -144,6 +149,7 @@ except ImportError:
     HAS_TRANSFORMERS = False
     logger.warning("transformers not available, using mock")
 """
+
 
 def generate_tokenizers_imports():
     """Generate tokenizers import statements with fallbacks."""
@@ -159,6 +165,7 @@ except ImportError:
 
 """
 
+
 def generate_sentencepiece_imports():
     """Generate sentencepiece import statements with fallbacks."""
     return """
@@ -172,6 +179,7 @@ except ImportError:
     logger.warning("sentencepiece not available, using mock")
 
 """
+
 
 def generate_pil_imports():
     """Generate PIL import statements with fallbacks."""
@@ -191,11 +199,12 @@ except ImportError:
 
 """
 
+
 def generate_mock_implementations(family_info):
     """Generate mock implementations for missing dependencies."""
     model_type = family_info.get("model_type", "text")
     mock_code = ""
-    
+
     if "tokenizers" in family_info.get("dependencies", []):
         mock_code += """
 if not HAS_TOKENIZERS:
@@ -216,7 +225,7 @@ if not HAS_TOKENIZERS:
         tokenizers.Tokenizer = MockTokenizer
 
 """
-    
+
     if "sentencepiece" in family_info.get("dependencies", []):
         mock_code += """
 if not HAS_SENTENCEPIECE:
@@ -240,7 +249,7 @@ if not HAS_SENTENCEPIECE:
         sentencepiece.SentencePieceProcessor = MockSentencePieceProcessor
 
 """
-    
+
     if "pillow" in family_info.get("dependencies", []):
         mock_code += """
 if not HAS_PIL:
@@ -270,8 +279,9 @@ if not HAS_PIL:
         requests.get = MockRequests.get
 
 """
-    
+
     return mock_code
+
 
 def generate_hardware_check():
     """Generate hardware detection function."""
@@ -312,29 +322,31 @@ def check_hardware():
 HW_CAPABILITIES = check_hardware()
 """
 
+
 def generate_model_registry(family_info):
     """Generate model registry for specific family."""
     registry_name = f"{family_info['name'].upper()}_MODELS_REGISTRY"
-    
+
     registry = f"""
 # Models registry - Maps model IDs to their specific configurations
 {registry_name} = {{
-    "{family_info['base_model']}": {{
-        "description": "{family_info.get('description', family_info['name'] + ' base model')}",
-        "class": "{family_info['class_name']}",
+    "{family_info["base_model"]}": {{
+        "description": "{family_info.get("description", family_info["name"] + " base model")}",
+        "class": "{family_info["class_name"]}",
     }},
 """
-    
+
     # Add additional models if specified
     for model_id, model_info in family_info.get("additional_models", {}).items():
         registry += f"""    "{model_id}": {{
-        "description": "{model_info.get('description', model_id)}",
-        "class": "{model_info.get('class', family_info['class_name'])}",
+        "description": "{model_info.get("description", model_id)}",
+        "class": "{model_info.get("class", family_info["class_name"])}",
     }},
 """
-    
+
     registry += "}\n"
     return registry
+
 
 def generate_test_class(family_info):
     """Generate test class definition."""
@@ -342,10 +354,10 @@ def generate_test_class(family_info):
     registry_name = f"{family_info['name'].upper()}_MODELS_REGISTRY"
     base_model = family_info.get("base_model", family_info.get("model_id", ""))
     model_type = family_info.get("model_type", "text")
-    
+
     init_method = f"""
 class {class_name}:
-    \"\"\"Base test class for all {family_info['name']}-family models.\"\"\"
+    \"\"\"Base test class for all {family_info["name"]}-family models.\"\"\"
     
     def __init__(self, model_id=None):
         \"\"\"Initialize the test class for a specific model or default.\"\"\"
@@ -359,24 +371,24 @@ class {class_name}:
             self.model_info = {registry_name}[self.model_id]
             
         # Define model parameters
-        self.task = "{family_info.get('task', 'text-classification')}"
+        self.task = "{family_info.get("task", "text-classification")}"
         self.class_name = self.model_info["class"]
         self.description = self.model_info["description"]
         
         # Define test inputs
 """
-    
+
     # Add appropriate test inputs based on model type
     if model_type == "text":
-        init_method += f"""        self.test_text = "{family_info.get('test_text', 'Test input text.')}"
+        init_method += f"""        self.test_text = "{family_info.get("test_text", "Test input text.")}"
 """
     elif model_type == "vision":
-        init_method += f"""        self.test_image_url = "{family_info.get('test_image_url', 'http://images.cocodataset.org/val2017/000000039769.jpg')}"
+        init_method += f"""        self.test_image_url = "{family_info.get("test_image_url", "http://images.cocodataset.org/val2017/000000039769.jpg")}"
 """
     elif model_type == "audio":
-        init_method += f"""        self.test_audio = "{family_info.get('test_audio', 'test_audio.wav')}"
+        init_method += f"""        self.test_audio = "{family_info.get("test_audio", "test_audio.wav")}"
 """
-    
+
     # Add hardware preference detection
     init_method += """
         # Configure hardware preference
@@ -407,15 +419,16 @@ class {class_name}:
         self.examples = []
         self.performance_stats = {}
 """
-    
+
     return init_method
+
 
 def generate_pipeline_input_preparation(family_info):
     """Generate code to prepare input for pipeline."""
     task = family_info.get("task", "text-classification")
     model_type = family_info.get("model_type", "text")
     architecture_type = family_info.get("architecture_type", "encoder_only")
-    
+
     if model_type == "text":
         return "pipeline_input = self.test_text"
     elif model_type == "vision":
@@ -437,14 +450,15 @@ def generate_pipeline_input_preparation(family_info):
     else:
         return "pipeline_input = None  # Default empty input"
 
+
 def generate_tokenizer_initialization(family_info):
     """Generate tokenizer initialization code specific to each model type."""
     model_type = family_info.get("model_type", "text")
     architecture_type = family_info.get("architecture_type", "encoder_only")
-    
+
     if model_type != "text":
         return ""
-    
+
     if architecture_type == "decoder_only":
         # GPT-2 style models need pad_token fix
         return """
@@ -459,35 +473,36 @@ def generate_tokenizer_initialization(family_info):
     else:
         return ""
 
+
 def apply_indentation(code, base_indent=0):
     """
     Apply consistent indentation to code blocks.
-    
+
     Args:
         code: The code string to indent
         base_indent: The base indentation level (number of spaces)
-        
+
     Returns:
         Properly indented code string
     """
     # Split the code into lines
-    lines = code.strip().split('\n')
-    
+    lines = code.strip().split("\n")
+
     # Determine the minimum indentation of non-empty lines
-    min_indent = float('inf')
+    min_indent = float("inf")
     for line in lines:
         if line.strip():  # Skip empty lines
             leading_spaces = len(line) - len(line.lstrip())
             min_indent = min(min_indent, leading_spaces)
-    
+
     # If no indentation found, set to 0
-    if min_indent == float('inf'):
+    if min_indent == float("inf"):
         min_indent = 0
-    
+
     # Remove the minimum indentation from all lines and add the base indentation
     indented_lines = []
-    indent_spaces = ' ' * base_indent
-    
+    indent_spaces = " " * base_indent
+
     for line in lines:
         if line.strip():  # If not an empty line
             # Remove original indentation and add new base indentation
@@ -496,16 +511,17 @@ def apply_indentation(code, base_indent=0):
         else:
             # For empty lines, just add base indentation
             indented_lines.append(indent_spaces)
-    
+
     # Join the lines back into a single string
-    return '\n'.join(indented_lines)
+    return "\n".join(indented_lines)
+
 
 def generate_test_pipeline(family_info):
     """Generate pipeline test method."""
     model_type = family_info.get("model_type", "text")
     architecture_type = family_info.get("architecture_type", "encoder_only")
     dependencies = family_info.get("dependencies", [])
-    
+
     # Create dependency checks with proper indentation - careful with spacing
     dependency_checks = ""
     if "tokenizers" in dependencies:
@@ -516,7 +532,7 @@ def generate_test_pipeline(family_info):
             results["pipeline_success"] = False
             return results
 """
-    
+
     if "sentencepiece" in dependencies:
         dependency_checks += """
         if not HAS_SENTENCEPIECE:
@@ -525,7 +541,7 @@ def generate_test_pipeline(family_info):
             results["pipeline_success"] = False
             return results
 """
-    
+
     if "pillow" in dependencies:
         dependency_checks += """
         if not HAS_PIL:
@@ -534,10 +550,10 @@ def generate_test_pipeline(family_info):
             results["pipeline_success"] = False
             return results
 """
-    
+
     tokenizer_init = generate_tokenizer_initialization(family_info)
     pipeline_input_prep = generate_pipeline_input_preparation(family_info)
-    
+
     # The method content should already have proper indentation (4 spaces for method content)
     method_content = f"""def test_pipeline(self, device="auto"):
     \"\"\"Test the model using transformers pipeline API.\"\"\"
@@ -649,23 +665,24 @@ def generate_test_pipeline(family_info):
     # Add to overall results
     self.results[f"pipeline_{{device}}"] = results
     return results"""
-    
+
     # Apply the base indentation for a class method (4 spaces)
     method = apply_indentation(method_content, 4)
-    
+
     return method
+
 
 def generate_from_pretrained_input_preparation(family_info):
     """Generate code for input preparation with from_pretrained."""
     model_type = family_info.get("model_type", "text")
     architecture_type = family_info.get("architecture_type", "encoder_only")
-    
+
     if model_type == "text":
         base_code = """test_input = self.test_text
         
         # Tokenize input
         inputs = tokenizer(test_input, return_tensors="pt")"""
-        
+
         if architecture_type == "encoder_decoder":
             # For T5-like models, add empty decoder inputs
             base_code += """
@@ -683,9 +700,9 @@ def generate_from_pretrained_input_preparation(family_info):
         if hasattr(tokenizer, 'pad_token') and tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
             logger.info("Set pad_token to eos_token for tokenizer")"""
-            
+
         return base_code
-    
+
     elif model_type == "vision":
         return """# Prepare test input - Vision models require proper image input
         # Create a mock image tensor of the right shape
@@ -706,7 +723,7 @@ def generate_from_pretrained_input_preparation(family_info):
         inputs = {"pixel_values": random_pixel_values}
         
         logger.info("Created proper image input tensor for vision model")"""
-    
+
     elif model_type == "audio":
         return """# Prepare audio input
         if os.path.exists(self.test_audio):
@@ -720,17 +737,18 @@ def generate_from_pretrained_input_preparation(family_info):
         
         # Process with feature extractor
         inputs = processor(audio_input, return_tensors="pt")"""
-    
+
     else:
         return """# Default input preparation
         test_input = "Default test input"
         inputs = {"input_ids": torch.tensor([[1, 2, 3, 4, 5]]))}"""
 
+
 def generate_from_pretrained_model_loading(family_info):
     """Generate model loading code."""
     class_name = family_info.get("class_name", "AutoModel")
     model_type = family_info.get("model_type", "text")
-    
+
     if model_type == "text":
         return f"""# Use appropriate model class based on model type
         model_class = None
@@ -738,7 +756,7 @@ def generate_from_pretrained_model_loading(family_info):
             model_class = transformers.{class_name}
         else:
             # Fallback to Auto class
-            model_class = transformers.AutoModelFor{family_info.get('auto_class', 'SequenceClassification')}
+            model_class = transformers.AutoModelFor{family_info.get("auto_class", "SequenceClassification")}
         
         # Time model loading
         model_load_start = time.time()
@@ -747,7 +765,7 @@ def generate_from_pretrained_model_loading(family_info):
             **pretrained_kwargs
         )
         model_load_time = time.time() - model_load_start"""
-    
+
     elif model_type == "vision":
         return f"""# Use appropriate model class for vision
         model_class = None
@@ -764,7 +782,7 @@ def generate_from_pretrained_model_loading(family_info):
             **pretrained_kwargs
         )
         model_load_time = time.time() - model_load_start"""
-    
+
     elif model_type == "audio":
         return f"""# Use appropriate model class for audio
         model_class = None
@@ -781,7 +799,7 @@ def generate_from_pretrained_model_loading(family_info):
             **pretrained_kwargs
         )
         model_load_time = time.time() - model_load_start"""
-    
+
     else:
         return """# Generic model loading
         model_class = transformers.AutoModel
@@ -794,11 +812,12 @@ def generate_from_pretrained_model_loading(family_info):
         )
         model_load_time = time.time() - model_load_start"""
 
+
 def generate_from_pretrained_output_processing(family_info):
     """Generate output processing code based on family info."""
     model_type = family_info.get("model_type", "text")
     architecture_type = family_info.get("architecture_type", "encoder_only")
-    
+
     if model_type == "text":
         if architecture_type == "encoder_only":
             return """# Process masked language modeling output
@@ -814,7 +833,7 @@ def generate_from_pretrained_output_processing(family_info):
                 predictions = [{"token": "<mask>", "score": 1.0}]
         else:
             predictions = [{"token": "<mask>", "score": 1.0}]"""
-        
+
         elif architecture_type == "decoder_only":
             return """# Process generation output
         if hasattr(outputs[0], "logits"):
@@ -829,7 +848,7 @@ def generate_from_pretrained_output_processing(family_info):
                 predictions = [{"generated_text": "Mock generated text"}]
         else:
             predictions = [{"generated_text": "Mock generated text"}]"""
-        
+
         elif architecture_type == "encoder_decoder":
             return """# Process encoder-decoder output
         if hasattr(outputs[0], "logits"):
@@ -843,7 +862,7 @@ def generate_from_pretrained_output_processing(family_info):
                 predictions = [{"generated_text": "Mock generated text"}]
         else:
             predictions = [{"generated_text": "Mock generated text"}]"""
-    
+
     elif model_type == "vision":
         return """# Process vision model output
         if hasattr(outputs[0], "logits"):
@@ -855,7 +874,7 @@ def generate_from_pretrained_output_processing(family_info):
             predictions = [{"label": f"class_{predicted_class_idx}", "score": 1.0}]
         else:
             predictions = [{"label": "predicted_class", "score": 1.0}]"""
-    
+
     elif model_type == "audio":
         return """# Process audio model output
         if hasattr(outputs[0], "logits"):
@@ -867,10 +886,11 @@ def generate_from_pretrained_output_processing(family_info):
             predictions = [{"label": f"class_{predicted_class_idx}", "score": 1.0}]
         else:
             predictions = [{"label": "predicted_class", "score": 1.0}]"""
-    
+
     else:
         return """# Generic output processing
         predictions = [{"output": "Processed model output"}]"""
+
 
 def generate_test_from_pretrained(family_info):
     """Generate from_pretrained test method."""
@@ -878,7 +898,7 @@ def generate_test_from_pretrained(family_info):
     tokenizer_class = family_info.get("tokenizer_class", "AutoTokenizer")
     processor_class = family_info.get("processor_class", "")
     dependencies = family_info.get("dependencies", [])
-    
+
     # Create dependency checks with proper indentation - hardcoded spacing
     dependency_checks = ""
     if "tokenizers" in dependencies:
@@ -889,7 +909,7 @@ def generate_test_from_pretrained(family_info):
             results["from_pretrained_success"] = False
             return results
 """
-    
+
     if "sentencepiece" in dependencies:
         dependency_checks += """
         if not HAS_SENTENCEPIECE:
@@ -898,7 +918,7 @@ def generate_test_from_pretrained(family_info):
             results["from_pretrained_success"] = False
             return results
 """
-    
+
     if "pillow" in dependencies:
         dependency_checks += """
         if not HAS_PIL:
@@ -907,7 +927,7 @@ def generate_test_from_pretrained(family_info):
             results["from_pretrained_success"] = False
             return results
 """
-    
+
     # Process tokenizer/processor loading code with proper indentation
     tokenizer_loading_code = ""
     if model_type == "text":
@@ -958,19 +978,19 @@ tokenizer = transformers.AutoTokenizer.from_pretrained(
 )
 tokenizer_load_time = time.time() - tokenizer_load_start"""
         tokenizer_loading_code = apply_indentation(generic_block, 12)
-    
+
     # Get model loading code and properly indent
     model_loading_raw = generate_from_pretrained_model_loading(family_info)
     model_loading_code = apply_indentation(model_loading_raw, 12)  # 12 spaces for nested block
-    
+
     # Get input preparation code and properly indent
     input_preparation_raw = generate_from_pretrained_input_preparation(family_info)
     input_preparation_code = apply_indentation(input_preparation_raw, 12)
-    
+
     # Get output processing code and properly indent
     output_processing_raw = generate_from_pretrained_output_processing(family_info)
     output_processing_code = apply_indentation(output_processing_raw, 12)
-    
+
     # Create the main method content with base indentation for class methods
     method_content = f"""def test_from_pretrained(self, device="auto"):
     \"\"\"Test the model using direct from_pretrained loading.\"\"\"
@@ -1107,11 +1127,12 @@ tokenizer_load_time = time.time() - tokenizer_load_start"""
     # Add to overall results
     self.results[f"from_pretrained_{{device}}"] = results
     return results"""
-    
+
     # Apply the base indentation for a class method (4 spaces)
     method = apply_indentation(method_content, 4)
-    
+
     return method
+
 
 def generate_run_tests():
     """Generate run_tests method."""
@@ -1162,17 +1183,18 @@ def generate_run_tests():
             "has_torch": HAS_TORCH
         }
     }"""
-    
+
     # Apply the base indentation for a class method (4 spaces)
     method = apply_indentation(method_content, 4)
-    
+
     return method
+
 
 def generate_save_utils(family_info):
     """Generate utilities for saving results and model listings."""
     family_name = family_info["name"]
     registry_name = f"{family_name.upper()}_MODELS_REGISTRY"
-    
+
     return f"""
 def save_results(model_id, results, output_dir="collected_results"):
     \"\"\"Save test results to a file.\"\"\"
@@ -1223,12 +1245,13 @@ def test_all_models(output_dir="collected_results", all_hardware=False):
     return results
 """
 
+
 def generate_main_function(family_info):
     """Generate main function for the test script."""
     family_name = family_info["name"]
     base_model = family_info.get("base_model", family_info.get("model_id", ""))
     registry_name = f"{family_name.upper()}_MODELS_REGISTRY"
-    
+
     return f"""
 def main():
     \"\"\"Command-line entry point.\"\"\"
@@ -1334,15 +1357,16 @@ if __name__ == "__main__":
     main()
 """
 
+
 def generate_test_file(family_info):
     """Generate a complete test file for a model family."""
     file_content = ""
-    
+
     # Add imports
     file_content += generate_imports()
     file_content += generate_docstring(family_info)
     file_content += generate_basic_imports()
-    
+
     # Add specific imports based on dependencies
     if "torch" in family_info.get("dependencies", []):
         file_content += generate_torch_imports()
@@ -1354,19 +1378,19 @@ def generate_test_file(family_info):
         file_content += generate_sentencepiece_imports()
     if "pillow" in family_info.get("dependencies", []):
         file_content += generate_pil_imports()
-    
+
     # Add mock implementations
     file_content += generate_mock_implementations(family_info)
-    
+
     # Add hardware detection
     file_content += generate_hardware_check()
-    
+
     # Add model registry
     file_content += generate_model_registry(family_info)
-    
+
     # Add test class and init method
     file_content += generate_test_class(family_info)
-    
+
     # Add test methods - ensure proper spacing
     file_content += "\n"
     file_content += generate_test_pipeline(family_info)
@@ -1375,59 +1399,72 @@ def generate_test_file(family_info):
     file_content += "\n"
     file_content += generate_run_tests()
     file_content += "\n\n"  # Extra space after the class definition
-    
+
     # Add utility functions
     file_content += generate_save_utils(family_info)
-    
+
     # Add main function
     file_content += generate_main_function(family_info)
-    
+
     return file_content
+
 
 def fix_method_boundaries(file_content):
     """Fix method boundaries to ensure proper spacing and indentation."""
     # First add proper spacing between methods
-    file_content = file_content.replace("        return results\n    def ", "        return results\n\n    def ")
-    
+    file_content = file_content.replace(
+        "        return results\n    def ", "        return results\n\n    def "
+    )
+
     # Make sure __init__ has correct spacing after it
-    file_content = file_content.replace("        self.performance_stats = {}\n    def ", "        self.performance_stats = {}\n\n    def ")
-        
+    file_content = file_content.replace(
+        "        self.performance_stats = {}\n    def ",
+        "        self.performance_stats = {}\n\n    def ",
+    )
+
     # Place all method declarations at the right indentation level
-    file_content = re.sub(r'(\s+)def test_pipeline\(', r'    def test_pipeline(', file_content)
-    file_content = re.sub(r'(\s+)def test_from_pretrained\(', r'    def test_from_pretrained(', file_content)
-    file_content = re.sub(r'(\s+)def run_tests\(', r'    def run_tests(', file_content)
-    
+    file_content = re.sub(r"(\s+)def test_pipeline\(", r"    def test_pipeline(", file_content)
+    file_content = re.sub(
+        r"(\s+)def test_from_pretrained\(", r"    def test_from_pretrained(", file_content
+    )
+    file_content = re.sub(r"(\s+)def run_tests\(", r"    def run_tests(", file_content)
+
     return file_content
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate model test files")
-    parser.add_argument("--family", type=str, required=True, help="Model family (bert, gpt2, t5, vit)")
+    parser.add_argument(
+        "--family", type=str, required=True, help="Model family (bert, gpt2, t5, vit)"
+    )
     parser.add_argument("--output", type=str, help="Output directory")
-    
+
     args = parser.parse_args()
-    
+
     if args.family not in MODEL_FAMILIES:
-        print(f"Error: Unknown model family '{args.family}'. Choose from: {', '.join(MODEL_FAMILIES.keys())}")
+        print(
+            f"Error: Unknown model family '{args.family}'. Choose from: {', '.join(MODEL_FAMILIES.keys())}"
+        )
         sys.exit(1)
-    
+
     family_info = MODEL_FAMILIES[args.family]
     family_info["name"] = args.family
-    
+
     # Generate test file
     print(f"Generating test file for {args.family}...")
     file_content = generate_test_file(family_info)
-    
+
     # Fix indentation issues at method boundaries
     file_content = fix_method_boundaries(file_content)
-    
+
     # Write to file
     if args.output:
         os.makedirs(args.output, exist_ok=True)
         output_path = os.path.join(args.output, f"test_hf_{args.family}.py")
     else:
         output_path = f"test_hf_{args.family}.py"
-    
+
     with open(output_path, "w") as f:
         f.write(file_content)
-    
+
     print(f"Test file generated: {output_path}")

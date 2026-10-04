@@ -28,9 +28,7 @@ from .formal_verification_contracts import content_identity
 DEFAULT_CHECKOUT_MUTATION_LOCK_NAME = "implementation-main-merge.lock"
 DEFAULT_MERGE_TRAIN_DIRECTORY_NAME = "agent-merge-trains"
 BACKLOG_REFINERY_AUTHOR_EMAIL = "accelerator-backlog-refinery@example.invalid"
-GENERATED_PROTECTED_BOARD_COMMIT_MARKER = (
-    "[agent-supervisor:generated-protected-board]"
-)
+GENERATED_PROTECTED_BOARD_COMMIT_MARKER = "[agent-supervisor:generated-protected-board]"
 
 
 def generated_protected_board_commit_subject(subject: str) -> str:
@@ -53,9 +51,7 @@ def serialized_lock_update(lock_path: Path) -> Iterator[None]:
     """
 
     if fcntl is None and msvcrt is None:
-        raise RuntimeError(
-            "durable lock replacement requires an advisory file-lock backend"
-        )
+        raise RuntimeError("durable lock replacement requires an advisory file-lock backend")
     guard_path = lock_path.with_name(f".{lock_path.name}.update.lock")
     guard_path.parent.mkdir(parents=True, exist_ok=True)
     flags = os.O_CREAT | os.O_RDWR
@@ -136,14 +132,11 @@ def checkout_repository_id(repo_root: Path) -> str:
         identity_source = str(common_dir.resolve())
     except (OSError, RuntimeError):
         identity_source = str(common_dir)
-    return (
-        "repository:"
-        + content_identity(
-            {
-                "kind": "local-git-common-directory",
-                "path": identity_source,
-            }
-        )
+    return "repository:" + content_identity(
+        {
+            "kind": "local-git-common-directory",
+            "path": identity_source,
+        }
     )
 
 
@@ -164,10 +157,12 @@ def merge_target_queue_dir(
     repository_id = checkout_repository_id(repo_root)
     binding = f"{repository_id}\0{branch}".encode("utf-8")
     digest = hashlib.sha256(binding).hexdigest()[:20]
-    safe_branch = "".join(
-        character if character.isalnum() or character in "-._" else "-"
-        for character in branch
-    ).strip("-") or "target"
+    safe_branch = (
+        "".join(
+            character if character.isalnum() or character in "-._" else "-" for character in branch
+        ).strip("-")
+        or "target"
+    )
     return (
         git_common_dir(repo_root)
         / DEFAULT_MERGE_TRAIN_DIRECTORY_NAME

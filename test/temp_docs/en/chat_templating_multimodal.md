@@ -35,11 +35,16 @@ Start by building a chat history with the following two roles.
 messages = [
     {
         "role": "system",
-        "content": [{"type": "text", "text": "You are a friendly chatbot who always responds in the style of a pirate"}],
+        "content": [
+            {
+                "type": "text",
+                "text": "You are a friendly chatbot who always responds in the style of a pirate",
+            }
+        ],
     },
     {
-      "role": "user",
-      "content": [
+        "role": "user",
+        "content": [
             {"type": "image", "url": "http://images.cocodataset.org/val2017/000000039769.jpg"},
             {"type": "text", "text": "What are these?"},
         ],
@@ -56,16 +61,39 @@ Create a [`ImageTextToTextPipeline`] and pass the chat to it. For large models, 
 import torch
 from transformers import pipeline
 
-pipeline = pipeline("image-text-to-text", model="llava-hf/llava-onevision-qwen2-0.5b-ov-hf", device="cuda", torch_dtype=torch.float16)
+pipeline = pipeline(
+    "image-text-to-text",
+    model="llava-hf/llava-onevision-qwen2-0.5b-ov-hf",
+    device="cuda",
+    torch_dtype=torch.float16,
+)
 pipeline(text=messages, max_new_tokens=50, return_full_text=False)
-[{'input_text': [{'role': 'system',
-    'content': [{'type': 'text',
-      'text': 'You are a friendly chatbot who always responds in the style of a pirate'}]},
-   {'role': 'user',
-    'content': [{'type': 'image',
-      'url': 'http://images.cocodataset.org/val2017/000000039769.jpg'},
-     {'type': 'text', 'text': 'What are these?'}]}],
-  'generated_text': 'The image shows two cats lying on a pink surface, which appears to be a cushion or a soft blanket. The cat on the left has a striped coat, typical of tabby cats, and is lying on its side with its head resting on the'}]
+[
+    {
+        "input_text": [
+            {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "You are a friendly chatbot who always responds in the style of a pirate",
+                    }
+                ],
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "url": "http://images.cocodataset.org/val2017/000000039769.jpg",
+                    },
+                    {"type": "text", "text": "What are these?"},
+                ],
+            },
+        ],
+        "generated_text": "The image shows two cats lying on a pink surface, which appears to be a cushion or a soft blanket. The cat on the left has a striped coat, typical of tabby cats, and is lying on its side with its head resting on the",
+    }
+]
 ```
 
 ## Image inputs
@@ -78,17 +106,24 @@ For multimodal models that accept images like [LLaVA](./model_doc/llava.md), inc
 ```python
 from transformers import AutoProcessor, LlavaOnevisionForConditionalGeneration
 
-model = LlavaOnevisionForConditionalGeneration.from_pretrained("llava-hf/llava-onevision-qwen2-0.5b-ov-hf")
+model = LlavaOnevisionForConditionalGeneration.from_pretrained(
+    "llava-hf/llava-onevision-qwen2-0.5b-ov-hf"
+)
 processor = AutoProcessor.from_pretrained("llava-hf/llava-onevision-qwen2-0.5b-ov-hf")
 
 messages = [
     {
-      "role": "system",
-      "content": [{"type": "text", "text": "You are a friendly chatbot who always responds in the style of a pirate"}],
+        "role": "system",
+        "content": [
+            {
+                "type": "text",
+                "text": "You are a friendly chatbot who always responds in the style of a pirate",
+            }
+        ],
     },
     {
-      "role": "user",
-      "content": [
+        "role": "user",
+        "content": [
             {"type": "image", "url": "http://images.cocodataset.org/val2017/000000039769.jpg"},
             {"type": "text", "text": "What are these?"},
         ],
@@ -99,7 +134,9 @@ messages = [
 Pass `messages` to [`~ProcessorMixin.apply_chat_template`] to tokenize the input content and return the `input_ids` and `pixel_values`.
 
 ```py
-processed_chat = processor.apply_chat_template(messages, add_generation_prompt=True, tokenize=True, return_dict=True, return_tensors="pt")
+processed_chat = processor.apply_chat_template(
+    messages, add_generation_prompt=True, tokenize=True, return_dict=True, return_tensors="pt"
+)
 print(processed_chat.keys())
 ```
 
@@ -124,13 +161,21 @@ processor = AutoProcessor.from_pretrained(model_id)
 
 messages = [
     {
-      "role": "system",
-      "content": [{"type": "text", "text": "You are a friendly chatbot who always responds in the style of a pirate"}],
+        "role": "system",
+        "content": [
+            {
+                "type": "text",
+                "text": "You are a friendly chatbot who always responds in the style of a pirate",
+            }
+        ],
     },
     {
-      "role": "user",
-      "content": [
-            {"type": "video", "url": "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_10MB.mp4"},
+        "role": "user",
+        "content": [
+            {
+                "type": "video",
+                "url": "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_10MB.mp4",
+            },
             {"type": "text", "text": "What do you see in this video?"},
         ],
     },
@@ -199,6 +244,7 @@ def sample_indices_fn(metadata, **kwargs):
     # samples only the first and the second frame
     return [0, 1]
 
+
 processed_chat = processor.apply_chat_template(
     messages,
     add_generation_prompt=True,
@@ -222,11 +268,16 @@ frames_paths = ["/path/to/frame0.png", "/path/to/frame5.png", "/path/to/frame10.
 messages = [
     {
         "role": "system",
-        "content": [{"type": "text", "text": "You are a friendly chatbot who always responds in the style of a pirate"}],
+        "content": [
+            {
+                "type": "text",
+                "text": "You are a friendly chatbot who always responds in the style of a pirate",
+            }
+        ],
     },
     {
-      "role": "user",
-      "content": [
+        "role": "user",
+        "content": [
             {"type": "video", "path": frames_paths},
             {"type": "text", "text": "What do you see in this video?"},
         ],

@@ -27,16 +27,11 @@ The `ValidationReporterImpl` class implements the `ValidationReporter` interface
 from duckdb_api.benchmark_validation.visualization import ValidationReporterImpl
 
 # Create a reporter instance
-reporter = ValidationReporterImpl({
-    "output_directory": "./reports",
-    "theme": "light"
-})
+reporter = ValidationReporterImpl({"output_directory": "./reports", "theme": "light"})
 
 # Generate HTML report with visualizations
 html_report = reporter.generate_report(
-    validation_results=validation_results,
-    report_format="html",
-    include_visualizations=True
+    validation_results=validation_results, report_format="html", include_visualizations=True
 )
 
 # Export report to file
@@ -44,7 +39,7 @@ reporter.export_report(
     validation_results=validation_results,
     output_path="./reports/validation_report.html",
     report_format="html",
-    include_visualizations=True
+    include_visualizations=True,
 )
 
 # Create specific visualizations
@@ -52,7 +47,7 @@ reporter.create_visualization(
     validation_results=validation_results,
     visualization_type="confidence_distribution",
     output_path="./reports/confidence_distribution.html",
-    title="Confidence Score Distribution"
+    title="Confidence Score Distribution",
 )
 ```
 
@@ -64,16 +59,14 @@ config = {
     "report_formats": ["html", "markdown", "json"],
     "report_title_template": "Benchmark Validation Report - {timestamp}",
     "max_results_per_page": 20,
-    
     # Output configuration
     "output_directory": "./reports",
     "css_style_path": None,  # Custom CSS path
     "html_template_path": None,  # Custom HTML template
-    
     # Visualization configuration
     "include_visualizations": True,
     "visualization_types": ["confidence_distribution", "metric_comparison", "validation_heatmap"],
-    "theme": "light"  # or "dark"
+    "theme": "light",  # or "dark"
 }
 ```
 
@@ -97,28 +90,30 @@ The `ValidationDashboard` class provides a comprehensive dashboard for visualizi
 from duckdb_api.benchmark_validation.visualization import ValidationDashboard
 
 # Create a dashboard instance
-dashboard = ValidationDashboard({
-    "output_directory": "./output",
-    "dashboard_directory": "dashboards",
-    "monitoring_integration": True
-})
+dashboard = ValidationDashboard(
+    {
+        "output_directory": "./output",
+        "dashboard_directory": "dashboards",
+        "monitoring_integration": True,
+    }
+)
 
 # Create a dashboard
 dashboard_path = dashboard.create_dashboard(
     validation_results=validation_results,
     dashboard_name="my_validation_dashboard",
     dashboard_title="My Validation Dashboard",
-    dashboard_description="Dashboard for validation results"
+    dashboard_description="Dashboard for validation results",
 )
 
 # Create a comparison dashboard
 comparison_dashboard_path = dashboard.create_comparison_dashboard(
     validation_results_sets={
         "baseline": baseline_validation_results,
-        "experiment": experiment_validation_results
+        "experiment": experiment_validation_results,
     },
     dashboard_name="validation_comparison_dashboard",
-    dashboard_title="Validation Comparison Dashboard"
+    dashboard_title="Validation Comparison Dashboard",
 )
 
 # List all available dashboards
@@ -128,27 +123,22 @@ dashboards = dashboard.list_dashboards()
 updated_path = dashboard.update_dashboard(
     dashboard_name="my_validation_dashboard",
     validation_results=new_validation_results,
-    dashboard_title="Updated Validation Dashboard"
+    dashboard_title="Updated Validation Dashboard",
 )
 
 # Export dashboard to different formats
 html_path = dashboard.export_dashboard(
-    dashboard_name="my_validation_dashboard",
-    export_format="html"
+    dashboard_name="my_validation_dashboard", export_format="html"
 )
 
 # Register with monitoring dashboard
 success = dashboard.register_with_monitoring_dashboard(
-    dashboard_name="my_validation_dashboard",
-    page="validation",
-    position="below"
+    dashboard_name="my_validation_dashboard", page="validation", position="below"
 )
 
 # Get HTML for embedding dashboard in another page
 iframe_html = dashboard.get_dashboard_iframe_html(
-    dashboard_name="my_validation_dashboard",
-    width="100%",
-    height="800px"
+    dashboard_name="my_validation_dashboard", width="100%", height="800px"
 )
 
 # Delete a dashboard
@@ -163,22 +153,18 @@ config = {
     "dashboard_name": "benchmark_validation_dashboard",
     "dashboard_title": "Benchmark Validation Dashboard",
     "dashboard_description": "Comprehensive visualization of benchmark validation results",
-    
     # Output configuration
     "output_directory": "output",
     "dashboard_directory": "dashboards",
-    
     # Integration configuration
     "monitoring_integration": True,  # Enable integration with Monitoring Dashboard
-    
     # Display configuration
     "theme": "light",  # or "dark"
     "auto_refresh": True,
     "refresh_interval": 300,  # 5 minutes
-    
     # Content configuration
     "max_results": 1000,
-    "default_view": "summary"  # or "detailed", "comparison"
+    "default_view": "summary",  # or "detailed", "comparison"
 }
 ```
 

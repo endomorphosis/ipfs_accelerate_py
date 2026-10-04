@@ -2517,17 +2517,12 @@ _missing_control_export = object()
 for _control_module in _CONTROL_PUBLIC_MODULES:
     for _control_name in _control_module.__all__:
         _control_value = getattr(_control_module, _control_name)
-        _existing_control_value = globals().get(
-            _control_name, _missing_control_export
-        )
+        _existing_control_value = globals().get(_control_name, _missing_control_export)
         if (
             _existing_control_value is not _missing_control_export
             and _existing_control_value is not _control_value
         ):
-            raise RuntimeError(
-                "ambiguous agent_supervisor public export: "
-                f"{_control_name}"
-            )
+            raise RuntimeError(f"ambiguous agent_supervisor public export: {_control_name}")
         globals()[_control_name] = _control_value
     __all__.extend(_control_module.__all__)
 del (
@@ -2544,9 +2539,7 @@ del (
 # observing a fresh interpreter while the package root and every stable export
 # are resolved.  Keeping the canonical goal beside the requirement prevents a
 # stale discovery label from redirecting that evidence.
-PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID = (
-    "300500866741873729474343907613893393545"
-)
+PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID = "300500866741873729474343907613893393545"
 PAIRED_ROLLOUT_LAZY_EXPORT_GOAL_ID = "ASI-G114"
 
 # Stable rollout contracts are kept off the cold-import path.  This public,
@@ -2616,9 +2609,7 @@ del _stable_export_names
 # A caller can also verify that a root object is the exact object owned by the
 # named module; transports must not wrap or recreate these contracts.
 AGENT_SUPERVISOR_V2_PUBLIC_API_VERSION = 2
-V2_LAZY_PUBLIC_API_REQUIREMENT_ID = (
-    "309385021661773043261965122618904035729"
-)
+V2_LAZY_PUBLIC_API_REQUIREMENT_ID = "309385021661773043261965122618904035729"
 _AGENT_SUPERVISOR_V2_EXPORT_GROUPS = (
     (
         f"{__name__}.control_contracts",
@@ -2817,12 +2808,8 @@ if len(_agent_supervisor_v2_export_pairs) != len(
     {name for name, _module_name in _agent_supervisor_v2_export_pairs}
 ):
     raise RuntimeError("generation-2 stable export names must be unique")
-AGENT_SUPERVISOR_V2_EXPORT_MODULES = _MappingProxyType(
-    dict(_agent_supervisor_v2_export_pairs)
-)
-AGENT_SUPERVISOR_V2_STABLE_EXPORTS = tuple(
-    AGENT_SUPERVISOR_V2_EXPORT_MODULES
-)
+AGENT_SUPERVISOR_V2_EXPORT_MODULES = _MappingProxyType(dict(_agent_supervisor_v2_export_pairs))
+AGENT_SUPERVISOR_V2_STABLE_EXPORTS = tuple(AGENT_SUPERVISOR_V2_EXPORT_MODULES)
 # Concise compatibility spelling for clients which negotiated generation 2.
 V2_STABLE_EXPORTS = AGENT_SUPERVISOR_V2_STABLE_EXPORTS
 
@@ -3568,7 +3555,12 @@ def __getattr__(name: str):
         from . import leased_lane
 
         return getattr(leased_lane, name)
-    if name in {"build_merge_prompt", "invoke_llm_resolver", "latest_failed_merge_event", "resolver_payload"}:
+    if name in {
+        "build_merge_prompt",
+        "invoke_llm_resolver",
+        "latest_failed_merge_event",
+        "resolver_payload",
+    }:
         from . import merge_resolver
 
         return getattr(merge_resolver, name)
@@ -3869,6 +3861,8 @@ def __getattr__(name: str):
 
         return getattr(task_proposal_router, name)
     raise AttributeError(name)
+
+
 from .codex_failure_policy import (
     COMPLETED_PATCH_STATUSES,
     TRANSIENT_MAIN_APPLY_STATUSES,

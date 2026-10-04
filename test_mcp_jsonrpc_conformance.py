@@ -5,6 +5,7 @@ Ensures a stock MCP client can complete the handshake against the dashboard
 JSON-RPC endpoint (mounted at both ``/jsonrpc`` and ``/mcp``): initialize ->
 notifications/initialized -> tools/list -> ping, with MCP 2024-11-05 shapes.
 """
+
 import os
 import sys
 

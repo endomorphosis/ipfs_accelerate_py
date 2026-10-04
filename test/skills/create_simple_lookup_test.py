@@ -10,16 +10,17 @@ import sys
 import logging
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
 
 def main():
     """Create a minimal test file for model lookup."""
     output_path = "test_model_lookup.py"
     model_type = "bert"
-    
+
     logger.info(f"Creating minimal test file for {model_type} at {output_path}")
-    
+
     content = '''#!/usr/bin/env python3
 
 import os
@@ -76,13 +77,14 @@ def main():
 if __name__ == "__main__":
     sys.exit(main())
 '''
-    
+
     # Write the test file
     with open(output_path, "w") as f:
         f.write(content)
-    
+
     logger.info(f"Created minimal test file at {output_path}")
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

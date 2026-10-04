@@ -85,15 +85,15 @@ manager = ReportManager(
     output_dir="reports",
     template_dirs={
         "executive_summary": "path/to/custom/executive/templates",
-        "technical_report": "path/to/custom/technical/templates"
-    }
+        "technical_report": "path/to/custom/technical/templates",
+    },
 )
 
 # Generate a report with custom templates
 report = manager.generate_report(
     validation_results=results,
     report_type=ReportType.EXECUTIVE_SUMMARY,
-    output_format=ReportFormat.HTML
+    output_format=ReportFormat.HTML,
 )
 ```
 
@@ -165,10 +165,7 @@ HTML templates can include custom CSS styling:
 2. Pass the CSS file path to the report generator:
 
 ```python
-manager = ReportManager(
-    output_dir="reports",
-    custom_css="path/to/custom.css"
-)
+manager = ReportManager(output_dir="reports", custom_css="path/to/custom.css")
 ```
 
 The CSS content will be inserted into the template at the `{{custom_css}}` placeholder.

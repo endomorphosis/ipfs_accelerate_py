@@ -61,10 +61,12 @@ Each template is being updated to include the following standard components for 
        self.device_name = "cpu"
        return True
 
+
    def init_cuda(self):
        """Initialize for CUDA platform."""
        try:
            import torch
+
            self.platform = "CUDA"
            self.device = "cuda"
            self.device_name = "cuda" if torch.cuda.is_available() else "cpu"
@@ -72,7 +74,8 @@ Each template is being updated to include the following standard components for 
        except ImportError:
            print("CUDA not available: torch package not found")
            return False
-   
+
+
    # ... similar methods for other platforms
    ```
 
@@ -87,7 +90,8 @@ Each template is being updated to include the following standard components for 
        except Exception as e:
            print(f"Error creating CPU handler: {e}")
            return MockHandler(self.model_path, "cpu")
-   
+
+
    # ... similar methods for other platforms
    ```
 

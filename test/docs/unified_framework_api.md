@@ -28,7 +28,7 @@ from fixed_web_platform.unified_web_framework import UnifiedWebPlatform
 platform = UnifiedWebPlatform(
     model_name="bert-base-uncased",
     model_type="text",
-    platform="webgpu"  # or "webnn", "cpu"
+    platform="webgpu",  # or "webnn", "cpu"
 )
 ```
 
@@ -55,9 +55,7 @@ Runs inference on the provided inputs.
 
 **Example:**
 ```python
-results = platform.run_inference({
-    "input_text": "Hello, world!"
-})
+results = platform.run_inference({"input_text": "Hello, world!"})
 ```
 
 #### `run_inference_streaming(inputs, callback)`
@@ -76,10 +74,8 @@ Runs inference with streaming output.
 def handle_token(token):
     print(token, end="", flush=True)
 
-results = platform.run_inference_streaming(
-    {"input_text": "Hello, world!"}, 
-    callback=handle_token
-)
+
+results = platform.run_inference_streaming({"input_text": "Hello, world!"}, callback=handle_token)
 ```
 
 #### `get_performance_stats()`
@@ -145,11 +141,7 @@ The `WebGPUStreamingInference` class provides specialized streaming token genera
 from fixed_web_platform.webgpu_streaming_inference import WebGPUStreamingInference
 
 streaming = WebGPUStreamingInference(
-    model_path="models/llama-7b",
-    config={
-        "quantization": "int4",
-        "kv_cache_optimization": True
-    }
+    model_path="models/llama-7b", config={"quantization": "int4", "kv_cache_optimization": True}
 )
 ```
 
@@ -287,10 +279,7 @@ The `ConfigurationManager` class handles validation and management of framework 
 ```python
 from fixed_web_platform.unified_framework.configuration_manager import ConfigurationManager
 
-config_manager = ConfigurationManager(user_config={
-    "precision": "int4",
-    "enable_streaming": True
-})
+config_manager = ConfigurationManager(user_config={"precision": "int4", "enable_streaming": True})
 ```
 
 ### Methods
@@ -387,6 +376,7 @@ Registers a callback for a specific error type.
 def memory_error_handler(error_info):
     print(f"Memory error: {error_info}")
 
+
 error_handler.register_error_callback("MemoryError", memory_error_handler)
 ```
 
@@ -397,11 +387,7 @@ The `ModelShardingManager` class handles distribution of large models across mul
 ```python
 from fixed_web_platform.unified_framework.model_sharding import ModelShardingManager
 
-sharding_manager = ModelShardingManager(
-    model_name="llama-7b",
-    num_shards=4,
-    shard_type="layer"
-)
+sharding_manager = ModelShardingManager(model_name="llama-7b", num_shards=4, shard_type="layer")
 ```
 
 ### Methods
@@ -441,15 +427,10 @@ result = sharding_manager.run_inference_sharded({"input_text": "Hello"})
 from fixed_web_platform.unified_web_framework import UnifiedWebPlatform
 
 # Create platform with automatic browser detection
-platform = UnifiedWebPlatform(
-    model_name="bert-base-uncased",
-    model_type="text"
-)
+platform = UnifiedWebPlatform(model_name="bert-base-uncased", model_type="text")
 
 # Run inference
-result = platform.run_inference({
-    "input_text": "Hello, world!"
-})
+result = platform.run_inference({"input_text": "Hello, world!"})
 
 print(result)
 ```
@@ -462,21 +443,17 @@ from fixed_web_platform.webgpu_streaming_inference import WebGPUStreamingInferen
 # Create streaming inference handler
 streaming = WebGPUStreamingInference(
     model_path="models/llama-7b",
-    config={
-        "quantization": "int4",
-        "kv_cache_optimization": True,
-        "low_latency": True
-    }
+    config={"quantization": "int4", "kv_cache_optimization": True, "low_latency": True},
 )
+
 
 # Generate with streaming
 def on_token(token):
     print(token, end="", flush=True)
 
+
 streaming.generate(
-    "Write a short story about a robot learning to paint.",
-    max_tokens=200,
-    callback=on_token
+    "Write a short story about a robot learning to paint.", max_tokens=200, callback=on_token
 )
 ```
 
@@ -495,17 +472,17 @@ platform = UnifiedWebPlatform(
     model_name="whisper-small",
     model_type="audio",
     platform="webgpu",
-    config={
-        "optimize_for_browser": browser_name
-    }
+    config={"optimize_for_browser": browser_name},
 )
 
 # Apply additional optimizations for Firefox if detected
 if browser_name.lower() == "firefox":
-    platform.config.update({
-        "workgroup_size": (256, 1, 1),  # Firefox-optimized workgroup size
-        "enable_compute_shaders": True   # Firefox performs ~20% better with compute shaders
-    })
+    platform.config.update(
+        {
+            "workgroup_size": (256, 1, 1),  # Firefox-optimized workgroup size
+            "enable_compute_shaders": True,  # Firefox performs ~20% better with compute shaders
+        }
+    )
 ```
 
 ### Error Handling
@@ -517,10 +494,12 @@ from fixed_web_platform.unified_framework.error_handler import ErrorHandler
 # Create custom error handler
 error_handler = ErrorHandler(mode="graceful")
 
+
 # Register custom error callbacks
 def memory_error_handler(error_info):
     print("Memory pressure detected, reducing model complexity...")
     # Implement recovery strategy
+
 
 error_handler.register_error_callback("MemoryError", memory_error_handler)
 
@@ -529,9 +508,7 @@ platform = UnifiedWebPlatform(
     model_name="llava-7b",
     model_type="multimodal",
     platform="webgpu",
-    config={
-        "error_handler": error_handler
-    }
+    config={"error_handler": error_handler},
 )
 ```
 

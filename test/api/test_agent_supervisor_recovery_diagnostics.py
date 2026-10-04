@@ -120,9 +120,7 @@ def test_incident_cid_is_semantic_and_prior_actions_are_identity_bearing(
     changed_action = diagnose_supervisor_incident(
         **common,
         observed_at_ms=300,
-        prior_actions=(
-            {"operation": "restart_lane", "outcome": "failed"},
-        ),
+        prior_actions=({"operation": "restart_lane", "outcome": "failed"},),
     )
 
     assert first.incident_cid == later.incident_cid
@@ -208,9 +206,7 @@ def test_cid_bearing_evidence_is_deeply_immutable_and_aggregate_bounded(
             "nested": {"alive": False},
         },
     )
-    nested = diagnosis.evidence_for(RecoveryEvidenceKind.PROCESS)[0].value[
-        "nested"
-    ]
+    nested = diagnosis.evidence_for(RecoveryEvidenceKind.PROCESS)[0].value["nested"]
     with pytest.raises(TypeError):
         nested["alive"] = True
 

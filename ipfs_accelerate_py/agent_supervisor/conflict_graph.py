@@ -35,14 +35,10 @@ DEFAULT_SURFACE_WEIGHTS: dict[str, float] = {
     "submodules": 12.0,
     "generated_artifacts": 9.0,
 }
-CONFLICT_RECEIPT_STATUSES = frozenset(
-    {"conflict", "conflicted", "merge_conflict", "resolved"}
-)
+CONFLICT_RECEIPT_STATUSES = frozenset({"conflict", "conflicted", "merge_conflict", "resolved"})
 AST_BLOB_RECORD_SCHEMA_VERSION = 1
 MAX_CONFLICT_HISTORY_EVIDENCE_IDS = 4096
-_ADMISSION_TASK_WORK_CONTRACT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/task-work-contract@1"
-)
+_ADMISSION_TASK_WORK_CONTRACT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/task-work-contract@1"
 TASK_PLANNING_WORK_CONTRACT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/task-planning-work-contract@1"
 )
@@ -153,7 +149,9 @@ class ASTBlobRecord:
             object.__setattr__(
                 self,
                 name,
-                tuple(sorted({str(item).strip() for item in getattr(self, name) if str(item).strip()})),
+                tuple(
+                    sorted({str(item).strip() for item in getattr(self, name) if str(item).strip()})
+                ),
             )
         object.__setattr__(
             self,
@@ -201,9 +199,7 @@ class ASTBlobRecord:
             "state_transitions": list(self.state_transitions),
             "interfaces": list(self.interfaces),
             "symbol_hashes": dict(self.symbol_hashes),
-            "symbol_lines": {
-                key: list(value) for key, value in sorted(self.symbol_lines.items())
-            },
+            "symbol_lines": {key: list(value) for key, value in sorted(self.symbol_lines.items())},
             "parse_error": self.parse_error,
         }
 
@@ -263,17 +259,26 @@ def build_python_ast_blob_record(
             qualified = ".".join([*scope, node.name])
             symbols.add(qualified)
             semantic = ast.dump(node, annotate_fields=True, include_attributes=False)
-            symbol_hashes[qualified] = "sha256:" + hashlib.sha256(
-                semantic.encode("utf-8")
-            ).hexdigest()
+            symbol_hashes[qualified] = (
+                "sha256:" + hashlib.sha256(semantic.encode("utf-8")).hexdigest()
+            )
             symbol_lines[qualified] = (
                 int(getattr(node, "lineno", 0) or 0),
                 int(getattr(node, "end_lineno", getattr(node, "lineno", 0)) or 0),
             )
             if isinstance(node, ast.ClassDef):
                 bases = {_ast_expression_name(base) for base in node.bases}
-                if bases & {"Protocol", "typing.Protocol", "ABC", "abc.ABC", "ABCMeta", "abc.ABCMeta"}:
-                    interfaces.add(f"{qualified}({','.join(sorted(base for base in bases if base))})")
+                if bases & {
+                    "Protocol",
+                    "typing.Protocol",
+                    "ABC",
+                    "abc.ABC",
+                    "ABCMeta",
+                    "abc.ABCMeta",
+                }:
+                    interfaces.add(
+                        f"{qualified}({','.join(sorted(base for base in bases if base))})"
+                    )
             else:
                 public = not node.name.startswith("_") or node.name == "__init__"
                 decorators = {_ast_expression_name(item) for item in node.decorator_list}
@@ -379,18 +384,13 @@ def coerce_ast_blob_record(value: Any) -> ASTBlobRecord | None:
     payload = dict(value)
     source = payload.get("source") or payload.get("source_text") or payload.get("evidence_text")
     blob = str(
-        payload.get("blob_identity")
-        or payload.get("blob_id")
-        or payload.get("blob_hash")
-        or ""
+        payload.get("blob_identity") or payload.get("blob_id") or payload.get("blob_hash") or ""
     )
     source_hash = str(payload.get("source_sha256") or "")
     if isinstance(source, str):
         actual_hash = _source_sha256(source)
         normalized_source_hash = (
-            source_hash[len("sha256:") :]
-            if source_hash.startswith("sha256:")
-            else source_hash
+            source_hash[len("sha256:") :] if source_hash.startswith("sha256:") else source_hash
         )
         normalized_actual_hash = actual_hash[len("sha256:") :]
         if source_hash and normalized_source_hash != normalized_actual_hash:
@@ -406,14 +406,14 @@ def coerce_ast_blob_record(value: Any) -> ASTBlobRecord | None:
         legacy_sha1 = str(payload.get("source_sha1") or "")
         if not legacy_sha1:
             return None
-        source_hash = (
-            legacy_sha1 if legacy_sha1.startswith("sha1:") else f"sha1:{legacy_sha1}"
-        )
+        source_hash = legacy_sha1 if legacy_sha1.startswith("sha1:") else f"sha1:{legacy_sha1}"
     try:
         return ASTBlobRecord(
             blob_identity=blob or source_hash,
             source_sha256=source_hash,
-            qualified_symbols=tuple(payload.get("qualified_symbols") or payload.get("symbols") or ()),
+            qualified_symbols=tuple(
+                payload.get("qualified_symbols") or payload.get("symbols") or ()
+            ),
             imports=tuple(payload.get("imports") or ()),
             calls=tuple(payload.get("calls") or ()),
             state_transitions=tuple(payload.get("state_transitions") or ()),
@@ -507,9 +507,7 @@ def _contract_integer(
             try:
                 parsed = int(value)
             except (TypeError, ValueError) as exc:
-                raise ValueError(
-                    f"{name} must be a non-negative integer"
-                ) from exc
+                raise ValueError(f"{name} must be a non-negative integer") from exc
             if parsed < 0 or str(value).strip() not in {
                 str(parsed),
                 f"{parsed}.0",
@@ -517,9 +515,7 @@ def _contract_integer(
                 raise ValueError(f"{name} must be a non-negative integer")
             values.append(parsed)
     if len(set(values)) > 1:
-        raise ValueError(
-            f"task work contract contains inconsistent {names[0]} values"
-        )
+        raise ValueError(f"task work contract contains inconsistent {names[0]} values")
     return values[0] if values else 0
 
 
@@ -564,23 +560,15 @@ class TaskWorkContract:
             "schema": _ADMISSION_TASK_WORK_CONTRACT_SCHEMA,
             "goal_id": normalize_semantic(self.goal_id),
             "acceptance_effect_subset": {
-                "acceptance": sorted(
-                    normalize_semantic(value) for value in self.acceptance
-                ),
-                "effects": sorted(
-                    normalize_semantic(value) for value in self.effects
-                ),
+                "acceptance": sorted(normalize_semantic(value) for value in self.acceptance),
+                "effects": sorted(normalize_semantic(value) for value in self.effects),
                 "evidence_subset": sorted(
-                    normalize_semantic(value)
-                    for value in self.evidence_subset
+                    normalize_semantic(value) for value in self.evidence_subset
                 ),
             },
             "predicted_scope": {
                 "paths": list(self.predicted_paths),
-                "symbols": sorted(
-                    normalize_semantic(value)
-                    for value in self.predicted_symbols
-                ),
+                "symbols": sorted(normalize_semantic(value) for value in self.predicted_symbols),
                 "context_paths": list(self.context_paths),
             },
             "predicted_costs": {
@@ -593,9 +581,7 @@ class TaskWorkContract:
                 "conflict_count": self.conflict_count,
             },
             "execution_boundary": {
-                "preconditions": sorted(
-                    normalize_semantic(value) for value in self.preconditions
-                ),
+                "preconditions": sorted(normalize_semantic(value) for value in self.preconditions),
                 "dependencies": list(self.dependencies),
                 "conflicts": list(self.conflicts),
                 "validation_commands": list(self.validation_commands),
@@ -618,11 +604,9 @@ class TaskWorkContract:
         return self.work_contract_id
 
     def verify_integrity(self) -> bool:
-        return (
-            self.work_contract_id == canonical_content_cid(self._material())
-            and self.task_work_contract_id
-            == canonical_content_cid(self._binding_material())
-        )
+        return self.work_contract_id == canonical_content_cid(
+            self._material()
+        ) and self.task_work_contract_id == canonical_content_cid(self._binding_material())
 
     def _binding_material(self) -> dict[str, Any]:
         return {
@@ -666,27 +650,23 @@ class TaskWorkContract:
             or root.get("canonical_task_id")
             or ""
         ).strip()
-        canonical_task_key = str(
-            root.get("canonical_task_key") or ""
-        ).strip()
+        canonical_task_key = str(root.get("canonical_task_key") or "").strip()
         normalize_semantic = lambda value: " ".join(
             re.findall(r"[a-z0-9]+", str(value or "").casefold())
         )
-        normalize_display = lambda value: " ".join(
-            str(value or "").split()
-        )
+        normalize_display = lambda value: " ".join(str(value or "").split())
         acceptance = tuple(
             sorted(
                 {
                     normalize_display(value)
                     for value in _field_items(
-                    sources,
-                    (
-                        "acceptance_subset",
-                        "acceptance_criteria",
-                        "acceptance",
-                    ),
-                )
+                        sources,
+                        (
+                            "acceptance_subset",
+                            "acceptance_criteria",
+                            "acceptance",
+                        ),
+                    )
                     if normalize_display(value)
                 }
             )
@@ -695,11 +675,10 @@ class TaskWorkContract:
             sorted(
                 {
                     normalize_display(value)
-                    for value in
-                _field_items(
-                    sources,
-                    ("effect_subset", "effects", "expected_effects"),
-                )
+                    for value in _field_items(
+                        sources,
+                        ("effect_subset", "effects", "expected_effects"),
+                    )
                     if normalize_display(value)
                 }
             )
@@ -734,17 +713,13 @@ class TaskWorkContract:
                 {
                     path.casefold()
                     for path in _normalized_paths(
-                    declared_paths
-                    if has_declared_paths
-                    else _field_items(sources, ("files",)),
-                    None,
-                )
+                        declared_paths if has_declared_paths else _field_items(sources, ("files",)),
+                        None,
+                    )
                 }
             )
         )
-        has_declared_symbols = any(
-            "predicted_symbols" in source for source in sources
-        )
+        has_declared_symbols = any("predicted_symbols" in source for source in sources)
         declared_symbols = _field_items(sources, ("predicted_symbols",))
         predicted_symbols = tuple(
             sorted(
@@ -767,12 +742,12 @@ class TaskWorkContract:
                 {
                     path.casefold()
                     for path in _normalized_paths(
-                    _field_items(
-                        sources,
-                        ("context_paths", "context_keys", "context_files"),
-                    ),
-                    None,
-                )
+                        _field_items(
+                            sources,
+                            ("context_paths", "context_keys", "context_files"),
+                        ),
+                        None,
+                    )
                 }
             )
         )
@@ -840,34 +815,34 @@ class TaskWorkContract:
         )
         goal_id = normalize_display(
             next(
-                (
-                    source.get("goal_id")
-                    for source in sources
-                    if source.get("goal_id")
-                ),
+                (source.get("goal_id") for source in sources if source.get("goal_id")),
                 "",
             )
         )
-        resource_class = str(
-            next(
-                (
-                    source.get("resource_class")
-                    for source in sources
-                    if source.get("resource_class")
-                ),
-                "",
+        resource_class = (
+            str(
+                next(
+                    (
+                        source.get("resource_class")
+                        for source in sources
+                        if source.get("resource_class")
+                    ),
+                    "",
+                )
             )
-        ).strip().casefold()
-        token_class = str(
-            next(
-                (
-                    source.get("token_class")
-                    for source in sources
-                    if source.get("token_class")
-                ),
-                "",
+            .strip()
+            .casefold()
+        )
+        token_class = (
+            str(
+                next(
+                    (source.get("token_class") for source in sources if source.get("token_class")),
+                    "",
+                )
             )
-        ).strip().casefold()
+            .strip()
+            .casefold()
+        )
         merge_fate = normalize_display(
             next(
                 (
@@ -914,48 +889,29 @@ class TaskWorkContract:
         )
         result = replace(
             result,
-            task_work_contract_id=canonical_content_cid(
-                result._binding_material()
-            ),
+            task_work_contract_id=canonical_content_cid(result._binding_material()),
         )
 
         admission_contract = root.get("work_contract")
         if admission_contract not in (None, {}):
             if not isinstance(admission_contract, Mapping):
                 raise ValueError("work_contract must be a mapping")
-            if canonical_json_bytes(
-                dict(admission_contract)
-            ) != canonical_json_bytes(result._material()):
-                raise ValueError(
-                    "work_contract does not match canonical task fields"
-                )
+            if canonical_json_bytes(dict(admission_contract)) != canonical_json_bytes(
+                result._material()
+            ):
+                raise ValueError("work_contract does not match canonical task fields")
         explicit = root.get("task_work_contract")
         if explicit not in (None, {}):
             if not isinstance(explicit, Mapping):
                 raise ValueError("task_work_contract must be a mapping")
-            if canonical_json_bytes(dict(explicit)) != canonical_json_bytes(
-                result.to_dict()
-            ):
-                raise ValueError(
-                    "task_work_contract does not match canonical task fields"
-                )
-        supplied_id = str(
-            root.get("work_contract_id") or ""
-        ).strip()
+            if canonical_json_bytes(dict(explicit)) != canonical_json_bytes(result.to_dict()):
+                raise ValueError("task_work_contract does not match canonical task fields")
+        supplied_id = str(root.get("work_contract_id") or "").strip()
         if supplied_id and supplied_id != result.work_contract_id:
-            raise ValueError(
-                "work_contract_id does not match canonical task fields"
-            )
-        supplied_binding_id = str(
-            root.get("task_work_contract_id") or ""
-        ).strip()
-        if (
-            supplied_binding_id
-            and supplied_binding_id != result.task_work_contract_id
-        ):
-            raise ValueError(
-                "task_work_contract_id does not match canonical task fields"
-            )
+            raise ValueError("work_contract_id does not match canonical task fields")
+        supplied_binding_id = str(root.get("task_work_contract_id") or "").strip()
+        if supplied_binding_id and supplied_binding_id != result.task_work_contract_id:
+            raise ValueError("task_work_contract_id does not match canonical task fields")
         return result
 
 
@@ -995,7 +951,9 @@ def normalize_repo_path(value: str, *, repo_root: Path | None = None) -> str:
 
 
 def _normalized_paths(values: Iterable[str], repo_root: Path | None) -> list[str]:
-    return sorted({path for value in values if (path := normalize_repo_path(value, repo_root=repo_root))})
+    return sorted(
+        {path for value in values if (path := normalize_repo_path(value, repo_root=repo_root))}
+    )
 
 
 def _normalized_terms(values: Iterable[str]) -> list[str]:
@@ -1011,7 +969,10 @@ def _gitmodule_paths(repo_root: Path | None) -> list[str]:
     except OSError:
         return []
     return _normalized_paths(
-        (match.group(1).strip() for match in re.finditer(r"^\s*path\s*=\s*(.+?)\s*$", text, re.MULTILINE)),
+        (
+            match.group(1).strip()
+            for match in re.finditer(r"^\s*path\s*=\s*(.+?)\s*$", text, re.MULTILINE)
+        ),
         repo_root,
     )
 
@@ -1024,7 +985,16 @@ def _looks_generated(path: str) -> bool:
     parts = set(PurePosixPath(path).parts)
     name = PurePosixPath(path).name.lower()
     return bool(
-        parts & {"build", "dist", "generated", "artifacts", "coverage", "playwright-report", "test-results"}
+        parts
+        & {
+            "build",
+            "dist",
+            "generated",
+            "artifacts",
+            "coverage",
+            "playwright-report",
+            "test-results",
+        }
         or ".generated." in name
         or name.endswith((".min.js", ".lock", ".manifest.json"))
     )
@@ -1082,13 +1052,16 @@ class ConflictSurface:
                 canonical._material() != self.work_contract
                 or canonical.to_dict() != self.task_work_contract
             ):
-                raise ValueError(
-                    "conflict surface work contract is inconsistent"
-                )
+                raise ValueError("conflict surface work contract is inconsistent")
 
     @property
     def all_paths(self) -> list[str]:
-        return sorted(set(self.files) | set(self.changed_paths) | set(self.submodules) | set(self.generated_artifacts))
+        return sorted(
+            set(self.files)
+            | set(self.changed_paths)
+            | set(self.submodules)
+            | set(self.generated_artifacts)
+        )
 
     @property
     def ast_blob_records(self) -> list[dict[str, Any]]:
@@ -1104,9 +1077,7 @@ def _python_symbols(path: Path) -> set[str]:
     """Collect qualified Python definitions from a predicted existing file."""
 
     try:
-        record = build_python_ast_blob_record(
-            path.read_text(encoding="utf-8", errors="replace")
-        )
+        record = build_python_ast_blob_record(path.read_text(encoding="utf-8", errors="replace"))
     except OSError:
         return set()
     symbols = set(record.qualified_symbols)
@@ -1134,7 +1105,9 @@ def build_conflict_surface(
     sources = _sources(task)
     root = sources[0]
     work_contract = build_task_work_contract(task)
-    task_id = str(root.get("task_id") or root.get("id") or root.get("canonical_task_id") or "").strip()
+    task_id = str(
+        root.get("task_id") or root.get("id") or root.get("canonical_task_id") or ""
+    ).strip()
     task_cid = str(
         root.get("task_cid")
         or root.get("canonical_task_cid")
@@ -1157,11 +1130,9 @@ def build_conflict_surface(
         or root.get("semantic_identity")
         or next(
             (
-                source.get("canonical_semantic_identity")
-                or source.get("semantic_identity")
+                source.get("canonical_semantic_identity") or source.get("semantic_identity")
                 for source in sources[1:]
-                if source.get("canonical_semantic_identity")
-                or source.get("semantic_identity")
+                if source.get("canonical_semantic_identity") or source.get("semantic_identity")
             ),
             "",
         )
@@ -1169,13 +1140,22 @@ def build_conflict_surface(
     if not task_id:
         task_id = task_cid
     if not task_id:
-        digest = sha1(json.dumps(root, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:16]
+        digest = sha1(json.dumps(root, sort_keys=True, default=str).encode("utf-8")).hexdigest()[
+            :16
+        ]
         task_id = task_cid = f"task-{digest}"
 
     files = _normalized_paths(
         _field_items(
             sources,
-            ("files", "predicted_files", "predicted_paths", "outputs", "requested_outputs", "affected_files"),
+            (
+                "files",
+                "predicted_files",
+                "predicted_paths",
+                "outputs",
+                "requested_outputs",
+                "affected_files",
+            ),
         ),
         repo_root,
     )
@@ -1243,9 +1223,7 @@ def build_conflict_surface(
     discovered: set[str] = set(ast_symbols)
     for record in reusable_records.values():
         discovered.update(record.qualified_symbols)
-        discovered.update(
-            symbol.rsplit(".", 1)[-1] for symbol in record.qualified_symbols
-        )
+        discovered.update(symbol.rsplit(".", 1)[-1] for symbol in record.qualified_symbols)
     if repo_root is not None:
         for relative in files:
             if relative.endswith(".py"):
@@ -1303,13 +1281,21 @@ def build_conflict_surface(
     generated = _normalized_paths(
         _field_items(
             sources,
-            ("generated_artifacts", "generated_paths", "artifacts", "generated_outputs", "derived_outputs"),
+            (
+                "generated_artifacts",
+                "generated_paths",
+                "artifacts",
+                "generated_outputs",
+                "derived_outputs",
+            ),
         ),
         repo_root,
     )
     generated = sorted(set(generated) | {path for path in files if _looks_generated(path)})
     allowed = _normalized_terms(
-        _field_items(sources, ("allow_concurrent_with", "concurrency_overrides", "allowed_concurrent_tasks"))
+        _field_items(
+            sources, ("allow_concurrent_with", "concurrency_overrides", "allowed_concurrent_tasks")
+        )
     )
     return ConflictSurface(
         task_id=task_id,
@@ -1325,9 +1311,7 @@ def build_conflict_surface(
         context_paths=list(work_contract.context_paths),
         estimated_context_tokens=work_contract.estimated_context_tokens,
         estimated_tokens=work_contract.estimated_tokens,
-        estimated_validation_seconds=(
-            work_contract.estimated_validation_seconds
-        ),
+        estimated_validation_seconds=(work_contract.estimated_validation_seconds),
         resource_class=work_contract.resource_class,
         token_class=work_contract.token_class,
         preconditions=list(work_contract.preconditions),
@@ -1360,17 +1344,37 @@ def build_conflict_surface(
             if key
             not in (
                 {
-                    "files", "predicted_files", "outputs", "changed_paths", "ast_symbols",
-                    "global_ast_symbols", "interfaces",
-                    "submodules", "generated_artifacts", "allow_concurrent_with",
-                    "ast_records", "ast_blob_records", "python_ast_records", "blob_identities",
-                    "acceptance_subset", "acceptance_criteria", "acceptance",
-                    "effect_subset", "effects", "expected_effects",
-                    "estimated_context_tokens", "context_tokens",
-                    "estimated_tokens", "token_cost",
-                    "estimated_validation_seconds", "validation_seconds",
-                    "validation_cost", "task_work_contract", "work_contract",
-                    "work_contract_id", "task_work_contract_id",
+                    "files",
+                    "predicted_files",
+                    "outputs",
+                    "changed_paths",
+                    "ast_symbols",
+                    "global_ast_symbols",
+                    "interfaces",
+                    "submodules",
+                    "generated_artifacts",
+                    "allow_concurrent_with",
+                    "ast_records",
+                    "ast_blob_records",
+                    "python_ast_records",
+                    "blob_identities",
+                    "acceptance_subset",
+                    "acceptance_criteria",
+                    "acceptance",
+                    "effect_subset",
+                    "effects",
+                    "expected_effects",
+                    "estimated_context_tokens",
+                    "context_tokens",
+                    "estimated_tokens",
+                    "token_cost",
+                    "estimated_validation_seconds",
+                    "validation_seconds",
+                    "validation_cost",
+                    "task_work_contract",
+                    "work_contract",
+                    "work_contract_id",
+                    "task_work_contract_id",
                 }
                 | _DERIVED_CONFLICT_METADATA_FIELDS
             )
@@ -1390,22 +1394,16 @@ def _merge_duplicate_surfaces(
         value for value in (left.canonical_task_key, right.canonical_task_key) if value
     }
     if len(canonical_keys) > 1:
-        raise ValueError(
-            "one canonical task CID cannot project multiple canonical task keys"
-        )
+        raise ValueError("one canonical task CID cannot project multiple canonical task keys")
     semantic_identities = {
         value for value in (left.semantic_identity, right.semantic_identity) if value
     }
     if len(semantic_identities) > 1:
-        raise ValueError(
-            "one canonical task CID cannot project multiple semantic identities"
-        )
-    if canonical_keys and canonical_json_bytes(
-        left.task_work_contract
-    ) != canonical_json_bytes(right.task_work_contract):
-        raise ValueError(
-            "one canonical task CID cannot project multiple task work contracts"
-        )
+        raise ValueError("one canonical task CID cannot project multiple semantic identities")
+    if canonical_keys and canonical_json_bytes(left.task_work_contract) != canonical_json_bytes(
+        right.task_work_contract
+    ):
+        raise ValueError("one canonical task CID cannot project multiple task work contracts")
 
     ordered = sorted(
         (left, right),
@@ -1437,9 +1435,7 @@ def _merge_duplicate_surfaces(
         context_paths=list(representative.context_paths),
         estimated_context_tokens=representative.estimated_context_tokens,
         estimated_tokens=representative.estimated_tokens,
-        estimated_validation_seconds=(
-            representative.estimated_validation_seconds
-        ),
+        estimated_validation_seconds=(representative.estimated_validation_seconds),
         resource_class=representative.resource_class,
         token_class=representative.token_class,
         preconditions=list(representative.preconditions),
@@ -1459,9 +1455,7 @@ def _merge_duplicate_surfaces(
         ),
         interfaces=sorted(set(left.interfaces) | set(right.interfaces)),
         submodules=sorted(set(left.submodules) | set(right.submodules)),
-        generated_artifacts=sorted(
-            set(left.generated_artifacts) | set(right.generated_artifacts)
-        ),
+        generated_artifacts=sorted(set(left.generated_artifacts) | set(right.generated_artifacts)),
         ast_records=[
             record
             for _, record in sorted(
@@ -1471,9 +1465,7 @@ def _merge_duplicate_surfaces(
                 }.items()
             )
         ],
-        blob_identities=sorted(
-            set(left.blob_identities) | set(right.blob_identities)
-        ),
+        blob_identities=sorted(set(left.blob_identities) | set(right.blob_identities)),
         allow_concurrent_with=sorted(
             set(left.allow_concurrent_with) | set(right.allow_concurrent_with)
         ),
@@ -1498,15 +1490,20 @@ class ConflictWeightHistory:
     observation_count: int = 0
     observed_evidence_ids: list[str] = field(default_factory=list)
 
-    def observe_diff(self, task_cid: str, paths: Iterable[str], *, repo_root: Path | None = None) -> None:
+    def observe_diff(
+        self, task_cid: str, paths: Iterable[str], *, repo_root: Path | None = None
+    ) -> None:
         observed = _normalized_paths(paths, repo_root)
-        evidence_id = "diff:" + hashlib.sha256(
-            json.dumps(
-                {"task_cid": str(task_cid), "paths": observed},
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode("utf-8")
-        ).hexdigest()
+        evidence_id = (
+            "diff:"
+            + hashlib.sha256(
+                json.dumps(
+                    {"task_cid": str(task_cid), "paths": observed},
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+        )
         if not observed or evidence_id in self.observed_evidence_ids:
             return
         self.observed_evidence_ids.append(evidence_id)
@@ -1538,16 +1535,10 @@ class ConflictWeightHistory:
         left, right = _receipt_pair(receipt)
         severity = _receipt_severity(receipt)
         paths = _receipt_paths(receipt, repo_root=repo_root)
-        symbols = _field_items(
-            [receipt], ("ast_symbols", "symbols", "conflicting_symbols")
-        )
-        interfaces = _field_items(
-            [receipt], ("interfaces", "conflicting_interfaces")
-        )
+        symbols = _field_items([receipt], ("ast_symbols", "symbols", "conflicting_symbols"))
+        interfaces = _field_items([receipt], ("interfaces", "conflicting_interfaces"))
         submodules = _normalized_paths(
-            _field_items(
-                [receipt], ("submodules", "submodule_paths", "conflicting_submodules")
-            ),
+            _field_items([receipt], ("submodules", "submodule_paths", "conflicting_submodules")),
             repo_root,
         )
         artifacts = _normalized_paths(
@@ -1569,16 +1560,16 @@ class ConflictWeightHistory:
         for symbol in symbols:
             self.symbol_weights[symbol] = self.symbol_weights.get(symbol, 0.0) + max(1.0, severity)
         for interface in interfaces:
-            self.interface_weights[interface] = (
-                self.interface_weights.get(interface, 0.0) + max(1.0, severity)
+            self.interface_weights[interface] = self.interface_weights.get(interface, 0.0) + max(
+                1.0, severity
             )
         for submodule in submodules:
-            self.submodule_weights[submodule] = (
-                self.submodule_weights.get(submodule, 0.0) + max(1.0, severity)
+            self.submodule_weights[submodule] = self.submodule_weights.get(submodule, 0.0) + max(
+                1.0, severity
             )
         for artifact in artifacts:
-            self.artifact_weights[artifact] = (
-                self.artifact_weights.get(artifact, 0.0) + max(1.0, severity)
+            self.artifact_weights[artifact] = self.artifact_weights.get(artifact, 0.0) + max(
+                1.0, severity
             )
         if left or right or paths or symbols or interfaces or submodules or artifacts:
             self.observed_evidence_ids.append(evidence_id)
@@ -1592,16 +1583,23 @@ class ConflictWeightHistory:
     def from_dict(cls, payload: Mapping[str, Any] | None) -> "ConflictWeightHistory":
         source = dict(payload or {})
         kwargs: dict[str, Any] = {}
-        for name in ("path_weights", "symbol_weights", "interface_weights", "submodule_weights", "artifact_weights", "pair_weights"):
+        for name in (
+            "path_weights",
+            "symbol_weights",
+            "interface_weights",
+            "submodule_weights",
+            "artifact_weights",
+            "pair_weights",
+        ):
             value = source.get(name)
-            kwargs[name] = {str(key): float(weight) for key, weight in value.items()} if isinstance(value, Mapping) else {}
+            kwargs[name] = (
+                {str(key): float(weight) for key, weight in value.items()}
+                if isinstance(value, Mapping)
+                else {}
+            )
         kwargs["observation_count"] = int(source.get("observation_count") or 0)
         kwargs["observed_evidence_ids"] = sorted(
-            {
-                str(item)
-                for item in (source.get("observed_evidence_ids") or [])
-                if str(item)
-            }
+            {str(item) for item in (source.get("observed_evidence_ids") or []) if str(item)}
         )[-MAX_CONFLICT_HISTORY_EVIDENCE_IDS:]
         return cls(**kwargs)
 
@@ -1618,7 +1616,9 @@ class ConflictWeightHistory:
 
         target = Path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
-        descriptor, temporary_name = tempfile.mkstemp(prefix=f".{target.name}.", dir=str(target.parent))
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{target.name}.", dir=str(target.parent)
+        )
         try:
             with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
                 json.dump(self.to_dict(), handle, indent=2, sort_keys=True)
@@ -1713,10 +1713,7 @@ class TaskConflictGraph:
     def canonical_lanes(self) -> tuple[tuple[str, ...], ...]:
         """Return conflict-free lanes ordered by color and canonical task CID."""
 
-        return tuple(
-            tuple(sorted(self.lanes[color]))
-            for color in sorted(self.lanes)
-        )
+        return tuple(tuple(sorted(self.lanes[color])) for color in sorted(self.lanes))
 
     @property
     def independent_width(self) -> int:
@@ -1727,12 +1724,18 @@ class TaskConflictGraph:
     def edge_for(self, left: str, right: str) -> ConflictEdge | None:
         pair = _pair_key(left, right)
         return next(
-            (edge for edge in self.edges if _pair_key(edge.left_task_cid, edge.right_task_cid) == pair), None
+            (
+                edge
+                for edge in self.edges
+                if _pair_key(edge.left_task_cid, edge.right_task_cid) == pair
+            ),
+            None,
         )
 
     def conflicts_for(self, task_cid: str) -> list[ConflictEdge]:
         return [
-            edge for edge in self.edges
+            edge
+            for edge in self.edges
             if edge.blocks_concurrency and task_cid in {edge.left_task_cid, edge.right_task_cid}
         ]
 
@@ -1776,13 +1779,9 @@ class ConflictWaveProjection:
         return {
             "dependency_wave": self.dependency_wave,
             "task_cids": list(self.task_cids),
-            "blocking_conflict_pairs": [
-                list(pair) for pair in self.blocking_conflict_pairs
-            ],
+            "blocking_conflict_pairs": [list(pair) for pair in self.blocking_conflict_pairs],
             "color_by_task_cid": dict(sorted(self.color_by_task_cid.items())),
-            "independent_lanes": [
-                list(lane) for lane in self.independent_lanes
-            ],
+            "independent_lanes": [list(lane) for lane in self.independent_lanes],
             "independent_width": self.independent_width,
             "color_count": self.color_count,
         }
@@ -1821,19 +1820,14 @@ class ConflictWaveProjection:
             ),
             color_by_task_cid={
                 str(task_cid): int(color)
-                for task_cid, color in dict(
-                    value.get("color_by_task_cid") or {}
-                ).items()
+                for task_cid, color in dict(value.get("color_by_task_cid") or {}).items()
             },
             independent_lanes=tuple(
-                tuple(str(item) for item in lane)
-                for lane in value.get("independent_lanes", ())
+                tuple(str(item) for item in lane) for lane in value.get("independent_lanes", ())
             ),
         )
         if not projection.matches_canonical_replay():
-            raise ValueError(
-                "conflict wave projection does not match canonical replay"
-            )
+            raise ValueError("conflict wave projection does not match canonical replay")
         if int(value.get("independent_width") or 0) != projection.independent_width:
             raise ValueError("conflict wave independent width does not match lanes")
         if int(value.get("color_count") or 0) != projection.color_count:
@@ -1863,26 +1857,16 @@ def project_conflict_free_wave(
         if len(values) != 2:
             raise ValueError("blocking conflict pairs must contain two task CIDs")
         if not set(values).issubset(node_set):
-            raise ValueError(
-                "blocking conflict pairs must remain inside one dependency wave"
-            )
+            raise ValueError("blocking conflict pairs must remain inside one dependency wave")
         pairs.add((values[0], values[1]))
 
     adjacency = {
-        cid: {
-            peer
-            for pair in pairs
-            if cid in pair
-            for peer in pair
-            if peer != cid
-        }
+        cid: {peer for pair in pairs if cid in pair for peer in pair if peer != cid}
         for cid in nodes
     }
     colors: dict[str, int] = {}
     for cid in sorted(nodes, key=lambda item: (-len(adjacency[item]), item)):
-        unavailable = {
-            colors[peer] for peer in adjacency[cid] if peer in colors
-        }
+        unavailable = {colors[peer] for peer in adjacency[cid] if peer in colors}
         color = 0
         while color in unavailable:
             color += 1
@@ -1892,10 +1876,7 @@ def project_conflict_free_wave(
         tuple(sorted(cid for cid, assigned in colors.items() if assigned == color))
         for color in range(max(colors.values(), default=-1) + 1)
     )
-    if any(
-        colors[left] == colors[right]
-        for left, right in pairs
-    ):
+    if any(colors[left] == colors[right] for left, right in pairs):
         raise RuntimeError("conflict coloring placed a blocking edge in one lane")
     return ConflictWaveProjection(
         dependency_wave=max(0, int(dependency_wave)),
@@ -1968,9 +1949,7 @@ class SurfaceEvidenceComparison:
 
     @property
     def predicted_count(self) -> int:
-        matched_predictions = {
-            (edge.dimension, edge.predicted) for edge in self.evidence_edges
-        }
+        matched_predictions = {(edge.dimension, edge.predicted) for edge in self.evidence_edges}
         return len(matched_predictions) + sum(len(values) for values in self.missing.values())
 
     @property
@@ -2072,7 +2051,11 @@ def _comparison_values(
         paths = _field_items(
             sources,
             (
-                "changed_paths", "actual_paths", "observed_paths", "branch_diff", "diff_paths",
+                "changed_paths",
+                "actual_paths",
+                "observed_paths",
+                "branch_diff",
+                "diff_paths",
             ),
         )
         # ``files`` is the neutral spelling used by scan receipts, but on task
@@ -2083,8 +2066,12 @@ def _comparison_values(
         symbols = _field_items(
             sources,
             (
-                "changed_ast_symbols", "actual_ast_symbols", "observed_ast_symbols",
-                "changed_symbols", "actual_symbols", "observed_symbols",
+                "changed_ast_symbols",
+                "actual_ast_symbols",
+                "observed_ast_symbols",
+                "changed_symbols",
+                "actual_symbols",
+                "observed_symbols",
             ),
         )
         if not symbols:
@@ -2092,18 +2079,32 @@ def _comparison_values(
         interfaces = _field_items(
             sources,
             (
-                "changed_interfaces", "actual_interfaces", "observed_interfaces",
+                "changed_interfaces",
+                "actual_interfaces",
+                "observed_interfaces",
             ),
         )
         if not interfaces:
-            interfaces = _field_items(sources, ("interfaces", "provides_interfaces", "public_interfaces"))
+            interfaces = _field_items(
+                sources, ("interfaces", "provides_interfaces", "public_interfaces")
+            )
     else:
         paths = _field_items(
             sources,
             (
-                "files", "predicted_files", "predicted_paths", "outputs", "requested_outputs",
-                "affected_files", "submodules", "submodule_paths", "gitlinks",
-                "generated_artifacts", "generated_paths", "generated_outputs", "derived_outputs",
+                "files",
+                "predicted_files",
+                "predicted_paths",
+                "outputs",
+                "requested_outputs",
+                "affected_files",
+                "submodules",
+                "submodule_paths",
+                "gitlinks",
+                "generated_artifacts",
+                "generated_paths",
+                "generated_outputs",
+                "derived_outputs",
             ),
         )
         symbols = _field_items(
@@ -2113,8 +2114,12 @@ def _comparison_values(
         interfaces = _field_items(
             sources,
             (
-                "interfaces", "provides_interfaces", "requires_interfaces", "required_interfaces",
-                "interface_dependencies", "public_interfaces",
+                "interfaces",
+                "provides_interfaces",
+                "requires_interfaces",
+                "required_interfaces",
+                "interface_dependencies",
+                "public_interfaces",
             ),
         )
     return {
@@ -2186,7 +2191,10 @@ def compare_surface_evidence(
     unexpected_paths = sorted(
         path
         for path in actual["paths"]
-        if not any(_under(path, planned_path) or _under(planned_path, path) for planned_path in planned["paths"])
+        if not any(
+            _under(path, planned_path) or _under(planned_path, path)
+            for planned_path in planned["paths"]
+        )
     )
     edges.sort(key=lambda edge: (edge.dimension, edge.predicted, edge.observed, edge.relationship))
 
@@ -2347,7 +2355,14 @@ def detect_surface_contradictions(
         status = str(record.get("status") or record.get("outcome") or "").strip().lower()
         explicit = record.get("contradictory") is True or bool(record.get("contradiction"))
         explicit = explicit or status in {
-            "contradicted", "contradictory", "conflict", "conflicted", "failed", "failure", "invalid", "rejected",
+            "contradicted",
+            "contradictory",
+            "conflict",
+            "conflicted",
+            "failed",
+            "failure",
+            "invalid",
+            "rejected",
         }
         specific: list[tuple[str, str]] = []
         for dimension in ("paths", "symbols", "interfaces"):
@@ -2367,7 +2382,8 @@ def detect_surface_contradictions(
                     actual=value,
                     source=source,
                     provenance_cid=provenance,
-                    explanation=reason or f"Evidence explicitly contradicts {dimension[:-1]} {value!r}.",
+                    explanation=reason
+                    or f"Evidence explicitly contradicts {dimension[:-1]} {value!r}.",
                 )
         elif explicit:
             add(
@@ -2375,7 +2391,8 @@ def detect_surface_contradictions(
                 "explicit_evidence_contradiction",
                 source=source,
                 provenance_cid=provenance,
-                explanation=reason or f"Evidence status {status!r} explicitly reports a contradiction.",
+                explanation=reason
+                or f"Evidence status {status!r} explicitly reports a contradiction.",
             )
 
     # Multiple strong records may report the same fact.  Collapse them without
@@ -2383,8 +2400,13 @@ def detect_surface_contradictions(
     # order.
     unique = {
         (
-            item.dimension, item.kind, item.expected, item.observed,
-            item.source, item.provenance_cid, item.explanation,
+            item.dimension,
+            item.kind,
+            item.expected,
+            item.observed,
+            item.source,
+            item.provenance_cid,
+            item.explanation,
         ): item
         for item in contradictions
     }
@@ -2416,16 +2438,26 @@ def _path_overlaps(left: Iterable[str], right: Iterable[str]) -> list[str]:
 def _history_path_weight(paths: Iterable[str], history: ConflictWeightHistory) -> float:
     total = 0.0
     for path in paths:
-        total += sum(weight for known, weight in history.path_weights.items() if _under(path, known) or _under(known, path))
+        total += sum(
+            weight
+            for known, weight in history.path_weights.items()
+            if _under(path, known) or _under(known, path)
+        )
     return total
 
 
 def _is_allowed(left: ConflictSurface, right: ConflictSurface, overrides: set[str]) -> bool:
     candidates = {left.task_cid, left.task_id}
     others = {right.task_cid, right.task_id}
-    if any(_pair_key(left_key, right_key) in overrides for left_key in candidates for right_key in others):
+    if any(
+        _pair_key(left_key, right_key) in overrides
+        for left_key in candidates
+        for right_key in others
+    ):
         return True
-    return bool(candidates & set(right.allow_concurrent_with) or others & set(left.allow_concurrent_with))
+    return bool(
+        candidates & set(right.allow_concurrent_with) or others & set(left.allow_concurrent_with)
+    )
 
 
 def _override_pairs(value: Any) -> set[str]:
@@ -2467,21 +2499,34 @@ def _override_pairs(value: Any) -> set[str]:
 
 def _receipt_pair(receipt: Mapping[str, Any]) -> tuple[str, str]:
     left = str(
-        receipt.get("left_task_cid") or receipt.get("source_task_cid") or receipt.get("task_cid")
-        or receipt.get("left_task_id") or ""
+        receipt.get("left_task_cid")
+        or receipt.get("source_task_cid")
+        or receipt.get("task_cid")
+        or receipt.get("left_task_id")
+        or ""
     ).strip()
     right = str(
-        receipt.get("right_task_cid") or receipt.get("target_task_cid") or receipt.get("other_task_cid")
-        or receipt.get("right_task_id") or ""
+        receipt.get("right_task_cid")
+        or receipt.get("target_task_cid")
+        or receipt.get("other_task_cid")
+        or receipt.get("right_task_id")
+        or ""
     ).strip()
     pair = receipt.get("task_cids") or receipt.get("tasks")
-    if (not left or not right) and isinstance(pair, Sequence) and not isinstance(pair, str) and len(pair) >= 2:
+    if (
+        (not left or not right)
+        and isinstance(pair, Sequence)
+        and not isinstance(pair, str)
+        and len(pair) >= 2
+    ):
         left, right = str(pair[0]), str(pair[1])
     return left, right
 
 
 def _receipt_severity(receipt: Mapping[str, Any]) -> float:
-    explicit = receipt.get("weight") or receipt.get("conflict_weight") or receipt.get("severity_weight")
+    explicit = (
+        receipt.get("weight") or receipt.get("conflict_weight") or receipt.get("severity_weight")
+    )
     if explicit is not None:
         try:
             base = max(0.0, float(explicit))
@@ -2495,10 +2540,7 @@ def _receipt_severity(receipt: Mapping[str, Any]) -> float:
         re.sub(r"[\s-]+", "_", str(receipt.get(key) or "").strip().lower())
         for key in ("status", "result", "outcome")
     }
-    diagnostic = " ".join(
-        str(receipt.get(key) or "").lower()
-        for key in ("reason", "stderr")
-    )
+    diagnostic = " ".join(str(receipt.get(key) or "").lower() for key in ("reason", "stderr"))
     conflict_diagnostic = any(
         marker in diagnostic
         for marker in (
@@ -2526,7 +2568,14 @@ def _receipt_paths(receipt: Mapping[str, Any], *, repo_root: Path | None) -> lis
     return _normalized_paths(
         _field_items(
             [receipt],
-            ("paths", "conflicting_paths", "changed_paths", "files", "overlapping_paths", "generated_artifacts"),
+            (
+                "paths",
+                "conflicting_paths",
+                "changed_paths",
+                "files",
+                "overlapping_paths",
+                "generated_artifacts",
+            ),
         ),
         repo_root,
     )
@@ -2536,9 +2585,19 @@ def _receipts(value: Any) -> list[dict[str, Any]]:
     if isinstance(value, Mapping):
         # A single receipt has characteristic fields; otherwise values are a receipt map.
         if set(value) & {
-            "left_task_cid", "source_task_cid", "task_cids", "status", "outcome",
-            "conflicting_paths", "contradictory", "contradiction", "receipt_cid",
-            "coverage_complete", "exhaustive", "exact_surface", "reject_unexpected",
+            "left_task_cid",
+            "source_task_cid",
+            "task_cids",
+            "status",
+            "outcome",
+            "conflicting_paths",
+            "contradictory",
+            "contradiction",
+            "receipt_cid",
+            "coverage_complete",
+            "exhaustive",
+            "exact_surface",
+            "reject_unexpected",
         }:
             return [dict(value)]
         receipts: list[dict[str, Any]] = []
@@ -2621,9 +2680,7 @@ def _make_edge(
             )
         }
         observed += float(weights["changed_paths"]) * len(observed_cross_paths)
-        predicted += float(weights["files"]) * (
-            len(cross_paths) - len(observed_cross_paths)
-        )
+        predicted += float(weights["files"]) * (len(cross_paths) - len(observed_cross_paths))
 
     # Auto-discovered AST terms are local to the Python files from which they
     # were parsed.  A shared non-code path (for example a plan document or a
@@ -2650,17 +2707,21 @@ def _make_edge(
             overlaps[surface] = shared
             predicted += float(weights[surface]) * len(shared)
 
-    history_paths = all_path_overlap or _path_overlaps(left.files + left.generated_artifacts, right.files + right.generated_artifacts)
+    history_paths = all_path_overlap or _path_overlaps(
+        left.files + left.generated_artifacts, right.files + right.generated_artifacts
+    )
     path_history = _history_path_weight(history_paths, history)
-    symbol_history = sum(history.symbol_weights.get(symbol, 0.0) for symbol in overlaps.get("ast_symbols", []))
-    interface_history = sum(history.interface_weights.get(name, 0.0) for name in overlaps.get("interfaces", []))
+    symbol_history = sum(
+        history.symbol_weights.get(symbol, 0.0) for symbol in overlaps.get("ast_symbols", [])
+    )
+    interface_history = sum(
+        history.interface_weights.get(name, 0.0) for name in overlaps.get("interfaces", [])
+    )
     submodule_history = sum(
-        history.submodule_weights.get(path, 0.0)
-        for path in overlaps.get("submodules", [])
+        history.submodule_weights.get(path, 0.0) for path in overlaps.get("submodules", [])
     )
     artifact_history = sum(
-        history.artifact_weights.get(path, 0.0)
-        for path in overlaps.get("generated_artifacts", [])
+        history.artifact_weights.get(path, 0.0) for path in overlaps.get("generated_artifacts", [])
     )
     pair_history = history.pair_weights.get(_pair_key(left.task_cid, right.task_cid), 0.0)
     observed += (
@@ -2695,7 +2756,9 @@ def _make_edge(
             reasons.append(code)
     # Keep concrete evidence alongside stable reason codes.  Codes make policy
     # filtering reliable; details make receipts and manifests self-explanatory.
-    reasons.extend(f"{surface}: {', '.join(values)}" for surface, values in sorted(overlaps.items()))
+    reasons.extend(
+        f"{surface}: {', '.join(values)}" for surface, values in sorted(overlaps.items())
+    )
     if observed:
         reasons.append(f"observed conflict evidence: +{observed:g}")
     if allowed:
@@ -2741,7 +2804,9 @@ def _color(
         )
         forbidden = {colors[neighbor] for neighbor in adjacency[node] if neighbor in colors}
         color = 0
-        while color in forbidden or (capacity is not None and sum(value == color for value in colors.values()) >= capacity):
+        while color in forbidden or (
+            capacity is not None and sum(value == color for value in colors.values()) >= capacity
+        ):
             color += 1
         colors[node] = color
 
@@ -2793,7 +2858,9 @@ def _explain_decisions(
                 )
             elif colors[left] == colors[right]:
                 action = "co_locate"
-                explanation = f"Co-located in color {colors[left]} because no conflict surface overlaps."
+                explanation = (
+                    f"Co-located in color {colors[left]} because no conflict surface overlaps."
+                )
             else:
                 action = "separate"
                 explanation = (
@@ -2807,7 +2874,9 @@ def _explain_decisions(
                     action=action,
                     explanation=explanation,
                     weight=edge.weight if edge else 0.0,
-                    reasons=list(edge.reasons) if edge else (["lane_capacity"] if colors[left] != colors[right] else []),
+                    reasons=list(edge.reasons)
+                    if edge
+                    else (["lane_capacity"] if colors[left] != colors[right] else []),
                 )
             )
     return decisions
@@ -2832,7 +2901,11 @@ def materialize_task_conflict_graph(
     created when either conflicts or capacity require them.
     """
 
-    learned = history if isinstance(history, ConflictWeightHistory) else ConflictWeightHistory.from_dict(history)
+    learned = (
+        history
+        if isinstance(history, ConflictWeightHistory)
+        else ConflictWeightHistory.from_dict(history)
+    )
     diffs = _branch_diff_map(branch_diffs)
     surfaces: dict[str, ConflictSurface] = {}
     observed_paths_by_cid: dict[str, set[str]] = {}
@@ -2876,8 +2949,14 @@ def materialize_task_conflict_graph(
             ]
             # Ensure the canonical pair wins over any alias-specific fields.
             for key in (
-                "left_task_cid", "source_task_cid", "task_cid", "left_task_id",
-                "right_task_cid", "target_task_cid", "other_task_cid", "right_task_id",
+                "left_task_cid",
+                "source_task_cid",
+                "task_cid",
+                "left_task_id",
+                "right_task_cid",
+                "target_task_cid",
+                "other_task_cid",
+                "right_task_id",
                 "tasks",
             ):
                 normalized_receipt.pop(key, None)

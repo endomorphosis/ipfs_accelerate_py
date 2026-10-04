@@ -39,24 +39,26 @@ from duckdb_api.simulation_validation.core.base import ValidationResult
 detector = BasicDriftDetector()
 
 # Detect drift in validation results
-historical_results = [...] # List of ValidationResult objects from historical window
-recent_results = [...] # List of ValidationResult objects from recent window
+historical_results = [...]  # List of ValidationResult objects from historical window
+recent_results = [...]  # List of ValidationResult objects from recent window
 
 drift_result = detector.detect_drift(
     historical_results=historical_results,
     recent_results=recent_results,
     hardware_type="gpu_rtx3080",
-    model_type="bert-base-uncased"
+    model_type="bert-base-uncased",
 )
 
 # Check if significant drift was detected
 if drift_result.is_significant:
     print(f"Significant drift detected in {drift_result.hardware_type} - {drift_result.model_type}")
-    
+
     # Analyze drift by metrics
     for metric, details in drift_result.drift_metrics.items():
         if details["drift_detected"]:
-            print(f"  Drift in {metric}: {details['mean_change_pct']:.2f}% change (p-value: {details['p_value']:.4f})")
+            print(
+                f"  Drift in {metric}: {details['mean_change_pct']:.2f}% change (p-value: {details['p_value']:.4f})"
+            )
 ```
 
 ### Advanced Usage
@@ -66,9 +68,7 @@ from duckdb_api.simulation_validation.drift_detection.advanced_detector import A
 
 # Create the advanced detector with specific methods
 detector = AdvancedDriftDetector(
-    method="multi_dimensional",
-    confidence_threshold=0.95,
-    use_machine_learning=True
+    method="multi_dimensional", confidence_threshold=0.95, use_machine_learning=True
 )
 
 # Detect drift with advanced methods
@@ -77,7 +77,7 @@ drift_result = detector.detect_drift(
     recent_results=recent_results,
     hardware_type="gpu_rtx3080",
     model_type="bert-base-uncased",
-    metrics=["throughput_items_per_second", "average_latency_ms"]
+    metrics=["throughput_items_per_second", "average_latency_ms"],
 )
 
 # Get root cause analysis
@@ -108,7 +108,7 @@ drift_result = detector.detect_drift_from_db(
     historical_window_start="2025-01-01",
     historical_window_end="2025-01-31",
     new_window_start="2025-02-01",
-    new_window_end="2025-02-28"
+    new_window_end="2025-02-28",
 )
 
 # Store drift detection result in database
@@ -157,7 +157,9 @@ The drift detection components require the following dependencies:
 The drift detection results can be visualized using the visualization components:
 
 ```python
-from duckdb_api.simulation_validation.visualization.validation_visualizer_db_connector import ValidationVisualizerDBConnector
+from duckdb_api.simulation_validation.visualization.validation_visualizer_db_connector import (
+    ValidationVisualizerDBConnector,
+)
 
 # Create the connector
 connector = ValidationVisualizerDBConnector()
@@ -166,7 +168,7 @@ connector = ValidationVisualizerDBConnector()
 connector.create_drift_visualization_from_db(
     hardware_type="gpu_rtx3080",
     model_type="bert-base-uncased",
-    output_path="./drift_visualization.html"
+    output_path="./drift_visualization.html",
 )
 ```
 
@@ -181,17 +183,13 @@ from duckdb_api.simulation_validation.drift_detection.drift_alert_manager import
 alert_manager = DriftAlertManager()
 
 # Configure alerts
-alert_manager.configure(
-    email_alerts=True,
-    dashboard_alerts=True,
-    recipients=["team@example.com"]
-)
+alert_manager.configure(email_alerts=True, dashboard_alerts=True, recipients=["team@example.com"])
 
 # Set up drift detection process with alerts
 if drift_result.is_significant:
     alert_manager.send_alert(
         drift_result=drift_result,
         message="Significant drift detected in simulation accuracy",
-        severity="high"
+        severity="high",
     )
 ```

@@ -125,7 +125,7 @@ from ipfs_accelerate_py.model_manager import RecommendationContext, DataType
 server = create_ai_model_server(
     model_manager_path="./models.db",
     bandit_storage_path="./bandit.json",
-    doc_index_path="./docs.json"
+    doc_index_path="./docs.json",
 )
 
 # Get recommendation
@@ -133,7 +133,7 @@ context = RecommendationContext(
     task_type="classification",
     hardware="cpu",
     input_type=DataType.TOKENS,
-    output_type=DataType.LOGITS
+    output_type=DataType.LOGITS,
 )
 
 recommendation = server.bandit_recommender.recommend_model(context)
@@ -141,9 +141,9 @@ print(f"Recommended: {recommendation.model_id}")
 
 # Provide feedback
 server.bandit_recommender.provide_feedback(
-    recommendation.model_id, 
+    recommendation.model_id,
     0.85,  # Performance score
-    context
+    context,
 )
 ```
 
@@ -262,7 +262,7 @@ The demo will show:
 server = create_ai_model_server(
     model_manager_path="./production/models.duckdb",  # Use DuckDB for scale
     bandit_storage_path="./production/bandit.json",
-    doc_index_path="./production/docs.json"
+    doc_index_path="./production/docs.json",
 )
 
 # Run with network transport
@@ -287,7 +287,7 @@ Users can discover optimal models without expertise:
 recommendation = recommend_model(
     task_type="sentiment_analysis",
     hardware="cpu",
-    requirements={"accuracy": "high", "speed": "medium"}
+    requirements={"accuracy": "high", "speed": "medium"},
 )
 ```
 
@@ -317,9 +317,7 @@ Systems improve through usage:
 ```python
 # Continuous feedback improves recommendations
 provide_inference_feedback(
-    task_type="classification",
-    model_id="bert-base-uncased", 
-    performance_score=0.92
+    task_type="classification", model_id="bert-base-uncased", performance_score=0.92
 )
 ```
 

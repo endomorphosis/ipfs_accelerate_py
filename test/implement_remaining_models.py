@@ -13,12 +13,17 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 # Remaining models to implement
 REMAINING_MODELS = [
-    "layoutlmv2", "layoutlmv3", "clvp", "hf_bigbird", "seamless_m4t_v2", "xlm_prophetnet"
+    "layoutlmv2",
+    "layoutlmv3",
+    "clvp",
+    "hf_bigbird",
+    "seamless_m4t_v2",
+    "xlm_prophetnet",
 ]
 
 # Template for encoder-only models
@@ -576,7 +581,7 @@ MODEL_CONFIGS = {
         "model_class": "LayoutLMv2ForSequenceClassification",
         "processor_class": "LayoutLMv2Processor",
         "test_input": ["test.jpg", "This is a sample document text."],
-        "template": ENCODER_ONLY_TEMPLATE
+        "template": ENCODER_ONLY_TEMPLATE,
     },
     "layoutlmv3": {
         "architecture": "encoder-only",
@@ -584,9 +589,8 @@ MODEL_CONFIGS = {
         "model_class": "LayoutLMv3ForSequenceClassification",
         "processor_class": "LayoutLMv3Processor",
         "test_input": ["test.jpg", "This is a sample document text."],
-        "template": ENCODER_ONLY_TEMPLATE
+        "template": ENCODER_ONLY_TEMPLATE,
     },
-    
     # Speech models
     "clvp": {
         "architecture": "speech",
@@ -594,9 +598,8 @@ MODEL_CONFIGS = {
         "model_class": "ClvpModelForConditionalGeneration",
         "processor_class": "ClvpProcessor",
         "test_input": "A person speaking clearly",
-        "template": SPEECH_TEMPLATE
+        "template": SPEECH_TEMPLATE,
     },
-    
     # Encoder-decoder models
     "hf_bigbird": {
         "architecture": "encoder-only",
@@ -604,7 +607,7 @@ MODEL_CONFIGS = {
         "model_class": "BigBirdForMaskedLM",
         "processor_class": "BigBirdTokenizer",
         "test_input": "The quick brown fox jumps over the [MASK] dog.",
-        "template": ENCODER_ONLY_TEMPLATE
+        "template": ENCODER_ONLY_TEMPLATE,
     },
     "seamless_m4t_v2": {
         "architecture": "encoder-decoder",
@@ -612,7 +615,7 @@ MODEL_CONFIGS = {
         "model_class": "SeamlessM4Tv2ForTextToSpeech",
         "processor_class": "SeamlessM4Tv2Processor",
         "test_input": "Hello, how are you?",
-        "template": ENCODER_DECODER_TEMPLATE
+        "template": ENCODER_DECODER_TEMPLATE,
     },
     "xlm_prophetnet": {
         "architecture": "encoder-decoder",
@@ -620,20 +623,22 @@ MODEL_CONFIGS = {
         "model_class": "XLMProphetNetForConditionalGeneration",
         "tokenizer_class": "XLMProphetNetTokenizer",
         "test_input": "This is a test for XLMProphetNet, which is a multilingual sequence-to-sequence model.",
-        "template": ENCODER_DECODER_TEMPLATE
-    }
+        "template": ENCODER_DECODER_TEMPLATE,
+    },
 }
+
 
 def generate_class_name(model_name: str) -> str:
     """Generate a class name from the model name."""
     # Handle special characters
-    model_name = model_name.replace('-', '_').replace('2', 'Two')
-    
+    model_name = model_name.replace("-", "_").replace("2", "Two")
+
     # Capitalize parts
-    parts = model_name.split('_')
-    class_name = ''.join(part.capitalize() for part in parts)
-    
+    parts = model_name.split("_")
+    class_name = "".join(part.capitalize() for part in parts)
+
     return class_name
+
 
 def generate_model_test_file(model_name: str, output_dir: str) -> str:
     """Generate a test file for a specific model."""
@@ -642,56 +647,59 @@ def generate_model_test_file(model_name: str, output_dir: str) -> str:
     if not config:
         logger.error(f"Model {model_name} not found in configuration")
         return None
-    
+
     # Create class name
     class_name = generate_class_name(model_name)
-    
+
     # Determine the appropriate template
     template = config.get("template")
-    
+
     # Format the template
     content = template.format(
         model_name=model_name,
         class_name=class_name,
         model_id=config.get("model_id"),
         model_class=config.get("model_class"),
-        processor_class=config.get("processor_class", config.get("tokenizer_class", "AutoProcessor")),
-        tokenizer_class=config.get("tokenizer_class", config.get("processor_class", "AutoTokenizer")),
-        test_input=config.get("test_input", "Test input")
+        processor_class=config.get(
+            "processor_class", config.get("tokenizer_class", "AutoProcessor")
+        ),
+        tokenizer_class=config.get(
+            "tokenizer_class", config.get("processor_class", "AutoTokenizer")
+        ),
+        test_input=config.get("test_input", "Test input"),
     )
-    
+
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
-    
+
     # Write the file
     file_path = os.path.join(output_dir, f"test_{model_name.replace('-', '_')}.py")
-    with open(file_path, 'w') as f:
+    with open(file_path, "w") as f:
         f.write(content)
-    
+
     logger.info(f"Generated test file for {model_name} at {file_path}")
     return file_path
 
-def implement_remaining_models(output_dir: str, model_list: Optional[List[str]] = None) -> Dict[str, Any]:
+
+def implement_remaining_models(
+    output_dir: str, model_list: Optional[List[str]] = None
+) -> Dict[str, Any]:
     """
     Implement test files for remaining models.
-    
+
     Args:
         output_dir: Directory to output the generated files
         model_list: Optional list of models to implement (if None, all remaining models are implemented)
-    
+
     Returns:
         Dictionary with implementation results
     """
     # Determine models to implement
     models_to_implement = model_list if model_list else REMAINING_MODELS
-    
+
     # Create results dictionary
-    results = {
-        "generated": 0,
-        "failed": 0,
-        "details": {}
-    }
-    
+    results = {"generated": 0, "failed": 0, "details": {}}
+
     # Process each model
     for model_name in models_to_implement:
         try:
@@ -701,22 +709,21 @@ def implement_remaining_models(output_dir: str, model_list: Optional[List[str]] 
                 results["details"][model_name] = {
                     "status": "success",
                     "file_path": file_path,
-                    "architecture": MODEL_CONFIGS.get(model_name, {}).get("architecture", "unknown")
+                    "architecture": MODEL_CONFIGS.get(model_name, {}).get(
+                        "architecture", "unknown"
+                    ),
                 }
             else:
                 results["failed"] += 1
                 results["details"][model_name] = {
                     "status": "failed",
-                    "error": "Model configuration not found"
+                    "error": "Model configuration not found",
                 }
         except Exception as e:
             logger.error(f"Failed to generate test for {model_name}: {e}")
             results["failed"] += 1
-            results["details"][model_name] = {
-                "status": "failed",
-                "error": str(e)
-            }
-    
+            results["details"][model_name] = {"status": "failed", "error": str(e)}
+
     # Generate a report
     report_path = os.path.join(output_dir, "implementation_report.md")
     with open(report_path, "w") as f:
@@ -725,9 +732,9 @@ def implement_remaining_models(output_dir: str, model_list: Optional[List[str]] 
         f.write(f"## Summary\n\n")
         f.write(f"- **Generated:** {results['generated']}\n")
         f.write(f"- **Failed:** {results['failed']}\n\n")
-        
+
         f.write(f"## Details\n\n")
-        
+
         # First show successful implementations
         if any(details["status"] == "success" for details in results["details"].values()):
             f.write(f"### Successfully Implemented Models\n\n")
@@ -736,7 +743,7 @@ def implement_remaining_models(output_dir: str, model_list: Optional[List[str]] 
                     f.write(f"#### ✅ {model_name}\n")
                     f.write(f"- Architecture: {details['architecture']}\n")
                     f.write(f"- File path: {details['file_path']}\n\n")
-        
+
         # Then show failed implementations
         if any(details["status"] == "failed" for details in results["details"].values()):
             f.write(f"### Failed Implementations\n\n")
@@ -744,26 +751,32 @@ def implement_remaining_models(output_dir: str, model_list: Optional[List[str]] 
                 if details["status"] == "failed":
                     f.write(f"#### ❌ {model_name}\n")
                     f.write(f"- Error: {details['error']}\n\n")
-    
+
     logger.info(f"Implementation report written to: {report_path}")
     return results
 
+
 def main():
     """Main entry point for the script."""
-    parser = argparse.ArgumentParser(description="Implement test files for the remaining HuggingFace models")
-    parser.add_argument("--output-dir", default="remaining_model_tests", 
-                        help="Directory to output the generated files")
-    parser.add_argument("--models", nargs="+",
-                        help="List of specific models to implement")
+    parser = argparse.ArgumentParser(
+        description="Implement test files for the remaining HuggingFace models"
+    )
+    parser.add_argument(
+        "--output-dir",
+        default="remaining_model_tests",
+        help="Directory to output the generated files",
+    )
+    parser.add_argument("--models", nargs="+", help="List of specific models to implement")
     args = parser.parse_args()
-    
+
     results = implement_remaining_models(args.output_dir, args.models)
-    
+
     logger.info(f"Summary:")
     logger.info(f"  Generated: {results['generated']}")
     logger.info(f"  Failed: {results['failed']}")
-    
+
     return 0 if results["failed"] == 0 else 1
+
 
 if __name__ == "__main__":
     sys.exit(main())

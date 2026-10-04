@@ -296,7 +296,9 @@ LB_LOG_LEVEL=DEBUG LB_MAX_WORKERS=100 python -m duckdb_api.distributed_testing.t
 ```python
 # Import needed components
 from duckdb_api.distributed_testing.load_balancer import LoadBalancerService
-from duckdb_api.distributed_testing.coordinator_load_balancer_integration import CoordinatorLoadBalancerIntegration
+from duckdb_api.distributed_testing.coordinator_load_balancer_integration import (
+    CoordinatorLoadBalancerIntegration,
+)
 
 # Create and configure load balancer
 load_balancer = LoadBalancerService()
@@ -305,7 +307,7 @@ load_balancer = LoadBalancerService()
 integration = CoordinatorLoadBalancerIntegration(
     load_balancer=load_balancer,
     coordinator_url="http://localhost:8080",
-    scheduler_type="performance_based"
+    scheduler_type="performance_based",
 )
 
 # Start the integration
@@ -326,7 +328,7 @@ from duckdb_api.distributed_testing.load_balancer import (
     LoadBalancerService,
     WorkerCapabilities,
     WorkerLoad,
-    TestRequirements
+    TestRequirements,
 )
 
 # Create load balancer
@@ -340,20 +342,17 @@ capabilities = WorkerCapabilities(
     hardware_specs={
         "cpu": {"cores": 8, "frequency_mhz": 3000},
         "memory": {"total_gb": 16, "available_gb": 14.5},
-        "gpu": {"device_count": 1, "cuda_available": True}
+        "gpu": {"device_count": 1, "cuda_available": True},
     },
     available_memory=14.5,
     cpu_cores=8,
-    available_accelerators={"cuda": 1}
+    available_accelerators={"cuda": 1},
 )
 balancer.register_worker(worker_id, capabilities)
 
 # Update worker load
 load = WorkerLoad(
-    worker_id=worker_id,
-    cpu_utilization=25.0,
-    memory_utilization=30.0,
-    gpu_utilization=15.0
+    worker_id=worker_id, cpu_utilization=25.0, memory_utilization=30.0, gpu_utilization=15.0
 )
 balancer.update_worker_load(worker_id, load)
 
@@ -365,7 +364,7 @@ for i in range(10):
         model_id="bert-base-uncased",
         minimum_memory=4.0,
         priority=3,
-        required_accelerators={"cuda": 1} if i % 2 == 0 else {}
+        required_accelerators={"cuda": 1} if i % 2 == 0 else {},
     )
     balancer.submit_test(requirements)
 

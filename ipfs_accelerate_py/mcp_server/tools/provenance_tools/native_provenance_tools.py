@@ -15,9 +15,7 @@ def _should_fallback_to_local_provenance(payload: Dict[str, Any]) -> bool:
         return False
     if str(payload.get("status", "")).lower() != "error":
         return False
-    error_text = " ".join(
-        str(payload.get(key, "")) for key in ("error", "message", "details")
-    )
+    error_text = " ".join(str(payload.get(key, "")) for key in ("error", "message", "details"))
     return "No module named" in error_text
 
 
@@ -33,7 +31,9 @@ def _load_provenance_api() -> Dict[str, Any]:
             "record_provenance": _record_provenance,
         }
     except Exception:
-        logger.warning("Source provenance_tools import unavailable, using fallback provenance function")
+        logger.warning(
+            "Source provenance_tools import unavailable, using fallback provenance function"
+        )
 
         async def _record_fallback(
             dataset_id: str,
@@ -109,7 +109,9 @@ async def record_provenance(
             "message": "operation is required",
             "operation": operation,
         }
-    if inputs is not None and (not isinstance(inputs, list) or not all(isinstance(item, str) for item in inputs)):
+    if inputs is not None and (
+        not isinstance(inputs, list) or not all(isinstance(item, str) for item in inputs)
+    ):
         return {
             "status": "error",
             "message": "inputs must be an array of strings when provided",
@@ -139,7 +141,9 @@ async def record_provenance(
             "message": "agent_id must be a non-empty string when provided",
             "agent_id": agent_id,
         }
-    if tags is not None and (not isinstance(tags, list) or not all(isinstance(item, str) for item in tags)):
+    if tags is not None and (
+        not isinstance(tags, list) or not all(isinstance(item, str) for item in tags)
+    ):
         return {
             "status": "error",
             "message": "tags must be an array of strings when provided",
@@ -367,7 +371,9 @@ async def generate_provenance_report(
                 error_samples.append(
                     {
                         "index": index,
-                        "message": str(record.get("message") or record.get("error") or "unknown error"),
+                        "message": str(
+                            record.get("message") or record.get("error") or "unknown error"
+                        ),
                         "status": status,
                     }
                 )

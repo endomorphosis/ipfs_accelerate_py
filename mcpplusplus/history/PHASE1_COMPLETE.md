@@ -93,11 +93,13 @@ from ipfs_accelerate_py.mcplusplus_module.trio import run_in_trio, is_trio_conte
 ```python
 import trio
 
+
 async def my_trio_function():
     """This function requires Trio."""
     async with trio.open_nursery() as nursery:
         # Do trio things
         pass
+
 
 # From asyncio context:
 result = await run_in_trio(my_trio_function)

@@ -71,7 +71,11 @@ def test_worker_session_failover_resubmits_locally_with_transcript(monkeypatch, 
 
     # Find the new, completed task.
     rows = q.list(limit=50)
-    completed = [r for r in rows if r.get("status") == "completed" and (r.get("result") or {}).get("text") == "ok"]
+    completed = [
+        r
+        for r in rows
+        if r.get("status") == "completed" and (r.get("result") or {}).get("text") == "ok"
+    ]
     assert completed, "Expected a completed failover task"
 
     new_task = completed[-1]

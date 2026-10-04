@@ -309,7 +309,7 @@ integration = CoordinatorHardwareMonitoringIntegration(
     monitoring_level=MonitoringLevel.STANDARD,
     enable_resource_aware_scheduling=True,
     utilization_threshold=80.0,
-    update_interval_seconds=5.0
+    update_interval_seconds=5.0,
 )
 
 # Initialize integration

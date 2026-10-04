@@ -19,31 +19,19 @@ def test_every_intent_effect_receipt_boundary_has_deterministic_recovery():
     benchmark = build_frozen_prompt_workflow_benchmark()
     report = recompute_prompt_workflow_gate(benchmark)
 
-    assert set(report.chaos_boundaries_passed) == {
-        item.value for item in REQUIRED_CHAOS_BOUNDARIES
-    }
+    assert set(report.chaos_boundaries_passed) == {item.value for item in REQUIRED_CHAOS_BOUNDARIES}
     assert report.chaos_passed
     assert report.bounds_passed
     assert report.passed
 
-    materialize = {
-        b for b in REQUIRED_CHAOS_BOUNDARIES if b.value.startswith("materialize-")
-    }
-    lifecycle = {
-        b for b in REQUIRED_CHAOS_BOUNDARIES if b.value.startswith("lifecycle-")
-    }
-    rescue = {
-        b for b in REQUIRED_CHAOS_BOUNDARIES if b.value.startswith("rescue-")
-    }
+    materialize = {b for b in REQUIRED_CHAOS_BOUNDARIES if b.value.startswith("materialize-")}
+    lifecycle = {b for b in REQUIRED_CHAOS_BOUNDARIES if b.value.startswith("lifecycle-")}
+    rescue = {b for b in REQUIRED_CHAOS_BOUNDARIES if b.value.startswith("rescue-")}
     assert len(materialize) == 6
     assert len(lifecycle) == 6
     assert len(rescue) == 6
 
-    chaos = [
-        receipt
-        for receipt in benchmark.receipts
-        if receipt.chaos_boundary is not None
-    ]
+    chaos = [receipt for receipt in benchmark.receipts if receipt.chaos_boundary is not None]
     assert len(chaos) == len(REQUIRED_CHAOS_BOUNDARIES)
     outcomes = {receipt.fault_outcome for receipt in chaos}
     assert outcomes == set(FaultOutcome)
@@ -81,17 +69,13 @@ def test_chaos_escape_or_missing_boundary_fails_closed():
     )
     failed = recompute_prompt_workflow_gate(escaped)
     assert not failed.passed
-    assert (
-        f"chaos-escape:{ChaosBoundary.LIFECYCLE_AFTER_EFFECT.value}"
-        in failed.failure_codes
-    )
+    assert f"chaos-escape:{ChaosBoundary.LIFECYCLE_AFTER_EFFECT.value}" in failed.failure_codes
 
     omitted = PromptWorkflowBenchmark(
         tuple(
             receipt
             for receipt in benchmark.receipts
-            if receipt.chaos_boundary
-            is not ChaosBoundary.RESCUE_BEFORE_INTENT
+            if receipt.chaos_boundary is not ChaosBoundary.RESCUE_BEFORE_INTENT
         )
     )
     missing = recompute_prompt_workflow_gate(omitted)

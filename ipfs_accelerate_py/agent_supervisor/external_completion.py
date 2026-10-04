@@ -30,15 +30,9 @@ from .goal_completion import (
 from .task_identity import canonical_content_cid
 
 
-EXTERNAL_GITLINK_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.external-gitlink-identity.v1"
-)
-EXTERNAL_SOURCE_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.external-source-identity.v1"
-)
-EXTERNAL_ARTIFACT_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.external-artifact-identity.v1"
-)
+EXTERNAL_GITLINK_SCHEMA = "ipfs_accelerate_py.agent_supervisor.external-gitlink-identity.v1"
+EXTERNAL_SOURCE_SCHEMA = "ipfs_accelerate_py.agent_supervisor.external-source-identity.v1"
+EXTERNAL_ARTIFACT_SCHEMA = "ipfs_accelerate_py.agent_supervisor.external-artifact-identity.v1"
 EXTERNAL_COMPLETION_REQUIREMENT_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.external-completion-requirement.v1"
 )
@@ -56,9 +50,7 @@ EXTERNAL_COMPLETION_EVIDENCE_SCHEMA = (
 )
 
 _GIT_OBJECT_RE = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
-_RECEIPT_STATUSES = frozenset(
-    {"cancelled", "completed", "failed", "partial", "timed_out"}
-)
+_RECEIPT_STATUSES = frozenset({"cancelled", "completed", "failed", "partial", "timed_out"})
 
 
 def HSSLEV2398A61() -> str:
@@ -130,13 +122,7 @@ def validate_cid(value: Any, *, field_name: str) -> str:
     padding = "=" * ((8 - len(body) % 8) % 8)
     try:
         raw = base64.b32decode(body.upper() + padding, casefold=True)
-        canonical = (
-            "b"
-            + base64.b32encode(raw)
-            .decode("ascii")
-            .rstrip("=")
-            .lower()
-        )
+        canonical = "b" + base64.b32encode(raw).decode("ascii").rstrip("=").lower()
         if canonical != text:
             raise ValueError("non-canonical CID base32 encoding")
         version, offset = _read_varint(raw, 0)
@@ -317,9 +303,7 @@ class ExternalSourceIdentity:
                 continue
             parent = by_id.get(item.parent_gitlink_id)
             if parent is None or item.depth != parent.depth + 1:
-                raise ValueError(
-                    "recursive gitlink parent identity/depth is inconsistent"
-                )
+                raise ValueError("recursive gitlink parent identity/depth is inconsistent")
         object.__setattr__(self, "recursive_gitlinks", entries)
         map_material = {
             "schema": EXTERNAL_SOURCE_SCHEMA + "/submodule-map",
@@ -333,9 +317,7 @@ class ExternalSourceIdentity:
                 field_name="submodule_map_cid",
             )
             if supplied_map_cid != map_cid:
-                raise ValueError(
-                    "submodule_map_cid does not match recursive_gitlinks"
-                )
+                raise ValueError("submodule_map_cid does not match recursive_gitlinks")
         object.__setattr__(self, "submodule_map_cid", map_cid)
         identity_material = {
             "schema": EXTERNAL_SOURCE_SCHEMA,
@@ -353,9 +335,7 @@ class ExternalSourceIdentity:
                 field_name="source_identity_cid",
             )
             if supplied_identity_cid != identity_cid:
-                raise ValueError(
-                    "source_identity_cid does not match source identity"
-                )
+                raise ValueError("source_identity_cid does not match source identity")
         object.__setattr__(self, "source_identity_cid", identity_cid)
 
     def to_dict(self) -> dict[str, Any]:
@@ -365,9 +345,7 @@ class ExternalSourceIdentity:
             "outer_tree": self.outer_tree,
             "clean": self.clean,
             "recursive_gitlinks_complete": self.recursive_gitlinks_complete,
-            "recursive_gitlinks": [
-                item.to_dict() for item in self.recursive_gitlinks
-            ],
+            "recursive_gitlinks": [item.to_dict() for item in self.recursive_gitlinks],
             "submodule_map_cid": self.submodule_map_cid,
             "source_identity_cid": self.source_identity_cid,
         }
@@ -436,9 +414,7 @@ class ExternalSourceInspection:
             "outer_tree": self.identity.outer_tree,
             "submodule_map_cid": self.identity.submodule_map_cid,
             "clean": self.identity.clean,
-            "recursive_gitlinks_complete": (
-                self.identity.recursive_gitlinks_complete
-            ),
+            "recursive_gitlinks_complete": (self.identity.recursive_gitlinks_complete),
             "reason_codes": list(self.reason_codes),
         }
 
@@ -749,24 +725,18 @@ class ExternalCompletionRequirement:
             )
         )
         if not artifact_ids:
-            raise ValueError(
-                "external completion requires at least one artifact identity"
-            )
+            raise ValueError("external completion requires at least one artifact identity")
         if len(artifact_ids) != len(set(artifact_ids)):
             raise ValueError("required artifact identities must be unique")
         if self.expected_producer_id == self.expected_validator_id:
-            raise ValueError(
-                "external producer and independent validator must differ"
-            )
+            raise ValueError("external producer and independent validator must differ")
         object.__setattr__(self, "required_artifact_ids", artifact_ids)
         requirement_cid = canonical_content_cid(self.identity_payload())
         supplied = str(self.requirement_cid or "").strip()
         if supplied:
             supplied = validate_cid(supplied, field_name="requirement_cid")
             if supplied != requirement_cid:
-                raise ValueError(
-                    "requirement_cid does not match completion requirement"
-                )
+                raise ValueError("requirement_cid does not match completion requirement")
         object.__setattr__(self, "requirement_cid", requirement_cid)
 
     @property
@@ -810,9 +780,7 @@ class ExternalCompletionRequirement:
             },
             context="external completion requirement",
         )
-        schema = str(
-            payload.get("schema") or EXTERNAL_COMPLETION_REQUIREMENT_SCHEMA
-        )
+        schema = str(payload.get("schema") or EXTERNAL_COMPLETION_REQUIREMENT_SCHEMA)
         if schema != EXTERNAL_COMPLETION_REQUIREMENT_SCHEMA:
             raise ValueError("unsupported external completion requirement schema")
         artifact_ids = payload.get("required_artifact_ids", ())
@@ -917,9 +885,7 @@ class ExternalOperationalCompletionReceipt:
         if supplied:
             supplied = validate_cid(supplied, field_name="receipt_cid")
             if supplied != receipt_cid:
-                raise ValueError(
-                    "receipt_cid does not match external completion receipt"
-                )
+                raise ValueError("receipt_cid does not match external completion receipt")
         object.__setattr__(self, "receipt_cid", receipt_cid)
 
     @property
@@ -971,13 +937,9 @@ class ExternalOperationalCompletionReceipt:
             },
             context="external operational completion receipt",
         )
-        schema = str(
-            payload.get("schema") or EXTERNAL_COMPLETION_RECEIPT_SCHEMA
-        )
+        schema = str(payload.get("schema") or EXTERNAL_COMPLETION_RECEIPT_SCHEMA)
         if schema != EXTERNAL_COMPLETION_RECEIPT_SCHEMA:
-            raise ValueError(
-                "unsupported external operational completion receipt schema"
-            )
+            raise ValueError("unsupported external operational completion receipt schema")
         source = payload.get("source")
         artifacts = payload.get("artifacts")
         if not isinstance(source, Mapping):
@@ -1022,13 +984,9 @@ class ExternalCompletionAuthority:
             else ExternalCompletionRequirement.from_dict(item)
             for item in self.requirements
         )
-        requirements = tuple(
-            sorted(requirements, key=lambda item: item.binding)
-        )
+        requirements = tuple(sorted(requirements, key=lambda item: item.binding))
         if not requirements:
-            raise ValueError(
-                "external completion authority requires at least one requirement"
-            )
+            raise ValueError("external completion authority requires at least one requirement")
         requirement_bindings = [item.binding for item in requirements]
         if len(requirement_bindings) != len(set(requirement_bindings)):
             raise ValueError("external completion requirements must be unique")
@@ -1043,13 +1001,8 @@ class ExternalCompletionAuthority:
         if len(receipt_cids) != len(set(receipt_cids)):
             raise ValueError("external completion receipt CIDs must be unique")
         requirement_binding_set = set(requirement_bindings)
-        if any(
-            item.binding not in requirement_binding_set
-            for item in receipts
-        ):
-            raise ValueError(
-                "external completion receipt binding has no matching requirement"
-            )
+        if any(item.binding not in requirement_binding_set for item in receipts):
+            raise ValueError("external completion receipt binding has no matching requirement")
         object.__setattr__(self, "requirements", requirements)
         object.__setattr__(self, "receipts", receipts)
         authority_cid = canonical_content_cid(self.identity_payload())
@@ -1057,16 +1010,12 @@ class ExternalCompletionAuthority:
         if supplied:
             supplied = validate_cid(supplied, field_name="authority_cid")
             if supplied != authority_cid:
-                raise ValueError(
-                    "authority_cid does not match external completion authority"
-                )
+                raise ValueError("authority_cid does not match external completion authority")
         object.__setattr__(self, "authority_cid", authority_cid)
 
     @property
     def governed_goal_ids(self) -> tuple[str, ...]:
-        return tuple(
-            sorted({item.goal_id for item in self.requirements})
-        )
+        return tuple(sorted({item.goal_id for item in self.requirements}))
 
     def identity_payload(self) -> dict[str, Any]:
         return {
@@ -1085,29 +1034,19 @@ class ExternalCompletionAuthority:
             allowed={"schema", "requirements", "receipts", "authority_cid"},
             context="external completion authority",
         )
-        schema = str(
-            payload.get("schema") or EXTERNAL_COMPLETION_AUTHORITY_SCHEMA
-        )
+        schema = str(payload.get("schema") or EXTERNAL_COMPLETION_AUTHORITY_SCHEMA)
         if schema != EXTERNAL_COMPLETION_AUTHORITY_SCHEMA:
             raise ValueError("unsupported external completion authority schema")
         requirements = payload.get("requirements")
         receipts = payload.get("receipts", [])
         if not isinstance(requirements, list):
-            raise ValueError(
-                "external completion authority requirements must be a list"
-            )
+            raise ValueError("external completion authority requirements must be a list")
         if not isinstance(receipts, list):
-            raise ValueError(
-                "external completion authority receipts must be a list"
-            )
+            raise ValueError("external completion authority receipts must be a list")
         if any(not isinstance(item, Mapping) for item in requirements):
-            raise ValueError(
-                "external completion authority requirement entries must be objects"
-            )
+            raise ValueError("external completion authority requirement entries must be objects")
         if any(not isinstance(item, Mapping) for item in receipts):
-            raise ValueError(
-                "external completion authority receipt entries must be objects"
-            )
+            raise ValueError("external completion authority receipt entries must be objects")
         return cls(
             requirements=tuple(
                 ExternalCompletionRequirement.from_dict(item)
@@ -1129,15 +1068,11 @@ def load_external_completion_authority(
     """Load one explicit identity-only authority file, failing closed."""
 
     if not path.exists() or not path.is_file():
-        raise ValueError(
-            "external completion receipt path must name an existing JSON file"
-        )
+        raise ValueError("external completion receipt path must name an existing JSON file")
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise ValueError(
-            "external completion receipt path must contain valid JSON"
-        ) from exc
+        raise ValueError("external completion receipt path must contain valid JSON") from exc
     if not isinstance(payload, Mapping):
         raise ValueError("external completion authority must be a JSON object")
     return ExternalCompletionAuthority.from_dict(payload)
@@ -1179,19 +1114,11 @@ class ExternalCompletionEvaluation:
     @property
     def valid_receipt_cids(self) -> tuple[str, ...]:
         return tuple(
-            sorted(
-                item.receipt_cid
-                for item in self.results
-                if item.valid and item.receipt_cid
-            )
+            sorted(item.receipt_cid for item in self.results if item.valid and item.receipt_cid)
         )
 
     def results_for_goal(self, goal_id: str) -> tuple[dict[str, Any], ...]:
-        return tuple(
-            item.to_dict()
-            for item in self.results
-            if item.goal_id == goal_id
-        )
+        return tuple(item.to_dict() for item in self.results if item.goal_id == goal_id)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -1327,9 +1254,7 @@ def _completion_evidence(
             "recursive_gitlinks_cid": receipt.source.submodule_map_cid,
             "run_plan_cid": receipt.run_plan_cid,
             "parent_ledger_cid": receipt.parent_ledger_cid,
-            "artifact_identities": [
-                item.to_dict() for item in receipt.artifacts
-            ],
+            "artifact_identities": [item.to_dict() for item in receipt.artifacts],
             "validator_id": receipt.validator_id,
             "validator_receipt_cid": receipt.validator_receipt_cid,
         },
@@ -1372,15 +1297,11 @@ def evaluate_external_completion_authority(
     }
     for goal_id in normalized.governed_goal_ids:
         expected_terms = tuple(
-            str(item).strip()
-            for item in goal_evidence_terms.get(goal_id, ())
-            if str(item).strip()
+            str(item).strip() for item in goal_evidence_terms.get(goal_id, ()) if str(item).strip()
         )
         expected_set = set(expected_terms)
         requirement_terms = {
-            item.evidence_term
-            for item in normalized.requirements
-            if item.goal_id == goal_id
+            item.evidence_term for item in normalized.requirements if item.goal_id == goal_id
         }
         for missing_term in sorted(expected_set - requirement_terms):
             results.append(
@@ -1468,10 +1389,7 @@ def evaluate_external_completion_authority(
     return ExternalCompletionEvaluation(
         authority_cid=normalized.authority_cid,
         governed_goal_ids=normalized.governed_goal_ids,
-        evidence_records={
-            goal_id: tuple(records)
-            for goal_id, records in evidence_records.items()
-        },
+        evidence_records={goal_id: tuple(records) for goal_id, records in evidence_records.items()},
         results=tuple(
             sorted(
                 results,

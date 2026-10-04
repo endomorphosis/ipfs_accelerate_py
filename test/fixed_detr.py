@@ -25,18 +25,21 @@ try:
 except ImportError:
     pass
 
+
 class MockHandler:
     """Mock handler for platforms that don't have real implementations."""
-    
+
     def __init__(self, model_path, platform="cpu"):
         self.model_path = model_path
         self.platform = platform
         print(f"Created mock handler for {platform}")
-    
+
     def __call__(self, *args, **kwargs):
         """Return mock output with proper implementation_type for hardware platform validation."""
-        print(f"MockHandler for {self.platform} called with {len(args)} args and {len(kwargs)} kwargs")
-        
+        print(
+            f"MockHandler for {self.platform} called with {len(args)} args and {len(kwargs)} kwargs"
+        )
+
         # Use the correct implementation type based on platform
         impl_type = "MOCK"
         if self.platform.lower() == "webnn":
@@ -45,76 +48,78 @@ class MockHandler:
             impl_type = "REAL_WEBGPU"
         else:
             impl_type = f"REAL_{self.platform.upper()}"
-            
+
         return {
             "logits": np.random.rand(1, 1000),
             "implementation_type": impl_type,
             "model_type": "detection",
-            "success": True
+            "success": True,
         }
+
 
 class TestDetrModel:
     """Test class for vision models."""
-    
+
     def __init__(self, model_path=None):
         """Initialize the test class."""
         self.model_path = model_path or "google/vit-base-patch16-224"
         self.device = "cpu"  # Default device
         self.platform = "CPU"  # Default platform
         self.processor = None
-        
+
         # Create a dummy image for testing
         self.dummy_image = self._create_dummy_image()
-        
-                # Define test cases
+
+        # Define test cases
         self.test_cases = [
             {
                 "description": "Test on CPU platform",
                 "platform": "CPU",
                 "expected": {"success": true},
-                "data": {"image_path": "test_image.jpg"}
+                "data": {"image_path": "test_image.jpg"},
             },
             {
                 "description": "Test on CUDA platform",
                 "platform": "CUDA",
                 "expected": {"success": true},
-                "data": {"image_path": "test_image.jpg"}
+                "data": {"image_path": "test_image.jpg"},
             },
             {
                 "description": "Test on OPENVINO platform",
                 "platform": "OPENVINO",
                 "expected": {"success": true},
-                "data": {"image_path": "test_image.jpg"}
+                "data": {"image_path": "test_image.jpg"},
             },
             {
                 "description": "Test on MPS platform",
                 "platform": "MPS",
                 "expected": {"success": true},
-                "data": {"image_path": "test_image.jpg"}
+                "data": {"image_path": "test_image.jpg"},
             },
             {
                 "description": "Test on ROCM platform",
                 "platform": "ROCM",
                 "expected": {"success": true},
-                "data": {"image_path": "test_image.jpg"}
-            }
+                "data": {"image_path": "test_image.jpg"},
+            },
         ]
-    
+
     def _create_dummy_image(self):
         """Create a dummy image for testing."""
         try:
             # Check if PIL is available
             from PIL import Image
+
             # Create a simple test image
-            return Image.new('RGB', (224, 224), color='blue')
+            return Image.new("RGB", (224, 224), color="blue")
         except ImportError:
             print("PIL not available, cannot create dummy image")
             return None
-    
+
     def get_model_path_or_name(self):
         """Get the model path or name."""
         return self.model_path
-    
+
     def load_processor(self):
         """Load feature extractor/processor."""
         if self.processor is None:
@@ -134,6 +139,7 @@ class TestDetrModel:
     def init_cuda(self):
         """Initialize for CUDA platform."""
         import torch
+
         self.platform = "CUDA"
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         if self.device != "cuda":
@@ -149,7 +155,7 @@ class TestDetrModel:
             self.platform = "CPU"
             self.device = "cpu"
             return self.load_processor()
-        
+
         self.platform = "OPENVINO"
         self.device = "openvino"
         return self.load_processor()
@@ -157,8 +163,11 @@ class TestDetrModel:
     def init_mps(self):
         """Initialize for MPS platform."""
         import torch
+
         self.platform = "MPS"
-        self.device = "mps" if hasattr(torch.backends, "mps") and torch.backends.mps.is_available() else "cpu"
+        self.device = (
+            "mps" if hasattr(torch.backends, "mps") and torch.backends.mps.is_available() else "cpu"
+        )
         if self.device != "mps":
             print("MPS not available, falling back to CPU")
         return self.load_processor()
@@ -166,22 +175,25 @@ class TestDetrModel:
     def init_rocm(self):
         """Initialize for ROCM platform."""
         import torch
+
         self.platform = "ROCM"
-        self.device = "cuda" if torch.cuda.is_available() and hasattr(torch.version, "hip") else "cpu"
+        self.device = (
+            "cuda" if torch.cuda.is_available() and hasattr(torch.version, "hip") else "cpu"
+        )
         if self.device != "cuda":
             print("ROCm not available, falling back to CPU")
         return self.load_processor()
 
-    
     def init_qualcomm(self):
         # Initialize for Qualcomm platform
         try:
             # Try to import Qualcomm-specific libraries
             import importlib.util
+
             has_qnn = importlib.util.find_spec("qnn_wrapper") is not None
             has_qti = importlib.util.find_spec("qti") is not None
             has_qualcomm_env = "QUALCOMM_SDK" in os.environ
-            
+
             if has_qnn or has_qti or has_qualcomm_env:
                 self.platform = "QUALCOMM"
                 self.device = "qualcomm"
@@ -193,9 +205,9 @@ class TestDetrModel:
             print(f"Error initializing Qualcomm platform: {e}")
             self.platform = "CPU"
             self.device = "cpu"
-            
+
         return self.load_tokenizer()
-        
+
     def init_webnn(self):
         """Initialize for WEBNN platform."""
         self.platform = "WEBNN"
@@ -215,15 +227,12 @@ class TestDetrModel:
             model = AutoModelForImageClassification.from_pretrained(model_path)
             if self.processor is None:
                 self.load_processor()
-            
+
             def handler(image):
                 inputs = self.processor(images=image, return_tensors="pt")
                 outputs = model(**inputs)
-                return {
-                    "logits": outputs.logits.detach().numpy(),
-                    "success": True
-                }
-            
+                return {"logits": outputs.logits.detach().numpy(), "success": True}
+
             return handler
         except Exception as e:
             print(f"Error creating CPU handler: {e}")
@@ -233,20 +242,18 @@ class TestDetrModel:
         """Create handler for CUDA platform."""
         try:
             import torch
+
             model_path = self.get_model_path_or_name()
             model = AutoModelForImageClassification.from_pretrained(model_path).to(self.device)
             if self.processor is None:
                 self.load_processor()
-            
+
             def handler(image):
                 inputs = self.processor(images=image, return_tensors="pt")
                 inputs = {k: v.to(self.device) for k, v in inputs.items()}
                 outputs = model(**inputs)
-                return {
-                    "logits": outputs.logits.detach().cpu().numpy(),
-                    "success": True
-                }
-            
+                return {"logits": outputs.logits.detach().cpu().numpy(), "success": True}
+
             return handler
         except Exception as e:
             print(f"Error creating CUDA handler: {e}")
@@ -257,31 +264,31 @@ class TestDetrModel:
         try:
             from openvino.runtime import Core
             import numpy as np
-            
+
             model_path = self.get_model_path_or_name()
-            
+
             if os.path.isdir(model_path):
                 # If this is a model directory, we need to export to OpenVINO format
                 print("Converting model to OpenVINO format...")
                 # This is simplified - actual implementation would convert model
                 return MockHandler(model_path, "openvino")
-            
+
             # For demonstration - in real implementation, load and run OpenVINO model
             ie = Core()
             model = MockHandler(model_path, "openvino")
-            
+
             if self.processor is None:
                 self.load_processor()
-            
+
             def handler(image):
                 inputs = self.processor(images=image, return_tensors="pt")
                 # Convert to numpy for OpenVINO
                 inputs_np = {k: v.numpy() for k, v in inputs.items()}
                 return {
                     "logits": np.random.rand(1, 1000),  # Mock logits
-                    "success": True
+                    "success": True,
                 }
-            
+
             return handler
         except Exception as e:
             print(f"Error creating OpenVINO handler: {e}")
@@ -291,20 +298,18 @@ class TestDetrModel:
         """Create handler for MPS platform."""
         try:
             import torch
+
             model_path = self.get_model_path_or_name()
             model = AutoModelForImageClassification.from_pretrained(model_path).to(self.device)
             if self.processor is None:
                 self.load_processor()
-            
+
             def handler(image):
                 inputs = self.processor(images=image, return_tensors="pt")
                 inputs = {k: v.to(self.device) for k, v in inputs.items()}
                 outputs = model(**inputs)
-                return {
-                    "logits": outputs.logits.detach().cpu().numpy(),
-                    "success": True
-                }
-            
+                return {"logits": outputs.logits.detach().cpu().numpy(), "success": True}
+
             return handler
         except Exception as e:
             print(f"Error creating MPS handler: {e}")
@@ -314,68 +319,64 @@ class TestDetrModel:
         """Create handler for ROCM platform."""
         try:
             import torch
+
             model_path = self.get_model_path_or_name()
             model = AutoModelForImageClassification.from_pretrained(model_path).to(self.device)
             if self.processor is None:
                 self.load_processor()
-            
+
             def handler(image):
                 inputs = self.processor(images=image, return_tensors="pt")
                 inputs = {k: v.to(self.device) for k, v in inputs.items()}
                 outputs = model(**inputs)
-                return {
-                    "logits": outputs.logits.detach().cpu().numpy(),
-                    "success": True
-                }
-            
+                return {"logits": outputs.logits.detach().cpu().numpy(), "success": True}
+
             return handler
         except Exception as e:
             print(f"Error creating ROCm handler: {e}")
             return MockHandler(self.model_path, "rocm")
 
-    
     def create_qualcomm_handler(self):
         # Create handler for Qualcomm platform
         try:
             model_path = self.get_model_path_or_name()
             if self.tokenizer is None:
                 self.load_tokenizer()
-                
+
             # Check if Qualcomm QNN SDK is available
             import importlib.util
+
             has_qnn = importlib.util.find_spec("qnn_wrapper") is not None
-            
+
             if has_qnn:
                 try:
                     # Import QNN wrapper (in a real implementation)
                     import qnn_wrapper as qnn
-                    
+
                     # QNN implementation would look something like this:
                     # 1. Convert model to QNN format
                     # 2. Load the model on the Hexagon DSP
                     # 3. Set up the inference handler
-                    
+
                     def handler(input_text):
                         # Tokenize input
-                        inputs = self.tokenizer(input_text, return_tensors="pt", padding=True, truncation=True)
-                        
+                        inputs = self.tokenizer(
+                            input_text, return_tensors="pt", padding=True, truncation=True
+                        )
+
                         # Convert to numpy for QNN input
                         input_ids_np = inputs["input_ids"].numpy()
                         attention_mask_np = inputs["attention_mask"].numpy()
-                        
+
                         # This would call the QNN model in a real implementation
                         # result = qnn_model.execute([input_ids_np, attention_mask_np])
                         # embedding = result[0]
-                        
+
                         # Using mock embedding for demonstration
                         embedding = np.random.rand(1, 768)
-                        
-                        return {
-                            "embedding": embedding,
-                            "success": True,
-                            "platform": "qualcomm"
-                        }
-                    
+
+                        return {"embedding": embedding, "success": True, "platform": "qualcomm"}
+
                     return handler
                 except ImportError:
                     print("QNN wrapper available but failed to import, using mock implementation")
@@ -383,26 +384,28 @@ class TestDetrModel:
             else:
                 # Check for QTI AI Engine
                 has_qti = importlib.util.find_spec("qti") is not None
-                
+
                 if has_qti:
                     try:
                         # Import QTI AI Engine
                         import qti.aisw.dlc_utils as qti_utils
-                        
+
                         # Mock implementation
                         def handler(input_text):
                             # Tokenize input
-                            inputs = self.tokenizer(input_text, return_tensors="pt", padding=True, truncation=True)
-                            
+                            inputs = self.tokenizer(
+                                input_text, return_tensors="pt", padding=True, truncation=True
+                            )
+
                             # Mock QTI execution
                             embedding = np.random.rand(1, 768)
-                            
+
                             return {
                                 "embedding": embedding,
                                 "success": True,
-                                "platform": "qualcomm-qti"
+                                "platform": "qualcomm-qti",
                             }
-                        
+
                         return handler
                     except ImportError:
                         print("QTI available but failed to import, using mock implementation")
@@ -413,23 +416,23 @@ class TestDetrModel:
         except Exception as e:
             print(f"Error creating Qualcomm handler: {e}")
             return MockHandler(self.model_path, "qualcomm")
-            
+
     def create_webnn_handler(self):
         """Create handler for WEBNN platform."""
         try:
             # WebNN would use browser APIs - we'll use an enhanced simulation
             if self.processor is None:
                 self.load_processor()
-            
+
             # Check if WebNN simulation environment variable is set
             webnn_enabled = os.environ.get("WEBNN_ENABLED", "0") == "1"
-            
+
             if webnn_enabled:
                 # Create a more realistic simulation when WEBNN_ENABLED is set
                 def handler(image):
                     # Process the image
                     inputs = self.processor(images=image, return_tensors="pt")
-                    
+
                     # Simulate WebNN inference with realistic output
                     return {
                         "logits": np.random.rand(1, 1000).astype(np.float32),
@@ -437,9 +440,9 @@ class TestDetrModel:
                         "model_type": "detection",
                         "success": True,
                         "device": "webnn",
-                        "backend": "gpu"
+                        "backend": "gpu",
                     }
-                
+
                 print("Created enhanced WebNN simulation handler")
                 return handler
             else:
@@ -455,16 +458,16 @@ class TestDetrModel:
             # WebGPU would use browser APIs - we'll use an enhanced simulation
             if self.processor is None:
                 self.load_processor()
-            
+
             # Check if WebGPU simulation environment variable is set
             webgpu_enabled = os.environ.get("WEBGPU_ENABLED", "0") == "1"
-            
+
             if webgpu_enabled:
                 # Create a more realistic simulation when WEBGPU_ENABLED is set
                 def handler(image):
                     # Process the image using the processor
                     inputs = self.processor(images=image, return_tensors="pt")
-                    
+
                     # Simulate WebGPU inference with realistic output
                     return {
                         "logits": np.random.rand(1, 1000).astype(np.float32),
@@ -476,10 +479,10 @@ class TestDetrModel:
                             "version": "2.9.0",  # Simulated version
                             "quantized": False,
                             "format": "float32",
-                            "backend": "webgpu"
-                        }
+                            "backend": "webgpu",
+                        },
                     }
-                
+
                 print("Created enhanced WebGPU simulation handler")
                 return handler
             else:
@@ -488,25 +491,25 @@ class TestDetrModel:
         except Exception as e:
             print(f"Error creating WebGPU handler: {e}")
             return MockHandler(self.model_path, "webgpu")
-    
+
     def run(self, platform="CPU", mock=False):
         """Run the test on the specified platform."""
         platform = platform.lower()
         init_method = getattr(self, f"init_{platform}", None)
-        
+
         if init_method is None:
             print(f"Platform {platform} not supported")
             return False
-        
+
         if not init_method():
             print(f"Failed to initialize {platform} platform")
             return False
-        
+
         # Check if we have a test image
         if self.dummy_image is None and not mock:
             print("No test image available")
             return False
-        
+
         # Create handler for the platform
         try:
             handler_method = getattr(self, f"create_{platform}_handler", None)
@@ -518,36 +521,41 @@ class TestDetrModel:
         except Exception as e:
             print(f"Error creating handler for {platform}: {e}")
             return False
-        
+
         # Test with the dummy image
         try:
             result = handler(self.dummy_image)
-            print(f"Got logits with shape: {result['logits'].shape if hasattr(result['logits'], 'shape') else 'N/A'}")
+            print(
+                f"Got logits with shape: {result['logits'].shape if hasattr(result['logits'], 'shape') else 'N/A'}"
+            )
             print(f"Successfully tested on {platform} platform")
             return True
         except Exception as e:
             print(f"Error running test on {platform}: {e}")
             return False
 
+
 def main():
     """Run the test."""
     import argparse
+
     parser = argparse.ArgumentParser(description="Test vision models")
     parser.add_argument("--model", help="Model path or name", default="google/vit-base-patch16-224")
     parser.add_argument("--platform", default="CPU", help="Platform to test on")
     parser.add_argument("--skip-downloads", action="store_true", help="Skip downloading models")
     parser.add_argument("--mock", action="store_true", help="Use mock implementations")
     args = parser.parse_args()
-    
+
     test = TestDetrModel(args.model)
     result = test.run(args.platform, args.mock)
-    
+
     if result:
         print(f"Test successful on {args.platform}")
         sys.exit(0)
     else:
         print(f"Test failed on {args.platform}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
