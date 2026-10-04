@@ -1,0 +1,18 @@
+{
+  "cases": [
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs0-285-40-90-None-doctor_contract_candidate]",
+      "outcome": "failure",
+      "seconds": 0.002
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs1-900-60-180-None-doctor_contract_candidate]",
+      "outcome": "passed",
+      "seconds": 0.005
+    }
+  ],
+  "failure_bodies_exported": false,
+  "projected_from": "results.xml"
+}

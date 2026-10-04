@@ -1,0 +1,58 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 2931,
+      "sha256": "7318e39ae235523e75f52f55e529a16a0b61b251a30d349ec7685dbd051fbb0a"
+    },
+    "input-digests.json": {
+      "bytes": 1550,
+      "sha256": "609b8f286d677f8483d7975e24dc7c30e9cf593eba66d354dc709b43aa690053"
+    },
+    "light-01/command.json": {
+      "bytes": 3038,
+      "sha256": "a77dc0a97d51f74a73de6c6d493b1ad04da31acbe69f17a389e9252c09b5d30b"
+    },
+    "light-01/exit.json": {
+      "bytes": 1862,
+      "sha256": "bde3ba575e2ce23ab93aa0dea6dcd23ac2314ab2d077b3dff681c31ac6e7460b"
+    },
+    "light-01/results.projected.xml": {
+      "bytes": 4457,
+      "sha256": "d0e998a7f53093bbe2d02d9d6e81f043ae7b3097fd2d07e9e9c7fc640bbdb1e9"
+    },
+    "native-01/command.json": {
+      "bytes": 4437,
+      "sha256": "029b76aed7d09a5dad5622448bd0d02edce355875cc66d337d993feac6d956f3"
+    },
+    "native-01/exit.json": {
+      "bytes": 3000,
+      "sha256": "8c78a5b4ba6113fb0c68b6672556f4509fb905e077092e6b2bd8a845aaa853a4"
+    },
+    "native-01/results.projected.xml": {
+      "bytes": 540,
+      "sha256": "defe2d22ec0050e709073dcdaf0b22d003fb5c66b07b9ef11b19d724f6cc467e"
+    },
+    "native-02/command.json": {
+      "bytes": 4456,
+      "sha256": "3c18e5466d4ffa16ca94216ab282a697d288b0ea601e9c4f990e6224fb7f4bcb"
+    },
+    "native-02/exit.json": {
+      "bytes": 3000,
+      "sha256": "4d56e70355c399694b412dc11e11a09e57ec0f450d514d227bd74c060a28b6cc"
+    },
+    "native-02/results.projected.xml": {
+      "bytes": 808,
+      "sha256": "661a05461c19ce0481d9d0898aa088524f58bc4afe62124e398f10a6d79ca19a"
+    },
+    "scope.json": {
+      "bytes": 2051,
+      "sha256": "b08b6fdde6dac836a61f06e12376b87556f7002a78fcf00fac441a425508240a"
+    },
+    "source-pins.json": {
+      "bytes": 3873,
+      "sha256": "3ab3c14f03eab34a12e96acb1bc0cfeeb0814fbd74435bf37ce2df276e07bc88"
+    }
+  },
+  "member_count": 13,
+  "schema": "bounded-public-evidence-manifest@1"
+}

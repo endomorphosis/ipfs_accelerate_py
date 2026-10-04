@@ -17,6 +17,8 @@ SCHEMA = "supervisor-task-context-nominations@1"
 SOURCE384_SCHEMA = "supervisor-task-context-nominations@2"
 SOURCE384_REFERENCE_SCHEMA = "supervisor-task-context-nominations@3"
 RECEIPT_REFERENCE_SCHEMA = "supervisor-source384-receipt-reference@1"
+SOURCE384_RECEIPT_SCHEMAS = frozenset({"terminal-source384-repository-context@1",
+    "terminal-source384-repository-context@2", "terminal-source384-repository-context@3"})
 KEYS = frozenset({
     "semantic context artifact", "semantic context sha256", "semantic context refresh",
     "world context artifact", "world context sha256", "world context repository",
@@ -71,7 +73,7 @@ def _read_source384_reference(reference, repository):
             or hashlib.sha256(raw).hexdigest() != reference["receipt_sha256"]):
         raise ValueError("Source384 referenced receipt bytes differ")
     receipt = json.loads(raw, object_pairs_hook=_unique)
-    if (type(receipt) is not dict or receipt.get("schema") not in {"terminal-source384-repository-context@1", "terminal-source384-repository-context@2"}
+    if (type(receipt) is not dict or receipt.get("schema") not in SOURCE384_RECEIPT_SCHEMAS
             or receipt.get("output") != reference["output"]
             or receipt.get("repository") != str(repository) or _raw(receipt) != raw):
         raise ValueError("Source384 referenced receipt envelope differs")
@@ -79,7 +81,7 @@ def _read_source384_reference(reference, repository):
 
 
 def _nominate_source384_receipt(receipt, repository):
-    if (type(receipt) is not dict or receipt.get("schema") not in {"terminal-source384-repository-context@1", "terminal-source384-repository-context@2"}):
+    if (type(receipt) is not dict or receipt.get("schema") not in SOURCE384_RECEIPT_SCHEMAS):
         raise ValueError("a selected Source384 context receipt is required")
     raw = _raw(receipt)
     reference = _source384_reference(dict(schema=RECEIPT_REFERENCE_SCHEMA,
@@ -93,7 +95,7 @@ def _nominate_source384_receipt(receipt, repository):
 def _source384_receipt(receipt):
     """Bound the transport envelope; the canonical consumer verifies its contents."""
     if (not isinstance(receipt, dict)
-            or receipt.get("schema") not in {"terminal-source384-repository-context@1", "terminal-source384-repository-context@2"}):
+            or receipt.get("schema") not in SOURCE384_RECEIPT_SCHEMAS):
         raise ValueError("a selected Source384 context receipt is required")
     try:
         raw = json.dumps(receipt, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()

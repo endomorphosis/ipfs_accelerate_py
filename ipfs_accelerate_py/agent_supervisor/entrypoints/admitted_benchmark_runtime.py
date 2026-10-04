@@ -234,6 +234,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                max_task_attempts: int = 1, context_bundle: dict | None = None,
                lifetime_seconds: int = 300, worker_worktree_root: Path | None = None,
                candidate_runner_argv=(), refresh_context_on_completion: bool = False,
+               refresh_source384_on_completion: bool = False,
                published_retrieval_policy: str | None = None,
                published_learned_artifacts: dict | None = None,
                finite_execution_scope=None, inventory_execution_scope=None):
@@ -246,6 +247,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             lifetime_seconds=lifetime_seconds, worker_worktree_root=worker_worktree_root,
             candidate_runner_argv=candidate_runner_argv,
             refresh_context_on_completion=refresh_context_on_completion,
+            refresh_source384_on_completion=refresh_source384_on_completion,
             published_retrieval_policy=published_retrieval_policy,
             published_learned_artifacts=published_learned_artifacts,
             finite_execution_scope=finite_execution_scope, inventory_execution_scope=inventory_execution_scope)
@@ -300,6 +302,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                max_task_attempts: int = 1, context_bundle: dict | None = None,
                lifetime_seconds: int = 300, worker_worktree_root: Path | None = None,
                candidate_runner_argv=(), refresh_context_on_completion: bool = False,
+               refresh_source384_on_completion: bool = False,
                published_retrieval_policy: str | None = None,
                published_learned_artifacts: dict | None = None,
                finite_execution_scope=None, inventory_execution_scope=None):
@@ -313,6 +316,11 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             raise ValueError("finite and inventory execution scopes are mutually exclusive")
         if type(refresh_context_on_completion) is not bool or (refresh_context_on_completion and context_bundle is None):
             raise ValueError("automatic context refresh requires an explicit context bundle")
+        if (type(refresh_source384_on_completion) is not bool
+                or (refresh_source384_on_completion and (not refresh_context_on_completion
+                    or replay_work_scope is None or finite_execution_scope is not None
+                    or inventory_execution_scope is not None))):
+            raise ValueError("Source384 refresh requires an explicit local work scope and ordinary context refresh")
         if published_retrieval_policy is not None and (
                 published_retrieval_policy not in {"lexical-tfidf-symbols@1", "local-safetensors-symbols@1"}
                 or not refresh_context_on_completion):
@@ -421,6 +429,16 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             runtime._startup_trace_truncated = False
             runtime.context_bundle = dict(context_bundle) if context_bundle is not None else None
             runtime._verify_context(verified)
+            if refresh_source384_on_completion:
+                from ..runtime.task_context_bundle import read_task_context_historical_selection
+                task = verified["graph"].tasks[0]
+                selected = read_task_context_historical_selection(repository=repository,
+                    artifact=runtime.context_bundle["artifact"],
+                    expected_sha256=runtime.context_bundle["sha256"],
+                    task_cid=task.task_cid, task_id=task.task_key)
+                if "source384_context" not in selected:
+                    raise ValueError("Source384 refresh requires the admitted Source384 predecessor")
+                (runtime.state / "published-source384").mkdir(mode=0o700)
             retrieval_binding = None
             if published_retrieval_policy is not None:
                 task = verified["graph"].tasks[0]
@@ -492,6 +510,11 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             environment = (("PYTHONPATH", pythonpath), ("PYTHONUNBUFFERED", "1"),
                            (ORCHESTRATION_DIR_ENV, str(orchestration)))
             environment += tuple(proof_resource_environment.items())
+            if replay_work_scope is not None:
+                # Receive allowance only; the owner enforces the shorter
+                # original work/lifetime/grant and whole-callback deadlines.
+                from ..task_sources.typed_state_owner import LOCAL_COMPLETION_RPC_TIMEOUT_ENV
+                environment += ((LOCAL_COMPLETION_RPC_TIMEOUT_ENV, "125"),)
             from ..todo_daemon.native_owner_bootstrap import STARTUP_WAIT_ENV
             # Bind the default too: ambient state must not enlarge this wait.
             environment += ((STARTUP_WAIT_ENV, str(start_timeout_ms or 30_000)),)
@@ -526,6 +549,14 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             }
             if start_timeout_ms is not None:
                 runtime.manifest["start_timeout_ms"] = start_timeout_ms
+            if refresh_source384_on_completion:
+                runtime.manifest["context_refresh_policy"].update(
+                    schema="admitted-context-refresh-policy@2",
+                    source384={"schema": "admitted-source384-successor-policy@1",
+                        "output_root": str(runtime.state / "published-source384"),
+                        "preparation_timeout_seconds": 180.,
+                        "requires_independent_manifest": True,
+                        "proof_authority": False, "completion_authority": False})
             if finite_execution_scope is not None:
                 runtime.manifest["finite_execution_scope"] = finite_execution_scope.material_binding
                 runtime.manifest["finite_worker_launcher"] = finite_execution_scope.worker_launcher_binding
@@ -677,6 +708,9 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                     candidate_runner=candidate_runner,
                     retirable=(inventory_execution_scope is not None or (finite_execution_scope is not None
                         and finite_execution_scope.to_dict()["payload"]["profile"] in {ADVISORY_PROFILE, PROOF_QUERY_PROFILE})),
+                    **({"replay_scope": runtime._replay_work_scope,
+                        "deadline_monotonic": runtime._replay_lifetime_deadline}
+                       if runtime._replay_work_scope is not None else {}),
                 )
 
             return runtime
@@ -1216,6 +1250,16 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
         return self.observe()["published_context"]
 
     def observe(self):
+        from ..runtime.header_intent_applicability import resume_applicability_budget, require_applicability_budget
+        # Requirement and successor observations share the same immutable
+        # work scope as their initial owner/source verification.
+        with resume_applicability_budget(self._replay_work_scope,
+                deadline_monotonic=self._replay_lifetime_deadline):
+            result = self._observe_in_replay_scope()
+            require_applicability_budget()
+            return result
+
+    def _observe_in_replay_scope(self):
         result = super().observe()
         if self.admission["manifest"]["payload"]["schema"] == "supervisor-local-benchmark-manifest@4":
             from ..runtime.intent_requirement_observation import observe_owner_intent_requirements
@@ -1273,13 +1317,19 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             try:
                 historical = next((item for item in result.get("context_observation", {}).get("source384", [])
                     if item["task_cid"] == task.task_cid), None)
-                if historical is not None:
+                source384_policy = policy.get("source384")
+                if historical is not None and source384_policy is None:
                     refreshed.append(historical)
                     continue
-                if task.task_cid in self._published_context:
+                cached_refresh = task.task_cid in self._published_context
+                if cached_refresh:
                     cached = self._published_context[task.task_cid]
                     context = load_published_task_context(server=self.server, admission=self.admission,
-                        artifact=cached["refresh_artifact"], expected_sha256=cached["refresh_sha256"])
+                        artifact=cached["refresh_artifact"], expected_sha256=cached["refresh_sha256"],
+                        **({"deadline_monotonic": min(self._replay_work_scope.deadline_monotonic,
+                                                      self._replay_lifetime_deadline),
+                            "source384_timeout_seconds": source384_policy["preparation_timeout_seconds"]}
+                           if source384_policy is not None else {}))
                 else:
                     count = self._context_refresh_attempts.get(task.task_cid, 0)
                     if count >= policy["max_attempts_per_task"]:
@@ -1300,7 +1350,12 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                                 bundle=self.context_bundle, binding=binding)
                     context = refresh_published_task_context(server=self.server, admission=self.admission,
                         predecessor_bundle=self.context_bundle, task_cid=task.task_cid, output=output,
-                        retrieval_rebuilder=rebuilder)
+                        retrieval_rebuilder=rebuilder,
+                        **({"source384_output": Path(source384_policy["output_root"]) / (str(count + 1) + "-" + _digest(task.task_cid)),
+                            "source384_timeout_seconds": source384_policy["preparation_timeout_seconds"],
+                            "deadline_monotonic": min(self._replay_work_scope.deadline_monotonic,
+                                                      self._replay_lifetime_deadline)}
+                           if source384_policy is not None else {}))
                     self._published_context[task.task_cid] = context
                 refreshed.append({"task_cid": task.task_cid, "status": "refreshed",
                     "refresh_artifact": context["refresh_artifact"], "refresh_sha256": context["refresh_sha256"],
@@ -1316,6 +1371,10 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                     refreshed[-1]["embedding_receipt"] = json.loads(json.dumps(embedding_receipt))
                 if "goal_progress" in context:
                     refreshed[-1]["goal_progress"] = json.loads(json.dumps(context["goal_progress"]))
+                if "source384_refresh" in context:
+                    refreshed[-1]["source384_refresh"] = json.loads(json.dumps(context["source384_refresh"]))
+                    refreshed[-1]["source384_refresh_reused"] = cached_refresh
+                    refreshed[-1]["requires_independent_manifest"] = True
             except Exception as error:
                 # Retain task success and shutdown availability. A failed or
                 # stale derivative is unusable; it never authorizes dispatch.

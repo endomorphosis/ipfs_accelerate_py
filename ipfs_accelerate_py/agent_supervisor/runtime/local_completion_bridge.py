@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import time
 from dataclasses import replace
 from typing import Mapping
 
@@ -380,7 +381,7 @@ def authorize_owner_portal_source_transition(
 def bind_owner_local_completion_service(
     *, server: QuackStateServer, portal_attempt_root: Path, repo_root: Path,
     merge_queue_dir: Path, board_namespace: str, target_branch: str,
-    candidate_runner=None, retirable=False,
+    candidate_runner=None, retirable=False, replay_scope=None, deadline_monotonic=None,
 ) -> dict:
     """Bind a closed grant-authenticated service to owner-chosen native paths.
 
@@ -401,6 +402,12 @@ def bind_owner_local_completion_service(
         raise local.LocalPlanningError("live native owner required for local completion service")
     if type(retirable) is not bool:
         raise local.LocalPlanningError("completion retirement opt-in must be an exact boolean")
+    if (replay_scope is None) != (deadline_monotonic is None):
+        raise local.LocalPlanningError("completion replay needs its captured scope and lifetime together")
+    if replay_scope is not None:
+        from .header_intent_applicability import resume_applicability_budget
+        with resume_applicability_budget(replay_scope, deadline_monotonic=deadline_monotonic):
+            pass
     repository = Path(repo_root).resolve(strict=True)
     attempts = Path(portal_attempt_root).absolute()
     queue_dir = Path(merge_queue_dir).absolute()
@@ -415,7 +422,7 @@ def bind_owner_local_completion_service(
     def no_provider(*_args):
         raise local.LocalPlanningError("owner completion service cannot dispatch a provider")
 
-    def handler(task_cid, attempt_id, expected_revision, grant):
+    def execute(task_cid, attempt_id, expected_revision, grant, *, budget_guard=None):
         intent = IntentRepository(bound_connection=server._connection, install_schema=False)
         source = DatabaseTaskSource(intent=intent, install_schema=False)
         record = source.get_task(task_cid)
@@ -429,6 +436,8 @@ def bind_owner_local_completion_service(
         ):
             raise local.LocalPlanningError("local completion request has no exact admitted attempt")
         _require_database_claim_process_attestation(receipt, grant=grant)
+        if budget_guard is not None:
+            budget_guard()
         contract = record.body.get(local.CONTRACT_KEY)
         if not isinstance(contract, Mapping) or contract.get("payload", {}).get("manifest", {}).get("payload", {}).get("repository") != str(repository):
             raise local.LocalPlanningError("local completion request is outside owner-bound repository")
@@ -467,12 +476,64 @@ def bind_owner_local_completion_service(
         transition = authorize_owner_portal_source_transition(
             server=server, bridge=bridge, merge_queue=queue, attempt=attempt, provider_result=accepted,
         )
+        if budget_guard is not None:
+            budget_guard()
         observed = run_owner_local_task_validations(
             server=server, task_cid=task_cid, attempt_id=attempt_id,
             expected_revision=expected_revision, source_transition=transition,
-            candidate_runner=candidate_runner,
+            candidate_runner=candidate_runner, budget_guard=budget_guard,
         )
+        if budget_guard is not None:
+            budget_guard()
         return {**observed, "attempt_id": attempt_id, "task_revision": expected_revision}
+
+    def handler(task_cid, attempt_id, expected_revision, grant):
+        if replay_scope is None:
+            return execute(task_cid, attempt_id, expected_revision, grant)
+        from .header_intent_applicability import (
+            applicability_budget, capture_applicability_budget,
+            require_applicability_budget, resume_applicability_budget,
+        )
+        from ..task_sources.typed_state_owner import OwnerClientGrant, _LOCAL_COMPLETION_REQUEST_DEADLINE
+        if type(grant) is not OwnerClientGrant:
+            raise local.LocalPlanningError("completion budget requires an authenticated native grant")
+        # Fix the grant conversion once. Renewal during this request must not
+        # extend its authority or any replay/validation/publication deadline.
+        grant_deadline = time.monotonic() + (grant.expires_at / 1000 - time.time())
+        request_deadline = _LOCAL_COMPLETION_REQUEST_DEADLINE.get()
+        if request_deadline is None:
+            request_deadline = time.monotonic() + 120.
+        with resume_applicability_budget(replay_scope,
+                deadline_monotonic=min(deadline_monotonic, grant_deadline, request_deadline)):
+            with applicability_budget(120.):
+                captured = capture_applicability_budget()
+                expected_task = IntentRepository(bound_connection=server._connection,
+                    install_schema=False).get_task(task_cid)
+
+                def guard():
+                    require_applicability_budget()
+                    remaining = captured.deadline_monotonic - time.monotonic()
+                    if remaining <= 0:
+                        raise TimeoutError("local completion aggregate deadline expired")
+                    gateway = server._command_gateway
+                    gateway._require_active_grant(grant, peer_identity=(
+                        grant.peer_pid, grant.peer_uid, grant.peer_start_time_ticks))
+                    current = IntentRepository(bound_connection=server._connection,
+                        install_schema=False).get_task(task_cid)
+                    if (current is None or current != expected_task
+                            or current["revision"] != expected_revision
+                            or current["status"] != "in_progress"):
+                        raise local.LocalPlanningError("completion budget lost exact native task custody")
+                    _require_database_claim_process_attestation(
+                        current["body"].get("completion_receipt", {}), grant=grant)
+                    # Charge the authority rechecks as well as solver work.
+                    require_applicability_budget()
+                    return captured.deadline_monotonic - time.monotonic()
+
+                guard()
+                result = execute(task_cid, attempt_id, expected_revision, grant, budget_guard=guard)
+                guard()
+                return result
 
     gateway = server._command_gateway
     if gateway is None:
@@ -512,7 +573,7 @@ def bind_owner_local_completion_service(
 def run_owner_local_task_validations(
     *, server: QuackStateServer, task_cid: str, attempt_id: str,
     expected_revision: int, timeout: float = 60,
-    source_transition: Mapping | None = None, candidate_runner=None,
+    source_transition: Mapping | None = None, candidate_runner=None, budget_guard=None,
 ) -> dict:
     """Run real local checks against an exact native admitted attempt.
 
@@ -524,6 +585,8 @@ def run_owner_local_task_validations(
         raise local.LocalPlanningError("actual native owner and exact revision required")
     if expected_revision < 1 or not isinstance(attempt_id, str) or not attempt_id:
         raise local.LocalPlanningError("exact admitted attempt required")
+    if budget_guard is not None:
+        local._local_validation_budget(timeout, budget_guard)
     with server._lock:
         identity = server.identity
         if identity is None or server.ready().get("ready") is not True:
@@ -559,5 +622,5 @@ def run_owner_local_task_validations(
         return local.run_local_task_validations(
             intent=intent, task_cid=task_cid, attempt_id=attempt_id,
             timeout=timeout, source_transition=source_transition,
-            candidate_runner=candidate_runner,
+            candidate_runner=candidate_runner, budget_guard=budget_guard,
         )

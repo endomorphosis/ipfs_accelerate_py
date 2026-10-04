@@ -1,0 +1,43 @@
+{
+  "argv": [
+    "${WORKSPACE}/.venvs/terminal-bench-harbor/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "--basetemp=${PRIVATE_TMP}/sws-root-01",
+    "--junitxml=${WORKSPACE}/artifacts/supervisor-successor-wiring-20261004/root-01/results.xml",
+    "test/api/test_admitted_observation_work_scope.py",
+    "benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py"
+  ],
+  "cwd": "${WORKSPACE}/.worktrees/ir-release-accelerate-20261002",
+  "environment_overrides": {
+    "CUDA_VISIBLE_DEVICES": "",
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR": "${PRIVATE_TMP}/sws-root-01-private/orchestration",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "${PRIVATE_TMP}/sws-root-01-private/seal.duckdb",
+    "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "${PRIVATE_TMP}/sws-root-01-private/keys.db",
+    "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": "${WORKSPACE}/artifacts/supervisor-successor-wiring-20261004/root-01/fallback-scheduler.json",
+    "MKL_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "${WORKSPACE}/.worktrees/ir-release-accelerate-20261002:${WORKSPACE}/.worktrees/ir-pressure-attribution-datasets-20261004:${WORKSPACE}/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "harness_sha256": "4628f9ddcba5c2f94d4d5937a4cafb3870ead504bde821c9ac7325468e59d395",
+  "selected_source_pins_complete_repository": false,
+  "source_pins": {
+    "source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "9915976c91693e07049bc0f8be19e86b790a0ea063368dbac81c3c8fb4c86f22",
+    "source/benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py": "bc5ff9e85fce8bacbde4c2f70578f92a35511a46dd06dd7eed0aea22fcefa394",
+    "source/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "ec169a3adacc3705c8a00895d2cb020feaafe40075e036c37df1a213d5771b4a",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/header_intent_applicability.py": "118990a874f9637e19d26e99d7f80ef7c9d83956bcbf202ce7fdfd1bfe777e15",
+    "source/test/api/test_admitted_observation_work_scope.py": "0a0a468b9a5deb02acd4e54da376450b3fd57e57f08b3a6cab0c12181f311772"
+  },
+  "source_revisions": {
+    "datasets": "d5aaf256618c53b009695e8d5618436fba1c0419",
+    "source": "d904beab403689ca14f4a9673d215077e088d32b"
+  }
+}

@@ -1197,3 +1197,41 @@ still needs its bounded replay-scope handoff, and separate worker-UID captured
 store custody is unchanged. The six new tests use authored source and resource
 telemetry with actual native checking/publication; they do not establish neural
 quality, host-pressure recovery, or a matched benchmark advantage.
+
+The next component generation propagates the captured local work/lifetime scope
+through the owner completion RPC. Its whole callback is bounded at 120 seconds,
+shortened by the initial authenticated grant and original work deadline. The
+signed 125-second receive allowance applies only to completion; ordinary RPCs
+keep their 30-second receive limit. A real native completion control succeeds
+after an authored 31-second prefix. Partial responses still poison the transport,
+and ambiguous callbacks are never retried as no-effect work. The unavailable
+original attempt-start timestamp is not reconstructed from a worker store.
+See [completion controls](../../../docs/agent_supervisor/evidence/completion-rpc-budget-20261004/README.md).
+
+After successful publication and STOP, the explicit local benchmark profile can
+prepare a fresh Source384 index and checkpoint inference over the same signed
+source population. Schema @3 records predecessor, source, configuration and
+model lineage, without inheriting the old header nomination. It refreshes
+semantic/world context and revalidates cached advice without neural replay.
+A new signed plan/admission is required before further execution; decoded advice
+is not a proof of source semantics. Ordinary profiles retain historical behavior.
+The driver charges refresh against the original work cutoff and preserves cleanup.
+
+[Successor controls](../../../docs/agent_supervisor/evidence/source384-successor-refresh-20261004/README.md)
+retain 27 distinct passes, including real offline checkpoint/GTE inference,
+Z3 checking, typed publication/completion and cached validation. An initial
+inference attempt failed from mismatched tokenizers in the test harness; only
+its environment was corrected. Authored healthy telemetry does not qualify
+recovery under actual host pressure.
+
+The affected regression passes 120 cases; six final completion bounds, 27
+successor controls and 50 driver controls form 203 distinct passing cases, with
+19 final root controls overlapping the regression. The driver-only compatibility
+correction supersedes the earlier regression's driver pin with focused controls.
+The earlier 23 completion passes use the same four completion owners but a prior
+root-runtime generation and are retained separately. Earlier fixture/setup
+failures and the nonqualifying pin-drift retry remain visible. See
+[regressions](../../../docs/agent_supervisor/evidence/completion-successor-regression-20261004/README.md)
+and [driver/work-scope controls](../../../docs/agent_supervisor/evidence/supervisor-successor-wiring-20261004/README.txt).
+A fresh complete archive, joined Docker outcome and matched arms remain required;
+these component outcomes do not change T's historical score or prove efficiency.

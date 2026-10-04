@@ -1,0 +1,306 @@
+{
+  "cases": [
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs0-285-40-90-None-doctor_candidate]",
+      "outcome": "passed",
+      "seconds": 0.002
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs0-285-40-90-None-doctor_contract_candidate]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs0-285-40-90-None-model_router]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs0-285-40-90-5-doctor_candidate]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs0-285-40-90-5-doctor_contract_candidate]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs0-285-40-90-5-model_router]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs0-285-40-90-1-doctor_candidate]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs0-285-40-90-1-doctor_contract_candidate]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs0-285-40-90-1-model_router]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs0-285-40-90-0-doctor_candidate]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs0-285-40-90-0-doctor_contract_candidate]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs0-285-40-90-0-model_router]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs1-900-60-180-None-doctor_candidate]",
+      "outcome": "passed",
+      "seconds": 0.005
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs1-900-60-180-None-doctor_contract_candidate]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs1-900-60-180-None-model_router]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs1-900-60-180-5-doctor_candidate]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs1-900-60-180-5-doctor_contract_candidate]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs1-900-60-180-5-model_router]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs1-900-60-180-1-doctor_candidate]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs1-900-60-180-1-doctor_contract_candidate]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs1-900-60-180-1-model_router]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs1-900-60-180-0-doctor_candidate]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs1-900-60-180-0-doctor_contract_candidate]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve[budget_kwargs1-900-60-180-0-model_router]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_startup_diagnostic_failure_does_not_mask_start_failure_or_skip_stop",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_startup_metadata_projection_detaches_bounded_observations",
+      "outcome": "passed",
+      "seconds": 0.0
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_startup_projection_refuses_raw_or_unbounded_metadata[source_body]",
+      "outcome": "passed",
+      "seconds": 0.0
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_startup_projection_refuses_raw_or_unbounded_metadata[row_body]",
+      "outcome": "passed",
+      "seconds": 0.0
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_startup_projection_refuses_raw_or_unbounded_metadata[phase]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_startup_projection_refuses_raw_or_unbounded_metadata[status]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_startup_projection_refuses_raw_or_unbounded_metadata[seconds]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_startup_projection_refuses_raw_or_unbounded_metadata[too_many]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_startup_projection_refuses_raw_or_unbounded_metadata[count]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_startup_projection_refuses_raw_or_unbounded_metadata[start_budget]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_driver_rejects_unbounded_or_wrong_profile_budget_before_side_effects[None-True]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_driver_rejects_unbounded_or_wrong_profile_budget_before_side_effects[None-285.0]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_driver_rejects_unbounded_or_wrong_profile_budget_before_side_effects[None-89]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_driver_rejects_unbounded_or_wrong_profile_budget_before_side_effects[None-301]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_driver_rejects_unbounded_or_wrong_profile_budget_before_side_effects[source384-5cpu-12gib@1-900]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_driver_rejects_unbounded_or_wrong_profile_budget_before_side_effects[source384-5cpu-16gib-extended@1-901]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_driver_rejects_unbounded_or_wrong_profile_budget_before_side_effects[source384-5cpu-16gib-extended@1-90.0]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_explicit_bounded_override_preserves_owner_identity_gate[None-300]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_explicit_bounded_override_preserves_owner_identity_gate[source384-5cpu-12gib@1-300]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_explicit_bounded_override_preserves_owner_identity_gate[source384-5cpu-16gib-extended@1-900]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_explicit_bounded_override_preserves_owner_identity_gate[source384-5cpu-16gib-extended@1-120]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_selected_budget_requires_matching_explicit_admission_environment[missing-profile]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_selected_budget_requires_matching_explicit_admission_environment[wrong-profile]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_selected_budget_requires_matching_explicit_admission_environment[missing-ledger]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_selected_budget_requires_matching_explicit_admission_environment[different-ledger]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget",
+      "name": "test_selected_budget_requires_matching_explicit_admission_environment[undeclared-profile]",
+      "outcome": "passed",
+      "seconds": 0.001
+    }
+  ],
+  "failure_bodies_exported": false,
+  "projected_from": "results.xml"
+}

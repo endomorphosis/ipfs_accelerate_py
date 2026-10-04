@@ -1,0 +1,120 @@
+{
+  "cases": [
+    {
+      "classname": "test.api.test_admitted_observation_work_scope",
+      "name": "test_successor_requires_explicit_captured_local_work_before_state[True-False-None]",
+      "outcome": "passed",
+      "seconds": 0.003
+    },
+    {
+      "classname": "test.api.test_admitted_observation_work_scope",
+      "name": "test_successor_requires_explicit_captured_local_work_before_state[True-True-bundle1]",
+      "outcome": "passed",
+      "seconds": 0.002
+    },
+    {
+      "classname": "test.api.test_admitted_observation_work_scope",
+      "name": "test_successor_requires_explicit_captured_local_work_before_state[1-False-None]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "test.api.test_admitted_observation_work_scope",
+      "name": "test_successor_requires_explicit_captured_local_work_before_state[true-False-None]",
+      "outcome": "passed",
+      "seconds": 0.002
+    },
+    {
+      "classname": "test.api.test_admitted_observation_work_scope",
+      "name": "test_full_observation_resumes_original_scope_in_new_thread",
+      "outcome": "passed",
+      "seconds": 0.002
+    },
+    {
+      "classname": "test.api.test_admitted_observation_work_scope",
+      "name": "test_observation_cannot_return_after_scope_expires",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "test.api.test_admitted_observation_work_scope",
+      "name": "test_shorter_enclosing_observation_scope_remains_binding",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "test.api.test_admitted_observation_work_scope",
+      "name": "test_ordinary_observation_keeps_default_replay_ceiling",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_post_stop_refresh_budget",
+      "name": "test_refresh_deadline_escapes_optional_exception_handlers_and_restores_outer_alarm",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_post_stop_refresh_budget",
+      "name": "test_unsettled_or_unrequested_work_never_rebuilds[change0]",
+      "outcome": "passed",
+      "seconds": 0.0
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_post_stop_refresh_budget",
+      "name": "test_unsettled_or_unrequested_work_never_rebuilds[change1]",
+      "outcome": "passed",
+      "seconds": 0.0
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_post_stop_refresh_budget",
+      "name": "test_unsettled_or_unrequested_work_never_rebuilds[change2]",
+      "outcome": "passed",
+      "seconds": 0.0
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_post_stop_refresh_budget",
+      "name": "test_unsettled_or_unrequested_work_never_rebuilds[change3]",
+      "outcome": "passed",
+      "seconds": 0.0
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_post_stop_refresh_budget",
+      "name": "test_finalization_reserve_and_current_retrieval_are_required",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_post_stop_refresh_budget",
+      "name": "test_original_work_cutoff_bounds_refresh_without_shortening_cleanup",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_post_stop_refresh_budget",
+      "name": "test_expired_work_does_not_borrow_available_cleanup_time",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_post_stop_refresh_budget",
+      "name": "test_real_refresh_alarm_interrupts_component_without_consuming_cleanup_reserve",
+      "outcome": "passed",
+      "seconds": 5.101
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_post_stop_refresh_budget",
+      "name": "test_failed_learned_refresh_keeps_actual_inference_cost_and_unknown_totals[False]",
+      "outcome": "passed",
+      "seconds": 0.001
+    },
+    {
+      "classname": "benchmarks.agent_supervisor.container_coding.test_post_stop_refresh_budget",
+      "name": "test_failed_learned_refresh_keeps_actual_inference_cost_and_unknown_totals[True]",
+      "outcome": "passed",
+      "seconds": 0.001
+    }
+  ],
+  "failure_bodies_exported": false,
+  "projected_from": "results.xml"
+}

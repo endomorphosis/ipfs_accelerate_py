@@ -92,6 +92,7 @@ def test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
     assert report['native_start_timeout_seconds'] == (120 if extended else 20)
     assert context_options[0]['source384_timeout_seconds']==source_seconds
     if admitted:
+        assert native_options[0]['refresh_source384_on_completion'] is extended
         assert native_options[0]['lifetime_seconds']==min(900,max(120,cutoff-used_work_seconds+60))
         assert native_options[0]['timeout_ms']==20_000
         if extended:

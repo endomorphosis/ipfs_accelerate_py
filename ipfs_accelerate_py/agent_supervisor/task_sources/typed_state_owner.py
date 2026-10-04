@@ -29,6 +29,7 @@ import threading
 import time
 import uuid
 from collections.abc import Mapping, Sequence
+from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -84,6 +85,9 @@ TYPED_STATE_OWNER_SCHEMA: Final = (
 )
 TYPED_STATE_OWNER_SOCKET_ENV: Final = "IPFS_ACCELERATE_AGENT_STATE_OWNER_SOCKET"
 TYPED_STATE_OWNER_TOKEN_ENV: Final = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
+LOCAL_COMPLETION_RPC_TIMEOUT_ENV: Final = "IPFS_ACCELERATE_LOCAL_COMPLETION_RPC_TIMEOUT_SECONDS"
+LOCAL_COMPLETION_RPC_TIMEOUT_SECONDS: Final = 125.0
+_LOCAL_COMPLETION_REQUEST_DEADLINE = ContextVar("local_completion_request_deadline", default=None)
 TYPED_STATE_OWNER_SOCKET_FILENAME: Final = "typed-state-owner.sock"
 TYPED_STATE_OWNER_TOKEN_FILENAME: Final = "typed-state-owner.token"
 TYPED_RETRY_COOLDOWN_SCHEMA: Final = (
@@ -5252,10 +5256,15 @@ def _send_frame(channel: socket.socket, payload: Mapping[str, Any]) -> None:
     channel.sendall(len(body).to_bytes(4, "big") + body)
 
 
-def _receive_exact(channel: socket.socket, length: int) -> bytes:
+def _receive_exact(channel: socket.socket, length: int, *, deadline_monotonic=None) -> bytes:
     chunks: list[bytes] = []
     remaining = length
     while remaining:
+        if deadline_monotonic is not None:
+            left = deadline_monotonic - time.monotonic()
+            if left <= 0:
+                raise TimeoutError("typed owner completion response deadline expired")
+            channel.settimeout(left)
         part = channel.recv(remaining)
         if not part:
             raise TypedStateOwnerProtocolError("typed state-owner channel closed")
@@ -5264,12 +5273,12 @@ def _receive_exact(channel: socket.socket, length: int) -> bytes:
     return b"".join(chunks)
 
 
-def _receive_frame(channel: socket.socket) -> dict[str, Any]:
-    size = int.from_bytes(_receive_exact(channel, 4), "big")
+def _receive_frame(channel: socket.socket, *, deadline_monotonic=None) -> dict[str, Any]:
+    size = int.from_bytes(_receive_exact(channel, 4, deadline_monotonic=deadline_monotonic), "big")
     if size < 2 or size > MAX_FRAME_BYTES:
         raise TypedStateOwnerProtocolError("typed state-owner frame size is invalid")
     try:
-        value = json.loads(_receive_exact(channel, size).decode("utf-8"))
+        value = json.loads(_receive_exact(channel, size, deadline_monotonic=deadline_monotonic).decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise TypedStateOwnerProtocolError("typed state-owner frame is not JSON") from exc
     if not isinstance(value, dict):
@@ -7321,6 +7330,10 @@ class TypedStateOwnerGateway:
                             )
                         response = {"ok": True, "result": dict(command_result)}
                     elif action == "local.task.validation.run":
+                        # Server-owned receipt time, never a worker deadline.
+                        # The opt-in completion service charges lock wait to
+                        # the same callback ceiling; ordinary services ignore it.
+                        received_deadline = time.monotonic() + 120.
                         self._reject_unknown(
                             request, {"schema", "action", "request_id", "task_cid", "attempt_id", "expected_revision"},
                             "local task validation request",
@@ -7332,11 +7345,15 @@ class TypedStateOwnerGateway:
                         revision = request.get("expected_revision")
                         if type(revision) is not int or revision < 1:
                             raise TypedStateOwnerProtocolError("local validation revision is invalid")
-                        with self._transaction_lock:
-                            grant = self._require_active_grant(grant, peer_identity=peer_identity, session_id=session_id)
-                            result = self._invoke_local_task_validation_handler_locked(
-                                task_cid, attempt_id, revision, grant,
-                            )
+                        token = _LOCAL_COMPLETION_REQUEST_DEADLINE.set(received_deadline)
+                        try:
+                            with self._transaction_lock:
+                                grant = self._require_active_grant(grant, peer_identity=peer_identity, session_id=session_id)
+                                result = self._invoke_local_task_validation_handler_locked(
+                                    task_cid, attempt_id, revision, grant,
+                                )
+                        finally:
+                            _LOCAL_COMPLETION_REQUEST_DEADLINE.reset(token)
                         response = {"ok": True, "result": dict(result)}
                     elif action == "wait_events":
                         self._reject_unknown(
@@ -13393,6 +13410,8 @@ class TypedStateOwnerConnection:
         self._active = False
         self._prepared_command: StateCommand | None = None
         self._request_index = 0
+        self._local_completion_timeout = None
+        self._local_completion_deadline = None
         try:
             opened = self._request(
                 "open_fleet" if fleet_observation_read else (
@@ -13413,10 +13432,43 @@ class TypedStateOwnerConnection:
         self.catalog_id = str(opened.get("catalog_id") or "")
         self.session_id = str(opened.get("session_id") or "")
         self.grant = MappingProxyType(dict(opened.get("grant") or {}))
+        expiry = self.grant.get("expires_at")
+        self._initial_grant_deadline = (time.monotonic() + (expiry / 1000 - time.time())
+            if type(expiry) is int and expiry > 0 else None)
         if not self.session_id:
             raise TypedStateOwnerProtocolError(
                 "typed owner handshake returned no admitted session"
             )
+
+    def run_local_task_validation(self, *, task_cid, attempt_id, expected_revision):
+        """One closed completion RPC; longer receive time is never authority.
+
+        The allowance is installed only after process-bound bootstrap checks.
+        Other operations retain the ordinary socket timeout. A failed exchange
+        remains poisoned, and this method never retries an ambiguous callback.
+        """
+        with self._request_lock:
+            if self._local_completion_timeout is None:
+                return self._request("local.task.validation.run", task_cid=task_cid,
+                    attempt_id=attempt_id, expected_revision=expected_revision)
+            if self._closed:
+                raise TypedStateOwnerProtocolError("typed owner connection is closed")
+            if self._initial_grant_deadline is None:
+                raise TypedStateOwnerAuthorizationError("completion transport lacks its original grant expiry")
+            deadline = min(time.monotonic() + self._local_completion_timeout,
+                           self._initial_grant_deadline)
+            if deadline <= time.monotonic():
+                raise TimeoutError("completion transport grant deadline expired before dispatch")
+            previous = self._socket.gettimeout()
+            self._local_completion_deadline = deadline
+            try:
+                self._socket.settimeout(deadline - time.monotonic())
+                return self._request("local.task.validation.run", task_cid=task_cid,
+                    attempt_id=attempt_id, expected_revision=expected_revision)
+            finally:
+                self._local_completion_deadline = None
+                if not self._closed:
+                    self._socket.settimeout(previous)
 
     def legacy_merge_queue(self, payload: Mapping[str, Any]) -> Mapping[str, Any]:
         """Invoke a closed legacy queue operation using this exact existing grant."""
@@ -13743,7 +13795,11 @@ class TypedStateOwnerConnection:
                         **fields,
                     },
                 )
-                response = _receive_frame(self._socket)
+                deadline = self._local_completion_deadline if action == "local.task.validation.run" else None
+                response = (_receive_frame(self._socket) if deadline is None
+                    else _receive_frame(self._socket, deadline_monotonic=deadline))
+                if deadline is not None and time.monotonic() >= deadline:
+                    raise TimeoutError("typed owner completion response exceeded its deadline")
             except (OSError, TypedStateOwnerProtocolError):
                 # A timeout or partial frame destroys request/response
                 # alignment.  Never let a retry consume the late tail of the
@@ -13918,6 +13974,8 @@ def open_typed_state_owner_connection(
 
 
 __all__ = [
+    "LOCAL_COMPLETION_RPC_TIMEOUT_ENV",
+    "LOCAL_COMPLETION_RPC_TIMEOUT_SECONDS",
     "COMPLETION_PROGRESS_SNAPSHOT_OPERATION",
     "MAX_COMPLETION_PROGRESS_SNAPSHOT_BYTES",
     "MAX_COMPLETION_PROGRESS_TASKS",

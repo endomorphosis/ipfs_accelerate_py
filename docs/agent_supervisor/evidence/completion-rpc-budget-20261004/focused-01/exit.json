@@ -1,0 +1,24 @@
+{
+  "after_pins": {
+    "source/benchmarks/agent_supervisor/container_coding/native_quack_qualification.py": "43d4ab90baa364014b6f4543a6aa2fa383aaba045612524336a4aa5474346e0e",
+    "source/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "ec169a3adacc3705c8a00895d2cb020feaafe40075e036c37df1a213d5771b4a",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/header_intent_applicability.py": "118990a874f9637e19d26e99d7f80ef7c9d83956bcbf202ce7fdfd1bfe777e15",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py": "a495de56fcd1c1fdb634090bd944256d812d5413ffc644f94904bff99c2eb256",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py": "321ec1c7a2cdddecbba912f62514409c5d3ed8f5281fbdfe9e8feeb6d09361eb",
+    "source/ipfs_accelerate_py/agent_supervisor/task_sources/typed_database_task_source.py": "8454ba8930e327a0e63f8ead2f76c472f60df280427bceed4a868d856b5b0279",
+    "source/ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "95ffbe87ccbb811f7cf9281940bf4b9b004e5457087a7878138abe40330465a7",
+    "source/test/api/test_agent_supervisor_local_planning_admission.py": "5635419e9d1282ed3b64bd12e9b4f25cf047582d7a31c92554e20bab13f75e39",
+    "source/test/api/test_local_completion_bridge.py": "212d1d2e07efdc6549ad5548a22a363d27886e8e3d9432ebdf015af37ba3b970",
+    "source/test/api/test_local_completion_rpc_budget.py": "e19e10b898efc2baee4d4bef1d615c8b687c1974248a1f0622c010d1ee1ae3b7",
+    "source/test/api/test_owner_completion_service_retirement.py": "6e164a092938cfa9799660d457ebfff1879a49aa0f9afbd53415c67c05b410fe"
+  },
+  "returncode": 1,
+  "seconds": 58.12902683598804,
+  "source_pins_unchanged": true,
+  "xml_counts": {
+    "errors": 0,
+    "failures": 1,
+    "skipped": 0,
+    "tests": 24
+  }
+}

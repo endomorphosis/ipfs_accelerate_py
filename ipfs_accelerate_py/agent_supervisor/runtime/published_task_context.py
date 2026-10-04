@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 import re
@@ -191,8 +192,19 @@ def _unique(pairs):
 
 def _verify_predecessor(*, root, result):
     bundle = result["predecessor_bundle"]
-    metadata = load_task_context_nomination(repository=root, artifact=bundle["artifact"],
-        expected_sha256=bundle["sha256"], task_cid=result["task_cid"], task_id=result["task_id"])
+    if "source384_context" in result:
+        selected = read_task_context_historical_selection(repository=root, artifact=bundle["artifact"],
+            expected_sha256=bundle["sha256"], task_cid=result["task_cid"], task_id=result["task_id"])
+        from .source384_repository_context import validate_historical_source384_selection
+        previous_source384 = validate_historical_source384_selection(repository=root,
+            expected_receipt=selected["source384_context"])
+        if result["source384_context"]["successor_lineage"]["predecessor_receipt_sha256"] != hashlib.sha256(
+                _json(previous_source384).encode()).hexdigest():
+            raise ValueError("Source384 predecessor lineage differs from selected bundle")
+        metadata = selected["metadata"]
+    else:
+        metadata = load_task_context_nomination(repository=root, artifact=bundle["artifact"],
+            expected_sha256=bundle["sha256"], task_cid=result["task_cid"], task_id=result["task_id"])
     _, semantic = _load_semantic_payload(repository=root,
         artifact=metadata["semantic context artifact"], expected_sha256=metadata["semantic context sha256"],
         task_id=result["task_id"], verify_sources=False)
@@ -316,7 +328,8 @@ def _previous_retrieval(root, metadata, task_id):
 
 def refresh_published_task_context(*, server, admission, predecessor_bundle,
                                    task_cid: str, output: Path,
-                                   retrieval_rebuilder=None) -> dict:
+                                   retrieval_rebuilder=None, source384_output: Path | None = None,
+                                   source384_timeout_seconds: float = 90., deadline_monotonic=None) -> dict:
     """Build fresh source/intent evidence after actual canonical completion.
 
     An optional trusted local ``retrieval_rebuilder`` receives keyword args
@@ -328,15 +341,38 @@ def refresh_published_task_context(*, server, admission, predecessor_bundle,
     or silently replaced with another embedding model.
     """
     started = time.monotonic()
+    if deadline_monotonic is not None and (type(deadline_monotonic) not in (int, float)
+            or not math.isfinite(deadline_monotonic)):
+        raise ValueError("finite published context deadline required")
+    def checkpoint():
+        if deadline_monotonic is not None and time.monotonic() >= deadline_monotonic:
+            raise TimeoutError("published context refresh deadline expired")
+    checkpoint()
     root, binding, task = _owner_state(server=server, admission=admission, task_cid=task_cid)
+    checkpoint()
     if not isinstance(predecessor_bundle, dict) or set(predecessor_bundle) != {"artifact", "sha256"}:
         raise ValueError("exact predecessor bundle reference required")
     selected = read_task_context_historical_selection(repository=root, **{
         "artifact": predecessor_bundle["artifact"], "expected_sha256": predecessor_bundle["sha256"],
         "task_cid": task_cid, "task_id": binding["task_id"],
     })
-    if "source384_context" in selected:
+    checkpoint()
+    if "source384_context" in selected and source384_output is None:
         return _source384_successor_unavailable(binding, predecessor_bundle, selected["source384_context"])
+    source384 = None
+    source384_deadline = None
+    if source384_output is not None:
+        if ("source384_context" not in selected or type(source384_timeout_seconds) not in (int, float)
+                or not math.isfinite(source384_timeout_seconds) or not 0 < source384_timeout_seconds <= 180):
+            raise ValueError("selected Source384 predecessor and bounded successor timeout required")
+        source384_deadline = min(started + source384_timeout_seconds,
+            deadline_monotonic if deadline_monotonic is not None else float("inf"))
+    def source384_remaining():
+        checkpoint()
+        remaining = source384_deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("published Source384 successor deadline expired")
+        return min(180., remaining)
     metadata = selected["metadata"]
     _, previous = _load_semantic_payload(
         repository=root, artifact=metadata["semantic context artifact"],
@@ -362,9 +398,27 @@ def refresh_published_task_context(*, server, admission, predecessor_bundle,
     permitted = set(task["body"][local.CONTRACT_KEY]["payload"]["task_spec"]["scope_paths"])
     if not set(previous["manifest"]) <= permitted:
         raise ValueError("predecessor semantic scope exceeds the signed task scope")
+    if source384_output is not None:
+        from .source384_repository_context import prepare_source384_successor_context
+        predecessor = selected["source384_context"]
+        declared = admission["manifest"]["payload"]
+        if predecessor["source_hashes"] != {name: row["sha256"] for name, row in declared["sources"].items()}:
+            raise ValueError("Source384 predecessor population differs from signed original sources")
+        source_hashes = {name: row["sha256"] for name, row in
+            local._sources(root, sorted(predecessor["source_hashes"]), max_files=256).items()}
+        new_outputs = sorted({row["path"] for spec in declared["tasks"] for row in spec["outputs"]}
+            - set(source_hashes))
+        source384 = prepare_source384_successor_context(repository=root, source_hashes=source_hashes,
+            output=source384_output, predecessor_receipt=predecessor,
+            timeout_seconds=source384_remaining(), excluded_new_output_paths=new_outputs)
+        checkpoint()
+        if _owner_state(server=server, admission=admission, task_cid=task_cid)[1] != binding:
+            raise ValueError("publication changed during Source384 successor inference")
+        checkpoint()
     required = previous.get("required_raw_paths", sorted(previous.get("raw_sources", {})))
     bounds = previous.get("preparation_bounds", {})
     projection = previous.get("worker_projection", {})
+    checkpoint()
     semantic = prepare_semantic_context(
         repository=root, paths=tuple(previous["manifest"]), required_raw_paths=required,
         objective=previous["objective"], task_id=binding["task_id"], output=output / "semantic",
@@ -382,6 +436,7 @@ def refresh_published_task_context(*, server, admission, predecessor_bundle,
             "attempt_id": binding["attempt_id"], "cause": "owner_validated_publication_completed",
         },
     )
+    checkpoint()
     successor = {
         "Semantic context artifact": (output / "semantic/worker-context.json").relative_to(root).as_posix(),
         "Semantic context sha256": semantic["worker_payload_sha256"],
@@ -403,8 +458,10 @@ def refresh_published_task_context(*, server, admission, predecessor_bundle,
         elif retrieval_rebuilder is not None:
             from .published_retrieval import RetrievalRefreshUnavailable
             try:
+                checkpoint()
                 rebuilt_value = retrieval_rebuilder(repository=root, previous_snapshot=snapshot,
                     previous_result=query_result, query_text=context["query_text"], output=output / "vectors")
+                checkpoint()
             except RetrievalRefreshUnavailable as unavailable:
                 retrieval["reason"] = unavailable.reason
                 if getattr(unavailable, "receipt", None) is not None:
@@ -429,6 +486,7 @@ def refresh_published_task_context(*, server, admission, predecessor_bundle,
                 retrieval["ducklake"] = meta.project_ducklake()
                 if retrieval["ducklake"]["status"] != "projected":
                     raise ValueError("refreshed vector metadata did not project to DuckLake")
+    checkpoint()
     get_block = _block_reader(output / "semantic/blocks")
     view = IpfsDatasetsSemanticStateProvider().open_verified_view(semantic["semantic_root_cid"], get_block)
     with server._lock:
@@ -446,6 +504,7 @@ def refresh_published_task_context(*, server, admission, predecessor_bundle,
             connection.execute("ROLLBACK")
             raise
     world = persist_intent_world_snapshot(capture, output=output / "world", task_id=binding["task_id"])
+    checkpoint()
     from ..semantic_state.intent_progress import project_intent_progress
     goal_progress = project_intent_progress(capture)
     successor.update({"World context artifact": Path(world["artifact"]).relative_to(root).as_posix(),
@@ -475,21 +534,58 @@ def refresh_published_task_context(*, server, admission, predecessor_bundle,
         "canonical_task_mutated": False, "launch_nomination_mutated": False,
         "text_generation_calls": 0, "seconds": time.monotonic() - started,
     }
+    if source384 is not None:
+        result["source384_context"] = source384
+        result["source384_refresh"] = _source384_refresh_observation(source384)
     # Source and intent rechecks precede publication of the new nomination.
+    checkpoint()
     _verify_predecessor(root=root, result=result)
-    _verify_current(server=server, admission=admission, root=root, result=result)
+    checkpoint()
+    _verify_current(server=server, admission=admission, root=root, result=result,
+        source384_timeout_seconds=source384_remaining() if source384 is not None else None,
+        deadline_monotonic=deadline_monotonic)
+    checkpoint()
     result["context_bundle"] = write_task_context_bundle(repository=root, prepared=[result],
         output=output / "context-bundle.json")
+    checkpoint()
     raw = _json(result).encode()
     artifact = output / "result.json"
     with artifact.open("xb") as stream:
         stream.write(raw)
+    checkpoint()
     return {**result, "refresh_artifact": artifact.relative_to(root).as_posix(),
             "refresh_sha256": hashlib.sha256(raw).hexdigest()}
 
 
-def _verify_current(*, server, admission, root, result):
+def _source384_refresh_observation(receipt):
+    return {
+        "schema": "supervisor-source384-successor-observation@2", "status": "current_advice",
+        "predecessor_receipt_sha256": receipt["successor_lineage"]["predecessor_receipt_sha256"],
+        "receipt_sha256": hashlib.sha256(_json(receipt).encode()).hexdigest(),
+        "config_sha256": receipt["config_sha256"], "checkpoint_sha256": receipt["checkpoint_sha256"],
+        "inference_sha256": receipt["inference_sha256"], "source_head": receipt["source_head"],
+        "version_id": receipt["version_id"], "preserved_paths": sorted(receipt["source_hashes"]),
+        "declared_outputs_outside_index_scope": receipt["successor_lineage"]["excluded_new_output_paths"],
+        "requires_independent_manifest": True, "header_nomination_inherited": False,
+        "historical_currentness_verified": False, "source_semantics_verified": False,
+        "proof_authority": False, "planning_authority": False, "dispatch_authority": False,
+        "execution_authority": False, "completion_authority": False,
+        "training_steps": 0, "text_generation_calls": 0,
+        "inference_activity_scope": "successor_artifact_preparation",
+        "inference_execution": dict(receipt["inference_execution"]),
+    }
+
+
+def _verify_current(*, server, admission, root, result, source384_timeout_seconds=None,
+                    deadline_monotonic=None):
+    source_deadline = (time.monotonic() + source384_timeout_seconds
+        if source384_timeout_seconds is not None else None)
+    def checkpoint():
+        if deadline_monotonic is not None and time.monotonic() >= deadline_monotonic:
+            raise TimeoutError("published context verification deadline expired")
+    checkpoint()
     current_root, binding, _ = _owner_state(server=server, admission=admission, task_cid=result["task_cid"])
+    checkpoint()
     if current_root != root or any(result.get(key) != value for key, value in binding.items()):
         raise ValueError("published context no longer matches current owner/source/task")
     metadata = result["metadata"]
@@ -523,14 +619,41 @@ def _verify_current(*, server, admission, root, result):
             task_id=binding["task_id"]))
         if retrieved["status"] != "current" or retrieved["index_id"] != result["retrieval"]["index_id"]:
             raise ValueError("refreshed retrieval is not source-current")
+    if "source384_context" in result:
+        from .source384_repository_context import validate_source384_context, SUCCESSOR_SCHEMA
+        receipt = result["source384_context"]
+        if receipt.get("schema") != SUCCESSOR_SCHEMA:
+            raise ValueError("published Source384 must be independently prepared advisory successor")
+        checkpoint()
+        source_limit = min(value for value in (source_deadline, deadline_monotonic, time.monotonic() + 180.)
+            if value is not None) if source_deadline is not None or deadline_monotonic is not None else None
+        remaining = source_limit - time.monotonic() if source_limit is not None else None
+        if remaining is not None and remaining <= 0:
+            raise TimeoutError("published Source384 verification deadline expired")
+        validate_source384_context(repository=root, expected_receipt=receipt,
+            **({"timeout_seconds": remaining} if remaining is not None else {}))
+        checkpoint()
+        if result.get("source384_refresh") != _source384_refresh_observation(receipt):
+            raise ValueError("published Source384 observation differs from current advisory receipt")
     if _owner_state(server=server, admission=admission, task_cid=result["task_cid"])[1] != binding:
         raise ValueError("publication changed during refreshed context verification")
+    checkpoint()
     return world
 
 
-def load_published_task_context(*, server, admission, artifact: str, expected_sha256: str) -> dict:
+def load_published_task_context(*, server, admission, artifact: str, expected_sha256: str,
+                                deadline_monotonic=None, source384_timeout_seconds=90.) -> dict:
     """Revalidate an immutable successor before planning or cache reuse."""
+    started = time.monotonic()
+    if deadline_monotonic is not None and (type(deadline_monotonic) not in (int, float)
+            or not math.isfinite(deadline_monotonic)):
+        raise ValueError("finite published context deadline required")
+    def checkpoint():
+        if deadline_monotonic is not None and time.monotonic() >= deadline_monotonic:
+            raise TimeoutError("published context reload deadline expired")
+    checkpoint()
     verified = verify_owner_local_benchmark_observation(server=server, admission=admission)
+    checkpoint()
     root = Path(verified["manifest"]["repository"]).resolve(strict=True)
     path = retrieval_context._path(root, artifact)
     raw = retrieval_context._read(path, 8_000_000)
@@ -543,10 +666,28 @@ def load_published_task_context(*, server, admission, artifact: str, expected_sh
                 "execution_authority", "completion_authority", "canonical_task_mutated", "launch_nomination_mutated"))):
         raise ValueError("published context schema/authority differs")
     _verify_predecessor(root=root, result=result)
-    metadata = load_task_context_nomination(repository=root, artifact=result["context_bundle"]["artifact"],
+    checkpoint()
+    arguments = dict(repository=root, artifact=result["context_bundle"]["artifact"],
         expected_sha256=result["context_bundle"]["sha256"], task_cid=result["task_cid"], task_id=result["task_id"])
+    if "source384_context" in result:
+        if (type(source384_timeout_seconds) not in (int, float) or not math.isfinite(source384_timeout_seconds)
+                or not 0 < source384_timeout_seconds <= 180):
+            raise ValueError("bounded Source384 successor reload timeout required")
+        selected = read_task_context_historical_selection(**arguments)
+        if selected.get("source384_context") != result["source384_context"]:
+            raise ValueError("Source384 successor bundle differs from refresh receipt")
+        metadata = selected["metadata"]
+        source_remaining = started + source384_timeout_seconds - time.monotonic()
+        if source_remaining <= 0:
+            raise TimeoutError("published Source384 reload deadline expired")
+    else:
+        metadata = load_task_context_nomination(**arguments)
+        source_remaining = None
     if metadata != {key.lower(): value for key, value in result["metadata"].items()}:
         raise ValueError("successor bundle differs from the refresh result")
-    world = _verify_current(server=server, admission=admission, root=root, result=result)
+    checkpoint()
+    world = _verify_current(server=server, admission=admission, root=root, result=result,
+        deadline_monotonic=deadline_monotonic, source384_timeout_seconds=source_remaining)
+    checkpoint()
     return {**result, "planning_context": world, "intent_freshness_checked": True,
             "refresh_artifact": artifact, "refresh_sha256": expected_sha256}

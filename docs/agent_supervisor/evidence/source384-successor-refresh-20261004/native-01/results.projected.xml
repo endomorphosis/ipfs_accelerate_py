@@ -1,0 +1,2 @@
+<?xml version='1.0' encoding='utf-8'?>
+<testsuites><testsuite name="pytest" tests="2" failures="1" errors="0" skipped="0" time="29.782"><testcase classname="integration.test_admitted_source384_successor" name="test_actual_header_checkpoint_successor_after_native_publication" time="4.130"><failure message="body omitted; original XML digest retained" /></testcase><testcase classname="integration.test_admitted_source384_successor" name="test_signed_runtime_calls_source384_refresh_only_after_stop" time="9.654" /></testsuite></testsuites>

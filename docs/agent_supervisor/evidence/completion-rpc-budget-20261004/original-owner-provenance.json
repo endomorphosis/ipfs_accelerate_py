@@ -1,0 +1,11 @@
+{
+  "interpretation": "baseline command source pins describe checkout; exact imported four owners were original snapshots identified here; imports used canonical module filenames; no original source bodies exported",
+  "overlay_sha256": "5e5d8b90d11985926f1a6a109bb6b2d86261c48c58495c19fc1bb99d7add8a4a",
+  "pins": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py": "f37f3c529b604f55d6ef32abe8f145893be4b8b93e98b4545ef4648d18e65206",
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py": "fc9a8696a127b0a6c0dfca24d49aaf0f03b13387a543a5f3a5cb5f1a61329c3f",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/typed_database_task_source.py": "e5564c668488b1d926e308fbdada93db1371dd4bba9c54e7c29a8627623ee2aa",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "d49d2ee166483c6e503dd2f88d2df9ba1d4954972e8214253b0a1ccbd349e0bb"
+  },
+  "revision": "d904beab403689ca14f4a9673d215077e088d32b"
+}

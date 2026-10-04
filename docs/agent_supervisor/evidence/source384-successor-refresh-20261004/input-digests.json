@@ -1,0 +1,50 @@
+{
+  "exporter_sha256": "b2228d7211be16d53be4901d2bceb08bbfa5f0a70f012fcf94b84e073176c8a4",
+  "inputs": {
+    "light-01": {
+      "command.json": {
+        "bytes": 3347,
+        "sha256": "ec99fa4b57eb4e4143bbcfccd4018e21f79ef930a154f67c8d50893c8147387c"
+      },
+      "exit.json": {
+        "bytes": 1862,
+        "sha256": "dad180f0e1835999c4c58c1fdad220ef7ff8ff1940869622518a0b227e5e6ca0"
+      },
+      "results.xml": {
+        "bytes": 4542,
+        "sha256": "98cb74e42b264ae32fda2599f9580b290042823dbb0b86797237172aec2a36ec"
+      }
+    },
+    "native-01": {
+      "command.json": {
+        "bytes": 4850,
+        "sha256": "7fd600dff4542117b57169b88c211407600dfcadbad53e57a47a03fd9f73776b"
+      },
+      "exit.json": {
+        "bytes": 3000,
+        "sha256": "5fb23f359de523fd9d949115d6bf9ddadce2e04db800d43da26e6b6efcc85b2a"
+      },
+      "results.xml": {
+        "bytes": 8191,
+        "sha256": "a5db9b8f8c5aeeff3fcd144df3294485520fcc8993532f95bf364a59583ff3b6"
+      }
+    },
+    "native-02": {
+      "command.json": {
+        "bytes": 4808,
+        "sha256": "e6c79ae818453106178c5dbe9c861efbf1b293396cd095b44565dbf70345f07b"
+      },
+      "exit.json": {
+        "bytes": 3000,
+        "sha256": "60d7f6928330bbb3107faa2abc43b3dfba0c998936dd97fed41949865f714ffa"
+      },
+      "results.xml": {
+        "bytes": 893,
+        "sha256": "87289bacd7bf81dd9a9aabb48bdc8ef3688628c15fbb4e33816f92a31fe8b3a6"
+      }
+    }
+  },
+  "raw_xml_bodies_exported": false,
+  "schema": "bounded-test-evidence-inputs@1",
+  "stdout_exported": false
+}

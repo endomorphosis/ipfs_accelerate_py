@@ -1,0 +1,58 @@
+{
+  "actual_native_inference_case": {
+    "actual_header_z3": true,
+    "authored_scheduler_telemetry": true,
+    "live_benchmark": false,
+    "model_downloads": 0,
+    "native_inference_preparations": 2,
+    "native_owner_publication_completion": true,
+    "new_neural_calls_on_reload": 0,
+    "provider_calls": 0,
+    "semantic_world_refreshed": true,
+    "training_steps": 0
+  },
+  "checkpoint_training_or_promotion": false,
+  "completion_authority": false,
+  "dispatch_authority": false,
+  "distinct_light_controls_passed": 25,
+  "distinct_native_controls_passed": 2,
+  "fake_clock_deadline_controls_present": true,
+  "final_disjoint_pass_groups": [
+    {
+      "label": "light-01",
+      "passed": 25
+    },
+    {
+      "label": "native-01",
+      "passed": 1,
+      "test": "test_signed_runtime_calls_source384_refresh_only_after_stop"
+    },
+    {
+      "label": "native-02",
+      "passed": 1,
+      "test": "test_actual_header_checkpoint_successor_after_native_publication"
+    }
+  ],
+  "formal_semantics_or_general_security_proof_claimed": false,
+  "inherited_header_nomination": false,
+  "light_controls_use_authored_index_and_numerical_seams": true,
+  "official_benchmark_reward_measured": false,
+  "planning_authority": false,
+  "proof_authority": false,
+  "real_host_pressure_recovery_qualified": false,
+  "requires_independent_manifest": true,
+  "retained_failed_attempt": {
+    "classification": "parent_worker_tokenizers_environment_mismatch",
+    "correction": "remove_unrelated_harbor_site_packages_from_artifact_harness_pythonpath",
+    "failed": 1,
+    "isolated_worker_tokenizers": "0.21.4",
+    "label": "native-01",
+    "parent_tokenizers": "0.23.2",
+    "phase": "initial_source384_worker_identity_check",
+    "production_or_acceptance_gate_changed": false,
+    "test": "test_actual_header_checkpoint_successor_after_native_publication"
+  },
+  "runtime_callthrough_uses_authored_numerical_seam": true,
+  "schema": "source384-successor-test-scope@1",
+  "source384_successor_schema": "terminal-source384-repository-context@3"
+}

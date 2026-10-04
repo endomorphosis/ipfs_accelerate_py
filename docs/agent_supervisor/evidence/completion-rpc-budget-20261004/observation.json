@@ -1,0 +1,48 @@
+{
+  "authored_fixture_assertion_failures": 1,
+  "baseline_failures": 1,
+  "bounds": {
+    "completion_receive_max_seconds": 125,
+    "ordinary_receive_seconds": 30,
+    "original_attempt_start_bound_available": false,
+    "original_work_lifetime_and_initial_grant_shorten": true,
+    "per_public_validation_max_seconds": 60,
+    "request_queue_charged": true,
+    "whole_callback_max_seconds": 120
+  },
+  "correction_run_nonqualifying_pin_drift": true,
+  "current_owner_pins": {
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py": "a495de56fcd1c1fdb634090bd944256d812d5413ffc644f94904bff99c2eb256",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py": "321ec1c7a2cdddecbba912f62514409c5d3ed8f5281fbdfe9e8feeb6d09361eb",
+    "source/ipfs_accelerate_py/agent_supervisor/task_sources/typed_database_task_source.py": "8454ba8930e327a0e63f8ead2f76c472f60df280427bceed4a868d856b5b0279",
+    "source/ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "95ffbe87ccbb811f7cf9281940bf4b9b004e5457087a7878138abe40330465a7"
+  },
+  "earlier_run_changed_pins": {
+    "source/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": {
+      "earlier": "ec169a3adacc3705c8a00895d2cb020feaafe40075e036c37df1a213d5771b4a",
+      "final": "dead478d6fa972501f8f4593f3fb28130a341f71fc8a5c9f3a3364e8bbea1fc1"
+    },
+    "source/test/api/test_local_completion_rpc_budget.py": {
+      "earlier": "e19e10b898efc2baee4d4bef1d615c8b687c1974248a1f0622c010d1ee1ae3b7",
+      "final": "e57a3cd5238f2986b7bb6441ab58a1f6ac944aee5f49a78bfc9ffa787afaacd1"
+    }
+  },
+  "final_bounds_cases": 6,
+  "four_owners_unchanged_across_focused_and_final": true,
+  "limitations": [
+    "Owner does not possess an independently trusted original attempt-start cutoff; live claim/process checks and the original grant/work/lifetime still bind.",
+    "A transport timeout remains an ambiguous outcome, poisons the connection, and does not authorize automatic retry.",
+    "No native Docker qualification or throughput advantage claimed."
+  ],
+  "native_completion_success": {
+    "actual_public_validation_and_typed_completion": true,
+    "actual_rpc_thread": true,
+    "authored_delay_seconds": 31,
+    "external_model_invoked": false,
+    "ordinary_timeout_restored_seconds": 30
+  },
+  "preliminary_passes": 23,
+  "schema": "completion-rpc-budget-controls@1",
+  "single_final_generation_all29_claimed": false,
+  "unique_passing_cases_across_recorded_generations": 29
+}

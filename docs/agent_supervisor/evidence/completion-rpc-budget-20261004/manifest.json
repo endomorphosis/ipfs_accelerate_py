@@ -1,0 +1,71 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 2031,
+      "sha256": "d1dfa9552d0b05a1f32ab20c3eff5cb33aecdc7b7f1d2af1ef22e6c35c547ea1"
+    },
+    "baseline-01/command.json": {
+      "bytes": 3456,
+      "sha256": "81d41391cf7dc73ae7f7b64400218106cf6ab99bc6a06a3e882d402979ec66a9"
+    },
+    "baseline-01/exit.json": {
+      "bytes": 1822,
+      "sha256": "45cb93e00fd186fb30ad816a3705cfdd1957c30c802fb474a0e1172d74cb9333"
+    },
+    "baseline-01/results.xml": {
+      "bytes": 484,
+      "sha256": "41a8d7df3b10ca5553e46be25f44e1066b4a4a4d124c4c7030362958538af597"
+    },
+    "correction-01/command.json": {
+      "bytes": 3385,
+      "sha256": "de5edb8636b95e7e792f9195208feae87ebb5c5fbc6265b22896f5c3771f890a"
+    },
+    "correction-01/exit.json": {
+      "bytes": 1823,
+      "sha256": "8fa8b893de8fae8c65835c0fdcbb9c5d2f2d2cc376e085acc73383478bc47ac2"
+    },
+    "correction-01/results.xml": {
+      "bytes": 396,
+      "sha256": "2d620297f5fa69f46ac41b839840fcb87f885381febc6bf3c268ca087c121d43"
+    },
+    "final-bounds-01/command.json": {
+      "bytes": 3429,
+      "sha256": "6cd366199a75fa2db9679bbb8e08ad485bdbddaaec50bef6a5a0c5123a7937ce"
+    },
+    "final-bounds-01/exit.json": {
+      "bytes": 1822,
+      "sha256": "e83a6999a610139cfcde5898141e73644f04a4b3cfe998cc2e0975662e58b722"
+    },
+    "final-bounds-01/results.xml": {
+      "bytes": 2578,
+      "sha256": "da192eb17cf8d0b6dacfcdecabfbdf709a0b5c75c03554b7cca630a0453b61ee"
+    },
+    "focused-01/command.json": {
+      "bytes": 3328,
+      "sha256": "2a77f3898f1b0b37c813d35fed0fdcdee4c96636fb71605fe527f9a6649f9373"
+    },
+    "focused-01/exit.json": {
+      "bytes": 1822,
+      "sha256": "03c86591ee86f9897e5c7e74c171e0f5cedf48ffe4f1e19039c6d199b451bfec"
+    },
+    "focused-01/results.xml": {
+      "bytes": 4639,
+      "sha256": "7270ef5135ec90db9bfa00926d039ec1d13cfc632b57e11acef74ed2eb4b59cb"
+    },
+    "observation.json": {
+      "bytes": 2531,
+      "sha256": "67fbd3c525d30087003ac09fdc020592c8b7975383808e860527479976bfa122"
+    },
+    "original-owner-provenance.json": {
+      "bytes": 972,
+      "sha256": "89abe56cf8e0da87fe4a579cc7608a6e5cc18f3da2d52acc9e9a3523ee048151"
+    },
+    "retained-records.json": {
+      "bytes": 2019,
+      "sha256": "962d02d79b8536283a8b2a8d6cf6482ba274d34363ac9606dabf5b7352b73718"
+    }
+  },
+  "member_bytes": 36537,
+  "member_count": 16,
+  "schema": "public-completion-rpc-evidence-manifest@1"
+}

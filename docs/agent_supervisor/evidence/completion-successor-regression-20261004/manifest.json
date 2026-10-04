@@ -1,0 +1,22 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 1198,
+      "sha256": "e31c6f7fb739cbd65efc3fa4b79e3b135cc288703e94294a0c2943bbcc04fbec"
+    },
+    "command.json": {
+      "bytes": 6049,
+      "sha256": "84ce459c18c71091d7a44771efb096d9a263b09fe35d39ff8d108545c589c7b4"
+    },
+    "exit.json": {
+      "bytes": 3880,
+      "sha256": "6a62d643be91c09713aec1186ef4e7ac6769d76eaaba0eb5e499ab3ec21f58c9"
+    },
+    "results.xml": {
+      "bytes": 21893,
+      "sha256": "fb49f3ea1b272b087166abcc68f5d1faa0ee8a85b0490e21ebd7fe832a885852"
+    }
+  },
+  "member_count": 4,
+  "schema": "public-completion-regression-manifest@1"
+}

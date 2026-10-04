@@ -17,10 +17,52 @@ from .source384_config import load_source384_config
 
 SCHEMA = "terminal-source384-repository-context@1"
 HEADER_SCHEMA = "terminal-source384-repository-context@2"
+SUCCESSOR_SCHEMA = "terminal-source384-repository-context@3"
 MAX_RECEIPT_BYTES = 131072
 MAX_INFERENCE_BYTES = 32 * 1024 * 1024
 AUTHORITY = dict(proof_authority=False, execution_authority=False,
                  completion_authority=False, formalization_authority=False)
+SUCCESSOR_RECEIPT_FIELDS = frozenset({"schema", "output", "repository", "source_hashes", "source_head",
+    "source_inventory", "config_path", "config_sha256", "checkpoint_sha256", "version_id",
+    "inference_sha256", "producer", "summary", "seconds", "training_steps", "neural_inference_replayed",
+    "resource_profile", "successor_lineage", "requires_independent_manifest", "planning_authority",
+    "dispatch_authority", "inference_execution", *AUTHORITY})
+
+
+def _validate_successor_envelope(receipt):
+    """Close the advisory envelope independently of any source-current replay."""
+    _require(type(receipt) is dict and set(receipt) == SUCCESSOR_RECEIPT_FIELDS
+             and receipt["schema"] == SUCCESSOR_SCHEMA
+             and receipt["requires_independent_manifest"] is True
+             and receipt["planning_authority"] is False and receipt["dispatch_authority"] is False
+             and receipt["neural_inference_replayed"] is False
+             and type(receipt["training_steps"]) is int and receipt["training_steps"] == 0
+             and all(receipt[key] is False for key in AUTHORITY),
+             "closed advisory Source384 successor envelope required")
+    execution = receipt["inference_execution"]
+    _require(type(execution) is dict and set(execution) ==
+             {"native_worker_executed", "inference_executed", "model_loads"}
+             and execution["native_worker_executed"] is True and execution["inference_executed"] is True
+             and type(execution["model_loads"]) is int and 0 <= execution["model_loads"] <= 1024,
+             "bounded exact Source384 inference observations required")
+    lineage = receipt["successor_lineage"]
+    _require(type(lineage) is dict and set(lineage) == {"schema", "predecessor_output",
+             "predecessor_receipt_sha256", "predecessor_source_head", "predecessor_inference_sha256",
+             "source_paths", "excluded_new_output_paths", "requires_independent_manifest",
+             "historical_currentness_verified", "header_nomination_inherited"}
+             and lineage["schema"] == "source384-advisory-successor-lineage@1"
+             and lineage["requires_independent_manifest"] is True
+             and lineage["historical_currentness_verified"] is False
+             and lineage["header_nomination_inherited"] is False
+             and lineage["source_paths"] == sorted(receipt["source_hashes"])
+             and lineage["predecessor_output"] != receipt["output"],
+             "closed bounded Source384 predecessor lineage required")
+    for name in ("predecessor_receipt_sha256", "predecessor_inference_sha256"):
+        value = lineage[name]
+        _require(type(value) is str and len(value) == 64 and all(c in "0123456789abcdef" for c in value),
+                 "exact Source384 historical digest required")
+    _output(Path(receipt["repository"]), lineage["predecessor_output"])
+    _successor_exclusions(lineage["excluded_new_output_paths"], receipt["source_hashes"])
 
 
 def _raw(value):
@@ -136,7 +178,7 @@ def _inventory(index, head, source_hashes):
     return rows
 
 
-def _summary(inference, *, inventory, checkpoint_sha256, inference_sha256):
+def _summary(inference, *, inventory, checkpoint_sha256, inference_sha256, advisory_successor=False):
     # The full native receipt is separately retained. Coverage is never inferred
     # from a truncated sample, nor interpreted as a checked property.
     report = inference["report"]
@@ -176,6 +218,9 @@ def _summary(inference, *, inventory, checkpoint_sha256, inference_sha256):
         candidate_samples=candidates, omitted_candidates=total_candidates-len(candidates),
         training_steps=0, provider_calls=0, model_promotion_performed=False,
         nomination_only=True, **AUTHORITY)
+    if advisory_successor:
+        result.update(advice_only=True, requires_independent_manifest=True,
+                      planning_authority=False, dispatch_authority=False)
     _require(len(_raw(result)) <= 8192, "Source384 planning summary exceeds fixed bound")
     return result
 
@@ -191,6 +236,86 @@ def _validate_population(inference, inventory):
 
 def prepare_source384_context(*, repository, source_hashes, output, config_path,
                               timeout_seconds=90., scheduler=None, parent_lease=None, intent_binding=None):
+    return _prepare_source384_context(repository=repository, source_hashes=source_hashes,
+        output=output, config_path=config_path, timeout_seconds=timeout_seconds,
+        scheduler=scheduler, parent_lease=parent_lease, intent_binding=intent_binding)
+
+
+def validate_historical_source384_selection(*, repository, expected_receipt):
+    """Verify selected historical bytes/assets, without claiming source currentness."""
+    root = Path(repository).resolve(strict=True)
+    _require(type(expected_receipt) is dict and expected_receipt.get("schema") in
+             {SCHEMA, HEADER_SCHEMA, SUCCESSOR_SCHEMA}, "historical Source384 selection required")
+    output = _output(root, expected_receipt["output"])
+    receipt = json.loads(_read(output / "receipt.json", MAX_RECEIPT_BYTES))
+    if receipt.get("schema") == SUCCESSOR_SCHEMA:
+        _validate_successor_envelope(receipt)
+    _require(receipt == expected_receipt and receipt["repository"] == str(root)
+             and receipt["producer"] == _pins() and receipt["training_steps"] == 0
+             and all(receipt.get(key) is False for key in AUTHORITY),
+             "historical Source384 receipt or producer changed")
+    config_path = Path(receipt["config_path"])
+    config = load_source384_config(config_path)
+    _require(_sha(_read(config_path, 131072)) == receipt["config_sha256"]
+             and config["checkpoint_sha256"] == receipt["checkpoint_sha256"],
+             "historical Source384 selected configuration changed")
+    _require(_sha(_read(output / "inference.json", MAX_INFERENCE_BYTES)) == receipt["inference_sha256"],
+             "historical Source384 inference bytes changed")
+    _require(receipt["schema"] != HEADER_SCHEMA or receipt.get("header_consumer_sha256") == _header_pin(),
+             "historical Source384 header producer changed")
+    return receipt
+
+
+def _successor_lineage(predecessor, excluded_paths):
+    return dict(schema="source384-advisory-successor-lineage@1",
+        predecessor_output=predecessor["output"],
+        predecessor_receipt_sha256=_sha(_raw(predecessor)),
+        predecessor_source_head=predecessor["source_head"],
+        predecessor_inference_sha256=predecessor["inference_sha256"],
+        source_paths=sorted(predecessor["source_hashes"]),
+        excluded_new_output_paths=list(excluded_paths),
+        requires_independent_manifest=True, historical_currentness_verified=False,
+        header_nomination_inherited=False)
+
+
+def _successor_exclusions(paths, source_hashes):
+    from ipfs_datasets_py.logic.software_contracts.semantic_index.snapshot import _ignored_raw
+    _require(type(paths) in (list, tuple) and len(paths) <= 256
+             and all(type(name) is str for name in paths)
+             and list(paths) == sorted(set(paths)), "bounded exact successor exclusions required")
+    for name in paths:
+        path = Path(name)
+        _require(path.as_posix() == name and not path.is_absolute() and name not in {".", ".."}
+                 and ".." not in path.parts and name not in source_hashes
+                 and not any(part in {".git", ".runtime"} for part in path.parts),
+                 "successor exclusion must be outside unchanged source population")
+    _require(not any(_ignored_raw(name.encode(), tuple(path.encode() for path in paths))
+                     for name in source_hashes), "successor exclusions hide predecessor source population")
+    return tuple(paths)
+
+
+def prepare_source384_successor_context(*, repository, source_hashes, output, predecessor_receipt,
+                                       timeout_seconds=90., scheduler=None, parent_lease=None,
+                                       excluded_new_output_paths=()):
+    """Infer current advice with exact predecessor assets; never inherit its proof nomination."""
+    started = time.monotonic()
+    _require(type(timeout_seconds) in (int, float) and 0 < timeout_seconds <= 180,
+             "bounded Source384 successor deadline required")
+    predecessor = validate_historical_source384_selection(repository=repository,
+        expected_receipt=predecessor_receipt)
+    _require(set(source_hashes) == set(predecessor["source_hashes"]),
+             "Source384 successor source population changed")
+    exclusions = _successor_exclusions(excluded_new_output_paths, source_hashes)
+    _require(str(output) != predecessor["output"], "fresh Source384 successor store required")
+    return _prepare_source384_context(repository=repository, source_hashes=source_hashes,
+        output=output, config_path=predecessor["config_path"],
+        timeout_seconds=_remaining(started + timeout_seconds), scheduler=scheduler,
+        parent_lease=parent_lease, predecessor=predecessor, excluded_new_output_paths=exclusions)
+
+
+def _prepare_source384_context(*, repository, source_hashes, output, config_path,
+                              timeout_seconds=90., scheduler=None, parent_lease=None, intent_binding=None,
+                              predecessor=None, excluded_new_output_paths=()):
     started = time.monotonic()
     _require(type(timeout_seconds) in (int, float) and 0 < timeout_seconds <= 180,
              "bounded Source384 preparation deadline required")
@@ -217,7 +342,8 @@ def prepare_source384_context(*, repository, source_hashes, output, config_path,
             child_process_slots=3) as lease, _owners(output) as (index, registry):
         config = load_source384_config(config_path)
         config_sha256 = _sha(_read(config_path, 131072))
-        header_mode = config["schema"] == "terminal-source384-config@2"
+        successor = predecessor is not None
+        header_mode = config["schema"] == "terminal-source384-config@2" and not successor
         header_pin = _header_pin() if header_mode else None
         _require(header_mode == (intent_binding is not None), "header profile requires exact reviewed intent binding")
         if header_mode:
@@ -225,8 +351,9 @@ def prepare_source384_context(*, repository, source_hashes, output, config_path,
             _require(type(intent_binding) is dict and set(intent_binding) == {"contract", "manifest_cid"},
                      "closed immutable intent binding required")
             _contract_binding(intent_binding["contract"], intent_binding["manifest_cid"], source_hashes, config)
+        exclusions = [".runtime", *excluded_new_output_paths]
         head = index.prepare_current(root, repository_id=repository_id, operation_id="initial",
-            expected_head=None, limits=limits, exclusions=[".runtime"], parent_lease=lease,
+            expected_head=None, limits=limits, exclusions=exclusions, parent_lease=lease,
             timeout_seconds=remaining(), memory_mb=4096).head
         inventory = _inventory(index, head, source_hashes)
         paths = [row["path"] for row in inventory if row["disposition"] == "captured"
@@ -250,17 +377,32 @@ def prepare_source384_context(*, repository, source_hashes, output, config_path,
                  "Source384 selected assets or producer changed during preparation")
         inference_sha256 = _write(output / "inference.json", inference, MAX_INFERENCE_BYTES)
         remaining()
-        receipt = dict(schema=HEADER_SCHEMA if header_mode else SCHEMA, output=str(output), repository=str(root),
+        receipt = dict(schema=SUCCESSOR_SCHEMA if successor else HEADER_SCHEMA if header_mode else SCHEMA,
+            output=str(output), repository=str(root),
             source_hashes=source_hashes, source_head=head.to_dict(), source_inventory=inventory,
             config_path=str(config_path), config_sha256=config_sha256,
             checkpoint_sha256=config["checkpoint_sha256"], version_id=version,
             inference_sha256=inference_sha256, producer=producer,
             summary=_summary(inference, inventory=inventory,
-                checkpoint_sha256=config["checkpoint_sha256"], inference_sha256=inference_sha256),
+                checkpoint_sha256=config["checkpoint_sha256"], inference_sha256=inference_sha256,
+                advisory_successor=successor),
             seconds=time.monotonic() - started, training_steps=0, neural_inference_replayed=False,
             resource_profile=dict(parent_memory_mb=6144, parent_cpu_slots=3,
                 numerical_worker_memory_mb=4096, memory_enforcement="sampled_process_tree_RSS_may_overshoot"),
             **AUTHORITY)
+        if successor:
+            _require(all(receipt[key] == predecessor[key] for key in
+                ("producer", "config_path", "config_sha256", "checkpoint_sha256", "version_id")),
+                "Source384 successor changed its selected producer/model/configuration")
+            validate_historical_source384_selection(repository=root, expected_receipt=predecessor)
+            _require(inference.get("native_worker_executed") is True
+                     and inference.get("inference_executed") is True,
+                     "Source384 successor requires fresh native inference")
+            receipt.update(successor_lineage=_successor_lineage(predecessor, excluded_new_output_paths),
+                           requires_independent_manifest=True, planning_authority=False, dispatch_authority=False,
+                           inference_execution=dict(native_worker_executed=True, inference_executed=True,
+                               model_loads=inference["report"]["output"]["model_loads"]))
+            _validate_successor_envelope(receipt)
         if header_mode:
             receipt["source_applicability_nomination"] = nomination
             _require(header_pin == _header_pin(), "header consumer changed during preparation")
@@ -292,7 +434,7 @@ def _validate_source384_context(*, repository, expected_receipt, parent_lease, d
     from ipfs_datasets_py.duckdb_control.codebase_catalog import CodebaseHead
     from ipfs_datasets_py.logic.software_contracts.codebase_source_units_384 import validate_shared_parent_units
     root = Path(repository).resolve(strict=True)
-    _require(type(expected_receipt) is dict and expected_receipt.get("schema") in {SCHEMA, HEADER_SCHEMA},
+    _require(type(expected_receipt) is dict and expected_receipt.get("schema") in {SCHEMA, HEADER_SCHEMA, SUCCESSOR_SCHEMA},
              "selected Source384 context receipt required")
     output = _output(root, expected_receipt["output"])
     receipt = json.loads(_read(output / "receipt.json", MAX_RECEIPT_BYTES))
@@ -304,9 +446,29 @@ def _validate_source384_context(*, repository, expected_receipt, parent_lease, d
     config_path = Path(receipt["config_path"])
     config = load_source384_config(config_path)
     header_mode = receipt["schema"] == HEADER_SCHEMA
+    successor = receipt["schema"] == SUCCESSOR_SCHEMA
+    if successor:
+        _validate_successor_envelope(receipt)
     _require(not header_mode or receipt.get("header_consumer_sha256") == _header_pin(), "header consumer changed")
-    _require(header_mode == (config["schema"] == "terminal-source384-config@2")
+    _require((successor or header_mode == (config["schema"] == "terminal-source384-config@2"))
         and header_mode == ("source_applicability_nomination" in receipt), "Source384 header profile selection changed")
+    if successor:
+        lineage = receipt.get("successor_lineage", {})
+        predecessor_output = _output(root, lineage["predecessor_output"])
+        _require(predecessor_output != output, "Source384 successor cannot be its own predecessor")
+        predecessor = json.loads(_read(predecessor_output / "receipt.json", MAX_RECEIPT_BYTES))
+        validate_historical_source384_selection(repository=root, expected_receipt=predecessor)
+        _require(predecessor.get("successor_lineage", {}).get("predecessor_output") != str(output),
+                 "cyclic Source384 predecessor lineage")
+        exclusions = _successor_exclusions(lineage.get("excluded_new_output_paths"), source_hashes)
+        _require(lineage == _successor_lineage(predecessor, exclusions)
+                 and set(source_hashes) == set(predecessor["source_hashes"])
+                 and all(receipt[key] == predecessor[key] for key in
+                    ("producer", "config_path", "config_sha256", "checkpoint_sha256", "version_id"))
+                 and receipt.get("requires_independent_manifest") is True
+                 and receipt.get("planning_authority") is False and receipt.get("dispatch_authority") is False
+                 and "header_consumer_sha256" not in receipt,
+                 "Source384 successor lineage or authority changed")
     _require(_sha(_read(config_path, 131072)) == receipt["config_sha256"]
              and config["checkpoint_sha256"] == receipt["checkpoint_sha256"],
              "Source384 selected configuration changed")
@@ -314,6 +476,12 @@ def _validate_source384_context(*, repository, expected_receipt, parent_lease, d
     _require(_sha(raw) == receipt["inference_sha256"], "Source384 inference digest differs")
     inference = json.loads(raw)
     del raw
+    if successor:
+        _require(inference.get("native_worker_executed") is True
+                 and inference.get("inference_executed") is True
+                 and receipt.get("inference_execution") == dict(native_worker_executed=True,
+                     inference_executed=True, model_loads=inference["report"]["output"]["model_loads"]),
+                 "Source384 successor inference observation changed")
     key = inference["report"]["key"]
     _require(key["source_head"] == receipt["source_head"]
              and key["version_id"] == receipt["version_id"]
@@ -333,7 +501,8 @@ def _validate_source384_context(*, repository, expected_receipt, parent_lease, d
                 config=config, config_path=config_path, output=output, source_hashes=source_hashes,
                 parent_lease=parent_lease, remaining=lambda: _remaining(deadline))
     _require(receipt["summary"] == _summary(inference, inventory=inventory,
-        checkpoint_sha256=receipt["checkpoint_sha256"], inference_sha256=receipt["inference_sha256"]),
+        checkpoint_sha256=receipt["checkpoint_sha256"], inference_sha256=receipt["inference_sha256"],
+        advisory_successor=successor),
         "Source384 summary does not match native coverage")
     _sources(root, source_hashes)
     _require(config == load_source384_config(config_path) and receipt["producer"] == _pins()

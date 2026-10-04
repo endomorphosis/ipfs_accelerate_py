@@ -239,7 +239,8 @@ def _mark_initial_autoencoder_historical(report: dict) -> None:
     }
 
 
-def _refresh_completed_context(runtime, report: dict, *, deadline: float) -> None:
+def _refresh_completed_context(runtime, report: dict, *, deadline: float,
+                               work_deadline: float | None = None) -> None:
     """Spend only remaining post-STOP work time; retain finalization reserve."""
     if (report.get("arm") != "full" or report.get("task_state", {}).get("status") != "completed"
             or report.get("stop", {}).get("status") != "succeeded"
@@ -254,7 +255,10 @@ def _refresh_completed_context(runtime, report: dict, *, deadline: float) -> Non
             "initial_source_hashes": frozen["source_hashes"], "current_source_reuse_authority": False,
             "training_steps": 0, "provider_calls": 0, "download_calls": 0,
             "proof_authority": False, "completion_authority": False}
-    budget = max(0., deadline - time.monotonic() - 15.)
+    refresh_deadline = deadline - 15.
+    if work_deadline is not None:
+        refresh_deadline = min(refresh_deadline, work_deadline)
+    budget = max(0., refresh_deadline - time.monotonic())
     observation = {"status": "deferred", "budget_seconds": budget, "refresh_seconds": None,
         "completion_authority": False, "embedding_calls": None}
     report["post_publication_context"] = observation
@@ -606,6 +610,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 lifetime_seconds=min(900, max(120, remaining() + max(60, reserved_cleanup_seconds))),
                 worker_worktree_root=WORKTREES, candidate_runner_argv=(str(VALIDATOR),),
                 refresh_context_on_completion=bundle is not None,
+                refresh_source384_on_completion=(source384_config is not None
+                    and selected_admission.get("IPFS_DATASETS_PROOF_RESOURCE_PROFILE") == "local-benchmark@1"),
                 published_retrieval_policy=("local-safetensors-symbols@1" if model_snapshot is not None
                     else "lexical-tfidf-symbols@1") if bundle is not None else None,
                 published_learned_artifacts=({
@@ -644,7 +650,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 try:
                     report["stop"] = runtime.stop().to_dict()
                     report["remaining_processes"] = len(runtime.process.snapshot(runtime.profile).members)
-                    _refresh_completed_context(runtime, report, deadline=deadline)
+                    _refresh_completed_context(runtime, report, deadline=deadline, work_deadline=work_deadline)
                 finally:
                     try:
                         report["native_diagnostics"] = _native_diagnostics(runtime.state)

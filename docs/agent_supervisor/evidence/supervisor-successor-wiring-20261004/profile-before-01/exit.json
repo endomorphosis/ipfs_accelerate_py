@@ -1,0 +1,18 @@
+{
+  "after_pins": {
+    "source/benchmarks/agent_supervisor/container_coding/benchmark_resource_profile.py": "c9b337234f824cdd32bed81448a5798470b6299fce2c1afaf0455826c02dbf5a",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "9915976c91693e07049bc0f8be19e86b790a0ea063368dbac81c3c8fb4c86f22",
+    "source/benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py": "ec2e0f75473b62550f4cf24bbd44e8daebb575bde2ebb606c7a5579eec4c8237",
+    "source/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "dead478d6fa972501f8f4593f3fb28130a341f71fc8a5c9f3a3364e8bbea1fc1",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/header_intent_applicability.py": "118990a874f9637e19d26e99d7f80ef7c9d83956bcbf202ce7fdfd1bfe777e15"
+  },
+  "returncode": 1,
+  "seconds": 1.893007247010246,
+  "source_pins_unchanged": true,
+  "xml_counts": {
+    "errors": 0,
+    "failures": 1,
+    "skipped": 0,
+    "tests": 2
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "authored_driver_boundaries": true,
+  "benchmark_advantage_claimed": false,
+  "compatibility_baseline": {
+    "failed": 1,
+    "passed": 1
+  },
+  "final_passing_cases": 69,
+  "final_runs": [
+    "root-final-01",
+    "profile-after-01"
+  ],
+  "initial_harness_setup_failed": true,
+  "native_supervisor_execution": false,
+  "numerical_inference": false,
+  "overlap_with_completion_regression": 19,
+  "prior_root_controls_historical": true,
+  "real_posix_alarm": true,
+  "schema": "supervisor-successor-wiring-controls@1",
+  "selected_pins_complete_repository": false
+}

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 from pathlib import Path, PurePosixPath
 import stat
@@ -1518,15 +1519,29 @@ def guard_local_task_update(
             raise LocalPlanningError("native relation differs from exact pending contract")
 
 
+def _local_validation_budget(timeout, budget_guard):
+    """A trusted owner guard can only shorten the existing command limit."""
+    if budget_guard is None:
+        return timeout
+    if not callable(budget_guard):
+        raise LocalPlanningError("local validation budget guard must be callable")
+    remaining = budget_guard()
+    if (type(remaining) not in (int, float) or not math.isfinite(remaining)
+            or not 0 < remaining <= 120):
+        raise TimeoutError("local completion validation budget expired or invalid")
+    return min(timeout, remaining)
+
+
 def run_local_task_validations(
     *, intent, task_cid: str, attempt_id: str, timeout: float = 60, source_transition=None,
-    candidate_runner=None,
+    candidate_runner=None, budget_guard=None,
 ) -> dict:
     """Execute the signed checks and record observed, owner-signed evidence.
 
     This performs no status transition. Failed results remain failed. A caller
     must still use the native owner/fencing/claim completion boundary.
     """
+    _local_validation_budget(timeout, budget_guard)
     task = intent.get_task(task_cid)
     if task is None or task["status"] != "in_progress" or not attempt_id:
         raise LocalPlanningError("an in-progress native task and attempt are required")
@@ -1540,6 +1555,7 @@ def run_local_task_validations(
         verify_candidate_runner(candidate_runner)
     results = []
     for check in contract["task_spec"]["validations"]:
+        command_timeout = _local_validation_budget(timeout, budget_guard)
         root = Path(manifest["repository"])
         cwd = root / check["cwd"]
         if cwd.resolve(strict=True) != cwd or not cwd.is_dir():
@@ -1551,7 +1567,7 @@ def run_local_task_validations(
                     stdin=subprocess.DEVNULL,
                     stdout=stdout,
                     stderr=stderr,
-                    timeout=timeout,
+                    timeout=command_timeout,
                     check=False,
                     env={
                         "PATH": os.defpath,
@@ -1569,11 +1585,13 @@ def run_local_task_validations(
                         # restore ambient PATH or consult task executables.
                         from ..validation.validation_runtime import validation_argv_command
                         command = validation_argv_command(command, environment=run_options["env"])
+                    run_options["timeout"] = _local_validation_budget(timeout, budget_guard)
                     process = subprocess.run(command, **run_options)
                 else:
                     from .candidate_execution import run_candidate
                     process = run_candidate(
-                        candidate_runner, check["argv"], cwd=cwd, timeout=timeout,
+                        candidate_runner, check["argv"], cwd=cwd,
+                        timeout=_local_validation_budget(timeout, budget_guard),
                         stdout=stdout, stderr=stderr,
                     )
                 exit_code = process.returncode
@@ -1589,6 +1607,7 @@ def run_local_task_validations(
 
             stdout_hash, stderr_hash = digest(stdout), digest(stderr)
         _, _, after = _manifest(contract["manifest"], source_transition=source_transition)
+        _local_validation_budget(timeout, budget_guard)
         current_task = intent.get_task(task_cid)
         if (
             before != after
@@ -1618,6 +1637,7 @@ def run_local_task_validations(
             payload["candidate_runner"] = _plain(candidate_runner)
         signed = _signed(payload, manifest)
         evidence_digest = content_identity(signed)
+        _local_validation_budget(timeout, budget_guard)
         intent.record_validation_result(
             task_cid=task_cid,
             outcome=payload["outcome"],
@@ -1633,6 +1653,7 @@ def run_local_task_validations(
                 "evidence_digest": evidence_digest,
             }
         )
+    _local_validation_budget(timeout, budget_guard)
     return {
         "task_cid": task_cid,
         "source_tree_id": _tree(before),
