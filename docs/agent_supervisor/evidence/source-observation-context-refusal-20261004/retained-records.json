@@ -1,0 +1,22 @@
+{
+  "trial-01/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__QWowUpS/agent/supervisor-result.json": {
+    "bytes": 127986,
+    "raw_body_exported": false,
+    "sha256": "7905a19d1f8a607cfaab1fb8cbe8d0caab7cdae70fe1ea4e88e179df93252605"
+  },
+  "trial-01/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__QWowUpS/agent/supervisor.stderr": {
+    "bytes": 0,
+    "raw_body_exported": false,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "trial-01/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__QWowUpS/agent/supervisor.stdout": {
+    "bytes": 34255,
+    "raw_body_exported": false,
+    "sha256": "fd1caede36a67538f15206898f8b02bf8ba9c8de1867c8cf9cb6c2bde7d8bdc2"
+  },
+  "trial-01/receipt.json": {
+    "bytes": 225304,
+    "raw_body_exported": false,
+    "sha256": "07c47730fcdcb82e8942d31dfae06b26504c267f66d8139c6039f4826bae0438"
+  }
+}

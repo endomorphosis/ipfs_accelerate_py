@@ -1,0 +1,171 @@
+{
+  "benchmark_result": false,
+  "container_measurement": false,
+  "controller_seconds": 111.49295723800606,
+  "failure": {
+    "message": "",
+    "type": "KeyboardInterrupt"
+  },
+  "mode": "before",
+  "observation_cpu_seconds": 12.767875456,
+  "observation_seconds": 104.77932669100119,
+  "original_database_unchanged": true,
+  "producer_pins_unchanged": true,
+  "provider_calls": 0,
+  "retained_artifacts_unchanged": true,
+  "returncode": 1,
+  "scheduler_after": {
+    "active_child_lease_count": 0,
+    "active_lease_count": 0,
+    "active_root_lease_count": 0,
+    "allocated": {
+      "cpu_slots": 0,
+      "memory_mb": 0
+    },
+    "allocated_child_process_slots": 0,
+    "allocated_gpu_memory_mb": 0,
+    "allocated_unified_memory_mb": 0,
+    "available": {
+      "child_process_slots": 1,
+      "cpu_slots": 1,
+      "gpu_memory_mb": null,
+      "memory_mb": 99688,
+      "unified_memory_mb": null
+    },
+    "capacity": {
+      "child_process_slots": 1,
+      "cpu_slots": 1,
+      "gpu_memory_mb": null,
+      "memory_mb": 99688,
+      "reserved_gpu_memory_mb": 0,
+      "reserved_memory_mb": 0,
+      "unified_memory_mb": null,
+      "usable_gpu_memory_mb": null,
+      "usable_memory_mb": 99688
+    },
+    "counters": {
+      "acquisitions_total": 1,
+      "cancellations_total": 0,
+      "recovered_leases_total": 0,
+      "recoveries_total": 0,
+      "releases_total": 1,
+      "saturation_events_total": 0,
+      "timeouts_total": 0
+    },
+    "lanes": {
+      "snapshot_evaluation": {
+        "allocated": {
+          "child_process_slots": 0,
+          "cpu_slots": 0,
+          "gpu_memory_mb": 0,
+          "memory_mb": 0,
+          "unified_memory_mb": 0
+        },
+        "reservation": {
+          "cpu_slots": 0,
+          "memory_mb": 0
+        },
+        "telemetry": {
+          "acquisitions_total": 1,
+          "cancellations_total": 0,
+          "timeouts_total": 0,
+          "wait_count": 1,
+          "wait_seconds_max": 1.920008799061179e-06,
+          "wait_seconds_mean": 1.920008799061179e-06,
+          "wait_seconds_total": 1.920008799061179e-06
+        }
+      }
+    },
+    "proof_backoff": {},
+    "proof_recovery": {},
+    "saturation": {
+      "child_process_slots_saturated": false,
+      "cpu_saturated": false,
+      "events_total": 0,
+      "gpu_memory_saturated": false,
+      "memory_saturated": false,
+      "saturated": false,
+      "unified_memory_saturated": false
+    },
+    "schema_version": "legal-ir-global-resource-scheduler-v1",
+    "state_path": "/home/barberb/lift_coding/artifacts/source-observation-batching-20261004/renewed-before-01-state/host-scheduler.json",
+    "wait_time_seconds": {
+      "count": 1,
+      "max": 1.920008799061179e-06,
+      "mean": 1.920008799061179e-06,
+      "p50": 1.920008799061179e-06,
+      "p95": 1.920008799061179e-06,
+      "p99": 1.920008799061179e-06,
+      "total": 1.920008799061179e-06
+    },
+    "waiting_request_count": 0
+  },
+  "scheduler_before": {
+    "active_child_lease_count": 0,
+    "active_lease_count": 0,
+    "active_root_lease_count": 0,
+    "allocated": {
+      "cpu_slots": 0,
+      "memory_mb": 0
+    },
+    "allocated_child_process_slots": 0,
+    "allocated_gpu_memory_mb": 0,
+    "allocated_unified_memory_mb": 0,
+    "available": {
+      "child_process_slots": 1,
+      "cpu_slots": 1,
+      "gpu_memory_mb": null,
+      "memory_mb": 99688,
+      "unified_memory_mb": null
+    },
+    "capacity": {
+      "child_process_slots": 1,
+      "cpu_slots": 1,
+      "gpu_memory_mb": null,
+      "memory_mb": 99688,
+      "reserved_gpu_memory_mb": 0,
+      "reserved_memory_mb": 0,
+      "unified_memory_mb": null,
+      "usable_gpu_memory_mb": null,
+      "usable_memory_mb": 99688
+    },
+    "counters": {
+      "acquisitions_total": 0,
+      "cancellations_total": 0,
+      "recovered_leases_total": 0,
+      "recoveries_total": 0,
+      "releases_total": 0,
+      "saturation_events_total": 0,
+      "timeouts_total": 0
+    },
+    "lanes": {},
+    "proof_backoff": {},
+    "proof_recovery": {},
+    "saturation": {
+      "child_process_slots_saturated": false,
+      "cpu_saturated": false,
+      "events_total": 0,
+      "gpu_memory_saturated": false,
+      "memory_saturated": false,
+      "saturated": false,
+      "unified_memory_saturated": false
+    },
+    "schema_version": "legal-ir-global-resource-scheduler-v1",
+    "state_path": "/home/barberb/lift_coding/artifacts/source-observation-batching-20261004/renewed-before-01-state/host-scheduler.json",
+    "wait_time_seconds": {
+      "count": 0,
+      "max": 0.0,
+      "mean": 0.0,
+      "p50": 0.0,
+      "p95": 0.0,
+      "p99": 0.0,
+      "total": 0.0
+    },
+    "waiting_request_count": 0
+  },
+  "schema": "source-observation-renewed-host-diagnostic@1",
+  "source_pins_unchanged": true,
+  "sql_row_queries": {},
+  "sql_row_query_seconds": {},
+  "training_steps": 0
+}

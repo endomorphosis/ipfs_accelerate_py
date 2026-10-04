@@ -1,0 +1,38 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collected 26 items
+
+tests/unit/logic/software_contracts/test_duckdb_ast_batch_reads.py ..... [ 19%]
+...........FFF.F.....                                                    [100%]
+
+=================================== FAILURES ===================================
+__ test_aggregate_overflow_requires_split_without_loading_scalar_tuple[rows] ___
+tests/unit/logic/software_contracts/test_duckdb_ast_batch_reads.py:139: in test_aggregate_overflow_requires_split_without_loading_scalar_tuple
+    with pytest.raises(owner.DuckDBASTBatchReadLimitError, match='split'):
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: module 'ipfs_datasets_py.logic.software_contracts.duckdb_ast_store' has no attribute 'DuckDBASTBatchReadLimitError'
+_ test_aggregate_overflow_requires_split_without_loading_scalar_tuple[payload] _
+tests/unit/logic/software_contracts/test_duckdb_ast_batch_reads.py:139: in test_aggregate_overflow_requires_split_without_loading_scalar_tuple
+    with pytest.raises(owner.DuckDBASTBatchReadLimitError, match='split'):
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: module 'ipfs_datasets_py.logic.software_contracts.duckdb_ast_store' has no attribute 'DuckDBASTBatchReadLimitError'
+_____________ test_memory_mode_aggregate_budget_and_duplicate_keys _____________
+tests/unit/logic/software_contracts/test_duckdb_ast_batch_reads.py:155: in test_memory_mode_aggregate_budget_and_duplicate_keys
+    with pytest.raises(owner.DuckDBASTBatchReadLimitError, match='split'):
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: module 'ipfs_datasets_py.logic.software_contracts.duckdb_ast_store' has no attribute 'DuckDBASTBatchReadLimitError'
+____ test_nested_read_limit_exception_does_not_capture_failed_batch_frames _____
+tests/unit/logic/software_contracts/test_duckdb_ast_batch_reads.py:180: in test_nested_read_limit_exception_does_not_capture_failed_batch_frames
+    with pytest.raises(owner.DuckDBASTBatchReadLimitError) as failure:
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: module 'ipfs_datasets_py.logic.software_contracts.duckdb_ast_store' has no attribute 'DuckDBASTBatchReadLimitError'
+- generated xml file: /home/barberb/lift_coding/artifacts/ast-batch-read-memory-review-20261004/test-before.xml -
+=========================== short test summary info ============================
+FAILED tests/unit/logic/software_contracts/test_duckdb_ast_batch_reads.py::test_aggregate_overflow_requires_split_without_loading_scalar_tuple[rows]
+FAILED tests/unit/logic/software_contracts/test_duckdb_ast_batch_reads.py::test_aggregate_overflow_requires_split_without_loading_scalar_tuple[payload]
+FAILED tests/unit/logic/software_contracts/test_duckdb_ast_batch_reads.py::test_memory_mode_aggregate_budget_and_duplicate_keys
+FAILED tests/unit/logic/software_contracts/test_duckdb_ast_batch_reads.py::test_nested_read_limit_exception_does_not_capture_failed_batch_frames
+========================= 4 failed, 22 passed in 3.71s =========================

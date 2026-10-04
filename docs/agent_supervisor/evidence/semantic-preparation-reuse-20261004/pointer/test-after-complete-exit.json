@@ -1,0 +1,9 @@
+{
+  "command_sha256": "057d2cf335137f37af4761230736692ca8532b0282f57818e552601a318b969a",
+  "errors": 0,
+  "failures": 0,
+  "returncode": 0,
+  "skipped": 0,
+  "tests": 54,
+  "xml_sha256": "9f261f313413b469ccf4ba3dbb41b269cc3997fd8b7efb6d3f1b3c974e02a55b"
+}

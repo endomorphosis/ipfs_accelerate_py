@@ -450,12 +450,12 @@ def bind_admitted_context(*, state: Path, prepared: dict, admission: dict, verif
     load_initial_context(state=state, prepared=prepared, require_empty_owner=False)
     metadata = {**descriptor["metadata"],
         "World context artifact": Path(world["artifact"]).relative_to(root).as_posix(),
-        "World context sha256": world["artifact_sha256"], "World context repository": view.root.repository_id}
+        "World context sha256": world["artifact_sha256"], "World context repository": repository_id}
     result = {"schema": "supervisor-task-context-preparation@1", "task_cid": task.task_cid,
-        "task_id": task.task_key, "task_title": task.objective, "task_revision": records[0]["revision"],
-        "plan_projection_cid": capture["plan_projection"]["projection_cid"],
-        "event_watermark": capture["planning_context"]["event_watermark"], "repository_id": view.root.repository_id,
-        "semantic_root_cid": semantic["semantic_root_cid"], "world_snapshot_cid": capture["snapshot"]["snapshot_cid"],
+        "task_id": task.task_key, "task_title": task.objective, "task_revision": task_revision,
+        "plan_projection_cid": plan_projection_cid,
+        "event_watermark": event_watermark, "repository_id": repository_id,
+        "semantic_root_cid": semantic_root_cid, "world_snapshot_cid": world_snapshot_cid,
         "metadata": metadata, "semantic": descriptor["semantic"], "retrieval": descriptor["retrieval"], "world": world,
         "initial_context_descriptor": loaded["receipt"]["descriptor"], "new_embedding_calls": 0,
         "preparation_mode": "initial-index-reuse-with-new-admitted-world",

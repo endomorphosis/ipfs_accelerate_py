@@ -1,0 +1,10 @@
+[
+  {
+    "path": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+    "sha256": "040d4d54e0d3ed0956b2d92b389aa7b8df85e653aa23b648bc4b6daf6a2cfe35"
+  },
+  {
+    "path": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py",
+    "sha256": "10b5f94cd48b0a1f1ffb1cb99a76071e9d0deedd704abed3739549198c75d6e5"
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "schema": "semantic-host-profile-provenance-limit@1",
+  "observation": "retrospective",
+  "producer_hashes_captured_at_each_plain_timing_run": false,
+  "public_source_hashes_and_commands_retained": true,
+  "all_6261_blocks_worker_and_doctor_bytes_compared_again": true,
+  "timing_claim_scope": "One diagnostic host pair; no controlled producer-generation or container speedup claim.",
+  "archive_unrelated_delta": "Inherited long_span_source_value_training.py joint-generated-replay training change.",
+  "training_executed": false
+}

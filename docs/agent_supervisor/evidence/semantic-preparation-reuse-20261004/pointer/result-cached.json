@@ -1,0 +1,1512 @@
+{
+  "analysis_json_sha256": "b3faa719da9388c37cdcdaff37422331aeda03f541cd73855f377d93000dd4c3",
+  "bounded_host_process_cpu_count": 1,
+  "cold_import_time_excluded": true,
+  "derivation_json_sha256": "0cd9fcee5c81b1b98dbf5bcaaa6ef3e0f103dc161bc6d0d6d5bec3228dfe320a",
+  "pointer_mode": "cached",
+  "producer_pins": {
+    "ipfs_datasets_py.logic.ir_core.canonical": "fada8006144d36d28a9820c17340b7ca67c81bfadd61871ec2600e56224edf81",
+    "ipfs_datasets_py.logic.security_ir.code_header_derivation": "143ba1f57ade2a6bc588f868ffe4b1e0f05a91701dd1a7a076cb37b6928d6429",
+    "ipfs_datasets_py.logic.security_ir.doctor_header_contracts": "e11776174de1db224a09f6cd1e7d4fdac8766ce349e3ec0615972f80a3ba6cde"
+  },
+  "production_qualification": false,
+  "provider_calls": 0,
+  "results": {
+    "analyze": {
+      "median_seconds": 0.0839703060046304,
+      "profile": [
+        {
+          "cumulative_seconds": 0.22412459,
+          "function": "<lambda>",
+          "line": 31,
+          "own_seconds": 0.000406806,
+          "path": "/home/barberb/lift_coding/artifacts/doctor-pure-derivation-profile-20261004-01/profile_pure_header.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 0.223717784,
+          "function": "analyze_http_header_contracts",
+          "line": 392,
+          "own_seconds": 0.011777045,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 0.15088743300000002,
+          "function": "walk",
+          "line": 369,
+          "own_seconds": 0.026308421000000002,
+          "path": "/usr/lib/python3.12/ast.py",
+          "primitive_calls": 49035,
+          "total_calls": 49035
+        },
+        {
+          "cumulative_seconds": 0.11811225400000001,
+          "function": "<method 'extend' of 'collections.deque' objects>",
+          "line": 0,
+          "own_seconds": 0.017275193,
+          "path": "~",
+          "primitive_calls": 49015,
+          "total_calls": 49015
+        },
+        {
+          "cumulative_seconds": 0.102152328,
+          "function": "iter_child_nodes",
+          "line": 269,
+          "own_seconds": 0.046571788,
+          "path": "/usr/lib/python3.12/ast.py",
+          "primitive_calls": 99277,
+          "total_calls": 99277
+        },
+        {
+          "cumulative_seconds": 0.087300212,
+          "function": "_property_witnesses",
+          "line": 304,
+          "own_seconds": 0.006460567,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 0.039771044000000005,
+          "function": "iter_fields",
+          "line": 257,
+          "own_seconds": 0.027852494000000002,
+          "path": "/usr/lib/python3.12/ast.py",
+          "primitive_calls": 134916,
+          "total_calls": 134916
+        },
+        {
+          "cumulative_seconds": 0.037641159,
+          "function": "parse",
+          "line": 34,
+          "own_seconds": 0.012090546,
+          "path": "/usr/lib/python3.12/ast.py",
+          "primitive_calls": 18,
+          "total_calls": 18
+        },
+        {
+          "cumulative_seconds": 0.025669286000000003,
+          "function": "<built-in method builtins.isinstance>",
+          "line": 0,
+          "own_seconds": 0.025669286000000003,
+          "path": "~",
+          "primitive_calls": 232910,
+          "total_calls": 232910
+        },
+        {
+          "cumulative_seconds": 0.025550613000000003,
+          "function": "<built-in method builtins.compile>",
+          "line": 0,
+          "own_seconds": 0.025550613000000003,
+          "path": "~",
+          "primitive_calls": 18,
+          "total_calls": 18
+        },
+        {
+          "cumulative_seconds": 0.012062472000000001,
+          "function": "<built-in method builtins.getattr>",
+          "line": 0,
+          "own_seconds": 0.012062472000000001,
+          "path": "~",
+          "primitive_calls": 86318,
+          "total_calls": 86318
+        },
+        {
+          "cumulative_seconds": 0.006441556,
+          "function": "<method 'popleft' of 'collections.deque' objects>",
+          "line": 0,
+          "own_seconds": 0.006441556,
+          "path": "~",
+          "primitive_calls": 49015,
+          "total_calls": 49015
+        },
+        {
+          "cumulative_seconds": 0.0029091150000000003,
+          "function": "_top_bindings",
+          "line": 136,
+          "own_seconds": 6.0961e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 2,
+          "total_calls": 2
+        },
+        {
+          "cumulative_seconds": 0.0028481540000000003,
+          "function": "visit",
+          "line": 138,
+          "own_seconds": 0.001101652,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 213,
+          "total_calls": 806
+        },
+        {
+          "cumulative_seconds": 0.0023494310000000003,
+          "function": "_dump",
+          "line": 53,
+          "own_seconds": 2.1728000000000003e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 35,
+          "total_calls": 35
+        },
+        {
+          "cumulative_seconds": 0.002327703,
+          "function": "dump",
+          "line": 115,
+          "own_seconds": 3.5730000000000005e-05,
+          "path": "/usr/lib/python3.12/ast.py",
+          "primitive_calls": 35,
+          "total_calls": 35
+        },
+        {
+          "cumulative_seconds": 0.0022880210000000003,
+          "function": "_format",
+          "line": 127,
+          "own_seconds": 0.0014663880000000001,
+          "path": "/usr/lib/python3.12/ast.py",
+          "primitive_calls": 35,
+          "total_calls": 1039
+        },
+        {
+          "cumulative_seconds": 0.002240562,
+          "function": "<built-in method builtins.any>",
+          "line": 0,
+          "own_seconds": 8.377800000000001e-05,
+          "path": "~",
+          "primitive_calls": 11,
+          "total_calls": 11
+        },
+        {
+          "cumulative_seconds": 0.0016045240000000002,
+          "function": "<method 'join' of 'str' objects>",
+          "line": 0,
+          "own_seconds": 0.00020005400000000002,
+          "path": "~",
+          "primitive_calls": 194,
+          "total_calls": 679
+        },
+        {
+          "cumulative_seconds": 0.00153001,
+          "function": "<genexpr>",
+          "line": 172,
+          "own_seconds": 8.9312e-05,
+          "path": "/usr/lib/python3.12/ast.py",
+          "primitive_calls": 118,
+          "total_calls": 321
+        },
+        {
+          "cumulative_seconds": 0.001351156,
+          "function": "_projection_reaches_return",
+          "line": 217,
+          "own_seconds": 1.3936e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 0.0012540820000000001,
+          "function": "_normalizer",
+          "line": 186,
+          "own_seconds": 4.8704e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 2,
+          "total_calls": 2
+        },
+        {
+          "cumulative_seconds": 0.001045104,
+          "function": "<genexpr>",
+          "line": 314,
+          "own_seconds": 0.00010595300000000001,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 285,
+          "total_calls": 285
+        },
+        {
+          "cumulative_seconds": 0.0007751800000000001,
+          "function": "_recognized_conversion",
+          "line": 154,
+          "own_seconds": 2.4384000000000002e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 2,
+          "total_calls": 2
+        },
+        {
+          "cumulative_seconds": 0.0007388140000000001,
+          "function": "<method 'append' of 'list' objects>",
+          "line": 0,
+          "own_seconds": 0.0007388140000000001,
+          "path": "~",
+          "primitive_calls": 5632,
+          "total_calls": 5632
+        },
+        {
+          "cumulative_seconds": 0.0005762650000000001,
+          "function": "<genexpr>",
+          "line": 294,
+          "own_seconds": 6.2465e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 181,
+          "total_calls": 181
+        },
+        {
+          "cumulative_seconds": 0.000528551,
+          "function": "<genexpr>",
+          "line": 299,
+          "own_seconds": 5.7504000000000004e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 171,
+          "total_calls": 171
+        },
+        {
+          "cumulative_seconds": 0.00047663100000000004,
+          "function": "<built-in method builtins.len>",
+          "line": 0,
+          "own_seconds": 0.00047663100000000004,
+          "path": "~",
+          "primitive_calls": 5015,
+          "total_calls": 5015
+        },
+        {
+          "cumulative_seconds": 0.000317013,
+          "function": "<method 'split' of 'str' objects>",
+          "line": 0,
+          "own_seconds": 0.000317013,
+          "path": "~",
+          "primitive_calls": 34,
+          "total_calls": 34
+        },
+        {
+          "cumulative_seconds": 0.000247363,
+          "function": "_sha",
+          "line": 45,
+          "own_seconds": 1.8673000000000002e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 9,
+          "total_calls": 9
+        },
+        {
+          "cumulative_seconds": 0.000188211,
+          "function": "statements",
+          "line": 261,
+          "own_seconds": 4.664e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 1,
+          "total_calls": 7
+        },
+        {
+          "cumulative_seconds": 0.00018467400000000001,
+          "function": "<built-in method _hashlib.openssl_sha256>",
+          "line": 0,
+          "own_seconds": 0.00018467400000000001,
+          "path": "~",
+          "primitive_calls": 9,
+          "total_calls": 9
+        },
+        {
+          "cumulative_seconds": 6.9121e-05,
+          "function": "_plain_args",
+          "line": 125,
+          "own_seconds": 5.2721000000000006e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 28,
+          "total_calls": 28
+        },
+        {
+          "cumulative_seconds": 6.7409e-05,
+          "function": "_identity",
+          "line": 49,
+          "own_seconds": 4.368e-06,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 5.7664e-05,
+          "function": "<method 'setdefault' of 'dict' objects>",
+          "line": 0,
+          "own_seconds": 5.7664e-05,
+          "path": "~",
+          "primitive_calls": 233,
+          "total_calls": 233
+        },
+        {
+          "cumulative_seconds": 5.6801e-05,
+          "function": "dumps",
+          "line": 183,
+          "own_seconds": 5.9360000000000004e-06,
+          "path": "/usr/lib/python3.12/json/__init__.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 5.5682000000000007e-05,
+          "function": "expression",
+          "line": 227,
+          "own_seconds": 2.5888e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 7,
+          "total_calls": 11
+        },
+        {
+          "cumulative_seconds": 4.9681e-05,
+          "function": "encode",
+          "line": 183,
+          "own_seconds": 3.216e-06,
+          "path": "/usr/lib/python3.12/json/encoder.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 4.5601000000000006e-05,
+          "function": "iterencode",
+          "line": 205,
+          "own_seconds": 4.5601000000000006e-05,
+          "path": "/usr/lib/python3.12/json/encoder.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 4.104e-05,
+          "function": "<method 'encode' of 'str' objects>",
+          "line": 0,
+          "own_seconds": 4.104e-05,
+          "path": "~",
+          "primitive_calls": 10,
+          "total_calls": 10
+        }
+      ],
+      "seconds": [
+        0.10779899300541729,
+        0.07925730900024064,
+        0.0839703060046304,
+        0.08122196199838072,
+        1.0693099909985904
+      ]
+    },
+    "derive": {
+      "median_seconds": 0.18381649399816524,
+      "profile": [
+        {
+          "cumulative_seconds": 13.715524128,
+          "function": "<lambda>",
+          "line": 33,
+          "own_seconds": 0.009778208,
+          "path": "/home/barberb/lift_coding/artifacts/doctor-pure-derivation-profile-20261004-01/profile_pure_header.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 13.70574592,
+          "function": "derive_header_semantics",
+          "line": 206,
+          "own_seconds": 0.0009697260000000001,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/code_header_derivation.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 13.412945696000001,
+          "function": "canonical_json_bytes",
+          "line": 351,
+          "own_seconds": 0.000273365,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/ir_core/canonical.py",
+          "primitive_calls": 314,
+          "total_calls": 314
+        },
+        {
+          "cumulative_seconds": 13.411777422,
+          "function": "_encode",
+          "line": 269,
+          "own_seconds": 13.288680337,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/ir_core/canonical.py",
+          "primitive_calls": 314,
+          "total_calls": 12501
+        },
+        {
+          "cumulative_seconds": 13.409923277,
+          "function": "canonical_identity",
+          "line": 211,
+          "own_seconds": 0.00038903,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/ir_core/identity.py",
+          "primitive_calls": 52,
+          "total_calls": 52
+        },
+        {
+          "cumulative_seconds": 13.407349609,
+          "function": "identity_preimage",
+          "line": 169,
+          "own_seconds": 0.000364757,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/ir_core/identity.py",
+          "primitive_calls": 52,
+          "total_calls": 52
+        },
+        {
+          "cumulative_seconds": 13.323601695,
+          "function": "_cid",
+          "line": 50,
+          "own_seconds": 5.696e-06,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/code_header_derivation.py",
+          "primitive_calls": 2,
+          "total_calls": 2
+        },
+        {
+          "cumulative_seconds": 0.21688674100000002,
+          "function": "analyze_http_header_contracts",
+          "line": 392,
+          "own_seconds": 0.011546071000000001,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 0.149047175,
+          "function": "walk",
+          "line": 369,
+          "own_seconds": 0.025733271000000002,
+          "path": "/usr/lib/python3.12/ast.py",
+          "primitive_calls": 49035,
+          "total_calls": 49035
+        },
+        {
+          "cumulative_seconds": 0.11698957400000001,
+          "function": "<method 'extend' of 'collections.deque' objects>",
+          "line": 0,
+          "own_seconds": 0.017091791000000002,
+          "path": "~",
+          "primitive_calls": 49015,
+          "total_calls": 49015
+        },
+        {
+          "cumulative_seconds": 0.102338196,
+          "function": "iter_child_nodes",
+          "line": 269,
+          "own_seconds": 0.046742294000000004,
+          "path": "/usr/lib/python3.12/ast.py",
+          "primitive_calls": 100341,
+          "total_calls": 100341
+        },
+        {
+          "cumulative_seconds": 0.09473611200000001,
+          "function": "_native_targets",
+          "line": 165,
+          "own_seconds": 0.00012388900000000002,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/code_header_derivation.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 0.087243571,
+          "function": "_property_witnesses",
+          "line": 304,
+          "own_seconds": 0.006634852,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 0.063959403,
+          "function": "parse",
+          "line": 34,
+          "own_seconds": 0.017066652,
+          "path": "/usr/lib/python3.12/ast.py",
+          "primitive_calls": 19,
+          "total_calls": 19
+        },
+        {
+          "cumulative_seconds": 0.047967310000000006,
+          "function": "<built-in method builtins.isinstance>",
+          "line": 0,
+          "own_seconds": 0.041196341000000004,
+          "path": "~",
+          "primitive_calls": 309748,
+          "total_calls": 309748
+        },
+        {
+          "cumulative_seconds": 0.046892751,
+          "function": "<built-in method builtins.compile>",
+          "line": 0,
+          "own_seconds": 0.046892751,
+          "path": "~",
+          "primitive_calls": 19,
+          "total_calls": 19
+        },
+        {
+          "cumulative_seconds": 0.041576272000000004,
+          "function": "identity",
+          "line": 846,
+          "own_seconds": 7.6384e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/model.py",
+          "primitive_calls": 10,
+          "total_calls": 10
+        },
+        {
+          "cumulative_seconds": 0.039913722000000006,
+          "function": "iter_fields",
+          "line": 257,
+          "own_seconds": 0.027683910000000003,
+          "path": "/usr/lib/python3.12/ast.py",
+          "primitive_calls": 136420,
+          "total_calls": 136420
+        },
+        {
+          "cumulative_seconds": 0.036637002,
+          "function": "adapt_sample",
+          "line": 283,
+          "own_seconds": 8.953800000000001e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/formalization_adapter.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 0.036193799000000006,
+          "function": "dumps",
+          "line": 183,
+          "own_seconds": 0.020518764000000002,
+          "path": "/usr/lib/python3.12/json/__init__.py",
+          "primitive_calls": 16387,
+          "total_calls": 16387
+        },
+        {
+          "cumulative_seconds": 0.028127870000000003,
+          "function": "_obligations",
+          "line": 117,
+          "own_seconds": 0.000219506,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/code_header_derivation.py",
+          "primitive_calls": 2,
+          "total_calls": 2
+        },
+        {
+          "cumulative_seconds": 0.026956811,
+          "function": "semantics_for",
+          "line": 173,
+          "own_seconds": 0.011959814000000001,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/ir_core/canonical.py",
+          "primitive_calls": 2623,
+          "total_calls": 2623
+        },
+        {
+          "cumulative_seconds": 0.026699773000000003,
+          "function": "<method 'append' of 'list' objects>",
+          "line": 0,
+          "own_seconds": 0.026699773000000003,
+          "path": "~",
+          "primitive_calls": 24703,
+          "total_calls": 24703
+        },
+        {
+          "cumulative_seconds": 0.023238534,
+          "function": "compile",
+          "line": 453,
+          "own_seconds": 0.000127106,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/formalization_adapter.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 0.022875569000000002,
+          "function": "compile",
+          "line": 1753,
+          "own_seconds": 0.000107217,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/backends/smt/compiler.py",
+          "primitive_calls": 6,
+          "total_calls": 6
+        },
+        {
+          "cumulative_seconds": 0.020754385,
+          "function": "digest",
+          "line": 869,
+          "own_seconds": 5.842e-06,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/model.py",
+          "primitive_calls": 5,
+          "total_calls": 5
+        },
+        {
+          "cumulative_seconds": 0.016718693,
+          "function": "cid",
+          "line": 873,
+          "own_seconds": 6.528e-06,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/model.py",
+          "primitive_calls": 4,
+          "total_calls": 4
+        },
+        {
+          "cumulative_seconds": 0.016135965000000002,
+          "function": "identity",
+          "line": 696,
+          "own_seconds": 5.0976e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/formalization/compiler.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 0.013726857,
+          "function": "_source_identity_for",
+          "line": 1508,
+          "own_seconds": 1.6128000000000002e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/backends/smt/compiler.py",
+          "primitive_calls": 6,
+          "total_calls": 6
+        },
+        {
+          "cumulative_seconds": 0.013455566,
+          "function": "_normalize_text",
+          "line": 219,
+          "own_seconds": 0.006145814,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/ir_core/canonical.py",
+          "primitive_calls": 16340,
+          "total_calls": 16340
+        },
+        {
+          "cumulative_seconds": 0.012533815,
+          "function": "<built-in method builtins.getattr>",
+          "line": 0,
+          "own_seconds": 0.012533815,
+          "path": "~",
+          "primitive_calls": 88161,
+          "total_calls": 88161
+        },
+        {
+          "cumulative_seconds": 0.012491242000000001,
+          "function": "encode",
+          "line": 183,
+          "own_seconds": 0.005266777,
+          "path": "/usr/lib/python3.12/json/encoder.py",
+          "primitive_calls": 16387,
+          "total_calls": 16387
+        },
+        {
+          "cumulative_seconds": 0.011621802,
+          "function": "_sample_declaration",
+          "line": 796,
+          "own_seconds": 1.3248000000000001e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/formalization_adapter.py",
+          "primitive_calls": 2,
+          "total_calls": 2
+        },
+        {
+          "cumulative_seconds": 0.010712205,
+          "function": "identity",
+          "line": 244,
+          "own_seconds": 3.824e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/formalization/samples.py",
+          "primitive_calls": 2,
+          "total_calls": 2
+        },
+        {
+          "cumulative_seconds": 0.009500282,
+          "function": "<method 'encode' of 'str' objects>",
+          "line": 0,
+          "own_seconds": 0.009500282,
+          "path": "~",
+          "primitive_calls": 33467,
+          "total_calls": 33467
+        },
+        {
+          "cumulative_seconds": 0.008581566,
+          "function": "_parse_pointer",
+          "line": 88,
+          "own_seconds": 0.006947008,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/ir_core/canonical.py",
+          "primitive_calls": 19704,
+          "total_calls": 19704
+        },
+        {
+          "cumulative_seconds": 0.007494110000000001,
+          "function": "canonical_bytes",
+          "line": 836,
+          "own_seconds": 1.5168000000000001e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/model.py",
+          "primitive_calls": 2,
+          "total_calls": 2
+        },
+        {
+          "cumulative_seconds": 0.006770969000000001,
+          "function": "__instancecheck__",
+          "line": 117,
+          "own_seconds": 0.0028017520000000002,
+          "path": "<frozen abc>",
+          "primitive_calls": 13646,
+          "total_calls": 13646
+        },
+        {
+          "cumulative_seconds": 0.006407082000000001,
+          "function": "<built-in method builtins.len>",
+          "line": 0,
+          "own_seconds": 0.006407082000000001,
+          "path": "~",
+          "primitive_calls": 76286,
+          "total_calls": 76286
+        },
+        {
+          "cumulative_seconds": 0.006301640000000001,
+          "function": "<method 'popleft' of 'collections.deque' objects>",
+          "line": 0,
+          "own_seconds": 0.006301640000000001,
+          "path": "~",
+          "primitive_calls": 49015,
+          "total_calls": 49015
+        }
+      ],
+      "seconds": [
+        0.18381649399816524,
+        0.18561757700808812,
+        0.17509023800084833,
+        0.2271475950110471,
+        0.17544981099490542
+      ]
+    },
+    "validate": {
+      "median_seconds": 0.49327821099723224,
+      "profile": [
+        {
+          "cumulative_seconds": 0.975907772,
+          "function": "<lambda>",
+          "line": 34,
+          "own_seconds": 3.537e-06,
+          "path": "/home/barberb/lift_coding/artifacts/doctor-pure-derivation-profile-20261004-01/profile_pure_header.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 0.975904235,
+          "function": "validate_header_semantics",
+          "line": 254,
+          "own_seconds": 0.003070381,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/code_header_derivation.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 0.970831568,
+          "function": "derive_header_semantics",
+          "line": 206,
+          "own_seconds": 0.0009852320000000002,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/code_header_derivation.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 0.5138150890000001,
+          "function": "canonical_json_bytes",
+          "line": 351,
+          "own_seconds": 0.00028552000000000004,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/ir_core/canonical.py",
+          "primitive_calls": 314,
+          "total_calls": 314
+        },
+        {
+          "cumulative_seconds": 0.51264021,
+          "function": "_encode",
+          "line": 269,
+          "own_seconds": 0.039287081,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/ir_core/canonical.py",
+          "primitive_calls": 314,
+          "total_calls": 12501
+        },
+        {
+          "cumulative_seconds": 0.51070095,
+          "function": "canonical_identity",
+          "line": 211,
+          "own_seconds": 0.000377573,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/ir_core/identity.py",
+          "primitive_calls": 52,
+          "total_calls": 52
+        },
+        {
+          "cumulative_seconds": 0.5080417770000001,
+          "function": "identity_preimage",
+          "line": 169,
+          "own_seconds": 0.00033808600000000003,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/ir_core/identity.py",
+          "primitive_calls": 52,
+          "total_calls": 52
+        },
+        {
+          "cumulative_seconds": 0.379348088,
+          "function": "_cid",
+          "line": 50,
+          "own_seconds": 5.808e-06,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/code_header_derivation.py",
+          "primitive_calls": 2,
+          "total_calls": 2
+        },
+        {
+          "cumulative_seconds": 0.32047648100000004,
+          "function": "dumps",
+          "line": 183,
+          "own_seconds": 0.30297006800000004,
+          "path": "/usr/lib/python3.12/json/__init__.py",
+          "primitive_calls": 16389,
+          "total_calls": 16389
+        },
+        {
+          "cumulative_seconds": 0.222629816,
+          "function": "parse",
+          "line": 34,
+          "own_seconds": 0.038787195000000003,
+          "path": "/usr/lib/python3.12/ast.py",
+          "primitive_calls": 19,
+          "total_calls": 19
+        },
+        {
+          "cumulative_seconds": 0.220919935,
+          "function": "analyze_http_header_contracts",
+          "line": 392,
+          "own_seconds": 0.011630815000000001,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 0.183842621,
+          "function": "<built-in method builtins.compile>",
+          "line": 0,
+          "own_seconds": 0.183842621,
+          "path": "~",
+          "primitive_calls": 19,
+          "total_calls": 19
+        },
+        {
+          "cumulative_seconds": 0.153140408,
+          "function": "walk",
+          "line": 369,
+          "own_seconds": 0.026177361000000003,
+          "path": "/usr/lib/python3.12/ast.py",
+          "primitive_calls": 49035,
+          "total_calls": 49035
+        },
+        {
+          "cumulative_seconds": 0.140448705,
+          "function": "_native_targets",
+          "line": 165,
+          "own_seconds": 0.000138082,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/code_header_derivation.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 0.12065819900000001,
+          "function": "<method 'extend' of 'collections.deque' objects>",
+          "line": 0,
+          "own_seconds": 0.017293079,
+          "path": "~",
+          "primitive_calls": 49015,
+          "total_calls": 49015
+        },
+        {
+          "cumulative_seconds": 0.105923793,
+          "function": "iter_child_nodes",
+          "line": 269,
+          "own_seconds": 0.047559698000000004,
+          "path": "/usr/lib/python3.12/ast.py",
+          "primitive_calls": 100341,
+          "total_calls": 100341
+        },
+        {
+          "cumulative_seconds": 0.10195013400000001,
+          "function": "<built-in method builtins.isinstance>",
+          "line": 0,
+          "own_seconds": 0.094862496,
+          "path": "~",
+          "primitive_calls": 309752,
+          "total_calls": 309752
+        },
+        {
+          "cumulative_seconds": 0.089040797,
+          "function": "_property_witnesses",
+          "line": 304,
+          "own_seconds": 0.0065649160000000005,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 0.085380278,
+          "function": "identity",
+          "line": 846,
+          "own_seconds": 9.696000000000001e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/model.py",
+          "primitive_calls": 10,
+          "total_calls": 10
+        },
+        {
+          "cumulative_seconds": 0.070331509,
+          "function": "semantics_for",
+          "line": 173,
+          "own_seconds": 0.012334124,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/ir_core/canonical.py",
+          "primitive_calls": 2623,
+          "total_calls": 2623
+        },
+        {
+          "cumulative_seconds": 0.066645252,
+          "function": "compile",
+          "line": 453,
+          "own_seconds": 0.00013509,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/formalization_adapter.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 0.059833664,
+          "function": "cid",
+          "line": 873,
+          "own_seconds": 6.656e-06,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/model.py",
+          "primitive_calls": 4,
+          "total_calls": 4
+        },
+        {
+          "cumulative_seconds": 0.045317623,
+          "function": "<built-in method builtins.all>",
+          "line": 0,
+          "own_seconds": 0.001691814,
+          "path": "~",
+          "primitive_calls": 7126,
+          "total_calls": 7126
+        },
+        {
+          "cumulative_seconds": 0.043613585,
+          "function": "<genexpr>",
+          "line": 182,
+          "own_seconds": 0.043613585,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/ir_core/canonical.py",
+          "primitive_calls": 8625,
+          "total_calls": 8625
+        },
+        {
+          "cumulative_seconds": 0.042182476,
+          "function": "iter_fields",
+          "line": 257,
+          "own_seconds": 0.029191287000000003,
+          "path": "/usr/lib/python3.12/ast.py",
+          "primitive_calls": 136420,
+          "total_calls": 136420
+        },
+        {
+          "cumulative_seconds": 0.037894461000000004,
+          "function": "adapt_sample",
+          "line": 283,
+          "own_seconds": 8.576200000000001e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/formalization_adapter.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 0.028526276000000003,
+          "function": "_obligations",
+          "line": 117,
+          "own_seconds": 0.000206039,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/code_header_derivation.py",
+          "primitive_calls": 2,
+          "total_calls": 2
+        },
+        {
+          "cumulative_seconds": 0.023128165000000003,
+          "function": "compile",
+          "line": 1753,
+          "own_seconds": 0.000112163,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/backends/smt/compiler.py",
+          "primitive_calls": 6,
+          "total_calls": 6
+        },
+        {
+          "cumulative_seconds": 0.021241719000000003,
+          "function": "digest",
+          "line": 869,
+          "own_seconds": 6.144000000000001e-06,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/model.py",
+          "primitive_calls": 5,
+          "total_calls": 5
+        },
+        {
+          "cumulative_seconds": 0.016766054000000002,
+          "function": "identity",
+          "line": 696,
+          "own_seconds": 5.1648000000000004e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/formalization/compiler.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 0.014286335,
+          "function": "encode",
+          "line": 183,
+          "own_seconds": 0.0054446780000000005,
+          "path": "/usr/lib/python3.12/json/encoder.py",
+          "primitive_calls": 16389,
+          "total_calls": 16389
+        },
+        {
+          "cumulative_seconds": 0.013779738000000001,
+          "function": "_source_identity_for",
+          "line": 1508,
+          "own_seconds": 1.5248e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/backends/smt/compiler.py",
+          "primitive_calls": 6,
+          "total_calls": 6
+        },
+        {
+          "cumulative_seconds": 0.013299286,
+          "function": "<built-in method builtins.getattr>",
+          "line": 0,
+          "own_seconds": 0.013299286,
+          "path": "~",
+          "primitive_calls": 88161,
+          "total_calls": 88161
+        },
+        {
+          "cumulative_seconds": 0.011985537000000001,
+          "function": "_sample_declaration",
+          "line": 796,
+          "own_seconds": 1.4225e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/formalization_adapter.py",
+          "primitive_calls": 2,
+          "total_calls": 2
+        },
+        {
+          "cumulative_seconds": 0.011032824,
+          "function": "_normalize_text",
+          "line": 219,
+          "own_seconds": 0.0063693180000000005,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/ir_core/canonical.py",
+          "primitive_calls": 16340,
+          "total_calls": 16340
+        },
+        {
+          "cumulative_seconds": 0.010996193000000001,
+          "function": "identity",
+          "line": 244,
+          "own_seconds": 4.096e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/formalization/samples.py",
+          "primitive_calls": 2,
+          "total_calls": 2
+        },
+        {
+          "cumulative_seconds": 0.009054886,
+          "function": "_parse_pointer",
+          "line": 88,
+          "own_seconds": 0.007351783000000001,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/ir_core/canonical.py",
+          "primitive_calls": 19704,
+          "total_calls": 19704
+        },
+        {
+          "cumulative_seconds": 0.007674432,
+          "function": "canonical_bytes",
+          "line": 836,
+          "own_seconds": 1.5328e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/model.py",
+          "primitive_calls": 2,
+          "total_calls": 2
+        },
+        {
+          "cumulative_seconds": 0.007087638,
+          "function": "__instancecheck__",
+          "line": 117,
+          "own_seconds": 0.0028237640000000003,
+          "path": "<frozen abc>",
+          "primitive_calls": 13646,
+          "total_calls": 13646
+        },
+        {
+          "cumulative_seconds": 0.006579335,
+          "function": "<built-in method builtins.len>",
+          "line": 0,
+          "own_seconds": 0.006579335,
+          "path": "~",
+          "primitive_calls": 76286,
+          "total_calls": 76286
+        }
+      ],
+      "seconds": [
+        2.0783895469940035,
+        1.3951727830135496,
+        0.49327821099723224,
+        0.38213704199006315,
+        0.39014501600468066
+      ]
+    },
+    "verify_candidate": {
+      "median_seconds": 0.5568019130005268,
+      "profile": [
+        {
+          "cumulative_seconds": 0.582468147,
+          "function": "<lambda>",
+          "line": 32,
+          "own_seconds": 5.905e-06,
+          "path": "/home/barberb/lift_coding/artifacts/doctor-pure-derivation-profile-20261004-01/profile_pure_header.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 0.5824622420000001,
+          "function": "verify_header_candidate",
+          "line": 496,
+          "own_seconds": 0.000383109,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 0.581767257,
+          "function": "analyze_http_header_contracts",
+          "line": 392,
+          "own_seconds": 0.011653793,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 0.5108574300000001,
+          "function": "walk",
+          "line": 369,
+          "own_seconds": 0.025918394,
+          "path": "/usr/lib/python3.12/ast.py",
+          "primitive_calls": 49035,
+          "total_calls": 49035
+        },
+        {
+          "cumulative_seconds": 0.478714152,
+          "function": "<method 'extend' of 'collections.deque' objects>",
+          "line": 0,
+          "own_seconds": 0.017186202,
+          "path": "~",
+          "primitive_calls": 49015,
+          "total_calls": 49015
+        },
+        {
+          "cumulative_seconds": 0.462876047,
+          "function": "iter_child_nodes",
+          "line": 269,
+          "own_seconds": 0.046132312,
+          "path": "/usr/lib/python3.12/ast.py",
+          "primitive_calls": 99277,
+          "total_calls": 99277
+        },
+        {
+          "cumulative_seconds": 0.44865752400000003,
+          "function": "_property_witnesses",
+          "line": 304,
+          "own_seconds": 0.006677721,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 0.40118636500000004,
+          "function": "iter_fields",
+          "line": 257,
+          "own_seconds": 0.389114077,
+          "path": "/usr/lib/python3.12/ast.py",
+          "primitive_calls": 134916,
+          "total_calls": 134916
+        },
+        {
+          "cumulative_seconds": 0.03590608,
+          "function": "parse",
+          "line": 34,
+          "own_seconds": 0.010763710000000001,
+          "path": "/usr/lib/python3.12/ast.py",
+          "primitive_calls": 18,
+          "total_calls": 18
+        },
+        {
+          "cumulative_seconds": 0.025219414000000002,
+          "function": "<built-in method builtins.isinstance>",
+          "line": 0,
+          "own_seconds": 0.025219414000000002,
+          "path": "~",
+          "primitive_calls": 232996,
+          "total_calls": 232996
+        },
+        {
+          "cumulative_seconds": 0.02514237,
+          "function": "<built-in method builtins.compile>",
+          "line": 0,
+          "own_seconds": 0.02514237,
+          "path": "~",
+          "primitive_calls": 18,
+          "total_calls": 18
+        },
+        {
+          "cumulative_seconds": 0.012222209000000001,
+          "function": "<built-in method builtins.getattr>",
+          "line": 0,
+          "own_seconds": 0.012222209000000001,
+          "path": "~",
+          "primitive_calls": 86378,
+          "total_calls": 86378
+        },
+        {
+          "cumulative_seconds": 0.0062021,
+          "function": "<method 'popleft' of 'collections.deque' objects>",
+          "line": 0,
+          "own_seconds": 0.0062021,
+          "path": "~",
+          "primitive_calls": 49015,
+          "total_calls": 49015
+        },
+        {
+          "cumulative_seconds": 0.0029252270000000003,
+          "function": "_top_bindings",
+          "line": 136,
+          "own_seconds": 6.1152e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 2,
+          "total_calls": 2
+        },
+        {
+          "cumulative_seconds": 0.002864075,
+          "function": "visit",
+          "line": 138,
+          "own_seconds": 0.001088598,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 213,
+          "total_calls": 806
+        },
+        {
+          "cumulative_seconds": 0.002245041,
+          "function": "<built-in method builtins.any>",
+          "line": 0,
+          "own_seconds": 8.2608e-05,
+          "path": "~",
+          "primitive_calls": 11,
+          "total_calls": 11
+        },
+        {
+          "cumulative_seconds": 0.0022346880000000003,
+          "function": "_dump",
+          "line": 53,
+          "own_seconds": 2.1314000000000003e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 35,
+          "total_calls": 35
+        },
+        {
+          "cumulative_seconds": 0.002213374,
+          "function": "dump",
+          "line": 115,
+          "own_seconds": 3.5025000000000004e-05,
+          "path": "/usr/lib/python3.12/ast.py",
+          "primitive_calls": 35,
+          "total_calls": 35
+        },
+        {
+          "cumulative_seconds": 0.002174493,
+          "function": "_format",
+          "line": 127,
+          "own_seconds": 0.001385394,
+          "path": "/usr/lib/python3.12/ast.py",
+          "primitive_calls": 35,
+          "total_calls": 1039
+        },
+        {
+          "cumulative_seconds": 0.001496581,
+          "function": "<method 'join' of 'str' objects>",
+          "line": 0,
+          "own_seconds": 0.00018546100000000002,
+          "path": "~",
+          "primitive_calls": 194,
+          "total_calls": 679
+        },
+        {
+          "cumulative_seconds": 0.0014311550000000001,
+          "function": "<genexpr>",
+          "line": 172,
+          "own_seconds": 8.905600000000001e-05,
+          "path": "/usr/lib/python3.12/ast.py",
+          "primitive_calls": 118,
+          "total_calls": 321
+        },
+        {
+          "cumulative_seconds": 0.0013424040000000002,
+          "function": "_projection_reaches_return",
+          "line": 217,
+          "own_seconds": 1.1552e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        },
+        {
+          "cumulative_seconds": 0.001171041,
+          "function": "_normalizer",
+          "line": 186,
+          "own_seconds": 5.3249000000000005e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 2,
+          "total_calls": 2
+        },
+        {
+          "cumulative_seconds": 0.00105272,
+          "function": "<genexpr>",
+          "line": 314,
+          "own_seconds": 0.000103634,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 285,
+          "total_calls": 285
+        },
+        {
+          "cumulative_seconds": 0.000724586,
+          "function": "<method 'append' of 'list' objects>",
+          "line": 0,
+          "own_seconds": 0.000724586,
+          "path": "~",
+          "primitive_calls": 5632,
+          "total_calls": 5632
+        },
+        {
+          "cumulative_seconds": 0.000711866,
+          "function": "_recognized_conversion",
+          "line": 154,
+          "own_seconds": 2.2577e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 2,
+          "total_calls": 2
+        },
+        {
+          "cumulative_seconds": 0.0005667290000000001,
+          "function": "<genexpr>",
+          "line": 294,
+          "own_seconds": 6.230600000000001e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 181,
+          "total_calls": 181
+        },
+        {
+          "cumulative_seconds": 0.0005361680000000001,
+          "function": "<genexpr>",
+          "line": 299,
+          "own_seconds": 5.872000000000001e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 171,
+          "total_calls": 171
+        },
+        {
+          "cumulative_seconds": 0.000468745,
+          "function": "<built-in method builtins.len>",
+          "line": 0,
+          "own_seconds": 0.000468745,
+          "path": "~",
+          "primitive_calls": 5016,
+          "total_calls": 5016
+        },
+        {
+          "cumulative_seconds": 0.00038315800000000003,
+          "function": "<method 'split' of 'str' objects>",
+          "line": 0,
+          "own_seconds": 0.00038315800000000003,
+          "path": "~",
+          "primitive_calls": 34,
+          "total_calls": 34
+        },
+        {
+          "cumulative_seconds": 0.000317396,
+          "function": "asdict",
+          "line": 1301,
+          "own_seconds": 6.784000000000001e-06,
+          "path": "/usr/lib/python3.12/dataclasses.py",
+          "primitive_calls": 3,
+          "total_calls": 3
+        },
+        {
+          "cumulative_seconds": 0.000307204,
+          "function": "_asdict_inner",
+          "line": 1325,
+          "own_seconds": 0.000155217,
+          "path": "/usr/lib/python3.12/dataclasses.py",
+          "primitive_calls": 3,
+          "total_calls": 277
+        },
+        {
+          "cumulative_seconds": 0.00029787600000000003,
+          "function": "to_dict",
+          "line": 108,
+          "own_seconds": 1.7920000000000002e-06,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 2,
+          "total_calls": 2
+        },
+        {
+          "cumulative_seconds": 0.00022562000000000003,
+          "function": "_sha",
+          "line": 45,
+          "own_seconds": 1.5088e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 9,
+          "total_calls": 9
+        },
+        {
+          "cumulative_seconds": 0.00019257800000000003,
+          "function": "<genexpr>",
+          "line": 1375,
+          "own_seconds": 4.7057e-05,
+          "path": "/usr/lib/python3.12/dataclasses.py",
+          "primitive_calls": 30,
+          "total_calls": 102
+        },
+        {
+          "cumulative_seconds": 0.000183587,
+          "function": "statements",
+          "line": 261,
+          "own_seconds": 4.4801e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 1,
+          "total_calls": 7
+        },
+        {
+          "cumulative_seconds": 0.000181268,
+          "function": "<built-in method _hashlib.openssl_sha256>",
+          "line": 0,
+          "own_seconds": 0.000181268,
+          "path": "~",
+          "primitive_calls": 9,
+          "total_calls": 9
+        },
+        {
+          "cumulative_seconds": 0.000179955,
+          "function": "<genexpr>",
+          "line": 1366,
+          "own_seconds": 1.6081e-05,
+          "path": "/usr/lib/python3.12/dataclasses.py",
+          "primitive_calls": 54,
+          "total_calls": 64
+        },
+        {
+          "cumulative_seconds": 7.3346e-05,
+          "function": "_plain_args",
+          "line": 125,
+          "own_seconds": 5.2225e-05,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 28,
+          "total_calls": 28
+        },
+        {
+          "cumulative_seconds": 6.374500000000001e-05,
+          "function": "_identity",
+          "line": 49,
+          "own_seconds": 4.145e-06,
+          "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/security_ir/doctor_header_contracts.py",
+          "primitive_calls": 1,
+          "total_calls": 1
+        }
+      ],
+      "seconds": [
+        0.09137132800242398,
+        0.5568019130005268,
+        1.2915952750045108,
+        0.9388201379915699,
+        0.2894573269877583
+      ]
+    }
+  },
+  "schema": "doctor-pure-source-derivation-profile@1",
+  "shared_scheduler_access": false,
+  "solver_calls": 0,
+  "source_and_producer_pins_unchanged": true,
+  "source_bytes": 175565,
+  "source_executed": false,
+  "source_path": "/home/barberb/lift_coding/artifacts/source384-construction-lifetime-20261004/trial-01/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__WCih55g/agent/public-output-evidence/before/bottle.py",
+  "source_sha256": "761756ce31753e526c48d28ccbca13a5d2493b16fe37aff3e1e4d2efaf3a2bba"
+}

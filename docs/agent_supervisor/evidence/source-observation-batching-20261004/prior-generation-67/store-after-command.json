@@ -1,0 +1,30 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "tests/unit/logic/software_contracts/test_duckdb_ast_batch_reads.py",
+    "tests/unit/logic/software_contracts/test_duckdb_ast_store_persistence.py",
+    "tests/unit/logic/software_contracts/test_duckdb_ast_store.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/ast-batch-observation-20261004/store-after.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004",
+  "environment_overrides": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004:/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "/home/barberb/lift_coding/artifacts/ast-batch-observation-20261004/store-keys.db",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/ast-batch-observation-20261004/store-seal.duckdb"
+  },
+  "source_pins": {
+    "ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py": "f9690865c22fbcb301fadf82d2cd5c43bb292626b40fe46dab9f0994e2c11877",
+    "tests/unit/logic/software_contracts/test_duckdb_ast_batch_reads.py": "6ff3f198bf532a7f014b457f2e1e739c73ad19a972ec8131fea80984d3a7a030",
+    "tests/unit/logic/software_contracts/test_duckdb_ast_store_persistence.py": "9bcc781834d477ed4951f8e4483bc36ee5fff99308a810e3b1adac9c9cd1b28d",
+    "tests/unit/logic/software_contracts/test_duckdb_ast_store.py": "dd2d5044f1d897c18a19309bc3a8cdb993d1c702f42c7a98435017a8fe9dee50"
+  }
+}

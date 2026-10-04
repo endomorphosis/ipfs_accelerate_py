@@ -1,0 +1,31 @@
+{
+  "argv": [
+    "timeout",
+    "120s",
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "tests/unit/logic/formalization/autoencoder/test_security_formalization_evaluation.py",
+    "tests/unit/logic/formalization/autoencoder/test_security_formula_corpus.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/source-unit-extraction-profile-20261004-01/test-shared-callers.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004",
+  "environment_overrides": {
+    "HF_HUB_OFFLINE": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "owner_generation": "after",
+  "source_pins": {
+    "ipfs_datasets_py/logic/formalization/autoencoder/security/security_formalization_evaluation.py": "ced8f0caadf26e81d3079305d93c8309d9fe7751a280709553d6017fc53104a9",
+    "ipfs_datasets_py/logic/formalization/autoencoder/source_function_units.py": "01dd6ecf58e9e5956a4b1b6a3cdff8835bcd1db1c469c1361d24b2088470d86e",
+    "tests/unit/logic/formalization/autoencoder/test_security_formalization_evaluation.py": "a9fb3f193407aa514fb1ddbbc30aa125d9a7de0c3bb05bd19afbc5820e149e5c",
+    "tests/unit/logic/formalization/autoencoder/test_security_formula_corpus.py": "b33612071eb2a7c92581e8cb5379a1c7aa35c7233541904a869b2b3dee8dd2c9"
+  }
+}

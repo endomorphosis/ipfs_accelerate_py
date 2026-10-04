@@ -1,0 +1,452 @@
+{
+  "functions": 358,
+  "medians": {
+    "cpu_seconds": 0.4399671359999999,
+    "wall_seconds": 0.5739366080088075
+  },
+  "output_sha256": "c6052b6ebad077c3830bac5fa9b7cd1203bed3d766871681de4eb93f197f40e6",
+  "producer_pins": {
+    "security_formalization_evaluation.py": "fa094ce4beb8d356b1c219d5c1903d98809b4e874fb6e5be32ad26d53913fd72",
+    "security_formula_corpus.py": "3f7f9443be1cf122d019f5936f0650b13da185686cbbc205d98e61098f9fca1c",
+    "source_function_units.py": "ad0e72395c999fc579d7a139e7011c791cbac4f721159a9acbb026b856df3424",
+    "source_screening.py": "f53a59b989274d7944628017a3baae2ebd66dc432855a7aa92033774d7c41eab"
+  },
+  "production_qualification": false,
+  "profile": [
+    {
+      "cumulative_seconds": 8.347251688,
+      "function": "call",
+      "line": 17,
+      "own_seconds": 0.04018937,
+      "path": "/home/barberb/lift_coding/artifacts/source-unit-extraction-profile-20261004-01/profile_extraction.py",
+      "primitive_calls": 1,
+      "total_calls": 1
+    },
+    {
+      "cumulative_seconds": 8.307062318,
+      "function": "extract_function_units",
+      "line": 37,
+      "own_seconds": 0.08334464500000001,
+      "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/formalization/autoencoder/source_function_units.py",
+      "primitive_calls": 1,
+      "total_calls": 1
+    },
+    {
+      "cumulative_seconds": 7.51027508,
+      "function": "_function_span",
+      "line": 31,
+      "own_seconds": 2.418135549,
+      "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formalization_evaluation.py",
+      "primitive_calls": 358,
+      "total_calls": 358
+    },
+    {
+      "cumulative_seconds": 4.679088783,
+      "function": "<method 'append' of 'list' objects>",
+      "line": 0,
+      "own_seconds": 4.679088783,
+      "path": "~",
+      "primitive_calls": 1715865,
+      "total_calls": 1715865
+    },
+    {
+      "cumulative_seconds": 0.337775627,
+      "function": "dump",
+      "line": 115,
+      "own_seconds": 0.001413269,
+      "path": "/usr/lib/python3.12/ast.py",
+      "primitive_calls": 716,
+      "total_calls": 716
+    },
+    {
+      "cumulative_seconds": 0.33614114100000003,
+      "function": "_format",
+      "line": 127,
+      "own_seconds": 0.233718701,
+      "path": "/usr/lib/python3.12/ast.py",
+      "primitive_calls": 716,
+      "total_calls": 85584
+    },
+    {
+      "cumulative_seconds": 0.307456283,
+      "function": "<method 'join' of 'str' objects>",
+      "line": 0,
+      "own_seconds": 0.027144233,
+      "path": "~",
+      "primitive_calls": 3967,
+      "total_calls": 57589
+    },
+    {
+      "cumulative_seconds": 0.303535808,
+      "function": "<genexpr>",
+      "line": 172,
+      "own_seconds": 0.013583520000000002,
+      "path": "/usr/lib/python3.12/ast.py",
+      "primitive_calls": 6018,
+      "total_calls": 24498
+    },
+    {
+      "cumulative_seconds": 0.235766086,
+      "function": "<built-in method builtins.len>",
+      "line": 0,
+      "own_seconds": 0.235766086,
+      "path": "~",
+      "primitive_calls": 1693747,
+      "total_calls": 1693747
+    },
+    {
+      "cumulative_seconds": 0.18202172300000002,
+      "function": "<method 'splitlines' of 'bytes' objects>",
+      "line": 0,
+      "own_seconds": 0.18202172300000002,
+      "path": "~",
+      "primitive_calls": 1074,
+      "total_calls": 1074
+    },
+    {
+      "cumulative_seconds": 0.16975288300000002,
+      "function": "parse",
+      "line": 34,
+      "own_seconds": 0.049991899000000006,
+      "path": "/usr/lib/python3.12/ast.py",
+      "primitive_calls": 359,
+      "total_calls": 359
+    },
+    {
+      "cumulative_seconds": 0.119760984,
+      "function": "<built-in method builtins.compile>",
+      "line": 0,
+      "own_seconds": 0.119760984,
+      "path": "~",
+      "primitive_calls": 359,
+      "total_calls": 359
+    },
+    {
+      "cumulative_seconds": 0.095321943,
+      "function": "iter_child_nodes",
+      "line": 269,
+      "own_seconds": 0.043548632000000004,
+      "path": "/usr/lib/python3.12/ast.py",
+      "primitive_calls": 95790,
+      "total_calls": 95790
+    },
+    {
+      "cumulative_seconds": 0.07955445700000001,
+      "function": "<built-in method builtins.sum>",
+      "line": 0,
+      "own_seconds": 0.0023113310000000002,
+      "path": "~",
+      "primitive_calls": 1,
+      "total_calls": 1
+    },
+    {
+      "cumulative_seconds": 0.07724312600000001,
+      "function": "<genexpr>",
+      "line": 73,
+      "own_seconds": 0.004202543,
+      "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/formalization/autoencoder/source_function_units.py",
+      "primitive_calls": 23949,
+      "total_calls": 23949
+    },
+    {
+      "cumulative_seconds": 0.076337109,
+      "function": "_qualified_functions",
+      "line": 39,
+      "own_seconds": 1.112e-05,
+      "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_corpus.py",
+      "primitive_calls": 1,
+      "total_calls": 1
+    },
+    {
+      "cumulative_seconds": 0.076038802,
+      "function": "walk",
+      "line": 41,
+      "own_seconds": 0.023538051,
+      "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_corpus.py",
+      "primitive_calls": 1,
+      "total_calls": 23948
+    },
+    {
+      "cumulative_seconds": 0.073040583,
+      "function": "walk",
+      "line": 369,
+      "own_seconds": 0.012342705,
+      "path": "/usr/lib/python3.12/ast.py",
+      "primitive_calls": 23949,
+      "total_calls": 23949
+    },
+    {
+      "cumulative_seconds": 0.057632078,
+      "function": "<method 'extend' of 'collections.deque' objects>",
+      "line": 0,
+      "own_seconds": 0.008290961000000001,
+      "path": "~",
+      "primitive_calls": 23948,
+      "total_calls": 23948
+    },
+    {
+      "cumulative_seconds": 0.04093055,
+      "function": "<built-in method builtins.isinstance>",
+      "line": 0,
+      "own_seconds": 0.04093055,
+      "path": "~",
+      "primitive_calls": 322094,
+      "total_calls": 322094
+    },
+    {
+      "cumulative_seconds": 0.036439393,
+      "function": "iter_fields",
+      "line": 257,
+      "own_seconds": 0.025607911,
+      "path": "/usr/lib/python3.12/ast.py",
+      "primitive_calls": 130196,
+      "total_calls": 130196
+    },
+    {
+      "cumulative_seconds": 0.0261819,
+      "function": "<built-in method builtins.getattr>",
+      "line": 0,
+      "own_seconds": 0.0261819,
+      "path": "~",
+      "primitive_calls": 175918,
+      "total_calls": 175918
+    },
+    {
+      "cumulative_seconds": 0.019304854,
+      "function": "<built-in method builtins.any>",
+      "line": 0,
+      "own_seconds": 0.0035529800000000003,
+      "path": "~",
+      "primitive_calls": 3971,
+      "total_calls": 3971
+    },
+    {
+      "cumulative_seconds": 0.016777571,
+      "function": "_verify_span",
+      "line": 55,
+      "own_seconds": 0.010269688,
+      "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_corpus.py",
+      "primitive_calls": 358,
+      "total_calls": 358
+    },
+    {
+      "cumulative_seconds": 0.014644203000000001,
+      "function": "wire",
+      "line": 23,
+      "own_seconds": 0.001202439,
+      "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/formalization/autoencoder/source_function_units.py",
+      "primitive_calls": 358,
+      "total_calls": 358
+    },
+    {
+      "cumulative_seconds": 0.013224482000000001,
+      "function": "dumps",
+      "line": 183,
+      "own_seconds": 0.001892851,
+      "path": "/usr/lib/python3.12/json/__init__.py",
+      "primitive_calls": 358,
+      "total_calls": 358
+    },
+    {
+      "cumulative_seconds": 0.012206109000000001,
+      "function": "_sha",
+      "line": 46,
+      "own_seconds": 0.000929724,
+      "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/formalization/autoencoder/security/security_autoencoder_checkpoint.py",
+      "primitive_calls": 716,
+      "total_calls": 716
+    },
+    {
+      "cumulative_seconds": 0.010866283000000001,
+      "function": "<method 'hexdigest' of '_hashlib.HASH' objects>",
+      "line": 0,
+      "own_seconds": 0.010866283000000001,
+      "path": "~",
+      "primitive_calls": 2155,
+      "total_calls": 2155
+    },
+    {
+      "cumulative_seconds": 0.010828921,
+      "function": "encode",
+      "line": 183,
+      "own_seconds": 0.000958397,
+      "path": "/usr/lib/python3.12/json/encoder.py",
+      "primitive_calls": 358,
+      "total_calls": 358
+    },
+    {
+      "cumulative_seconds": 0.010540728000000001,
+      "function": "_contains_secret",
+      "line": 61,
+      "own_seconds": 2.4960000000000003e-06,
+      "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/formalization/autoencoder/source_screening.py",
+      "primitive_calls": 1,
+      "total_calls": 1
+    },
+    {
+      "cumulative_seconds": 0.010531832000000001,
+      "function": "<genexpr>",
+      "line": 62,
+      "own_seconds": 9.536e-06,
+      "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/formalization/autoencoder/source_screening.py",
+      "primitive_calls": 7,
+      "total_calls": 7
+    },
+    {
+      "cumulative_seconds": 0.010522296,
+      "function": "<method 'search' of 're.Pattern' objects>",
+      "line": 0,
+      "own_seconds": 0.010522296,
+      "path": "~",
+      "primitive_calls": 6,
+      "total_calls": 6
+    },
+    {
+      "cumulative_seconds": 0.009516761,
+      "function": "iterencode",
+      "line": 205,
+      "own_seconds": 0.009516761,
+      "path": "/usr/lib/python3.12/json/encoder.py",
+      "primitive_calls": 358,
+      "total_calls": 358
+    },
+    {
+      "cumulative_seconds": 0.008250813000000001,
+      "function": "<built-in method builtins.repr>",
+      "line": 0,
+      "own_seconds": 0.008250813000000001,
+      "path": "~",
+      "primitive_calls": 19736,
+      "total_calls": 19736
+    },
+    {
+      "cumulative_seconds": 0.004022548,
+      "function": "<built-in method _hashlib.openssl_sha256>",
+      "line": 0,
+      "own_seconds": 0.004022548,
+      "path": "~",
+      "primitive_calls": 2155,
+      "total_calls": 2155
+    },
+    {
+      "cumulative_seconds": 0.0034019230000000003,
+      "function": "<genexpr>",
+      "line": 46,
+      "own_seconds": 0.00247649,
+      "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formalization_evaluation.py",
+      "primitive_calls": 3968,
+      "total_calls": 3968
+    },
+    {
+      "cumulative_seconds": 0.003061128,
+      "function": "<method 'popleft' of 'collections.deque' objects>",
+      "line": 0,
+      "own_seconds": 0.003061128,
+      "path": "~",
+      "primitive_calls": 23948,
+      "total_calls": 23948
+    },
+    {
+      "cumulative_seconds": 0.003010576,
+      "function": "sha",
+      "line": 27,
+      "own_seconds": 0.000726615,
+      "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/formalization/autoencoder/source_function_units.py",
+      "primitive_calls": 723,
+      "total_calls": 723
+    },
+    {
+      "cumulative_seconds": 0.0019384740000000001,
+      "function": "_sha",
+      "line": 27,
+      "own_seconds": 0.000609989,
+      "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_corpus.py",
+      "primitive_calls": 716,
+      "total_calls": 716
+    },
+    {
+      "cumulative_seconds": 0.001776486,
+      "function": "<genexpr>",
+      "line": 66,
+      "own_seconds": 0.001776486,
+      "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formula_corpus.py",
+      "primitive_calls": 15182,
+      "total_calls": 15182
+    },
+    {
+      "cumulative_seconds": 0.0016759890000000001,
+      "function": "<method 'startswith' of 'bytes' objects>",
+      "line": 0,
+      "own_seconds": 0.0016759890000000001,
+      "path": "~",
+      "primitive_calls": 6533,
+      "total_calls": 6533
+    },
+    {
+      "cumulative_seconds": 0.000565756,
+      "function": "<method 'decode' of 'bytes' objects>",
+      "line": 0,
+      "own_seconds": 0.000565756,
+      "path": "~",
+      "primitive_calls": 717,
+      "total_calls": 717
+    },
+    {
+      "cumulative_seconds": 0.0005027100000000001,
+      "function": "__init__",
+      "line": 105,
+      "own_seconds": 0.0005027100000000001,
+      "path": "/usr/lib/python3.12/json/encoder.py",
+      "primitive_calls": 358,
+      "total_calls": 358
+    },
+    {
+      "cumulative_seconds": 0.00048272600000000005,
+      "function": "pins",
+      "line": 31,
+      "own_seconds": 3.6385000000000005e-05,
+      "path": "/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004/ipfs_datasets_py/logic/formalization/autoencoder/source_function_units.py",
+      "primitive_calls": 1,
+      "total_calls": 1
+    },
+    {
+      "cumulative_seconds": 0.00047319100000000003,
+      "function": "<built-in method builtins.min>",
+      "line": 0,
+      "own_seconds": 0.00047319100000000003,
+      "path": "~",
+      "primitive_calls": 358,
+      "total_calls": 358
+    }
+  ],
+  "provider_calls": 0,
+  "schema": "pure-source-unit-extraction-profile@1",
+  "shared_scheduler_access": false,
+  "solver_calls": 0,
+  "source_and_producer_pins_unchanged": true,
+  "source_bytes": 175565,
+  "source_executed": false,
+  "source_sha256": "761756ce31753e526c48d28ccbca13a5d2493b16fe37aff3e1e4d2efaf3a2bba",
+  "times": [
+    {
+      "cpu_seconds": 0.4682785599999999,
+      "wall_seconds": 1.1110285659960937
+    },
+    {
+      "cpu_seconds": 0.4399671359999999,
+      "wall_seconds": 0.5178276490041753
+    },
+    {
+      "cpu_seconds": 0.41372326400000015,
+      "wall_seconds": 0.4212695900059771
+    },
+    {
+      "cpu_seconds": 0.44461022399999983,
+      "wall_seconds": 0.5739366080088075
+    },
+    {
+      "cpu_seconds": 0.4219084799999999,
+      "wall_seconds": 1.107036675006384
+    }
+  ]
+}
