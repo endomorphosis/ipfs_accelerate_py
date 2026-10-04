@@ -1,0 +1,14 @@
+{
+  "schema": "terminal-public-task-profile@1",
+  "instruction_sha256": "004ac3efa98dd4c564f3888fe199962772d23de405c96ec9232c1eab1a2089e8",
+  "input_paths": [
+    "base_terminal.py"
+  ],
+  "outputs": [
+    {
+      "path": "headless_terminal.py",
+      "effect": "create",
+      "media_type": "text/x-python"
+    }
+  ]
+}

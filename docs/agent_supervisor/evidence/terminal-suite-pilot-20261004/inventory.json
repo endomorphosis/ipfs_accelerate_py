@@ -1,0 +1,1612 @@
+{
+  "schema": "terminal-suite-public-inventory@1",
+  "dataset_revision": "2fd12b88aafdd04a52c298e3940bcb189f9766d6",
+  "tasks": [
+    {
+      "task": "adaptive-rejection-sampler",
+      "category": "scientific-computing",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "3530999e72b651f260dabab69c2594cefae66e55123136b72663efe71546007e",
+        "task.toml": "6ed7b37f74beb46e9d47b0f5fad53025667c9548baff4e96d467b56d429fab1a",
+        "environment/Dockerfile": "e644a3343e339303230f1441b7383f076d21c69a5a7aa6430b4f8a9d27f15c8b"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "bn-fit-modify",
+      "category": "scientific-computing",
+      "agent_seconds": 3600.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "5f5207ce23c375270c26719fb66d89843bc88cf1d40671ed87c6b7bab4d394e5",
+        "task.toml": "6493f7162da424a4fd95da721bd3fd1ce7e5dd26e792132cb9c46db536b67090",
+        "environment/Dockerfile": "8b0b1056e9c66c01a14a3d79332cc425498f2926b6deda13d200591ee5e5e6cc"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "break-filter-js-from-html",
+      "category": "security",
+      "agent_seconds": 1200.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "ad42558111b2a8e8534bdf52b584b804348e1a8d68d756f812a31d5147e65be5",
+        "task.toml": "f820eb1b47e4ccc548b87d9a418fef519137dcf975ad73d0fb5246df00a9669b",
+        "environment/Dockerfile": "456f7dbf9eb988d24598e46fd371f8f732061bcdc55031dff2f8fc79030be5c4"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "build-cython-ext",
+      "category": "debugging",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "7e52874e45f88505bd21540229719de6639a401477557d814489981d472f0e34",
+        "task.toml": "c472f0e7522c128fb7f03e00b50c8cdf2e5e6474daa1e094e7441f4b54e770b2",
+        "environment/Dockerfile": "cb6cf421cb9b69d43bd25cd491e49bda982fbb865d47515178d017eda727194e"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "build-pmars",
+      "category": "software-engineering",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "1606850579342a8b8f2189de0e499fae6be21198150d8dd1e4d18c2efbcf3b82",
+        "task.toml": "7ee2eac27b99fd462e0760552a430454db693f86608af5bb570b020270e4c9cd",
+        "environment/Dockerfile": "ff0a9f766151b6304a33b8fe8787dc27d75f6ea679eec4e9a4f2c8876fe08b25"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "build-pov-ray",
+      "category": "software-engineering",
+      "agent_seconds": 12000.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "56c8ecdd0084a07f8c97986c43af5c37ed03dd5aa994da6735cf59806162d1b2",
+        "task.toml": "b90a47ec26c1191d3c523cc094ea96b170e42fbfe176ef1f814c57d05390c097",
+        "environment/Dockerfile": "44f2b5fc7311d8f336daaaca99dd4216b49355e67f50b494ebacf1b0f7c14e92"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "caffe-cifar-10",
+      "category": "machine-learning",
+      "agent_seconds": 1200.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "55c0dd21c7f26c9e7b0a5fefb2cd2aadf8f958c2b6e5e14aa47b12754a957d07",
+        "task.toml": "19daf54e378e1d811883d0f0c9c16344f58871770699993477f375e5fc1fe193",
+        "environment/Dockerfile": "e09b48207ea329b6a0f106d45c3307f8ad4f5acd1adbd5a2f874acf7bd048ea3"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "cancel-async-tasks",
+      "category": "software-engineering",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "23d22f7039b50682941652c716f96dac314b8585c32c133614cac77dc067f47e",
+        "task.toml": "14db0675e04408f2133b0067e8dbddf66a1d6e7baf6b8d38bef8ecccfc4e58a8",
+        "environment/Dockerfile": "1ee7bdb4a7536f5f114c11a3ac6ff42790abfea901fcba6b2a8ea8685f19140e"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "chess-best-move",
+      "category": "games",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "6ba25be4e291a4ad04ae42b2dddefcdaef67ca45ca9d5dce661a2e517b19ce7a",
+        "task.toml": "d8f01d3c84ed5836edbb49c6c3b3cc7b5b96d951cf01a0987467c9206fb22f9e",
+        "environment/Dockerfile": "d5697e7a11399e45f105bf43f40e5c95746d6a8601965ea6935a52b59bbbfa2b"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "circuit-fibsqrt",
+      "category": "software-engineering",
+      "agent_seconds": 3600.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "a7f500266a878d04ac9de39fba76220cfad216d8f6b8063bba93bebb3d4ab9ea",
+        "task.toml": "9f5aa1f7ebbbcec90fd109121e9bd509af3cfff6b4cec701bd91947988f40972",
+        "environment/Dockerfile": "780c23986778f3e5f842567868af30b1135ed095ca9449e1c90b7f0e0483d3d4"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "cobol-modernization",
+      "category": "software-engineering",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "a87074f1141b7345394cd88053d0debb0dc8f7de95308882c6538ee9a3b359da",
+        "task.toml": "4b620211dc3d6b1b989f0210c5ecd2f606974581c8bce27bd78659d48cf0cfbd",
+        "environment/Dockerfile": "8b175c83fc03ec7d16d6101516bc5100230b592f480e435279f4fe051c9280b2"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "code-from-image",
+      "category": "software-engineering",
+      "agent_seconds": 1200.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "8c3af6483e409defef9786da51f318ae2ca71afe2327b94471d2f0e2e367442c",
+        "task.toml": "3a13c1e252bb8759f51215be0b2b2cb1b4c697f0dd570f2d7702cc28b28f08de",
+        "environment/Dockerfile": "5bd29db32ea0ef2b5c87c8526d0ac1b102be922dab66510f06439ab9dc84809c"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "compile-compcert",
+      "category": "system-administration",
+      "agent_seconds": 2400.0,
+      "environment": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "d6efce07c47484fcd13c7918f68bd4af6314392de43751c4cad1e62530c2ad06",
+        "task.toml": "d43ddbf12eeb623bcebd2b2ea8a1c059aaf83a29062321539a8f52f1f96c230e",
+        "environment/Dockerfile": "c357ea41e4a4013c5c5980b8fef04af6a5ae250ccc6697cf3bad3127401a931f"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "configure-git-webserver",
+      "category": "system-administration",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "62151b7371bc364277a3c118bba755334c640fb0cefc7a5af106e6e763cf1d97",
+        "task.toml": "ebb40d72f689512cbd90d865d88ef966b6665ab215544f9247b898b7fa94751b",
+        "environment/Dockerfile": "8c87039a43581841b7ef11d80c4ff1a5c5f43011877e167403063d55435aaa19"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "constraints-scheduling",
+      "category": "personal-assistant",
+      "agent_seconds": 1200.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "342def78177f9bc41bea4d11af679bc385a9dda2ac8a1e425be384a5b7f937b6",
+        "task.toml": "7b9842de16d74e8faf8c7c0aa03b0b81145941cb12dd322d81ae23fc48607250",
+        "environment/Dockerfile": "7d9aba072a4a907229728b9739c8cf821fc2c98450babd64452682caf3759c84"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "count-dataset-tokens",
+      "category": "model-training",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "baa843c8da9804d68ced71b2e4dea91afb19dd33de2c867b4a15542563a888f9",
+        "task.toml": "8220a1b8e6e08ecb95556920de358b6aa74b112d8a79625db6915f6b316ccd18",
+        "environment/Dockerfile": "972a00802b1b51e9b833a9f12d62e609db16748a1b4161246eeb21bece3f7e54"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "crack-7z-hash",
+      "category": "security",
+      "agent_seconds": 1800.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 4096,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "f5f89400c549eefb2c245caa7770356737b7a12098e6879787e846d9cb5eb822",
+        "task.toml": "8e192bcbe00e817419bde7ff9b562a5fa0c1e24ec4f3384cba4a31eda0a7b013",
+        "environment/Dockerfile": "387c60f7a21d4548c12e1af2453aa8bdd12c45bbe576666c3e48777c5b7c3ecb"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "custom-memory-heap-crash",
+      "category": "debugging",
+      "agent_seconds": 1800.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "53c68ae14a3c3af9a97c40bfd9bdc30a5d98b37eaa2f69f763475745f70f108d",
+        "task.toml": "ed474be1983e212913aa8866ebb66216acbe36aef2339ac375d232aa46617481",
+        "environment/Dockerfile": "6ee81e5a4fa2540443d7f27d577ba840728fc6aab9f301ab7919103673c78080"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "db-wal-recovery",
+      "category": "file-operations",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "5a20375162921b8911c67035d1905df7fd335d1bed03044271e608b2c3c93b26",
+        "task.toml": "1cdc2c615e259bc10265efbe71b518332070c1c002e226566399e9788f18d0aa",
+        "environment/Dockerfile": "63a260531c62f4ae72060db17f295c0aa03cfc6321f8162c324b7aa6b3f81302"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "distribution-search",
+      "category": "machine-learning",
+      "agent_seconds": 3600.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "aba2e1835b2f827686402c3d3ff9b309aab8c9cbac26e23fc46aaeb34e958915",
+        "task.toml": "70c8e73cafd0a75306375bec2c2e1e4d82e0cb969fd7e38a63e7c344de43b681",
+        "environment/Dockerfile": "1eaa2eae5c9edd86316401ef3dca829dbe4125391b6845237fa73acd98c30012"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "dna-assembly",
+      "category": "scientific-computing",
+      "agent_seconds": 1800.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "88998c98beabdd966ab46c04ede822bbc74796696aa1bf87c567a9131210533c",
+        "task.toml": "7b571544b64d9be1c91526837e5d805c2181afe0e6fd57a7f0676bba36c868d7",
+        "environment/Dockerfile": "26e9e43a98f0b1d132bb638f44b7dc882b0d0ca32d56fa33048adeee00ab600d"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "dna-insert",
+      "category": "scientific-computing",
+      "agent_seconds": 1800.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 4096,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "49fce0ee8b73d7ccdf4b8476c6bb87cf362689fd1d77b21a0d8737d16019a473",
+        "task.toml": "1a9efd5c826d64d31c4874b395f1f9c488b2f26581b0c752fc4619ff177f25eb",
+        "environment/Dockerfile": "26e9e43a98f0b1d132bb638f44b7dc882b0d0ca32d56fa33048adeee00ab600d"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "extract-elf",
+      "category": "file-operations",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "f1dd8c8fd9f01101d2ecb65665bdedc33adc868abd853b3adf556f6aa4982073",
+        "task.toml": "14e2c28fd7cc1c9c7b64ab0db5565899fed538e38c55074824647cacc3f7a172",
+        "environment/Dockerfile": "1c5c0a227bee1f5e2933710f3c9d89848a4dc9353c2516a549196fb18b842606"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "extract-moves-from-video",
+      "category": "file-operations",
+      "agent_seconds": 1800.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "2d8634fcd1119de91a86fa246d225bf29b37539e456bf24b946c62d42dab04f5",
+        "task.toml": "f0ba9af241fab0217ef689c90d02d0bd17225c3aadf9a2788dc024f87dbf81ec",
+        "environment/Dockerfile": "aa271a9df218d1ddc646ad3b1c5a5e55a75d758c094ba5e08a88226f5c5dc970"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "feal-differential-cryptanalysis",
+      "category": "mathematics",
+      "agent_seconds": 1800.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "b4093780b283e5c9838997769fb7bca090e3f4cbbd2d7cb275ba60cdfd722572",
+        "task.toml": "dcb9f2f15047eee0be15ca18c39c357f89187a94aae6baeff276221e2383eecb",
+        "environment/Dockerfile": "c40553e4cf830b7cd075a79dca1a29f5267c45c63b1cedb275383f58af356a30"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "feal-linear-cryptanalysis",
+      "category": "mathematics",
+      "agent_seconds": 1800.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "a2f1669d4067af6c7b8ac05ff7d5849ca5df68397c94701645c4b9a3b6f71b03",
+        "task.toml": "a39ec2c427af534c96c719dc87f70eb536956b487ce909d04b6365160e7c9fc4",
+        "environment/Dockerfile": "ef521cded1b5e0e9a11a6aa9c758e4474f2160e641fb9a177a20cdc728bfff1d"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "filter-js-from-html",
+      "category": "security",
+      "agent_seconds": 1800.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 4096,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "608fd501693f5ceb3e313db03841d910d29497569a7de018c7e1b965eeb96f34",
+        "task.toml": "61ce21be4baa704e4b667235cf70789bdd4f794ec647175bf573cb68b84dd415",
+        "environment/Dockerfile": "c35743bdbd10286c8fb89f93b76fe084f900773d3435373082de660a8a6c1ed0"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "financial-document-processor",
+      "category": "data-processing",
+      "agent_seconds": 1200.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 4096,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "b21cf2af1891922732327bf586d14b250d36d96de7867479c15bd1c58ef0db58",
+        "task.toml": "163ee252895c05d36ca37137dba4d6c24b46be28d56ce84ef8bb35bb5b894bda",
+        "environment/Dockerfile": "2ea485aead008998d7a551e8c80b6bd354a74cbffc310a1f4b88d0b7c53d23ff"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "fix-code-vulnerability",
+      "category": "security",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "89b1abdf0af19399f720233b5cdf6b2e8e0ff7b6e3fe3e2a3af0d4d298a8641a",
+        "task.toml": "9aa2bd14ce9408289d199d0608bc3fa65b8b5e23374c9641020de62197dbf1e2",
+        "environment/Dockerfile": "0917470986224df4daf4854a71302ae81c73ba5dd6e25be1232d29b758a5b3ab"
+      },
+      "status": "previously_completed",
+      "official_reward": null
+    },
+    {
+      "task": "fix-git",
+      "category": "software-engineering",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "f98174e47ba5ce040f6fad22ef3cbca4dd27b3192868ea5d082077222c3ec4e8",
+        "task.toml": "25507ef6cbd6bf73c8bfdfbe7f7ba136224c8453fbba2de2993c639e2a61ad8b",
+        "environment/Dockerfile": "dfd64a46955909f58d1b562ea233c3cace75195bbef5d75cd6b599f3b8967bb7"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "fix-ocaml-gc",
+      "category": "software-engineering",
+      "agent_seconds": 3600.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "a8867e4f8a537b3b1622ca2b80cbb278eeba772ce95602ed735c2581d23b2dec",
+        "task.toml": "423aab8ce6f44ce9349dcde647ca3cbd09afd5ac023910c25699ed687a3c71b2",
+        "environment/Dockerfile": "36d7fd9cc31b3b26eb56079f2a2a0be8cf577df7c9d8f77a1b08249805d5a0df"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "gcode-to-text",
+      "category": "file-operations",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "ee524a8f846b35f1784a7c9fb01c17f077f6b3b61c8b61d0d2f2a87c0be3166b",
+        "task.toml": "3aa7a504fe5b3c6eaab16881b0e6dbbe8ac6d4f59084fa49b1e98ad9c71ea00c",
+        "environment/Dockerfile": "5383f514233180e5a264c1b3180d33b00f14f622217c5062a96d4aa970d4102e"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "git-leak-recovery",
+      "category": "software-engineering",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "54ac693fd26a4c003f610d62c4b2671f1d1d04ac5b1286f780605e385a9a5861",
+        "task.toml": "d7f23fda4a6ba3fff902d2a475db8ff74feb5d328980696a77068c02c57d3044",
+        "environment/Dockerfile": "006bf5d2e3502a059f9a87bc855a7f85d6c40c67bf8a523dd3f1e9c6f64cc112"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "git-multibranch",
+      "category": "system-administration",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "54014a38d7526d65faeb6c11d9b7ed3d4a5cb5d973d68d3da3b68b8c0289e125",
+        "task.toml": "4b9981604578a31205257cca36a28d0c89c9d8d1058541330acd11d3f8d65f82",
+        "environment/Dockerfile": "88d9a9f4fef1ae7fddf632799dedf5a2fb6489460a93b610c33dd8b122982821"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "gpt2-codegolf",
+      "category": "software-engineering",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 8192,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "1c8de5f0365407d57fbec968bbeb76cba2648a02fbb2045d323d2798ff5dbccc",
+        "task.toml": "a3fa186d438a42af5909384b8dc0dfdc2ab7a3a68af9159e9d00464988895af0",
+        "environment/Dockerfile": "e1f57eb413b92c10565a8100e559f633c4f4ec5c0bcdd5a755a0eb92eb4de02f"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "headless-terminal",
+      "category": "software-engineering",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "004ac3efa98dd4c564f3888fe199962772d23de405c96ec9232c1eab1a2089e8",
+        "task.toml": "abe0de1ac3adff1fbf0e22e1765efbc061a412891fd255926ed92a5ccacf69e6",
+        "environment/Dockerfile": "c17679907b17671ab6e363aebaa26464dac2d3d0cfd5680cb0bbe6160af17481"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "hf-model-inference",
+      "category": "data-science",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "29151c5b2306f522f38fa905de3d34566865829355e5ca0895f4fca04d51dcc1",
+        "task.toml": "a75f95a090ad0352069c6d7dc2f4de0a7b80cd12cd6b9ec1c57e59ad3956b89d",
+        "environment/Dockerfile": "ad4f71e919cc0889dd8ac33e49d5bdc48ffb9f7d44609ac95819f8ea663d3b2b"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "install-windows-3.11",
+      "category": "system-administration",
+      "agent_seconds": 3600.0,
+      "environment": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "2a7bf792c7d23129f93d27854067753c59cf52a4a3aae0a7065f2d9c5b63b310",
+        "task.toml": "0485184bd16cc74883396115d93520bd25b36d23d61e248da88c0dceeab2eeac",
+        "environment/Dockerfile": "91aa5335320f7c7721835eb6838bb878fd22cd6a6af50ced1efbc2696dea8dbf"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "kv-store-grpc",
+      "category": "software-engineering",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "f4b3facc199d5b1c78db6e603ffa29ec1b93a77ff7d291e1a92b42e6bf582bed",
+        "task.toml": "6ff0f30a526bfff86a67b0b53439b9965229c0f368167dc1a5d05f34d82299a3",
+        "environment/Dockerfile": "47c9982789092437f950736110b2bd18899c39b8fd20f3af3c95b848e564a197"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "large-scale-text-editing",
+      "category": "file-operations",
+      "agent_seconds": 1200.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "2746a16369b28b2e368ca168bc85222811cbe570f3b315f1b1c432afad07ddc8",
+        "task.toml": "5c9488e80c1186f72efb8193e6be13c74eadf334b3846db2e794d24513a88f5f",
+        "environment/Dockerfile": "609759efe5a6bca4c0f4d0011dd1dda814896ca6873ead803af68d92b92d8aa2"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "largest-eigenval",
+      "category": "mathematics",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab",
+        "task.toml": "f7b9b7dda446f969a3ce88f61039d216f4d58b5fc5c10ff9faa24e2403bbd830",
+        "environment/Dockerfile": "93253c52a674766179244f2290ba8ed43680a7cbbbc0f7168322298c5f5a4b94"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "llm-inference-batching-scheduler",
+      "category": "machine-learning",
+      "agent_seconds": 1800.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "0817374767533fbf51bb93345ee1bba266263c216c6cc55c096e71b4a1d37dfc",
+        "task.toml": "52aaac942f917e6a91ff658e0272195bd1cd842d41d71e302414c52603cc588b",
+        "environment/Dockerfile": "10a6193904ee0022ac098504182989893b196dfc74e626a3ca48534a8eacde48"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "log-summary-date-ranges",
+      "category": "data-processing",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "c1d4516ad4ec2238209740eaf01291df9ab48b0028a3fc5df383c6f831453484",
+        "task.toml": "9a9593673d6805ef3a301ea734e9c4dbaf80da1b37c0fe9d1f2ceea2a8c57e18",
+        "environment/Dockerfile": "b479f6e987b63a6ec118fa1691b8bb85c437b2a6a0fe63feab5ed7154957fdfc"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "mailman",
+      "category": "system-administration",
+      "agent_seconds": 1800.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "240d03a73e38087d40c55460d48a098c70143e911a279cffe2468f642322cdee",
+        "task.toml": "a04f4d0e9be25056d2cd79d6a018bc875b6e6fb51d429a9241f282272cc660d1",
+        "environment/Dockerfile": "69f9fc624fa27eb7baf2a5b28b7d90e31899ee5bc18f4219cace00b8c7435784"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "make-doom-for-mips",
+      "category": "software-engineering",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "1903b660e4c64966ff257f828c932adff2b289de589bd6aee22b933bb4fef429",
+        "task.toml": "a7d7a498f0d3a992b384e5086ba2b411767c1c1a013d1b41f6a25cdaf6d05acc",
+        "environment/Dockerfile": "1da0fdafc36e59fcf685a8dbed9717b291195e251fe0e1247267bc5a0a9980ed"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "make-mips-interpreter",
+      "category": "software-engineering",
+      "agent_seconds": 1800.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "d25c0ed6d4697c2b2e6fe047b6cd7317f640dc84d7457ccc9d3d1b4cf8021ffd",
+        "task.toml": "3fda43066642fd38516d07b2679f9813bdb3f1a42bc80b0c06151f60b9210e82",
+        "environment/Dockerfile": "7fe6814c68c28d907e72ac05176ba8f9f493d7eb6693bef96c97126462b8fedf"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "mcmc-sampling-stan",
+      "category": "data-science",
+      "agent_seconds": 1800.0,
+      "environment": {
+        "cpus": 4,
+        "memory_mb": 8192,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "5554ddc6d7b069e965eda4936cd02fce45ed54f51cf38045e6c51aeb39bed943",
+        "task.toml": "c1c0351670499e15b3818f7394894e2789f74fc2a61ea76eccab826c1a951a94",
+        "environment/Dockerfile": "f91f9c77f711229a9757a1fc2b48bd547163c342295e6ca222e86cfd6b4bb385"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "merge-diff-arc-agi-task",
+      "category": "debugging",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 4096,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "2d826479873e5ac1c94c1f802763bf85c22bb04624384685ebdf6b153fe0278e",
+        "task.toml": "6ced40e06b43b169857509765eb7f07791db558f9437cc7367d2536771c2ca5b",
+        "environment/Dockerfile": "4a03ae6f0c60b9c2f45c33f0413b5aa75c9811870254e3ff1968fd0119173fc6"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "model-extraction-relu-logits",
+      "category": "mathematics",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "c9e179dd099065a34c362a865b0eb9fab5f7d96be582cf117e7519580c036ebe",
+        "task.toml": "eb64dfaf8ae88868911ae28855cdc4f767de464001e2704919015b595be6dc29",
+        "environment/Dockerfile": "598b1f80d3b7194e97cbf02c8d245de30e303909e0cbe6465125d1d3179fddb5"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "modernize-scientific-stack",
+      "category": "scientific-computing",
+      "agent_seconds": 600.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "666b8ac370ae81b0e3780a36e722c91b0f986fccbdc6ed36ab3bd17e6943da0f",
+        "task.toml": "a3029f3d4caaa1f08bd1b45488247bf8cb586bf1ce69717acf1114d20f51eb48",
+        "environment/Dockerfile": "cde5acd6f59b6680c32d8faa6a753a806ef69bfc1d9b60e7dd6a4ef63503f0e4"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "mteb-leaderboard",
+      "category": "data-science",
+      "agent_seconds": 3600.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 4096,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "3527f3a362a23e50c7b471e39964216660e7c7f0501250a417837e17ac572ad5",
+        "task.toml": "05d14cf25aa812a66e4c607b5f4b3bc665f39aa7120a7c1b2d13a4c5e077d8ad",
+        "environment/Dockerfile": "b2745c5eba026bda7f3ef48b1cd53f267debc0daa58b701a7a7fa903f2060aa4"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "mteb-retrieve",
+      "category": "data-science",
+      "agent_seconds": 1800.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "0f6289f5492b6d814833fba328c3aeb93a722d8aecad4bfb5e7c8c2979dc8678",
+        "task.toml": "35b8c675ae847e33652c6ce64fe1f914ddb05d0ae6a3a87be80821bd75fb2d2a",
+        "environment/Dockerfile": "97c880635fbfbaec860a9255f849b1a1c4630e2dca8588eb838c4a95669d917e"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "multi-source-data-merger",
+      "category": "data-processing",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "d1d28bb6e37f7a255a1b7f78aae8591f35c0494f33e4913392424ad954aab944",
+        "task.toml": "ee3964c0ee040f0a0cb121cefefbc15443d127684acb003fa5b61dd42f31c694",
+        "environment/Dockerfile": "c95a40d3d35b473dc15ae1e8784ba7fb1725805c0583fc574dd2764325d75e4f"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "nginx-request-logging",
+      "category": "system-administration",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "26a7ac98aced6107f147206790ada77bbf8ed3c25fb360cf323d5fc6889edf99",
+        "task.toml": "b7a78d00be13656f75069197100b7b8c4fd268decf6f78929c853b3222a2729d",
+        "environment/Dockerfile": "43003466d89ab83484a3fa618e35b58cdb74a002b1e8716ef30f12b3ac8302d8"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "openssl-selfsigned-cert",
+      "category": "security",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "38054a3371f7c2c853478a2f9af0bff858437d5b28a9a07483238f06e566921f",
+        "task.toml": "75c8913f0fa15890786c11999cde920b8bfc10d4ce8a14edf1e76985a2ac5800",
+        "environment/Dockerfile": "f590b523038be43afcaf5291d7b9e8ed1333c48d9994e77b8dee2f2c352f0f40"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "overfull-hbox",
+      "category": "debugging",
+      "agent_seconds": 750.0,
+      "environment": {
+        "cpus": 2,
+        "memory_mb": 4096,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "91381d7490afbbf11255e22471d3ed76317353d8e1da372fbc91887e65c57f47",
+        "task.toml": "76dea2071850fd5c83a6e98b692f3e05c246629e7832a07181f7700784562922",
+        "environment/Dockerfile": "f73659a7e258641b2b93affb1d854dbba93239478707255767003e59cf1d1477"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "password-recovery",
+      "category": "security",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "bc4f501148805bbccdb94a5c5b745f1ce9564f04ef0fe36bc37c3ca20b7810a5",
+        "task.toml": "cfd0362d201b957796f9bf1c02cc75646250cb2bd107ec88c768bfcfd091b24b",
+        "environment/Dockerfile": "6fabcb9e1fcb7155bf8cfe106c17f2dfa3344103e97960dab580c2444b6c9fe0"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "path-tracing",
+      "category": "software-engineering",
+      "agent_seconds": 1800.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "9f36e02d636f5dc0946619bc518f2e51c24fa75251da9d1f0ca9eca612cb9572",
+        "task.toml": "cf47013f69bf1b43242da984f231d4daf364fdf44d3845f2eea2ca2cb9308c46",
+        "environment/Dockerfile": "7aca02e4e20b04ed2269d627a29dd4e7337a02764a9652b641452bf09836a3d5"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "path-tracing-reverse",
+      "category": "software-engineering",
+      "agent_seconds": 1800.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "03e4ef347c1b6bde7ad020b297571cf22c74cfb0434b399b267f3d87462e1176",
+        "task.toml": "f609310c99bd5f379eea2711f4af8eca79b5bcd1178a034b2285b1171c031b5b",
+        "environment/Dockerfile": "35b7e409b40098d84a5ca88edb49d8be67ef7410e391dd36b2f89ddf916a3d8f"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "polyglot-c-py",
+      "category": "software-engineering",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "a57c0c0e1232113113cd29a154ea7e0ac9ea45e4aedc16958fbc6bc753a4ef96",
+        "task.toml": "d31b9f60c47eed0d79e10d3be8fd56a23e50b3986606e3f2546863d44ac9a9ea",
+        "environment/Dockerfile": "2eb537f29d2bc4ab30e1b35ff352578437a08b90f91ef6360ee28d8195d5098a"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "polyglot-rust-c",
+      "category": "software-engineering",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "b0fbcd99a97fc886e4e198b6189b977409dada47cae0a87ac7dc185b440b2355",
+        "task.toml": "3c41e83437068c62a3fdff74641899146e34907aefd9e47346213f47caeb82de",
+        "environment/Dockerfile": "d8a3dc4dc57fa9dac783a029aef3b3094d99a6fdbff57e5201a5fb16e84dee0d"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "portfolio-optimization",
+      "category": "optimization",
+      "agent_seconds": 3600.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 4096,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "ffaadcbf9f576b5d5e087d2a06a4b525dd52c6b84d43eb9d85107f0a9aebcb5d",
+        "task.toml": "4918687e4e261a9852e39e5a554156733c071c17dc89c5f544f15f2ef744ce0a",
+        "environment/Dockerfile": "3d0210dedc3a9c0a7956369ba7025fbf6cd4e1bf9eb556bd3a8cbd06092904e6"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "protein-assembly",
+      "category": "scientific-computing",
+      "agent_seconds": 1800.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 4096,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "1bb2af1d85e9a823a8ae7273a87df8a3f67e2c93b06cddf34f0051a8b003f7c5",
+        "task.toml": "d714960681ec921a9247b382dfa0d8e97a9d13a3fe170a6ebd934ebe82398f24",
+        "environment/Dockerfile": "fad40752bc9fd32d60b946f076a03207fe9924cd71d7285ebd96a5e343808054"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "prove-plus-comm",
+      "category": "software-engineering",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "7618ac930d942f27376189fe6535d0e69150fa3eba2db24759ae86b2675d21fe",
+        "task.toml": "240f3ac0076e3362685c8598c4e56658e3882eb25a14ae6cc7e9ab3a4f6b09ea",
+        "environment/Dockerfile": "6daf1ee29aa4647b06c965d86cf963c21af96d8f0b8f5e0fd4afd31ffd5ebd89"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "pypi-server",
+      "category": "software-engineering",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "1c537e4a311a8e71155e121f57bfc03f742fbfb99d05314cd03e433996a28a31",
+        "task.toml": "07c39d7a733c89adadf74bb63a3e906c3694feb6c490d5fc85ac187c003fd447",
+        "environment/Dockerfile": "17a4e67580e4f2c6a151d04b9d74eb020666e7eec8e5259c4a5411f9e93858d0"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "pytorch-model-cli",
+      "category": "model-training",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "ce36ee1f6c589f81ee6a6be4967e25c76a2ed697006928023f42dfb9f28a6750",
+        "task.toml": "fc1c018efbd5d0537ac0741d53d1ebad3886faa51d14cbde8ec953856411bc0d",
+        "environment/Dockerfile": "8fd5c0f21a6914cd440d10c84c9db06fec606f20dc3e0363b17a3b8c220dc4d9"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "pytorch-model-recovery",
+      "category": "model-training",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "2bef07dc28be3ab2c35ae389584034c2e4dde92c2c31b3eb6bd829628c8c3f4a",
+        "task.toml": "5e21f208898908b55214de3081406f3c109f95f8d0e9b6ddae3521ba14c55a90",
+        "environment/Dockerfile": "35851b7561b3ab959ec9f5da34306264f5ab3ddd4c5755be397b7e7a9d13d06e"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "qemu-alpine-ssh",
+      "category": "system-administration",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 4096,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "8348c60490cb90bc690cba259dfe98996da4c3294c6d42bba1119b00c64de4de",
+        "task.toml": "10a43ec6ee732eeba852c377f12e23178f7fa5a4868143f3699a15565ffb64c7",
+        "environment/Dockerfile": "015ce0601ff54758f66b33f4952e0d3a577d84c09aed8f3ec5945a570e8d168a"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "qemu-startup",
+      "category": "system-administration",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 4096,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "7917cf2746328057b85d399c794bbf8bf328b2bd90502eaa3287170e25e6267b",
+        "task.toml": "dc46292fff83fba50192f4c30606a5f9c092a9fb82139686df7dabf6580937d4",
+        "environment/Dockerfile": "d60a2eca5ead7182f3b5d243ee0f8f52d3ff235589703c22c2e97147216dc850"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "query-optimize",
+      "category": "data-science",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "d25a6de62832a1732c2d3aee10fb0308df1bef5f9aba5234f7a04ceb7442a91d",
+        "task.toml": "6e88f2a86df699594bcb1bf81df4ed694505f79c9420f671335b02524bbe3868",
+        "environment/Dockerfile": "064818771f200e0517d22068f87229a7a95d0a82b0778c84ca7203bf1926a0b8"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "raman-fitting",
+      "category": "scientific-computing",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "1fa59a89d88daf6a4b2d422955f53779b461880b527f40d79c71b16e0ee52433",
+        "task.toml": "0f3f6b580d7435954b3a114e77cdfb6cd0a856f15cc0ad83cd1b69c48492dfed",
+        "environment/Dockerfile": "8fd5c0f21a6914cd440d10c84c9db06fec606f20dc3e0363b17a3b8c220dc4d9"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "regex-chess",
+      "category": "software-engineering",
+      "agent_seconds": 3600.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "a6ed3fcc54fc92d71a84af921942422d299ca89b410dcd92cd05a53d0d06436c",
+        "task.toml": "07fe52636fcc4bc9fff25d5630af145b97a5331219d719cc8decb4ca67ea21d4",
+        "environment/Dockerfile": "2616cd775252303839dfda0ee2f047eb862952b053b0103bd6b2460ef90c11b7"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "regex-log",
+      "category": "data-processing",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "4f7ac05e70cf9220ea0f1e5a052c5f908cd0fa884e847d80b0bd51bae2e96f9c",
+        "task.toml": "6bc98525852755caf1fe34c174c2f10f4328adb4ce6c1968dcafe1c877e4e160",
+        "environment/Dockerfile": "5f264ff0bf62a49aee3c6398447de5108df141e7a2ad35c6de8ef39fa62049c6"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "reshard-c4-data",
+      "category": "data-science",
+      "agent_seconds": 3600.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "1810abbf666e51e410950b4f495d3dae88d392ad056afa392e4c687ff31e3992",
+        "task.toml": "c2f146a1e00f798f7486ff60686ad52749bb73c7b71e984d52716d859e0f7dd8",
+        "environment/Dockerfile": "2ca4a0e68628b8160f5e4296f779a204f51e3a70a8d4239be30e845e1565b39d"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "rstan-to-pystan",
+      "category": "data-science",
+      "agent_seconds": 1800.0,
+      "environment": {
+        "cpus": 4,
+        "memory_mb": 8192,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "7b6dd84eb47579469556915a5eab6d303217bba438424eaee4db52375d5add2a",
+        "task.toml": "ed0cd4382cb353e73cb575aa7a20b624e35f09ddd8769c332f40f8986980e13f",
+        "environment/Dockerfile": "9d813ec4fdc2054717f253e7acbc2740fe43f97d35a5545c91a9c06986d9d595"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "sam-cell-seg",
+      "category": "data-science",
+      "agent_seconds": 7200.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 4096,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "0ef90109155c26d518e800a9e21464f8ee8671c95cbd12d1dccf667552e3c73c",
+        "task.toml": "f0eb6af2acb87cb6fee67d77e8fdd55e3b331baf48999260bc5b6c4ac466c128",
+        "environment/Dockerfile": "43c8f78b721c30bff9e7e0d8b7fe89196664a49df53c97384da76a2cba26c494"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "sanitize-git-repo",
+      "category": "security",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "d9e10a56e94e51592c6016efb02adef852d4fd08f9ba23dc304d2673d1478e8a",
+        "task.toml": "ff209feb7d07c68b8bd0d2e9abee96a1431c332095a1bbe0a532c44a833a264d",
+        "environment/Dockerfile": "bd91e6f3b7b3c0db2c1c7ca31a1028735ca3b129d1d7949f490cbd92b441437c"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "schemelike-metacircular-eval",
+      "category": "software-engineering",
+      "agent_seconds": 2400.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "3af5f9567b62f93683db7518ec6fcb609f83796258aa02166b5a7091c5b69031",
+        "task.toml": "8dae8eb226183b0ca92331c1106152a7abc93b03b4e5a95291b86a4ddc9b44e0",
+        "environment/Dockerfile": "9b3df76222e16aad360fbd34cb0f71a0be8986052c065b10b92c0cdf417b25c7"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "sparql-university",
+      "category": "data-querying",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "22eeab47d3b27b06df2627b3c21cfbd579ed7dcc85ebcb7c4b3a241c3c35f449",
+        "task.toml": "47a6f6dd9ce0fc7631ef607e900fcd039b2d064ea90545645b49c678cddc9585",
+        "environment/Dockerfile": "dd0abcd64e90ab16141169bcbf88a8e5f52732f207cb37765d351cc7a48916a9"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "sqlite-db-truncate",
+      "category": "debugging",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "465c135cd80be49023ea3ecf8f1d840c679b3a960efe425d510894e417b9d802",
+        "task.toml": "56061acd75d9933aa554aeb249b85d7d081227fca1b71a3da7e3dc97a675723e",
+        "environment/Dockerfile": "49ac9305c360f117c10c940b5d036a76fb4a29a0f4302e7d75e573c352db0aea"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "sqlite-with-gcov",
+      "category": "system-administration",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "b6ba9acf62292bc2a0bab40d4805b3abceededbb0ccd4477a1ce9ccc42c14dd9",
+        "task.toml": "9a0da96990ee2ecbf4d92682a4c5301a53db45fc6e2d46ac7d45d3b8ee7fe523",
+        "environment/Dockerfile": "f4be72b64b710962e5d9d5236716b4823ec72401a5379423039101cc00a73cd6"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "torch-pipeline-parallelism",
+      "category": "software-engineering",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 4096,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "989bfcf0c54baf6c8cdc391743dbb2f9e858c5779dd85112536875d4d1b2dcd2",
+        "task.toml": "6c2d193855224486ba436a4104bd25247ee9f0db3c8474b0050b41e866940ad5",
+        "environment/Dockerfile": "c357ea41e4a4013c5c5980b8fef04af6a5ae250ccc6697cf3bad3127401a931f"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "torch-tensor-parallelism",
+      "category": "software-engineering",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 4096,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "121d36637699e55f88943be97ec22aaefc287abf072d8d3acaa42718ea72f7e1",
+        "task.toml": "9e45f2211615b8a7f0ade68c7b45e343b02ef4b6d3978285b695a9a01837f682",
+        "environment/Dockerfile": "5f264ff0bf62a49aee3c6398447de5108df141e7a2ad35c6de8ef39fa62049c6"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "train-fasttext",
+      "category": "model-training",
+      "agent_seconds": 3600.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 4096,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "b701c31f4c5eb6f7e9a6b74d62a52eb696dcae9548a8252c78c0fa850714f998",
+        "task.toml": "994fda7c3081bbdd9f6d05d6279ef64faefa94c214d1e08fbcea656540e4fe91",
+        "environment/Dockerfile": "330e419b0c5cc46cbf749a9f4110cfc92dc55ddfabde36ffa39b0a9c49bb82e5"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "tune-mjcf",
+      "category": "scientific-computing",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "c7fb299b6c6d6c9a2dcd95c5938e6f902ddad1cb02aee875d369cb7eae584b1f",
+        "task.toml": "27b6d4e5a23761cc1a24a695125d891be74a2930fb83a02a66221db0244b08b3",
+        "environment/Dockerfile": "9b78295361faa3a84399ee97e95e85a8f1032bb5c4cb609013335b51f5d0d006"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "video-processing",
+      "category": "video-processing",
+      "agent_seconds": 3600.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "15936f5e61823ae4794994d6e1b7e4e776b40968ea382405b868c501dfe032db",
+        "task.toml": "be4fb42fccc5faa4862789cedd2c560eaa5758a2971989649a6dafeaeccc17aa",
+        "environment/Dockerfile": "d251d457e6bfb182afd6e2aaf209ada81339fb4415d3913c9db171a8995393f8"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "vulnerable-secret",
+      "category": "security",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "d43c72e6c39cdeb1141a9c8eae8357df1b0901383ee2beedacf828bf017d7a2f",
+        "task.toml": "51079626e4c76445e616eff8723efc53af7f1cf8d9c64d15aab2f4f0ecd6df3c",
+        "environment/Dockerfile": "26f994bdf7bd3d8e261a3fd273dc1c54632d8a7e208312b2f2034bef167118af"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "winning-avg-corewars",
+      "category": "software-engineering",
+      "agent_seconds": 3600.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "f8198a1644547b116b4b67384f6bb6b3a78e85076f8cda20079a77f2f3499242",
+        "task.toml": "a9b48765d03a66d966f6a162be203bc31e1d9d6e4abe616a2f4b42bac5dc246f",
+        "environment/Dockerfile": "645036f0bc26d9dccfa943bae20536e3d849540b919bcdbbd1c6e62a9ea4c9f9"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    },
+    {
+      "task": "write-compressor",
+      "category": "software-engineering",
+      "agent_seconds": 900.0,
+      "environment": {
+        "cpus": 1,
+        "memory_mb": 2048,
+        "gpus": 0,
+        "build_timeout_sec": 600.0
+      },
+      "public_input_sha256": {
+        "instruction.md": "c4fc3e73e44deeac95f1cd4a34a2d87e853b22ceec2b2824767f5f087b470bb2",
+        "task.toml": "6066a509066433c97c417fea68c4e3e73996f698dcdcbabe07718835eea355a6",
+        "environment/Dockerfile": "9a583d29d46818f6ff2be7c6a0879d03343106e5376fd5a48eb5926b402bb93b"
+      },
+      "status": "pending_profile_qualification",
+      "official_reward": null
+    }
+  ],
+  "task_count": 89,
+  "remaining_count": 88,
+  "training_on_benchmark": false,
+  "solutions_or_verifier_bodies_inspected": false
+}

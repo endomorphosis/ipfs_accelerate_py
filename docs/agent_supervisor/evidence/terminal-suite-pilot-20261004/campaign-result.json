@@ -1,0 +1,176 @@
+{
+  "archive": {
+    "all_member_hashes_modes_ownership_verified": true,
+    "archive_sha256": "1bb8c275a2242ad4a121beccf3ac084bd8441620180804399f6286e83441a445",
+    "generic_source384_config": "terminal-source384-config@1",
+    "header_contract_selected": false,
+    "manifest_sha256": "c320004ca985c881956b23e8a30610184bd956a2d822b5581705be7c67fa178a",
+    "repository_pins": 12016,
+    "source_revisions": {
+      "datasets": "d5aaf256618c53b009695e8d5618436fba1c0419",
+      "kit": "a9b98beac1ef14278b4adf4f2289cd509530fb86",
+      "source": "4344c7272ebe3c5f26f192d4cb10c962a43eff34"
+    },
+    "verified_members": 27217
+  },
+  "attempts_per_task": 1,
+  "benchmark_advantage_claimed": false,
+  "broad_readiness_is_static_metadata_only": true,
+  "cli_version": "0.158.0",
+  "dataset_revision": "2fd12b88aafdd04a52c298e3940bcb189f9766d6",
+  "dataset_tasks": 89,
+  "dollar_cost": null,
+  "expansion_note": "The preserved original campaign plan selected headless-terminal. During that pilot, largest-eigenval and FEAL were prepared as additional serial tasks, reusing frozen runtime assets and the original execution deadline; task state and indexes were fresh.",
+  "first_trial_successor_status": "not_exported_by_original_bounded_inspector",
+  "ir_scope": "Frozen SecurityIR Source384 checkpoint inference; no claim of all four IR checkpoint inference.",
+  "matched_baselines": false,
+  "model": "gpt-5.6-sol",
+  "newly_run_tasks": 3,
+  "previously_run_tasks": 1,
+  "provider": "ipfs_accelerate_py.llm_router -> codex_cli",
+  "reasoning_effort": "high",
+  "remaining_scope": "Tasks outside the prior Bottle run and this current full-indexed pilot; older legacy runs are not counted here.",
+  "remaining_unexecuted_tasks": 85,
+  "resource_profile": "source384-5cpu-16gib-extended@1",
+  "schema": "terminal-suite-bounded-pilot@1",
+  "selected_arm": "full",
+  "serial": true,
+  "token_or_dollar_ceiling_enforced": false,
+  "token_scope": "Observed cumulative router sessions; cached tokens included in input.",
+  "training_on_benchmark": false,
+  "trials": [
+    {
+      "complete_single_trial_receipt": true,
+      "doctor": {
+        "analysis_status": "available",
+        "provider_calls": 0,
+        "reason_codes": [
+          "no_supported_keyword_mismatch",
+          "unsupported_or_incomplete_source_inventory",
+          "unsupported_output_effect_or_language"
+        ],
+        "route": "model_router",
+        "status": "residual"
+      },
+      "durations_seconds": {
+        "agent_execution": 222.360036,
+        "agent_setup": 236.85531,
+        "environment_setup": 13.199803,
+        "verifier": 18.989359
+      },
+      "exact_trial_task_matches": true,
+      "execute_returncode": 0,
+      "original_task_inputs_unchanged": true,
+      "reward": {
+        "reward": 1.0
+      },
+      "service_restored": true,
+      "service_wrapper_returncode": 0,
+      "task": "headless-terminal",
+      "task_completed": true,
+      "trial": "headless-terminal__m8ZJG9R",
+      "usage": {
+        "all_invocations_receipted": true,
+        "billing_total_verified": false,
+        "cache_included_in_input": true,
+        "cached_input_tokens": 338688,
+        "dollar_cost": null,
+        "input_tokens": 379752,
+        "observed_complete_sessions": true,
+        "output_tokens": 11684,
+        "provider_calls": 2,
+        "source": "observed_native_cumulative_totals",
+        "total_tokens": 391436
+      }
+    },
+    {
+      "complete_single_trial_receipt": true,
+      "doctor": {
+        "analysis_status": "available",
+        "provider_calls": 0,
+        "reason_codes": [
+          "no_supported_keyword_mismatch",
+          "unsupported_module_or_signature_shape",
+          "unsupported_or_incomplete_source_inventory"
+        ],
+        "route": "model_router",
+        "status": "residual"
+      },
+      "durations_seconds": {
+        "agent_execution": 845.225242,
+        "agent_setup": 200.279098,
+        "environment_setup": 11.158925,
+        "verifier": 2.367023
+      },
+      "exact_trial_task_matches": true,
+      "execute_returncode": 0,
+      "original_task_inputs_unchanged": true,
+      "reward": {
+        "reward": 0.0
+      },
+      "service_restored": true,
+      "service_wrapper_returncode": 0,
+      "task": "largest-eigenval",
+      "task_completed": false,
+      "trial": "largest-eigenval__LjJgAkj",
+      "usage": {
+        "all_invocations_receipted": true,
+        "billing_total_verified": false,
+        "cache_included_in_input": true,
+        "cached_input_tokens": 413696,
+        "dollar_cost": null,
+        "input_tokens": 467431,
+        "observed_complete_sessions": true,
+        "output_tokens": 7434,
+        "provider_calls": 2,
+        "source": "observed_native_cumulative_totals",
+        "total_tokens": 474865
+      }
+    },
+    {
+      "complete_single_trial_receipt": true,
+      "doctor": {
+        "analysis_status": "available",
+        "provider_calls": 0,
+        "reason_codes": [
+          "no_supported_keyword_mismatch",
+          "unsupported_or_incomplete_source_inventory",
+          "unsupported_output_effect_or_language"
+        ],
+        "route": "model_router",
+        "status": "residual"
+      },
+      "durations_seconds": {
+        "agent_execution": 288.546274,
+        "agent_setup": 285.298981,
+        "environment_setup": 9.204312,
+        "verifier": 4.437821
+      },
+      "exact_trial_task_matches": true,
+      "execute_returncode": 0,
+      "original_task_inputs_unchanged": true,
+      "reward": {
+        "reward": 1.0
+      },
+      "service_restored": true,
+      "service_wrapper_returncode": 0,
+      "task": "feal-differential-cryptanalysis",
+      "task_completed": true,
+      "trial": "feal-differential-cryptanalysis__3b8Fh2p",
+      "usage": {
+        "all_invocations_receipted": true,
+        "billing_total_verified": false,
+        "cache_included_in_input": true,
+        "cached_input_tokens": 374144,
+        "dollar_cost": null,
+        "input_tokens": 414261,
+        "observed_complete_sessions": true,
+        "output_tokens": 9610,
+        "provider_calls": 2,
+        "source": "observed_native_cumulative_totals",
+        "total_tokens": 423871
+      }
+    }
+  ],
+  "workflow": "Direct planning, indexed context, generic Doctor analysis, router residual work."
+}

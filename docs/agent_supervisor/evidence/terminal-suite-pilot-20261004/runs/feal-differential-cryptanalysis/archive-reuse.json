@@ -1,0 +1,13 @@
+{
+  "archive_sha256": "1bb8c275a2242ad4a121beccf3ac084bd8441620180804399f6286e83441a445",
+  "fresh_task_container": true,
+  "fresh_task_indexes": true,
+  "launch_conditional_on_original_one_hour_pilot": true,
+  "native_task_agent_seconds": 1800,
+  "runtime_archive_rebuilt": false,
+  "schema": "immutable-pilot-archive-reuse@1",
+  "selected_outer_seconds": 960,
+  "selected_work_seconds": 840,
+  "source_artifact": "terminal-suite-pilot-20261004",
+  "task_context_or_model_responses_reused": false
+}

@@ -7,6 +7,12 @@ actual Doctor transactions. `run_supervision_docker.py` runs its offline native
 qualification. The original scripted and live component pilots below remain
 separate experiments; none establishes a Terminal-Bench/native Codex advantage.
 
+Other public Terminal-Bench tasks can use the source-bound task profiles in
+[TERMINAL_SUITE_PROFILES.md](TERMINAL_SUITE_PROFILES.md). The first broader full
+supervisor pilot records two official passes and one native-execution timeout,
+with source/checkpoint pins, token accounting, and readiness gaps for the rest
+of the suite. It is a selected-task pilot with a distinct resource/time profile.
+
 The [IntentIR planning improvement plan](../../../docs/architecture/TERMINAL_BENCH_INTENT_PLANNING_PLAN.md)
 traces the current public instruction entry point and defines requirements,
 symbolic planning, and admission milestones. The first local coverage milestone

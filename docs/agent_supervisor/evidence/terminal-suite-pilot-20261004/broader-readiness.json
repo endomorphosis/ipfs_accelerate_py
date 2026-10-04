@@ -1,0 +1,3986 @@
+{
+  "assessed_tasks": 88,
+  "authored_at_utc": "2026-10-04T16:40:49.740220+00:00",
+  "budget_counts": {
+    "native900_with840_work60_cleanup": 47,
+    "selected_cap_shorter_than_native": 39,
+    "selected_envelope_longer_than_native_requires_explicit_disclosure_or_adjustment": 2
+  },
+  "category_counts": {
+    "bounded_pilot": 3,
+    "build_install_or_training_execution_profile_needed": 15,
+    "cross_root_input_capture_needed": 1,
+    "empty_source_index_representation_needed": 8,
+    "external_data_acquisition_profile_needed": 3,
+    "generated_artifact_and_execution_profile_needed": 3,
+    "git_state_transition_profile_needed": 3,
+    "non_app_repository_profile_needed": 1,
+    "persistent_service_or_vm_profile_needed": 10,
+    "public_test_path_provenance_review": 4,
+    "source_candidate_needs_profile": 1,
+    "source_data_or_language_capture_needs_review": 35,
+    "unknown_needs_exact_public_profile": 1
+  },
+  "dataset_commit": "2fd12b88aafdd04a52c298e3940bcb189f9766d6",
+  "excluded_completed_task": "fix-code-vulnerability",
+  "interpretation": [
+    "Readiness categories are engineering gaps for the current bounded generic route, not benchmark scores or claims that tasks are impossible.",
+    "No additional task is certified runnable based solely on Dockerfile names, file suffixes or a public description.",
+    "Public task.toml descriptions support manual workflow grouping; filename/layout heuristics identify areas to inspect, not complete runtime inventories.",
+    "Only the controller-reported headless pilot success is acknowledged; later pilot results must be joined from their independently inspected bounded receipts.",
+    "Current full indexing requires nonempty exact source inputs, at most64 index files, complete native adapter coverage, qualified symbols and source byte bounds. Metadata cannot establish these runtime properties.",
+    "The adapter declares Python, JavaScript/TypeScript/JSX/TSX and JSON/Markdown frontends; language support alone does not establish qualified symbol coverage, compatible semantics or admission.",
+    "The 840-second work budget differs from native allowances on39 longer and2 shorter tasks. Larger suite results must retain per-task budgets and disclose modifications.",
+    "No empty-source task should acquire fabricated source facts. Data, binaries, generated files and external inputs require declared representations and separately scoped capabilities.",
+    "After the three selected pilots,85 other tasks still need their own qualification; this report does not execute or score them."
+  ],
+  "recommended_workstreams": [
+    "Add an honest empty-source planning/index representation, preserving absence of source proof authority.",
+    "Separate exact immutable task input inventory from the subset qualified for source-symbol indexing; retain explicit unsupported/data coverage and source hashes.",
+    "Introduce explicit build, dependency-installation, command execution and generated-artifact stages with bounded permissions and task-native budget accounting.",
+    "Add separately authorized service/VM, Git metadata and alternative repository-root profiles.",
+    "Qualify public-test provenance boundaries before tasks whose original image copies files from tests trees.",
+    "Run matched baselines and no-index ablations on each qualified profile while preserving full recorded model usage and failed-attempt costs."
+  ],
+  "schema": "terminal-public-broader-readiness@1",
+  "source_boundary": {
+    "candidate_source_bodies_read": false,
+    "hidden_verifier_or_solution_bodies_read": false,
+    "other_access": "Public environment file names and stat sizes only; paths under test/tests/solution/solutions are omitted, and no bodies under those paths are read. Dockerfile COPY directives referring to such paths are retained as public provenance warnings.",
+    "read_contents": [
+      "public instruction.md",
+      "public task.toml",
+      "public environment Dockerfile",
+      "current program AST adapter implementation to understand declared language coverage"
+    ],
+    "source_edits_performed": false,
+    "task_execution_performed": false
+  },
+  "tasks": [
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "scientific-computing",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to implement an adaptive rejection sampler in R with proper statistical algorithms, modular design, input validation, log-concavity checking, and formal testing.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY protected.tar.gz.enc /protected/protected.tar.gz.enc"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "e644a3343e339303230f1441b7383f076d21c69a5a7aa6430b4f8a9d27f15c8b",
+        "environment_file_metadata": [
+          {
+            "bytes": 260,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 5552,
+            "path": "protected.tar.gz.enc"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "3530999e72b651f260dabab69c2594cefae66e55123136b72663efe71546007e",
+        "task_toml_sha256": "6ed7b37f74beb46e9d47b0f5fad53025667c9548baff4e96d467b56d429fab1a"
+      },
+      "readiness_category": "empty_source_index_representation_needed",
+      "reason": "The public task requests newly written R code and generated samples; no original task code is declared in /app. A protected archive copied outside /app must stay outside worker evidence.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "adaptive-rejection-sampler"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 3600.0,
+      "native_category": "scientific-computing",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to recover a Bayesian Network DAG structure from data, perform causal interventions, and sample from the modified network.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "8b0b1056e9c66c01a14a3d79332cc425498f2926b6deda13d200591ee5e5e6cc",
+        "environment_file_metadata": [
+          {
+            "bytes": 600,
+            "path": "Dockerfile"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "5f5207ce23c375270c26719fb66d89843bc88cf1d40671ed87c6b7bab4d394e5",
+        "task_toml_sha256": "6493f7162da424a4fd95da721bd3fd1ce7e5dd26e792132cb9c46db536b67090"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public contract or environment includes binary, data or non-Python source inputs. Exact full inventory, native adapter coverage and declared source/data representation need review; unsupported files cannot be silently dropped.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "bn-fit-modify"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 1200.0,
+      "native_category": "security",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the agent's ability to bypass an HTML sanitization filter by crafting malicious HTML that triggers JavaScript execution after filtering.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY filter.py /app/",
+          "COPY tests/test_outputs.py /app"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "456f7dbf9eb988d24598e46fd371f8f732061bcdc55031dff2f8fc79030be5c4",
+        "environment_file_metadata": [
+          {
+            "bytes": 703,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 960,
+            "path": "filter.py"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 2,
+        "instruction_sha256": "ad42558111b2a8e8534bdf52b584b804348e1a8d68d756f812a31d5147e65be5",
+        "task_toml_sha256": "f820eb1b47e4ccc548b87d9a418fef519137dcf975ad73d0fb5246df00a9669b"
+      },
+      "readiness_category": "public_test_path_provenance_review",
+      "reason": "Dockerfile copies tests/test_outputs.py into /app and public instruction refers to it. The current no-test-body rule requires an explicit provenance/exclusion design; no copied test body was inspected.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "break-filter-js-from-html"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "debugging",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to compile and install a Python package with Cython extensions from source while fixing NumPy 2.x compatibility issues.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "cb6cf421cb9b69d43bd25cd491e49bda982fbb865d47515178d017eda727194e",
+        "environment_file_metadata": [
+          {
+            "bytes": 395,
+            "path": "Dockerfile"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "7e52874e45f88505bd21540229719de6639a401477557d814489981d472f0e34",
+        "task_toml_sha256": "c472f0e7522c128fb7f03e00b50c8cdf2e5e6474daa1e094e7441f4b54e770b2"
+      },
+      "readiness_category": "build_install_or_training_execution_profile_needed",
+      "reason": "Public contract explicitly involves compilation, installation, training or producing executable/model artifacts. A bounded static file-publication profile does not by itself authorize or realize that workflow.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "build-cython-ext"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "software-engineering",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to build pMARS from Debian source packages with X11 support disabled, requiring Makefile modification and headless compilation.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY warriors/flashpaper.red warriors/rave.red /app/"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "ff0a9f766151b6304a33b8fe8787dc27d75f6ea679eec4e9a4f2c8876fe08b25",
+        "environment_file_metadata": [
+          {
+            "bytes": 316,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 1094,
+            "path": "warriors/flashpaper.red"
+          },
+          {
+            "bytes": 784,
+            "path": "warriors/rave.red"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "1606850579342a8b8f2189de0e499fae6be21198150d8dd1e4d18c2efbcf3b82",
+        "task_toml_sha256": "7ee2eac27b99fd462e0760552a430454db693f86608af5bb570b020270e4c9cd"
+      },
+      "readiness_category": "build_install_or_training_execution_profile_needed",
+      "reason": "Public contract explicitly involves compilation, installation, training or producing executable/model artifacts. A bounded static file-publication profile does not by itself authorize or realize that workflow.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "build-pmars"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 12000.0,
+      "native_category": "software-engineering",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to locate, download, patch, and compile legacy POV-Ray 2.2 raytracer from 1990s source archives on a modern system.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY deps/illum1.pov /app/deps/illum1.pov"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "44f2b5fc7311d8f336daaaca99dd4216b49355e67f50b494ebacf1b0f7c14e92",
+        "environment_file_metadata": [
+          {
+            "bytes": 429,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 4678,
+            "path": "deps/illum1.pov"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "56c8ecdd0084a07f8c97986c43af5c37ed03dd5aa994da6735cf59806162d1b2",
+        "task_toml_sha256": "b90a47ec26c1191d3c523cc094ea96b170e42fbfe176ef1f814c57d05390c097"
+      },
+      "readiness_category": "build_install_or_training_execution_profile_needed",
+      "reason": "Public contract explicitly involves compilation, installation, training or producing executable/model artifacts. A bounded static file-publication profile does not by itself authorize or realize that workflow.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "build-pov-ray"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 1200.0,
+      "native_category": "machine-learning",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to install and configure BVLC Caffe 1.0.0, train a CNN on CIFAR-10 for exactly 500 iterations in CPU-only mode, and achieve specified accuracy thresholds.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "e09b48207ea329b6a0f106d45c3307f8ad4f5acd1adbd5a2f874acf7bd048ea3",
+        "environment_file_metadata": [
+          {
+            "bytes": 286,
+            "path": "Dockerfile"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "55c0dd21c7f26c9e7b0a5fefb2cd2aadf8f958c2b6e5e14aa47b12754a957d07",
+        "task_toml_sha256": "19daf54e378e1d811883d0f0c9c16344f58871770699993477f375e5fc1fe193"
+      },
+      "readiness_category": "build_install_or_training_execution_profile_needed",
+      "reason": "Public contract explicitly involves compilation, installation, training or producing executable/model artifacts. A bounded static file-publication profile does not by itself authorize or realize that workflow.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "caffe-cifar-10"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "software-engineering",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to implement async task concurrency control with proper cleanup on cancellation, including the edge case of queued tasks.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "1ee7bdb4a7536f5f114c11a3ac6ff42790abfea901fcba6b2a8ea8685f19140e",
+        "environment_file_metadata": [
+          {
+            "bytes": 213,
+            "path": "Dockerfile"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "23d22f7039b50682941652c716f96dac314b8585c32c133614cac77dc067f47e",
+        "task_toml_sha256": "14db0675e04408f2133b0067e8dbddf66a1d6e7baf6b8d38bef8ecccfc4e58a8"
+      },
+      "readiness_category": "empty_source_index_representation_needed",
+      "reason": "Public task is creation from an instruction without an original task source corpus. Current full index requires actual source inputs; no synthetic program symbols may stand in for an empty repository.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "cancel-async-tasks"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "games",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the agent's ability to analyze a chess position from an image, use a chess engine to find the best move(s), and handle multiple valid solutions.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY make.py /app"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "d5697e7a11399e45f105bf43f40e5c95746d6a8601965ea6935a52b59bbbfa2b",
+        "environment_file_metadata": [
+          {
+            "bytes": 512,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 3651,
+            "path": "make.py"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "6ba25be4e291a4ad04ae42b2dddefcdaef67ca45ca9d5dce661a2e517b19ce7a",
+        "task_toml_sha256": "d8f01d3c84ed5836edbb49c6c3b3cc7b5b96d951cf01a0987467c9206fb22f9e"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public contract or environment includes binary, data or non-Python source inputs. Exact full inventory, native adapter coverage and declared source/data representation need review; unsupported files cannot be silently dropped.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "chess-best-move"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 3600.0,
+      "native_category": "software-engineering",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the agent's ability to implement complex mathematical functions (Fibonacci of integer square root) using only combinational and sequential logic gates in a hardware description format.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY tests/sim.c /app",
+          "COPY gates.txt /app"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "780c23986778f3e5f842567868af30b1135ed095ca9449e1c90b7f0e0483d3d4",
+        "environment_file_metadata": [
+          {
+            "bytes": 321,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 438,
+            "path": "gates.txt"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 2,
+        "instruction_sha256": "a7f500266a878d04ac9de39fba76220cfad216d8f6b8063bba93bebb3d4ab9ea",
+        "task_toml_sha256": "9f5aa1f7ebbbcec90fd109121e9bd509af3cfff6b4cec701bd91947988f40972"
+      },
+      "readiness_category": "public_test_path_provenance_review",
+      "reason": "Dockerfile copies tests/sim.c and gates.txt. Public simulator provenance must be handled without inspecting tests; C and gate language also need source-evidence handling.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "circuit-fibsqrt"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "software-engineering",
+      "native_difficulty": "easy",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to reverse-engineer and reimplement a COBOL program's business logic in Python with exact output reproduction.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY src/ /app/src/",
+          "COPY data/ /app/data/"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "8b175c83fc03ec7d16d6101516bc5100230b592f480e435279f4fe051c9280b2",
+        "environment_file_metadata": [
+          {
+            "bytes": 358,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 102,
+            "path": "data/ACCOUNTS.DAT"
+          },
+          {
+            "bytes": 84,
+            "path": "data/BOOKS.DAT"
+          },
+          {
+            "bytes": 66,
+            "path": "data/TRANSACTIONS.DAT"
+          },
+          {
+            "bytes": 15,
+            "path": "src/INPUT.DAT"
+          },
+          {
+            "bytes": 5762,
+            "path": "src/program.cbl"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "a87074f1141b7345394cd88053d0debb0dc8f7de95308882c6538ee9a3b359da",
+        "task_toml_sha256": "4b620211dc3d6b1b989f0210c5ecd2f606974581c8bce27bd78659d48cf0cfbd"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public contract or environment includes binary, data or non-Python source inputs. Exact full inventory, native adapter coverage and declared source/data representation need review; unsupported files cannot be silently dropped.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "cobol-modernization"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 1200.0,
+      "native_category": "software-engineering",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates an agent's ability to extract code from an image using OCR or vision models, implement the pseudocode logic with cryptographic hashing, and produce the correct output.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY code.png /app"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "5bd29db32ea0ef2b5c87c8526d0ac1b102be922dab66510f06439ab9dc84809c",
+        "environment_file_metadata": [
+          {
+            "bytes": 234,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 95041,
+            "path": "code.png"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "8c3af6483e409defef9786da51f318ae2ca71afe2327b94471d2f0e2e367442c",
+        "task_toml_sha256": "3a13c1e252bb8759f51215be0b2b2cb1b4c697f0dd570f2d7702cc28b28f08de"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public contract or environment includes binary, data or non-Python source inputs. Exact full inventory, native adapter coverage and declared source/data representation need review; unsupported files cannot be silently dropped.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "code-from-image"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 2400.0,
+      "native_category": "system-administration",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 2,
+        "gpus": 0,
+        "memory_mb": 4096,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to build the CompCert verified C compiler from source with proper configuration for the host architecture and dependencies.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "c357ea41e4a4013c5c5980b8fef04af6a5ae250ccc6697cf3bad3127401a931f",
+        "environment_file_metadata": [
+          {
+            "bytes": 200,
+            "path": "Dockerfile"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "d6efce07c47484fcd13c7918f68bd4af6314392de43751c4cad1e62530c2ad06",
+        "task_toml_sha256": "d43ddbf12eeb623bcebd2b2ea8a1c059aaf83a29062321539a8f52f1f96c230e"
+      },
+      "readiness_category": "build_install_or_training_execution_profile_needed",
+      "reason": "Public contract explicitly involves compilation, installation, training or producing executable/model artifacts. A bounded static file-publication profile does not by itself authorize or realize that workflow.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "compile-compcert"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "system-administration",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to configure a Git server with automatic deployment to an nginx web server using post-receive hooks.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "8c87039a43581841b7ef11d80c4ff1a5c5f43011877e167403063d55435aaa19",
+        "environment_file_metadata": [
+          {
+            "bytes": 195,
+            "path": "Dockerfile"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "62151b7371bc364277a3c118bba755334c640fb0cefc7a5af106e6e763cf1d97",
+        "task_toml_sha256": "ebb40d72f689512cbd90d865d88ef966b6665ab215544f9247b898b7fa94751b"
+      },
+      "readiness_category": "persistent_service_or_vm_profile_needed",
+      "reason": "Public contract requires a running server, service or virtual machine and potentially system configuration. A new lifecycle/capability profile is needed beyond file publication.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "configure-git-webserver"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 1200.0,
+      "native_category": "personal-assistant",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Find an optimal 1-hour meeting slot for three people with complex availability constraints by parsing ICS calendars and applying constraint satisfaction with tie-breaking preferences.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY inputs/ /app/"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "7d9aba072a4a907229728b9739c8cf821fc2c98450babd64452682caf3759c84",
+        "environment_file_metadata": [
+          {
+            "bytes": 444,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 1660,
+            "path": "inputs/alice_calendar.ics"
+          },
+          {
+            "bytes": 1209,
+            "path": "inputs/bob_calendar.ics"
+          },
+          {
+            "bytes": 1263,
+            "path": "inputs/carol_calendar.ics"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "342def78177f9bc41bea4d11af679bc385a9dda2ac8a1e425be384a5b7f937b6",
+        "task_toml_sha256": "7b9842de16d74e8faf8c7c0aa03b0b81145941cb12dd322d81ae23fc48607250"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public contract or environment includes binary, data or non-Python source inputs. Exact full inventory, native adapter coverage and declared source/data representation need review; unsupported files cannot be silently dropped.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "constraints-scheduling"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "model-training",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to count tokens in a filtered HuggingFace dataset using a specific tokenizer.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "972a00802b1b51e9b833a9f12d62e609db16748a1b4161246eeb21bece3f7e54",
+        "environment_file_metadata": [
+          {
+            "bytes": 166,
+            "path": "Dockerfile"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "baa843c8da9804d68ced71b2e4dea91afb19dd33de2c867b4a15542563a888f9",
+        "task_toml_sha256": "8220a1b8e6e08ecb95556920de358b6aa74b112d8a79625db6915f6b316ccd18"
+      },
+      "readiness_category": "external_data_acquisition_profile_needed",
+      "reason": "Task requires external data/model/website acquisition and computation; initial source inventory and permitted retrieval/execution need an explicit workflow.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "count-dataset-tokens"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 1800.0,
+      "native_category": "security",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 4096,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to crack a password-protected 7z archive using John the Ripper and extract secret contents.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY task-deps/ ./"
+        ],
+        "docker_workdirs": [
+          "/app/john/src",
+          "/app"
+        ],
+        "dockerfile_sha256": "387c60f7a21d4548c12e1af2453aa8bdd12c45bbe576666c3e48777c5b7c3ecb",
+        "environment_file_metadata": [
+          {
+            "bytes": 740,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 215,
+            "path": "task-deps/secrets.7z"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "f5f89400c549eefb2c245caa7770356737b7a12098e6879787e846d9cb5eb822",
+        "task_toml_sha256": "8e192bcbe00e817419bde7ff9b562a5fa0c1e24ec4f3384cba4a31eda0a7b013"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Original Dockerfile builds John the Ripper under /app and copies challenge files; full runtime inventory, binary inputs and authorized execution are unqualified.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "crack-7z-hash"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 1800.0,
+      "native_category": "debugging",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to debug and fix a C++ program that crashes in release mode due to a static initialization order issue with custom memory allocators and STL locale facets.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY patches/ /build/patches/",
+          "COPY program/ /app/"
+        ],
+        "docker_workdirs": [
+          "/build",
+          "/app"
+        ],
+        "dockerfile_sha256": "6ee81e5a4fa2540443d7f27d577ba840728fc6aab9f301ab7919103673c78080",
+        "environment_file_metadata": [
+          {
+            "bytes": 2496,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 814,
+            "path": "patches/locale_classes.tcc.patch"
+          },
+          {
+            "bytes": 5827,
+            "path": "patches/locale_init.cc.patch"
+          },
+          {
+            "bytes": 4654,
+            "path": "program/main.cpp"
+          },
+          {
+            "bytes": 259,
+            "path": "program/user.cpp"
+          },
+          {
+            "bytes": 278,
+            "path": "program/user.h"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "53c68ae14a3c3af9a97c40bfd9bdc30a5d98b37eaa2f69f763475745f70f108d",
+        "task_toml_sha256": "ed474be1983e212913aa8866ebb66216acbe36aef2339ac375d232aa46617481"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public task is C++ repair; Dockerfile copies a program tree. Native language coverage, complete source inventory and compilation execution must be qualified.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "custom-memory-heap-crash"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "file-operations",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Tests the ability to decrypt an XOR-encrypted SQLite WAL file and recover complete database contents including write-ahead log changes.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY main.db /app/main.db",
+          "COPY main.db-wal.encrypted /app/main.db-wal"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "63a260531c62f4ae72060db17f295c0aa03cfc6321f8162c324b7aa6b3f81302",
+        "environment_file_metadata": [
+          {
+            "bytes": 407,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 8192,
+            "path": "main.db"
+          },
+          {
+            "bytes": 16512,
+            "path": "main.db-wal.encrypted"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "5a20375162921b8911c67035d1905df7fd335d1bed03044271e608b2c3c93b26",
+        "task_toml_sha256": "1cdc2c615e259bc10265efbe71b518332070c1c002e226566399e9788f18d0aa"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public contract or environment includes binary, data or non-Python source inputs. Exact full inventory, native adapter coverage and declared source/data representation need review; unsupported files cannot be silently dropped.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "db-wal-recovery"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 3600.0,
+      "native_category": "machine-learning",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Tests the ability to find a probability distribution satisfying precise dual KL divergence constraints through numerical optimization.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "1eaa2eae5c9edd86316401ef3dca829dbe4125391b6845237fa73acd98c30012",
+        "environment_file_metadata": [
+          {
+            "bytes": 277,
+            "path": "Dockerfile"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "aba2e1835b2f827686402c3d3ff9b309aab8c9cbac26e23fc46aaeb34e958915",
+        "task_toml_sha256": "70c8e73cafd0a75306375bec2c2e1e4d82e0cb969fd7e38a63e7c344de43b681"
+      },
+      "readiness_category": "generated_artifact_and_execution_profile_needed",
+      "reason": "Public deliverable is a computed NumPy array with 150000 entries. Current static source publication and source-index route do not supply a numerical execution/artifact plan.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "distribution-search"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 1800.0,
+      "native_category": "scientific-computing",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to design PCR primers for Golden Gate assembly by applying molecular biology knowledge and bioinformatics tools to meet complex cloning constraints.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY sequences.fasta ."
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "26e9e43a98f0b1d132bb638f44b7dc882b0d0ca32d56fa33048adeee00ab600d",
+        "environment_file_metadata": [
+          {
+            "bytes": 224,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 7712,
+            "path": "sequences.fasta"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "88998c98beabdd966ab46c04ede822bbc74796696aa1bf87c567a9131210533c",
+        "task_toml_sha256": "7b571544b64d9be1c91526837e5d805c2181afe0e6fd57a7f0676bba36c868d7"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public contract or environment includes binary, data or non-Python source inputs. Exact full inventory, native adapter coverage and declared source/data representation need review; unsupported files cannot be silently dropped.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "dna-assembly"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 1800.0,
+      "native_category": "scientific-computing",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 4096,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to design PCR primers for site-directed mutagenesis by analyzing plasmid sequences and applying molecular biology constraints on primer length and melting temperature.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY sequences.fasta ."
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "26e9e43a98f0b1d132bb638f44b7dc882b0d0ca32d56fa33048adeee00ab600d",
+        "environment_file_metadata": [
+          {
+            "bytes": 224,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 7238,
+            "path": "sequences.fasta"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "49fce0ee8b73d7ccdf4b8476c6bb87cf362689fd1d77b21a0d8737d16019a473",
+        "task_toml_sha256": "1a9efd5c826d64d31c4874b395f1f9c488b2f26581b0c752fc4619ff177f25eb"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public contract or environment includes binary, data or non-Python source inputs. Exact full inventory, native adapter coverage and declared source/data representation need review; unsupported files cannot be silently dropped.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "dna-insert"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "file-operations",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates ability to parse ELF binary format and extract memory values from executable sections using Node.js.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY task-deps/hi.c /app/"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "1c5c0a227bee1f5e2933710f3c9d89848a4dc9353c2516a549196fb18b842606",
+        "environment_file_metadata": [
+          {
+            "bytes": 367,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 61,
+            "path": "task-deps/hi.c"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "f1dd8c8fd9f01101d2ecb65665bdedc33adc868abd853b3adf556f6aa4982073",
+        "task_toml_sha256": "14e2c28fd7cc1c9c7b64ab0db5565899fed538e38c55074824647cacc3f7a172"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public contract or environment includes binary, data or non-Python source inputs. Exact full inventory, native adapter coverage and declared source/data representation need review; unsupported files cannot be silently dropped.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "extract-elf"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 1800.0,
+      "native_category": "file-operations",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the agent's ability to download a YouTube video, extract text commands through OCR or transcription, and produce a formatted text file with 90% accuracy.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "aa271a9df218d1ddc646ad3b1c5a5e55a75d758c094ba5e08a88226f5c5dc970",
+        "environment_file_metadata": [
+          {
+            "bytes": 153,
+            "path": "Dockerfile"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "2d8634fcd1119de91a86fa246d225bf29b37539e456bf24b946c62d42dab04f5",
+        "task_toml_sha256": "f0ba9af241fab0217ef689c90d02d0bd17225c3aadf9a2788dc024f87dbf81ec"
+      },
+      "readiness_category": "external_data_acquisition_profile_needed",
+      "reason": "Task requires external data/model/website acquisition and computation; initial source inventory and permitted retrieval/execution need an explicit workflow.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "extract-moves-from-video"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "controller_reported_state": "profile prepared; result not inspected",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 1800.0,
+      "native_category": "mathematics",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to implement differential cryptanalysis on a FEAL-like cipher to recover a round key through chosen plaintext attacks.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY feal.py ./"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "c40553e4cf830b7cd075a79dca1a29f5267c45c63b1cedb275383f58af356a30",
+        "environment_file_metadata": [
+          {
+            "bytes": 220,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 1951,
+            "path": "feal.py"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "b4093780b283e5c9838997769fb7bca090e3f4cbbd2d7cb275ba60cdfd722572",
+        "task_toml_sha256": "dcb9f2f15047eee0be15ca18c39c357f89187a94aae6baeff276221e2383eecb"
+      },
+      "readiness_category": "bounded_pilot",
+      "reason": "Already selected as a bounded generic source-bearing pilot. Outcome state below comes from controller communication, not independent receipt inspection.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "feal-differential-cryptanalysis"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 1800.0,
+      "native_category": "mathematics",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to perform linear cryptanalysis on a FEAL-like cipher to recover encryption keys from known plaintext-ciphertext pairs.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY task-deps/ /app/"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "ef521cded1b5e0e9a11a6aa9c758e4474f2160e641fb9a177a20cdc728bfff1d",
+        "environment_file_metadata": [
+          {
+            "bytes": 386,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 3982,
+            "path": "task-deps/decrypt.c"
+          },
+          {
+            "bytes": 3472,
+            "path": "task-deps/feal.c"
+          },
+          {
+            "bytes": 3496,
+            "path": "task-deps/gen.py"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "a2f1669d4067af6c7b8ac05ff7d5849ca5df68397c94701645c4b9a3b6f71b03",
+        "task_toml_sha256": "a39ec2c427af534c96c719dc87f70eb536956b487ce909d04b6365160e7c9fc4"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public contract or environment includes binary, data or non-Python source inputs. Exact full inventory, native adapter coverage and declared source/data representation need review; unsupported files cannot be silently dropped.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "feal-linear-cryptanalysis"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 1800.0,
+      "native_category": "security",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 4096,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the agent's ability to create a robust XSS filter that removes JavaScript from HTML files while preserving legitimate HTML structure and content.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "c35743bdbd10286c8fb89f93b76fe084f900773d3435373082de660a8a6c1ed0",
+        "environment_file_metadata": [
+          {
+            "bytes": 506,
+            "path": "Dockerfile"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "608fd501693f5ceb3e313db03841d910d29497569a7de018c7e1b965eeb96f34",
+        "task_toml_sha256": "61ce21be4baa704e4b667235cf70789bdd4f794ec647175bf573cb68b84dd415"
+      },
+      "readiness_category": "empty_source_index_representation_needed",
+      "reason": "Public task is creation from an instruction without an original task source corpus. Current full index requires actual source inputs; no synthetic program symbols may stand in for an empty repository.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "filter-js-from-html"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 1200.0,
+      "native_category": "data-processing",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 4096,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates OCR, document classification, financial data extraction from mixed JPG/PDF documents, and CSV generation with totals.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY --from=ghcr.io/astral-sh/uv:0.8.14 /uv /uvx /bin/",
+          "COPY randomize_filenames.py /root",
+          "COPY documents/ /tmp/original_documents/",
+          "COPY --from=ghcr.io/astral-sh/uv:0.8.14 /uv /uvx /bin/",
+          "COPY --from=build /app/documents /app/documents"
+        ],
+        "docker_workdirs": [
+          "/root",
+          "/app"
+        ],
+        "dockerfile_sha256": "2ea485aead008998d7a551e8c80b6bd354a74cbffc310a1f4b88d0b7c53d23ff",
+        "environment_file_metadata": [
+          {
+            "bytes": 623,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 885857,
+            "path": "documents/1t2tala7.jpg"
+          },
+          {
+            "bytes": 2052,
+            "path": "documents/41ibljh7.pdf"
+          },
+          {
+            "bytes": 626863,
+            "path": "documents/53lc58dr.jpg"
+          },
+          {
+            "bytes": 1629,
+            "path": "documents/5lxo6qji.pdf"
+          },
+          {
+            "bytes": 254400,
+            "path": "documents/8mdd4v30.jpg"
+          },
+          {
+            "bytes": 2046,
+            "path": "documents/9t84azyt.pdf"
+          },
+          {
+            "bytes": 2019,
+            "path": "documents/c11ertj5.pdf"
+          },
+          {
+            "bytes": 8412,
+            "path": "documents/dbdw2pcn.pdf"
+          },
+          {
+            "bytes": 192117,
+            "path": "documents/g0fn9xuy.jpg"
+          },
+          {
+            "bytes": 212125,
+            "path": "documents/hv3a3zmf.jpg"
+          },
+          {
+            "bytes": 202461,
+            "path": "documents/jxepq85j.jpg"
+          },
+          {
+            "bytes": 221526,
+            "path": "documents/pbhsahxt.jpg"
+          },
+          {
+            "bytes": 770021,
+            "path": "documents/sg65kxvf.jpg"
+          },
+          {
+            "bytes": 287187,
+            "path": "documents/ujv6oh9s.jpg"
+          },
+          {
+            "bytes": 2780,
+            "path": "documents/wnnhj7xv.pdf"
+          },
+          {
+            "bytes": 110509,
+            "path": "documents/xaji0y6d.jpg"
+          },
+          {
+            "bytes": 220646,
+            "path": "documents/zbikcidk.jpg"
+          },
+          {
+            "bytes": 1392,
+            "path": "randomize_filenames.py"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "b21cf2af1891922732327bf586d14b250d36d96de7867479c15bd1c58ef0db58",
+        "task_toml_sha256": "163ee252895c05d36ca37137dba4d6c24b46be28d56ce84ef8bb35bb5b894bda"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public contract or environment includes binary, data or non-Python source inputs. Exact full inventory, native adapter coverage and declared source/data representation need review; unsupported files cannot be silently dropped.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "financial-document-processor"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "software-engineering",
+      "native_difficulty": "easy",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to recover lost Git commits from a detached HEAD state and merge them back into the master branch.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY setup.sh ./",
+          "COPY resources /app/resources"
+        ],
+        "docker_workdirs": [
+          "/app",
+          "/app/personal-site"
+        ],
+        "dockerfile_sha256": "dfd64a46955909f58d1b562ea233c3cace75195bbef5d75cd6b599f3b8967bb7",
+        "environment_file_metadata": [
+          {
+            "bytes": 314,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 332,
+            "path": "resources/patch_files/about.md"
+          },
+          {
+            "bytes": 4875,
+            "path": "resources/patch_files/default.html"
+          },
+          {
+            "bytes": 504,
+            "path": "setup.sh"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "f98174e47ba5ce040f6fad22ef3cbca4dd27b3192868ea5d082077222c3ec4e8",
+        "task_toml_sha256": "25507ef6cbd6bf73c8bfdfbe7f7ba136224c8453fbba2de2993c639e2a61ad8b"
+      },
+      "readiness_category": "git_state_transition_profile_needed",
+      "reason": "Public contract requires Git references/history/merges, outside generic output create/modify declarations and reserved Git metadata policy.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "fix-git"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 3600.0,
+      "native_category": "software-engineering",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates ability to debug and fix a runtime crash in the OCaml garbage collector's C implementation, requiring low-level debugging skills and understanding of compiler internals.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "36d7fd9cc31b3b26eb56079f2a2a0be8cf577df7c9d8f77a1b08249805d5a0df",
+        "environment_file_metadata": [
+          {
+            "bytes": 583,
+            "path": "Dockerfile"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "a8867e4f8a537b3b1622ca2b80cbb278eeba772ce95602ed735c2581d23b2dec",
+        "task_toml_sha256": "423aab8ce6f44ce9349dcde647ca3cbd09afd5ac023910c25699ed687a3c71b2"
+      },
+      "readiness_category": "build_install_or_training_execution_profile_needed",
+      "reason": "Public contract explicitly involves compilation, installation, training or producing executable/model artifacts. A bounded static file-publication profile does not by itself authorize or realize that workflow.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "fix-ocaml-gc"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "file-operations",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Tests the agent's ability to extract and decode text from a 3D printer G-code file by parsing movement commands, rendering them visually, and performing OCR.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY text.gcode.gz /app"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "5383f514233180e5a264c1b3180d33b00f14f622217c5062a96d4aa970d4102e",
+        "environment_file_metadata": [
+          {
+            "bytes": 222,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 433196,
+            "path": "text.gcode.gz"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "ee524a8f846b35f1784a7c9fb01c17f077f6b3b61c8b61d0d2f2a87c0be3166b",
+        "task_toml_sha256": "3aa7a504fe5b3c6eaab16881b0e6dbbe8ac6d4f59084fa49b1e98ad9c71ea00c"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public contract or environment includes binary, data or non-Python source inputs. Exact full inventory, native adapter coverage and declared source/data representation need review; unsupported files cannot be silently dropped.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "gcode-to-text"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "software-engineering",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to recover secrets from unreachable git objects and completely remove them from repository history while preserving legitimate commits.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY challenge-setup.sh /app/challenge-setup.sh"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "006bf5d2e3502a059f9a87bc855a7f85d6c40c67bf8a523dd3f1e9c6f64cc112",
+        "environment_file_metadata": [
+          {
+            "bytes": 510,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 518,
+            "path": "challenge-setup.sh"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "54ac693fd26a4c003f610d62c4b2671f1d1d04ac5b1286f780605e385a9a5861",
+        "task_toml_sha256": "d7f23fda4a6ba3fff902d2a475db8ff74feb5d328980696a77068c02c57d3044"
+      },
+      "readiness_category": "git_state_transition_profile_needed",
+      "reason": "Public contract requires Git references/history/merges, outside generic output create/modify declarations and reserved Git metadata policy.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "git-leak-recovery"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "system-administration",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to set up a Git server with SSH authentication, implement post-receive hooks for automated multi-branch deployment, and configure Nginx to serve branch-specific content over HTTPS.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY default.conf /etc/nginx/sites-available/default"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "88d9a9f4fef1ae7fddf632799dedf5a2fb6489460a93b610c33dd8b122982821",
+        "environment_file_metadata": [
+          {
+            "bytes": 866,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 334,
+            "path": "default.conf"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "54014a38d7526d65faeb6c11d9b7ed3d4a5cb5d973d68d3da3b68b8c0289e125",
+        "task_toml_sha256": "4b9981604578a31205257cca36a28d0c89c9d8d1058541330acd11d3f8d65f82"
+      },
+      "readiness_category": "persistent_service_or_vm_profile_needed",
+      "reason": "Public contract requires a running server, service or virtual machine and potentially system configuration. A new lifecycle/capability profile is needed beyond file publication.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "git-multibranch"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "software-engineering",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 8192,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to implement a minimal, dependency-free C program that performs GPT-2 inference from TensorFlow checkpoints in under 5000 bytes.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "e1f57eb413b92c10565a8100e559f633c4f4ec5c0bcdd5a755a0eb92eb4de02f",
+        "environment_file_metadata": [
+          {
+            "bytes": 416,
+            "path": "Dockerfile"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "1c8de5f0365407d57fbec968bbeb76cba2648a02fbb2045d323d2798ff5dbccc",
+        "task_toml_sha256": "a3fa186d438a42af5909384b8dc0dfdc2ab7a3a68af9159e9d00464988895af0"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Dockerfile downloads model checkpoint and BPE data under /app. Exact runtime sizes are unmeasured; binary/model capture and evidence must be separated from the requested small C source.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "gpt2-codegolf"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "controller_reported_state": "official reward1.0 and native completion reported; full receipt not re-read by this assessment",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "software-engineering",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Implement a Python class that provides a headless terminal interface supporting interactive bash shells, modifier keys, startup file sourcing, and state persistence between commands.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY base_terminal.py /app/base_terminal.py"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "c17679907b17671ab6e363aebaa26464dac2d3d0cfd5680cb0bbe6160af17481",
+        "environment_file_metadata": [
+          {
+            "bytes": 153,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 401,
+            "path": "base_terminal.py"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "004ac3efa98dd4c564f3888fe199962772d23de405c96ec9232c1eab1a2089e8",
+        "task_toml_sha256": "abe0de1ac3adff1fbf0e22e1765efbc061a412891fd255926ed92a5ccacf69e6"
+      },
+      "readiness_category": "bounded_pilot",
+      "reason": "Already selected as a bounded generic source-bearing pilot. Outcome state below comes from controller communication, not independent receipt inspection.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "headless-terminal"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "data-science",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to download a Hugging Face transformer model, create a Flask API for sentiment analysis, and run the service in the background with proper error handling.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "ad4f71e919cc0889dd8ac33e49d5bdc48ffb9f7d44609ac95819f8ea663d3b2b",
+        "environment_file_metadata": [
+          {
+            "bytes": 230,
+            "path": "Dockerfile"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "29151c5b2306f522f38fa905de3d34566865829355e5ca0895f4fca04d51dcc1",
+        "task_toml_sha256": "a75f95a090ad0352069c6d7dc2f4de0a7b80cd12cd6b9ec1c57e59ad3956b89d"
+      },
+      "readiness_category": "persistent_service_or_vm_profile_needed",
+      "reason": "Public contract requires a running server, service or virtual machine and potentially system configuration. A new lifecycle/capability profile is needed beyond file publication.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "hf-model-inference"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 3600.0,
+      "native_category": "system-administration",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 2,
+        "gpus": 0,
+        "memory_mb": 4096,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to configure and run Windows 3.11 in QEMU with VNC display, web interface, and programmatic keyboard control for automated testing.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY etc/pulse/default.pa  /etc/pulse/",
+          "COPY etc/pulse/client.conf /etc/pulse/",
+          "COPY etc/pulse/daemon.conf /etc/pulse/",
+          "COPY etc/pipewire/client.conf /etc/pipewire/",
+          "COPY etc/nginx/nginx.conf  /etc/nginx/",
+          "COPY webaudio.js /usr/share/novnc/core/",
+          "COPY isos/ /app/isos/",
+          "COPY etc/supervisor/supervisord.conf /etc/supervisor/supervisord.conf"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "91aa5335320f7c7721835eb6838bb878fd22cd6a6af50ced1efbc2696dea8dbf",
+        "environment_file_metadata": [
+          {
+            "bytes": 2769,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 855,
+            "path": "etc/nginx/nginx.conf"
+          },
+          {
+            "bytes": 598,
+            "path": "etc/pipewire/client.conf"
+          },
+          {
+            "bytes": 42,
+            "path": "etc/pulse/client.conf"
+          },
+          {
+            "bytes": 2415,
+            "path": "etc/pulse/daemon.conf"
+          },
+          {
+            "bytes": 143,
+            "path": "etc/pulse/default.pa"
+          },
+          {
+            "bytes": 1062,
+            "path": "etc/supervisor/supervisord.conf"
+          },
+          {
+            "bytes": 14,
+            "path": "isos/.gitignore"
+          },
+          {
+            "bytes": 4882,
+            "path": "webaudio.js"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "2a7bf792c7d23129f93d27854067753c59cf52a4a3aae0a7065f2d9c5b63b310",
+        "task_toml_sha256": "0485184bd16cc74883396115d93520bd25b36d23d61e248da88c0dceeab2eeac"
+      },
+      "readiness_category": "persistent_service_or_vm_profile_needed",
+      "reason": "Public contract requires a running server, service or virtual machine and potentially system configuration. A new lifecycle/capability profile is needed beyond file publication.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "install-windows-3.11"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "software-engineering",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to build and deploy a gRPC-based key-value store server with Protocol Buffers, including service definition, code generation, implementation, and background process management.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "47c9982789092437f950736110b2bd18899c39b8fd20f3af3c95b848e564a197",
+        "environment_file_metadata": [
+          {
+            "bytes": 214,
+            "path": "Dockerfile"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "f4b3facc199d5b1c78db6e603ffa29ec1b93a77ff7d291e1a92b42e6bf582bed",
+        "task_toml_sha256": "6ff0f30a526bfff86a67b0b53439b9965229c0f368167dc1a5d05f34d82299a3"
+      },
+      "readiness_category": "persistent_service_or_vm_profile_needed",
+      "reason": "Public contract requires a running server, service or virtual machine and potentially system configuration. A new lifecycle/capability profile is needed beyond file publication.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "kv-store-grpc"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 1200.0,
+      "native_category": "file-operations",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to efficiently transform a 1-million-row CSV file using keystroke-efficient Vim macros with strict command restrictions.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY gen_large_csv.py /app/"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "609759efe5a6bca4c0f4d0011dd1dda814896ca6873ead803af68d92b92d8aa2",
+        "environment_file_metadata": [
+          {
+            "bytes": 675,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 2600,
+            "path": "gen_large_csv.py"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 2,
+        "instruction_sha256": "2746a16369b28b2e368ca168bc85222811cbe570f3b315f1b1c432afad07ddc8",
+        "task_toml_sha256": "5c9488e80c1186f72efb8193e6be13c74eadf334b3846db2e794d24513a88f5f"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public task declares one-million-row CSV inputs and a Vim macro output; Dockerfile generates CSVs and removes the generator. Source byte/count limits and the non-code data index need qualification.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "large-scale-text-editing"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "controller_reported_state": "active trial reported; result not inspected",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "mathematics",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the agent's ability to optimize eigenvalue computation by implementing a faster alternative to numpy's default algorithm while maintaining mathematical correctness.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY src/eigen.py /app/eigen.py",
+          "COPY src/eval.py /app/eval.py"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "93253c52a674766179244f2290ba8ed43680a7cbbbc0f7168322298c5f5a4b94",
+        "environment_file_metadata": [
+          {
+            "bytes": 307,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 642,
+            "path": "src/eigen.py"
+          },
+          {
+            "bytes": 2246,
+            "path": "src/eval.py"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab",
+        "task_toml_sha256": "f7b9b7dda446f969a3ce88f61039d216f4d58b5fc5c10ff9faa24e2403bbd830"
+      },
+      "readiness_category": "bounded_pilot",
+      "reason": "Already selected as a bounded generic source-bearing pilot. Outcome state below comes from controller communication, not independent receipt inspection.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "largest-eigenval"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 1800.0,
+      "native_category": "machine-learning",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Implement a shape-aware batching scheduler for static-graph LLM inference that optimally packs requests into batches while meeting strict performance thresholds on cost, latency, and padding.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY ./task_file /app/task_file"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "10a6193904ee0022ac098504182989893b196dfc74e626a3ca48534a8eacde48",
+        "environment_file_metadata": [
+          {
+            "bytes": 266,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 48964,
+            "path": "task_file/input_data/requests_bucket_1.jsonl"
+          },
+          {
+            "bytes": 50219,
+            "path": "task_file/input_data/requests_bucket_2.jsonl"
+          },
+          {
+            "bytes": 0,
+            "path": "task_file/scripts/__init__.py"
+          },
+          {
+            "bytes": 4380,
+            "path": "task_file/scripts/baseline_packer.py"
+          },
+          {
+            "bytes": 8096,
+            "path": "task_file/scripts/cost_model.py"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "0817374767533fbf51bb93345ee1bba266263c216c6cc55c096e71b4a1d37dfc",
+        "task_toml_sha256": "52aaac942f917e6a91ff658e0272195bd1cd842d41d71e302414c52603cc588b"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public COPY contains Python helper files and two JSONL datasets. Exact all-input AST indexing cannot silently omit data; a source/data split needs a declared representation.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "llm-inference-batching-scheduler"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "data-processing",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to analyze date-stamped log files, calculate counts across multiple date ranges, and generate structured CSV output.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY log_generator_deterministic.py /app/"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "b479f6e987b63a6ec118fa1691b8bb85c437b2a6a0fe63feab5ed7154957fdfc",
+        "environment_file_metadata": [
+          {
+            "bytes": 508,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 3903,
+            "path": "log_generator_deterministic.py"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "c1d4516ad4ec2238209740eaf01291df9ab48b0028a3fc5df383c6f831453484",
+        "task_toml_sha256": "9a9593673d6805ef3a301ea734e9c4dbaf80da1b37c0fe9d1f2ceea2a8c57e18"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Dockerfile generates log files and removes the generator. The runtime file population is not established by Dockerfile names, and logs need a data-evidence representation.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "log-summary-date-ranges"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 1800.0,
+      "native_category": "system-administration",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to configure a functional mailing list server by integrating postfix and mailman3 with proper join/leave/announce workflows.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY src/eval.py /app/eval.py"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "69f9fc624fa27eb7baf2a5b28b7d90e31899ee5bc18f4219cace00b8c7435784",
+        "environment_file_metadata": [
+          {
+            "bytes": 439,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 6099,
+            "path": "src/eval.py"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "240d03a73e38087d40c55460d48a098c70143e911a279cffe2468f642322cdee",
+        "task_toml_sha256": "a04f4d0e9be25056d2cd79d6a018bc875b6e6fb51d429a9241f282272cc660d1"
+      },
+      "readiness_category": "persistent_service_or_vm_profile_needed",
+      "reason": "Public contract requires a running server, service or virtual machine and potentially system configuration. A new lifecycle/capability profile is needed beyond file publication.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "mailman"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "software-engineering",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates ability to cross-compile the DOOM game engine for MIPS architecture using LLVM toolchain and verify execution in a JavaScript emulator.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY task-deps/doomgeneric_img.c /app/doomgeneric/doomgeneric/",
+          "COPY task-deps/vm.js /app"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "1da0fdafc36e59fcf685a8dbed9717b291195e251fe0e1247267bc5a0a9980ed",
+        "environment_file_metadata": [
+          {
+            "bytes": 800,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 7052,
+            "path": "task-deps/doomgeneric_img.c"
+          },
+          {
+            "bytes": 64346,
+            "path": "task-deps/vm.js"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "1903b660e4c64966ff257f828c932adff2b289de589bd6aee22b933bb4fef429",
+        "task_toml_sha256": "a7d7a498f0d3a992b384e5086ba2b411767c1c1a013d1b41f6a25cdaf6d05acc"
+      },
+      "readiness_category": "build_install_or_training_execution_profile_needed",
+      "reason": "Public contract explicitly involves compilation, installation, training or producing executable/model artifacts. A bounded static file-publication profile does not by itself authorize or realize that workflow.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "make-doom-for-mips"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 1800.0,
+      "native_category": "software-engineering",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Implement a complete MIPS interpreter in JavaScript that can execute a DOOM ELF binary, handle system calls, and render the first game frame correctly.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY task-deps/mips.patch /tmp"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "7fe6814c68c28d907e72ac05176ba8f9f493d7eb6693bef96c97126462b8fedf",
+        "environment_file_metadata": [
+          {
+            "bytes": 958,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 447482,
+            "path": "task-deps/mips.patch"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "d25c0ed6d4697c2b2e6fe047b6cd7317f640dc84d7457ccc9d3d1b4cf8021ffd",
+        "task_toml_sha256": "3fda43066642fd38516d07b2679f9813bdb3f1a42bc80b0c06151f60b9210e82"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public task requires a JavaScript interpreter around a DOOM ELF binary; source coverage, binary input handling and runtime capture are unqualified.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "make-mips-interpreter"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 1800.0,
+      "native_category": "data-science",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 4,
+        "gpus": 0,
+        "memory_mb": 8192,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to implement and run a hierarchical Bayesian model using R and Stan, including package installation, model specification with custom priors, MCMC sampling configuration, and posterior inference.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY task-deps/data.csv ./"
+        ],
+        "docker_workdirs": [
+          "/app",
+          "/app"
+        ],
+        "dockerfile_sha256": "f91f9c77f711229a9757a1fc2b48bd547163c342295e6ca222e86cfd6b4bb385",
+        "environment_file_metadata": [
+          {
+            "bytes": 432,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 351,
+            "path": "task-deps/data.csv"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "5554ddc6d7b069e965eda4936cd02fce45ed54f51cf38045e6c51aeb39bed943",
+        "task_toml_sha256": "c1c0351670499e15b3818f7394894e2789f74fc2a61ea76eccab826c1a951a94"
+      },
+      "readiness_category": "build_install_or_training_execution_profile_needed",
+      "reason": "Public contract explicitly involves compilation, installation, training or producing executable/model artifacts. A bounded static file-publication profile does not by itself authorize or realize that workflow.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "mcmc-sampling-stan"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "debugging",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 4096,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates git bundle merging, conflict resolution, and ARC-AGI style pattern recognition by requiring agents to fetch two git bundles, merge branches, and implement a generalizable transformation function from input/output examples.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY task-deps/. ."
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "4a03ae6f0c60b9c2f45c33f0413b5aa75c9811870254e3ff1968fd0119173fc6",
+        "environment_file_metadata": [
+          {
+            "bytes": 221,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 1009,
+            "path": "task-deps/bundle1.bundle"
+          },
+          {
+            "bytes": 1244,
+            "path": "task-deps/bundle2.bundle"
+          },
+          {
+            "bytes": 6977,
+            "path": "task-deps/examples.json"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "2d826479873e5ac1c94c1f802763bf85c22bb04624384685ebdf6b153fe0278e",
+        "task_toml_sha256": "6ced40e06b43b169857509765eb7f07791db558f9437cc7367d2536771c2ca5b"
+      },
+      "readiness_category": "git_state_transition_profile_needed",
+      "reason": "Public contract requires Git references/history/merges, outside generic output create/modify declarations and reserved Git metadata policy.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "merge-diff-arc-agi-task"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "mathematics",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Extracts hidden layer weights from a black-box ReLU neural network by querying outputs and identifying critical points where neurons activate.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY forward.py /app"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "598b1f80d3b7194e97cbf02c8d245de30e303909e0cbe6465125d1d3179fddb5",
+        "environment_file_metadata": [
+          {
+            "bytes": 301,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 922,
+            "path": "forward.py"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "c9e179dd099065a34c362a865b0eb9fab5f7d96be582cf117e7519580c036ebe",
+        "task_toml_sha256": "eb64dfaf8ae88868911ae28855cdc4f767de464001e2704919015b595be6dc29"
+      },
+      "readiness_category": "generated_artifact_and_execution_profile_needed",
+      "reason": "Public forward.py supplies a callable source input, but the task also requires executing queries and producing stolen_A1.npy. This is more than static Python file publication.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "model-extraction-relu-logits"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 600.0,
+      "native_category": "scientific-computing",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to migrate legacy Python 2.7 scientific computing code to modern Python 3 with proper dependencies and data processing.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY climate_analyzer/ /app/climate_analyzer/"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "cde5acd6f59b6680c32d8faa6a753a806ef69bfc1d9b60e7dd6a4ef63503f0e4",
+        "environment_file_metadata": [
+          {
+            "bytes": 35,
+            "path": ".ruff_cache/.gitignore"
+          },
+          {
+            "bytes": 43,
+            "path": ".ruff_cache/CACHEDIR.TAG"
+          },
+          {
+            "bytes": 816,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 3537,
+            "path": "climate_analyzer/analyze_climate.py"
+          },
+          {
+            "bytes": 492,
+            "path": "climate_analyzer/config.ini"
+          },
+          {
+            "bytes": 219,
+            "path": "climate_analyzer/requirements_old.txt"
+          },
+          {
+            "bytes": 770,
+            "path": "climate_analyzer/sample_data/climate_data.csv"
+          },
+          {
+            "bytes": 329,
+            "path": "pyproject.toml"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "666b8ac370ae81b0e3780a36e722c91b0f986fccbdc6ed36ab3bd17e6943da0f",
+        "task_toml_sha256": "a3029f3d4caaa1f08bd1b45488247bf8cb586bf1ce69717acf1114d20f51eb48"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public instruction identifies Python2 source plus CSV/INI inputs. Python3 AST compatibility and non-code input capture require review; pandas and scientific packages are already installed by Dockerfile.",
+      "selected_budget_relation": "selected_envelope_longer_than_native_requires_explicit_disclosure_or_adjustment",
+      "task": "modernize-scientific-stack"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 3600.0,
+      "native_category": "data-science",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 4096,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to research and identify the best-performing embedding model on the Scandinavian MTEB leaderboard using data science tools and techniques.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "b2745c5eba026bda7f3ef48b1cd53f267debc0daa58b701a7a7fa903f2060aa4",
+        "environment_file_metadata": [
+          {
+            "bytes": 315,
+            "path": "Dockerfile"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "3527f3a362a23e50c7b471e39964216660e7c7f0501250a417837e17ac572ad5",
+        "task_toml_sha256": "05d14cf25aa812a66e4c607b5f4b3bc665f39aa7120a7c1b2d13a4c5e077d8ad"
+      },
+      "readiness_category": "external_data_acquisition_profile_needed",
+      "reason": "Task requires external data/model/website acquisition and computation; initial source inventory and permitted retrieval/execution need an explicit workflow.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "mteb-leaderboard"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 1800.0,
+      "native_category": "data-science",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the agent's ability to perform semantic text retrieval using MTEB embeddings, computing cosine similarities and correctly ranking documents to find the 5th most similar match to a query.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY task-deps/ ./"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "97c880635fbfbaec860a9255f849b1a1c4630e2dca8588eb838c4a95669d917e",
+        "environment_file_metadata": [
+          {
+            "bytes": 371,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 2048,
+            "path": "task-deps/data.txt"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "0f6289f5492b6d814833fba328c3aeb93a722d8aecad4bfb5e7c8c2979dc8678",
+        "task_toml_sha256": "35b8c675ae847e33652c6ce64fe1f914ddb05d0ae6a3a87be80821bd75fb2d2a"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public contract or environment includes binary, data or non-Python source inputs. Exact full inventory, native adapter coverage and declared source/data representation need review; unsupported files cannot be silently dropped.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "mteb-retrieve"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "data-processing",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates an agent's ability to merge multi-format data sources (JSON, CSV, Parquet) with inconsistent schemas, applying field mappings and priority-based conflict resolution to produce standardized outputs.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY data /data"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "c95a40d3d35b473dc15ae1e8784ba7fb1725805c0583fc574dd2764325d75e4f",
+        "environment_file_metadata": [
+          {
+            "bytes": 427,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 291,
+            "path": "data/source_a/users.json"
+          },
+          {
+            "bytes": 129,
+            "path": "data/source_b/users.csv"
+          },
+          {
+            "bytes": 3639,
+            "path": "data/source_c/users.parquet"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "d1d28bb6e37f7a255a1b7f78aae8591f35c0494f33e4913392424ad954aab944",
+        "task_toml_sha256": "ee3964c0ee040f0a0cb121cefefbc15443d127684acb003fa5b61dd42f31c694"
+      },
+      "readiness_category": "cross_root_input_capture_needed",
+      "reason": "Required JSON, CSV and Parquet inputs are at /data, outside current exact /app source capture; outputs remain under /app.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "multi-source-data-merger"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "system-administration",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to install and configure Nginx with advanced request logging, rate limiting, and custom error pages.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "43003466d89ab83484a3fa618e35b58cdb74a002b1e8716ef30f12b3ac8302d8",
+        "environment_file_metadata": [
+          {
+            "bytes": 246,
+            "path": "Dockerfile"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "26a7ac98aced6107f147206790ada77bbf8ed3c25fb360cf323d5fc6889edf99",
+        "task_toml_sha256": "b7a78d00be13656f75069197100b7b8c4fd268decf6f78929c853b3222a2729d"
+      },
+      "readiness_category": "persistent_service_or_vm_profile_needed",
+      "reason": "Public contract requires a running server, service or virtual machine and potentially system configuration. A new lifecycle/capability profile is needed beyond file publication.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "nginx-request-logging"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "security",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates an agent's ability to generate self-signed TLS certificates using OpenSSL, manage cryptographic keys with proper permissions, and create verification scripts.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "f590b523038be43afcaf5291d7b9e8ed1333c48d9994e77b8dee2f2c352f0f40",
+        "environment_file_metadata": [
+          {
+            "bytes": 259,
+            "path": "Dockerfile"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "38054a3371f7c2c853478a2f9af0bff858437d5b28a9a07483238f06e566921f",
+        "task_toml_sha256": "75c8913f0fa15890786c11999cde920b8bfc10d4ce8a14edf1e76985a2ac5800"
+      },
+      "readiness_category": "generated_artifact_and_execution_profile_needed",
+      "reason": "Public instruction requires OpenSSL execution, generated private key/certificate artifacts and key file mode600. Current profile effects describe file creation/modification, not execution or exact permissions.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "openssl-selfsigned-cert"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 750.0,
+      "native_category": "debugging",
+      "native_difficulty": "easy",
+      "native_environment": {
+        "cpus": 2,
+        "gpus": 0,
+        "memory_mb": 4096,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to fix LaTeX overfull hbox warnings by replacing words with valid synonyms while satisfying compilation and constraint requirements.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY tests/main.tex .",
+          "COPY tests/input.tex .",
+          "COPY tests/synonyms.txt ."
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "f73659a7e258641b2b93affb1d854dbba93239478707255767003e59cf1d1477",
+        "environment_file_metadata": [
+          {
+            "bytes": 439,
+            "path": "Dockerfile"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 4,
+        "instruction_sha256": "91381d7490afbbf11255e22471d3ed76317353d8e1da372fbc91887e65c57f47",
+        "task_toml_sha256": "76dea2071850fd5c83a6e98b692f3e05c246629e7832a07181f7700784562922"
+      },
+      "readiness_category": "public_test_path_provenance_review",
+      "reason": "Dockerfile copies tests/main.tex, tests/input.tex and tests/synonyms.txt; boundary review and LaTeX/plaintext evidence are required before forming a task profile.",
+      "selected_budget_relation": "selected_envelope_longer_than_native_requires_explicit_disclosure_or_adjustment",
+      "task": "overfull-hbox"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "security",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates an agent's ability to perform digital forensics by recovering a deleted password from fragmented data within a disk image using command-line tools.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY setup.sh /app/"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "6fabcb9e1fcb7155bf8cfe106c17f2dfa3344103e97960dab580c2444b6c9fe0",
+        "environment_file_metadata": [
+          {
+            "bytes": 497,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 1582,
+            "path": "setup.sh"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "bc4f501148805bbccdb94a5c5b745f1ce9564f04ef0fe36bc37c3ca20b7810a5",
+        "task_toml_sha256": "cfd0362d201b957796f9bf1c02cc75646250cb2bd107ec88c768bfcfd091b24b"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public contract or environment includes binary, data or non-Python source inputs. Exact full inventory, native adapter coverage and declared source/data representation need review; unsupported files cannot be silently dropped.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "password-recovery"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 1800.0,
+      "native_category": "software-engineering",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to reverse-engineer and implement a path tracing renderer in C by analyzing a reference image and recreating it algorithmically.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY orig.c /app"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "7aca02e4e20b04ed2269d627a29dd4e7337a02764a9652b641452bf09836a3d5",
+        "environment_file_metadata": [
+          {
+            "bytes": 313,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 9360,
+            "path": "orig.c"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "9f36e02d636f5dc0946619bc518f2e51c24fa75251da9d1f0ca9eca612cb9572",
+        "task_toml_sha256": "cf47013f69bf1b43242da984f231d4daf364fdf44d3845f2eea2ca2cb9308c46"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public task uses C source/image reconstruction; original Dockerfile builds/renders artifacts. Runtime inventory and non-Python/data capture are unqualified.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "path-tracing"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 1800.0,
+      "native_category": "software-engineering",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to reverse-engineer a compiled path tracing renderer and recreate functionally identical C source code under size constraints.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY orig.c /app"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "35b7e409b40098d84a5ca88edb49d8be67ef7410e391dd36b2f89ddf916a3d8f",
+        "environment_file_metadata": [
+          {
+            "bytes": 314,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 9425,
+            "path": "orig.c"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "03e4ef347c1b6bde7ad020b297571cf22c74cfb0434b399b267f3d87462e1176",
+        "task_toml_sha256": "f609310c99bd5f379eea2711f4af8eca79b5bcd1178a034b2285b1171c031b5b"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public task uses a compiled C renderer; exact original binary inventory and source/data evidence need qualification.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "path-tracing-reverse"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "software-engineering",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Create a single polyglot source file that computes Fibonacci numbers when executed as both Python 3 and C code.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "2eb537f29d2bc4ab30e1b35ff352578437a08b90f91ef6360ee28d8195d5098a",
+        "environment_file_metadata": [
+          {
+            "bytes": 195,
+            "path": "Dockerfile"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "a57c0c0e1232113113cd29a154ea7e0ac9ea45e4aedc16958fbc6bc753a4ef96",
+        "task_toml_sha256": "d31b9f60c47eed0d79e10d3be8fd56a23e50b3986606e3f2546863d44ac9a9ea"
+      },
+      "readiness_category": "empty_source_index_representation_needed",
+      "reason": "Public task is creation from an instruction without an original task source corpus. Current full index requires actual source inputs; no synthetic program symbols may stand in for an empty repository.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "polyglot-c-py"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "software-engineering",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to write a polyglot program that compiles and runs correctly as both Rust and C++ code, computing Fibonacci numbers.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "d8a3dc4dc57fa9dac783a029aef3b3094d99a6fdbff57e5201a5fb16e84dee0d",
+        "environment_file_metadata": [
+          {
+            "bytes": 237,
+            "path": "Dockerfile"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "b0fbcd99a97fc886e4e198b6189b977409dada47cae0a87ac7dc185b440b2355",
+        "task_toml_sha256": "3c41e83437068c62a3fdff74641899146e34907aefd9e47346213f47caeb82de"
+      },
+      "readiness_category": "empty_source_index_representation_needed",
+      "reason": "Public task is creation from an instruction without an original task source corpus. Current full index requires actual source inputs; no synthetic program symbols may stand in for an empty repository.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "polyglot-rust-c"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 3600.0,
+      "native_category": "optimization",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 4096,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to implement a high-performance C extension for Python that performs portfolio risk and return calculations at least 1.2x faster than a pure Python baseline while maintaining numerical accuracy.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY benchmark.py /app/benchmark.py",
+          "COPY portfolio_baseline.py /app/portfolio_baseline.py",
+          "COPY portfolio_optimized.c /app/portfolio_optimized.c",
+          "COPY portfolio_optimized.py /app/portfolio_optimized.py",
+          "COPY setup.py /app/setup.py"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "3d0210dedc3a9c0a7956369ba7025fbf6cd4e1bf9eb556bd3a8cbd06092904e6",
+        "environment_file_metadata": [
+          {
+            "bytes": 595,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 4266,
+            "path": "benchmark.py"
+          },
+          {
+            "bytes": 2431,
+            "path": "cvxopt_benchmark.py"
+          },
+          {
+            "bytes": 2331,
+            "path": "portfolio_baseline.py"
+          },
+          {
+            "bytes": 1843,
+            "path": "portfolio_optimized.c"
+          },
+          {
+            "bytes": 994,
+            "path": "portfolio_optimized.py"
+          },
+          {
+            "bytes": 350,
+            "path": "setup.py"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "ffaadcbf9f576b5d5e087d2a06a4b525dd52c6b84d43eb9d85107f0a9aebcb5d",
+        "task_toml_sha256": "4918687e4e261a9852e39e5a554156733c071c17dc89c5f544f15f2ef744ce0a"
+      },
+      "readiness_category": "build_install_or_training_execution_profile_needed",
+      "reason": "Public contract explicitly involves compilation, installation, training or producing executable/model artifacts. A bounded static file-publication profile does not by itself authorize or realize that workflow.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "portfolio-optimization"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 1800.0,
+      "native_category": "scientific-computing",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 4096,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to design a fusion protein gBlock by querying bioinformatics APIs, selecting proteins based on spectral properties, and applying codon optimization with GC content constraints.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY antibody.fasta .",
+          "COPY plasmid.gb .",
+          "COPY pdb_ids.txt ."
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "fad40752bc9fd32d60b946f076a03207fe9924cd71d7285ebd96a5e343808054",
+        "environment_file_metadata": [
+          {
+            "bytes": 273,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 475,
+            "path": "antibody.fasta"
+          },
+          {
+            "bytes": 1620,
+            "path": "pdb_ids.py"
+          },
+          {
+            "bytes": 100,
+            "path": "pdb_ids.txt"
+          },
+          {
+            "bytes": 6053,
+            "path": "plasmid.gb"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "1bb2af1d85e9a823a8ae7273a87df8a3f67e2c93b06cddf34f0051a8b003f7c5",
+        "task_toml_sha256": "d714960681ec921a9247b382dfa0d8e97a9d13a3fe170a6ebd934ebe82398f24"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public contract or environment includes binary, data or non-Python source inputs. Exact full inventory, native adapter coverage and declared source/data representation need review; unsupported files cannot be silently dropped.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "protein-assembly"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "software-engineering",
+      "native_difficulty": "easy",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to complete an incomplete Coq proof of addition commutativity using inductive reasoning and formal verification tactics.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY partial_proof.v /workspace/plus_comm.v "
+        ],
+        "docker_workdirs": [
+          "/workspace"
+        ],
+        "dockerfile_sha256": "6daf1ee29aa4647b06c965d86cf963c21af96d8f0b8f5e0fd4afd31ffd5ebd89",
+        "environment_file_metadata": [
+          {
+            "bytes": 379,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 277,
+            "path": "partial_proof.v"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "7618ac930d942f27376189fe6535d0e69150fa3eba2db24759ae86b2675d21fe",
+        "task_toml_sha256": "240f3ac0076e3362685c8598c4e56658e3882eb25a14ae6cc7e9ab3a4f6b09ea"
+      },
+      "readiness_category": "non_app_repository_profile_needed",
+      "reason": "Original working directory and Coq proof are /workspace; current generic profile is rooted at /app. Coq source and actual coqc compilation require a distinct workflow.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "prove-plus-comm"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "software-engineering",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to create a Python package, build it, set up a local PyPI server, and make the package installable from the server.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "17a4e67580e4f2c6a151d04b9d74eb020666e7eec8e5259c4a5411f9e93858d0",
+        "environment_file_metadata": [
+          {
+            "bytes": 401,
+            "path": "Dockerfile"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "1c537e4a311a8e71155e121f57bfc03f742fbfb99d05314cd03e433996a28a31",
+        "task_toml_sha256": "07c39d7a733c89adadf74bb63a3e906c3694feb6c490d5fc85ac187c003fd447"
+      },
+      "readiness_category": "persistent_service_or_vm_profile_needed",
+      "reason": "Public contract requires a running server, service or virtual machine and potentially system configuration. A new lifecycle/capability profile is needed beyond file publication.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "pypi-server"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "model-training",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to convert PyTorch model weights to JSON, implement neural network inference in C, and create a command-line tool for MNIST digit prediction.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY task-deps/ ./"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "8fd5c0f21a6914cd440d10c84c9db06fec606f20dc3e0363b17a3b8c220dc4d9",
+        "environment_file_metadata": [
+          {
+            "bytes": 185,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 79506,
+            "path": "task-deps/cJSON.c"
+          },
+          {
+            "bytes": 16393,
+            "path": "task-deps/cJSON.h"
+          },
+          {
+            "bytes": 389,
+            "path": "task-deps/image.png"
+          },
+          {
+            "bytes": 311873,
+            "path": "task-deps/lodepng.cpp"
+          },
+          {
+            "bytes": 107788,
+            "path": "task-deps/lodepng.h"
+          },
+          {
+            "bytes": 54714,
+            "path": "task-deps/model.pth"
+          },
+          {
+            "bytes": 654,
+            "path": "task-deps/model.py"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "ce36ee1f6c589f81ee6a6be4967e25c76a2ed697006928023f42dfb9f28a6750",
+        "task_toml_sha256": "fc1c018efbd5d0537ac0741d53d1ebad3886faa51d14cbde8ec953856411bc0d"
+      },
+      "readiness_category": "build_install_or_training_execution_profile_needed",
+      "reason": "Public task requires reading model weights, exporting JSON and building C inference code; model/binary capture and executable build stages need a reviewed workflow.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "pytorch-model-cli"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "model-training",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to reverse-engineer a PyTorch Transformer model architecture from a state dictionary, load pre-trained weights, and selectively fine-tune specific layers to improve performance on a dataset.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY weights.pt /app/",
+          "COPY dataset.pt /app/"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "35851b7561b3ab959ec9f5da34306264f5ab3ddd4c5755be397b7e7a9d13d06e",
+        "environment_file_metadata": [
+          {
+            "bytes": 336,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 206629,
+            "path": "dataset.pt"
+          },
+          {
+            "bytes": 5032882,
+            "path": "weights.pt"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "2bef07dc28be3ab2c35ae389584034c2e4dde92c2c31b3eb6bd829628c8c3f4a",
+        "task_toml_sha256": "5e21f208898908b55214de3081406f3c109f95f8d0e9b6ddae3521ba14c55a90"
+      },
+      "readiness_category": "build_install_or_training_execution_profile_needed",
+      "reason": "Public contract explicitly involves compilation, installation, training or producing executable/model artifacts. A bounded static file-publication profile does not by itself authorize or realize that workflow.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "pytorch-model-recovery"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "system-administration",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 4096,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to start an Alpine Linux VM in QEMU and configure SSH server access with proper networking and authentication.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "015ce0601ff54758f66b33f4952e0d3a577d84c09aed8f3ec5945a570e8d168a",
+        "environment_file_metadata": [
+          {
+            "bytes": 725,
+            "path": "Dockerfile"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "8348c60490cb90bc690cba259dfe98996da4c3294c6d42bba1119b00c64de4de",
+        "task_toml_sha256": "10a43ec6ee732eeba852c377f12e23178f7fa5a4868143f3699a15565ffb64c7"
+      },
+      "readiness_category": "persistent_service_or_vm_profile_needed",
+      "reason": "Public contract requires a running server, service or virtual machine and potentially system configuration. A new lifecycle/capability profile is needed beyond file publication.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "qemu-alpine-ssh"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "system-administration",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 4096,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the agent's ability to configure and start a QEMU virtual machine with telnet-accessible serial console, requiring knowledge of QEMU command-line options, network configuration, and system readiness verification.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "d60a2eca5ead7182f3b5d243ee0f8f52d3ff235589703c22c2e97147216dc850",
+        "environment_file_metadata": [
+          {
+            "bytes": 726,
+            "path": "Dockerfile"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "7917cf2746328057b85d399c794bbf8bf328b2bd90502eaa3287170e25e6267b",
+        "task_toml_sha256": "dc46292fff83fba50192f4c30606a5f9c092a9fb82139686df7dabf6580937d4"
+      },
+      "readiness_category": "persistent_service_or_vm_profile_needed",
+      "reason": "Public contract requires a running server, service or virtual machine and potentially system configuration. A new lifecycle/capability profile is needed beyond file publication.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "qemu-startup"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "data-science",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to optimize a slow SQL query with correlated subqueries by rewriting it using CTEs and window functions while preserving exact output.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY task-deps/my-sql-query.sql /app/my-sql-query.sql"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "064818771f200e0517d22068f87229a7a95d0a82b0778c84ca7203bf1926a0b8",
+        "environment_file_metadata": [
+          {
+            "bytes": 641,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 1158,
+            "path": "task-deps/my-sql-query.sql"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "d25a6de62832a1732c2d3aee10fb0308df1bef5f9aba5234f7a04ceb7442a91d",
+        "task_toml_sha256": "6e88f2a86df699594bcb1bf81df4ed694505f79c9420f671335b02524bbe3868"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "The task requires reading SQLite data and existing SQL, while preserving the database readonly. Current qualified symbol indexing needs an explicit SQL/data capture policy.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "query-optimize"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "scientific-computing",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to fit Lorentzian curves to Raman spectroscopy data, extract peak parameters, and perform scientific data analysis using Python.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY task-deps/ ./"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "8fd5c0f21a6914cd440d10c84c9db06fec606f20dc3e0363b17a3b8c220dc4d9",
+        "environment_file_metadata": [
+          {
+            "bytes": 185,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 88805,
+            "path": "task-deps/graphene.dat"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "1fa59a89d88daf6a4b2d422955f53779b461880b527f40d79c71b16e0ee52433",
+        "task_toml_sha256": "0f3f6b580d7435954b3a114e77cdfb6cd0a856f15cc0ad83cd1b69c48492dfed"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public contract or environment includes binary, data or non-Python source inputs. Exact full inventory, native adapter coverage and declared source/data representation need review; unsupported files cannot be silently dropped.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "raman-fitting"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 3600.0,
+      "native_category": "software-engineering",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to implement a complete chess move generator using only regular expression transformations on FEN notation.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY check.py /app/"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "2616cd775252303839dfda0ee2f047eb862952b053b0103bd6b2460ef90c11b7",
+        "environment_file_metadata": [
+          {
+            "bytes": 208,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 4412,
+            "path": "check.py"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "a6ed3fcc54fc92d71a84af921942422d299ca89b410dcd92cd05a53d0d06436c",
+        "task_toml_sha256": "07fe52636fcc4bc9fff25d5630af145b97a5331219d719cc8decb4ca67ea21d4"
+      },
+      "readiness_category": "source_candidate_needs_profile",
+      "reason": "Only check.py is copied into /app. Candidate source-bearing profile appears plausible, but is unqualified. Public output allowance is up to 10 MB, above the current 1 MB file cap; smaller outputs may still be valid.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "regex-chess"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "data-processing",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Tests the ability to construct a complex regular expression that matches dates in log lines containing valid IPv4 addresses while handling edge cases and boundary conditions.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "5f264ff0bf62a49aee3c6398447de5108df141e7a2ad35c6de8ef39fa62049c6",
+        "environment_file_metadata": [
+          {
+            "bytes": 201,
+            "path": "Dockerfile"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "4f7ac05e70cf9220ea0f1e5a052c5f908cd0fa884e847d80b0bd51bae2e96f9c",
+        "task_toml_sha256": "6bc98525852755caf1fe34c174c2f10f4328adb4ce6c1968dcafe1c877e4e160"
+      },
+      "readiness_category": "empty_source_index_representation_needed",
+      "reason": "Public task is creation from an instruction without an original task source corpus. Current full index requires actual source inputs; no synthetic program symbols may stand in for an empty repository.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "regex-log"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 3600.0,
+      "native_category": "data-science",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to create Python scripts for bidirectional data resharding with file size and directory constraints, using proper dependency management.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY --from=ghcr.io/astral-sh/uv:0.8.15 /uv /uvx /bin/",
+          "COPY setup.py ./"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "2ca4a0e68628b8160f5e4296f779a204f51e3a70a8d4239be30e845e1565b39d",
+        "environment_file_metadata": [
+          {
+            "bytes": 277,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 984,
+            "path": "revert.py"
+          },
+          {
+            "bytes": 1247,
+            "path": "setup.py"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "1810abbf666e51e410950b4f495d3dae88d392ad056afa392e4c687ff31e3992",
+        "task_toml_sha256": "c2f146a1e00f798f7486ff60686ad52749bb73c7b71e984d52716d859e0f7dd8"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Dockerfile setup creates a dataset slice; complete runtime source/data inventory and package/dependency installation scope are unqualified.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "reshard-c4-data"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 1800.0,
+      "native_category": "data-science",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 4,
+        "gpus": 0,
+        "memory_mb": 8192,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to convert an RStan Gaussian Process script to functionally equivalent PyStan 3.10.0 code, including complex installation, hyperparameter mapping, and numerical verification of posterior estimates.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY task-deps/train_X.csv ./",
+          "COPY task-deps/train_y.csv ./",
+          "COPY task-deps/test_X.csv ./",
+          "COPY task-deps/meta_public.json ./",
+          "COPY task-deps/gp_rstan.R ./"
+        ],
+        "docker_workdirs": [
+          "/app",
+          "/app"
+        ],
+        "dockerfile_sha256": "9d813ec4fdc2054717f253e7acbc2740fe43f97d35a5545c91a9c06986d9d595",
+        "environment_file_metadata": [
+          {
+            "bytes": 469,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 3984,
+            "path": "task-deps/gp_rstan.R"
+          },
+          {
+            "bytes": 47,
+            "path": "task-deps/meta_public.json"
+          },
+          {
+            "bytes": 300,
+            "path": "task-deps/test_X.csv"
+          },
+          {
+            "bytes": 11671,
+            "path": "task-deps/train_X.csv"
+          },
+          {
+            "bytes": 3869,
+            "path": "task-deps/train_y.csv"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "7b6dd84eb47579469556915a5eab6d303217bba438424eaee4db52375d5add2a",
+        "task_toml_sha256": "ed0cd4382cb353e73cb575aa7a20b624e35f09ddd8769c332f40f8986980e13f"
+      },
+      "readiness_category": "build_install_or_training_execution_profile_needed",
+      "reason": "Public contract explicitly involves compilation, installation, training or producing executable/model artifacts. A bounded static file-publication profile does not by itself authorize or realize that workflow.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "rstan-to-pystan"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 7200.0,
+      "native_category": "data-science",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 4096,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to implement a histopathology image segmentation pipeline using MobileSAM to convert rectangular cell masks to precise polyline contours.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY resources/demo_metadata.csv /app/",
+          "COPY resources/demo_rgb.png /app/"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "43c8f78b721c30bff9e7e0d8b7fe89196664a49df53c97384da76a2cba26c494",
+        "environment_file_metadata": [
+          {
+            "bytes": 424,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 7072,
+            "path": "resources/demo_metadata.csv"
+          },
+          {
+            "bytes": 187898,
+            "path": "resources/demo_rgb.png"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "0ef90109155c26d518e800a9e21464f8ee8671c95cbd12d1dccf667552e3c73c",
+        "task_toml_sha256": "f0eb6af2acb87cb6fee67d77e8fdd55e3b331baf48999260bc5b6c4ac466c128"
+      },
+      "readiness_category": "build_install_or_training_execution_profile_needed",
+      "reason": "Public contract explicitly involves compilation, installation, training or producing executable/model artifacts. A bounded static file-publication profile does not by itself authorize or realize that workflow.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "sam-cell-seg"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "security",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to identify and sanitize sensitive API keys and tokens from a Git repository by replacing them with placeholders without modifying unrelated files.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY setup.sh ./"
+        ],
+        "docker_workdirs": [
+          "/app",
+          "/app/dclm"
+        ],
+        "dockerfile_sha256": "bd91e6f3b7b3c0db2c1c7ca31a1028735ca3b129d1d7949f490cbd92b441437c",
+        "environment_file_metadata": [
+          {
+            "bytes": 292,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 252,
+            "path": "setup.sh"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "d9e10a56e94e51592c6016efb02adef852d4fd08f9ba23dc304d2673d1478e8a",
+        "task_toml_sha256": "ff209feb7d07c68b8bd0d2e9abee96a1431c332095a1bbe0a532c44a833a264d"
+      },
+      "readiness_category": "unknown_needs_exact_public_profile",
+      "reason": "Dockerfile runs setup.sh and selects /app/dclm. Exact generated repository inventory, root binding, read/write file selection and safe metadata-only reporting need review; source and setup bodies were not inspected.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "sanitize-git-repo"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 2400.0,
+      "native_category": "software-engineering",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to implement a metacircular evaluator in Scheme that can interpret itself and a comprehensive suite of Scheme programs.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY tests/interp.py /app",
+          "COPY tests/test /app/test"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "9b3df76222e16aad360fbd34cb0f71a0be8986052c065b10b92c0cdf417b25c7",
+        "environment_file_metadata": [
+          {
+            "bytes": 418,
+            "path": "Dockerfile"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 66,
+        "instruction_sha256": "3af5f9567b62f93683db7518ec6fcb609f83796258aa02166b5a7091c5b69031",
+        "task_toml_sha256": "8dae8eb226183b0ca92331c1106152a7abc93b03b4e5a95291b86a4ddc9b44e0"
+      },
+      "readiness_category": "public_test_path_provenance_review",
+      "reason": "Dockerfile copies tests/interp.py and tests/test. Publicly referenced interpreter versus test data needs explicit provenance separation; no test body was read.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "schemelike-metacircular-eval"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "data-querying",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to write complex SPARQL queries with multiple constraints, aggregations, and date filtering against an RDF knowledge graph.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY university_graph.ttl /app/"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "dd0abcd64e90ab16141169bcbf88a8e5f52732f207cb37765d351cc7a48916a9",
+        "environment_file_metadata": [
+          {
+            "bytes": 235,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 10481,
+            "path": "university_graph.ttl"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "22eeab47d3b27b06df2627b3c21cfbd579ed7dcc85ebcb7c4b3a241c3c35f449",
+        "task_toml_sha256": "47a6f6dd9ce0fc7631ef607e900fcd039b2d064ea90545645b49c678cddc9585"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public contract or environment includes binary, data or non-Python source inputs. Exact full inventory, native adapter coverage and declared source/data representation need review; unsupported files cannot be silently dropped.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "sparql-university"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "debugging",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to recover data from a corrupted SQLite database using binary file analysis and data recovery techniques.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY trunc.db /app"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "49ac9305c360f117c10c940b5d036a76fb4a29a0f4302e7d75e573c352db0aea",
+        "environment_file_metadata": [
+          {
+            "bytes": 186,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 4096,
+            "path": "trunc.db"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "465c135cd80be49023ea3ecf8f1d840c679b3a960efe425d510894e417b9d802",
+        "task_toml_sha256": "56061acd75d9933aa554aeb249b85d7d081227fca1b71a3da7e3dc97a675723e"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public contract or environment includes binary, data or non-Python source inputs. Exact full inventory, native adapter coverage and declared source/data representation need review; unsupported files cannot be silently dropped.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "sqlite-db-truncate"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "system-administration",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to compile SQLite from source with gcov instrumentation and make it available in the system PATH.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY vendor /app/vendor"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "f4be72b64b710962e5d9d5236716b4823ec72401a5379423039101cc00a73cd6",
+        "environment_file_metadata": [
+          {
+            "bytes": 177,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 12640606,
+            "path": "vendor/sqlite-fossil-release.tar.gz"
+          },
+          {
+            "bytes": 102,
+            "path": "vendor/sqlite-fossil-release.tar.gz.sha256"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "b6ba9acf62292bc2a0bab40d4805b3abceededbb0ccd4477a1ce9ccc42c14dd9",
+        "task_toml_sha256": "9a0da96990ee2ecbf4d92682a4c5301a53db45fc6e2d46ac7d45d3b8ee7fe523"
+      },
+      "readiness_category": "build_install_or_training_execution_profile_needed",
+      "reason": "Public contract explicitly involves compilation, installation, training or producing executable/model artifacts. A bounded static file-publication profile does not by itself authorize or realize that workflow.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "sqlite-with-gcov"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "software-engineering",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 4096,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to implement pipeline parallel training for LLaMA using PyTorch distributed primitives with all-forward-all-backward scheduling.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "c357ea41e4a4013c5c5980b8fef04af6a5ae250ccc6697cf3bad3127401a931f",
+        "environment_file_metadata": [
+          {
+            "bytes": 200,
+            "path": "Dockerfile"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "989bfcf0c54baf6c8cdc391743dbb2f9e858c5779dd85112536875d4d1b2dcd2",
+        "task_toml_sha256": "6c2d193855224486ba436a4104bd25247ee9f0db3c8474b0050b41e866940ad5"
+      },
+      "readiness_category": "empty_source_index_representation_needed",
+      "reason": "Public task is creation from an instruction without an original task source corpus. Current full index requires actual source inputs; no synthetic program symbols may stand in for an empty repository.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "torch-pipeline-parallelism"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "software-engineering",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 4096,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to implement tensor parallelism for PyTorch linear layers with correct weight sharding, distributed forward/backward passes, and gradient computation across multiple processes.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "5f264ff0bf62a49aee3c6398447de5108df141e7a2ad35c6de8ef39fa62049c6",
+        "environment_file_metadata": [
+          {
+            "bytes": 201,
+            "path": "Dockerfile"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "121d36637699e55f88943be97ec22aaefc287abf072d8d3acaa42718ea72f7e1",
+        "task_toml_sha256": "9e45f2211615b8a7f0ade68c7b45e343b02ef4b6d3978285b695a9a01837f682"
+      },
+      "readiness_category": "empty_source_index_representation_needed",
+      "reason": "Public task is creation from an instruction without an original task source corpus. Current full index requires actual source inputs; no synthetic program symbols may stand in for an empty repository.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "torch-tensor-parallelism"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 3600.0,
+      "native_category": "model-training",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 4096,
+        "storage_mb": 10240
+      },
+      "public_description": "Train a FastText text classification model on Yelp review data that achieves >0.62 accuracy while staying under 150MB in size.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY reformat_data.py /app/"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "330e419b0c5cc46cbf749a9f4110cfc92dc55ddfabde36ffa39b0a9c49bb82e5",
+        "environment_file_metadata": [
+          {
+            "bytes": 632,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 193,
+            "path": "reformat_data.py"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "b701c31f4c5eb6f7e9a6b74d62a52eb696dcae9548a8252c78c0fa850714f998",
+        "task_toml_sha256": "994fda7c3081bbdd9f6d05d6279ef64faefa94c214d1e08fbcea656540e4fe91"
+      },
+      "readiness_category": "build_install_or_training_execution_profile_needed",
+      "reason": "Public contract explicitly involves compilation, installation, training or producing executable/model artifacts. A bounded static file-publication profile does not by itself authorize or realize that workflow.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "train-fasttext"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "scientific-computing",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to optimize MuJoCo physics simulation parameters to achieve a 40% speedup while maintaining physical accuracy within specified tolerances.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY src/eval.py /app/eval.py",
+          "COPY src/model_ref.xml /app/model_ref.xml"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "9b78295361faa3a84399ee97e95e85a8f1032bb5c4cb609013335b51f5d0d006",
+        "environment_file_metadata": [
+          {
+            "bytes": 330,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 3112,
+            "path": "src/eval.py"
+          },
+          {
+            "bytes": 1254,
+            "path": "src/model_ref.xml"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "c7fb299b6c6d6c9a2dcd95c5938e6f902ddad1cb02aee875d369cb7eae584b1f",
+        "task_toml_sha256": "27b6d4e5a23761cc1a24a695125d891be74a2930fb83a02a66221db0244b08b3"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public COPY contains eval.py and model_ref.xml; the XML source/data requires an explicit evidence path alongside Python. Numerical and performance requirements need more than structural smoke.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "tune-mjcf"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 3600.0,
+      "native_category": "video-processing",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to build a computer vision script that analyzes hurdle jump videos and extracts takeoff/landing frame numbers using OpenCV.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY example_video.mp4 /app/example_video.mp4"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "d251d457e6bfb182afd6e2aaf209ada81339fb4415d3913c9db171a8995393f8",
+        "environment_file_metadata": [
+          {
+            "bytes": 537,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 551877,
+            "path": "example_video.mp4"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "15936f5e61823ae4794994d6e1b7e4e776b40968ea382405b868c501dfe032db",
+        "task_toml_sha256": "be4fb42fccc5faa4862789cedd2c560eaa5758a2971989649a6dafeaeccc17aa"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public contract or environment includes binary, data or non-Python source inputs. Exact full inventory, native adapter coverage and declared source/data representation need review; unsupported files cannot be silently dropped.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "video-processing"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "security",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the agent's ability to analyze a binary executable, identify and exploit a buffer overflow vulnerability to bypass authentication, and extract a hidden secret flag.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY vulnerable.c ."
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "26f994bdf7bd3d8e261a3fd273dc1c54632d8a7e208312b2f2034bef167118af",
+        "environment_file_metadata": [
+          {
+            "bytes": 698,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 1916,
+            "path": "vulnerable.c"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "d43c72e6c39cdeb1141a9c8eae8357df1b0901383ee2beedacf828bf017d7a2f",
+        "task_toml_sha256": "51079626e4c76445e616eff8723efc53af7f1cf8d9c64d15aab2f4f0ecd6df3c"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public contract or environment includes binary, data or non-Python source inputs. Exact full inventory, native adapter coverage and declared source/data representation need review; unsupported files cannot be silently dropped.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "vulnerable-secret"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 3600.0,
+      "native_category": "software-engineering",
+      "native_difficulty": "medium",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the ability to write a competitive CoreWars Redcode warrior that achieves specific win rates against five diverse opponent strategies.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY warriors/ /app/warriors/"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "645036f0bc26d9dccfa943bae20536e3d849540b919bcdbbd1c6e62a9ea4c9f9",
+        "environment_file_metadata": [
+          {
+            "bytes": 877,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 824,
+            "path": "warriors/g2-clear.red"
+          },
+          {
+            "bytes": 487,
+            "path": "warriors/paper.red"
+          },
+          {
+            "bytes": 5021,
+            "path": "warriors/snake.red"
+          },
+          {
+            "bytes": 284,
+            "path": "warriors/stone.red"
+          },
+          {
+            "bytes": 839,
+            "path": "warriors/vampire.red"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "f8198a1644547b116b4b67384f6bb6b3a78e85076f8cda20079a77f2f3499242",
+        "task_toml_sha256": "a9b48765d03a66d966f6a162be203bc31e1d9d6e4abe616a2f4b42bac5dc246f"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public contract or environment includes binary, data or non-Python source inputs. Exact full inventory, native adapter coverage and declared source/data representation need review; unsupported files cannot be silently dropped.",
+      "selected_budget_relation": "selected_cap_shorter_than_native",
+      "task": "winning-avg-corewars"
+    },
+    {
+      "assessment_kind": "public_contract_and_filename_review_not_runtime_qualification",
+      "executable_profile_generated_by_this_assessment": false,
+      "full_suite_runtime_qualified": false,
+      "native_agent_seconds": 900.0,
+      "native_category": "software-engineering",
+      "native_difficulty": "hard",
+      "native_environment": {
+        "cpus": 1,
+        "gpus": 0,
+        "memory_mb": 2048,
+        "storage_mb": 10240
+      },
+      "public_description": "Evaluates the agent's ability to reverse-engineer a custom compression format and write a compatible compressor program.",
+      "public_evidence": {
+        "docker_copy_or_add_directives": [
+          "COPY decomp.c /app",
+          "COPY data.txt /app"
+        ],
+        "docker_workdirs": [
+          "/app"
+        ],
+        "dockerfile_sha256": "9a583d29d46818f6ff2be7c6a0879d03343106e5376fd5a48eb5926b402bb93b",
+        "environment_file_metadata": [
+          {
+            "bytes": 283,
+            "path": "Dockerfile"
+          },
+          {
+            "bytes": 4868,
+            "path": "data.txt"
+          },
+          {
+            "bytes": 1262,
+            "path": "decomp.c"
+          },
+          {
+            "bytes": 24564,
+            "path": "main.rs"
+          }
+        ],
+        "environment_metadata_is_not_live_container_inventory": true,
+        "environment_test_or_solution_path_names_omitted": 0,
+        "instruction_sha256": "c4fc3e73e44deeac95f1cd4a34a2d87e853b22ceec2b2824767f5f087b470bb2",
+        "task_toml_sha256": "6066a509066433c97c417fea68c4e3e73996f698dcdcbabe07718835eea355a6"
+      },
+      "readiness_category": "source_data_or_language_capture_needs_review",
+      "reason": "Public contract or environment includes binary, data or non-Python source inputs. Exact full inventory, native adapter coverage and declared source/data representation need review; unsupported files cannot be silently dropped.",
+      "selected_budget_relation": "native900_with840_work60_cleanup",
+      "task": "write-compressor"
+    }
+  ]
+}

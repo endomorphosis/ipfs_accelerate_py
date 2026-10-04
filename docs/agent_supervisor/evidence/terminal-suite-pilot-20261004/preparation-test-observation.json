@@ -1,0 +1,64 @@
+{
+  "authored_at_utc": "2026-10-04T16:38:42.137593+00:00",
+  "cases_by_module": {
+    "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py": 17,
+    "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py": 7,
+    "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py": 47
+  },
+  "evidence_kind": "authored observation of tool process output, not a raw machine-exported test report",
+  "limits": [
+    "The persisted seal DuckDB is a test-reuse cache, not an independent complete execution report.",
+    "Do not sum these cases with later suites containing overlapping tests.",
+    "Tests exercised authored fixtures and actual native local Git/signature/DuckDB/DuckLake/world paths; no official Terminal-Bench trial, Docker task or paid model call is represented by this count.",
+    "No additional test run was performed to create this observation."
+  ],
+  "no_raw_xml_or_log_retained": true,
+  "observed_command": {
+    "argv": [
+      "python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py",
+      "--disable-warnings",
+      "--maxfail=3",
+      "--tb=short"
+    ],
+    "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+    "environment_overrides": {
+      "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/tmp/terminal-task-profile-final-20261004-1.duckdb",
+      "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages"
+    }
+  },
+  "observed_exit_code": 0,
+  "observed_process_session": 22907,
+  "observed_summary": {
+    "failed": 0,
+    "passed": 71,
+    "reported_seconds": 55.15,
+    "skipped": 0
+  },
+  "pytest_ast_seal_enabled": true,
+  "pytest_cache_dir": "repository default (not isolated for this process)",
+  "raw_report_artifact": null,
+  "schema": "authored-terminal-preparation-test-observation@1",
+  "source_hash_evidence": {
+    "all_current_hashes_match_execution_time_report": true,
+    "measured_at_observation_authoring_sha256": {
+      "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": "bd2a1090368f5379439e0bd3764b45897f20bff8eca7fdd680cc101f771aedc4",
+      "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py": "de8620ba32c46f3145ac5117c191076baa4737982c62ede7786b8e47b108f55d",
+      "benchmarks/agent_supervisor/container_coding/terminal_task_profile.py": "0c1ded73795beb4e96ac15e829f2f01280f821aa56930372cec8df95abea221e",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py": "34d671db86fcd27d8c5bd876c1a8fd13ded78923c47ffe6a6ad63e0eeed30bed"
+    },
+    "measurement_note": "The four execution-time hashes were measured with sha256sum and reported while session22907 was running. They are not a machine-sealed pytest source manifest. The current hashes were remeasured while authoring this observation.",
+    "reported_during_execution_sha256": {
+      "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": "bd2a1090368f5379439e0bd3764b45897f20bff8eca7fdd680cc101f771aedc4",
+      "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py": "de8620ba32c46f3145ac5117c191076baa4737982c62ede7786b8e47b108f55d",
+      "benchmarks/agent_supervisor/container_coding/terminal_task_profile.py": "0c1ded73795beb4e96ac15e829f2f01280f821aa56930372cec8df95abea221e",
+      "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py": "34d671db86fcd27d8c5bd876c1a8fd13ded78923c47ffe6a6ad63e0eeed30bed"
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "all_member_hashes_modes_ownership_verified": true,
+  "archive_sha256": "1bb8c275a2242ad4a121beccf3ac084bd8441620180804399f6286e83441a445",
+  "generic_source384_config": "terminal-source384-config@1",
+  "header_contract_selected": false,
+  "manifest_sha256": "c320004ca985c881956b23e8a30610184bd956a2d822b5581705be7c67fa178a",
+  "repository_pins": 12016,
+  "source_revisions": {
+    "datasets": "d5aaf256618c53b009695e8d5618436fba1c0419",
+    "kit": "a9b98beac1ef14278b4adf4f2289cd509530fb86",
+    "source": "4344c7272ebe3c5f26f192d4cb10c962a43eff34"
+  },
+  "verified_members": 27217
+}

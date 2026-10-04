@@ -1,0 +1,4 @@
+task,official_reward,supervisor_completed,agent_seconds,agent_setup_seconds,input_tokens,cached_input_tokens,output_tokens,total_tokens
+headless-terminal,1.0,True,222.360036,236.85531,379752,338688,11684,391436
+largest-eigenval,0.0,False,845.225242,200.279098,467431,413696,7434,474865
+feal-differential-cryptanalysis,1.0,True,288.546274,285.298981,414261,374144,9610,423871

@@ -1,0 +1,17 @@
+{
+  "first_sample_at": 1791131315.1231143,
+  "last_sample_at": 1791132650.256498,
+  "max_available_kib": 111618532,
+  "max_full_avg10": 25.29,
+  "min_available_kib": 49712424,
+  "observational_only": true,
+  "phases": [
+    "before_pause",
+    "benchmark_execute_started",
+    "restoration_started",
+    "restored"
+  ],
+  "sample_file_sha256": "438a831ca7317df702c83e0a3415a49c86269bc0822b82f318ec38a958afd702",
+  "samples": 268,
+  "schema": "pilot-pressure-summary@1"
+}

@@ -1,0 +1,1 @@
+{"input_paths":["feal.py"],"instruction_sha256":"b4093780b283e5c9838997769fb7bca090e3f4cbbd2d7cb275ba60cdfd722572","outputs":[{"effect":"create","media_type":"text/x-python","path":"attack.py"}],"schema":"terminal-public-task-profile@1"}

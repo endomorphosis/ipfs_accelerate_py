@@ -1,0 +1,49 @@
+{
+  "changes_existing_32_task_backlog_status": false,
+  "items": [
+    {
+      "finding": "largest-eigenval records two completed router-session usage receipts but the native supervisor times out at its work deadline; official reward is 0.0. The bounded result does not identify the internal step responsible.",
+      "id": "native-execution-timeout",
+      "next_step": "Qualify task/worker settlement and publication on the reconciled native owner/grant implementation with bounded status instrumentation before retrying the task under a matched budget.",
+      "status": "open"
+    },
+    {
+      "id": "task-profiles",
+      "next_step": "Review exact public input and output scopes for every remaining task, and add qualified adapters for effects outside bounded /app create/modify.",
+      "status": "open"
+    },
+    {
+      "id": "empty-source-indexes",
+      "next_step": "Represent an admitted empty source population without inventing source symbols or silently relabeling a no-index run.",
+      "status": "open"
+    },
+    {
+      "finding": "The complete signed inventory includes instruction Markdown and profile JSON; the generic doctor currently requires semantic_ast for every file and later builds a Python program graph over the full ledger.",
+      "id": "doctor-code-metadata-partition",
+      "next_step": "Bind a separate immutable harness-metadata partition and code population while preserving the complete source ledger, currentness, and unsupported-consumer gates.",
+      "status": "open"
+    },
+    {
+      "finding": "headless-terminal and FEAL declare new output files; this is outside the currently supported generic symbolic repair effect. largest-eigenval declares modification of an existing file.",
+      "id": "doctor-create-synthesis",
+      "status": "open"
+    },
+    {
+      "id": "matched-ablation-campaign",
+      "next_step": "Run native Codex, no-index supervisor, and indexed supervisor with matched task scopes, model/settings, attempts, resource/time budgets, and token accounting.",
+      "status": "open"
+    },
+    {
+      "finding": "This pilot consumes the frozen SecurityIR Source384 checkpoint. It does not establish inference from IntentIR, LegalIR, and UIUXIR checkpoints.",
+      "id": "all-ir-inference",
+      "status": "not_demonstrated_here"
+    },
+    {
+      "finding": "FEAL passes and refreshes Source384 current advice, but its new output is explicitly outside the preserved four-path index scope.",
+      "id": "created-output-index-scope",
+      "next_step": "Independently admit expanded successor scope and index new outputs; do not treat current advice as full-code formalization or execution authority.",
+      "status": "open"
+    }
+  ],
+  "schema": "terminal-suite-pilot-followups@1"
+}

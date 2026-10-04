@@ -1,0 +1,6 @@
+{
+  "build_command": "../../build-command.json",
+  "original_host_paths_require_rebinding": true,
+  "runtime_archive_omitted": true,
+  "source_pins": "../../source-pins.json"
+}

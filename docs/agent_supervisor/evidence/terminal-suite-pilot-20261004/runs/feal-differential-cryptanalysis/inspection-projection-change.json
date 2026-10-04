@@ -1,0 +1,8 @@
+{
+  "change": "Inspect branch additionally projects native task/start/stop/heartbeat status enums. Build, prepare and execute branches unchanged.",
+  "changed_before_execution": true,
+  "earlier_trial_receipts_reread": false,
+  "execution_and_inspection_stage_sha256": "56f257310c460dc83494b477c9cd4570ec86397e206c05d7632cb9ef8db1bdfa",
+  "preparation_stage_sha256": "bd363b9fb16ba51fc03ee3f2b4466c8870cf07e4c4363210555712c600edb3f8",
+  "schema": "bounded-inspection-change@1"
+}

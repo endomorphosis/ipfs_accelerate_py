@@ -1,0 +1,23 @@
+{
+  "schema": "terminal-suite-campaign-plan@1",
+  "dataset_revision": "2fd12b88aafdd04a52c298e3940bcb189f9766d6",
+  "remaining_tasks": 88,
+  "selected_pilot_tasks": [
+    "headless-terminal"
+  ],
+  "selected_arm": "full",
+  "resource_profile": "source384-5cpu-16gib-extended@1",
+  "workers_per_task": 1,
+  "concurrent_tasks": 1,
+  "attempts": 1,
+  "runtime_deadline_seconds": 3600,
+  "enforced_token_budget": false,
+  "dollar_cost": null,
+  "source384_enabled": true,
+  "training_on_benchmark": false,
+  "intent_strategy": "direct_with_fail_open_advisory",
+  "doctor_strategy": "generic_symbolic_analysis_then_router_residual",
+  "empty_source_tasks": "not_yet_qualified_for_full_indexing",
+  "task_dependencies": "worker cannot install system-wide packages; candidate stdlib implementations remain possible",
+  "comparison_advantage_claimed": false
+}

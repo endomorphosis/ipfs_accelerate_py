@@ -1,0 +1,95 @@
+{
+  "arm": "full",
+  "benchmark_advantage_claimed": false,
+  "canonical_receipt": false,
+  "complete_single_trial_receipt": true,
+  "exported_model_or_verifier_bodies": false,
+  "harbor_returncode": 0,
+  "invocation_seconds": 1076.799316894001,
+  "original_task_inputs_unchanged": true,
+  "receipt_bytes": 179298,
+  "receipt_sha256": "62d30e322733f341c463a30f2db5b5f2badec8b41ede291901416ec0a95c30c2",
+  "schema": "terminal-suite-public-summary@1",
+  "source_receipt_schema": "terminal-full-supervisor-receipt@1",
+  "task": "largest-eigenval",
+  "training_on_benchmark": false,
+  "trial_count": 1,
+  "trials": [
+    {
+      "doctor": {
+        "analysis_status": "available",
+        "provider_calls": 0,
+        "reason_codes": [
+          "no_supported_keyword_mismatch",
+          "unsupported_module_or_signature_shape",
+          "unsupported_or_incomplete_source_inventory"
+        ],
+        "route": "model_router",
+        "status": "residual"
+      },
+      "durations_seconds": {
+        "agent_execution": 845.225242,
+        "agent_setup": 200.279098,
+        "environment_setup": 11.158925,
+        "verifier": 2.367023
+      },
+      "error_type": "TimeoutError",
+      "exact_trial_task_matches": true,
+      "exception_type": null,
+      "initial_context": {
+        "full_capsules": 16,
+        "indexed_symbols": 4,
+        "seconds": 12.483430855005281
+      },
+      "planning": {
+        "elapsed_seconds": 28.740398346999427,
+        "goals": 2,
+        "planning_strategy": "direct",
+        "provider_calls": 1,
+        "qualified": true,
+        "tasks": 1
+      },
+      "post_publication_context": {},
+      "published_context_results": [],
+      "reward": {
+        "reward": 0.0
+      },
+      "source384": {
+        "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+        "inference_sha256": "d0f5b8a4ecc1b539097aad1fec0fdda0ea241837096c2903545c07e54f37c584",
+        "schema": "terminal-source384-repository-context@1",
+        "seconds": 8.51846972500789
+      },
+      "source384_successor_refreshes": [],
+      "supervisor": {
+        "error_phase": "native_execution",
+        "implementation_route": "model_router",
+        "phases": {
+          "context_seconds": 2.1064691670180764,
+          "doctor_seconds": 1.4380111279897392,
+          "initial_context_seconds": 12.959833988017635,
+          "planning_seconds": 28.92556902699289,
+          "prepare_seconds": 0.6492047049978282
+        },
+        "remaining_processes": 0,
+        "seconds": 843.8105507389992,
+        "task_completed": false,
+        "worker_cleanup_returncode": 0
+      },
+      "trial": "largest-eigenval__LjJgAkj",
+      "usage": {
+        "all_invocations_receipted": true,
+        "billing_total_verified": false,
+        "cache_included_in_input": true,
+        "cached_input_tokens": 413696,
+        "dollar_cost": null,
+        "input_tokens": 467431,
+        "observed_complete_sessions": true,
+        "output_tokens": 7434,
+        "provider_calls": 2,
+        "source": "observed_native_cumulative_totals",
+        "total_tokens": 474865
+      }
+    }
+  ]
+}

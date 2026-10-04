@@ -1,0 +1,713 @@
+{
+  "attempts": [
+    {
+      "argv": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "-m",
+        "pytest",
+        "-q",
+        "-o",
+        "addopts=",
+        "-p",
+        "no:cacheprovider",
+        "-p",
+        "ipfs_accelerate_py.testing.pytest_ast_seal",
+        "--junitxml=/home/barberb/lift_coding/artifacts/terminal-suite-pilot-20261004/publication-component-tests-01.xml",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_task_selection.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_task_bootstrap.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py",
+        "benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py",
+        "benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py",
+        "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py",
+        "benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py",
+        "test/api/test_native_worker_grant_broker.py",
+        "test/api/test_agent_supervisor_hash_observation_transport.py",
+        "test/api/test_agent_supervisor_quack_owner_commands.py",
+        "test/api/test_agent_supervisor_implementation_entry_handoff.py",
+        "test/api/test_agent_supervisor_supervisor_state_owner_bootstrap.py",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_start_ready_checkpoint_stop_lifecycle",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_graceful_stop_uses_fence_control_path",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_serve_until_stop_fail_closes_when_listen_dies",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_started_server_never_leaks_token_to_surfaces",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_provider_safe_environment_strips_credential_names",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_second_owner_fails_closed",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_stale_marker_recovery_allows_new_owner",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_real_duckdb_migration_then_fake_transport_ready",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_state_authority_handoff_redeems_sealed_fd_after_actual_exec",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_state_authority_parent_loss_policy_is_explicit_at_all_launchers",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_supervisor_runtime_fences_child_when_authority_delivery_fails",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_grant_broker_recovers_only_same_uid_stale_socket",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_grant_broker_reclaims_only_a_proved_stale_socket",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_real_configured_supervisor_handoff_reads_and_mutates_via_owner"
+      ],
+      "artifacts": {
+        "publication-component-tests-01.json": {
+          "bytes": 11899,
+          "local_only": false,
+          "sha256": "7392ffd0cd22925e6d6ecf35f29d5a9a84af5741bb25e9e15942e059b3336018"
+        },
+        "publication-component-tests-01.log": {
+          "bytes": 2127,
+          "local_only": true,
+          "sha256": "d930830c4060c6196be08bb23bb39aa041dfbb490f159a791fd7e745c82f0b2e"
+        },
+        "publication-component-tests-01.xml": {
+          "bytes": 1340,
+          "local_only": true,
+          "sha256": "d16d66b18330cbefbf20fe1778907b1aa65e754609c56414b978d81f8bd30965"
+        }
+      },
+      "ast_seal_fresh_and_enabled": true,
+      "cwd": "/home/barberb/lift_coding/.worktrees/terminal-suite-publication-20261004",
+      "elapsed_seconds": 114.24914706600248,
+      "environment_overrides": {
+        "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-suite-pilot-20261004/publication-component-tests-01-ast-seal.duckdb",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/terminal-suite-publication-20261004:/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages"
+      },
+      "exit_code": 2,
+      "finished_at": "2026-10-04T16:59:04.761957+00:00",
+      "name": "publication-component-tests-01",
+      "requested_selectors": [
+        "benchmarks/agent_supervisor/container_coding/test_terminal_task_selection.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_task_bootstrap.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py",
+        "benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py",
+        "benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py",
+        "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py",
+        "benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py",
+        "test/api/test_native_worker_grant_broker.py",
+        "test/api/test_agent_supervisor_hash_observation_transport.py",
+        "test/api/test_agent_supervisor_quack_owner_commands.py",
+        "test/api/test_agent_supervisor_implementation_entry_handoff.py",
+        "test/api/test_agent_supervisor_supervisor_state_owner_bootstrap.py",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_start_ready_checkpoint_stop_lifecycle",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_graceful_stop_uses_fence_control_path",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_serve_until_stop_fail_closes_when_listen_dies",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_started_server_never_leaks_token_to_surfaces",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_provider_safe_environment_strips_credential_names",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_second_owner_fails_closed",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_stale_marker_recovery_allows_new_owner",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_real_duckdb_migration_then_fake_transport_ready",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_state_authority_handoff_redeems_sealed_fd_after_actual_exec",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_state_authority_parent_loss_policy_is_explicit_at_all_launchers",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_supervisor_runtime_fences_child_when_authority_delivery_fails",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_grant_broker_recovers_only_same_uid_stale_socket",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_grant_broker_reclaims_only_a_proved_stale_socket",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_real_configured_supervisor_handoff_reads_and_mutates_via_owner"
+      ],
+      "source_pins": {
+        "datasets": {
+          "head": "d5aaf256618c53b009695e8d5618436fba1c0419",
+          "path": "/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004",
+          "status": ""
+        },
+        "frozen_docker_accelerate": {
+          "head": "4344c7272ebe3c5f26f192d4cb10c962a43eff34",
+          "path": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+          "status": ""
+        },
+        "publication": {
+          "head": "16a1b6aca9d77a4829f3d265871801fb3ebfbd9e",
+          "path": "/home/barberb/lift_coding/.worktrees/terminal-suite-publication-20261004",
+          "status": ""
+        }
+      },
+      "source_pins_after": {
+        "datasets": {
+          "head": "d5aaf256618c53b009695e8d5618436fba1c0419",
+          "status": ""
+        },
+        "frozen_docker_accelerate": {
+          "head": "4344c7272ebe3c5f26f192d4cb10c962a43eff34",
+          "status": ""
+        },
+        "publication": {
+          "head": "16a1b6aca9d77a4829f3d265871801fb3ebfbd9e",
+          "status": ""
+        }
+      },
+      "started_at": "2026-10-04T16:57:10.512584+00:00",
+      "test_suites": [
+        {
+          "errors": "1",
+          "failures": "0",
+          "hostname": "spark-b271",
+          "name": "pytest",
+          "skipped": "0",
+          "tests": "1",
+          "time": "112.061",
+          "timestamp": "2026-10-04T16:57:11.899290+00:00"
+        }
+      ]
+    },
+    {
+      "argv": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "-m",
+        "pytest",
+        "-q",
+        "-o",
+        "addopts=",
+        "-p",
+        "no:cacheprovider",
+        "-p",
+        "ipfs_accelerate_py.testing.pytest_ast_seal",
+        "--junitxml=/home/barberb/lift_coding/artifacts/terminal-suite-pilot-20261004/publication-component-tests-02.xml",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_task_selection.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_task_bootstrap.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py",
+        "benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py",
+        "benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py",
+        "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py",
+        "benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py",
+        "test/api/test_native_worker_grant_broker.py",
+        "test/api/test_agent_supervisor_hash_observation_transport.py",
+        "test/api/test_agent_supervisor_quack_owner_commands.py",
+        "test/api/test_agent_supervisor_supervisor_state_owner_bootstrap.py",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_start_ready_checkpoint_stop_lifecycle",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_graceful_stop_uses_fence_control_path",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_serve_until_stop_fail_closes_when_listen_dies",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_started_server_never_leaks_token_to_surfaces",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_provider_safe_environment_strips_credential_names",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_second_owner_fails_closed",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_stale_marker_recovery_allows_new_owner",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_real_duckdb_migration_then_fake_transport_ready",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_state_authority_handoff_redeems_sealed_fd_after_actual_exec",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_state_authority_parent_loss_policy_is_explicit_at_all_launchers",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_supervisor_runtime_fences_child_when_authority_delivery_fails",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_grant_broker_recovers_only_same_uid_stale_socket",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_grant_broker_reclaims_only_a_proved_stale_socket",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_real_configured_supervisor_handoff_reads_and_mutates_via_owner"
+      ],
+      "artifacts": {
+        "publication-component-tests-02.json": {
+          "bytes": 12078,
+          "local_only": false,
+          "sha256": "fefcaf388bb5c48988271a3ae2d425b3bc3ab5f4ae7bb7d8eb2b1d8c06cbfa9c"
+        },
+        "publication-component-tests-02.log": {
+          "bytes": 132194,
+          "local_only": true,
+          "sha256": "6f13a326a02adca7a267af6316a8c848f9cca8056cc67793e39f5b58f4ac2c3b"
+        },
+        "publication-component-tests-02.xml": {
+          "bytes": 84261,
+          "local_only": true,
+          "sha256": "6cdeff6213648884950662cd3357d30b44963165f298bb34bf50ac4790f1647c"
+        }
+      },
+      "ast_seal_fresh_and_enabled": true,
+      "cwd": "/home/barberb/lift_coding/.worktrees/terminal-suite-publication-20261004",
+      "elapsed_seconds": 156.41357061901363,
+      "environment_overrides": {
+        "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-suite-pilot-20261004/publication-component-tests-02-ast-seal.duckdb",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/terminal-suite-publication-20261004:/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages"
+      },
+      "exit_code": 1,
+      "finished_at": "2026-10-04T17:02:30.495915+00:00",
+      "name": "publication-component-tests-02",
+      "requested_selectors": [
+        "benchmarks/agent_supervisor/container_coding/test_terminal_task_selection.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_task_bootstrap.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py",
+        "benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py",
+        "benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py",
+        "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py",
+        "benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py",
+        "test/api/test_native_worker_grant_broker.py",
+        "test/api/test_agent_supervisor_hash_observation_transport.py",
+        "test/api/test_agent_supervisor_quack_owner_commands.py",
+        "test/api/test_agent_supervisor_supervisor_state_owner_bootstrap.py",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_start_ready_checkpoint_stop_lifecycle",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_graceful_stop_uses_fence_control_path",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_serve_until_stop_fail_closes_when_listen_dies",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_started_server_never_leaks_token_to_surfaces",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_provider_safe_environment_strips_credential_names",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_second_owner_fails_closed",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_stale_marker_recovery_allows_new_owner",
+        "test/api/test_agent_supervisor_quack_state_server.py::test_real_duckdb_migration_then_fake_transport_ready",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_state_authority_handoff_redeems_sealed_fd_after_actual_exec",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_state_authority_parent_loss_policy_is_explicit_at_all_launchers",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_supervisor_runtime_fences_child_when_authority_delivery_fails",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_grant_broker_recovers_only_same_uid_stale_socket",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_grant_broker_reclaims_only_a_proved_stale_socket",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_real_configured_supervisor_handoff_reads_and_mutates_via_owner"
+      ],
+      "source_pins": {
+        "datasets": {
+          "head": "d5aaf256618c53b009695e8d5618436fba1c0419",
+          "path": "/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004",
+          "status": ""
+        },
+        "frozen_docker_accelerate": {
+          "head": "4344c7272ebe3c5f26f192d4cb10c962a43eff34",
+          "path": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+          "status": ""
+        },
+        "publication": {
+          "head": "16a1b6aca9d77a4829f3d265871801fb3ebfbd9e",
+          "path": "/home/barberb/lift_coding/.worktrees/terminal-suite-publication-20261004",
+          "status": ""
+        }
+      },
+      "source_pins_after": {
+        "datasets": {
+          "head": "d5aaf256618c53b009695e8d5618436fba1c0419",
+          "status": ""
+        },
+        "frozen_docker_accelerate": {
+          "head": "4344c7272ebe3c5f26f192d4cb10c962a43eff34",
+          "status": ""
+        },
+        "publication": {
+          "head": "16a1b6aca9d77a4829f3d265871801fb3ebfbd9e",
+          "status": ""
+        }
+      },
+      "started_at": "2026-10-04T16:59:54.080818+00:00",
+      "test_suites": [
+        {
+          "errors": "0",
+          "failures": "10",
+          "hostname": "spark-b271",
+          "name": "pytest",
+          "skipped": "0",
+          "tests": "317",
+          "time": "150.991",
+          "timestamp": "2026-10-04T16:59:55.177301+00:00"
+        }
+      ]
+    },
+    {
+      "argv": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "-m",
+        "pytest",
+        "-q",
+        "-o",
+        "addopts=",
+        "-p",
+        "no:cacheprovider",
+        "-p",
+        "ipfs_accelerate_py.testing.pytest_ast_seal",
+        "--junitxml=/home/barberb/lift_coding/artifacts/terminal-suite-pilot-20261004/publication-component-tests-03-frozen.xml",
+        "test/api/test_agent_supervisor_quack_owner_commands.py::test_quack_transport_sql_mutations_fail_closed",
+        "test/api/test_agent_supervisor_quack_owner_commands.py::test_database_task_source_maps_typed_owner_failures",
+        "test/api/test_agent_supervisor_supervisor_state_owner_bootstrap.py::test_supervisor_bootstraps_typed_reader_over_duplicate_without_ambient_token",
+        "test/api/test_agent_supervisor_supervisor_state_owner_bootstrap.py::test_objective_count_uses_cached_typed_reader_not_direct_quack_adapter",
+        "test/api/test_agent_supervisor_supervisor_state_owner_bootstrap.py::test_supervisor_bootstrap_rejects_missing_owner_session_before_request",
+        "test/api/test_agent_supervisor_supervisor_state_owner_bootstrap.py::test_plan_bound_supervisor_retains_existing_database_adapter_path",
+        "test/api/test_agent_supervisor_supervisor_state_owner_bootstrap.py::test_supervisor_backs_off_when_quack_owner_is_down",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_state_authority_parent_loss_policy_is_explicit_at_all_launchers",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_supervisor_runtime_fences_child_when_authority_delivery_fails",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_real_configured_supervisor_handoff_reads_and_mutates_via_owner"
+      ],
+      "artifacts": {
+        "publication-component-tests-03-frozen.json": {
+          "bytes": 8672,
+          "local_only": false,
+          "sha256": "6e886cbca2aa9379cbb541d09c224bc5c3d18e3c6b5cc320c8273dbcd6caa36a"
+        },
+        "publication-component-tests-03-frozen.log": {
+          "bytes": 1914,
+          "local_only": true,
+          "sha256": "e56f59e8373947973269823195a3943eb58e78bf1ee9a618fafd53812a99fd8f"
+        },
+        "publication-component-tests-03-frozen.xml": {
+          "bytes": 1286,
+          "local_only": true,
+          "sha256": "f8f994564319f9866a4e9fe33cf29f5bafbc35a5682fc5cf83105c6a9fbbb1e4"
+        }
+      },
+      "ast_seal_fresh_and_enabled": true,
+      "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+      "elapsed_seconds": 15.148941972001921,
+      "environment_overrides": {
+        "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-suite-pilot-20261004/publication-component-tests-03-frozen-ast-seal.duckdb",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages"
+      },
+      "exit_code": 4,
+      "finished_at": "2026-10-04T17:04:42.313511+00:00",
+      "name": "publication-component-tests-03-frozen",
+      "requested_selectors": [
+        "test/api/test_agent_supervisor_quack_owner_commands.py::test_quack_transport_sql_mutations_fail_closed",
+        "test/api/test_agent_supervisor_quack_owner_commands.py::test_database_task_source_maps_typed_owner_failures",
+        "test/api/test_agent_supervisor_supervisor_state_owner_bootstrap.py::test_supervisor_bootstraps_typed_reader_over_duplicate_without_ambient_token",
+        "test/api/test_agent_supervisor_supervisor_state_owner_bootstrap.py::test_objective_count_uses_cached_typed_reader_not_direct_quack_adapter",
+        "test/api/test_agent_supervisor_supervisor_state_owner_bootstrap.py::test_supervisor_bootstrap_rejects_missing_owner_session_before_request",
+        "test/api/test_agent_supervisor_supervisor_state_owner_bootstrap.py::test_plan_bound_supervisor_retains_existing_database_adapter_path",
+        "test/api/test_agent_supervisor_supervisor_state_owner_bootstrap.py::test_supervisor_backs_off_when_quack_owner_is_down",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_state_authority_parent_loss_policy_is_explicit_at_all_launchers",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_supervisor_runtime_fences_child_when_authority_delivery_fails",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py::test_real_configured_supervisor_handoff_reads_and_mutates_via_owner"
+      ],
+      "source_pins": {
+        "datasets": {
+          "head": "d5aaf256618c53b009695e8d5618436fba1c0419",
+          "path": "/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004",
+          "status": ""
+        },
+        "execution": {
+          "head": "4344c7272ebe3c5f26f192d4cb10c962a43eff34",
+          "path": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+          "status": ""
+        },
+        "frozen_docker_accelerate": {
+          "head": "4344c7272ebe3c5f26f192d4cb10c962a43eff34",
+          "path": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+          "status": ""
+        }
+      },
+      "source_pins_after": {
+        "datasets": {
+          "head": "d5aaf256618c53b009695e8d5618436fba1c0419",
+          "status": ""
+        },
+        "execution": {
+          "head": "4344c7272ebe3c5f26f192d4cb10c962a43eff34",
+          "status": ""
+        },
+        "frozen_docker_accelerate": {
+          "head": "4344c7272ebe3c5f26f192d4cb10c962a43eff34",
+          "status": ""
+        }
+      },
+      "started_at": "2026-10-04T17:04:27.164270+00:00",
+      "test_suites": [
+        {
+          "errors": "1",
+          "failures": "0",
+          "hostname": "spark-b271",
+          "name": "pytest",
+          "skipped": "0",
+          "tests": "1",
+          "time": "11.529",
+          "timestamp": "2026-10-04T17:04:29.676312+00:00"
+        }
+      ]
+    },
+    {
+      "argv": [
+        "/home/barberb/.local/bin/python",
+        "-B",
+        "-m",
+        "pytest",
+        "-q",
+        "-o",
+        "addopts=",
+        "-p",
+        "no:cacheprovider",
+        "-p",
+        "ipfs_accelerate_py.testing.pytest_ast_seal",
+        "--junitxml=/home/barberb/lift_coding/artifacts/terminal-suite-pilot-20261004/publication-component-tests-04-frozen.xml",
+        "test/api/test_agent_supervisor_quack_owner_commands.py::test_quack_transport_sql_mutations_fail_closed",
+        "test/api/test_agent_supervisor_quack_owner_commands.py::test_database_task_source_maps_typed_owner_failures",
+        "test/api/test_agent_supervisor_supervisor_state_owner_bootstrap.py::test_supervisor_bootstraps_typed_reader_over_duplicate_without_ambient_token",
+        "test/api/test_agent_supervisor_supervisor_state_owner_bootstrap.py::test_objective_count_uses_cached_typed_reader_not_direct_quack_adapter",
+        "test/api/test_agent_supervisor_supervisor_state_owner_bootstrap.py::test_supervisor_bootstrap_rejects_missing_owner_session_before_request",
+        "test/api/test_agent_supervisor_supervisor_state_owner_bootstrap.py::test_plan_bound_supervisor_retains_existing_database_adapter_path",
+        "test/api/test_agent_supervisor_supervisor_state_owner_bootstrap.py::test_supervisor_backs_off_when_quack_owner_is_down"
+      ],
+      "artifacts": {
+        "publication-component-tests-04-frozen.json": {
+          "bytes": 7980,
+          "local_only": false,
+          "sha256": "bca54c0c5ebdbaf3c26e53ae5a07b79d9fafea3f71c94f32666dd737f9f18e8e"
+        },
+        "publication-component-tests-04-frozen.log": {
+          "bytes": 11302,
+          "local_only": true,
+          "sha256": "5e971409ffaac7c0aa1a898f39d11a9907b75d93616af6e1a2edfbc03a230e55"
+        },
+        "publication-component-tests-04-frozen.xml": {
+          "bytes": 10964,
+          "local_only": true,
+          "sha256": "e3763a7a95303c3a566790988d1a789e075e27e580a1eb295a8cabbeb394a4f3"
+        }
+      },
+      "ast_seal_fresh_and_enabled": true,
+      "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+      "elapsed_seconds": 32.842696431005606,
+      "environment_overrides": {
+        "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/terminal-suite-pilot-20261004/publication-component-tests-04-frozen-ast-seal.duckdb",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages"
+      },
+      "exit_code": 1,
+      "finished_at": "2026-10-04T17:06:21.228528+00:00",
+      "name": "publication-component-tests-04-frozen",
+      "requested_selectors": [
+        "test/api/test_agent_supervisor_quack_owner_commands.py::test_quack_transport_sql_mutations_fail_closed",
+        "test/api/test_agent_supervisor_quack_owner_commands.py::test_database_task_source_maps_typed_owner_failures",
+        "test/api/test_agent_supervisor_supervisor_state_owner_bootstrap.py::test_supervisor_bootstraps_typed_reader_over_duplicate_without_ambient_token",
+        "test/api/test_agent_supervisor_supervisor_state_owner_bootstrap.py::test_objective_count_uses_cached_typed_reader_not_direct_quack_adapter",
+        "test/api/test_agent_supervisor_supervisor_state_owner_bootstrap.py::test_supervisor_bootstrap_rejects_missing_owner_session_before_request",
+        "test/api/test_agent_supervisor_supervisor_state_owner_bootstrap.py::test_plan_bound_supervisor_retains_existing_database_adapter_path",
+        "test/api/test_agent_supervisor_supervisor_state_owner_bootstrap.py::test_supervisor_backs_off_when_quack_owner_is_down"
+      ],
+      "source_pins": {
+        "datasets": {
+          "head": "d5aaf256618c53b009695e8d5618436fba1c0419",
+          "path": "/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004",
+          "status": ""
+        },
+        "execution": {
+          "head": "4344c7272ebe3c5f26f192d4cb10c962a43eff34",
+          "path": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+          "status": ""
+        },
+        "frozen_docker_accelerate": {
+          "head": "4344c7272ebe3c5f26f192d4cb10c962a43eff34",
+          "path": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+          "status": ""
+        }
+      },
+      "source_pins_after": {
+        "datasets": {
+          "head": "d5aaf256618c53b009695e8d5618436fba1c0419",
+          "status": ""
+        },
+        "execution": {
+          "head": "4344c7272ebe3c5f26f192d4cb10c962a43eff34",
+          "status": ""
+        },
+        "frozen_docker_accelerate": {
+          "head": "4344c7272ebe3c5f26f192d4cb10c962a43eff34",
+          "status": ""
+        }
+      },
+      "started_at": "2026-10-04T17:05:48.385545+00:00",
+      "test_suites": [
+        {
+          "errors": "0",
+          "failures": "7",
+          "hostname": "spark-b271",
+          "name": "pytest",
+          "skipped": "0",
+          "tests": "7",
+          "time": "31.203",
+          "timestamp": "2026-10-04T17:05:49.297886+00:00"
+        }
+      ]
+    }
+  ],
+  "author": "suite_runner_audit",
+  "baseline_comparison": {
+    "collection_error": "Frozen A4344 does not export TypedStateOwnerGrantBroker, blocking the configured handoff test module.",
+    "exact_ten_case_attempt": "publication-component-tests-03-frozen",
+    "exact_ten_case_attempt_executed": 0,
+    "execution_comparison_unavailable_cases": [
+      "api.test_agent_supervisor_configured_typed_grant_handoff::test_real_configured_supervisor_handoff_reads_and_mutates_via_owner",
+      "api.test_agent_supervisor_configured_typed_grant_handoff::test_state_authority_parent_loss_policy_is_explicit_at_all_launchers",
+      "api.test_agent_supervisor_configured_typed_grant_handoff::test_supervisor_runtime_fences_child_when_authority_delivery_fails"
+    ],
+    "identical_executed_failures": [
+      {
+        "case": "api.test_agent_supervisor_quack_owner_commands::test_database_task_source_maps_typed_owner_failures",
+        "failure_message_sha256": "3b92eedfd15331269f616eaa48c3dfde8d993e217881b810a70b37e0430abab1",
+        "frozen_failed": true,
+        "identical_failure_message": true,
+        "merged_failed": true
+      },
+      {
+        "case": "api.test_agent_supervisor_quack_owner_commands::test_quack_transport_sql_mutations_fail_closed",
+        "failure_message_sha256": "ce8f59d8614cf30d8f49f74ad8d066d7839193b079ed39cbd930d825a6dbccb0",
+        "frozen_failed": true,
+        "identical_failure_message": true,
+        "merged_failed": true
+      },
+      {
+        "case": "api.test_agent_supervisor_supervisor_state_owner_bootstrap::test_objective_count_uses_cached_typed_reader_not_direct_quack_adapter",
+        "failure_message_sha256": "d9b47fbd05f87e125a968a612c6228c0667234230428d00a62fd8b62dafceff2",
+        "frozen_failed": true,
+        "identical_failure_message": true,
+        "merged_failed": true
+      },
+      {
+        "case": "api.test_agent_supervisor_supervisor_state_owner_bootstrap::test_plan_bound_supervisor_retains_existing_database_adapter_path",
+        "failure_message_sha256": "8843f62376b0da5fc504251e8f8a3f61138fa9e7956d7ae235bce9bf79a63f85",
+        "frozen_failed": true,
+        "identical_failure_message": true,
+        "merged_failed": true
+      },
+      {
+        "case": "api.test_agent_supervisor_supervisor_state_owner_bootstrap::test_supervisor_backs_off_when_quack_owner_is_down",
+        "failure_message_sha256": "c01d84d33e2adf55e0bfc76f1970ec7eb896e2889d2685eb37cef125e9cb50f4",
+        "frozen_failed": true,
+        "identical_failure_message": true,
+        "merged_failed": true
+      },
+      {
+        "case": "api.test_agent_supervisor_supervisor_state_owner_bootstrap::test_supervisor_bootstrap_rejects_missing_owner_session_before_request",
+        "failure_message_sha256": "b3d8a7232a23297fade8f4e1075aba98f6811f0344af26b00f55cc0384978386",
+        "frozen_failed": true,
+        "identical_failure_message": true,
+        "merged_failed": true
+      },
+      {
+        "case": "api.test_agent_supervisor_supervisor_state_owner_bootstrap::test_supervisor_bootstraps_typed_reader_over_duplicate_without_ambient_token",
+        "failure_message_sha256": "b3d8a7232a23297fade8f4e1075aba98f6811f0344af26b00f55cc0384978386",
+        "frozen_failed": true,
+        "identical_failure_message": true,
+        "merged_failed": true
+      }
+    ],
+    "remaining_seven_case_attempt": "publication-component-tests-04-frozen"
+  },
+  "created_at": "2026-10-04T17:07:57.204825+00:00",
+  "evidence_kind": "Authored interpretation of retained local pytest XML and execution metadata; not a benchmark receipt.",
+  "meaningful_passed_checks": [
+    "Native broker preserves a live bound socket and reclaims only a closed stale socket",
+    "Post-exec sealed-FD redemption",
+    "Broker stale/live socket recovery and owner shutdown",
+    "Owner command atomicity and restart idempotence",
+    "Hash-observation grant scopes and revocation",
+    "Bounded task profiles, preparation, integrity, accounting, and doctor budgets"
+  ],
+  "merged_execution": {
+    "benchmark_cases": {
+      "executed": 272,
+      "passed": 272
+    },
+    "executed": 317,
+    "failed": 10,
+    "module_counts": {
+      "benchmarks.agent_supervisor.container_coding.test_benchmark_controls": {
+        "executed": 34,
+        "passed": 34
+      },
+      "benchmarks.agent_supervisor.container_coding.test_doctor_dispatch_budget": {
+        "executed": 50,
+        "passed": 50
+      },
+      "benchmarks.agent_supervisor.container_coding.test_full_supervisor_harbor_agent.ExportTests": {
+        "executed": 4,
+        "passed": 4
+      },
+      "benchmarks.agent_supervisor.container_coding.test_full_supervisor_harbor_agent.ReceiptTests": {
+        "executed": 7,
+        "passed": 7
+      },
+      "benchmarks.agent_supervisor.container_coding.test_native_codex_baseline": {
+        "executed": 30,
+        "passed": 30
+      },
+      "benchmarks.agent_supervisor.container_coding.test_terminal_context_audit": {
+        "executed": 19,
+        "passed": 19
+      },
+      "benchmarks.agent_supervisor.container_coding.test_terminal_task_bootstrap": {
+        "executed": 8,
+        "passed": 8
+      },
+      "benchmarks.agent_supervisor.container_coding.test_terminal_task_profile": {
+        "executed": 47,
+        "passed": 47
+      },
+      "benchmarks.agent_supervisor.container_coding.test_terminal_task_selection": {
+        "executed": 73,
+        "passed": 73
+      },
+      "test.api.test_agent_supervisor_configured_typed_grant_handoff": {
+        "executed": 6,
+        "failure": 3,
+        "passed": 3
+      },
+      "test.api.test_agent_supervisor_hash_observation_transport": {
+        "executed": 6,
+        "passed": 6
+      },
+      "test.api.test_agent_supervisor_quack_owner_commands": {
+        "executed": 18,
+        "failure": 2,
+        "passed": 16
+      },
+      "test.api.test_agent_supervisor_quack_state_server": {
+        "executed": 8,
+        "passed": 8
+      },
+      "test.api.test_agent_supervisor_supervisor_state_owner_bootstrap": {
+        "executed": 6,
+        "failure": 5,
+        "passed": 1
+      },
+      "test.api.test_native_worker_grant_broker": {
+        "executed": 1,
+        "passed": 1
+      }
+    },
+    "owner_grant_cases": {
+      "executed": 45,
+      "failed": 10,
+      "passed": 35
+    },
+    "passed": 307,
+    "skipped": 0
+  },
+  "overall_result": "not_green_component_qualification",
+  "preexisting_collection_exclusion": {
+    "both_frozen_and_merged_source_lack_names": true,
+    "collected_or_executed": false,
+    "failure_retained_in_attempt": "publication-component-tests-01",
+    "file": "test/api/test_agent_supervisor_implementation_entry_handoff.py",
+    "missing_names": [
+      "IMPLEMENTATION_DAEMON_MODULE_SENTINEL",
+      "ORDINARY_IMPLEMENTATION_DAEMON_BOOTSTRAP"
+    ],
+    "source_changed": false
+  },
+  "provenance_limits": [
+    "All Docker pilot results remain attributed to A4344; merged HEAD has component checks only.",
+    "The broader selected component check is not green.",
+    "Do not sum overlapping checks from different attempts or earlier agent/root test runs.",
+    "No source changes, provider calls, Docker launches, or production service changes occurred during these checks.",
+    "Frozen D d5aaf256618c53b009695e8d5618436fba1c0419 and the same site-package path were used in every attempt. A separate kit package origin was not independently captured; no kit pin is inferred from Docker metadata.",
+    "Raw test XML/logs are retained locally; public summaries should use bounded fields."
+  ],
+  "publication": {
+    "branch": "codex/terminal-suite-publication-20261004",
+    "conflicts": 0,
+    "head": "16a1b6aca9d77a4829f3d265871801fb3ebfbd9e",
+    "merge_parents": [
+      "4344c7272ebe3c5f26f192d4cb10c962a43eff34",
+      "d59d1dde39e023b97d74ffbb436e2db9a10eda2b"
+    ],
+    "path": "/home/barberb/lift_coding/.worktrees/terminal-suite-publication-20261004",
+    "pushed": false,
+    "runtime_source_edits_by_auditor_after_merge": false,
+    "subsequent_parent_documentation_work_observed": [
+      "benchmarks/agent_supervisor/container_coding/README.md",
+      "benchmarks/agent_supervisor/container_coding/TERMINAL_SUITE_PROFILES.md",
+      "docs/agent_supervisor/evidence/terminal-suite-pilot-20261004/"
+    ]
+  },
+  "schema": "authored-publication-merge-qualification@1",
+  "unresolved_contracts": [
+    {
+      "area": "Typed owner command errors",
+      "evidence": "Two failed cases reproduce identically on frozen A: SQL error wording and unknown-outcome request-id propagation."
+    },
+    {
+      "area": "Legacy supervisor bootstrap API",
+      "evidence": "Five failed cases reproduce identically on frozen A: removed bootstrap/query/reachability helper methods."
+    },
+    {
+      "area": "Legacy launcher API",
+      "evidence": "Two configured handoff cases execute only after the merge repairs a missing broker import; one references a coordinator absent in both source revisions, and one expects an unchanged launch_process_child to perform authority handoff. No frozen execution comparison is available."
+    },
+    {
+      "area": "Configured owner handoff completeness",
+      "evidence": "The merged native owner starts its new grant broker, then the existing full handoff test fails on expected token-file retirement before worker exchange assertions. Frozen A cannot import the broker or run this case. Do not claim complete native worker handoff qualification or a demonstrated regression from a previously passing frozen test."
+    }
+  ]
+}

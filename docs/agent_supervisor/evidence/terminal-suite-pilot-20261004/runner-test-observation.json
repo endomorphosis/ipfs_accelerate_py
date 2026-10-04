@@ -1,0 +1,39 @@
+{
+  "command": "PYTHONPATH=/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -B -m pytest -q -o addopts= -p no:cacheprovider benchmarks/agent_supervisor/container_coding/test_terminal_task_selection.py benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py",
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "evidence_limit": "Authored observation of a successful tool result, not a retained machine test report. The source tree was under concurrent implementation and no exact source-pin snapshot was recorded for this check; this does not independently qualify commit 4344c7272.",
+  "execution_reference": {
+    "agent": "/root/suite_runner_audit",
+    "chunk_id": "6da197",
+    "tool": "functions.exec/tools.exec_command"
+  },
+  "external_actions": {
+    "docker_executed": false,
+    "model_provider_called": false
+  },
+  "observed_result": {
+    "exit_code": 0,
+    "failed": 0,
+    "passed": 148,
+    "pytest_reported_seconds": 0.88,
+    "skipped": 0,
+    "tool_wall_time_seconds": 0.988586211
+  },
+  "overlap_note": "This 148-case check superseded an overlapping 130-case local check; those counts must not be added. It may also overlap other retained test groups. No campaign-wide distinct-case total is asserted.",
+  "record_kind": "assistant_observation_of_tool_result",
+  "recorded_at": "2026-10-04T16:38:44.273924+00:00",
+  "retained_case_inventory": false,
+  "retained_raw_log": false,
+  "retained_raw_xml": false,
+  "schema": "authored-local-test-observation@1",
+  "source_commit_qualification_claimed": false,
+  "source_hash_inventory_recorded_for_run": false,
+  "test_scope": [
+    "task selection and profile transport",
+    "immutable task/config binding",
+    "trial task attribution",
+    "native usage accounting",
+    "declared comparison controls",
+    "Harbor adapter compatibility"
+  ]
+}

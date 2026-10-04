@@ -1,0 +1,329 @@
+{
+  "assembly": "Bounded pilot exporter plus authored review corrections and publication qualification; canonical raw receipts remain local.",
+  "bytes": 2439023,
+  "file_count": 64,
+  "files": [
+    {
+      "bytes": 6621,
+      "path": "README.md",
+      "sha256": "9887e24508da540a6f346250b721f4787d7eeb69120e4e8ea289d864df4dc1c1"
+    },
+    {
+      "bytes": 176118,
+      "path": "broader-readiness.json",
+      "sha256": "a8558f1049ec57aadde95d66063ac524ad1248bbe8a4a7d38c8c722bafeea2bb"
+    },
+    {
+      "bytes": 590,
+      "path": "build-audit.json",
+      "sha256": "91d0d86d9dcfe0b932605f1fea682267344bea1776d666101b32d6ae95e53afe"
+    },
+    {
+      "bytes": 2014,
+      "path": "build-command.json",
+      "sha256": "28f1fc12fe48e15422bb0e4e1d5244df2be20d858a37eba9569cb3ba7399caf9"
+    },
+    {
+      "bytes": 852,
+      "path": "campaign-plan.json",
+      "sha256": "f468e80b3410f7fc716a8eecf623724361e2aa81cd9133faea84bb230a665b3e"
+    },
+    {
+      "bytes": 6300,
+      "path": "campaign-result.json",
+      "sha256": "b5a1933cea61471eb2b4e678c49a558884610b91870076b504c1533c3187cdc1"
+    },
+    {
+      "bytes": 15221,
+      "path": "export_public_pilot.py",
+      "sha256": "3a8aeb46c0b08ff33fb25a8b7957326ddb0cd3c6c2bd41476ccc8ecdc994836a"
+    },
+    {
+      "bytes": 58278,
+      "path": "inventory.json",
+      "sha256": "66d40d5e85b8ac2f31c55153a1c0e2eca743aa5905e87bb3ee52a9fe06c8b312"
+    },
+    {
+      "bytes": 2762,
+      "path": "pilot-followups.json",
+      "sha256": "b1bc42b3a824106d369d284329c7b8db1e01f04f0dfdd0b8b3cb56b98aa70cf1"
+    },
+    {
+      "bytes": 3928,
+      "path": "preparation-test-observation.json",
+      "sha256": "488b3672435adaa3efe35f6c28fa566831001e9f8b3fe8b64f75e236e5462865"
+    },
+    {
+      "bytes": 38680,
+      "path": "publication-merge-qualification.json",
+      "sha256": "435a4b16448eeea7ac27c9559619ea9a58531f3b60d6bd4dde3dd23aa76304f1"
+    },
+    {
+      "bytes": 30778,
+      "path": "root-controls-summary.json",
+      "sha256": "784135bab1a0155531b90ee8836b508ce9e4e1aa1a6105bcbcd566772e1d1750"
+    },
+    {
+      "bytes": 2241,
+      "path": "runner-test-observation.json",
+      "sha256": "860c6137f1371406d8b296ba571f2b2c1f03c8cac8f7669cff4a3f804823211d"
+    },
+    {
+      "bytes": 500,
+      "path": "runs/feal-differential-cryptanalysis/archive-reuse.json",
+      "sha256": "c0f17dca7c0a23b66c9552fc5324c7eb2c6bdbf83ecd19e1fb06329cde440dc7"
+    },
+    {
+      "bytes": 20888,
+      "path": "runs/feal-differential-cryptanalysis/bounded_projection.py",
+      "sha256": "4155d06685d70a49f676f16aaa06ea738d0ba1a3c54eee39daee241ab65146cd"
+    },
+    {
+      "bytes": 54,
+      "path": "runs/feal-differential-cryptanalysis/execute-exit.json",
+      "sha256": "5af9ccae61dba131b635ccc1d3bc7d1ef42ee51205e1e600488ed6eebba2a0c6"
+    },
+    {
+      "bytes": 238,
+      "path": "runs/feal-differential-cryptanalysis/feal-differential-cryptanalysis-profile.json",
+      "sha256": "d11b36fdb6d9261be75d9656a0e6b10cbb99d34f85ed91070f3e970a338086a7"
+    },
+    {
+      "bytes": 588,
+      "path": "runs/feal-differential-cryptanalysis/harness-pins-pre-diagnostics.json",
+      "sha256": "2564856e7c8ecdcc0990bbbd6343fec0ed54d0686500cf0f70e679b673a0507b"
+    },
+    {
+      "bytes": 793,
+      "path": "runs/feal-differential-cryptanalysis/harness-pins.json",
+      "sha256": "0ce590c44b28f2da16d38b2f8757a7dfd39d6bb59337ac67a9e2ad59d1786f62"
+    },
+    {
+      "bytes": 479,
+      "path": "runs/feal-differential-cryptanalysis/inspection-projection-change.json",
+      "sha256": "6b271efcde3def04d0b89506e36b29d3febdd53502973bcb8167db75203bf54b"
+    },
+    {
+      "bytes": 1057,
+      "path": "runs/feal-differential-cryptanalysis/observe_pressure.py",
+      "sha256": "1cc9219bd687f1d3af425547d276028a612783fa8d854c5fd1769cba51262b7d"
+    },
+    {
+      "bytes": 6463,
+      "path": "runs/feal-differential-cryptanalysis/pilot-result.json",
+      "sha256": "4101619d8589e228908c845f362c79a41125494c07d871a3a5557d6b642e4360"
+    },
+    {
+      "bytes": 55,
+      "path": "runs/feal-differential-cryptanalysis/prepare-exit.json",
+      "sha256": "ea1a1e603e830b72b9d73e2b7584448200927b186e1b686a07fed7469922d5df"
+    },
+    {
+      "bytes": 83,
+      "path": "runs/feal-differential-cryptanalysis/pressure-exit.json",
+      "sha256": "db6ee662e49ce83b8ae6f15042229c0abe978a8436da5e4223cb830ca50c9c65"
+    },
+    {
+      "bytes": 472,
+      "path": "runs/feal-differential-cryptanalysis/pressure-summary.json",
+      "sha256": "ef0966616ee438e370e1481049dd0590bfffa0f65ae0a28eb6fcd927e5125eb5"
+    },
+    {
+      "bytes": 6157,
+      "path": "runs/feal-differential-cryptanalysis/run_with_leanstral_paused.py",
+      "sha256": "5593c9f59c8e465d416572cd91d46ab27ccb9b87a5141c320dff316c623005cc"
+    },
+    {
+      "bytes": 2592,
+      "path": "runs/feal-differential-cryptanalysis/service-pause.json",
+      "sha256": "534d07db0aa37cd5085321cafe3e222df606f86d8218207971415c9372cc72d9"
+    },
+    {
+      "bytes": 177,
+      "path": "runs/feal-differential-cryptanalysis/shared-provenance.json",
+      "sha256": "295a0aaadc012d1f62a7c379229eed07ea4bb5c179ae19039ed32c220cfa9fa6"
+    },
+    {
+      "bytes": 1739,
+      "path": "runs/feal-differential-cryptanalysis/source384-config.json",
+      "sha256": "b81ecc3487dd077e92024a60c0317ca80057b1680e6a2e74389331b360ca61c5"
+    },
+    {
+      "bytes": 7235,
+      "path": "runs/feal-differential-cryptanalysis/stage-pre-diagnostics.py",
+      "sha256": "bd363b9fb16ba51fc03ee3f2b4466c8870cf07e4c4363210555712c600edb3f8"
+    },
+    {
+      "bytes": 7837,
+      "path": "runs/feal-differential-cryptanalysis/stage.py",
+      "sha256": "56f257310c460dc83494b477c9cd4570ec86397e206c05d7632cb9ef8db1bdfa"
+    },
+    {
+      "bytes": 852,
+      "path": "runs/headless-terminal/campaign-plan.json",
+      "sha256": "f468e80b3410f7fc716a8eecf623724361e2aa81cd9133faea84bb230a665b3e"
+    },
+    {
+      "bytes": 54,
+      "path": "runs/headless-terminal/execute-exit.json",
+      "sha256": "a85c63b9773023cfb0cd885b8e613192d69cbc7d74108c743e024572de2adab3"
+    },
+    {
+      "bytes": 575,
+      "path": "runs/headless-terminal/harness-pins.json",
+      "sha256": "ba0158e22031b6a394bd68c1d57cc53bcba68a76c82cc78d0c91b47a5e08e960"
+    },
+    {
+      "bytes": 320,
+      "path": "runs/headless-terminal/headless-terminal-profile.json",
+      "sha256": "9cc4c0116c8a1750eb39a8761ad80679e64ae7b5d5f370857ddb248e9be5840c"
+    },
+    {
+      "bytes": 1057,
+      "path": "runs/headless-terminal/observe_pressure.py",
+      "sha256": "1cc9219bd687f1d3af425547d276028a612783fa8d854c5fd1769cba51262b7d"
+    },
+    {
+      "bytes": 3048,
+      "path": "runs/headless-terminal/pilot-result.json",
+      "sha256": "1c3ecc54c66b0a3c740c8056c1a6d6cc91261a92306021fd0c9d4c909ba93f87"
+    },
+    {
+      "bytes": 55,
+      "path": "runs/headless-terminal/prepare-exit.json",
+      "sha256": "ea4f6d377490a25aa92ae63317a93edf79d55dd221d953adf9780477d309d235"
+    },
+    {
+      "bytes": 83,
+      "path": "runs/headless-terminal/pressure-exit.json",
+      "sha256": "493227b9262580bb6a036d5b9b9674a5c5854dfd7a59cb2978ccb42946b85000"
+    },
+    {
+      "bytes": 452,
+      "path": "runs/headless-terminal/pressure-summary.json",
+      "sha256": "8212ac583ea28ff29bd1bfc849ba61fe7a60b89fde9a15ecc195b3309aff9d9f"
+    },
+    {
+      "bytes": 5794,
+      "path": "runs/headless-terminal/run_with_leanstral_paused.py",
+      "sha256": "b6857aea8b3814f195ecbd419cd69f547d3fb70ba87a12139eda8c2ba2426c41"
+    },
+    {
+      "bytes": 2579,
+      "path": "runs/headless-terminal/service-pause.json",
+      "sha256": "875adf2a6bf881b539360139b432370ae5bfc1c4cb4dbbeb21faae1cc01fcea7"
+    },
+    {
+      "bytes": 177,
+      "path": "runs/headless-terminal/shared-provenance.json",
+      "sha256": "295a0aaadc012d1f62a7c379229eed07ea4bb5c179ae19039ed32c220cfa9fa6"
+    },
+    {
+      "bytes": 1739,
+      "path": "runs/headless-terminal/source384-config.json",
+      "sha256": "b81ecc3487dd077e92024a60c0317ca80057b1680e6a2e74389331b360ca61c5"
+    },
+    {
+      "bytes": 6191,
+      "path": "runs/headless-terminal/stage-build-original.py",
+      "sha256": "01f962cfbebdef4e61066f339006f26ac86b3f0576338e92fffea9fb0d0f7eac"
+    },
+    {
+      "bytes": 6459,
+      "path": "runs/headless-terminal/stage.py",
+      "sha256": "bb1559bd258543a661e2e2d467b27140f92b61385b825ab83de2a162a4d15a5f"
+    },
+    {
+      "bytes": 341,
+      "path": "runs/largest-eigenval/archive-reuse.json",
+      "sha256": "f88bf792f84724400d4f6c033507676654af0c3b3d4d95b445a30cfa74d0b816"
+    },
+    {
+      "bytes": 20888,
+      "path": "runs/largest-eigenval/bounded_projection.py",
+      "sha256": "4155d06685d70a49f676f16aaa06ea738d0ba1a3c54eee39daee241ab65146cd"
+    },
+    {
+      "bytes": 55,
+      "path": "runs/largest-eigenval/execute-exit.json",
+      "sha256": "2cd3aa4728eac6b09dc1d58483de08109281f3eed81dd3eb317cba2354f92531"
+    },
+    {
+      "bytes": 573,
+      "path": "runs/largest-eigenval/harness-pins.json",
+      "sha256": "eb04808933bf40601d2fcd7e52b0bae6840c8e96c124036aa6caeaf808105356"
+    },
+    {
+      "bytes": 248,
+      "path": "runs/largest-eigenval/largest-eigenval-profile.json",
+      "sha256": "ce7c469c8baedb445392d1540a4b17076c1426c71e0c1ecfd37c1280a3383d27"
+    },
+    {
+      "bytes": 1057,
+      "path": "runs/largest-eigenval/observe_pressure.py",
+      "sha256": "1cc9219bd687f1d3af425547d276028a612783fa8d854c5fd1769cba51262b7d"
+    },
+    {
+      "bytes": 3125,
+      "path": "runs/largest-eigenval/pilot-result.json",
+      "sha256": "62410f94a80b1c0152f74a20ee6cf5295ec082e686075e7d396fc1ca7c69278e"
+    },
+    {
+      "bytes": 55,
+      "path": "runs/largest-eigenval/prepare-exit.json",
+      "sha256": "c07db1b8fe4b5a285f287ead687d42c1e7d66d2ed9d659895a3e608c2c81868c"
+    },
+    {
+      "bytes": 84,
+      "path": "runs/largest-eigenval/pressure-exit.json",
+      "sha256": "5121a93f6c53089c9e13ab6e5e86bc6522189586ba315b5bf07552550bcd0f98"
+    },
+    {
+      "bytes": 471,
+      "path": "runs/largest-eigenval/pressure-summary.json",
+      "sha256": "3555f24dc19284dbba7d939099fe425bd4b95c38243e713390a53c9cc07da440"
+    },
+    {
+      "bytes": 6097,
+      "path": "runs/largest-eigenval/run_with_leanstral_paused.py",
+      "sha256": "d0a6fb0d0d3fbb244ba7e992dd6334e1468b777d52482fff83cd3bee7a7e1657"
+    },
+    {
+      "bytes": 2587,
+      "path": "runs/largest-eigenval/service-pause.json",
+      "sha256": "d54aecd8798afd99e182146a409cd684e86f54889ff55333c6b1162e42b5b426"
+    },
+    {
+      "bytes": 177,
+      "path": "runs/largest-eigenval/shared-provenance.json",
+      "sha256": "295a0aaadc012d1f62a7c379229eed07ea4bb5c179ae19039ed32c220cfa9fa6"
+    },
+    {
+      "bytes": 1739,
+      "path": "runs/largest-eigenval/source384-config.json",
+      "sha256": "b81ecc3487dd077e92024a60c0317ca80057b1680e6a2e74389331b360ca61c5"
+    },
+    {
+      "bytes": 7175,
+      "path": "runs/largest-eigenval/stage.py",
+      "sha256": "e13b868d1a5b737a459360157de0f3361ed7c5556bd2096575cd5e236c3cb5a2"
+    },
+    {
+      "bytes": 379,
+      "path": "scores.csv",
+      "sha256": "bcbd76e5e73aa41f30d106d219173224426ab9f11edf91b5003153c90cd3300b"
+    },
+    {
+      "bytes": 1909249,
+      "path": "source-pins.json",
+      "sha256": "f34855aa782ad270a672473fcb3276603709673748500a978a407bdfcd53218f"
+    },
+    {
+      "bytes": 53498,
+      "path": "suite-preflight.json",
+      "sha256": "77343f1ca019098b364556d04bb81426b6321412a6d03d12c97d9ee41408eb99"
+    }
+  ],
+  "raw_runtime_logs_or_model_or_verifier_bodies_exported": false,
+  "schema": "terminal-suite-public-evidence-manifest@1"
+}
