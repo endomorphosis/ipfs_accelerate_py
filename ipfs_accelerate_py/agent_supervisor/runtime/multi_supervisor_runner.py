@@ -642,6 +642,8 @@ STATE_CREDENTIAL_ENV_NAMES: frozenset[str] = frozenset(
         "IPFS_ACCELERATE_AGENT_STATE_PASSWORD",
         "IPFS_ACCELERATE_AGENT_STATE_SECRET",
         "IPFS_ACCELERATE_AGENT_STATE_CREDENTIAL",
+        "IPFS_ACCELERATE_AGENT_OWNER_STATE_TOKEN",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD",
         "IPFS_ACCELERATE_AGENT_CONTROL_PLANE_TOKEN",
         "IPFS_ACCELERATE_AGENT_CONTROL_PLANE_PASSWORD",
     }
@@ -1177,6 +1179,12 @@ def provider_subprocess_environment(
     # bindings; they operate on worktree files only.
     for name in DATABASE_PROGRAM_ENV_NAMES:
         cleaned.pop(name, None)
+    for name in tuple(cleaned):
+        if (name in {"IPFS_ACCELERATE_AGENT_STATE_OWNER_SOCKET",
+                     "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SOCKET",
+                     "IPFS_ACCELERATE_AGENT_STATE_HANDOFF_EXECUTION_BINDING"}
+                or name.startswith("IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_")):
+            cleaned.pop(name, None)
     return cleaned
 
 

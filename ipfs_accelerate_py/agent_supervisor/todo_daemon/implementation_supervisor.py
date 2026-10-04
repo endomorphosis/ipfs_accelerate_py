@@ -11227,6 +11227,11 @@ class PortalImplementationSupervisor:
             # The reusable loop launches from child_env; ManagedDaemonSpec's
             # launch_env alone is only consumed by wrapper-based entry points.
             child_env=loop_env,
+            worker_credential_handoff=(
+                self.config.state_owner_bootstrap_fd < 3
+                and bool(os.environ.get("IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SOCKET")
+                         or os.environ.get("IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD"))
+            ),
             restart_policy=RestartPolicy(
                 restart_backoff_seconds=max(0.0, float(self.config.check_interval)),
                 fast_restart_backoff_seconds=min(2.0, max(0.0, float(self.config.check_interval))),
@@ -23458,6 +23463,8 @@ def _reconciliation_preflight_failure_reason(
 
 
 def main(argv: list[str] | None = None) -> int:
+    from ..runtime.process_security import harden_state_authority_process
+    harden_state_authority_process()
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     if raw_argv[:1] == [SEALED_DAEMON_CHILD_MARKER]:
         return _run_sealed_daemon_child(raw_argv[1:])
