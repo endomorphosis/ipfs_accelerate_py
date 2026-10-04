@@ -1,0 +1,50 @@
+[
+  {
+    "bytes": 78923,
+    "path": "/home/barberb/lift_coding/artifacts/semantic-identity-reuse-native-20261004/source-01.stdout",
+    "raw_body_exported": false,
+    "sha256": "26beb9726925428ef0c516ca37dfc247300d3d4bce842c1d81fee9f6061142ac"
+  },
+  {
+    "bytes": 0,
+    "path": "/home/barberb/lift_coding/artifacts/semantic-identity-reuse-native-20261004/source-01.stderr",
+    "raw_body_exported": false,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "bytes": 2930,
+    "path": "/home/barberb/lift_coding/artifacts/semantic-identity-reuse-native-20261004/integration-01.stdout",
+    "raw_body_exported": false,
+    "sha256": "bff6ecb94e3c94e934479047eb5d3cb572e3a0e8a460a90ecd3c07fd671c6307"
+  },
+  {
+    "bytes": 0,
+    "path": "/home/barberb/lift_coding/artifacts/semantic-identity-reuse-native-20261004/integration-01.stderr",
+    "raw_body_exported": false,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "bytes": 1292,
+    "path": "/home/barberb/lift_coding/artifacts/semantic-identity-reuse-native-20261004/native-01.stdout",
+    "raw_body_exported": false,
+    "sha256": "c4e157d3bb0a42f5889c890fbbba2473f6fe0ef36d00fa5bb60a07fd6c5b668d"
+  },
+  {
+    "bytes": 0,
+    "path": "/home/barberb/lift_coding/artifacts/semantic-identity-reuse-native-20261004/native-01.stderr",
+    "raw_body_exported": false,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "bytes": 1974,
+    "path": "/home/barberb/lift_coding/artifacts/cold-publication-projection-20261004/focused-01-stdout.txt",
+    "raw_body_exported": false,
+    "sha256": "450cc7b2fa5c7d599968d0462455cf39624845fa272cf60b98b3666bc156fd53"
+  },
+  {
+    "bytes": 0,
+    "path": "/home/barberb/lift_coding/artifacts/cold-publication-projection-20261004/focused-01-stderr.txt",
+    "raw_body_exported": false,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+]
