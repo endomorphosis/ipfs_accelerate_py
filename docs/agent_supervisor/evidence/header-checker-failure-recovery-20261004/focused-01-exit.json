@@ -1,0 +1,12 @@
+{
+  "counts": {
+    "errors": 0,
+    "executions": 92,
+    "failed": 0,
+    "passed": 91,
+    "skipped": 1
+  },
+  "returncode": 0,
+  "seconds": 88.98636989000079,
+  "source_pins_unchanged": true
+}

@@ -1,0 +1,11 @@
+{
+  "matched_baseline_campaign": false,
+  "performance_advantage_claimed": false,
+  "previous_archive_retained": "../extended-supervisor-budget-20261004",
+  "prior_qualification_service_condition": "Leanstral running",
+  "prior_trial_service_condition": "Leanstral temporarily stopped",
+  "profile": "source384-5cpu-16gib-extended@1",
+  "purpose": "Validate corrected actual native completion binding on the extended development profile; retain official outcome and all failed prior attempts.",
+  "qualification_and_trial_service_condition": "Leanstral temporarily stopped under explicit user authorization; restart and HTTP model health required afterward",
+  "schema": "completion-retry-scope@1"
+}

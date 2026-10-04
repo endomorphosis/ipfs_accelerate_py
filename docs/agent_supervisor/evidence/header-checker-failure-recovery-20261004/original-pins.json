@@ -1,0 +1,7 @@
+{
+  "ipfs_accelerate_py/agent_supervisor/runtime/header_intent_applicability.py": "f71c4d3bc6b91528bc473dffd82a2866ad755a47bf80619690397950cbf1d8d5",
+  "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py": "836aedb3de761d45429218e3296c87a743ad68174361e1e66b2959af9dda26a3",
+  "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "0bc644a4f5b4b680a175bc2c1b42ba94085a3736bf92b6e8a666ad2e053f666e",
+  "test/api/test_header_intent_applicability.py": "a616f9b082f49f977a7cbe923adf8466d929d1afcfa5efbec1975e784827f30d",
+  "benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py": "847a00f892119eb5c61dd4d61bd18bcd533dc85fab0c43e4ab6c74222010a04e"
+}

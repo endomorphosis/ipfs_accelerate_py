@@ -1,0 +1,11 @@
+# Header checker admission and diagnostic controls
+
+The focused native/header-context group passed **92/92** with no skips in 33.20 seconds. A separate new **1/1** real reservation-contention control passed in 20.85 seconds using the same implementation hashes. The initial focused run passed 65/66, with one optional public Bottle case skipped before its fixture environment was supplied. The 65-case and 92-case scopes overlap.
+
+The new control used an isolated real scheduler. A held child reservation was released after six seconds; the first actual Z3 process started after 6.050 seconds and checking completed after 6.120 seconds. Native version/query limits were 4.999 and 4.967 seconds. A second blocked acquisition on the same runner expired after 20.016 seconds at the original 20-second aggregate deadline, with no new process launched. No leases, waiters, or tracked processes remained. This measures controlled reservation contention, **not recovery from real host memory pressure**. Earlier simulated-clock controls and injected admission diagnostics remain explicitly identified as synthetic.
+
+Four added baseline cases failed against the original implementation: three detected an unowned version subprocess after an inconclusive result or native timeout, and one required the new cancellation wrapper contract. The correction preserves native error causes and bounded diagnostics, prevents fallback unowned version probes, and separates admission waiting from the five-second version/query execution cap within the enclosing deadline.
+
+Other real process tests exercised address-space/CPU limits, stdin preservation, output-flood refusal, and cleanup after a query timeout. Real Z3 checks covered authored original/guarded header behavior. The exact permitted public Bottle source was independently modeled and captured (12 formulas and six SMT obligations); those fixture cases did not execute its solver queries.
+
+The prior C trial discarded its checker result, so its precise failed condition and pressure cause remain unknown. These tests do not establish a completed benchmark, whole-program proof, or efficiency advantage. Commands/XML are bounded projections; original record digests and exact source/test hashes identify retained evidence.

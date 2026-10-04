@@ -1,0 +1,49 @@
+{
+  "argv": [
+    "<PYTHON_EXECUTABLE>",
+    "-m",
+    "benchmarks.agent_supervisor.container_coding.full_supervisor_benchmark",
+    "execute",
+    "--output",
+    "<EVIDENCE_ROOT>/trial-01"
+  ],
+  "cwd": "<ACCELERATE_CHECKOUT>",
+  "environment": {
+    "HF_HUB_OFFLINE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "<ACCELERATE_CHECKOUT>:<DATASETS_CHECKOUT>:<WORKSPACE>/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:<HOME>/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "excluded_environment_entries": 0,
+  "metadata": {
+    "attempts": 1,
+    "cleanup_reserve_seconds": 60,
+    "driver_seconds": 900,
+    "enforced_token_budget": false,
+    "harbor_agent_seconds": 960,
+    "harbor_retries": 0,
+    "input_review_sha256": "d9ad19aa816667ed4e7fee73fd408144669a4c81e01a13f791fcdf759c7abded",
+    "intent_requirement_contract_sha256": "2ed3848faead5300591b880501b5f3d439b6721cf70eac797f7b4b1ac7a1c3da",
+    "model": "gpt-5.6-sol",
+    "planning_strategy": "intent_symbolic_with_reviewed_header_applicability",
+    "provider": "llm_router if deterministic Doctor leaves residual work",
+    "qualification_sha256": "4efdc8172454306ad249ce3da501814a9be3ab74c303f8e2b101dc4337e66f6c",
+    "qualified_archive": "dcbcc8a09c9b6e8aaee4ea747359b9db2cab9bd23972962b4c641c1ece261518",
+    "qualified_manifest": "dc07407a45ea84ce47f2bd1d4ffd8bd561d09393ec41a04cb117fc5b726f759e",
+    "reasoning_effort": "high",
+    "review_cost_excluded_from_runtime_timing": true,
+    "review_token_cost_available": false,
+    "scope": "one complete official Harbor trial",
+    "setup_seconds": 1800,
+    "source384_seconds": 180,
+    "work_cutoff_seconds": 840,
+    "workers": 1
+  },
+  "original_record_bytes_exported": false,
+  "schema": "bounded-command-projection@1"
+}

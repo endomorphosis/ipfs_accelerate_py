@@ -1,0 +1,163 @@
+{
+  "exported_credentials": false,
+  "exported_model_bodies": false,
+  "exported_verifier_bodies": false,
+  "receipt": {
+    "arm": "full",
+    "benchmark_advantage_claimed": false,
+    "harbor_returncode": 0,
+    "invocation_seconds": 480.3803817070002,
+    "original_task_inputs_unchanged": true,
+    "parallel_workers": 1,
+    "planning_strategy": "intent_symbolic",
+    "schema": "terminal-full-supervisor-receipt@1",
+    "task": "fix-code-vulnerability",
+    "trial_count": 1
+  },
+  "receipt_bytes": 252369,
+  "receipt_sha256": "baf43a3de4a6b3be40920f37dc9c8e97b135cc97b6208cde4e06ba3fb1087d9e",
+  "schema": "bounded-full-trial-metadata-inspection@1",
+  "trials": [
+    {
+      "contract": {},
+      "doctor": {},
+      "doctor_dispatch_present": false,
+      "doctor_invocation_count": null,
+      "durations_seconds": {
+        "agent_execution": 240.338804,
+        "agent_setup": 214.411971,
+        "environment_setup": 6.774159,
+        "verifier": 1.965385
+      },
+      "failure_admission": {
+        "causal_proof": false,
+        "observation_boundary": "request_primary_gate",
+        "reason": "no_native_admission_error",
+        "status": "unavailable"
+      },
+      "failure_admission_observation": {
+        "causal_proof": false,
+        "complete_admission_decision": false,
+        "observation_boundary": "request_primary_gate",
+        "reason": "no_native_admission_error",
+        "schema": "terminal-admission-failure-observation@1",
+        "status": "unavailable"
+      },
+      "failure_resources": {
+        "available_memory_mb": 12795,
+        "cpu_slots": 5,
+        "cpu_stall_percent": 20.23,
+        "io_stall_percent": 0.01,
+        "memory_stall_percent": 19.69,
+        "total_memory_mb": 16384
+      },
+      "initial_context": {
+        "full_capsules": 531,
+        "indexed_symbols": 426,
+        "seconds": 128.1499565109989
+      },
+      "initial_context_phases": {
+        "empty_native_world_capture": 0.5714324379950995,
+        "final_evidence_verification": 10.680116388000897,
+        "persisted_snapshot_reopen": 0.3442857959889807,
+        "retrieval_persistence": 1.78498443600256,
+        "semantic_build_reconstruction_and_hydration": 35.476093823992414,
+        "source384_capture_and_inference": 72.13537123298738,
+        "vector_qualification": 7.147075617001974
+      },
+      "phases": {
+        "context_seconds": 18.920662352000363,
+        "doctor_seconds": 47.27348899899516,
+        "initial_context_seconds": 128.59912002299097,
+        "planning_seconds": 30.58482087199809,
+        "prepare_seconds": 11.090166324996972
+      },
+      "planning": {
+        "elapsed_seconds": 30.584470499001327,
+        "goals": 2,
+        "planning_strategy": "intent_symbolic",
+        "provider_calls": 0,
+        "qualified": true,
+        "tasks": 1
+      },
+      "post_publication_context": {},
+      "post_publication_proof_index": {},
+      "post_publication_security_advice": {},
+      "proof": {},
+      "proof_receipt": {},
+      "provider_invocation_count": 0,
+      "remaining_processes": null,
+      "reward": {
+        "reward": 0.0
+      },
+      "source384": {
+        "seconds": 72.03231170399522
+      },
+      "start": {},
+      "stop": {},
+      "supervisor": {
+        "arm": "full",
+        "benchmark_advantage_claimed": false,
+        "error_phase": "doctor",
+        "error_type": "LocalPlanningError",
+        "max_total_agent_seconds": 900,
+        "production_activation": false,
+        "reserved_cleanup_seconds": 60,
+        "schema": "terminal-admitted-supervisor-run@1",
+        "seconds": 238.67056616500486,
+        "task_completed": false,
+        "work_cutoff_seconds": 840,
+        "worker_cleanup_returncode": 0
+      },
+      "task_state": {},
+      "traceback_frames": [
+        {
+          "file": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+          "function": "run",
+          "line": 511
+        },
+        {
+          "file": "/opt/ipfs-supervisor/source/benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
+          "function": "prepare_terminal_doctor_dispatch",
+          "line": 116
+        },
+        {
+          "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/doctor_header_workflow.py",
+          "function": "prepare_header_contract_repair",
+          "line": 162
+        },
+        {
+          "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/doctor_contract_proof.py",
+          "function": "prove_header_contract",
+          "line": 148
+        },
+        {
+          "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/doctor_contract_proof.py",
+          "function": "_replay_bound_candidate",
+          "line": 109
+        },
+        {
+          "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/doctor_scoped_analysis.py",
+          "function": "_selection",
+          "line": 35
+        },
+        {
+          "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+          "function": "verify_local_benchmark_admission",
+          "line": 1035
+        },
+        {
+          "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+          "function": "_planning_payload",
+          "line": 962
+        },
+        {
+          "file": "/opt/ipfs-supervisor/source/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+          "function": "_replay_intent_symbolic_plan",
+          "line": 1000
+        }
+      ],
+      "trial": "fix-code-vulnerability__7iBDh8e"
+    }
+  ]
+}

@@ -139,9 +139,26 @@ def _failure_diagnostics(error: Exception, *, phase: str) -> dict:
         result["failure_scheduler_error"] = "collection_unavailable"
     try:
         from benchmarks.agent_supervisor.container_coding.terminal_resource_diagnostics import collect_failure_admission
-        result["failure_admission"] = collect_failure_admission(error)
+        primary = error
+        seen = set()
+        for _ in range(8):
+            if not isinstance(primary, BaseException) or id(primary) in seen:
+                break
+            seen.add(id(primary))
+            observation = collect_failure_admission(primary)
+            result["failure_admission"] = observation
+            if observation.get("reason") != "no_native_admission_error":
+                break
+            primary = primary.__cause__
     except Exception:
         result["failure_admission_error"] = "collection_unavailable"
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.header_intent_applicability import project_header_checker_failure
+        diagnostic = project_header_checker_failure(error)
+        if diagnostic is not None:
+            result["failure_header_checker"] = diagnostic
+    except Exception:
+        result["failure_header_checker_error"] = "collection_unavailable"
     return result
 
 

@@ -997,6 +997,10 @@ def _replay_intent_symbolic_plan(requirements, manifest, *, applicability_timeou
         for field in ("symbolic_issues", "requirement_coverage"):
             if hasattr(exc, field):
                 setattr(error, field, getattr(exc, field))
+        from .header_intent_applicability import project_header_checker_failure
+        diagnostic = project_header_checker_failure(exc)
+        if diagnostic is not None:
+            error.header_checker_diagnostic = diagnostic
         raise error from exc
 
 

@@ -1061,3 +1061,24 @@ no callback was installed. An interruption after callback installation retains
 ownership and reports incomplete cleanup; it does not silently detach an
 ordinary lifetime callback. Native implementation controls exercise actual
 START, an authored repair, public validation, task completion, and STOP.
+
+The completion-binding archive passed fresh Docker qualification with Source384
+72.265 s and warm replay 9.281 s. The subsequent full trial received reward 0:
+Doctor's required symbolic-plan local-model replay was incomplete, before START
+or the fixed completion gateway. Its 238.671 s driver did not exhaust the extended
+work budget. The retained result does not distinguish a checker admission timeout,
+execution timeout, unknown solver answer, or model mismatch; later pressure
+telemetry cannot establish that cause. Both runs used the authorized temporary
+Leanstral pause, followed by successful service and model restoration. See
+[completion retry evidence](../../../docs/agent_supervisor/evidence/extended-supervisor-completion-20261004/README.md).
+
+The leased header checker now gives admission its selected bounded wait (30 s
+normally, 90 s for the explicit local benchmark profile), capped by the caller's
+remaining deadline. Its version probe and query receive at most five seconds
+after admission. The enclosing symbolic replay limit remains 45 seconds; waiting
+does not renew it. Native admission and cancellation errors retain their typed
+cause and bounded phase/reason diagnostics instead of becoming unexplained solver
+outcomes. The leased backend cannot start an unleased fallback version probe.
+Returned unknown/mismatched checks remain refusals, with bounded status/count and
+failed-gate diagnostics exported by the driver. This does not retroactively
+identify the discarded solver outcome from the earlier failed trial.

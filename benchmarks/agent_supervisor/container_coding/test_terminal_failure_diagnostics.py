@@ -10,6 +10,7 @@ import pytest
 from benchmarks.agent_supervisor.container_coding import terminal_container_supervisor as driver
 from ipfs_datasets_py.optimizers.logic_theorem_optimizer import proof_resource_safety as resources
 from ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler import LeaseTimeoutError
+from benchmarks.agent_supervisor.container_coding.test_terminal_admission_observation import refused  # noqa: F401
 
 
 def _expected_resources():
@@ -46,6 +47,53 @@ def test_metadata_excludes_frame_locals_source_and_exception_chain(resource_samp
     assert all(set(frame) == {"file", "function", "line"} for frame in frames)
     assert all(type(frame["line"]) is int and frame["line"] > 0 for frame in frames)
     assert "PRIVATE_" not in json.dumps(result)
+
+
+def test_wrapped_checker_failure_preserves_actual_admission_without_later_pressure_attribution(refused, monkeypatch):
+    from ipfs_datasets_py.logic.security_ir.bounded_header_checker import BoundedHeaderCheckerError
+    from ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission import LocalPlanningError
+    wrapped = BoundedHeaderCheckerError("PRIVATE_SOLVER_MESSAGE")
+    wrapped.__cause__ = refused
+    wrapped.header_checker_diagnostic = dict(schema="bounded-header-checker-failure@1",
+        phase="child_admission", reason="admission_timeout")
+    outer = LocalPlanningError("PRIVATE_WRAPPER_MESSAGE")
+    outer.__cause__ = wrapped
+    monkeypatch.setattr(resources, "collect_proof_host_resources",
+        lambda: resources.ProofHostResources(8, 8192, 8192))
+    result = driver._failure_diagnostics(outer, phase="doctor")
+    assert result["failure_resources"]["memory_stall_percent"] == 0
+    assert result["failure_admission"]["last_sample"]["host"]["memory_stall_percent"] == 10
+    assert result["failure_admission"]["primary_gate"]["reason"] == "proof_memory_stall"
+    assert result["failure_header_checker"] == wrapped.header_checker_diagnostic
+    assert result["failure_admission"]["causal_proof"] is False
+    assert "PRIVATE" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("change", ["extra", "phase", "reason", "phase_type", "cycle", "deep", "implicit"])
+def test_checker_failure_projection_is_closed_and_explicitly_bounded(resource_sample, change):
+    inner = ValueError("PRIVATE_INNER")
+    inner.header_checker_diagnostic = dict(schema="bounded-header-checker-failure@1",
+        phase="query", reason="deadline")
+    outer = RuntimeError("PRIVATE_OUTER")
+    outer.__cause__ = inner
+    if change == "extra": inner.header_checker_diagnostic["model_text"] = "PRIVATE"
+    elif change == "phase": inner.header_checker_diagnostic["phase"] = "PRIVATE_PHASE"
+    elif change == "reason": inner.header_checker_diagnostic["reason"] = "PRIVATE_REASON"
+    elif change == "phase_type": inner.header_checker_diagnostic["phase"] = []
+    elif change == "cycle":
+        outer.__cause__ = outer
+    elif change == "deep":
+        for _ in range(8):
+            wrapper = RuntimeError("PRIVATE_LAYER")
+            wrapper.__cause__ = outer
+            outer = wrapper
+    else:
+        outer.__cause__ = None
+        outer.__context__ = inner
+    result = driver._failure_diagnostics(outer, phase="doctor")
+    assert "failure_header_checker" not in result
+    assert result["failure_admission"]["reason"] == "no_native_admission_error"
+    assert "PRIVATE" not in json.dumps(result)
 
 
 @pytest.mark.parametrize("depth,truncated", [(80, False), (300, True)])

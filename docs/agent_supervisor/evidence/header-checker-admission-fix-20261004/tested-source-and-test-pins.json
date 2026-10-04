@@ -1,0 +1,32 @@
+{
+  "checkout_base_revision": "37f556040bccdce81f0bc3de6ee52d02b147ba2c",
+  "complete_transitive_source_map": false,
+  "runs": {
+    "baseline-01": {
+      "ipfs_datasets_py/logic/security_ir/bounded_header_checker.py": "8e0464eeba44b5c90024612166d03ac3df524b579ab749ba300d7dfd77158a09",
+      "ipfs_datasets_py/logic/security_ir/code_header_derivation.py": "143ba1f57ade2a6bc588f868ffe4b1e0f05a91701dd1a7a076cb37b6928d6429",
+      "tests/unit/logic/security_ir/test_code_header_derivation.py": "03f294beb77b78fb092290e49e99d73891946c51229033d43d5cc63d6ac95d6b"
+    },
+    "contention-01": {
+      "ipfs_datasets_py/logic/security_ir/bounded_header_checker.py": "a60a9a73bf8ef46490cad19ce71ae0230d0d2b6341c2b7b9aa044aec43218cfb",
+      "ipfs_datasets_py/logic/security_ir/code_header_derivation.py": "71faa5b7b13e8656817cfd4a7fff1ac498897e6228611ebe2c045af0dac48175",
+      "tests/unit/logic/security_ir/test_bounded_header_checker.py": "826cd98c7a2b28f2d43cf9732d744398158b17e1bbb0eae4f7041a2ee56f09c6"
+    },
+    "controls-01": {
+      "ipfs_datasets_py/logic/security_ir/bounded_header_checker.py": "a60a9a73bf8ef46490cad19ce71ae0230d0d2b6341c2b7b9aa044aec43218cfb",
+      "ipfs_datasets_py/logic/security_ir/code_header_derivation.py": "71faa5b7b13e8656817cfd4a7fff1ac498897e6228611ebe2c045af0dac48175",
+      "tests/unit/logic/security_ir/test_bounded_header_checker.py": "2125bdbfade502d10c9ef469948df7e9229447dc41df1407551063ef6e3d3f4f",
+      "tests/unit/logic/security_ir/test_code_header_derivation.py": "03f294beb77b78fb092290e49e99d73891946c51229033d43d5cc63d6ac95d6b"
+    },
+    "native-01": {
+      "ipfs_datasets_py/logic/security_ir/bounded_header_checker.py": "a60a9a73bf8ef46490cad19ce71ae0230d0d2b6341c2b7b9aa044aec43218cfb",
+      "ipfs_datasets_py/logic/security_ir/code_header_derivation.py": "71faa5b7b13e8656817cfd4a7fff1ac498897e6228611ebe2c045af0dac48175",
+      "tests/integration/logic/software_contracts/test_codebase_header_context.py": "5fbf21890e80c0f24ec68223f8e03ecdfbe8532c65a57e660cacc12be3fd08de",
+      "tests/unit/logic/security_ir/test_bounded_header_checker.py": "2125bdbfade502d10c9ef469948df7e9229447dc41df1407551063ef6e3d3f4f",
+      "tests/unit/logic/security_ir/test_bounded_header_checker_native.py": "7f2c6d3bc35eec3a411d579cf08696ddb9df25dc547cceb4cf79816121b2b27e",
+      "tests/unit/logic/security_ir/test_code_header_derivation.py": "03f294beb77b78fb092290e49e99d73891946c51229033d43d5cc63d6ac95d6b"
+    }
+  },
+  "schema": "tested-source-and-test-pins@1",
+  "working_tree_implementation_and_tests_bound_by_sha256": true
+}

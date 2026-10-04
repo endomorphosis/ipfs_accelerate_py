@@ -1,0 +1,65 @@
+{
+  "records": {
+    "baseline-01-command.json": {
+      "bytes": 1111,
+      "raw_body_exported": false,
+      "sha256": "2fb810f05cff3f1145f18fbbeab9b2af3f0b40d70878c690cb0a80d88f2b7753"
+    },
+    "baseline-01-exit.json": {
+      "bytes": 53,
+      "raw_body_exported": false,
+      "sha256": "a7aac1ca77f2af4d2361da6cfa27587e0581174761915eafaa14f474012d9af2"
+    },
+    "baseline-01.xml": {
+      "bytes": 6084,
+      "raw_body_exported": false,
+      "sha256": "c79e80b2fc661e5d1b777ae02255c915e1e6adbcc14f87b3e4e183dcc97baa64"
+    },
+    "contention-01-command.json": {
+      "bytes": 1452,
+      "raw_body_exported": false,
+      "sha256": "1d332506987781447fb2da45270c660240c44a40e6a9899afac9600e065d6fee"
+    },
+    "contention-01-exit.json": {
+      "bytes": 87,
+      "raw_body_exported": false,
+      "sha256": "a8d3bc4ba910918ec31eeccb43f4f490836745ee617a684d79c9674de3c876ea"
+    },
+    "contention-01.xml": {
+      "bytes": 1220,
+      "raw_body_exported": false,
+      "sha256": "ea1e47cd6507926c064cb0ed46167955a070bde38cc2d93eeb4a832528ba6fbe"
+    },
+    "controls-01-command.json": {
+      "bytes": 1226,
+      "raw_body_exported": false,
+      "sha256": "2ca361afa7748bb5a43af6fb817809057e454bc8c85c2598a3e20b712f46eb3b"
+    },
+    "controls-01-exit.json": {
+      "bytes": 54,
+      "raw_body_exported": false,
+      "sha256": "90223637799b65c281784bdc945209206f20fcac9f0a19cc43ef85f17d13ae6d"
+    },
+    "controls-01.xml": {
+      "bytes": 19331,
+      "raw_body_exported": false,
+      "sha256": "cf3753b5c3c5a84ece0d77812976319ec57edfa911840d077b911222fd865601"
+    },
+    "native-01-command.json": {
+      "bytes": 2827,
+      "raw_body_exported": false,
+      "sha256": "c4431b857bff11168bd956d557003ea764f48693764268d705694120577588c2"
+    },
+    "native-01-exit.json": {
+      "bytes": 87,
+      "raw_body_exported": false,
+      "sha256": "6b5791960ce35ca6601b9a2be2f533953d23cb525e5c0c2e674795e80e46a5fa"
+    },
+    "native-01.xml": {
+      "bytes": 23343,
+      "raw_body_exported": false,
+      "sha256": "b46442d2732179dd03da542947e726b212164b989f458dd045f82d7466600475"
+    }
+  },
+  "schema": "retained-test-record-digests@1"
+}

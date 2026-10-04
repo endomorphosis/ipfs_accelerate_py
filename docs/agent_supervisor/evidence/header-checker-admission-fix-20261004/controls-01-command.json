@@ -1,0 +1,27 @@
+{
+  "argv": [
+    "<PYTHON_EXECUTABLE>",
+    "-m",
+    "pytest",
+    "-q",
+    "tests/unit/logic/security_ir/test_bounded_header_checker.py",
+    "tests/unit/logic/security_ir/test_code_header_derivation.py",
+    "--junitxml=<EVIDENCE_ROOT>/controls-01.xml"
+  ],
+  "command_projection": true,
+  "cwd": "<DATASETS_CHECKOUT>",
+  "environment_overrides": {
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "<DATASETS_CHECKOUT>"
+  },
+  "original_command_sha256": "2ca361afa7748bb5a43af6fb817809057e454bc8c85c2598a3e20b712f46eb3b",
+  "schema": "bounded-test-command-projection@1",
+  "source_revision": "37f556040bccdce81f0bc3de6ee52d02b147ba2c",
+  "source_revision_is_checkout_base_with_working_tree_changes": true,
+  "source_sha256": {
+    "ipfs_datasets_py/logic/security_ir/bounded_header_checker.py": "a60a9a73bf8ef46490cad19ce71ae0230d0d2b6341c2b7b9aa044aec43218cfb",
+    "ipfs_datasets_py/logic/security_ir/code_header_derivation.py": "71faa5b7b13e8656817cfd4a7fff1ac498897e6228611ebe2c045af0dac48175",
+    "tests/unit/logic/security_ir/test_bounded_header_checker.py": "2125bdbfade502d10c9ef469948df7e9229447dc41df1407551063ef6e3d3f4f",
+    "tests/unit/logic/security_ir/test_code_header_derivation.py": "03f294beb77b78fb092290e49e99d73891946c51229033d43d5cc63d6ac95d6b"
+  }
+}

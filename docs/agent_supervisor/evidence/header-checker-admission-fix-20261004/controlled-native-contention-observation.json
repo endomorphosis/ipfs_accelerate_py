@@ -1,0 +1,24 @@
+{
+  "observation": {
+    "aggregate_deadline_seconds": 20.0,
+    "aggregate_expired_after_seconds": 20.016034997999668,
+    "execution_limits_seconds": [
+      4.9994215659971815,
+      4.9672908000065945
+    ],
+    "first_process_started_after_seconds": 6.050306083998294,
+    "host_pressure_recovery_claimed": false,
+    "observed_processes_gone": 2,
+    "real_scheduler": true,
+    "real_z3": true,
+    "recovery_elapsed_seconds": 6.1200991709920345,
+    "remaining_leases": 0,
+    "remaining_waiters": 0,
+    "scheduled_reservation_release_seconds": 6.0,
+    "simulated_clock": false
+  },
+  "original_xml_sha256": "ea1e47cd6507926c064cb0ed46167955a070bde38cc2d93eeb4a832528ba6fbe",
+  "schema": "controlled-native-contention-observation@1",
+  "scope": "isolated actual scheduler reservation contention and real bounded Z3; no host pressure induced or recovery claimed",
+  "source": "contention-01.xml named testcase property"
+}

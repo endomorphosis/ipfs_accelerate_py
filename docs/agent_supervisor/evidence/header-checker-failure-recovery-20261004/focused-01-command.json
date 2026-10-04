@@ -1,0 +1,48 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "-o",
+    "cache_dir=/home/barberb/lift_coding/artifacts/header-checker-failure-recovery-20261004/private-focused-01/pytest-cache",
+    "--basetemp=/home/barberb/lift_coding/artifacts/header-checker-failure-recovery-20261004/private-focused-01/tmp",
+    "test/api/test_header_intent_applicability.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_admission_observation.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/header-checker-failure-recovery-20261004/focused-01.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "environment_overrides": {
+    "CUDA_VISIBLE_DEVICES": "",
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/header-checker-failure-recovery-20261004/private-focused-01/seal.duckdb",
+    "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "/home/barberb/lift_coding/artifacts/header-checker-failure-recovery-20261004/private-focused-01/keys.db",
+    "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": "/home/barberb/lift_coding/artifacts/header-checker-failure-recovery-20261004/private-focused-01/scheduler.json",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_MAX_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "hidden_verifier_used": false,
+  "production_scheduler_ledger_mutated": false,
+  "provider_calls": 0,
+  "source_pins": {
+    "datasets/ipfs_datasets_py/logic/security_ir/bounded_header_checker.py": "a60a9a73bf8ef46490cad19ce71ae0230d0d2b6341c2b7b9aa044aec43218cfb",
+    "datasets/ipfs_datasets_py/logic/security_ir/code_header_derivation.py": "71faa5b7b13e8656817cfd4a7fff1ac498897e6228611ebe2c045af0dac48175",
+    "datasets/ipfs_datasets_py/logic/software_contracts/codebase_resources.py": "aacf2ae1de1d78f560aabec940695addd38997fec0c46422f63c0967ca7ead81",
+    "datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py": "740543329dacbd84afcb19c88b6fdb0f09b4dd38bb564cfc6cf999d3fcb4e22a",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "200f2f39d571efd88d15b5917dee1468d7be5c935b0a71b6cfdd745d55ff8c90",
+    "source/benchmarks/agent_supervisor/container_coding/test_terminal_admission_observation.py": "8b811116e0a52d62ce73cb07e8c9b1c4397094a320962c0872b84cffe723112e",
+    "source/benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py": "17978267ab62896e22e8e54191c537e3fd09c599cd4418c64e9dff0d9070b42c",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/header_intent_applicability.py": "0c43e38d202fdb00bd61ed51d2a2b56f9864fb7bded43bd95df8bdf8cebb53eb",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py": "3e02d1afa3d7a3e214ea1e35412614659d40400a9f82f123ec84459b712ffbbe",
+    "source/test/api/test_header_intent_applicability.py": "7cbef7755ab1c8cc43d4c6cc0da8236fc17dd9d47149f98dfca8b7d03571078b"
+  }
+}

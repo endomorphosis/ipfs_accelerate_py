@@ -1,0 +1,112 @@
+{
+  "admission_recovery_over_five_seconds": {
+    "host_memory_pressure_recovery_claimed": false,
+    "native_control": {
+      "aggregate_deadline_seconds": 20.0,
+      "aggregate_expired_after_seconds": 20.016034997999668,
+      "execution_limits_seconds": [
+        4.9994215659971815,
+        4.9672908000065945
+      ],
+      "first_process_started_after_seconds": 6.050306083998294,
+      "host_pressure_recovery_claimed": false,
+      "observed_processes_gone": 2,
+      "real_scheduler": true,
+      "real_z3": true,
+      "recovery_elapsed_seconds": 6.1200991709920345,
+      "remaining_leases": 0,
+      "remaining_waiters": 0,
+      "scheduled_reservation_release_seconds": 6.0,
+      "simulated_clock": false
+    },
+    "simulated_control": {
+      "method": "simulated monotonic clock and authored ResourceLease subclass",
+      "simulated_wait_seconds": 6
+    }
+  },
+  "baseline_scope": {
+    "baseline_production_revision": "37f556040bccdce81f0bc3de6ee52d02b147ba2c",
+    "cancellation_wrapper_contract_regression": 1,
+    "failures": 4,
+    "new_tests_added_to_demonstrate_failure": true,
+    "tests": 4,
+    "unowned_version_probe_regressions": 3
+  },
+  "contention_control_scope": {
+    "distinct_test_not_in_native_01_group": true,
+    "host_pressure_sampler_or_production_profile_used": false,
+    "implementation_pins_identical_to_native_01": true,
+    "native_admission_timeout_was_actual": true,
+    "real_scheduler_with_isolated_accounting_ledger": true,
+    "synthetic_admission_failure_unit_control_is_separate": true,
+    "test_file_added_after_native_01": true
+  },
+  "initial_optional_skip": {
+    "final_run_fixture_supplied_and_skip_count": 0,
+    "passed": 65,
+    "reason": "permitted public Bottle fixture environment was not supplied",
+    "skipped": 1,
+    "tests": 66
+  },
+  "limitations": [
+    "The prior C trial discarded its checker result. Its exact failed conjunct and pressure cause remain unknown.",
+    "The correction preserves native admission exceptions and closed checker diagnostics; it does not authorize an unchecked proof.",
+    "Admission is bounded by the existing profile default (30 or 90 seconds) and the immutable enclosing deadline. Version and query together retain the five-second execution cap.",
+    "The optional legacy checker and shared generic SMT backend are unchanged.",
+    "The final 92-case run includes earlier focused cases; these are overlapping scopes, not 157 independent cases.",
+    "This component is not a completed benchmark or a matched baseline efficiency comparison.",
+    "Original command/XML record digests identify retained local evidence. Exported commands and XML omit private paths, traceback bodies, captured output, and hostnames.",
+    "The new one-case contention run is separate from the earlier 92-case group; both use identical implementation hashes. Its isolated scheduler measures reservation contention without production host-pressure sampling. Unit controls injecting admission_observation are synthetic diagnostics, not observations of host pressure."
+  ],
+  "native_solver_and_process_scope": {
+    "exact_permitted_public_bottle_source": true,
+    "native_runner_parent_lease": "authored ResourceLease subclass; no live host-pressure admission claim",
+    "public_bottle_fixture_operations": [
+      "native_derivation",
+      "captured_context_replay"
+    ],
+    "public_bottle_solver_executed_in_these_fixture_cases": false,
+    "real_output_flood_refusal": true,
+    "real_process_limits_and_stdin": true,
+    "real_timed_out_process_cleanup": true,
+    "real_z3_original_and_guarded_authored_source": true,
+    "z3_script_and_version": true
+  },
+  "outcomes": {
+    "baseline-01": [
+      {
+        "errors": 0,
+        "failures": 4,
+        "skipped": 0,
+        "tests": 4
+      }
+    ],
+    "contention-01": [
+      {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 1
+      }
+    ],
+    "controls-01": [
+      {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 1,
+        "tests": 66
+      }
+    ],
+    "native-01": [
+      {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 92
+      }
+    ]
+  },
+  "schema": "bounded-header-checker-fix-evidence@1",
+  "source_preservation_for_final_run": true,
+  "source_preservation_scope": "two implementation files and four selected test modules listed in native-01-command.json"
+}

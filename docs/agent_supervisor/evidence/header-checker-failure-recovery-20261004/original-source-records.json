@@ -1,0 +1,27 @@
+{
+  "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": {
+    "bytes": 40795,
+    "raw_body_exported": false,
+    "sha256": "0bc644a4f5b4b680a175bc2c1b42ba94085a3736bf92b6e8a666ad2e053f666e"
+  },
+  "benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py": {
+    "bytes": 8989,
+    "raw_body_exported": false,
+    "sha256": "847a00f892119eb5c61dd4d61bd18bcd533dc85fab0c43e4ab6c74222010a04e"
+  },
+  "ipfs_accelerate_py/agent_supervisor/runtime/header_intent_applicability.py": {
+    "bytes": 23420,
+    "raw_body_exported": false,
+    "sha256": "f71c4d3bc6b91528bc473dffd82a2866ad755a47bf80619690397950cbf1d8d5"
+  },
+  "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py": {
+    "bytes": 85434,
+    "raw_body_exported": false,
+    "sha256": "836aedb3de761d45429218e3296c87a743ad68174361e1e66b2959af9dda26a3"
+  },
+  "test/api/test_header_intent_applicability.py": {
+    "bytes": 27355,
+    "raw_body_exported": false,
+    "sha256": "a616f9b082f49f977a7cbe923adf8466d929d1afcfa5efbec1975e784827f30d"
+  }
+}

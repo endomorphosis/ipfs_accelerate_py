@@ -1,0 +1,60 @@
+{
+  "files": [
+    {
+      "bytes": 3112,
+      "path": "README.md",
+      "sha256": "11c25b2e8fe75185edf27cb29b25b003ec6a9c16da3ef274cc29c08fc96c7f6b"
+    },
+    {
+      "bytes": 8177,
+      "path": "build_component.py",
+      "sha256": "8c7bd1a5f8c5967a3efa0a2effea3a7d78248d6916fc8049b04952650b2f8461"
+    },
+    {
+      "bytes": 3497,
+      "path": "focused-01-command.json",
+      "sha256": "76163b282dd3810c3883e183b22a769c61d778463a7242523e8d1e211e917334"
+    },
+    {
+      "bytes": 197,
+      "path": "focused-01-exit.json",
+      "sha256": "93e396a35178b8f6e523bd1e2a5d6be0b3aaea5655617fce73890b04b0f21571"
+    },
+    {
+      "bytes": 17198,
+      "path": "focused-01.xml",
+      "sha256": "04066ba2ace16e41ecc673189126c246261c27dc6b4722fdf10672ed48a08bc3"
+    },
+    {
+      "bytes": 3275,
+      "path": "observation.json",
+      "sha256": "6625a9a96fbc2844c7b1832ca8089b8888302a627661da95a36c7b61e24fb988"
+    },
+    {
+      "bytes": 720,
+      "path": "original-pins.json",
+      "sha256": "319b807fae98f089b3639dfbab9783dc09d6c59ded452840e89ce5579009d270"
+    },
+    {
+      "bytes": 1079,
+      "path": "original-source-records.json",
+      "sha256": "4a8b6994d60d4e39c21e5c149d9b022520718c09bcac6dccd03fb9f26ab30e80"
+    },
+    {
+      "bytes": 1593,
+      "path": "prior-native-diagnosis.json",
+      "sha256": "c807f0efb8c46e6f904a084dd6f19e354511cee6ca12536676add4aed5ed7c7d"
+    },
+    {
+      "bytes": 1604,
+      "path": "related-datasets-controls.json",
+      "sha256": "fcaddc04528305f96e7f5903aeaf3cc7dcfa73174f2be5469afcb63f2ed81792"
+    },
+    {
+      "bytes": 3187,
+      "path": "run_controls.py",
+      "sha256": "c2cc175eaa73b110dedd8390abf567e602333c13be675696ebd160668e945433"
+    }
+  ],
+  "schema": "header-checker-failure-recovery-public-evidence@1"
+}

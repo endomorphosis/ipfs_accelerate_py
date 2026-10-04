@@ -1,0 +1,35 @@
+{
+  "argv": [
+    "<PYTHON_EXECUTABLE>",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "-o",
+    "cache_dir=<PRIVATE_TEST_STATE>/contention-01/pytest-cache",
+    "-o",
+    "junit_family=xunit1",
+    "tests/unit/logic/security_ir/test_bounded_header_checker.py::test_native_reservation_wait_recovers_without_renewing_aggregate_deadline",
+    "--junitxml=<EVIDENCE_ROOT>/contention-01.xml"
+  ],
+  "command_projection": true,
+  "cwd": "<DATASETS_CHECKOUT>",
+  "environment_overrides": {
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_MAX_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "<DATASETS_CHECKOUT>"
+  },
+  "original_command_sha256": "1d332506987781447fb2da45270c660240c44a40e6a9899afac9600e065d6fee",
+  "schema": "bounded-test-command-projection@1",
+  "source_revision": "37f556040bccdce81f0bc3de6ee52d02b147ba2c",
+  "source_revision_is_checkout_base_with_working_tree_changes": true,
+  "source_sha256": {
+    "ipfs_datasets_py/logic/security_ir/bounded_header_checker.py": "a60a9a73bf8ef46490cad19ce71ae0230d0d2b6341c2b7b9aa044aec43218cfb",
+    "ipfs_datasets_py/logic/security_ir/code_header_derivation.py": "71faa5b7b13e8656817cfd4a7fff1ac498897e6228611ebe2c045af0dac48175",
+    "tests/unit/logic/security_ir/test_bounded_header_checker.py": "826cd98c7a2b28f2d43cf9732d744398158b17e1bbb0eae4f7041a2ee56f09c6"
+  }
+}

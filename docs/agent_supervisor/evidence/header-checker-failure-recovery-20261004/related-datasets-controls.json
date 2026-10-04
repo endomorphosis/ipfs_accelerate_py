@@ -1,0 +1,35 @@
+{
+  "records": {
+    "/home/barberb/lift_coding/artifacts/header-checker-admission-fix-20261004/contention-01-command.json": {
+      "bytes": 1452,
+      "raw_body_exported": false,
+      "sha256": "1d332506987781447fb2da45270c660240c44a40e6a9899afac9600e065d6fee"
+    },
+    "/home/barberb/lift_coding/artifacts/header-checker-admission-fix-20261004/contention-01-exit.json": {
+      "bytes": 87,
+      "raw_body_exported": false,
+      "sha256": "a8d3bc4ba910918ec31eeccb43f4f490836745ee617a684d79c9674de3c876ea"
+    },
+    "/home/barberb/lift_coding/artifacts/header-checker-admission-fix-20261004/contention-01.xml": {
+      "bytes": 1220,
+      "raw_body_exported": false,
+      "sha256": "ea1e47cd6507926c064cb0ed46167955a070bde38cc2d93eeb4a832528ba6fbe"
+    },
+    "/home/barberb/lift_coding/artifacts/header-checker-admission-fix-20261004/native-01-command.json": {
+      "bytes": 2827,
+      "raw_body_exported": false,
+      "sha256": "c4431b857bff11168bd956d557003ea764f48693764268d705694120577588c2"
+    },
+    "/home/barberb/lift_coding/artifacts/header-checker-admission-fix-20261004/native-01-exit.json": {
+      "bytes": 87,
+      "raw_body_exported": false,
+      "sha256": "6b5791960ce35ca6601b9a2be2f533953d23cb525e5c0c2e674795e80e46a5fa"
+    },
+    "/home/barberb/lift_coding/artifacts/header-checker-admission-fix-20261004/native-01.xml": {
+      "bytes": 23343,
+      "raw_body_exported": false,
+      "sha256": "b46442d2732179dd03da542947e726b212164b989f458dd045f82d7466600475"
+    }
+  },
+  "scope": "Independent D controls; these results are not counted in the A91-pass total."
+}

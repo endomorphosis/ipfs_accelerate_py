@@ -1,0 +1,29 @@
+{
+  "schema": "bounded-header-checker-prior-failure-diagnosis@1",
+  "source_revisions": {
+    "datasets": "37f556040bccdce81f0bc3de6ee52d02b147ba2c",
+    "kit": "a9b98beac1ef14278b4adf4f2289cd509530fb86",
+    "source": "a4dd12f28e967c5133b0987b5c1d6c9f74f46cbe"
+  },
+  "report_sha256": "c4b936b7f7dce03f8f70efee167b078577557363bb456d334716b1b5d78bd5cf",
+  "raw_report_body_exported": false,
+  "observed_error": {
+    "message": "invalid symbolic intent planning: actual complete local-model checking required",
+    "type": "LocalPlanningError"
+  },
+  "observed_phase": "doctor",
+  "seconds": 238.67056616500486,
+  "work_cutoff_seconds": 840,
+  "gateway_path_reached": false,
+  "exact_failed_checker_conjunct": "unavailable in retained generation",
+  "exact_solver_status_or_native_admission_refusal": "unavailable in retained generation",
+  "confirmed_source_mechanisms": [
+    "Child admission and first version/query execution shared a five-second local deadline.",
+    "Generic SMT backend converts native LeaseTimeoutError to a timeout result without preserving its attached admission observation.",
+    "Header result reduction maps inconclusive backend results to unknown before the applicability gate emits a generic refusal.",
+    "Empty version on converted failure can invoke an unleased solver-version probe."
+  ],
+  "same_failure_causally_proved": false,
+  "post_unwind_memory_pressure_is_causal_evidence": false,
+  "repair_scope": "Separate bounded admission from execution within the unchanged aggregate deadline; preserve typed failure evidence and fail-closed solver gates."
+}

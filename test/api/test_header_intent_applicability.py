@@ -278,8 +278,62 @@ def test_injected_unknown_native_solver_answer_cannot_become_a_fact(case, monkey
     monkeypatch.setattr(bounded_header_checker, "bounded_header_runner", lambda *a, **k:
         lambda script, bounds: SmtRawSolverOutput(stdout="unknown\n", returncode=0,
             solver_version="injected-unknown-control"))
-    with pytest.raises(ValueError, match="actual complete"):
-        planning.build_intent_symbolic_plan(case.contract, manifest=case.manifest, source_applicability_nomination=case.nomination)
+    with pytest.raises(local.LocalPlanningError, match="actual complete") as caught:
+        local._replay_intent_symbolic_plan(case.contract, case.manifest,
+            source_applicability_nomination=case.nomination)
+    diagnostic = owner.project_header_checker_failure(caught.value)
+    assert diagnostic["reason_codes"] == ["check_status"]
+    assert diagnostic["status"] == "model_check_inconclusive_or_mismatch"
+    assert diagnostic["result_status_counts"] == {"unknown": 6}
+    assert diagnostic["expected_solver_calls"] == diagnostic["observed_solver_calls"] == 6
+    assert diagnostic["execution_profile_matches"] and diagnostic["solver_identity_matches"]
+    assert "injected-unknown-control" not in json.dumps(diagnostic)
+
+
+@pytest.mark.parametrize("change", ["execution_profile", "solver_identity", "solver_call_count",
+                                    "missing_counterexample", "query_expectation"])
+def test_actual_checker_refusal_retains_exact_failed_gate_without_raw_outputs(case, monkeypatch, change):
+    from ipfs_datasets_py.logic.security_ir import code_header_derivation as header
+    actual = header.check_header_semantics
+    def changed(*args, **kwargs):
+        result = actual(*args, **kwargs)
+        assert result["status"] == "checked_local_model"
+        if change == "execution_profile":
+            result["execution_profile"] = "PRIVATE_PROFILE"
+        elif change == "solver_identity":
+            result["solver_executable_sha256"] = "PRIVATE_IDENTITY"
+        elif change == "solver_call_count":
+            result["solver_calls"] -= 1
+        elif change == "missing_counterexample":
+            for item in result["results"]:
+                if item["kind"] == "unsafe_converted_input_accepted":
+                    item["solver_answer"] = "unknown"
+        else:
+            result["results"][0]["matches_model_expectation"] = False
+        for item in result["results"]:
+            item["model_text"] = "PRIVATE_MODEL_BODY"
+        return result
+    monkeypatch.setattr(header, "check_header_semantics", changed)
+    with pytest.raises(local.LocalPlanningError) as caught:
+        local._replay_intent_symbolic_plan(case.contract, case.manifest,
+            source_applicability_nomination=case.nomination)
+    diagnostic = owner.project_header_checker_failure(caught.value)
+    assert diagnostic["reason_codes"] == [change]
+    assert diagnostic["result_count"] == 6
+    assert "PRIVATE" not in json.dumps(diagnostic)
+
+
+def test_checker_diagnostic_projection_caps_rows_and_detaches_metadata():
+    checked = {"status": "model_check_inconclusive_or_mismatch", "solver_calls": 500,
+        "results": [{"status": "unknown", "model_text": "PRIVATE"}] * 500}
+    error = owner._checker_refusal(checked, expected_calls=500, solver_sha="expected",
+        reasons=["check_status"], message="refused")
+    result = owner.project_header_checker_failure(error)
+    assert result["result_rows_truncated"] and result["result_count"] == 500
+    assert result["result_status_counts"] == {"unknown": 64}
+    result["reason_codes"].append("solver_call_count")
+    assert error.header_checker_diagnostic["reason_codes"] == ["check_status"]
+    assert "PRIVATE" not in json.dumps(result)
 
 
 def test_expired_or_cancelled_checker_cannot_return_applicability(case):

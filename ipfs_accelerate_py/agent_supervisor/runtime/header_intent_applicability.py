@@ -67,6 +67,81 @@ def _require(condition, message):
         raise ValueError(message)
 
 
+_CHECK_STATUSES = frozenset({"unsupported", "solver_unavailable", "checked_local_model",
+    "model_check_inconclusive_or_mismatch", "invalid"})
+_QUERY_STATUSES = frozenset({"proved", "disproved", "satisfiable", "unsatisfiable",
+    "unknown", "error", "invalid"})
+_CHECK_REFUSALS = frozenset({"check_status", "execution_profile", "solver_identity",
+    "solver_call_count", "missing_counterexample", "query_expectation"})
+
+
+def _bounded_count(value):
+    return value if type(value) is int and 0 <= value <= 65535 else None
+
+
+def _checker_refusal(checked, *, expected_calls, solver_sha, reasons, message):
+    """Attach only bounded verdict metadata, never solver/model/source bodies."""
+    results = checked.get("results")
+    rows = results[:64] if type(results) is list else []
+    counts = {}
+    for row in rows:
+        status = row.get("status") if type(row) is dict else None
+        status = status if type(status) is str and status in _QUERY_STATUSES else "invalid"
+        counts[status] = counts.get(status, 0) + 1
+    status = checked.get("status")
+    status = status if type(status) is str and status in _CHECK_STATUSES else "invalid"
+    error = ValueError(message)
+    error.header_checker_diagnostic = dict(schema="header-model-check-refusal@1",
+        reason_codes=list(reasons), status=status,
+        execution_profile_matches=checked.get("execution_profile") == CHECKER_PROFILE,
+        solver_identity_matches=checked.get("solver_executable_sha256") == solver_sha,
+        expected_solver_calls=_bounded_count(expected_calls),
+        observed_solver_calls=_bounded_count(checked.get("solver_calls")),
+        result_count=_bounded_count(len(results)) if type(results) is list else None,
+        result_status_counts=counts, result_rows_truncated=type(results) is list and len(results) > 64)
+    return error
+
+
+def project_header_checker_failure(error):
+    """Read closed diagnostics through at most eight explicit exception causes."""
+    seen = set()
+    for _ in range(8):
+        if not isinstance(error, BaseException) or id(error) in seen:
+            return None
+        seen.add(id(error))
+        try:
+            value = vars(error).get("header_checker_diagnostic")
+            cause = error.__cause__
+        except Exception:
+            return None
+        if type(value) is dict:
+            if (set(value) == {"schema", "phase", "reason"}
+                    and value["schema"] == "bounded-header-checker-failure@1"
+                    and type(value["phase"]) is str and value["phase"] in {"child_admission", "version_probe", "query", "child_release"}
+                    and type(value["reason"]) is str and value["reason"] in {"admission_timeout", "cancelled", "deadline", "tool_refusal"}):
+                return dict(value)
+            if (set(value) == {"schema", "reason_codes", "status", "execution_profile_matches",
+                    "solver_identity_matches", "expected_solver_calls", "observed_solver_calls",
+                    "result_count", "result_status_counts", "result_rows_truncated"}
+                    and value["schema"] == "header-model-check-refusal@1"
+                    and type(value["reason_codes"]) is list and 0 < len(value["reason_codes"]) <= 6
+                    and all(type(item) is str and item in _CHECK_REFUSALS for item in value["reason_codes"])
+                    and type(value["status"]) is str and value["status"] in _CHECK_STATUSES
+                    and all(type(value[key]) is bool for key in (
+                        "execution_profile_matches", "solver_identity_matches", "result_rows_truncated"))
+                    and all(value[key] is None or _bounded_count(value[key]) is not None for key in (
+                        "expected_solver_calls", "observed_solver_calls", "result_count"))
+                    and type(value["result_status_counts"]) is dict
+                    and len(value["result_status_counts"]) <= len(_QUERY_STATUSES)
+                    and all(type(key) is str and key in _QUERY_STATUSES and type(count) is int and 0 <= count <= 64
+                            for key, count in value["result_status_counts"].items())
+                    and sum(value["result_status_counts"].values()) <= 64):
+                return {**value, "reason_codes": list(value["reason_codes"]),
+                        "result_status_counts": dict(value["result_status_counts"])}
+        error = cause
+    return None
+
+
 def _raw(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"),
                       allow_nan=False).encode()
@@ -321,16 +396,25 @@ def checked_applicability(selection, *, nomination, manifest, timeout_seconds=45
             source_path=name, protocol=protocol, z3_executable=str(executable),
             timeout_seconds=remaining(), cancel_event=signal, parent_lease=lease)
         remaining()
-        _require(checked["status"] == "checked_local_model"
-                 and checked.get("execution_profile") == "native-leased-bounded-header-checker@1"
-                 and checked["solver_executable_sha256"] == solver_sha
-                 and checked["solver_calls"] == len(row["derivation"]["smt_targets"])
-                 and checked["solver_calls"] > 0,
-                 "actual complete local-model checking required")
+        expected_calls = len(row["derivation"]["smt_targets"])
+        failures = [reason for reason, accepted in (
+            ("check_status", checked.get("status") == "checked_local_model"),
+            ("execution_profile", checked.get("execution_profile") == CHECKER_PROFILE),
+            ("solver_identity", checked.get("solver_executable_sha256") == solver_sha),
+            ("solver_call_count", checked.get("solver_calls") == expected_calls and checked["solver_calls"] > 0),
+        ) if not accepted]
+        if failures:
+            raise _checker_refusal(checked, expected_calls=expected_calls, solver_sha=solver_sha,
+                reasons=failures, message="actual complete local-model checking required")
         counterexamples = [item for item in checked["results"]
             if item["kind"] == "unsafe_converted_input_accepted" and item["solver_answer"] == "sat"]
-        _require(counterexamples and all(item["matches_model_expectation"] for item in checked["results"]),
-                 "guard operation requires a checked local-model counterexample")
+        failures = [reason for reason, accepted in (
+            ("missing_counterexample", bool(counterexamples)),
+            ("query_expectation", all(item["matches_model_expectation"] for item in checked["results"])),
+        ) if not accepted]
+        if failures:
+            raise _checker_refusal(checked, expected_calls=expected_calls, solver_sha=solver_sha,
+                reasons=failures, message="guard operation requires a checked local-model counterexample")
         _require(index.current(head.repository_id) == head, "captured head changed during checking")
         _require(producer == pins() and resolve_header_checker(solver_profile) == solver,
                  "checker producer or solver changed during checking")
