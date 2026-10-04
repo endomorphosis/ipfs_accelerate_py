@@ -1314,6 +1314,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                 refreshed.append({"task_cid": task.task_cid, "status": "pending_native_stop",
                                   "completion_authority": False})
                 continue
+            refresh_phase = "rebuilder_selection"
             try:
                 historical = next((item for item in result.get("context_observation", {}).get("source384", [])
                     if item["task_cid"] == task.task_cid), None)
@@ -1323,6 +1324,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                     continue
                 cached_refresh = task.task_cid in self._published_context
                 if cached_refresh:
+                    refresh_phase = "cache_reload"
                     cached = self._published_context[task.task_cid]
                     context = load_published_task_context(server=self.server, admission=self.admission,
                         artifact=cached["refresh_artifact"], expected_sha256=cached["refresh_sha256"],
@@ -1348,6 +1350,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                             from ..runtime.published_retrieval import published_retrieval_rebuilder
                             rebuilder = published_retrieval_rebuilder(repository=self.repository,
                                 bundle=self.context_bundle, binding=binding)
+                    refresh_phase = "successor_refresh"
                     context = refresh_published_task_context(server=self.server, admission=self.admission,
                         predecessor_bundle=self.context_bundle, task_cid=task.task_cid, output=output,
                         retrieval_rebuilder=rebuilder,
@@ -1379,7 +1382,8 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                 # Retain task success and shutdown availability. A failed or
                 # stale derivative is unusable; it never authorizes dispatch.
                 refreshed.append({"task_cid": task.task_cid, "status": "unavailable",
-                    "error_type": type(error).__name__, "completion_authority": False})
+                    "error_type": type(error).__name__, "error_phase": refresh_phase,
+                    "completion_authority": False})
         result["published_context"] = refreshed
         result["published_context_observation_seconds"] = time.monotonic() - refresh_started
         self._record("published-context", {"results": refreshed,

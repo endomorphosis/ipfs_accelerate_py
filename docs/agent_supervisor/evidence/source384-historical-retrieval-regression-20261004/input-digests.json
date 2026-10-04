@@ -1,0 +1,20 @@
+{
+  "common_projector_sha256": "ff97f3c7c3bc1e2a541f59b8d2b7bfc7637f1f265bd179fffde6f80b180cb977",
+  "exporter_sha256": "efa37447a9507949d88e70f129891f0ab250ababeefc8c7519db30e1cd63e494",
+  "inputs": {
+    "command.json": {
+      "bytes": 5757,
+      "sha256": "105e9bb5cc35fc83d2c939c1272d90f960d0b2e3806ab24bf6c00371f9d914ea"
+    },
+    "exit.json": {
+      "bytes": 3898,
+      "sha256": "b2b2fc758789059d5bb0e20fdbea5c5f03c11634110be0d1c7cabc263dd20952"
+    },
+    "results.xml": {
+      "bytes": 2275,
+      "sha256": "148671e1f93e2b18d688246a01f82099c63a754ae48e5dde071753f47e3d66f8"
+    }
+  },
+  "raw_xml_bodies_exported": false,
+  "stdout_exported": false
+}

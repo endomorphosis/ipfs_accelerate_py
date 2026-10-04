@@ -26,7 +26,7 @@ from ..integrations.ipfs_datasets_embedding_provider import (
 )
 from ..proof.formal_verification_contracts import content_identity
 from .local_learned_embedding import _model_manifest, _LocalRouterModel, _PinnedRouterBackend
-from .published_retrieval import RetrievalRefreshUnavailable
+from .published_retrieval import RetrievalRefreshUnavailable, _historical_retrieval_metadata
 from .semantic_router_translation import _read
 from . import code_retrieval_context as retrieval
 from .task_context_bundle import load_task_context_nomination
@@ -275,8 +275,8 @@ def published_learned_retrieval_rebuilder(*, repository, bundle, binding):
 
         reason = "learned_pins_unavailable"
         try:
-            metadata = load_task_context_nomination(repository=root, artifact=bundle["artifact"],
-                expected_sha256=bundle["sha256"], task_cid=binding["task_cid"], task_id=binding["task_id"])
+            metadata = _historical_retrieval_metadata(repository=root, bundle=bundle,
+                task_cid=binding["task_cid"], task_id=binding["task_id"])
             artifacts = {"result": binding["result_artifact"], "manifest": binding["manifest_artifact"],
                          "model_snapshot": binding["model_snapshot"]}
             context, original, original_hits, old_policy, config, manifest, canary, raw, manifest_raw = _load_pins(root, metadata, binding["task_id"], artifacts)

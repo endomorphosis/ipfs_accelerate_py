@@ -1,0 +1,25 @@
+{
+  "actual_checkpoint_and_gte": true,
+  "actual_lexical_rebuild": true,
+  "actual_owner_publication_completion": true,
+  "actual_z3": true,
+  "authored_healthy_scheduler": true,
+  "distinct_final_cases_passed": 15,
+  "learned_new_handoff_uses_authored_pin_stop": true,
+  "light_cases_passed": 14,
+  "light_source384_numerical_seam": true,
+  "live_benchmark": false,
+  "model_downloads": 0,
+  "native_cases_passed": 1,
+  "provider_calls": 0,
+  "retained_original_source_failure": {
+    "boundary": "published_retrieval_rebuilder",
+    "cause": "stale_source384_currentness_validation",
+    "failures": 1,
+    "label": "before-01"
+  },
+  "schema": "historical-source384-retrieval-controls@1",
+  "service_actions": 0,
+  "training_steps": 0,
+  "v_swallowed_exception_exact_cause_known": false
+}

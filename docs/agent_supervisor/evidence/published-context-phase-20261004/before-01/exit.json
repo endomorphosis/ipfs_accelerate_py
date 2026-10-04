@@ -1,0 +1,16 @@
+{
+  "after_pins": {
+    "source/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "dead478d6fa972501f8f4593f3fb28130a341f71fc8a5c9f3a3364e8bbea1fc1",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/published_task_context.py": "d16874f2be9dec0e63c8e59fe0f6ad86a5b833b351d3e3a22b346e0f2a2d60d6",
+    "source/test/api/test_published_context_failure_phase.py": "3feb2a235df2671519d100b7a548ea9f66588d6ccc76978d27017638e3fee13c"
+  },
+  "returncode": 2,
+  "seconds": 3.5448347750061657,
+  "source_pins_unchanged": true,
+  "xml_counts": {
+    "errors": 1,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 1
+  }
+}

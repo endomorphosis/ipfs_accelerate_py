@@ -1,0 +1,63 @@
+{
+  "argv": [
+    "<PYTHON>",
+    "-m",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "--basetemp=<ISOLATED_TMP>/s3hl-light-01",
+    "--junitxml=<EVIDENCE_ROOT>/light-01/results.xml",
+    "test/api/semantic_state/test_source384_published_retrieval.py",
+    "test/api/semantic_state/test_published_retrieval.py"
+  ],
+  "cwd": "<ACCELERATE_WORKTREE>",
+  "environment_overrides": {
+    "CODEBASE384_CHECKPOINT": "<AUTHORIZED_CHECKPOINTS>/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json",
+    "CODEBASE384_EMBEDDING_SNAPSHOT": "<HF_CACHE>/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd",
+    "CUDA_VISIBLE_DEVICES": "",
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR": "<ISOLATED_TMP>/s3hl-light-01-private/orchestration",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "<ISOLATED_TMP>/s3hl-light-01-private/seal.duckdb",
+    "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "<ISOLATED_TMP>/s3hl-light-01-private/keys.db",
+    "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": "<EVIDENCE_ROOT>/light-01/fallback-scheduler.json",
+    "MKL_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "<ACCELERATE_WORKTREE>:<DATASETS_WORKTREE>",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "harness_sha256": "2c77d12958ec63b681cc8d7f7f1d2f5763d338d99d15b0ed5aa601cb02da3703",
+  "selected_source_pins_complete_repository": false,
+  "source_pins": {
+    "datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir.py": "6ca72bea0a321fd07b0ea785356b0d6b7e311c43be8a17c2475ab7f4a7bc00fc",
+    "datasets/ipfs_datasets_py/logic/software_contracts/codebase_resources.py": "aacf2ae1de1d78f560aabec940695addd38997fec0c46422f63c0967ca7ead81",
+    "datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_384.py": "f00ff90983770e0e9ac32d8a16c9654059630cfb2880e00bf891902fafe4bb03",
+    "datasets/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py": "dd07523511858621982d2620d1648adc106798c871af57401c1ff02c7308a08e",
+    "datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py": "3655923785cb99409171caaba8c523354f03dbe8d82b6deb45a7b46db8394633",
+    "datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py": "740543329dacbd84afcb19c88b6fdb0f09b4dd38bb564cfc6cf999d3fcb4e22a",
+    "source/benchmarks/agent_supervisor/container_coding/native_quack_qualification.py": "43d4ab90baa364014b6f4543a6aa2fa383aaba045612524336a4aa5474346e0e",
+    "source/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "990c2383a7fbdf2183d023f5381dda31ceb34e32f05439e1108786e871ada2b0",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py": "a495de56fcd1c1fdb634090bd944256d812d5413ffc644f94904bff99c2eb256",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py": "321ec1c7a2cdddecbba912f62514409c5d3ed8f5281fbdfe9e8feeb6d09361eb",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/published_learned_retrieval.py": "468a4932177039ce8605c7481f593f0d367b99f73e081ac9c362b27feec83110",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/published_retrieval.py": "174878ae38d1aa8e4b1308d0d41982bbdfe377083aa5e9806f4a4a55d89ab583",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/published_task_context.py": "d16874f2be9dec0e63c8e59fe0f6ad86a5b833b351d3e3a22b346e0f2a2d60d6",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/source384_config.py": "01f2377728f89eccc24958512ce6ab7f212b9ca9f5230945c59febb73da68270",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py": "bce00b3646d72d7a98628b0462b6db70cfd0cc55c416153cc59ec3dc34e947fb",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py": "b027c9c948b6c8bcf765d61ccb7111589e3aed796a662a7da43837615d2b0ebe",
+    "source/test/api/semantic_state/test_published_retrieval.py": "88fb00a5229823076bd70899b1a7b543d45d25d2bcc052d591347efb036428fb",
+    "source/test/api/semantic_state/test_published_task_context.py": "291ceae9a67e0868cc4d0fe5433e0d49ff606155ba18098d6dbe3d2751402f18",
+    "source/test/api/semantic_state/test_source384_published_retrieval.py": "098baa1cf683361ce0df60395c3ee236b880a7317a455b1f2a53370c6784ed9d",
+    "source/test/api/semantic_state/test_source384_successor_context.py": "94c8c958c327b2e7c4db2374e48b179da3a74a2722ffcf9fc94a58a5cbaed962",
+    "source/test/api/test_header_intent_applicability.py": "7cbef7755ab1c8cc43d4c6cc0da8236fc17dd9d47149f98dfca8b7d03571078b",
+    "source/test/api/test_local_completion_bridge.py": "212d1d2e07efdc6549ad5548a22a363d27886e8e3d9432ebdf015af37ba3b970",
+    "source/test/api/test_local_completion_header_observation.py": "7cb193dd5c769e87424dd1c7e070a8badef5f67b183923955bfea8f7470d73c9"
+  },
+  "source_revisions": {
+    "datasets": "d5aaf256618c53b009695e8d5618436fba1c0419",
+    "source": "654f72b1502269c3d337e3760546e6600f02a214"
+  }
+}

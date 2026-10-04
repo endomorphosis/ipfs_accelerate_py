@@ -1,0 +1,2 @@
+<?xml version='1.0' encoding='utf-8'?>
+<testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="0" skipped="0" tests="1" time="0.398" timestamp="2026-10-04T14:04:52.151839+00:00" hostname="spark-b271"><testcase classname="" name="api.test_published_context_failure_phase" time="0.000"><error type="" message="Reviewed authored control failure; body omitted" /></testcase></testsuite></testsuites>

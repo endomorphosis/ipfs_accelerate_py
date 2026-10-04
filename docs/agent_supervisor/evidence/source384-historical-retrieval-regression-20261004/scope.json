@@ -1,0 +1,12 @@
+{
+  "actual_offline_minilm_inference": true,
+  "current_production_pins_unchanged": true,
+  "distinct_union_with_primary": 26,
+  "live_benchmark": false,
+  "model_downloads": 0,
+  "primary_manifest_sha256": "3a043a07e7011dc55fa9f7d292392f21b8262c7e4de610047379638027fd69e0",
+  "provider_calls": 0,
+  "regression_passes": 13,
+  "repeated_lexical_cases_from_primary": 2,
+  "schema": "historical-retrieval-existing-regressions@1"
+}

@@ -1,0 +1,41 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-m",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "--basetemp=/tmp/pcphase-final-01",
+    "--junitxml=/home/barberb/lift_coding/artifacts/published-context-phase-20261004/final-01/results.xml",
+    "test/api/test_published_context_failure_phase.py"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "environment_overrides": {
+    "CUDA_VISIBLE_DEVICES": "",
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR": "/tmp/pcphase-final-01-private/orchestration",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/tmp/pcphase-final-01-private/seal.duckdb",
+    "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "/tmp/pcphase-final-01-private/keys.db",
+    "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": "/home/barberb/lift_coding/artifacts/published-context-phase-20261004/final-01/fallback-scheduler.json",
+    "MKL_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "harness_sha256": "4cd890d00e72e8a20a997418c46928b401cd2eabf401189bee0874b91452b9b0",
+  "original_owner_overlay": false,
+  "selected_source_pins_complete_repository": false,
+  "source_pins": {
+    "source/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "990c2383a7fbdf2183d023f5381dda31ceb34e32f05439e1108786e871ada2b0",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/published_task_context.py": "d16874f2be9dec0e63c8e59fe0f6ad86a5b833b351d3e3a22b346e0f2a2d60d6",
+    "source/test/api/test_published_context_failure_phase.py": "9169a6f33eb29e7993ea6640d69e6655a4f59bb2d185ac86bdc3b33a3f6bb944"
+  },
+  "source_revisions": {
+    "datasets": "d5aaf256618c53b009695e8d5618436fba1c0419",
+    "source": "46bc5a76eb70487daff2ef84f3e08fe3554aa849"
+  }
+}

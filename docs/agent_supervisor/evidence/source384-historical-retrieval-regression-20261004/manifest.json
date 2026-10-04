@@ -1,0 +1,29 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 908,
+      "sha256": "80fd5a45747d7f9999696671089d32d1d0f8067ac8d712301185c841912dea36"
+    },
+    "command.json": {
+      "bytes": 5399,
+      "sha256": "18d6deb1020e198aa45acc2b7332bfc195baa79d2dd596d0d0bd46ee4f95b0e2"
+    },
+    "exit.json": {
+      "bytes": 3898,
+      "sha256": "6d30a8cb46a7d0e92834b5209551b64a0e7ac77ab4fda44127793d350eaf73d7"
+    },
+    "input-digests.json": {
+      "bytes": 666,
+      "sha256": "aaae49160341fb9e68315fff2bf0251651cb914de31fa4bc1f5025147aff7993"
+    },
+    "results.projected.xml": {
+      "bytes": 2190,
+      "sha256": "beba10e9d7ef6e34b09eff4f2d769c9043c7d904ccf1d664cdfdc14f38177c15"
+    },
+    "scope.json": {
+      "bytes": 429,
+      "sha256": "f7404a47770840700006335b0da9bd8362951615ecc915b2695c83ba9d02666c"
+    }
+  },
+  "schema": "bounded-public-evidence-manifest@1"
+}

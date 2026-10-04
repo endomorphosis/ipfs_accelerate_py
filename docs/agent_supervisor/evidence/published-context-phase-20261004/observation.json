@@ -1,0 +1,26 @@
+{
+  "baseexception_cancellation_propagates": true,
+  "baseline": {
+    "before-01": "authored test syntax collection error; not a production failure",
+    "before-02": "one actual routing control fails because unavailable row lacks phase"
+  },
+  "exception_message_exported": false,
+  "existing_exception_class_preserved": true,
+  "final_passes": 7,
+  "measured_V_cause_retroactively_inferred": false,
+  "native_owner_model_or_solver_qualified": false,
+  "phases": [
+    "rebuilder_selection",
+    "cache_reload",
+    "successor_refresh"
+  ],
+  "preconditions_and_attempt_budget_preserved": true,
+  "schema": "published-context-failure-phase-controls@1",
+  "skips": 0,
+  "source_pins": {
+    "source/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "990c2383a7fbdf2183d023f5381dda31ceb34e32f05439e1108786e871ada2b0",
+    "source/ipfs_accelerate_py/agent_supervisor/runtime/published_task_context.py": "d16874f2be9dec0e63c8e59fe0f6ad86a5b833b351d3e3a22b346e0f2a2d60d6",
+    "source/test/api/test_published_context_failure_phase.py": "9169a6f33eb29e7993ea6640d69e6655a4f59bb2d185ac86bdc3b33a3f6bb944"
+  },
+  "source_pins_unchanged": true
+}

@@ -1263,3 +1263,31 @@ learned-source proof or an efficiency advantage. The new bounded projection
 retains that failure separately from reward. All archive pins remain unchanged;
 Leanstral is restored with model readiness. A 243-sample external pressure record
 is observational only. RPI-019/020 remain open.
+
+The next [retrieval refresh controls](../../../docs/agent_supervisor/evidence/source384-historical-retrieval-20261004/README.md)
+reproduce a concrete integration defect with real checkpoint/GTE inference, Z3
+checking, publication and completion: the lexical rebuilder loads the predecessor
+as current after its source has changed. This raises ValueError before successor
+preparation. V retained only the exception class, so its exact discarded exception
+cannot be recovered from this matching reproduction.
+
+Post-publication lexical and learned retrieval now verify the exact historical
+bundle and its immutable Source384 assets. Initial binding and worker nomination
+still require current source; rebuilt context and the successor are independently
+validated. Fourteen light controls and one real checkpoint/native control pass,
+including current lexical retrieval, fresh successor inference and cached reload.
+The learned handoff is covered through an explicit pin-loader seam, without a
+learned model invocation. The original failure remains in the evidence.
+
+Seven [failure-phase controls](../../../docs/agent_supervisor/evidence/published-context-phase-20261004/README.md)
+also pass. Unavailable context now identifies rebuilder selection, cached reload,
+or successor refresh without exporting exception messages. These are authored
+routing controls; they preserve cancellation and the one-attempt budget. Fresh
+Docker qualification is still required for this source generation, and successor
+advice still needs independent current admission before further execution.
+
+The [existing retrieval regressions](../../../docs/agent_supervisor/evidence/source384-historical-retrieval-regression-20261004/README.md)
+pass 13 cases, including actual offline MiniLM inference. Two lexical cases overlap
+the primary group, leaving 26 distinct retrieval controls and seven phase controls
+for this correction. These qualify the changed runtime/retrieval owners; the
+earlier 203-case generation remains historical with those pins superseded.

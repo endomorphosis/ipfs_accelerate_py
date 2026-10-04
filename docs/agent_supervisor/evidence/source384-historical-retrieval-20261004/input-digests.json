@@ -1,0 +1,50 @@
+{
+  "exporter_sha256": "ff97f3c7c3bc1e2a541f59b8d2b7bfc7637f1f265bd179fffde6f80b180cb977",
+  "inputs": {
+    "before-01": {
+      "command.json": {
+        "bytes": 5120,
+        "sha256": "88de638164b80cf179757c89b0ab4e40478d05a8230d2a9cbdc689dcfcabe441"
+      },
+      "exit.json": {
+        "bytes": 3306,
+        "sha256": "add683f1dedd4743187761e5450289f287f968a9f33d1d7cf37f96771ddb948e"
+      },
+      "results.xml": {
+        "bytes": 6218,
+        "sha256": "6480658c209c890ad65eb693fa4cbd9ba81cbb5e7be3e27c46ac94490b44d431"
+      }
+    },
+    "light-01": {
+      "command.json": {
+        "bytes": 5423,
+        "sha256": "413fd93d81ca76d499410aaa430e13e0f2c2761be3d7d584c590e2c6c08d939d"
+      },
+      "exit.json": {
+        "bytes": 3591,
+        "sha256": "4bb3247366c975200dacfc40a3b3211caef47ab593215e2358b94c212d713f37"
+      },
+      "results.xml": {
+        "bytes": 2600,
+        "sha256": "924ffc49fa7d2161e681bce5ef59e243c8d6c01a5e47c84b23100d48b9561b0d"
+      }
+    },
+    "native-01": {
+      "command.json": {
+        "bytes": 5120,
+        "sha256": "9f431751714c843b7183d0b9cdcd3af11a48d6e339f611cce9b5ff7f936a44e5"
+      },
+      "exit.json": {
+        "bytes": 3306,
+        "sha256": "375be107273cab08696b99a3f8bf5dbc88ce28a2f5b6e232458406c8f6b2df64"
+      },
+      "results.xml": {
+        "bytes": 947,
+        "sha256": "252ec11e9a7c00ea3e1587ca9ec0824e3532a8c47b9fb4265ef36bc72c90961f"
+      }
+    }
+  },
+  "raw_xml_bodies_exported": false,
+  "schema": "bounded-test-evidence-inputs@1",
+  "stdout_exported": false
+}

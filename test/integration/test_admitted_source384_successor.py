@@ -24,6 +24,7 @@ from ipfs_accelerate_py.agent_supervisor.planning import intent_symbolic_plannin
 from ipfs_accelerate_py.agent_supervisor.runtime import header_intent_applicability as applicability
 from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission as local
 from ipfs_accelerate_py.agent_supervisor.runtime import published_task_context as published
+from ipfs_accelerate_py.agent_supervisor.runtime import published_retrieval as lexical
 from ipfs_accelerate_py.agent_supervisor.runtime import source384_repository_context as source384
 from ipfs_accelerate_py.agent_supervisor.runtime.local_completion_bridge import run_owner_local_task_validations
 from ipfs_accelerate_py.agent_supervisor.runtime.semantic_context_runtime import prepare_semantic_context
@@ -40,7 +41,7 @@ def isolated_lifecycle_registry(tmp_path, monkeypatch):
     monkeypatch.setattr(profile_authority, "_LIFECYCLE_REGISTRY_ROOT_OVERRIDE", tmp_path / "account")
 
 
-def _header_bundle(c, owner, task_cid, receipt):
+def _header_bundle(c, owner, task_cid, receipt, *, lexical_retrieval=False):
     output = c.repo / ".runtime/predecessor"
     semantic = prepare_semantic_context(repository=c.repo, paths=["headers.py", "test_headers.py"],
         required_raw_paths=["test_headers.py"], objective="Repair the authored header boundary",
@@ -64,6 +65,20 @@ def _header_bundle(c, owner, task_cid, receipt):
         "Semantic context sha256": semantic["worker_payload_sha256"], "Semantic context refresh": "true",
         "World context artifact": Path(world["artifact"]).relative_to(c.repo).as_posix(),
         "World context sha256": world["artifact_sha256"], "World context repository": view.root.repository_id}
+    if lexical_retrieval:
+        import duckdb
+        from benchmarks.agent_supervisor.container_coding.vector_index_preflight import qualify
+        from ipfs_accelerate_py.agent_supervisor.analysis.code_symbol_vector_index import (
+            CodeVectorIndexSnapshot, CodeVectorSearchResult,
+        )
+        from ipfs_accelerate_py.agent_supervisor.runtime.code_retrieval_context import prepare_code_retrieval_context
+        result = qualify(c.repo, output / "vectors", ["headers.py"], "field")
+        with duckdb.connect(str(output / "vectors/vectors.duckdb"), read_only=True, config={"threads": 1}) as db:
+            snapshot = CodeVectorIndexSnapshot.from_dict(json.loads(db.execute(
+                "SELECT payload FROM snapshots WHERE id=?", [result["index_id"]]).fetchone()[0]))
+        metadata.update(prepare_code_retrieval_context(repository=c.repo, task_id="HEADER-TASK",
+            query_text="field", snapshot=snapshot, result=CodeVectorSearchResult.from_dict(result["hits"]),
+            output=output / "retrieval.json")["metadata"])
     return write_task_context_bundle(repository=c.repo, prepared=[{
         "schema": "supervisor-task-context-preparation@1", "task_cid": task_cid, "task_id": "HEADER-TASK",
         "metadata": metadata, "source384_context": receipt}], output=output / "bundle.json")
@@ -89,7 +104,9 @@ def test_actual_header_checkpoint_successor_after_native_publication(case, selec
     task_cid = planned["graph"].tasks[0].task_cid
     with IntentRepository(c.root / "intent.duckdb") as intent:
         with _typed_header_claim(c, admission, intent, task_cid) as (owner, attempt):
-            bundle = _header_bundle(c, owner, task_cid, predecessor)
+            bundle = _header_bundle(c, owner, task_cid, predecessor, lexical_retrieval=True)
+            retrieval_binding = lexical.bind_published_retrieval_policy(repository=c.repo, bundle=bundle,
+                task_cid=task_cid, task_id="HEADER-TASK")
             bundle_bytes = (c.repo / bundle["artifact"]).read_bytes()
             predecessor_bytes = (Path(predecessor["output"]) / "receipt.json").read_bytes()
             candidate = headers.analyze_http_header_contracts(PROGRAM,
@@ -104,11 +121,18 @@ def test_actual_header_checkpoint_successor_after_native_publication(case, selec
             canonical_before = owner.source.get_task(task_cid)
             with pytest.raises(ValueError, match="differs from signed population"):
                 source384.validate_source384_context(repository=c.repo, expected_receipt=predecessor)
+            # The real runtime selects this pinned callback before successor inference.
+            # The predecessor Source384 population is now historical by design.
+            rebuild = lexical.published_retrieval_rebuilder(repository=c.repo, bundle=bundle,
+                binding=retrieval_binding)
             arguments = dict(server=owner.server, admission=admission, predecessor_bundle=bundle,
+                retrieval_rebuilder=rebuild,
                 task_cid=task_cid, output=c.repo / ".runtime/successor", source384_output=c.root / "next-source384",
                 source384_timeout_seconds=180., deadline_monotonic=time.monotonic() + 240.)
             refreshed = published.refresh_published_task_context(**arguments)
             receipt = refreshed["source384_context"]
+            assert refreshed["retrieval"]["status"] == "current"
+            assert refreshed["retrieval"]["previous_index_id"] == retrieval_binding["index_id"]
             assert receipt["schema"] == source384.SUCCESSOR_SCHEMA
             assert receipt["source_hashes"].keys() == hashes.keys()
             assert receipt["source_hashes"]["headers.py"] != hashes["headers.py"]
@@ -137,7 +161,8 @@ def test_actual_header_checkpoint_successor_after_native_publication(case, selec
             record_property("actual_source384_successor", json.dumps({
                 "native_inference_preparations": 2, "new_neural_calls_on_reload": 0,
                 "actual_header_z3": True, "native_owner_publication_completion": True,
-                "semantic_world_refreshed": True, "training_steps": 0, "model_downloads": 0,
+                "semantic_world_refreshed": True, "pinned_lexical_retrieval_refreshed": True,
+                "training_steps": 0, "model_downloads": 0,
                 "provider_calls": 0, "authored_scheduler_telemetry": True,
                 "live_benchmark": False}, sort_keys=True))
 

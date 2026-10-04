@@ -18,7 +18,7 @@ from ..analysis.code_symbol_vector_index import (
 from ..analysis.program_ast_adapters import build_program_evidence_index
 from ..proof.formal_verification_contracts import content_identity
 from . import code_retrieval_context as retrieval
-from .task_context_bundle import load_task_context_nomination
+from .task_context_bundle import load_task_context_nomination, read_task_context_historical_selection
 
 
 POLICY = "lexical-tfidf-symbols@1"
@@ -89,6 +89,25 @@ def bind_published_retrieval_policy(*, repository, bundle, task_cid, task_id):
         "execution_authority": False, "learned_embeddings": False}
 
 
+
+def _historical_retrieval_metadata(*, repository, bundle, task_cid, task_id):
+    """Read immutable predecessor pins for advisory post-publication rebuilds.
+
+    Publication changes the original Source384 population. Its historical receipt
+    must still match the selected producer, model, config and inference bytes;
+    only the successor can establish current source validity. Initial policy
+    binding and dispatch continue to use the live nomination loader.
+    """
+    selected = read_task_context_historical_selection(repository=repository,
+        artifact=bundle["artifact"], expected_sha256=bundle["sha256"],
+        task_cid=task_cid, task_id=task_id)
+    if "source384_context" in selected:
+        from .source384_repository_context import validate_historical_source384_selection
+        validate_historical_source384_selection(repository=repository,
+            expected_receipt=selected["source384_context"])
+    return selected["metadata"]
+
+
 def published_retrieval_rebuilder(*, repository, bundle, binding):
     """Return the built-in callback after immutable nomination revalidation."""
     from .published_task_context import _previous_retrieval
@@ -99,8 +118,8 @@ def published_retrieval_rebuilder(*, repository, bundle, binding):
             or binding["policy"] != POLICY or any(binding[name] is not False for name in (
                 "completion_authority", "execution_authority", "learned_embeddings"))):
         raise ValueError("invalid published lexical retrieval policy")
-    metadata = load_task_context_nomination(repository=repository, artifact=bundle["artifact"],
-        expected_sha256=bundle["sha256"], task_cid=binding["task_cid"], task_id=binding["task_id"])
+    metadata = _historical_retrieval_metadata(repository=repository, bundle=bundle,
+        task_cid=binding["task_cid"], task_id=binding["task_id"])
     previous = _previous_retrieval(repository, metadata, binding["task_id"])
     if previous is None:
         raise ValueError("published lexical predecessor disappeared")
