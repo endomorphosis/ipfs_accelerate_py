@@ -105,11 +105,13 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                setup_cache_selection: dict | None = None) -> dict:
     if arm not in {"full", "no-index"}:
         raise ValueError("unknown supervisor ablation")
+    from .benchmark_resource_profile import execution_budget
+    budget = execution_budget(resource_profile)
     config = baseline_config(dataset, output, resource_profile=resource_profile)
     config["job_name"] = "supervisor-" + arm + "-" + TASK
     config["agents"] = [{
         "import_path": ADAPTER, "model_name": MODEL,
-        "override_timeout_sec": 300.0, "max_timeout_sec": 300.0,
+        "override_timeout_sec": float(budget["harbor_seconds"]), "max_timeout_sec": float(budget["harbor_seconds"]),
         "override_setup_timeout_sec": 1800.0,
         "kwargs": {"runtime_archive": str(archive), "arm": arm,
                    "model_revision": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"},
@@ -209,7 +211,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
                   task_input_sha256=task_hashes, task=TASK, model=MODEL,
                   reasoning_effort=REASONING, cli_version=CLI_VERSION),
               "command": command, "model": MODEL, "reasoning_effort": REASONING, "cli_version": CLI_VERSION,
-              "agent_timeout_seconds": 300, "provider_calls": 0,
+              "agent_timeout_seconds": declared_config["agents"][0]["override_timeout_sec"], "provider_calls": 0,
               "planning_and_cold_index_charged_to_agent_time": True,
               "benchmark_advantage_claimed": False, **_intent_selection(requirements),
               "intent_action_384": selected_intent, "source384": selected_source384,

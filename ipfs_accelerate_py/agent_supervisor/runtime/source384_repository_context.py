@@ -199,7 +199,7 @@ def prepare_source384_context(*, repository, source_hashes, output, config_path,
         _require(left > 0, "Source384 preparation deadline expired")
         return left
     from ipfs_datasets_py.logic.software_contracts.codebase_ir import CodebaseScanLimits
-    from ipfs_datasets_py.logic.software_contracts.codebase_resources import acquire_codebase_resources
+    from ipfs_datasets_py.logic.software_contracts.codebase_resources import acquire_codebase_resources, codebase_admission_timeout
     from ipfs_datasets_py.logic.software_contracts.codebase_source_384 import register_shared_parent
     from ipfs_datasets_py.logic.software_contracts.codebase_source_units_384 import infer_shared_parent_units
     root = Path(repository).resolve(strict=True)
@@ -213,7 +213,7 @@ def prepare_source384_context(*, repository, source_hashes, output, config_path,
     limits = CodebaseScanLimits(max_entries=len(source_hashes), max_file_bytes=1024 * 1024)
     repository_id = "terminal-source384:" + _sha(_raw(dict(repository=str(root), sources=source_hashes)))
     with acquire_codebase_resources(scheduler=scheduler, parent_lease=parent_lease,
-            timeout_seconds=min(30., remaining()), memory_mb=6144, cpu_slots=3,
+            timeout_seconds=codebase_admission_timeout(remaining_seconds=remaining()), memory_mb=6144, cpu_slots=3,
             child_process_slots=3) as lease, _owners(output) as (index, registry):
         config = load_source384_config(config_path)
         config_sha256 = _sha(_read(config_path, 131072))
@@ -272,12 +272,13 @@ def prepare_source384_context(*, repository, source_hashes, output, config_path,
 
 def validate_source384_context(*, repository, expected_receipt, scheduler=None,
                                parent_lease=None, timeout_seconds=90.):
-    from ipfs_datasets_py.logic.software_contracts.codebase_resources import acquire_codebase_resources
+    from ipfs_datasets_py.logic.software_contracts.codebase_resources import acquire_codebase_resources, codebase_admission_timeout
     _require(type(timeout_seconds) in (int, float) and 0 < timeout_seconds <= 180,
              "bounded Source384 observation deadline required")
     started = time.monotonic()
     with acquire_codebase_resources(scheduler=scheduler, parent_lease=parent_lease,
-            timeout_seconds=min(30., timeout_seconds), memory_mb=6144, cpu_slots=3,
+            timeout_seconds=codebase_admission_timeout(remaining_seconds=max(0., started + timeout_seconds - time.monotonic())),
+            memory_mb=6144, cpu_slots=3,
             child_process_slots=3) as lease:
         deadline = started + timeout_seconds
         _remaining(deadline)

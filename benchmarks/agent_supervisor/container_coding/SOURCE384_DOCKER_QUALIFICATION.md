@@ -992,3 +992,46 @@ No further model retry was launched. These component controls do not establish
 full-task success or a completed token score. The backlog remains 18/32 closed;
 current-source Docker qualification, accepted publication, Source384 successor
 refresh and matched-arm efficiency remain open.
+
+### Extended local budget and pressure recovery (2026-10-04)
+
+The operator requested a longer work budget and a remedy for transient memory
+pressure after the 245-second full-arm cutoff. Select
+`--resource-profile source384-5cpu-16gib-extended@1` explicitly during preparation
+and qualification. The original `source384-5cpu-12gib@1` profile and unselected
+task defaults retain their previous limits. This is a new development experiment;
+its results must not be pooled with the original profile's scores.
+
+| Limit | Original Source384 | Extended development |
+| --- | ---: | ---: |
+| Container CPUs / RAM | 5 / 12 GiB | 5 / 16 GiB |
+| Harbor agent deadline | 300 s | 960 s |
+| Driver / work / cleanup | 285 / 245 / 40 s | 900 / 840 / 60 s |
+| Source384 preparation | 90 s | 180 s |
+| Qualification probe / outer exec | 270 / 300 s | 600 / 630 s |
+| Default codebase admission wait | 30 s | 90 s, capped by remaining operation time |
+| Memory full PSI avg10 refusal threshold | 2% | 10% |
+
+The extended adapter selects datasets-owned `local-benchmark@1` admission using
+`IPFS_DATASETS_PROOF_RESOURCE_PROFILE` and an explicit container-local
+`IPFS_DATASETS_RESOURCE_SCHEDULER_PATH`. The scheduler persists the policy
+identity and refuses incompatible clients. The native launch signs the same
+profile and ledger into its child environment. The normal global profile remains
+unchanged. The extended policy retains memory headroom, reservation accounting,
+CPU/IO pressure gates, PID headroom and telemetry failure checks. Existing recovery
+logic requires two healthy samples and paces recovery grants. A pressure spike
+may therefore delay admission; sustained pressure still refuses it.
+
+These changes tolerate more measured stalls and allow time for recovery; they do
+not remove other host workloads, clear swap, or claim to reduce host memory
+pressure. Swap occupancy alone is not an admission decision. Observed host
+memory pressure fluctuated from double-digit percentages to nearly zero while
+about 41 GiB remained available, so available RAM alone cannot replace PSI.
+
+Both supervisor arms and the native Codex configuration receive the same selected
+Harbor time, CPU and memory limits. Configuration comparison refuses an original
+versus extended comparison. The larger signed native lifetime is bounded at
+900 seconds; each residual router call remains bounded at 600 seconds. Planning
+retains its separate 90-second cap. Cold indexing and planning remain charged to
+agent time. A new archive and actual-container qualification are required before
+reporting a task score from this profile.

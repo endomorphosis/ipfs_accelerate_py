@@ -27,6 +27,8 @@ def selected_cache(tmp_path, monkeypatch):
     # exercises the additive cache binding without loading a checkpoint.
     monkeypatch.setattr(policy.platform, "machine", lambda: "aarch64")
     monkeypatch.setattr(deployment, "validate_source384_binding", lambda m: m.get("source384"))
+    from benchmarks.agent_supervisor.container_coding import full_supervisor_harbor_agent as adapter
+    monkeypatch.setattr(adapter, "validate_source384_binding", lambda m: m.get("source384"))
     rows = []
     for name in policy.HELPERS:
         raw = Path(policy.__file__).with_name(name).read_bytes()
@@ -37,7 +39,7 @@ def selected_cache(tmp_path, monkeypatch):
     wheel_path = "runtime-wheels/torch-cpu/torch-2.13.0+cpu-cp312-cp312-manylinux_2_28_aarch64.whl"
     rows.append(dict(path=wheel_path, bytes=155005253, mode=0o644, sha256=libraries.WHEEL_SHA256))
     manifest = dict(schema="terminal-supervisor-runtime-archive@1", archive_sha256="a" * 64,
-                    source384={"authored_fixture": True}, codex_version="0.158.0",
+                    source384={"authored_fixture": True, "config": {}}, codex_version="0.158.0",
                     learned_requirements=[], files=rows, torch_cpu_requirement=libraries.TORCH_REQUIREMENT,
                     torch_cpu_wheel=dict(schema="terminal-torch-cpu-wheel@1", path=wheel_path,
                         bytes=155005253, sha256=libraries.WHEEL_SHA256, requirement=libraries.TORCH_REQUIREMENT))

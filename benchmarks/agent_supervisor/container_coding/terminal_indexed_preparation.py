@@ -161,13 +161,15 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
             source_unit_project_logic_families: bool = False,
             source_unit_intent_family_context: Path | None = None,
             source_unit_intent_logic_families: list[str] | None = None,
-            intent_requirement_contract: Path | None = None) -> dict:
+            intent_requirement_contract: Path | None = None, resource_profile=None) -> dict:
     """Capture original image bytes, then sign one explicit task before planning.
 
     This mutates only the disposable benchmark Git repository: its intentional
     dirty bottle.py bytes become a recorded baseline; no upstream bytes are
     restored. Public instruction/check files become immutable signed inputs.
     """
+    from .benchmark_resource_profile import execution_budget
+    execution = execution_budget(resource_profile)
     started = time.monotonic()
     if (type(disable_intent_autoencoder) is not bool or type(enable_source_unit_autoencoder) is not bool
             or type(source_unit_project_logic_families) is not bool):
@@ -336,7 +338,8 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
         "state": str(state), "original_head": original_head, "manifest": manifest,
         "request": request.to_dict(), "scan": scan.to_dict(), "constraints": constraints,
         "spec": spec, "provider": PROVIDER, "model": MODEL, "reasoning_effort": REASONING,
-        "planner_timeout_seconds": 90, "max_total_agent_seconds": 300,
+        "planner_timeout_seconds": 90, "max_total_agent_seconds": execution["harbor_seconds"],
+        "resource_profile": resource_profile,
         "planning_and_cold_index_overhead_included": True,
         "provider_calls": 0, "report_preseeded": False, "benchmark_success": None,
         "planning_strategy": strategy,
@@ -369,7 +372,8 @@ def initial_context(*, state: Path, model_snapshot: Path | None = None, model_re
                     train_autoencoder: bool = False, weight_transfer: dict | None = None,
                     canonical_cve_training: dict | None = None, security_checkpoint: dict | None = None,
                     security_checkpoint_hub: dict | None = None, formula_decoder: dict | None = None,
-                    header_protocol: dict | None = None, source384_config: Path | None = None) -> dict:
+                    header_protocol: dict | None = None, source384_config: Path | None = None,
+                    source384_timeout_seconds: float = 90.) -> dict:
     """Prepare source indexes and a real empty-owner observation before planning.
 
     This cost belongs to the full arm's agent time. The subsequent context()
@@ -384,7 +388,8 @@ def initial_context(*, state: Path, model_snapshot: Path | None = None, model_re
         weight_transfer=weight_transfer, canonical_cve_training=canonical_cve_training,
         security_checkpoint=security_checkpoint, security_checkpoint_hub=security_checkpoint_hub,
         formula_decoder=formula_decoder, header_protocol=header_protocol,
-        **({"source384_config": source384_config} if source384_config is not None else {}))
+        **({"source384_config": source384_config, "source384_timeout_seconds": source384_timeout_seconds}
+           if source384_config is not None else {}))
 
 
 def _require_same_initial_selection(current, initial):
@@ -417,7 +422,8 @@ def _plan_symbolic_in_budget(*, state, prepared, initial, timeout_seconds):
     (state / "planner-invoked.json").open("x").write(json.dumps({"planning_strategy": "intent_symbolic"}) + "\n")
     result = {"schema": "terminal-indexed-planner-result@1", "qualified": False,
         "provider": PROVIDER, "model": MODEL, "reasoning_effort": REASONING,
-        "provider_output_token_cap_enforced": False, "max_total_agent_seconds": 300,
+        "provider_output_token_cap_enforced": False,
+        "max_total_agent_seconds": prepared.get("max_total_agent_seconds", 300),
         "planner_timeout_seconds": timeout_seconds, "planning_strategy": "intent_symbolic",
         "planning_and_cold_index_overhead_included": True, "benchmark_success": None,
         "provider_calls": 0, "provider_observation": {}, "provider_receipt": None,
@@ -670,7 +676,8 @@ def _plan_prepared(state, *, prepared, provider_callable, timeout_seconds, aggre
 
     result = {"schema": "terminal-indexed-planner-result@1", "qualified": False,
         "provider": PROVIDER, "model": MODEL, "reasoning_effort": REASONING,
-        "provider_output_token_cap_enforced": False, "max_total_agent_seconds": 300,
+        "provider_output_token_cap_enforced": False,
+        "max_total_agent_seconds": prepared.get("max_total_agent_seconds", 300),
         "planner_timeout_seconds": timeout_seconds,
         "planning_and_cold_index_overhead_included": True, "benchmark_success": None}
     try:

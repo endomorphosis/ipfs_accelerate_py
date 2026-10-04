@@ -123,6 +123,25 @@ def _bounded_git_environment(*, candidate_runner: bool) -> dict[str, str]:
     return environment
 
 
+def _bounded_proof_resource_environment() -> dict[str, str]:
+    """Bind an explicitly selected benchmark policy to the same shared ledger."""
+    profile_key = "IPFS_DATASETS_PROOF_RESOURCE_PROFILE"
+    ledger_key = "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH"
+    profile = os.environ.get(profile_key, "")
+    if not profile:
+        return {}
+    if profile != "local-benchmark@1":
+        raise ValueError("unsupported proof resource profile")
+    value = os.environ.get(ledger_key, "")
+    if not value or len(value) > 4096 or any(character in value for character in ("\x00", "\n", "\r")):
+        raise ValueError("benchmark proof resource profile requires an explicit bounded scheduler path")
+    path = Path(value)
+    if (not path.is_absolute() or path.resolve(strict=False) != path
+            or (path.exists() and not path.is_file())):
+        raise ValueError("benchmark scheduler path must be canonical and identify a regular file")
+    return {profile_key: profile, ledger_key: value}
+
+
 class AdmittedSupervisorHealthAdapter(NativeSupervisorHealthAdapter):
     def remember_bootstrapped_child(self, identity):
         # Called only after kernel peer authentication and exact argv/marker/
@@ -301,8 +320,9 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             raise ValueError(f"bounded native launch timeout must fit START/STOP catalog (2000..{maximum_timeout})")
         if type(max_task_attempts) is not int or not 1 <= max_task_attempts <= 10:
             raise ValueError("coordination attempt cap must be in 1..10")
-        if type(lifetime_seconds) is not int or not 120 <= lifetime_seconds <= 600:
-            raise ValueError("signed launch lifetime_seconds must be in 120..600")
+        if type(lifetime_seconds) is not int or not 120 <= lifetime_seconds <= 900:
+            raise ValueError("signed launch lifetime_seconds must be in 120..900")
+        proof_resource_environment = _bounded_proof_resource_environment()
         from ..runtime.candidate_execution import (
             CANDIDATE_RUNNER_ENV,
             bind_candidate_runner,
@@ -450,6 +470,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             orchestration.mkdir(mode=0o700)
             environment = (("PYTHONPATH", pythonpath), ("PYTHONUNBUFFERED", "1"),
                            (ORCHESTRATION_DIR_ENV, str(orchestration)))
+            environment += tuple(proof_resource_environment.items())
             environment += tuple(_bounded_git_environment(candidate_runner=candidate_runner is not None).items())
             if candidate_runner is not None:
                 environment += ((CANDIDATE_RUNNER_ENV, json.dumps(candidate_runner, sort_keys=True)),)

@@ -124,7 +124,8 @@ def test_embedded_probes_compile_and_do_not_invoke_provider_or_verifier():
 
 
 @pytest.mark.parametrize('mutation',[None,'checkpoint','config','producer','provider','verifier','refused','export_changed','report_oversize','report_malformed'])
-def test_probe_receipt_matches_relocated_assets_and_actual_archive_producers(tmp_path,selected,mutation):
+@pytest.mark.parametrize('profile', ['source384-5cpu-12gib@1', 'source384-5cpu-16gib-extended@1'])
+def test_probe_receipt_matches_relocated_assets_and_actual_archive_producers(tmp_path,selected,mutation,profile):
     manifest=build(tmp_path,selected)
     task=tmp_path/'task'; task.mkdir(); (task/'instruction.md').write_text('Public input only.')
     output=tmp_path/'output'; output.mkdir()
@@ -150,12 +151,16 @@ def test_probe_receipt_matches_relocated_assets_and_actual_archive_producers(tmp
         destination.write_bytes(inference_raw if mutation!='export_changed' else b'{}')
     environment=SimpleNamespace(download_file=download,upload_file=AsyncMock(),exec=AsyncMock(return_value=SimpleNamespace(
         stdout='diagnostic output before JSON\n'+json.dumps(result),stderr='native diagnostic',return_code=int(mutation=='refused'))))
-    call=qualify.qualify_context(environment,task_dir=task,output=output,manifest=manifest,profile=SOURCE384_PROFILE)
+    call=qualify.qualify_context(environment,task_dir=task,output=output,manifest=manifest,profile=profile)
     if mutation:
         with pytest.raises(ValueError): asyncio.run(call)
     else: assert asyncio.run(call)==result
     if mutation not in {'report_oversize','report_malformed'}:
         assert json.loads((output/'source384-context.json').read_text())==result
     assert (output/'public-instruction.md').read_text()=='Public input only.'
-    assert environment.exec.call_args.kwargs['timeout_sec']==300
+    from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile import execution_budget, admission_environment
+    assert environment.exec.call_args.kwargs['timeout_sec']==execution_budget(profile)['qualification_exec_seconds']
+    env=environment.exec.call_args.kwargs['env']
+    assert env['IPFS_SUPERVISOR_BENCHMARK_PROFILE']==profile
+    for key,value in admission_environment(profile).items(): assert env[key]==value
     assert environment.exec.call_args.kwargs['user']=='supervisor'

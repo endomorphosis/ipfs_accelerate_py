@@ -20,6 +20,9 @@ import time
 import uuid
 
 from benchmarks.agent_supervisor.container_coding import terminal_indexed_preparation as preparation
+from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile import (
+    PROFILES, admission_environment, execution_budget,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission import verify_local_benchmark_admission
 
 ROOT = Path("/opt/ipfs-supervisor")
@@ -324,7 +327,8 @@ def _security_runtime_inputs(*, security_checkpoint, security_checkpoint_manifes
         canonical_cve_manifest_sha256=canonical_cve_manifest_sha256)}
 
 
-def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
+def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
+        resource_profile: str | None = None,
         model_snapshot: Path | None = None, model_revision="",
         security_initializer: Path | None = None, canonical_cve_export: Path | None = None,
         canonical_cve_manifest_sha256: str | None = None,
@@ -338,8 +342,17 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
         intent_projection_request_sha256: str | None = None,
         disable_intent_autoencoder: bool = False,
         intent_requirement_contract: Path | None = None) -> dict:
-    if arm not in {"full", "no-index"} or not 90 <= timeout_seconds <= 300:
+    budget = execution_budget(resource_profile)
+    if timeout_seconds is None:
+        timeout_seconds = budget["driver_seconds"]
+    if (arm not in {"full", "no-index"} or type(timeout_seconds) is not int
+            or not 90 <= timeout_seconds <= max(300, budget["driver_seconds"])):
         raise ValueError("explicit bounded arm required")
+    reserved_cleanup_seconds = budget["cleanup_seconds"]
+    selected_admission = admission_environment(resource_profile)
+    if (any(os.environ.get(key) != value for key, value in selected_admission.items())
+            or (not selected_admission and os.environ.get("IPFS_DATASETS_PROOF_RESOURCE_PROFILE", ""))):
+        raise ValueError("declared benchmark admission profile differs from the selected environment")
     if arm != "full" and any(value is not None for value in (
             security_initializer, canonical_cve_export, canonical_cve_manifest_sha256,
             security_checkpoint, security_checkpoint_manifest_sha256, security_checkpoint_hub_descriptor,
@@ -357,11 +370,15 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
     os.umask(0o022)
     started = time.monotonic()
     deadline = started + timeout_seconds
-    work_deadline = deadline - 40
+    work_deadline = deadline - reserved_cleanup_seconds
     report = {"schema": "terminal-admitted-supervisor-run@1", "arm": arm,
               "task_completed": False, "official_reward": None,
               "max_total_agent_seconds": timeout_seconds, "provider_invocations": [],
-              "reserved_cleanup_seconds": 40, "work_cutoff_seconds": timeout_seconds - 40,
+              "reserved_cleanup_seconds": reserved_cleanup_seconds,
+              "work_cutoff_seconds": timeout_seconds - reserved_cleanup_seconds,
+              "resource_profile": resource_profile,
+              "proof_resource_profile": selected_admission.get("IPFS_DATASETS_PROOF_RESOURCE_PROFILE"),
+              "source384_timeout_seconds": budget["source384_seconds"],
               "production_activation": False, "benchmark_advantage_claimed": False,
               "phases": {}, "remaining_processes": None}
     state.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -375,7 +392,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
 
     previous_alarm = signal.signal(signal.SIGALRM, budget_expired)
     previous_term = signal.signal(signal.SIGTERM, budget_expired)
-    signal.setitimer(signal.ITIMER_REAL, max(1, timeout_seconds - 40))
+    signal.setitimer(signal.ITIMER_REAL, max(1, timeout_seconds - reserved_cleanup_seconds))
 
     def remaining(reserve=0):
         value = int(work_deadline - time.monotonic() - reserve)
@@ -434,7 +451,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
                 intent_projection_request=intent_projection_request,
                 intent_projection_request_sha256=intent_projection_request_sha256,
                 disable_intent_autoencoder=disable_intent_autoencoder,
-                intent_requirement_contract=intent_requirement_contract)
+                intent_requirement_contract=intent_requirement_contract,
+                **({"resource_profile": resource_profile} if resource_profile is not None else {}))
             report["intent_preplanning"] = prepared["intent_preplanning"]
         finally:
             report["phases"]["prepare_seconds"] = time.monotonic() - before
@@ -444,7 +462,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
             try:
                 report["initial_context"] = preparation.initial_context(state=state,
                     model_snapshot=model_snapshot, model_revision=model_revision,
-                    **({"source384_config": source384_config, "train_autoencoder": False}
+                    **({"source384_config": source384_config, "train_autoencoder": False,
+                        "source384_timeout_seconds": min(budget["source384_seconds"], remaining())}
                        if source384_config is not None else _security_runtime_inputs(security_checkpoint=security_checkpoint,
                         security_checkpoint_manifest_sha256=security_checkpoint_manifest_sha256,
                         security_checkpoint_hub_descriptor=security_checkpoint_hub_descriptor,
@@ -501,7 +520,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
         # deadline without charging them the model route's unused reserve.
         provider_free_candidate = report["implementation_route"] in {"doctor_candidate", "doctor_contract_candidate"}
         implementation = implementation_argv(router=ROUTER, model=preparation.MODEL,
-            reasoning=preparation.REASONING, timeout=remaining(0 if provider_free_candidate else 25),
+            reasoning=preparation.REASONING,
+            timeout=remaining() if provider_free_candidate else min(600, remaining(25)),
             semantic_repository=Path("/app") if bundle is not None else None, doctor=doctor)
         if report["implementation_route"] == "model_router":
             from ipfs_accelerate_py.agent_supervisor.runtime.router_public_instruction import prepare_public_instruction_context
@@ -525,7 +545,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=285,
             runtime = AdmittedBenchmarkRuntime.create(
                 state / "launch", admission=admission, server=owner.server, source=owner.source,
                 implement=True, implementation_command=command, context_bundle=bundle,
-                max_task_attempts=1, timeout_ms=20_000, lifetime_seconds=min(600, max(120, remaining() + 60)),
+                max_task_attempts=1, timeout_ms=20_000,
+                lifetime_seconds=min(900, max(120, remaining() + max(60, reserved_cleanup_seconds))),
                 worker_worktree_root=WORKTREES, candidate_runner_argv=(str(VALIDATOR),),
                 refresh_context_on_completion=bundle is not None,
                 published_retrieval_policy=("local-safetensors-symbols@1" if model_snapshot is not None
@@ -636,7 +657,8 @@ def main():
     parser.add_argument("--instruction", type=Path, required=True)
     parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--arm", choices=["full", "no-index"], required=True)
-    parser.add_argument("--timeout-seconds", type=int, default=285)
+    parser.add_argument("--timeout-seconds", type=int)
+    parser.add_argument("--resource-profile", choices=PROFILES)
     parser.add_argument("--model-snapshot", type=Path)
     parser.add_argument("--model-revision", default="")
     parser.add_argument("--security-initializer", type=Path)

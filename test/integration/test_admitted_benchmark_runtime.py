@@ -21,6 +21,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_polic
 def admitted(tmp_path, monkeypatch, request):
     monkeypatch.setattr(profile_authority, '_LIFECYCLE_REGISTRY_ROOT_OVERRIDE', tmp_path / 'account')
     monkeypatch.setenv('IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR', str(tmp_path / 'ambient-unrelated-state'))
+    monkeypatch.delenv('IPFS_DATASETS_PROOF_RESOURCE_PROFILE', raising=False)
     prepared = prepare_local_planning_qualification(tmp_path / 'task')
     verified = verify_local_benchmark_admission(prepared['admission'])
     from pathlib import Path
@@ -38,6 +39,9 @@ def admitted(tmp_path, monkeypatch, request):
         from ipfs_accelerate_py.agent_supervisor.task_sources import board_control_plane as board
         if getattr(request, 'param', 'configured') == 'unset':
             monkeypatch.delenv(board.ORCHESTRATION_DIR_ENV, raising=False)
+        if getattr(request, 'param', 'configured') == 'extended-proof':
+            monkeypatch.setenv('IPFS_DATASETS_PROOF_RESOURCE_PROFILE', 'local-benchmark@1')
+            monkeypatch.setenv('IPFS_DATASETS_RESOURCE_SCHEDULER_PATH', str(tmp_path / 'shared-scheduler.json'))
         parent_orchestration = os.environ.get(board.ORCHESTRATION_DIR_ENV)
         def forbidden_account_scan():
             raise AssertionError('isolated runtime construction must not migrate account catalogs')
@@ -46,6 +50,7 @@ def admitted(tmp_path, monkeypatch, request):
             tmp_path / 'launch', admission=prepared['admission'], server=owner.server,
             source=owner.source, context_bundle=bundle, timeout_ms=20_000,
             worker_worktree_root=worktrees,
+            **({'lifetime_seconds':900} if getattr(request, 'param', 'configured') == 'extended-proof' else {}),
         )
         try:
             assert os.environ.get(board.ORCHESTRATION_DIR_ENV) == parent_orchestration
@@ -153,11 +158,51 @@ def test_changed_context_digest_is_rejected_before_launch(admitted):
         context.write_bytes(original)
 
 
-@pytest.mark.parametrize('lifetime', [True, 119, 601, 300.0])
+@pytest.mark.parametrize('lifetime', [True, 119, 901, 300.0])
 def test_launch_lifetime_is_an_explicit_bounded_integer(tmp_path, lifetime):
     with pytest.raises(ValueError, match='lifetime_seconds'):
         AdmittedBenchmarkRuntime.create(tmp_path / 'launch', admission=None, server=None,
                                         source=None, lifetime_seconds=lifetime)
+
+
+@pytest.mark.parametrize('admitted', ['extended-proof'], indirect=True)
+def test_extended_launch_binds_exact_shared_scheduler_and_nine_hundred_second_lease(admitted):
+    runtime,_owner,_prepared=admitted
+    expected={key:os.environ[key] for key in ('IPFS_DATASETS_PROOF_RESOURCE_PROFILE','IPFS_DATASETS_RESOURCE_SCHEDULER_PATH')}
+    assert runtime.manifest['lifetime_seconds']==900
+    assert all(dict(runtime.profile.environment)[key]==value for key,value in expected.items())
+    assert all(dict(runtime.manifest['environment'])[key]==value for key,value in expected.items())
+    runtime._verify()
+    runtime.profile=replace(runtime.profile,profile_id='',environment=tuple(
+        (key,value+'-foreign') if key=='IPFS_DATASETS_RESOURCE_SCHEDULER_PATH' else (key,value)
+        for key,value in runtime.profile.environment))
+    with pytest.raises(ValueError,match='launch environment'):
+        runtime._verify()
+
+
+def test_default_proof_profile_does_not_forward_an_ambient_scheduler(monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime import _bounded_proof_resource_environment
+    monkeypatch.delenv('IPFS_DATASETS_PROOF_RESOURCE_PROFILE',raising=False)
+    monkeypatch.setenv('IPFS_DATASETS_RESOURCE_SCHEDULER_PATH','/tmp/unrelated-scheduler.json')
+    assert _bounded_proof_resource_environment()=={}
+
+
+@pytest.mark.parametrize('invalid',['unknown-profile','missing-path','relative-path','directory','symlink','newline'])
+def test_selected_proof_profile_requires_exact_canonical_shared_ledger(tmp_path,monkeypatch,invalid):
+    from ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime import _bounded_proof_resource_environment
+    monkeypatch.setenv('IPFS_DATASETS_PROOF_RESOURCE_PROFILE','local-benchmark@1')
+    value=str(tmp_path/'scheduler.json')
+    if invalid=='unknown-profile':
+        monkeypatch.setenv('IPFS_DATASETS_PROOF_RESOURCE_PROFILE','other@1')
+    elif invalid=='missing-path':value=''
+    elif invalid=='relative-path':value='scheduler.json'
+    elif invalid=='directory':value=str(tmp_path)
+    elif invalid=='newline':value+='\n'
+    elif invalid=='symlink':
+        target=tmp_path/'actual.json';target.write_text('{}');link=tmp_path/'alias.json';link.symlink_to(target);value=str(link)
+    monkeypatch.setenv('IPFS_DATASETS_RESOURCE_SCHEDULER_PATH',value)
+    with pytest.raises(ValueError):
+        _bounded_proof_resource_environment()
 
 
 def test_candidate_git_environment_retains_closed_configuration():
