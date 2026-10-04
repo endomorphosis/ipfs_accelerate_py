@@ -20,6 +20,27 @@ bindings = result.ir_bindings
 refreshed = catalog.refresh([source.source], raise_on_error=True)
 ```
 
+An integrator that already owns a manager instance can add the same source to
+its canonical catalog. Register it as a coordinated configuration change under
+an unused source name; the generic registration API replaces an existing source
+with the same name, so refuse a conflict instead of registering over it.
+
+```python
+# `manager` is an existing instance supplied by the application.
+if source.source in {state.name for state in manager.catalog.source_states()}:
+    raise ValueError("IR source name is already registered; inspect it before refresh")
+manager.catalog.register_source(
+    source.source, source, side_effecting=False, load=True, strict=True,
+)
+manager.refresh((source.source,), raise_on_error=True)
+```
+
+This updates only the manager's canonical catalog source. It does not reload or
+replace `manager.models`, inference caches or model weights. The registration
+and source-name check are separate public calls; an application must coordinate
+concurrent source configuration. The example does not establish that any running
+supervisor or MCP service has performed this registration.
+
 Each result has immutable catalog records and a detached `ir_bindings` sidecar.
 Known family, dimension, dimension role, schema, task, profile, format, checkpoint
 SHA, record ID and checkpoint role are also exposed as catalog labels. Null
@@ -54,7 +75,8 @@ the source unhealthy. A failed read must not trigger manager cache clearing,
 service restart, database creation or fallback to a cwd-relative store.
 
 The reader caps record count, stored config bytes, detached sidecar bytes and
-store size. DuckDB still materializes the selected bounded rows before config
+store size. JSON files use regular nofollow/nonblocking descriptors, a capped
+read and descriptor/path witnesses. DuckDB still materializes the selected bounded rows before config
 validation, so deployments should bound process memory and time. Sequential file
 witnesses can detect endpoint changes but are not an atomic filesystem snapshot.
 An active writer or incompatible DuckDB connection may prevent a read; this is a
