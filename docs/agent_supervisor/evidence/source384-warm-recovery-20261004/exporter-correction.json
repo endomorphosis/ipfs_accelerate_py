@@ -1,0 +1,10 @@
+{
+  "cause": "closed testcase-name alphabet omitted at signs in authored profile IDs and spaces in authored CPU quota parameters",
+  "change": "allow at signs and spaces, with a 256-character bound; failure bodies remain omitted",
+  "corrected_exporter_sha256": "020ba6960bfdd6ca53989b8ede4b60934a636472deba340ade914ff9e24d9173",
+  "original_exporter_sha256": "158bd6a5093c91ae277852d12dcc0520d9f005c46a6c7943ddaa501d796ed360",
+  "prior_invocation_error": "ValueError",
+  "production_or_test_source_changed": false,
+  "public_export_existed_before_correction": false,
+  "schema": "bounded-evidence-exporter-correction@1"
+}

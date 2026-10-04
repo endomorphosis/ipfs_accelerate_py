@@ -1178,6 +1178,7 @@ async def qualify_original_container(
     keep_container: bool = False,
     resource_profile: str | None = None,
     source384_context: bool = False,
+    source384_warm_recovery: str | None = None,
     intent_requirement_contract: Path | None = None,
     setup_cache_selection: dict | None = None,
 ) -> dict:
@@ -1188,6 +1189,10 @@ async def qualify_original_container(
     from .benchmark_resource_profile import PROFILES
 
     options = resource_options(resource_profile)
+    from .terminal_source384_warm_recovery import validate_selection
+    validate_selection(resource_profile, source384_warm_recovery)
+    if source384_warm_recovery is not None and source384_context is not True:
+        raise ValueError("warm recovery requires Source384 qualification")
     if type(source384_context) is not bool:
         raise ValueError("Source384 context qualification switch must be boolean")
     manifest = json.loads((Path(archive_dir) / "manifest.json").read_text())
@@ -1257,6 +1262,7 @@ async def qualify_original_container(
         if source384_context:
             report["source384"] = await qualify_context(environment, task_dir=task_dir,
                 output=output, manifest=manifest, profile=resource_profile,
+                **({"source384_warm_recovery": source384_warm_recovery} if source384_warm_recovery is not None else {}),
                 **({"intent_requirement_contract": requirements} if requirements is not None else {}))
             signed = report["source384"]["signed_source_hashes"]
             if any(signed.get(name) != row["sha256"] for name, row in deployment["original_inputs"]["files"].items()):
@@ -1325,6 +1331,8 @@ def main():
         help="Reviewed public-instruction mapping for Source384 header qualification")
     deploy.add_argument("--source384-context", action="store_true",
         help="Qualify actual pinned Source384 prepare/initial-context/replay without provider calls")
+    deploy.add_argument("--source384-warm-recovery", choices=["source384-warm-admission-recovery@1"],
+        help="Explicit bounded validation-only memory-admission recovery during qualification")
     args = parser.parse_args()
     if args.command == "bundle":
         result = build_runtime_archive(
@@ -1373,6 +1381,7 @@ def main():
                 keep_container=args.keep_container,
                 resource_profile=args.resource_profile,
                 source384_context=args.source384_context,
+                source384_warm_recovery=args.source384_warm_recovery,
                 intent_requirement_contract=args.intent_requirement_contract,
                 setup_cache_selection=(read_selection(args.setup_cache_selection) if args.setup_cache_selection else None),
             )

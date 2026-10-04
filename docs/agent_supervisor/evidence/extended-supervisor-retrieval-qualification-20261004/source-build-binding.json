@@ -1,0 +1,11 @@
+{
+  "fresh_build": true,
+  "parent_authorized_build_only": true,
+  "schema": "benchmark-source-build-binding@1",
+  "service_or_trial_authorized_by_this_record": false,
+  "source_revisions": {
+    "datasets": "d5aaf256618c53b009695e8d5618436fba1c0419",
+    "kit": "a9b98beac1ef14278b4adf4f2289cd509530fb86",
+    "source": "956574dcd6096874a276fcfa0220e63fd8e0ec56"
+  }
+}

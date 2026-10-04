@@ -1,0 +1,101 @@
+{
+  "after_unwind_resources": {
+    "available_memory_mb": 12773,
+    "cpu_slots": 5,
+    "cpu_stall_percent": 32.43,
+    "io_stall_percent": 0.0,
+    "memory_stall_percent": 8.76,
+    "total_memory_mb": 16384
+  },
+  "after_unwind_sample_is_causal_proof": false,
+  "archive_sha256": "26e301c0194ba291413b8a9add97d35919644eb61c2f5a2daf7a7ec8457653cf",
+  "classification": "warm_observation_child_admission_timeout",
+  "error_phase": "warm_observation",
+  "error_type": "LeaseTimeoutError",
+  "initial_context_seconds": 123.79680169300991,
+  "inspector_invoked": false,
+  "manifest_sha256": "e0718430a29d58fd1dd9355532f255ade774dd87a3f348dc6a119f0a6750b17a",
+  "native_primary_admission": {
+    "causal_proof": false,
+    "complete_admission_decision": false,
+    "last_sample": {
+      "additional_request_memory_mb": 0,
+      "host": {
+        "available_memory_mb": 12647,
+        "cpu_stall_percent": 30.32,
+        "io_stall_percent": 0.0,
+        "memory_stall_percent": 10.7
+      },
+      "observed_at": 1791124101.4437847,
+      "pressure_sources": {
+        "omitted_cgroup_scopes": 0,
+        "omitted_maxima": {
+          "cpu": null,
+          "io": null,
+          "memory": null
+        },
+        "samples": [
+          {
+            "cpu": {
+              "avg10": 30.32,
+              "status": "observed"
+            },
+            "depth": null,
+            "io": {
+              "avg10": 0.0,
+              "status": "observed"
+            },
+            "memory": {
+              "avg10": 10.7,
+              "status": "observed"
+            },
+            "scope": "host"
+          },
+          {
+            "cpu": {
+              "avg10": 0.0,
+              "status": "observed"
+            },
+            "depth": 0,
+            "io": {
+              "avg10": 0.0,
+              "status": "observed"
+            },
+            "memory": {
+              "avg10": 0.0,
+              "status": "observed"
+            },
+            "scope": "cgroup"
+          }
+        ],
+        "schema": "proof-pressure-sources@1"
+      },
+      "reason": "proof_memory_stall",
+      "reserved_root_memory_mb": 6144,
+      "thresholds": {
+        "cpu_stall_percent": 50.0,
+        "io_stall_percent": 10.0,
+        "memory_headroom_mb": 3277,
+        "memory_stall_percent": 10.0
+      }
+    },
+    "observation_boundary": "request_primary_gate",
+    "primary_gate": {
+      "backoff_until": 1791124103.4437847,
+      "observed_at": 1791124102.5167818,
+      "reason": "proof_memory_stall",
+      "status": "backoff"
+    },
+    "schema": "terminal-admission-failure-observation@1",
+    "status": "observed",
+    "terminal": "timeout"
+  },
+  "official_reward": null,
+  "official_trial_executed": false,
+  "primary_observation_is_complete_causal_proof": false,
+  "probe_seconds": 225.6295726810058,
+  "schema": "source384-warm-admission-failure@1",
+  "source_native_receipt_sha256": "5bd58c9b46f6d410ef7b38905ad0d60c0c322f1252c97e90eee4170434b01f2a",
+  "trace_sha256": "3bb89282a917fff796cee7862d3406250c4d25771bbc3b750c6a234328244a61",
+  "warm_phase_seconds": 90.06346985098207
+}

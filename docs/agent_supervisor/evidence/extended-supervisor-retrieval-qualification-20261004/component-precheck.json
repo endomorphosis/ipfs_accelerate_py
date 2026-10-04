@@ -1,0 +1,10 @@
+{
+  "benchmark_executed": false,
+  "components_verified": true,
+  "distinct_passing_cases": 33,
+  "returncode": 0,
+  "review_sha256_unchanged": true,
+  "seconds": 0.04335866597830318,
+  "service_changed": false,
+  "skipped_cases": []
+}

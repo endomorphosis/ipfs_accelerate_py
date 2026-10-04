@@ -1,0 +1,11 @@
+{
+  "credentials_exported": false,
+  "exporter_sha256": "9dc90c5d5214e7429ff1d7b5ac21cea8a98cb6fa0fda6ec97ead242a163d7879",
+  "model_bodies_exported": false,
+  "no_trial_inspector_invoked": true,
+  "pressure_summary_producer_sha256": "ef7124571ffab45b25046e45086c7038af66385aea17ae37355a1a66ecf99336",
+  "schema": "failed-qualification-export-provenance@1",
+  "shared_projection_helpers_sha256": "1340eb9b33dd91060670a96a07c24f9d812db67e188a327329e56800c76ea881",
+  "source_bodies_exported": false,
+  "verifier_bodies_exported": false
+}

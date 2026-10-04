@@ -27,7 +27,7 @@ EMBEDDING_COUNTERS = ("local_embedding_calls", "local_embedding_texts",
                       "remote_embedding_calls", "text_generation_calls")
 LABELS = {
     "native-codex": "Native Codex harness",
-    "no-index": "Supervisor: same planner, no context bundle",
+    "no-index": "Supervisor: no indexed context",
     "full": "Supervisor: full indexed context",
 }
 
@@ -513,7 +513,7 @@ def collect(*, baseline: Path, supervisors: list[Path]) -> dict:
         "dollar_cost_basis": "reported provider cost only; Harbor estimates excluded",
         "notes": [
             "Every supplied retained trial is shown, including setup aborts and unsuccessful planning or coding.",
-            "No-index uses the same supervisor planner and native task machinery, without a context bundle.",
+            "No-index runs the native supervisor without an indexed context bundle; planning strategies may differ between workflows.",
             "Native task completion and the independent original verifier reward are separate outcomes.",
             "Known subtotals preserve observed failed-call costs when complete usage is unavailable.",
             "Interrupted sessions and legacy receipts without explicit native session completion evidence have unknown complete totals; their observed cumulative counters are lower bounds.",
@@ -589,7 +589,7 @@ def markdown(comparison: dict) -> str:
         "",
         "Cached input is already included in input. Missing values remain unknown. Provider-reported dollar costs are unavailable when shown as null in JSON; estimated Harbor costs are excluded.",
         "",
-        "No-index retains the same planner and native supervisor, with no context bundle. Setup, agent execution, and verification remain separate timings.",
+        "No-index runs the native supervisor without an indexed context bundle; planning strategies may differ between workflows. Setup, agent execution, and verification remain separate timings.",
     ]
     supervised = [row for row in comparison["rows"] if row["native_completion_applicable"]]
     calls = [(row, call) for row in supervised for call in row["invocations"]]

@@ -65,7 +65,7 @@ def test_probe_releases_bulk_inference_before_independent_warm_replay(
         warm.append(kwargs)
         gc.collect()
         assert released == ["raw"] and roots[0]() is None
-        assert kwargs["expected_receipt"] is receipt
+        assert kwargs["expected_receipt"] == receipt
         if fault == "warm_replay":
             raise ValueError("authored warm source drift")
 
