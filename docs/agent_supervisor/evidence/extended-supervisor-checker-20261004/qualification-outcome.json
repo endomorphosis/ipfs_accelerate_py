@@ -1,0 +1,55 @@
+{
+  "controller_exit": {
+    "returncode": 0,
+    "seconds": 385.85758652500226
+  },
+  "deployment": {
+    "archive_sha256": "32e9d6474d94753e703c91c2345a9a616b98955e06fee4e5f1879c64594ae793",
+    "benchmark_result": false,
+    "credential_contents_recorded": false,
+    "official_verifier_executed": false,
+    "provider_calls": 0,
+    "qualified": true,
+    "schema": "terminal-native-supervisor-deployment@1",
+    "seconds": 172.17086412000936,
+    "task_source_preserved": true
+  },
+  "exit": {
+    "benchmark_result": false,
+    "cleanup_verified": true,
+    "diagnostic_only": false,
+    "official_verifier_executed": false,
+    "provider_calls": 0,
+    "public_task_inputs_unchanged": true,
+    "returncode": 0,
+    "seconds": 384.62779421800224,
+    "source_pins_unchanged": true
+  },
+  "outcome": {
+    "benchmark_result": false,
+    "official_verifier_executed": false,
+    "original_container_sources_consumed": true,
+    "provider_calls": 0,
+    "qualified": true,
+    "resource_profile": "source384-5cpu-16gib-extended@1",
+    "schema": "terminal-original-container-profile-qualification@1",
+    "source384_requested": true
+  },
+  "setup_cache": {
+    "admission_authority": false,
+    "advice_is_best_effort": true,
+    "archive_sha256": "32e9d6474d94753e703c91c2345a9a616b98955e06fee4e5f1879c64594ae793",
+    "completed": true,
+    "credential_contents_recorded": false,
+    "freed_bytes_claimed": false,
+    "global_drop_caches": false,
+    "phase": "complete",
+    "policy": "source384-native-aarch64-dontneed@1",
+    "schema": "terminal-setup-cache-advice@1",
+    "selection": {
+      "manifest_sha256": "054eb2ad26ef4a15935e3da137fcf13e02bfe99a918f39c53b6f7f4842928a40",
+      "policy": "source384-native-aarch64-dontneed@1",
+      "schema": "terminal-setup-cache-selection@1"
+    }
+  }
+}

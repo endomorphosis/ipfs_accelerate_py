@@ -1082,3 +1082,14 @@ outcomes. The leased backend cannot start an unleased fallback version probe.
 Returned unknown/mismatched checks remain refusals, with bounded status/count and
 failed-gate diagnostics exported by the driver. This does not retroactively
 identify the discarded solver outcome from the earlier failed trial.
+
+The next checker archive passed Docker qualification (Source384 70.231 s, warm
+replay 9.102 s). Its full trial reached Doctor's verified scoped local-contract
+candidate, then native START failed sustained-health establishment before its
+deadline; STOP conflicted with that unfinished lifecycle transition. Official
+reward remained 0, with driver time 386.878 s and no provider calls. The native
+report showed a running supervisor/daemon, no recorded exception or owner
+heartbeat, zero remaining native processes and worker cleanup return code zero.
+Repeated verification within the 20 s START window is a structural risk; exact
+per-boundary startup timing was not captured. The paused service was restored.
+See [checker retry evidence](../../../docs/agent_supervisor/evidence/extended-supervisor-checker-20261004/README.md).

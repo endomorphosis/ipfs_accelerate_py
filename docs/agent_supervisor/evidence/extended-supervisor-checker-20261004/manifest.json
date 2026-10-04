@@ -1,0 +1,128 @@
+{
+  "files": [
+    {
+      "bytes": 3516,
+      "path": "README.md",
+      "sha256": "1fbf38fa12bdb608b2fe641a723c1d3857282c11e5332b51aff6feaffc7b3b97"
+    },
+    {
+      "bytes": 1534,
+      "path": "build-audit.json",
+      "sha256": "68edd5433db018657e46754485afa627c34a50913818e4d6894f8a3292aa1350"
+    },
+    {
+      "bytes": 2007,
+      "path": "build-command.json",
+      "sha256": "264f8ea6484c81dd9048a6dfcac1a46b86174ec69cfab3957cf3360a72042d00"
+    },
+    {
+      "bytes": 54,
+      "path": "build-exit.json",
+      "sha256": "9924a48b1264a9dab79335c27b2d0455ccb2d7a3d0595e3afeac2a2e282392b8"
+    },
+    {
+      "bytes": 455,
+      "path": "ci-observation.json",
+      "sha256": "0fb9e3bdd6e1ec59deb5e0902cadc48053f765b79f27ec399c8680895790c3c3"
+    },
+    {
+      "bytes": 1698,
+      "path": "complete-source-pin-map-summaries.json",
+      "sha256": "71e93b5887941823ea2fd811be2b99750186a3d0ef96eabac07295a455dd2baf"
+    },
+    {
+      "bytes": 2032,
+      "path": "execute-command.json",
+      "sha256": "033a03fd35cc524aa3fac1aff42af05ceb33894429e0e404ee15ba9fd7413d47"
+    },
+    {
+      "bytes": 755,
+      "path": "experiment-scope.json",
+      "sha256": "603fddd1e4c44eea8a07be09e6ae5879b553e3c0d9c94d706a61f6c892cd6423"
+    },
+    {
+      "bytes": 1116,
+      "path": "export-scope.json",
+      "sha256": "3675052d4226fc5ec076f383aa8f50823f06bc3bc970aecfb92856dd5e16d5b5"
+    },
+    {
+      "bytes": 54,
+      "path": "full-trial-controller-exit.json",
+      "sha256": "b37d3affe3e5306281532f715321744c00c1b6130f5ab77fd2c5c174edc07971"
+    },
+    {
+      "bytes": 4975,
+      "path": "full-trial-metadata.json",
+      "sha256": "9a3325ecb62b21a7c68b51aad4fe1f48258b7e8e9fdf78ea370224ac0e2e5d50"
+    },
+    {
+      "bytes": 999,
+      "path": "native-lifecycle-observation.json",
+      "sha256": "6e52245ab0b5711409d4cd91d644b85d17ec0ae1268ee32089ae12d7a82eed78"
+    },
+    {
+      "bytes": 2461,
+      "path": "prepare-command.json",
+      "sha256": "898e2ce7bc34fb574123e875990d0c3e7492ff30a37259d5c1c10a5086907c51"
+    },
+    {
+      "bytes": 55,
+      "path": "prepare-exit.json",
+      "sha256": "e3baf203b32a313888953d43ff36990f26fc01af8f7ead344945435d22e3b757"
+    },
+    {
+      "bytes": 270,
+      "path": "public-task-input-digests.json",
+      "sha256": "c2bd9ed3e63cbb7d5202f7c3fe124aaeb45010d8d176d77223e405a6e16806a3"
+    },
+    {
+      "bytes": 2219,
+      "path": "qualification-command.json",
+      "sha256": "5a202a2abccb178f7391be30e025efcb1ca0d2e1d39b3d421f921d9ed7081260"
+    },
+    {
+      "bytes": 893,
+      "path": "qualification-controller-command.json",
+      "sha256": "9fbcd6ad49286c74355e9632236c39ec3c08d93f65baf23c65e66b0f61773126"
+    },
+    {
+      "bytes": 4621,
+      "path": "qualification-native-observation.json",
+      "sha256": "d7241c4f4074e5e6b1787a4b67a518cf7c3e7369898841e267aaea5be5e3c64d"
+    },
+    {
+      "bytes": 1808,
+      "path": "qualification-outcome.json",
+      "sha256": "bc3241864a668544b5365bf8682ba636da960540bcd5494fc8831e5b35738d53"
+    },
+    {
+      "bytes": 4807,
+      "path": "retained-original-record-digests.json",
+      "sha256": "ad9d46b489a67794beac930d46b43450a88c0fe58be04a36b7bff7beef3658b3"
+    },
+    {
+      "bytes": 992,
+      "path": "reviewed-input-metadata.json",
+      "sha256": "a8049b941d8ec0f37997ac4c3eeb1f091f2703f415f6b344b8fc6d4e80c64c46"
+    },
+    {
+      "bytes": 3494,
+      "path": "service-pause-restoration.json",
+      "sha256": "6fe855753166cf0751ecd6ce85ede24e29c6385913431e61eeed00ffdf5aa76f"
+    },
+    {
+      "bytes": 317,
+      "path": "solver-metadata.json",
+      "sha256": "7d857a397c0a951d63ee92c0bd21ceab6ff721f7c8e4a999009e0d6b26cf1b9d"
+    },
+    {
+      "bytes": 244,
+      "path": "source-revisions.json",
+      "sha256": "c3ba3675176bfec3e0ec0b8cab15e808b7778b42d8336fd805c607616380ba55"
+    }
+  ],
+  "manifest_excludes_itself": true,
+  "member_bytes": 41376,
+  "member_count": 24,
+  "schema": "bounded-benchmark-evidence-manifest@1"
+}

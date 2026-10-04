@@ -1,0 +1,42 @@
+{
+  "archive_sha256": "32e9d6474d94753e703c91c2345a9a616b98955e06fee4e5f1879c64594ae793",
+  "benchmark_executed": false,
+  "checkpoint_and_embedding_assets_unchanged": true,
+  "complete_repository_member_pins": 12011,
+  "compressed_bytes": 1340202033,
+  "delta_lists": {
+    "added": {
+      "body_exported": false,
+      "canonical_sha256": "be9cd0a2fe5a41e84a0b6dc602b085cddeaf288cce87310922575312d6bcd536",
+      "entries": 3
+    },
+    "changed": {
+      "body_exported": false,
+      "canonical_sha256": "ddbdd6b8768a0a24963712631dabe9f9f23ef2323ef9c64686ab60b68df18671",
+      "entries": 7
+    },
+    "removed": {
+      "body_exported": false,
+      "canonical_sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "entries": 0
+    }
+  },
+  "logical_bytes": 3921972778,
+  "manifest_sha256": "054eb2ad26ef4a15935e3da137fcf13e02bfe99a918f39c53b6f7f4842928a40",
+  "provider_calls": 0,
+  "reviewed_header_profile_unchanged": true,
+  "setup_cache_selection": {
+    "manifest_sha256": "054eb2ad26ef4a15935e3da137fcf13e02bfe99a918f39c53b6f7f4842928a40",
+    "policy": "source384-native-aarch64-dontneed@1",
+    "schema": "terminal-setup-cache-selection@1"
+  },
+  "source_revisions": {
+    "datasets": "d1c6e830a02b74934079fec533d9b6607c39e968",
+    "kit": "a9b98beac1ef14278b4adf4f2289cd509530fb86",
+    "source": "aa2694d0c99f6ca5ea11294704ed91cf7b6d9928"
+  },
+  "source_revisions_unchanged": true,
+  "tar_hash_mode_ownership_checked": true,
+  "torch_wheel_unchanged": true,
+  "verified_members": 27212
+}

@@ -1,0 +1,29 @@
+{
+  "native_diagnostics": {
+    "daemon_heartbeat_present": false,
+    "git_dubious_ownership": false,
+    "owner_heartbeat_present": false,
+    "recorded_exception_count": 0,
+    "recorded_traceback_frame_count": 0,
+    "schema": "native-supervisor-diagnostics@1",
+    "supervisor_status": "running"
+  },
+  "per_boundary_durations_available": false,
+  "primary_admission_cause_established": false,
+  "receipt_sha256": "7398581e9ca0648d0e1d9d439d583bd4f23cc4af05937c8ce11a0abfee58305e",
+  "schema": "bounded-native-startup-refusal@1",
+  "start": {
+    "error_code": "conflict",
+    "exception_type": "PartialMutationError",
+    "failure_reason": "sustained_health_not_proven_before_deadline",
+    "status": "conflict",
+    "transaction_phase": "repair_required"
+  },
+  "stop": {
+    "error_code": "conflict",
+    "exception_type": "TransactionConflictError",
+    "failure_reason": "prior_lifecycle_transition_still_active",
+    "status": "conflict",
+    "transaction_phase": "repair_required"
+  }
+}
