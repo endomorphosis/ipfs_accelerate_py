@@ -1,0 +1,38 @@
+{
+  "schema": "frozen-runtime-retry@1",
+  "created_at": "2026-10-03T23:58:05.454376+00:00",
+  "source_run": "/home/barberb/lift_coding/artifacts/source384-probe-bulk-lifetime-20261003",
+  "destination": "/home/barberb/lift_coding/artifacts/source384-probe-bulk-lifetime-retry-20261003",
+  "archive_sha256": "9210ac97854d2084783029004aca31a8ff4cc9525d791ef9d4dbceaa27e91c59",
+  "manifest_sha256": "e96625b0c7db99cf59ebeb6ea68fa7ac1d162a636b4d2bb1eac606e5cada9219",
+  "source_revisions": {
+    "datasets": "3315224dfd184e24ea71bad2cb137509450deb88",
+    "source": "cb19bcac1504ca55b2e11b7b2d23053eeb031866"
+  },
+  "current_worktree_revisions": {
+    "source": "26097b3b80e6eaa33bda702bdf8385f09b1e42e3",
+    "datasets": "3315224dfd184e24ea71bad2cb137509450deb88"
+  },
+  "source_pins_verified": true,
+  "independent_bundle_copies": true,
+  "prior_member_audit_reused": true,
+  "copied_inputs": {
+    "source384-config.json": "484ea034486a13c2204e9e21a1409919bd8986057c0c9facfc7de34df6218b08",
+    "intent-requirements.json": "2ed3848faead5300591b880501b5f3d439b6721cf70eac797f7b4b1ac7a1c3da",
+    "input-review.json": "d9ad19aa816667ed4e7fee73fd408144669a4c81e01a13f791fcdf759c7abded",
+    "solver-profile.json": "e28ce7fccf6da83ca0ed02fefd9c2704fa8895186c33bc315c2d46b6ced89a42",
+    "build-audit.json": "294401f63431d53b3de143eb8ac0e0a7adf71fc19fda105c863f84c46523dd5e",
+    "frozen-production-pins.json": "922f08adc350248b1b2f7772395bd3de6e4bb2707c57dbdaeba37ac402b90dd6",
+    "actual.xml": "546035fe14ba2dcec82ad3ce023e18cf424caee38e27af0a3be65480059fdc49",
+    "actual-command.json": "6b4e740a61e030df097688e221237297dd6adf029b58d8d81b851e05694a77ce",
+    "actual-exit.json": "fc43b0c1169bb13e4ad1208f95527c8f50f486f1a578c5358b80a7d024cd43b1",
+    "bulk-actual.xml": "3b34651059d0d0dfff6967cdaa515323646aa6a3261399048bf1be7ec6f283a0",
+    "bulk-actual-command.json": "ec5919c5d6e18b615a4893c7c6f39f9a1ede776d37064aee31b7b754dec4cbfc",
+    "bulk-actual-exit.json": "7c1dbe646cf7eac73d7c81ee5870c4c4aa9480a38cbaf7c5fa30ee3d1d3ab2ef",
+    "launch_qualification.py": "f89e8966b4108dc9d20b6fbbd2402117793b985fa1b6df8065e7ac0d3b7ebf57",
+    "run_qualification.py": "396cf3e98c8772e3af144da6868b185ba8f3c54b56735aa4129719c250573521",
+    "full_trial.py": "becb1b6f923538c267d8a9fc4df7adf6fa29e4e0c5b2c59db1a8efaf9f709f71"
+  },
+  "deadlines_and_resource_limits_unchanged": true,
+  "extra_live_diagnostics_planned": false
+}

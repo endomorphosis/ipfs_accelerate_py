@@ -1,6 +1,6 @@
 {
   "schema": "repository-proof-index-backlog-status/v1",
-  "updated_at_utc": "2026-10-03T23:31:55.543015+00:00",
+  "updated_at_utc": "2026-10-04T00:19:10.058217+00:00",
   "scope": "Frozen 32-task acceptance ledger. Declared-profile criterion qualification and production closure with all prerequisites are tracked separately.",
   "source": {
     "path": "/home/barberb/lift_coding/external/ipfs_accelerate/docs/architecture/repository_proof_index_and_codebase_ir.todo.md",
@@ -630,6 +630,16 @@
       "path": "docs/agent_supervisor/evidence/source384-bulk-lifetime-io-refusal-20261003/manifest.json",
       "sha256": "307af6e14d5b1cc036fa26caf3142e93c757ca21d04f7411d454dc57154c8546",
       "retention": "repository_evidence"
+    },
+    "source384-frozen-retry": {
+      "path": "docs/agent_supervisor/evidence/source384-frozen-retry-20261004/manifest.json",
+      "sha256": "2334ee49ec77d014cb26fbe0a48c5313c12d03bef6c2a1a8d3e5f532cac07736",
+      "retention": "repository_evidence"
+    },
+    "source384-admission-observation": {
+      "path": "docs/agent_supervisor/evidence/source384-admission-observation-20261004/manifest.json",
+      "sha256": "7e4c9250c08ad23072323e289c054beb91b64b469038c3c667ee35890ccfcb63",
+      "retention": "repository_evidence"
     }
   },
   "criteria": [
@@ -1148,7 +1158,9 @@
         "Runtime-captured header applicability now connects signed reviewed intent, native Source384 checkpoint inference, DuckDB/CAS capture, bounded Z3 checks, symbolic planning/admission and worker-context validation. 354 distinct actual-checkout tests pass, including one real-checkpoint normal initialization with two goals, one task and zero planner provider calls. Reviewed intent is signed before runtime capture; post-solver source fences and inherited deadlines remain mandatory. No code is repaired in this integration case, learned formulas remain unverified, and the new header profile is not yet qualified in Docker or a completed benchmark.",
         "The captured-header runtime passed ordinary original-container qualification with actual checkpoint inference (81.664s Source384, 143.024s initial context, 165.779s probe). Its fresh full Harbor trial then received reward 0 after a post-worker source-currentness lease refusal, before planning/Doctor/coding. Zero provider invocations are failed-prefix usage, not a completed token score. Exact source/config/model pins, cleanup and post-unwind diagnostics are retained.",
         "Execution-only imports now occur after indexing/planning, under the existing work deadline. All 56 fresh-store controls pass. Single-process host RSS is 44916 KiB at driver import and 246880 KiB after common imports/indexing, versus 189280 and 297432 KiB before. The new ordinary Docker prerequisite fails at the bounded numerical worker timeout; no full task retry is launched. Separate host and container timing diagnostics grant no production qualification. No admission rule, source-currentness check, numerical selection or deadline is weakened.",
-        "The subsequent ordinary retry returned initial context but refused warm replay; a separate reclamation diagnostic released only 8756 KiB with malloc_trim and did not reproduce the low-headroom condition, so no allocator trim was added. The qualifier now releases its bulk inference copies before warm replay while preserving export bindings; 37 actual tests pass. The fresh final archive refuses an initial-context replay lease with proof_io_stall retained; after-unwind I/O stall is 43.9 percent and available memory 11491 MiB. The new release boundary is not reached in that run. All exact generations, failures and read-only external cache observations are retained separately; the charged cache population and admission-time cause remain unresolved."
+        "The subsequent ordinary retry returned initial context but refused warm replay; a separate reclamation diagnostic released only 8756 KiB with malloc_trim and did not reproduce the low-headroom condition, so no allocator trim was added. The qualifier now releases its bulk inference copies before warm replay while preserving export bindings; 37 actual tests pass. The fresh final archive refuses an initial-context replay lease with proof_io_stall retained; after-unwind I/O stall is 43.9 percent and available memory 11491 MiB. The new release boundary is not reached in that run. All exact generations, failures and read-only external cache observations are retained separately; the charged cache population and admission-time cause remain unresolved.",
+        "The user-requested frozen archive retry passes deployment (258.012s) but fails at the final source-currentness observation after inference has been saved and reloaded. Initial context takes 99.094s, native probe 111.573s and controller 449.676s. The after-unwind scheduler retains proof_memory_stall; a later sample reports 14.59 percent memory stall and 11320 MiB available, without admission-time causality. Source/task pins and container cleanup pass. No full task, official reward or completed token score follows this failed prerequisite.",
+        "The shared scheduler now attaches its existing request-local primary proof-gate sample and cooldown status to timeout/cancellation exceptions, without additional sampling or ledger fields. Supervisor/qualifier failure handlers project bounded metadata separately from post-unwind observations. The 121 shared scheduler and 104 supervisor controls all execute and pass. This does not capture every admission gate or identify pressure causality; it was not present in the preceding Docker retry and still requires a fresh archive/native qualification."
       ],
       "remaining_work": [
         "The complete criterion above has not been qualified in the released integration.",
@@ -1193,7 +1205,9 @@
         "source384-warm-replay-refusal",
         "source384-reclamation-diagnostic",
         "source384-probe-bulk-lifetime",
-        "source384-bulk-lifetime-io-refusal"
+        "source384-bulk-lifetime-io-refusal",
+        "source384-frozen-retry",
+        "source384-admission-observation"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },
@@ -1218,7 +1232,9 @@
         "The selected header profile now roundtrips through archived Source384 configuration and Harbor setup/run; standalone qualification forwards the reviewed intent and checks the returned consumer/contract identities. The actual-checkout transport tests preserve explicit selections and reject mismatches, with Docker APIs mocked. No new complete task or matched-arm score is inferred from the separate native checkpoint/symbolic-planning tests.",
         "The captured-header runtime passed ordinary original-container qualification with actual checkpoint inference (81.664s Source384, 143.024s initial context, 165.779s probe). Its fresh full Harbor trial then received reward 0 after a post-worker source-currentness lease refusal, before planning/Doctor/coding. Zero provider invocations are failed-prefix usage, not a completed token score. Exact source/config/model pins, cleanup and post-unwind diagnostics are retained.",
         "Execution-only imports now occur after indexing/planning, under the existing work deadline. All 56 fresh-store controls pass. Single-process host RSS is 44916 KiB at driver import and 246880 KiB after common imports/indexing, versus 189280 and 297432 KiB before. The new ordinary Docker prerequisite fails at the bounded numerical worker timeout; no full task retry is launched. Separate host and container timing diagnostics grant no production qualification. No admission rule, source-currentness check, numerical selection or deadline is weakened.",
-        "The subsequent ordinary retry returned initial context but refused warm replay; a separate reclamation diagnostic released only 8756 KiB with malloc_trim and did not reproduce the low-headroom condition, so no allocator trim was added. The qualifier now releases its bulk inference copies before warm replay while preserving export bindings; 37 actual tests pass. The fresh final archive refuses an initial-context replay lease with proof_io_stall retained; after-unwind I/O stall is 43.9 percent and available memory 11491 MiB. The new release boundary is not reached in that run. All exact generations, failures and read-only external cache observations are retained separately; the charged cache population and admission-time cause remain unresolved."
+        "The subsequent ordinary retry returned initial context but refused warm replay; a separate reclamation diagnostic released only 8756 KiB with malloc_trim and did not reproduce the low-headroom condition, so no allocator trim was added. The qualifier now releases its bulk inference copies before warm replay while preserving export bindings; 37 actual tests pass. The fresh final archive refuses an initial-context replay lease with proof_io_stall retained; after-unwind I/O stall is 43.9 percent and available memory 11491 MiB. The new release boundary is not reached in that run. All exact generations, failures and read-only external cache observations are retained separately; the charged cache population and admission-time cause remain unresolved.",
+        "The user-requested frozen archive retry passes deployment (258.012s) but fails at the final source-currentness observation after inference has been saved and reloaded. Initial context takes 99.094s, native probe 111.573s and controller 449.676s. The after-unwind scheduler retains proof_memory_stall; a later sample reports 14.59 percent memory stall and 11320 MiB available, without admission-time causality. Source/task pins and container cleanup pass. No full task, official reward or completed token score follows this failed prerequisite.",
+        "The shared scheduler now attaches its existing request-local primary proof-gate sample and cooldown status to timeout/cancellation exceptions, without additional sampling or ledger fields. Supervisor/qualifier failure handlers project bounded metadata separately from post-unwind observations. The 121 shared scheduler and 104 supervisor controls all execute and pass. This does not capture every admission gate or identify pressure causality; it was not present in the preceding Docker retry and still requires a fresh archive/native qualification."
       ],
       "remaining_work": [
         "Execute the complete matched multi-arm campaign and frozen correctness/cost gates, including runtime enforcement, decoder/mask ablations, shared/repository children, cold/warm eligibility, independent review costs and official outcomes. Configuration-control qualification does not establish benchmark advantage.",
@@ -1247,7 +1263,9 @@
         "source384-warm-replay-refusal",
         "source384-reclamation-diagnostic",
         "source384-probe-bulk-lifetime",
-        "source384-bulk-lifetime-io-refusal"
+        "source384-bulk-lifetime-io-refusal",
+        "source384-frozen-retry",
+        "source384-admission-observation"
       ],
       "criterion_acceptance": "not_yet_qualified"
     },

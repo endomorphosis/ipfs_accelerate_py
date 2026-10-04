@@ -1,0 +1,48 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_admission_observation.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_import_lifetime.py",
+    "benchmarks/agent_supervisor/container_coding/test_source384_probe_lifetime.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py",
+    "benchmarks/agent_supervisor/container_coding/test_cleanup_deadline.py",
+    "benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/source384-admission-observation-20261004/accelerate.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "environment_overrides": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-admission-observation-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "NUMEXPR_MAX_THREADS": "1",
+    "CUDA_VISIBLE_DEVICES": "",
+    "TOKENIZERS_PARALLELISM": "false",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/source384-admission-observation-20261004/accelerate-seal.duckdb",
+    "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "/home/barberb/lift_coding/artifacts/source384-admission-observation-20261004/accelerate-keys.db"
+  },
+  "source_pins": {
+    "datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py": "8879ed5a881dc799e99ccb06073a2014fd65c2a5d4d8cf279de0d42e3e5057ad",
+    "accelerate/benchmarks/agent_supervisor/container_coding/terminal_resource_diagnostics.py": "6a5769e1839cf239d1b03b3a3ec5189dd6b40e6fcb7c290758f98aa3381ad5f3",
+    "accelerate/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "c5c167a00a984156f5d9e392b852c49c1d270ddf571cf75604e7860fc14a8997",
+    "accelerate/benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py": "2d453a435a5bdaf5da12324df0ff68b134e37c3439b47338c5237fe445c6fab7",
+    "accelerate/benchmarks/agent_supervisor/container_coding/test_terminal_admission_observation.py": "fb05d95bb585111bbfcdfe1580e5a503c97d3453666833300e42d6959f9142ef",
+    "accelerate/benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py": "38c9b5c7997488e35bc03f8f039278a68085b5cab9a97ee31e04a404ce4b7e01",
+    "accelerate/benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py": "556b0c27e09374c68341f38c4051d1e48a3545310a9c2d23eb986c9d2cdc2724",
+    "accelerate/benchmarks/agent_supervisor/container_coding/test_terminal_import_lifetime.py": "d4cdb2baa3d7efc7d807b4efc48bdb9d4abaacce57d25b4cbb42f25f0b02da35",
+    "accelerate/benchmarks/agent_supervisor/container_coding/test_source384_probe_lifetime.py": "c57f9d8024fab08234a75ded75a7df94ac5a60dab922a88a772a584356939d19",
+    "accelerate/benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py": "ce0e2bbec41412fee5dc00a2c7dcddce648bc6f8e5e54b0ea268131be5b66327",
+    "accelerate/benchmarks/agent_supervisor/container_coding/test_cleanup_deadline.py": "290cfc975c23a1c47a65df7e374386dcb35de983f816e780b77d533fa23b8ad6",
+    "accelerate/benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py": "27103c9b591e4c22a556739c5f1fa67aa95acc24e24c7c1442d8820c1bbd9195"
+  }
+}

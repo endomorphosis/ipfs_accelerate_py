@@ -663,3 +663,29 @@ unwind (43.9 percent sampled I/O stall, 11491 MiB available). Its probe is
 in that failed run. Read-only external cgroup and public-asset residency samples
 are disclosed separately; they do not identify the complete charged cache
 population, prove the admission-time cause or support a timing advantage.
+
+
+## Frozen retry and admission-time diagnostics
+
+The [unchanged archive retry](../../../docs/agent_supervisor/evidence/source384-frozen-retry-20261004/README.md)
+passes deployment in 258.012s, then refuses the final source-currentness lease
+after inference has been saved and reloaded. Initial context takes 99.094s,
+the native probe 111.573s and the controller 449.676s. The later scheduler
+snapshot retains proof_memory_stall; the post-unwind sample reports 14.59
+percent memory stall and 11320 MiB available. These are not admission-time
+measurements. Source/task pins and container cleanup pass. No full task is
+launched, and no new official reward or completed token score is available.
+
+The subsequent [request-local diagnostic change](../../../docs/agent_supervisor/evidence/source384-admission-observation-20261004/README.md)
+retains the existing primary proof-gate sample on timeout/cancellation errors.
+The qualifier and full supervisor expose this bounded record separately from
+post-unwind samples. It distinguishes a fresh refusal from an existing cooldown;
+a cooldown created by another request has no invented sample. Capacity,
+fairness and secondary pressure decisions remain outside the recorded scope.
+The record grants no authority and does not identify the cause of host pressure.
+
+All 225 focused controls execute and pass: 121 shared scheduler tests and 104
+supervisor tests. Resource formulas, thresholds, sampler calls and deadlines
+are unchanged. This diagnostic was not in the frozen retry; its new combined
+runtime requires a fresh archive and ordinary Docker qualification. RPI-019
+and RPI-020 remain open, and the backlog stays **18/32 closed**.
