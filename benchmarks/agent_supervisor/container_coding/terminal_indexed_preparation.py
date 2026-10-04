@@ -27,11 +27,15 @@ from ipfs_accelerate_py.agent_supervisor.prompt.prompt_goal_planner import (
     generate_prompt_goal_graph,
 )
 from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import (
-    DirectoryScanPolicy, DirectoryScanReceipt, LocalFallbackPolicy, PromptOutputPolicy,
+    DirectoryScanPolicy, DirectoryScanReceipt, LocalFallbackPolicy, PromptEvidenceRecord, PromptOutputPolicy,
     PromptPlanningPolicy, PromptSource, PromptWorkflowBudget, PromptWorkflowRequest,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission as local
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import IntentRepository
+from .terminal_task_profile import (
+    PROFILE, normalized_instruction, task_profile_bytes, task_profile_index_paths,
+    task_profile_smoke, task_profile_spec, task_profile_worker_inputs, validate_task_profile,
+)
 
 
 MODEL = "gpt-5.6-sol"
@@ -109,11 +113,27 @@ def _load_prepared(state):
     inputs = manifest["planning_inputs"]
     requirement_contract = (local.decode_intent_requirement_contract(manifest)
                             if manifest["schema"] == local.INTENT_MANIFEST_SCHEMA else None)
+    task_profile = prepared.get("task_profile")
+    if task_profile is not None:
+        task_profile = validate_task_profile(task_profile, instruction=prepared["query"])
+        expected_spec = task_profile_spec(task_profile, policy_cid=local.content_identity(local.LOCAL_POLICY))
+        expected_spec["acceptance"][0]["evidence_cids"] = [PromptEvidenceRecord.from_dict(inputs["selected_evidence"][0]).evidence_cid]
+        if (prepared["task_profile"] != task_profile or prepared["spec"] != expected_spec
+                or set(manifest["sources"]) != set(task_profile_worker_inputs(task_profile))
+                or (repository / PROFILE).read_bytes() != task_profile_bytes(task_profile)):
+            raise ValueError("public task profile differs from exact signed input declaration")
+        worker_inputs = task_profile_worker_inputs(task_profile)
+        smoke = task_profile_smoke(task_profile)
+    else:
+        if PROFILE in manifest["sources"]:
+            raise ValueError("signed public task profile cannot be omitted")
+        worker_inputs, smoke = [INSTRUCTION, SMOKE, "bottle.py"], PUBLIC_SMOKE
     if (prepared["request"] != inputs["request"] or prepared["scan"] != inputs["scan"]
             or len(manifest["tasks"]) != 1 or prepared["spec"] != manifest["tasks"][0]
             or prepared["query"] != (repository / INSTRUCTION).read_text()
             or prepared["constraints"] != _constraints(prepared["spec"], prepared["query"])
-            or prepared["worker_inputs"] != [INSTRUCTION, SMOKE, "bottle.py"]
+            or prepared["worker_inputs"] != worker_inputs
+            or (repository / SMOKE).read_text() != smoke
             or prepared.get("intent_requirement_contract") != requirement_contract
             or prepared.get("planning_strategy", _planning_strategy(requirement_contract)) != _planning_strategy(requirement_contract)
             or str(repository) != manifest["repository"]):
@@ -161,7 +181,8 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
             source_unit_project_logic_families: bool = False,
             source_unit_intent_family_context: Path | None = None,
             source_unit_intent_logic_families: list[str] | None = None,
-            intent_requirement_contract: Path | None = None, resource_profile=None) -> dict:
+            intent_requirement_contract: Path | None = None, resource_profile=None,
+            task_profile: dict | None = None) -> dict:
     """Capture original image bytes, then sign one explicit task before planning.
 
     This mutates only the disposable benchmark Git repository: its intentional
@@ -184,7 +205,10 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
         raise ValueError("state must be a new non-symlink directory outside the worker repository")
     if _git(repository, "rev-parse", "--show-toplevel").decode().strip() != str(repository):
         raise ValueError("repository must be the exact existing task Git root")
-    text = instruction.read_text()
+    text = instruction.read_text(encoding="utf-8")
+    if task_profile is not None:
+        text = normalized_instruction(text)
+        task_profile = validate_task_profile(task_profile, instruction=text)
     if not text.strip() or len(text.encode()) > 32768:
         raise ValueError("public instruction must contain 1 to 32768 bytes")
     requirements = _load_intent_requirement_contract(intent_requirement_contract, text)
@@ -213,17 +237,27 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
         intent_family_context_path=None if disable_intent_autoencoder else source_unit_intent_family_context,
         requested_intent_families=None if disable_intent_autoencoder else source_unit_intent_logic_families)
     names = [name.decode() for name in _git(repository, "ls-files", "-z").split(b"\0") if name]
-    if "bottle.py" not in names or len(names) > 252:
+    if task_profile is None and ("bottle.py" not in names or len(names) > 252):
         raise ValueError("original Bottle source inventory is missing or exceeds the declared bound")
-    for name in ("report.jsonl", INSTRUCTION, SMOKE):
+    if task_profile is not None and sorted(names) != task_profile["input_paths"]:
+        raise ValueError("original public source inventory differs from exact task profile")
+    create_paths = ([item["path"] for item in task_profile["outputs"] if item["effect"] == "create"]
+                    if task_profile is not None else ["report.jsonl"])
+    public_paths = [INSTRUCTION, SMOKE, *([PROFILE] if task_profile is not None else [])]
+    for name in [*create_paths, *public_paths]:
         if (repository / name).exists() or (repository / name).is_symlink() or name in names:
             raise ValueError("declared create/public preparation path already exists: " + name)
-    if _git(repository, "ls-files", "--others", "--exclude-standard", "-z"):
+        path = repository / name
+        if path.resolve() != path:
+            raise ValueError("declared public/output path traverses a symlink")
+    if _git(repository, "ls-files", "--others", "-z"):
         raise ValueError("original input contains undeclared untracked files")
     changed = {name.decode() for name in _git(repository, "diff", "--name-only", "HEAD", "-z").split(b"\0") if name}
-    if not changed <= {"bottle.py"}:
+    if not changed <= (set(task_profile["input_paths"]) if task_profile is not None else {"bottle.py"}):
         raise ValueError("original input has an unexpected dirty tracked path")
-    source_inventory = local._sources(repository, names, max_files=256)
+    source_inventory = local._sources(repository, names, max_files=256) if names else {}
+    if task_profile is not None and any((repository / name).stat().st_size > 262144 for name in names):
+        raise ValueError("public task input exceeds the existing complete planner scan byte bound")
     original_head = _git(repository, "rev-parse", "HEAD").decode().strip()
     original_diff = _git(repository, "diff", "--binary", "HEAD")
     state.mkdir(parents=True)
@@ -260,13 +294,15 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
         "upstream_source_restored": False,
     })
     if changed:
-        _git(repository, "add", "--", "bottle.py")
+        _git(repository, "add", "--", *sorted(changed))
         _commit(repository, "Record exact original benchmark image input bytes")
-    if local._sources(repository, names, max_files=256) != source_inventory:
+    if (local._sources(repository, names, max_files=256) if names else {}) != source_inventory:
         raise ValueError("original source bytes changed while recording their baseline")
     (repository / INSTRUCTION).write_text(text)
-    (repository / SMOKE).write_text(PUBLIC_SMOKE)
-    _git(repository, "add", "--", INSTRUCTION, SMOKE)
+    (repository / SMOKE).write_text(task_profile_smoke(task_profile) if task_profile is not None else PUBLIC_SMOKE)
+    if task_profile is not None:
+        (repository / PROFILE).write_bytes(task_profile_bytes(task_profile))
+    _git(repository, "add", "--", *public_paths)
     _commit(repository, "Declare immutable public task instruction and structural smoke check")
     exclude = repository / ".git/info/exclude"
     with exclude.open("a") as stream:
@@ -293,21 +329,26 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
             "cwd": ".", "expected_exit_codes": [0], "policy_cid": policy}],
         "acceptance": [acceptance],
     }
+    if task_profile is not None:
+        spec = task_profile_spec(task_profile, policy_cid=policy)
+        acceptance = spec["acceptance"][0]
+    worker_inputs = task_profile_worker_inputs(task_profile) if task_profile is not None else [INSTRUCTION, SMOKE, "bottle.py"]
     domains = local.local_planning_domain_declarations(repository=repository,
         profile_dir=profile_dir, lifecycle_dir=lifecycle_dir, task_specs=[spec])
     allowlist = RepositoryAllowlist.from_roots([repository])
-    budget = PromptWorkflowBudget(max_files=8, max_scan_bytes=8388608, max_file_bytes=262144,
+    budget = PromptWorkflowBudget(max_files=256 if task_profile is not None else 8, max_scan_bytes=8388608, max_file_bytes=262144,
         max_symbols=1024, max_prompt_tokens=32768, max_provider_tokens=4096,
         max_latency_ms=90000, max_goals=2, max_tasks=1, max_evidence=16,
         max_graph_depth=4, max_serialized_bytes=1048576, max_rescue_actions=1)
     request = PromptWorkflowRequest(
         prompt_source=PromptSource.inline(text, redacted_metadata={
-            "summary": "Plan the public Bottle source repair and declared JSONL report; exact public instruction is supplied in constraints.",
+            "summary": ("Plan the exact public task inputs and declared outputs; complete public instruction is supplied in constraints."
+                        if task_profile is not None else "Plan the public Bottle source repair and declared JSONL report; exact public instruction is supplied in constraints."),
         }),
         repository_root=str(repository), directory=str(repository),
         repository_root_cid=repository_root_cid(repository), allowlist_cid=allowlist.allowlist_cid,
         scan_policy=DirectoryScanPolicy(policy_id="terminal-public-source-scan", scanner_version="1",
-            include_patterns=("bottle.py", INSTRUCTION, SMOKE)),
+            include_patterns=tuple(worker_inputs) if task_profile is not None else ("bottle.py", INSTRUCTION, SMOKE)),
         planning_policy=PromptPlanningPolicy(policy_id=("terminal-intent-symbolic-planner"
             if strategy == "intent_symbolic" else "terminal-codex-planner"),
             provider_preferences=(PROVIDER,), model_preferences=(MODEL,), allow_model=strategy != "intent_symbolic",
@@ -333,6 +374,9 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
         }, planning_inputs={"request": request.to_dict(), "scan": scan.to_dict(),
             "domain_declarations": domains, "selected_evidence": [row.to_dict() for row in evidence]},
         intent_requirements=requirements)
+    if task_profile is not None and any(manifest["payload"]["sources"].get(name) != value
+                                        for name, value in source_inventory.items()):
+        raise ValueError("public source bytes changed during task preparation")
     prepared = {
         "schema": "terminal-indexed-public-preparation@1", "repository": str(repository),
         "state": str(state), "original_head": original_head, "manifest": manifest,
@@ -343,13 +387,15 @@ def prepare(*, repository: Path, instruction: Path, state: Path,
         "planning_and_cold_index_overhead_included": True,
         "provider_calls": 0, "report_preseeded": False, "benchmark_success": None,
         "planning_strategy": strategy,
-        "worker_inputs": [INSTRUCTION, SMOKE, "bottle.py"],
+        "worker_inputs": worker_inputs,
         "query": text, "query_provenance": "public instruction.md verbatim",
         "official_verifier_in_context": False,
         "intent_preplanning": intent_preplanning,
         "source_unit_preplanning": source_unit_preplanning,
         "preparation_seconds": time.monotonic() - started,
     }
+    if task_profile is not None:
+        prepared["task_profile"] = task_profile
     if requirements is not None:
         prepared["intent_requirement_contract"] = requirements
     _write(state / "prepared.json", prepared)
@@ -772,12 +818,13 @@ def context(*, state: Path, model_snapshot: Path | None = None, model_revision: 
         diagnostic_artifact = hydrated["diagnostic_artifact"]
         stage_seconds["verified_initial_index_reuse_and_admitted_world_capture"] = time.monotonic() - stage_started
     else:
+        vector_paths = task_profile_index_paths(prepared["task_profile"]) if prepared.get("task_profile") is not None else ["bottle.py"]
         if model_snapshot:
             from benchmarks.agent_supervisor.container_coding.learned_vector_preflight import qualify
-            indexed = qualify(repository, vectors, ["bottle.py"], prepared["query"], model_snapshot, model_revision)
+            indexed = qualify(repository, vectors, vector_paths, prepared["query"], model_snapshot, model_revision)
         else:
             from benchmarks.agent_supervisor.container_coding.vector_index_preflight import qualify
-            indexed = qualify(repository, vectors, ["bottle.py"], prepared["query"])
+            indexed = qualify(repository, vectors, vector_paths, prepared["query"])
         stage_finished = time.monotonic()
         stage_seconds["vector_qualification"] = stage_finished - stage_started
         stage_started = stage_finished

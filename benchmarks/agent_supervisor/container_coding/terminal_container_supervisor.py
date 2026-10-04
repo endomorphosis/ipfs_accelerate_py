@@ -393,7 +393,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         intent_projection_request: Path | None = None,
         intent_projection_request_sha256: str | None = None,
         disable_intent_autoencoder: bool = False,
-        intent_requirement_contract: Path | None = None) -> dict:
+        intent_requirement_contract: Path | None = None,
+        task_profile: Path | None = None) -> dict:
     budget = execution_budget(resource_profile)
     if timeout_seconds is None:
         timeout_seconds = budget["driver_seconds"]
@@ -415,6 +416,21 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             security_checkpoint, security_checkpoint_manifest_sha256, security_checkpoint_hub_descriptor,
             formula_decoder_descriptor, header_protocol_descriptor)):
         raise ValueError("Source384 pinned-parent and legacy security profiles are mutually exclusive")
+    generic_profile = None
+    if task_profile is not None:
+        from .terminal_task_profile import validate_task_profile
+        if (task_profile.is_symlink() or not task_profile.is_file()
+                or task_profile.resolve(strict=True) != task_profile or task_profile.stat().st_size > 65536):
+            raise ValueError("bounded canonical public task profile required")
+        generic_profile = validate_task_profile(json.loads(task_profile.read_text()),
+            instruction=instruction.read_text())
+        if any(value is not None for value in (
+                security_initializer, canonical_cve_export, canonical_cve_manifest_sha256)):
+            raise ValueError("generic benchmark tasks do not authorize training on task inputs")
+        if security_checkpoint is None and any(value is not None for value in (
+                security_checkpoint_manifest_sha256, security_checkpoint_hub_descriptor,
+                formula_decoder_descriptor, header_protocol_descriptor)):
+            raise ValueError("generic legacy decoder assets require an explicit frozen checkpoint")
     if os.geteuid() != 1000 or not state.is_relative_to(ROOT / "state"):
         raise ValueError("container task must run as the deployed private supervisor owner")
     # Canonical files remain read-only to the model identity. The trusted
@@ -509,6 +525,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 intent_projection_request_sha256=intent_projection_request_sha256,
                 disable_intent_autoencoder=disable_intent_autoencoder,
                 intent_requirement_contract=intent_requirement_contract,
+                **({"task_profile": generic_profile} if generic_profile is not None else {}),
                 **({"resource_profile": resource_profile} if resource_profile is not None else {}))
             report["intent_preplanning"] = prepared["intent_preplanning"]
         finally:
@@ -521,7 +538,9 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                     model_snapshot=model_snapshot, model_revision=model_revision,
                     **({"source384_config": source384_config, "train_autoencoder": False,
                         "source384_timeout_seconds": min(budget["source384_seconds"], remaining())}
-                       if source384_config is not None else _security_runtime_inputs(security_checkpoint=security_checkpoint,
+                       if source384_config is not None else {"train_autoencoder": False}
+                       if generic_profile is not None and security_checkpoint is None
+                       else _security_runtime_inputs(security_checkpoint=security_checkpoint,
                         security_checkpoint_manifest_sha256=security_checkpoint_manifest_sha256,
                         security_checkpoint_hub_descriptor=security_checkpoint_hub_descriptor,
                         formula_decoder_descriptor=formula_decoder_descriptor,
@@ -566,7 +585,8 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
                 # the phase that needs them, including on import failure.
                 from benchmarks.agent_supervisor.container_coding.terminal_doctor_dispatch import prepare_terminal_doctor_dispatch
                 doctor = prepare_terminal_doctor_dispatch(repository=Path("/app"), state=state,
-                    admission=admission, task_cid=task.task_cid, contract_profile="wsgi-header-controls@1")
+                    admission=admission, task_cid=task.task_cid,
+                    contract_profile="wsgi-header-controls@1" if generic_profile is None else None)
             finally:
                 report["phases"]["doctor_seconds"] = time.monotonic() - before
             report["doctor_dispatch"] = doctor
@@ -578,7 +598,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         provider_free_candidate = report["implementation_route"] in {"doctor_candidate", "doctor_contract_candidate"}
         implementation = implementation_argv(router=ROUTER, model=preparation.MODEL,
             reasoning=preparation.REASONING,
-            timeout=remaining() if provider_free_candidate else min(600, remaining(25)),
+            timeout=remaining() if provider_free_candidate else min(300, remaining(25)),
             semantic_repository=Path("/app") if bundle is not None else None, doctor=doctor)
         if report["implementation_route"] == "model_router":
             from ipfs_accelerate_py.agent_supervisor.runtime.router_public_instruction import prepare_public_instruction_context
@@ -744,6 +764,7 @@ def main():
     parser.add_argument("--intent-projection-request-sha256")
     parser.add_argument("--disable-intent-autoencoder", action="store_true")
     parser.add_argument("--intent-requirement-contract", type=Path)
+    parser.add_argument("--task-profile", type=Path)
     result = run(**vars(parser.parse_args()))
     print(json.dumps({key: result[key] for key in ("task_completed", "arm", "seconds", "provider_invocations")}))
     return 0 if result["task_completed"] else 1

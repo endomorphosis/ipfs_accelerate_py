@@ -59,8 +59,11 @@ def build_controls(config, *, task_input_sha256, task, model, reasoning_effort, 
         from .native_codex_baseline import MODEL, REASONING, CLI_VERSION
         if (model, reasoning_effort, cli_version) != (MODEL, REASONING, CLI_VERSION):
             raise ValueError("supervisor declaration differs from fixed source profile")
-        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection"}:
+        if set(kwargs) - {"runtime_archive", "arm", "model_revision", "intent_requirement_contract", "resource_profile", "setup_cache_selection", "task_profile"}:
             raise ValueError("unsupported supervisor kwargs require a new comparison profile")
+        if "task_profile" in kwargs:
+            from .terminal_task_profile import validate_task_profile
+            validate_task_profile(kwargs["task_profile"])
         if "resource_profile" in kwargs:
             from .benchmark_resource_profile import validate_resource_profile
             validate_resource_profile(config, kwargs["resource_profile"])

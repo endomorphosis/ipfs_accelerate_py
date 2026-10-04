@@ -99,6 +99,24 @@ def test_exact_native_and_model_bytes_survive_worker_exit(compiled):
     assert compiled["receipts"][0]["workspace"] not in exported
 
 
+def test_generic_retrieval_scope_must_match_instruction_bound_signed_profile(compiled):
+    from benchmarks.agent_supervisor.container_coding.terminal_task_profile import PROFILE, instruction_sha256, task_profile_bytes
+    path = compiled["state"] / "prepared.json"
+    prepared = json.loads(path.read_text())
+    profile = {"schema": "terminal-public-task-profile@1",
+        "instruction_sha256": instruction_sha256(prepared["query"]),
+        "input_paths": ["bottle.py"],
+        "outputs": [{"path": "bottle.py", "effect": "modify", "media_type": "text/x-python"}]}
+    prepared["task_profile"] = profile
+    prepared["manifest"]["payload"]["sources"][PROFILE] = {
+        "sha256": hashlib.sha256(task_profile_bytes(profile)).hexdigest()}
+    path.write_text(json.dumps(prepared))
+    assert observe(compiled)["all_observed_coding_inputs_verified"] is True
+    prepared["task_profile"]["instruction_sha256"] = "0" * 64
+    path.write_text(json.dumps(prepared))
+    assert observe(compiled)["all_observed_coding_inputs_verified"] is False
+
+
 def test_actual_bounded_child_process_roundtrip(compiled):
     result = audit.collect_terminal_context_audit(state=compiled["state"],
         receipts=compiled["receipts"], workspace_root=compiled["workspace_root"], timeout_seconds=10)

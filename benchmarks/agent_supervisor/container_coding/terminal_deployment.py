@@ -943,6 +943,7 @@ async def deploy_supervisor(
     auth_json: Path | None = None,
     install_codex: bool = True,
     setup_cache_selection: dict | None = None,
+    isolated_uv_bootstrap: bool = False,
 ) -> dict:
     """Use actual Harbor exec/upload APIs; does not call any model or verifier."""
     from .terminal_setup_cache_advice import validate_setup_cache_selection, validate_setup_cache_prerequisites
@@ -1002,17 +1003,25 @@ async def deploy_supervisor(
     )
     # Native supervisor contracts use Python 3.12 (including hashable
     # mappingproxy defaults); keep the original task interpreter untouched.
+    if type(isolated_uv_bootstrap) is not bool:
+        raise ValueError("isolated uv bootstrap selection must be boolean")
+    uv_command = "uv"
+    uv_install = "python3 -m pip install --no-cache-dir uv==0.9.24"
+    if isolated_uv_bootstrap:
+        uv_command = ROOT + "/bootstrap/bin/uv"
+        uv_install = ("python3 -m venv " + ROOT + "/bootstrap && " + ROOT
+                      + "/bootstrap/bin/python -m pip install --no-cache-dir uv==0.9.24")
     await execute(
         "python-runtime-install",
-        "python3 -m pip install --no-cache-dir uv==0.9.24 && "
-        "UV_PYTHON_INSTALL_DIR=" + PYTHON_INSTALL_DIR + " uv python install " + RUNTIME_PYTHON_VERSION,
+        uv_install + " && UV_PYTHON_INSTALL_DIR=" + PYTHON_INSTALL_DIR + " " + uv_command
+        + " python install " + RUNTIME_PYTHON_VERSION,
         timeout=300,
     )
     await execute(
         "python-create",
         "UV_PYTHON_INSTALL_DIR="
         + PYTHON_INSTALL_DIR
-        + " uv venv --python "
+        + " " + uv_command + " venv --python "
         + RUNTIME_PYTHON_VERSION
         + " --seed "
         + ROOT

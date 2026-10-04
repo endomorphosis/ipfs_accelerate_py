@@ -26,6 +26,7 @@ from ipfs_accelerate_py.agent_supervisor.semantic_state.intent_world_snapshot im
     capture_intent_world_snapshot, load_intent_world_context, persist_intent_world_snapshot,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import IntentRepository
+from .terminal_task_profile import task_profile_index_paths
 
 
 SCHEMA = "terminal-initial-indexed-planning@1"
@@ -184,6 +185,8 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
 
     started = time.monotonic()
     root = Path(prepared["repository"]).resolve(strict=True)
+    public_profile = prepared.get("task_profile")
+    vector_paths = task_profile_index_paths(public_profile) if public_profile is not None else ["bottle.py"]
     header_intent = (prepared.get("intent_requirement_contract") or {}).get("schema") == "intent-plan-requirement-contract@3"
     if header_intent and source384_config is None:
         raise ValueError("header intent requires the explicit Source384 header profile")
@@ -229,10 +232,10 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
     vectors = root / ".runtime/terminal-vectors"
     if model_snapshot:
         from .learned_vector_preflight import qualify
-        indexed = qualify(root, vectors, ["bottle.py"], prepared["query"], model_snapshot, model_revision)
+        indexed = qualify(root, vectors, vector_paths, prepared["query"], model_snapshot, model_revision)
     else:
         from .vector_index_preflight import qualify
-        indexed = qualify(root, vectors, ["bottle.py"], prepared["query"])
+        indexed = qualify(root, vectors, vector_paths, prepared["query"])
     timings["vector_qualification"] = time.monotonic() - stage
     stage = time.monotonic()
     learner = learner_catalog = frozen_advice = source384 = None
@@ -322,6 +325,9 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         "index": _reference(root, vectors / "result.json"),
         "learned_embeddings": bool(model_snapshot), "model_snapshot": str(model_snapshot.resolve(strict=True)) if model_snapshot else None,
         "model_revision": model_revision, "execution_authority": False, "completion_authority": False}
+    if public_profile is not None:
+        descriptor["public_task_index_scope"] = {"task_source_paths": vector_paths,
+            "instruction_only": False, "source_semantics_verified": False}
     if learner is not None:
         descriptor["codebase_autoencoder"] = learner
         descriptor["codebase_autoencoder_catalog"] = learner_catalog
@@ -342,6 +348,8 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         "nonoverlapping_seconds": timings, "seconds": time.monotonic() - started,
         "final_result_persistence_included_in_seconds": False,
         "execution_authority": False, "completion_authority": False}
+    if public_profile is not None:
+        result["public_task_index_scope"] = descriptor["public_task_index_scope"]
     if learner is not None:
         result["codebase_autoencoder"] = learner
         result["codebase_autoencoder_catalog"] = learner_catalog
@@ -396,11 +404,18 @@ def _load_initial_context(*, state: Path, prepared: dict, require_empty_owner: b
             or descriptor["public_query_sha256"] != hashlib.sha256(prepared["query"].encode()).hexdigest()
             or descriptor.get("execution_authority") is not False or descriptor.get("completion_authority") is not False):
         raise ValueError("initial indexed context declaration binding differs")
+    expected_scope = ({"task_source_paths": task_profile_index_paths(prepared["task_profile"]),
+                       "instruction_only": False, "source_semantics_verified": False}
+                      if prepared.get("task_profile") is not None else None)
+    if descriptor.get("public_task_index_scope") != expected_scope or result.get("public_task_index_scope") != expected_scope:
+        raise ValueError("initial public task index scope differs")
     alias, metadata = descriptor["task_alias"], descriptor["metadata"]
     semantic, view, get_block = _semantic_view(root, metadata, alias)
     retrieval = json.loads(load_code_retrieval_context(repository=root,
         artifact=metadata["Code retrieval artifact"], expected_sha256=metadata["Code retrieval sha256"], task_id=alias))
     indexed = _read(root, descriptor["index"])
+    if expected_scope is not None and set(indexed["source_sha256"]) != set(expected_scope["task_source_paths"]):
+        raise ValueError("initial vector index omitted or added a declared public source")
     learner = descriptor.get("codebase_autoencoder")
     frozen = descriptor.get("security_autoencoder_advice")
     source384 = descriptor.get("source384_context")

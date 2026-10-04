@@ -226,7 +226,7 @@ class FullSupervisorAgent(BaseAgent):
     def __init__(self, *args, runtime_archive: str, arm="full", auth_json: str | None = None,
                  model_revision="", disable_intent_autoencoder: bool = False,
                  intent_requirement_contract: dict | None = None, resource_profile=None,
-                 setup_cache_selection: dict | None = None, **kwargs):
+                 setup_cache_selection: dict | None = None, task_profile: dict | None = None, **kwargs):
         super().__init__(*args, **kwargs)
         if self.model_name != MODEL or arm not in {"full", "no-index"}:
             raise ValueError("the isolated comparison requires the pinned model and explicit arm")
@@ -253,6 +253,8 @@ class FullSupervisorAgent(BaseAgent):
                 raise ValueError("Intent requirement contract exceeds its byte bound")
             intent_requirement_contract = json.loads(encoded)
         self.intent_requirement_contract = intent_requirement_contract
+        from .terminal_task_profile import validate_task_profile
+        self.task_profile = validate_task_profile(task_profile) if task_profile is not None else None
         self.logs_dir.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
@@ -272,8 +274,14 @@ class FullSupervisorAgent(BaseAgent):
             getattr(self, "intent_requirement_contract", None), self.arm)
         validate_setup_cache_prerequisites(selection, install_codex=True, auth_json=self.auth_json,
             arm=self.arm, resource_profile=getattr(self, "resource_profile", None))
+        task_profile = getattr(self, "task_profile", None)
+        if task_profile is not None:
+            from .terminal_task_bootstrap import bootstrap_task_repository
+            self.task_bootstrap = await bootstrap_task_repository(environment, profile=task_profile,
+                output=self.logs_dir / "task-bootstrap")
         await deploy_supervisor(environment, archive_dir=self.runtime_archive,
                                 output=self.logs_dir / "deployment", auth_json=self.auth_json,
+                                **({"isolated_uv_bootstrap": True} if task_profile is not None else {}),
                                 **({"setup_cache_selection": selection} if selection is not None else {}))
         boundary = self.logs_dir / "worker-boundary"
         await deploy_worker_boundary(environment, output=boundary)
@@ -302,6 +310,14 @@ class FullSupervisorAgent(BaseAgent):
         argv = [PYTHON, "-P", "-m", "benchmarks.agent_supervisor.container_coding.terminal_container_supervisor",
                 "--instruction", instruction_path, "--state", state,
                 "--arm", self.arm, "--timeout-seconds", str(budget["driver_seconds"])]
+        task_profile = getattr(self, "task_profile", None)
+        if task_profile is not None:
+            from .terminal_task_profile import validate_task_profile
+            task_profile = validate_task_profile(task_profile, instruction=instruction)
+            artifact = self.logs_dir / "task-profile.json"
+            artifact.write_text(json.dumps(task_profile, sort_keys=True, allow_nan=False) + "\n")
+            await environment.upload_file(artifact, ROOT + "/task-profile.json")
+            argv += ["--task-profile", ROOT + "/task-profile.json"]
         if profile is not None:
             argv += ["--resource-profile", profile]
         requirement_contract = getattr(self, "intent_requirement_contract", None)
@@ -333,9 +349,13 @@ class FullSupervisorAgent(BaseAgent):
                             "admission_environment": admission_environment(profile),
                             **({"setup_cache": self.setup_cache_receipt} if hasattr(self, "setup_cache_receipt") else {}),
                             "planning_and_cold_index_charged_to_agent_time": True}
+        if task_profile is not None:
+            context.metadata["task_profile"] = task_profile
+            context.metadata["public_output_capture"] = "not_selected_for_generic_profile"
         try:
-            context.metadata["public_input_capture"] = await asyncio.wait_for(
-                capture_public_inputs(environment, self.logs_dir), timeout=5)
+            if task_profile is None:
+                context.metadata["public_input_capture"] = await asyncio.wait_for(
+                    capture_public_inputs(environment, self.logs_dir), timeout=5)
         except Exception as exc:
             context.metadata["public_input_capture_error"] = type(exc).__name__
         error = None
@@ -376,8 +396,9 @@ class FullSupervisorAgent(BaseAgent):
                 context.metadata["signed_admission_exported"] = False
                 context.metadata["admission_export_error"] = type(exc).__name__
             try:
-                context.metadata["public_output_evidence"] = await asyncio.wait_for(
-                    export_public_outputs(environment, self.logs_dir), timeout=5)
+                if task_profile is None:
+                    context.metadata["public_output_evidence"] = await asyncio.wait_for(
+                        export_public_outputs(environment, self.logs_dir), timeout=5)
             except Exception as exc:
                 context.metadata["public_output_export_error"] = type(exc).__name__
         if error is not None:

@@ -104,7 +104,9 @@ def test_late_candidate_dispatch_respects_work_cutoff_and_keeps_model_reserve(
         if route=='model_router':
             import shlex
             command=shlex.split(native_options[0]['implementation_command'])
-            assert int(command[command.index('--timeout')+1])==min(600,cutoff-25)
+            # The isolated worker accepts at most 300 seconds per router call,
+            # including when the outer supervisor has an extended work budget.
+            assert int(command[command.index('--timeout')+1])==min(300,cutoff-25)
     assert report['provider_invocations']==[] and report['task_completed'] is False
     assert report['worker_cleanup_returncode']==0 and len(cleanup)==1
     assert (driver.signal.ITIMER_REAL,cutoff) in alarms and alarms[-1]==(driver.signal.ITIMER_REAL,0)

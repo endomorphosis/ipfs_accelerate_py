@@ -12,7 +12,9 @@ import sys
 import time
 
 from benchmarks.agent_supervisor.container_coding.native_codex_baseline import (
-    TASK, MODEL, CLI_VERSION, REASONING, _hash, _json, _task_hashes, config_for as baseline_config,
+    TASK, MODEL, CLI_VERSION, REASONING, _hash, _json, _task_hashes, _task_path, _prepared_task,
+    _trial_task_matches,
+    config_for as baseline_config,
 )
 from benchmarks.agent_supervisor.container_coding import benchmark_controls
 from .benchmark_resource_profile import PROFILES, validate_resource_profile
@@ -21,6 +23,50 @@ ADAPTER = "benchmarks.agent_supervisor.container_coding.full_supervisor_harbor_a
 INTENT_SOURCE_PATH = ".supervisor-instruction.md"
 MAX_INTENT_CONTRACT_BYTES = 4 * 1024 * 1024
 MAX_PUBLIC_INSTRUCTION_BYTES = 32768
+MAX_TASK_PROFILE_BYTES = 65536
+
+
+def _transport_task_profile(profile: dict | None, *, instruction: str | None = None) -> dict | None:
+    if profile is None:
+        return None
+    from .terminal_task_profile import validate_task_profile
+    encoded = json.dumps(profile, allow_nan=False)
+    if len(encoded.encode("utf-8")) > MAX_TASK_PROFILE_BYTES:
+        raise ValueError("task profile exceeds its byte bound")
+    return validate_task_profile(json.loads(encoded), instruction=instruction)
+
+
+def _load_task_profile(path: Path | None, *, task: Path) -> dict | None:
+    if path is None:
+        if task.name != TASK:
+            raise ValueError("nondefault supervisor task requires an explicit task profile")
+        return None
+    path = Path(path).absolute()
+    if path.resolve(strict=True) != path or path.is_symlink() or not path.is_file():
+        raise ValueError("task profile must be a regular canonical file")
+    with path.open("rb") as stream:
+        raw = stream.read(MAX_TASK_PROFILE_BYTES + 1)
+    if not raw or len(raw) > MAX_TASK_PROFILE_BYTES:
+        raise ValueError("task profile exceeds its byte bound")
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate task profile field")
+            result[key] = value
+        return result
+    def nonfinite(value):
+        raise ValueError("nonfinite task profile value")
+    public = task / "instruction.md"
+    if public.resolve(strict=True) != public or public.is_symlink() or not public.is_file():
+        raise ValueError("public instruction must be a regular canonical file")
+    with public.open("rb") as stream:
+        source = stream.read(MAX_PUBLIC_INSTRUCTION_BYTES + 1)
+    if not source or len(source) > MAX_PUBLIC_INSTRUCTION_BYTES:
+        raise ValueError("public instruction exceeds its byte bound")
+    instruction = source.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
+    return _transport_task_profile(json.loads(raw, object_pairs_hook=unique, parse_constant=nonfinite),
+                                   instruction=instruction)
 
 
 def _transport_intent_contract(contract: dict | None) -> dict | None:
@@ -35,11 +81,12 @@ def _transport_intent_contract(contract: dict | None) -> dict | None:
     return json.loads(encoded)
 
 
-def _load_intent_requirement_contract(path: Path | None, *, dataset: Path) -> dict | None:
+def _load_intent_requirement_contract(path: Path | None, *, dataset: Path,
+                                      task_name: str = TASK) -> dict | None:
     """Validate candidate requirements against the selected public task instruction."""
     if path is None:
         return None
-    return load_intent_requirements_for_instruction(path, Path(dataset).resolve(strict=True) / TASK / "instruction.md")
+    return load_intent_requirements_for_instruction(path, _task_path(dataset, task_name) / "instruction.md")
 
 
 def load_intent_requirements_for_instruction(path: Path | None, instruction: Path) -> dict | None:
@@ -102,13 +149,14 @@ def _intent_selection(contract: dict | None) -> dict:
 
 def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                *, intent_requirement_contract: dict | None = None, resource_profile=None,
-               setup_cache_selection: dict | None = None) -> dict:
+               setup_cache_selection: dict | None = None, task_name: str = TASK,
+               task_profile: dict | None = None) -> dict:
     if arm not in {"full", "no-index"}:
         raise ValueError("unknown supervisor ablation")
     from .benchmark_resource_profile import execution_budget
     budget = execution_budget(resource_profile)
-    config = baseline_config(dataset, output, resource_profile=resource_profile)
-    config["job_name"] = "supervisor-" + arm + "-" + TASK
+    config = baseline_config(dataset, output, resource_profile=resource_profile, task_name=task_name)
+    config["job_name"] = "supervisor-" + arm + "-" + task_name
     config["agents"] = [{
         "import_path": ADAPTER, "model_name": MODEL,
         "override_timeout_sec": float(budget["harbor_seconds"]), "max_timeout_sec": float(budget["harbor_seconds"]),
@@ -118,6 +166,8 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
     }]
     if intent_requirement_contract is not None:
         config["agents"][0]["kwargs"]["intent_requirement_contract"] = _transport_intent_contract(intent_requirement_contract)
+    if task_profile is not None:
+        config["agents"][0]["kwargs"]["task_profile"] = _transport_task_profile(task_profile)
     if resource_profile is not None:
         config["agents"][0]["kwargs"]["resource_profile"] = resource_profile
     if setup_cache_selection is not None:
@@ -150,9 +200,12 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             intent_requirement_contract: Path | None = None,
             intent_action_384_config: Path | None = None,
             source384_config: Path | None = None, resource_profile=None,
-            setup_cache_policy: str | None = None) -> dict:
+            setup_cache_policy: str | None = None, task_name: str = TASK,
+            task_profile: Path | None = None) -> dict:
     from harbor.models.job.config import JobConfig
     dataset = dataset.resolve(strict=True)
+    task = _task_path(dataset, task_name)
+    selected_task_profile = _load_task_profile(task_profile, task=task)
     archive = archive.resolve(strict=True)
     output = output.absolute()
     if output.exists() or output.resolve() != output:
@@ -182,12 +235,12 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     setup_cache_selection = select_setup_cache(archive, setup_cache_policy)
     validate_setup_cache_prerequisites(setup_cache_selection, install_codex=True,
         auth_json=Path.home() / ".codex/auth.json", arm=arm, resource_profile=resource_profile)
-    requirements = _load_intent_requirement_contract(intent_requirement_contract, dataset=dataset)
+    requirements = _load_intent_requirement_contract(intent_requirement_contract, dataset=dataset, task_name=task_name)
     validate_header_planning_selection(selected_source384, requirements, arm)
-    task_hashes = _task_hashes(dataset / TASK)
+    task_hashes = _task_hashes(task)
     declared_config = config_for(dataset, output, archive, arm,
         intent_requirement_contract=requirements, resource_profile=resource_profile,
-        setup_cache_selection=setup_cache_selection)
+        setup_cache_selection=setup_cache_selection, task_name=task_name, task_profile=selected_task_profile)
     if selected_source384 is not None and arm == "full":
         validate_resource_profile(declared_config, resource_profile)
     config = JobConfig.model_validate(declared_config, extra="forbid")
@@ -198,17 +251,17 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     dry = subprocess.run([*command, "--dry-run"], capture_output=True, text=True, timeout=60)
     (output / "dry-run.stdout").write_text(dry.stdout)
     (output / "dry-run.stderr").write_text(dry.stderr)
-    if _task_hashes(dataset / TASK) != task_hashes:
+    if _task_hashes(task) != task_hashes:
         raise ValueError("original task changed during supervisor preflight")
     sources = {str(path): _hash(path) for path in Path(__file__).parent.glob("*.py")}
     result = {"schema": "terminal-full-supervisor-preparation@1", "prepared": dry.returncode == 0,
-              "arm": arm, "task": TASK, "dataset": str(dataset), "archive": str(archive),
+              "arm": arm, "task": task_name, "dataset": str(dataset), "archive": str(archive),
               "archive_sha256": manifest["archive_sha256"], "manifest_sha256": _hash(archive / "manifest.json"),
               "host_source_sha256": sources,
               "task_input_sha256": task_hashes, "config_sha256": _hash(output / "config.json"),
               "comparison_controls": benchmark_controls.build_controls(
                   json.loads((output / "config.json").read_text()),
-                  task_input_sha256=task_hashes, task=TASK, model=MODEL,
+                  task_input_sha256=task_hashes, task=task_name, model=MODEL,
                   reasoning_effort=REASONING, cli_version=CLI_VERSION),
               "command": command, "model": MODEL, "reasoning_effort": REASONING, "cli_version": CLI_VERSION,
               "agent_timeout_seconds": declared_config["agents"][0]["override_timeout_sec"], "provider_calls": 0,
@@ -224,9 +277,12 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     return result
 
 
-def collect(output: Path) -> dict:
+def collect(output: Path, *, task_name: str | None = None) -> dict:
+    output = Path(output).absolute()
     prepared = json.loads((output / "preparation.json").read_text())
     config = json.loads((output / "config.json").read_text())
+    task = _prepared_task(output, prepared, config, job_prefix="supervisor-" + prepared["arm"] + "-",
+                          task_name=task_name)
     selection = {key: prepared.get(key, value) for key, value in _intent_selection(None).items()}
     configured_selection = _intent_selection(config["agents"][0].get("kwargs", {}).get("intent_requirement_contract"))
     job = Path(config["jobs_dir"]) / config["job_name"]
@@ -241,16 +297,20 @@ def collect(output: Path) -> dict:
             start, end = phase.get("started_at"), phase.get("finished_at")
             durations[field] = (datetime.fromisoformat(end) - datetime.fromisoformat(start)).total_seconds() if start and end else None
         trials.append({"trial": path.parent.name, "native_result_sha256": _hash(path),
+                       "task": native.get("task_name"), "exact_trial_task_matches": _trial_task_matches(native, task),
                        "reward": (native.get("verifier_result") or {}).get("rewards"),
                        "exception_type": (native.get("exception_info") or {}).get("exception_type"),
                        "durations_seconds": durations, "agent_context": native.get("agent_result"),
                        "supervisor": report})
+    unchanged = _task_hashes(task) == prepared["task_input_sha256"]
     result = {"schema": "terminal-full-supervisor-receipt@1", "arm": prepared["arm"],
-              "task": TASK, "model": MODEL, "reasoning_effort": REASONING, "cli_version": CLI_VERSION,
-              "original_task_inputs_unchanged": _task_hashes(Path(prepared["dataset"]) / TASK) == prepared["task_input_sha256"],
+              "task": task.name, "model": MODEL, "reasoning_effort": REASONING, "cli_version": CLI_VERSION,
+              "original_task_inputs_unchanged": unchanged,
               "comparison_controls": benchmark_controls.observe_controls(
-                  prepared, config, current_task_hashes=_task_hashes(Path(prepared["dataset"]) / TASK)),
+                  prepared, config, current_task_hashes=_task_hashes(task)),
               "trials": trials, "trial_count": len(trials), "native_job_result_present": (job / "result.json").is_file(),
+              "complete_single_trial_receipt": unchanged and len(trials) == 1
+                  and trials[0]["exact_trial_task_matches"] is True and (job / "result.json").is_file(),
               "planning_and_cold_index_charged_to_agent_time": True, "benchmark_advantage_claimed": False,
               "parallel_workers": 1, "dollar_cost": None, **selection,
               "intent_action_384": prepared.get("intent_action_384"),
@@ -261,11 +321,15 @@ def collect(output: Path) -> dict:
     return result
 
 
-def execute(output: Path) -> dict:
+def execute(output: Path, *, task_name: str | None = None) -> dict:
+    output = Path(output).absolute()
     prepared = json.loads((output / "preparation.json").read_text())
+    config = json.loads((output / "config.json").read_text())
+    task = _prepared_task(output, prepared, config, job_prefix="supervisor-" + prepared["arm"] + "-",
+                          task_name=task_name)
     if not prepared["prepared"] or _hash(output / "config.json") != prepared["config_sha256"]:
         raise ValueError("prepared configuration changed")
-    if _task_hashes(Path(prepared["dataset"]) / TASK) != prepared["task_input_sha256"]:
+    if _task_hashes(task) != prepared["task_input_sha256"]:
         raise ValueError("original task changed")
     if _hash(Path(prepared["archive"]) / "runtime.tar.gz") != prepared["archive_sha256"]:
         raise ValueError("runtime archive changed")
@@ -289,6 +353,9 @@ def main():
     parser.add_argument("operation", choices=("prepare", "execute", "collect"))
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--dataset", type=Path)
+    parser.add_argument("--task", help="Dataset task name; prepare defaults to fix-code-vulnerability")
+    parser.add_argument("--task-profile", type=Path,
+                        help="Explicit public-instruction-bound task profile for a nondefault supervisor task")
     parser.add_argument("--archive", type=Path)
     parser.add_argument("--arm", choices=("full", "no-index"), default="full")
     parser.add_argument("--source384-config", type=Path, help="Verify the offline pinned parent matches the archive")
@@ -308,9 +375,11 @@ def main():
                          intent_requirement_contract=args.intent_requirement_contract,
                          intent_action_384_config=args.intent_action_384_config,
                          source384_config=args.source384_config, resource_profile=args.resource_profile,
-                         setup_cache_policy=args.setup_cache_policy)
+                         setup_cache_policy=args.setup_cache_policy,
+                         task_name=TASK if args.task is None else args.task,
+                         task_profile=args.task_profile)
     else:
-        result = {"execute": execute, "collect": collect}[args.operation](args.output)
+        result = {"execute": execute, "collect": collect}[args.operation](args.output, task_name=args.task)
     print(json.dumps(result, sort_keys=True, indent=2))
 
 
