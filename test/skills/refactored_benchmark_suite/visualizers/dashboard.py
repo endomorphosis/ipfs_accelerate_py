@@ -9,14 +9,15 @@ from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger("benchmark.visualizers.dashboard")
 
+
 def generate_dashboard(benchmark_results: List, output_dir: str = "benchmark_results") -> str:
     """
     Generate an interactive dashboard for benchmark results.
-    
+
     Args:
         benchmark_results: List of BenchmarkResults instances
         output_dir: Directory to save the dashboard
-        
+
     Returns:
         Path to the generated dashboard
     """
@@ -26,42 +27,42 @@ def generate_dashboard(benchmark_results: List, output_dir: str = "benchmark_res
         import plotly.express as px
         import plotly.graph_objs as go
         import pandas as pd
-        
+
         # Create dashboard directory
         dashboard_dir = os.path.join(output_dir, "dashboard")
         os.makedirs(dashboard_dir, exist_ok=True)
-        
+
         # Prepare data
         data = []
-        
+
         for results in benchmark_results:
             for result in results.results:
                 row = {
                     "model": results.config.model_id,
                     "hardware": result.hardware,
                     "batch_size": result.batch_size,
-                    "sequence_length": result.sequence_length
+                    "sequence_length": result.sequence_length,
                 }
-                
+
                 # Add metrics
                 for metric_name, metric_value in result.metrics.items():
                     row[metric_name] = metric_value
-                
+
                 data.append(row)
-        
+
         if not data:
             logger.warning("No data available for dashboard")
             return None
-        
+
         # Convert to DataFrame
         df = pd.DataFrame(data)
-        
+
         # Save data for dashboard
         df.to_csv(os.path.join(dashboard_dir, "benchmark_data.csv"), index=False)
-        
+
         # Create dashboard HTML file
         dashboard_html = os.path.join(dashboard_dir, "index.html")
-        
+
         # Create dashboard template
         html_template = """
         <!DOCTYPE html>
@@ -1365,101 +1366,110 @@ def generate_dashboard(benchmark_results: List, output_dir: str = "benchmark_res
         </body>
         </html>
         """
-        
+
         # Generate model options
         model_options = "\n".join(
-            f'<option value="{model}">{model}</option>'
-            for model in df["model"].unique()
+            f'<option value="{model}">{model}</option>' for model in df["model"].unique()
         )
-        
+
         # Generate hardware options
         hardware_options = "\n".join(
-            f'<option value="{hw}">{hw.upper()}</option>'
-            for hw in df["hardware"].unique()
+            f'<option value="{hw}">{hw.upper()}</option>' for hw in df["hardware"].unique()
         )
-        
+
         # Generate table rows
         table_rows = ""
         for _, row in df.iterrows():
             # Format GFLOPs
-            if 'gflops' in row:
-                gflops_value = row['gflops']
-            elif 'flops' in row:
-                gflops_value = row['flops'] / 1e9
+            if "gflops" in row:
+                gflops_value = row["gflops"]
+            elif "flops" in row:
+                gflops_value = row["flops"] / 1e9
             else:
-                gflops_value = 'N/A'
-                
+                gflops_value = "N/A"
+
             if isinstance(gflops_value, (int, float)):
                 if gflops_value >= 1000:
-                    gflops_formatted = f"{gflops_value/1000:.2f}K"
+                    gflops_formatted = f"{gflops_value / 1000:.2f}K"
                 else:
                     gflops_formatted = f"{gflops_value:.2f}"
             else:
-                gflops_formatted = 'N/A'
-            
+                gflops_formatted = "N/A"
+
             table_rows += f"""
             <tr>
-                <td>{row['model']}</td>
-                <td>{row['hardware'].upper()}</td>
-                <td>{row['batch_size']}</td>
-                <td>{row['sequence_length']}</td>
-                <td>{row.get('latency_ms', 'N/A')}</td>
-                <td>{row.get('latency_p90_ms', 'N/A')}</td>
-                <td>{row.get('latency_p99_ms', 'N/A')}</td>
-                <td>{row.get('throughput_items_per_sec', 'N/A')}</td>
-                <td>{row.get('memory_usage_mb', 'N/A')}</td>
-                <td>{row.get('memory_peak_mb', 'N/A')}</td>
+                <td>{row["model"]}</td>
+                <td>{row["hardware"].upper()}</td>
+                <td>{row["batch_size"]}</td>
+                <td>{row["sequence_length"]}</td>
+                <td>{row.get("latency_ms", "N/A")}</td>
+                <td>{row.get("latency_p90_ms", "N/A")}</td>
+                <td>{row.get("latency_p99_ms", "N/A")}</td>
+                <td>{row.get("throughput_items_per_sec", "N/A")}</td>
+                <td>{row.get("memory_usage_mb", "N/A")}</td>
+                <td>{row.get("memory_peak_mb", "N/A")}</td>
                 <td>{gflops_formatted}</td>
             </tr>
             """
-        
+
         # Fill in template
         html_content = html_template.format(
             model_options=model_options,
             hardware_options=hardware_options,
             table_rows=table_rows,
-            data_json=df.to_json(orient="records")
+            data_json=df.to_json(orient="records"),
         )
-        
+
         # Write dashboard HTML
         with open(dashboard_html, "w") as f:
             f.write(html_content)
-        
+
         logger.info(f"Generated dashboard at {dashboard_html}")
         return dashboard_html
-        
+
     except ImportError:
-        logger.error("dash and plotly are required for dashboard generation. Install with 'pip install dash plotly pandas'")
+        logger.error(
+            "dash and plotly are required for dashboard generation. Install with 'pip install dash plotly pandas'"
+        )
         return None
     except Exception as e:
         logger.error(f"Error generating dashboard: {e}")
         return None
 
+
 if __name__ == "__main__":
     import argparse
     import sys
-    
+
     parser = argparse.ArgumentParser(description="Generate benchmark dashboard")
-    parser.add_argument("--results-dir", type=str, default="benchmark_results",
-                      help="Directory containing benchmark result files")
-    parser.add_argument("--output-dir", type=str, default=None,
-                      help="Directory to save dashboard (defaults to results-dir/dashboard)")
+    parser.add_argument(
+        "--results-dir",
+        type=str,
+        default="benchmark_results",
+        help="Directory containing benchmark result files",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="Directory to save dashboard (defaults to results-dir/dashboard)",
+    )
     args = parser.parse_args()
-    
+
     # Set up logging
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
     # Load benchmark results
     result_files = []
     for root, _, files in os.walk(args.results_dir):
         for file in files:
             if file.endswith(".json") and file.startswith("benchmark_"):
                 result_files.append(os.path.join(root, file))
-    
+
     if not result_files:
         logger.error(f"No benchmark result files found in {args.results_dir}")
         sys.exit(1)
-    
+
     # Load results
     results = []
     for file in result_files:
@@ -1469,15 +1479,15 @@ if __name__ == "__main__":
                 results.append(data)
         except Exception as e:
             logger.warning(f"Error loading {file}: {e}")
-    
+
     if not results:
         logger.error("No valid benchmark results found")
         sys.exit(1)
-    
+
     # Generate dashboard
     output_dir = args.output_dir or args.results_dir
     dashboard_path = generate_dashboard(results, output_dir)
-    
+
     if dashboard_path:
         logger.info(f"Dashboard generated at {dashboard_path}")
         sys.exit(0)

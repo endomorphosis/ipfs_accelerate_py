@@ -27,6 +27,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 # Helpers to mock out heavy deps before import
 # ---------------------------------------------------------------------------
 
+
 def _make_mock_cache():
     cache = MagicMock()
     cache.get_chat_completion.return_value = None
@@ -37,6 +38,7 @@ def _make_mock_cache():
 # ---------------------------------------------------------------------------
 # Test suite
 # ---------------------------------------------------------------------------
+
 
 class TestMetaAICLIIntegration(unittest.TestCase):
     """Unit tests for MetaAICLIIntegration."""
@@ -76,6 +78,7 @@ class TestMetaAICLIIntegration(unittest.TestCase):
             MetaAICLIIntegration,
             get_meta_ai_cli_integration,
         )
+
         self.MetaAICLIIntegration = MetaAICLIIntegration
         self.get_meta_ai_cli_integration = get_meta_ai_cli_integration
 
@@ -88,6 +91,7 @@ class TestMetaAICLIIntegration(unittest.TestCase):
 
         # Reset global singleton between tests
         import ipfs_accelerate_py.cli_integrations.meta_ai_cli_integration as mod
+
         mod._global_meta_ai_cli = None
 
     # ------------------------------------------------------------------
@@ -169,6 +173,7 @@ class TestMetaAICLIIntegration(unittest.TestCase):
         from ipfs_accelerate_py.cli_integrations.meta_ai_cli_integration import (
             _DEFAULT_MODEL,
         )
+
         self.assertEqual(
             self.MetaAICLIIntegration.suggest_model("something_unknown"),
             _DEFAULT_MODEL,
@@ -197,11 +202,14 @@ class TestMetaAICLIIntegration(unittest.TestCase):
     def test_creative_mode_interactive_approved(self):
         integration = self.MetaAICLIIntegration(headless=False)
         mock_raw = {"response": "A creative story", "cached": False, "mode": "SDK"}
-        with patch.object(integration, "_execute_with_fallback", return_value=mock_raw), \
-             patch.object(
-                 type(integration), "_prompt_creative_approval",
-                 staticmethod(lambda preview: True),
-             ):
+        with (
+            patch.object(integration, "_execute_with_fallback", return_value=mock_raw),
+            patch.object(
+                type(integration),
+                "_prompt_creative_approval",
+                staticmethod(lambda preview: True),
+            ),
+        ):
             result = integration.creative_mode("Tell a story", auto_approve=None)
         self.assertTrue(result["approved"])
         self.assertEqual(result["response"], "A creative story")
@@ -209,11 +217,14 @@ class TestMetaAICLIIntegration(unittest.TestCase):
     def test_creative_mode_interactive_rejected(self):
         integration = self.MetaAICLIIntegration(headless=False)
         mock_raw = {"response": "A creative story", "cached": False, "mode": "SDK"}
-        with patch.object(integration, "_execute_with_fallback", return_value=mock_raw), \
-             patch.object(
-                 type(integration), "_prompt_creative_approval",
-                 staticmethod(lambda preview: False),
-             ):
+        with (
+            patch.object(integration, "_execute_with_fallback", return_value=mock_raw),
+            patch.object(
+                type(integration),
+                "_prompt_creative_approval",
+                staticmethod(lambda preview: False),
+            ),
+        ):
             result = integration.creative_mode("Tell a story", auto_approve=None)
         self.assertFalse(result["approved"])
         self.assertEqual(result["response"], "")
@@ -221,11 +232,14 @@ class TestMetaAICLIIntegration(unittest.TestCase):
     def test_creative_mode_auto_approve_false_overrides_headless(self):
         integration = self.MetaAICLIIntegration(headless=True)
         mock_raw = {"response": "Some content", "cached": False, "mode": "SDK"}
-        with patch.object(integration, "_execute_with_fallback", return_value=mock_raw), \
-             patch.object(
-                 type(integration), "_prompt_creative_approval",
-                 staticmethod(lambda preview: False),
-             ):
+        with (
+            patch.object(integration, "_execute_with_fallback", return_value=mock_raw),
+            patch.object(
+                type(integration),
+                "_prompt_creative_approval",
+                staticmethod(lambda preview: False),
+            ),
+        ):
             result = integration.creative_mode("prompt", auto_approve=False)
         self.assertFalse(result["approved"])
 
@@ -243,7 +257,9 @@ class TestMetaAICLIIntegration(unittest.TestCase):
             captured.update(kwargs)
             return mock_raw
 
-        with patch.object(integration, "_execute_with_fallback", side_effect=fake_execute_with_fallback):
+        with patch.object(
+            integration, "_execute_with_fallback", side_effect=fake_execute_with_fallback
+        ):
             result = integration.vision_chat(
                 "Describe this diagram",
                 image_url="https://example.com/ipfs.png",
@@ -257,6 +273,7 @@ class TestMetaAICLIIntegration(unittest.TestCase):
         from ipfs_accelerate_py.cli_integrations.meta_ai_cli_integration import (
             _DEFAULT_VISION_MODEL,
         )
+
         integration = self.MetaAICLIIntegration()
         captured: dict = {}
 
@@ -264,10 +281,13 @@ class TestMetaAICLIIntegration(unittest.TestCase):
             captured.update(kwargs)
             return {"response": "ok", "cached": False, "mode": "SDK"}
 
-        with patch.object(integration, "_execute_with_fallback", side_effect=fake_execute_with_fallback):
+        with patch.object(
+            integration, "_execute_with_fallback", side_effect=fake_execute_with_fallback
+        ):
             integration.vision_chat("What is this?", image_url="https://example.com/x.png")
 
         self.assertEqual(captured.get("model"), _DEFAULT_VISION_MODEL)
+
     # ------------------------------------------------------------------
     # Standard chat / generate_code
     # ------------------------------------------------------------------
@@ -343,6 +363,7 @@ class TestMetaAICLIIntegration(unittest.TestCase):
 
     def test_global_singleton(self):
         import ipfs_accelerate_py.cli_integrations.meta_ai_cli_integration as mod
+
         mod._global_meta_ai_cli = None
         inst1 = self.get_meta_ai_cli_integration()
         inst2 = self.get_meta_ai_cli_integration()
@@ -357,11 +378,13 @@ class TestMetaAICLIImport(unittest.TestCase):
             MetaAICLIIntegration,
             get_meta_ai_cli_integration,
         )
+
         self.assertTrue(callable(MetaAICLIIntegration))
         self.assertTrue(callable(get_meta_ai_cli_integration))
 
     def test_present_in_all(self):
         import ipfs_accelerate_py.cli_integrations as pkg
+
         self.assertIn("MetaAICLIIntegration", pkg.__all__)
         self.assertIn("get_meta_ai_cli_integration", pkg.__all__)
 
@@ -370,11 +393,13 @@ class TestMetaAICLIImport(unittest.TestCase):
 # api_backends/meta_ai.py unit tests
 # ---------------------------------------------------------------------------
 
+
 class TestMetaAIBackend(unittest.TestCase):
     """Unit tests for the meta_ai API backend class."""
 
     def test_import(self):
         from ipfs_accelerate_py.api_backends.meta_ai import meta_ai, ALL_MODELS, CHAT_MODELS
+
         self.assertIn("muse-spark-1.1", CHAT_MODELS)
         self.assertIn("meta-llama/Llama-3.3-70B-Instruct", CHAT_MODELS)
         self.assertIn("meta-llama/Llama-3.2-90B-Vision-Instruct", CHAT_MODELS)
@@ -383,6 +408,7 @@ class TestMetaAIBackend(unittest.TestCase):
 
     def test_init_no_key(self):
         from ipfs_accelerate_py.api_backends.meta_ai import meta_ai as meta_cls
+
         names = (
             "MODEL_API_KEY",
             "META_AI_API_KEY",
@@ -404,6 +430,7 @@ class TestMetaAIBackend(unittest.TestCase):
 
     def test_init_with_metadata(self):
         from ipfs_accelerate_py.api_backends.meta_ai import meta_ai as meta_cls
+
         client = meta_cls(
             resources={},
             metadata={
@@ -420,6 +447,7 @@ class TestMetaAIBackend(unittest.TestCase):
 
     def test_list_models(self):
         from ipfs_accelerate_py.api_backends.meta_ai import meta_ai as meta_cls
+
         client = meta_cls()
         models = client.list_models()
         self.assertIsInstance(models, list)
@@ -429,6 +457,7 @@ class TestMetaAIBackend(unittest.TestCase):
 
     def test_get_model_info_known(self):
         from ipfs_accelerate_py.api_backends.meta_ai import meta_ai as meta_cls
+
         client = meta_cls()
         info = client.get_model_info("meta-llama/Llama-3.3-70B-Instruct")
         self.assertIsInstance(info, dict)
@@ -436,16 +465,16 @@ class TestMetaAIBackend(unittest.TestCase):
 
     def test_get_model_info_unknown(self):
         from ipfs_accelerate_py.api_backends.meta_ai import meta_ai as meta_cls
+
         client = meta_cls()
         self.assertIsNone(client.get_model_info("nonexistent-model"))
 
     def test_generate_returns_string_on_successful_response(self):
         from unittest.mock import patch
         from ipfs_accelerate_py.api_backends.meta_ai import meta_ai as meta_cls
+
         client = meta_cls(metadata={"api_key": "dummy"})
-        fake_response = {
-            "choices": [{"message": {"content": "Hello from Llama!"}}]
-        }
+        fake_response = {"choices": [{"message": {"content": "Hello from Llama!"}}]}
         with patch.object(client, "_make_request", return_value=fake_response):
             result = client.generate("Hello")
         self.assertEqual(result, "Hello from Llama!")
@@ -453,6 +482,7 @@ class TestMetaAIBackend(unittest.TestCase):
     def test_generate_returns_empty_on_empty_choices(self):
         from unittest.mock import patch
         from ipfs_accelerate_py.api_backends.meta_ai import meta_ai as meta_cls
+
         client = meta_cls(metadata={"api_key": "dummy"})
         with patch.object(client, "_make_request", return_value={"choices": []}):
             self.assertEqual(client.generate("Hello"), "")
@@ -460,6 +490,7 @@ class TestMetaAIBackend(unittest.TestCase):
     def test_embed_returns_list_of_vectors(self):
         from unittest.mock import patch
         from ipfs_accelerate_py.api_backends.meta_ai import meta_ai as meta_cls
+
         client = meta_cls(metadata={"api_key": "dummy"})
         fake_response = {"data": [{"embedding": [0.4, 0.5, 0.6]}]}
         with patch.object(client, "_make_request", return_value=fake_response):
@@ -468,6 +499,7 @@ class TestMetaAIBackend(unittest.TestCase):
 
     def test_make_request_raises_without_key(self):
         from ipfs_accelerate_py.api_backends.meta_ai import meta_ai as meta_cls
+
         names = (
             "MODEL_API_KEY",
             "META_AI_API_KEY",
@@ -491,11 +523,13 @@ class TestMetaAIBackend(unittest.TestCase):
 # api_models_registry prefix-mapping tests
 # ---------------------------------------------------------------------------
 
+
 class TestApiModelsRegistryMetaPrefixes(unittest.TestCase):
     """Verify meta-llama/ and meta-spark/ are mapped to the meta_ai backend."""
 
     def setUp(self):
         from ipfs_accelerate_py.api_backends.api_models_registry import api_models
+
         self.registry = api_models()
 
     def test_meta_llama_prefix(self):
@@ -523,12 +557,14 @@ class TestApiModelsRegistryMetaPrefixes(unittest.TestCase):
 # embeddings_router integration tests for Meta AI
 # ---------------------------------------------------------------------------
 
+
 class TestMetaAIEmbeddingsRouter(unittest.TestCase):
     """Verify the Meta AI provider is wired into the embeddings router."""
 
     def test_builtin_provider_by_name_meta_ai(self):
         from ipfs_accelerate_py.embeddings_router import _builtin_provider_by_name
         from ipfs_accelerate_py.router_deps import get_default_router_deps
+
         os.environ["META_AI_API_KEY"] = "dummy"
         try:
             provider = _builtin_provider_by_name("meta_ai", get_default_router_deps())
@@ -540,17 +576,24 @@ class TestMetaAIEmbeddingsRouter(unittest.TestCase):
     def test_aliases_meta_and_spark(self):
         from ipfs_accelerate_py.embeddings_router import _builtin_provider_by_name
         from ipfs_accelerate_py.router_deps import get_default_router_deps
+
         os.environ["META_AI_API_KEY"] = "dummy"
         try:
             for alias in ("meta", "spark", "meta_llama", "meta_spark"):
                 with self.subTest(alias=alias):
-                    self.assertIsNotNone(_builtin_provider_by_name(alias, get_default_router_deps()))
+                    self.assertIsNotNone(
+                        _builtin_provider_by_name(alias, get_default_router_deps())
+                    )
         finally:
             del os.environ["META_AI_API_KEY"]
 
     def test_no_provider_without_key(self):
         from ipfs_accelerate_py.embeddings_router import _get_meta_ai_embeddings_provider
-        saved = {k: os.environ.pop(k, None) for k in ("META_AI_API_KEY", "ipfs_accelerate_py_META_AI_API_KEY")}
+
+        saved = {
+            k: os.environ.pop(k, None)
+            for k in ("META_AI_API_KEY", "ipfs_accelerate_py_META_AI_API_KEY")
+        }
         try:
             self.assertIsNone(_get_meta_ai_embeddings_provider())
         finally:
@@ -560,6 +603,7 @@ class TestMetaAIEmbeddingsRouter(unittest.TestCase):
 
     def test_cache_key_includes_meta_ai_vars(self):
         from ipfs_accelerate_py.embeddings_router import _provider_cache_key
+
         os.environ["META_AI_API_KEY"] = "key-a"
         k1 = _provider_cache_key()
         os.environ["META_AI_API_KEY"] = "key-b"
@@ -572,12 +616,14 @@ class TestMetaAIEmbeddingsRouter(unittest.TestCase):
 # multimodal_router integration tests for Meta AI
 # ---------------------------------------------------------------------------
 
+
 class TestMetaAIMultimodalRouter(unittest.TestCase):
     """Verify the Meta AI provider is wired into the multimodal router."""
 
     def test_builtin_provider_by_name_meta_ai(self):
         from ipfs_accelerate_py.multimodal_router import _builtin_provider_by_name
         from ipfs_accelerate_py.router_deps import get_default_router_deps
+
         os.environ["META_AI_API_KEY"] = "dummy"
         try:
             provider = _builtin_provider_by_name("meta_ai", get_default_router_deps())
@@ -588,6 +634,7 @@ class TestMetaAIMultimodalRouter(unittest.TestCase):
 
     def test_no_provider_without_key(self):
         from ipfs_accelerate_py.multimodal_router import _get_meta_ai_multimodal_provider
+
         names = (
             "MODEL_API_KEY",
             "META_AI_API_KEY",
@@ -606,6 +653,7 @@ class TestMetaAIMultimodalRouter(unittest.TestCase):
 
     def test_cache_key_includes_meta_ai_vars(self):
         from ipfs_accelerate_py.multimodal_router import _provider_cache_key
+
         os.environ["META_AI_API_KEY"] = "key-a"
         k1 = _provider_cache_key()
         os.environ["META_AI_API_KEY"] = "key-b"

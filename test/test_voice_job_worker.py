@@ -269,14 +269,12 @@ def test_asr_execution_verifies_source_task_and_keeps_transcript_private(
     ]
     assert result["task_type"] == "voice.asr"
     assert result["provider_receipt"]["latency_ms"] == 9
-    assert result["quality_metrics"]["transcript_bytes"] == len(
-        b"private offline transcript"
-    )
+    assert result["quality_metrics"]["transcript_bytes"] == len(b"private offline transcript")
     assert len(result["artifacts"]) == 1
     transcript_artifact = result["artifacts"][0]
-    assert transcript_artifact["sha256"] == hashlib.sha256(
-        b"private offline transcript"
-    ).hexdigest()
+    assert (
+        transcript_artifact["sha256"] == hashlib.sha256(b"private offline transcript").hexdigest()
+    )
     assert transcript_artifact["media_type"] == "text/plain;charset=utf-8"
     assert resolver.resolve(transcript_artifact) == b"private offline transcript"
     assert VoiceJobResult.from_payload(result).to_payload() == result
@@ -306,9 +304,10 @@ def test_asr_execution_verifies_source_task_and_keeps_transcript_private(
     assert runtime_result["task_type"] == "voice.asr"
     assert runtime_result["artifacts"] == []
     assert "transcript_sha256" not in runtime_result
-    assert runtime_result["provider_receipt"]["response_id_sha256"] == hashlib.sha256(
-        b"ephemeral transcript"
-    ).hexdigest()
+    assert (
+        runtime_result["provider_receipt"]["response_id_sha256"]
+        == hashlib.sha256(b"ephemeral transcript").hexdigest()
+    )
     assert VoiceJobResult.from_payload(runtime_result).to_payload() == runtime_result
     assert "ephemeral transcript" not in json.dumps(runtime_result)
 
@@ -370,9 +369,7 @@ def test_audio_validation_decodes_wav_and_enforces_job_duration_policy(
     }
     assert VoiceJobResult.from_payload(result).to_payload() == result
 
-    with pytest.raises(
-        VoiceJobExecutionError, match="^audio_duration_below_policy$"
-    ):
+    with pytest.raises(VoiceJobExecutionError, match="^audio_duration_below_policy$"):
         execute_voice_audio_validation_job(
             VoiceAudioValidationJob(
                 model_name="fixture-quality",
@@ -661,9 +658,7 @@ def test_backend_manager_voice_provider_uses_current_async_contract(
     assert calls[0]["inputs"] == ["hello"]
     assert calls[0]["parameters"]["device"] == "cuda:1"
     assert calls[1]["model"] == "asr-model"
-    assert calls[1]["inputs"] == [
-        base64.b64encode(b"caller-audio").decode("ascii")
-    ]
+    assert calls[1]["inputs"] == [base64.b64encode(b"caller-audio").decode("ascii")]
     assert calls[1]["parameters"]["device"] == "cpu"
     assert all("protocol" not in call for call in calls)
 

@@ -15,10 +15,7 @@ from pathlib import Path
 from typing import List, Tuple
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 # Benchmark template for skillset implementations
@@ -610,63 +607,64 @@ if __name__ == "__main__":
     sys.exit(main())
 """
 
+
 def get_model_name_from_filename(filename: str) -> str:
     """Extract model name from a skillset filename.
-    
+
     Args:
         filename: The filename to extract from (e.g., 'hf_bert.py')
-        
+
     Returns:
         The extracted model name (e.g., 'bert')
     """
     basename = os.path.basename(filename)
-    if basename.startswith('hf_') and basename.endswith('.py'):
+    if basename.startswith("hf_") and basename.endswith(".py"):
         return basename[3:-3]  # Strip hf_ prefix and .py suffix
     return basename
 
 
 def get_skillset_files(skillset_dir: str) -> List[str]:
     """Get a list of all skillset files in the directory.
-    
+
     Args:
         skillset_dir: Directory containing skillset files
-        
+
     Returns:
         List of skillset filenames
     """
-    pattern = os.path.join(skillset_dir, 'hf_*.py')
+    pattern = os.path.join(skillset_dir, "hf_*.py")
     return glob.glob(pattern)
 
 
 def generate_benchmark_for_skillset(model_name: str, output_dir: str) -> Tuple[bool, str]:
     """Generate a benchmark file for a skillset model.
-    
+
     Args:
         model_name: The model name (e.g., 'bert', 'vision-encoder-decoder')
         output_dir: Directory to write the benchmark file to
-        
+
     Returns:
         Tuple of (success, output_file_path)
     """
     try:
         # Convert model_name to a valid Python identifier for class names
-        class_safe_name = model_name.replace('-', '_')
-        
+        class_safe_name = model_name.replace("-", "_")
+
         # Create class name with proper formatting
-        class_name_upper = class_safe_name.title().replace('_', '')
-        
+        class_name_upper = class_safe_name.title().replace("_", "")
+
         # Replace in template
-        content = BENCHMARK_TEMPLATE.replace('{model_type}', model_name)
-        content = content.replace('{model_type_upper}', class_name_upper)
-        content = content.replace('{model_type_safe}', class_safe_name)
-        
+        content = BENCHMARK_TEMPLATE.replace("{model_type}", model_name)
+        content = content.replace("{model_type_upper}", class_name_upper)
+        content = content.replace("{model_type_safe}", class_safe_name)
+
         # Determine output file path
         output_file = os.path.join(output_dir, f"benchmark_{model_name}.py")
-        
+
         # Write to file
-        with open(output_file, 'w') as f:
+        with open(output_file, "w") as f:
             f.write(content)
-            
+
         logger.info(f"✅ Generated benchmark file: {output_file}")
         return True, output_file
     except Exception as e:
@@ -676,37 +674,34 @@ def generate_benchmark_for_skillset(model_name: str, output_dir: str) -> Tuple[b
 
 def main():
     """Main function."""
-    parser = argparse.ArgumentParser(description="Generate benchmark files for skillset implementations")
+    parser = argparse.ArgumentParser(
+        description="Generate benchmark files for skillset implementations"
+    )
     parser.add_argument(
-        "--skillset-dir", 
-        type=str, 
+        "--skillset-dir",
+        type=str,
         default="../ipfs_accelerate_py/worker/skillset",
-        help="Directory containing skillset files"
+        help="Directory containing skillset files",
     )
     parser.add_argument(
-        "--output-dir", 
-        type=str, 
+        "--output-dir",
+        type=str,
         default="data/benchmarks/skillset",
-        help="Directory to write benchmark files to"
+        help="Directory to write benchmark files to",
     )
     parser.add_argument(
-        "--model", 
-        type=str, 
-        help="Specific model to generate benchmark for (e.g., 'bert')"
+        "--model", type=str, help="Specific model to generate benchmark for (e.g., 'bert')"
     )
-    
+
     args = parser.parse_args()
-    
+
     # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)
-    
+
     # Get skillset files
     if args.model:
         # Generate for specific model
-        success, output_file = generate_benchmark_for_skillset(
-            args.model, 
-            args.output_dir
-        )
+        success, output_file = generate_benchmark_for_skillset(args.model, args.output_dir)
         return 0 if success else 1
     else:
         # Get all skillset files
@@ -714,31 +709,28 @@ def main():
         if not skillset_files:
             logger.error(f"No skillset files found in {args.skillset_dir}")
             return 1
-            
+
         # Sort skillset files for predictable order
         skillset_files.sort()
-            
+
         logger.info(f"Found {len(skillset_files)} skillset files to generate benchmarks for")
-        
+
         # Generate benchmarks for each file
         success_count = 0
         failed_count = 0
-        
+
         for file_path in skillset_files:
             model_name = get_model_name_from_filename(file_path)
-            success, _ = generate_benchmark_for_skillset(
-                model_name, 
-                args.output_dir
-            )
-            
+            success, _ = generate_benchmark_for_skillset(model_name, args.output_dir)
+
             if success:
                 success_count += 1
             else:
                 failed_count += 1
-                
+
         logger.info(f"Generated {success_count} benchmark files, {failed_count} failed")
         return 0 if failed_count == 0 else 1
-        
+
 
 if __name__ == "__main__":
     sys.exit(main())

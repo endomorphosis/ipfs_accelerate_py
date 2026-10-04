@@ -15,6 +15,7 @@ Covers:
 - auto_discover_api_providers: no env keys → empty list
 - auto_discover_api_providers: multiple keys → multiple registered
 """
+
 from __future__ import annotations
 
 import os
@@ -28,11 +29,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 def _make_manager(tmp_dir: str):
     """Create a fresh InferenceBackendManager backed by a temp directory."""
     from ipfs_accelerate_py.inference_backend_manager import InferenceBackendManager
-    return InferenceBackendManager(config={
-        "state_path": os.path.join(tmp_dir, "registry.json"),
-        "enable_health_checks": False,
-        "persist_registry": False,
-    })
+
+    return InferenceBackendManager(
+        config={
+            "state_path": os.path.join(tmp_dir, "registry.json"),
+            "enable_health_checks": False,
+            "persist_registry": False,
+        }
+    )
 
 
 def _mock_backend_cls(name: str = "MockBackend"):
@@ -45,6 +49,7 @@ def _mock_backend_cls(name: str = "MockBackend"):
 class TestResolveProviderName(unittest.TestCase):
     def setUp(self):
         import tempfile
+
         self._tmp = tempfile.mkdtemp()
         self.mgr = _make_manager(self._tmp)
 
@@ -81,6 +86,7 @@ class TestResolveProviderName(unittest.TestCase):
 class TestConfigureProvider(unittest.TestCase):
     def setUp(self):
         import tempfile
+
         self._tmp = tempfile.mkdtemp()
         self.mgr = _make_manager(self._tmp)
 
@@ -208,8 +214,7 @@ class TestConfigureProvider(unittest.TestCase):
         with cm:
             self.mgr.configure_provider("xai", api_key="k1")
             self.mgr.configure_provider("xai", api_key="k2")
-        backends = [b for b in self.mgr.list_backends()
-                    if b.backend_id == "api_xai"]
+        backends = [b for b in self.mgr.list_backends() if b.backend_id == "api_xai"]
         self.assertEqual(len(backends), 1)
 
 
@@ -217,6 +222,7 @@ class TestConfigureProvider(unittest.TestCase):
 class TestAutoDiscoverApiProviders(unittest.TestCase):
     def setUp(self):
         import tempfile
+
         self._tmp = tempfile.mkdtemp()
         self.mgr = _make_manager(self._tmp)
 
@@ -224,8 +230,12 @@ class TestAutoDiscoverApiProviders(unittest.TestCase):
         clean = {k: "" for k in os.environ if "API_KEY" in k}
         # Patch out ALL known primary env keys to empty
         known_keys = {
-            "XAI_API_KEY", "META_AI_API_KEY", "OPENAI_API_KEY",
-            "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY",
+            "XAI_API_KEY",
+            "META_AI_API_KEY",
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "GEMINI_API_KEY",
+            "GROQ_API_KEY",
             "HF_API_KEY",
             "ipfs_accelerate_py_XAI_API_KEY",
             "ipfs_accelerate_py_META_AI_API_KEY",
@@ -243,8 +253,12 @@ class TestAutoDiscoverApiProviders(unittest.TestCase):
     def test_xai_key_in_env_registers_xai(self):
         cm, _ = self._patch_import_for("xai")
         clean_env = {
-            "META_AI_API_KEY": "", "OPENAI_API_KEY": "", "ANTHROPIC_API_KEY": "",
-            "GEMINI_API_KEY": "", "GROQ_API_KEY": "", "HF_API_KEY": "",
+            "META_AI_API_KEY": "",
+            "OPENAI_API_KEY": "",
+            "ANTHROPIC_API_KEY": "",
+            "GEMINI_API_KEY": "",
+            "GROQ_API_KEY": "",
+            "HF_API_KEY": "",
             "XAI_API_KEY": "xai-test",
         }
         with cm, patch.dict(os.environ, clean_env, clear=False):
@@ -255,8 +269,11 @@ class TestAutoDiscoverApiProviders(unittest.TestCase):
         cm_xai, _ = self._patch_import_for("xai")
         cm_meta, _ = self._patch_import_for("meta_ai")
         clean_env = {
-            "OPENAI_API_KEY": "", "ANTHROPIC_API_KEY": "",
-            "GEMINI_API_KEY": "", "GROQ_API_KEY": "", "HF_API_KEY": "",
+            "OPENAI_API_KEY": "",
+            "ANTHROPIC_API_KEY": "",
+            "GEMINI_API_KEY": "",
+            "GROQ_API_KEY": "",
+            "HF_API_KEY": "",
             "XAI_API_KEY": "xai-k",
             "META_AI_API_KEY": "meta-k",
         }

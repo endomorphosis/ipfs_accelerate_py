@@ -138,9 +138,7 @@ def _fused_fixture() -> dict[str, object]:
             {
                 "obligation_id": "OBL-1",
                 "scope_ids": ["scope-1"],
-                "scope_keys": [
-                    {"kind": "qualified_symbol", "value": "Parser.validate"}
-                ],
+                "scope_keys": [{"kind": "qualified_symbol", "value": "Parser.validate"}],
                 "dependency_ids": [],
             }
         ],
@@ -207,10 +205,7 @@ def test_all_six_signals_are_fused_without_weight_renormalization() -> None:
     assert all(item.available for item in task.signal_scores.values())
     assert all(item.score > 0 for item in task.signal_scores.values())
     assert task.score == pytest.approx(
-        sum(
-            item.score * DEFAULT_SIGNAL_WEIGHTS[name]
-            for name, item in task.signal_scores.items()
-        ),
+        sum(item.score * DEFAULT_SIGNAL_WEIGHTS[name] for name, item in task.signal_scores.items()),
         abs=2e-6,
     )
     assert response.backend_health["vector"].state is BackendState.HEALTHY
@@ -320,9 +315,10 @@ def test_graph_and_todo_views_deduplicate_by_semantic_task_identity() -> None:
 
     matching = [item for item in response.results if item.task_id == "TASK-1"]
     assert len(matching) == 1
-    assert {
-        reference.source_kind for reference in matching[0].evidence_references
-    } == {"code_evidence_node", "todo_index_record"}
+    assert {reference.source_kind for reference in matching[0].evidence_references} == {
+        "code_evidence_node",
+        "todo_index_record",
+    }
 
 
 def test_typed_graph_obligation_with_task_id_propagates_failed_proof_gap() -> None:
@@ -343,15 +339,10 @@ def test_typed_graph_obligation_with_task_id_propagates_failed_proof_gap() -> No
     )
 
     task = next(item for item in response.results if item.task_id == "TASK-1")
-    obligation = next(
-        item for item in response.results if item.obligation_id == "OBL-1"
-    )
+    obligation = next(item for item in response.results if item.obligation_id == "OBL-1")
     assert task.signal_scores["proof_gap"].score == pytest.approx(0.85)
     assert obligation.signal_scores["proof_gap"].score == 1.0
-    assert any(
-        reference.record_id == "OBL-1"
-        for reference in task.evidence_references
-    )
+    assert any(reference.record_id == "OBL-1" for reference in task.evidence_references)
 
 
 def test_count_candidate_and_total_serialized_byte_limits_are_strict() -> None:
@@ -430,6 +421,4 @@ def test_output_is_canonical_json_and_contains_no_non_finite_scores() -> None:
     assert payload == response.to_dict()
     assert payload["query_id"].startswith("analysis-query:sha256:")
     assert payload["response_id"].startswith("analysis-retrieval:sha256:")
-    assert payload["ranking"]["unavailable_signal_semantics"].startswith(
-        "zero_contribution"
-    )
+    assert payload["ranking"]["unavailable_signal_semantics"].startswith("zero_contribution")

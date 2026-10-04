@@ -87,9 +87,7 @@ def _signal(
         evidence_revision=revision,
         observed_at=observed_at,
         failure_signature=(
-            "pytest::event-refinement"
-            if kind is RefinementSignalKind.REPEATED_FAILURE
-            else ""
+            "pytest::event-refinement" if kind is RefinementSignalKind.REPEATED_FAILURE else ""
         ),
         details={"source": "test"},
     )

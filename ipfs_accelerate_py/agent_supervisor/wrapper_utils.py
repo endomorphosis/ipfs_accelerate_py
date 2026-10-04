@@ -31,7 +31,9 @@ def with_flag_default(argv: Sequence[str], flag: str) -> list[str]:
     return [flag, *args]
 
 
-def with_exclusive_flag_default(argv: Sequence[str], flag: str, exclusive_flags: Iterable[str]) -> list[str]:
+def with_exclusive_flag_default(
+    argv: Sequence[str], flag: str, exclusive_flags: Iterable[str]
+) -> list[str]:
     """Prepend a default flag unless any mutually exclusive flag is present."""
 
     args = list(argv)
@@ -212,7 +214,9 @@ def apply_env_defaults(
     return effective
 
 
-def env_int(env_var: str, default: int | str, *, minimum: int | None = None, maximum: int | None = None) -> int:
+def env_int(
+    env_var: str, default: int | str, *, minimum: int | None = None, maximum: int | None = None
+) -> int:
     """Return an integer environment setting with an explicit default."""
 
     raw_value = os.environ.get(env_var, str(default))
@@ -500,8 +504,12 @@ def prefixed_codebase_scan_env_settings(
     return CodebaseScanEnvSettings(
         min_open_tasks=prefixed_env_int(prefix, "CODEBASE_SCAN_MIN_OPEN_TASKS", min_open_tasks),
         max_findings=prefixed_env_int(prefix, "CODEBASE_SCAN_MAX_FINDINGS", max_findings),
-        cooldown_seconds=prefixed_env_int(prefix, "CODEBASE_SCAN_COOLDOWN_SECONDS", cooldown_seconds),
-        timeout_seconds=prefixed_env_int(prefix, "CODEBASE_REFILL_TIMEOUT_SECONDS", timeout_seconds),
+        cooldown_seconds=prefixed_env_int(
+            prefix, "CODEBASE_SCAN_COOLDOWN_SECONDS", cooldown_seconds
+        ),
+        timeout_seconds=prefixed_env_int(
+            prefix, "CODEBASE_REFILL_TIMEOUT_SECONDS", timeout_seconds
+        ),
     )
 
 
@@ -555,8 +563,12 @@ def prefixed_objective_refill_env_settings(
     return ObjectiveRefillEnvSettings(
         min_open_tasks=prefixed_env_int(prefix, "OBJECTIVE_SCAN_MIN_OPEN_TASKS", min_open_tasks),
         max_findings=prefixed_env_int(prefix, "OBJECTIVE_SCAN_MAX_FINDINGS", max_findings),
-        cooldown_seconds=prefixed_env_int(prefix, "OBJECTIVE_SCAN_COOLDOWN_SECONDS", cooldown_seconds),
-        timeout_seconds=prefixed_env_int(prefix, "OBJECTIVE_REFILL_TIMEOUT_SECONDS", timeout_seconds),
+        cooldown_seconds=prefixed_env_int(
+            prefix, "OBJECTIVE_SCAN_COOLDOWN_SECONDS", cooldown_seconds
+        ),
+        timeout_seconds=prefixed_env_int(
+            prefix, "OBJECTIVE_REFILL_TIMEOUT_SECONDS", timeout_seconds
+        ),
         surplus_findings_per_goal=prefixed_env_int(
             prefix,
             "OBJECTIVE_SURPLUS_FINDINGS_PER_GOAL",
@@ -594,13 +606,17 @@ class BootstrapPathCallbacks:
     resolve: Callable[[], dict[str, Path]]
     ensure: Callable[[Mapping[str, Path] | None], dict[str, Path]]
 
-    def output_path(self, key: str, default: str, paths: Mapping[str, Path | str] | None = None) -> str:
+    def output_path(
+        self, key: str, default: str, paths: Mapping[str, Path | str] | None = None
+    ) -> str:
         """Return a repo-relative output path for a resolved bootstrap path."""
 
         resolved = self.resolve() if paths is None else paths
         return repo_relative_or_default(resolved[key], self.repo_root, default)
 
-    def output_path_factory(self, key: str, default: str) -> Callable[[Mapping[str, Path | str] | None], str]:
+    def output_path_factory(
+        self, key: str, default: str
+    ) -> Callable[[Mapping[str, Path | str] | None], str]:
         """Return a callback that resolves one repo-relative bootstrap output path."""
 
         def factory(paths: Mapping[str, Path | str] | None = None) -> str:
@@ -676,7 +692,9 @@ def agent_supervisor_bootstrap_path_entries(
     """Build standard bootstrap entries from a task board and namespace paths."""
 
     entries: list[tuple[str, Path | str] | tuple[str, Path | str, str | None]] = []
-    entries.append((todo_key, todo_path) if todo_setting is None else (todo_key, todo_path, todo_setting))
+    entries.append(
+        (todo_key, todo_path) if todo_setting is None else (todo_key, todo_path, todo_setting)
+    )
     if objective_path is not None:
         entries.append(
             (objective_path_key, objective_path)
@@ -719,9 +737,11 @@ def build_agent_supervisor_bootstrap_path_callbacks(
         namespace_keys=keys,
         extra_entries=extra_entries,
     )
-    resolved_directory_keys = tuple(
-        key for key in keys if key in AGENT_SUPERVISOR_DIRECTORY_BOOTSTRAP_KEYS
-    ) if directory_keys is None else tuple(directory_keys)
+    resolved_directory_keys = (
+        tuple(key for key in keys if key in AGENT_SUPERVISOR_DIRECTORY_BOOTSTRAP_KEYS)
+        if directory_keys is None
+        else tuple(directory_keys)
+    )
     return build_prefixed_bootstrap_path_callbacks(
         repo_root,
         prefix,
@@ -878,10 +898,14 @@ def resolve_and_ensure_bootstrap_paths(
 ) -> dict[str, Path]:
     """Resolve bootstrap paths and create selected runtime directories."""
 
-    resolved = dict(paths) if paths is not None else resolve_bootstrap_paths(
-        repo_root,
-        specs,
-        repo_root_key=repo_root_key,
+    resolved = (
+        dict(paths)
+        if paths is not None
+        else resolve_bootstrap_paths(
+            repo_root,
+            specs,
+            repo_root_key=repo_root_key,
+        )
     )
     return ensure_named_directories(resolved, directory_keys)
 
@@ -944,7 +968,9 @@ def build_prefixed_bootstrap_path_callbacks(
         specs=specs,
         repo_root=root,
         resolve=build_bootstrap_path_resolver(root, specs, repo_root_key=repo_root_key),
-        ensure=build_bootstrap_path_ensurer(root, specs, directory_keys, repo_root_key=repo_root_key),
+        ensure=build_bootstrap_path_ensurer(
+            root, specs, directory_keys, repo_root_key=repo_root_key
+        ),
     )
 
 
@@ -979,7 +1005,9 @@ def apply_environment_contract(
     if path_entries:
         current_path = target_env.get(path_key, "")
         existing_entries = current_path.split(os.pathsep) if current_path else []
-        target_env[path_key] = os.pathsep.join(unique_path_entries([*path_entries, *existing_entries]))
+        target_env[path_key] = os.pathsep.join(
+            unique_path_entries([*path_entries, *existing_entries])
+        )
     resolved["effective_path"] = target_env.get(path_key, "")
     return resolved
 
@@ -1161,7 +1189,9 @@ def build_android_validation_callbacks(
         return apply_environment_contract(environment_contract(repo_root_override))
 
     def wrap_command(command: str, repo_root_override: Path | str | None = None) -> str:
-        return with_android_validation_environment(command, resolved_repo_root(repo_root_override), **options)
+        return with_android_validation_environment(
+            command, resolved_repo_root(repo_root_override), **options
+        )
 
     def enforce_todo(
         todo_path_override: Path | str | None = None,
@@ -1170,7 +1200,9 @@ def build_android_validation_callbacks(
         path = todo_path_override or default_todo_path
         if path is None:
             raise ValueError("todo_path is required when no default todo path is configured")
-        return enforce_android_validation_environment(Path(path), resolved_repo_root(repo_root_override), **options)
+        return enforce_android_validation_environment(
+            Path(path), resolved_repo_root(repo_root_override), **options
+        )
 
     return AndroidValidationCallbacks(
         environment_contract=environment_contract,
@@ -1457,7 +1489,9 @@ def build_agent_supervisor_namespace_context(
         )
     else:
         resolved_task_board_path = _repo_path(root, task_board_path)
-    resolved_task_board_option = task_board_path_option() if task_board_option is None else task_board_option
+    resolved_task_board_option = (
+        task_board_path_option() if task_board_option is None else task_board_option
+    )
     runtime_bootstrap = build_agent_supervisor_runtime_bootstrap_callbacks(
         root,
         prefix,

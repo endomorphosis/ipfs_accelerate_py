@@ -13,7 +13,7 @@ from .base_pipeline import BasePipelineTemplate
 
 class DiffusionPipelineTemplate(BasePipelineTemplate):
     """Template for diffusion-based model pipelines."""
-    
+
     def __init__(self):
         """Initialize the diffusion pipeline template."""
         super().__init__()
@@ -24,7 +24,7 @@ class DiffusionPipelineTemplate(BasePipelineTemplate):
         self.requires_postprocessing = True
         self.supports_batching = True
         self.max_batch_size = 1  # Most diffusion models work best with batch size 1
-    
+
     def get_import_statements(self) -> str:
         """Get diffusion pipeline import statements."""
         return """
@@ -38,7 +38,7 @@ from PIL import Image
 import io
 import tempfile
 """
-    
+
     def get_preprocessing_code(self, task_type: str) -> str:
         """Get diffusion preprocessing code for specific task types."""
         if task_type == "image_generation":
@@ -476,10 +476,14 @@ for param_name, param_value in kwargs.items():
     if param_name not in generation_params:
         generation_params[param_name] = param_value
 """
-    
+
     def get_postprocessing_code(self, task_type: str) -> str:
         """Get diffusion postprocessing code for specific task types."""
-        if task_type == "image_generation" or task_type == "image_to_image" or task_type == "inpainting":
+        if (
+            task_type == "image_generation"
+            or task_type == "image_to_image"
+            or task_type == "inpainting"
+        ):
             return """
 # Process outputs from diffusion model
 results = {}
@@ -654,10 +658,14 @@ results["parameters"] = {key: value for key, value in generation_params.items()
 if "generator" in generation_params:
     results["parameters"]["seed"] = generation_params["generator"].initial_seed()
 """
-    
+
     def get_result_formatting_code(self, task_type: str) -> str:
         """Get diffusion result formatting code for specific task types."""
-        if task_type == "image_generation" or task_type == "image_to_image" or task_type == "inpainting":
+        if (
+            task_type == "image_generation"
+            or task_type == "image_to_image"
+            or task_type == "inpainting"
+        ):
             return """
 # Format results for diffusion-based image generation
 return {
@@ -698,7 +706,7 @@ return {
     "hardware": hardware_label
 }
 """
-    
+
     def get_mock_input_code(self) -> str:
         """Get diffusion mock input code."""
         return """
@@ -736,7 +744,7 @@ mock_input = {
     "num_inference_steps": 30
 }
 """
-    
+
     def get_mock_output_code(self) -> str:
         """Get diffusion mock output code."""
         return """
@@ -762,7 +770,7 @@ mock_output.masks = [mock_mask]
 
 return mock_output
 """
-    
+
     def get_pipeline_utilities(self) -> str:
         """Get diffusion utility functions."""
         return """
@@ -796,16 +804,16 @@ def create_mask_from_points(image_size, points, radius=10):
     
     return mask
 """
-    
+
     def is_compatible_with_architecture(self, arch_type: str) -> bool:
         """Check diffusion pipeline compatibility with architecture type."""
         # Diffusion pipeline is compatible with diffusion-based architectures
         return arch_type in [
             "diffusion",
             "vae",  # Variational Autoencoders can be components in diffusion models
-            "sam"   # Segment Anything Model can use similar preprocessing
+            "sam",  # Segment Anything Model can use similar preprocessing
         ]
-    
+
     def is_compatible_with_task(self, task_type: str) -> bool:
         """Check diffusion pipeline compatibility with task type."""
         # Diffusion pipeline is compatible with these tasks
@@ -815,5 +823,5 @@ def create_mask_from_points(image_size, points, radius=10):
             "image_to_image",
             "inpainting",
             "image_segmentation",
-            "image_variation"
+            "image_variation",
         ]

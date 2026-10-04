@@ -57,6 +57,7 @@ def _get_aggregate_stats(self) -> Dict[str, Any]:
         # ... stats logic ...
         return stats
 
+
 # AFTER:
 def _get_aggregate_stats(self) -> Dict[str, Any]:
     """
@@ -75,10 +76,12 @@ def _get_aggregate_stats(self) -> Dict[str, Any]:
 ```python
 # BEFORE (line 1270):
 from ipfs_accelerate_py.github_cli.cache import GitHubAPICache
+
 cache = GitHubAPICache()  # Creates new instance!
 
 # AFTER:
 from ipfs_accelerate_py.github_cli.cache import get_global_cache
+
 cache = get_global_cache()  # Uses singleton
 ```
 
@@ -94,13 +97,14 @@ Applied to both lines 1270 and 1307.
 self._p2p_init_lock = Lock()
 self._p2p_initialized = False
 
+
 # Modified _init_p2p() (lines 1017-1064):
 def _init_p2p(self) -> None:
     with self._p2p_init_lock:  # Thread-safe
         if self._p2p_initialized or self._p2p_host is not None:
             logger.debug("P2P already initialized, skipping")
             return
-        
+
         try:
             # ... initialization code ...
             self._p2p_initialized = True
@@ -127,6 +131,7 @@ def increment_api_call_count(self) -> None:
         self._stats["api_calls_made"] += 1
         logger.debug(f"API call count: {self._stats['api_calls_made']}")
         return self._stats  # BAD: Returns while holding lock!
+
 
 # AFTER:
 def increment_api_call_count(self) -> None:

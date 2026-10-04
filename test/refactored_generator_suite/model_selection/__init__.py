@@ -8,4 +8,4 @@ This package provides model selection components.
 from .registry import ModelRegistry
 from .selector import ModelSelector
 
-__all__ = ['ModelRegistry', 'ModelSelector']
+__all__ = ["ModelRegistry", "ModelSelector"]

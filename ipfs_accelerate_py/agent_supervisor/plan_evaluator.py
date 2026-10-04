@@ -37,9 +37,7 @@ EVIDENCE_AWARE_PLANNING_ACCEPTANCE_CRITERIA = (
     ),
 )
 # Objective-heap evidence identity for the non-compensable authority gate.
-AUTHORITY_VIOLATION_REJECTION_EVIDENCE_ID = (
-    "173075880069453142914839090434430341799"
-)
+AUTHORITY_VIOLATION_REJECTION_EVIDENCE_ID = "173075880069453142914839090434430341799"
 _BRANCH_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 
@@ -96,9 +94,7 @@ def _number(
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise PlanBranchValidationError(f"{field_name} must be numeric")
     result = float(value)
-    if not math.isfinite(result) or result < minimum or (
-        maximum is not None and result > maximum
-    ):
+    if not math.isfinite(result) or result < minimum or (maximum is not None and result > maximum):
         bounds = f"[{minimum}, {maximum}]" if maximum is not None else f">= {minimum}"
         raise PlanBranchValidationError(f"{field_name} must be finite and {bounds}")
     return result
@@ -113,9 +109,7 @@ def _first(mapping: Mapping[str, Any], name: str, *aliases: str) -> Any:
 
 def _to_millionths(value: int | float | Decimal) -> int:
     return int(
-        (Decimal(str(value)) * Decimal(1_000_000)).quantize(
-            Decimal("1"), rounding=ROUND_HALF_UP
-        )
+        (Decimal(str(value)) * Decimal(1_000_000)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
     )
 
 
@@ -226,26 +220,18 @@ class PlanBranch:
         }
         unknown = sorted(str(key) for key in payload if key not in allowed)
         if unknown:
-            raise PlanBranchValidationError(
-                f"unknown plan branch fields: {', '.join(unknown)}"
-            )
+            raise PlanBranchValidationError(f"unknown plan branch fields: {', '.join(unknown)}")
         return cls(
             branch_id=_first(payload, "branch_id", "id"),
             summary=_first(payload, "summary", "plan"),
             predicted_files=_first(payload, "predicted_files", "files"),
-            predicted_symbols=_first(
-                payload, "predicted_symbols", "symbols", "ast_symbols"
-            ),
+            predicted_symbols=_first(payload, "predicted_symbols", "symbols", "ast_symbols"),
             dependencies=_first(payload, "dependencies", "depends_on"),
-            validation_commands=_first(
-                payload, "validation_commands", "validation"
-            ),
+            validation_commands=_first(payload, "validation_commands", "validation"),
             validation_proof=_first(payload, "validation_proof", "proof"),
             estimated_cost=_first(payload, "estimated_cost", "cost"),
             risk=_first(payload, "risk"),
-            expected_objective_delta=_first(
-                payload, "expected_objective_delta", "objective_delta"
-            ),
+            expected_objective_delta=_first(payload, "expected_objective_delta", "objective_delta"),
             source=_first(payload, "source"),
         )
 
@@ -396,7 +382,11 @@ class AnalysisProposal:
     objective_terms: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        branch = self.branch if isinstance(self.branch, PlanBranch) else PlanBranch.from_dict(self.branch)
+        branch = (
+            self.branch
+            if isinstance(self.branch, PlanBranch)
+            else PlanBranch.from_dict(self.branch)
+        )
         object.__setattr__(self, "branch", branch)
         object.__setattr__(
             self,
@@ -532,11 +522,7 @@ class EvaluatedPlanBranch:
 
     def to_dict(self, *, profile_g: bool = False) -> dict[str, Any]:
         return {
-            "branch": (
-                self.branch.to_profile_g_dict()
-                if profile_g
-                else self.branch.to_dict()
-            ),
+            "branch": (self.branch.to_profile_g_dict() if profile_g else self.branch.to_dict()),
             "score_millionths": int(self.score_millionths),
             "rationale": list(self.rationale),
         }
@@ -558,8 +544,7 @@ class PlanEvaluation:
             raise ValueError("evaluated plan branch ids must be unique")
         scores = {str(key): int(value) for key, value in self.scores.items()}
         rationales = {
-            str(key): tuple(str(item) for item in value)
-            for key, value in self.rationales.items()
+            str(key): tuple(str(item) for item in value) for key, value in self.rationales.items()
         }
         expected = set(branch_ids)
         if set(scores) != expected or set(rationales) != expected:
@@ -595,12 +580,8 @@ class PlanEvaluation:
             "selected": encode(self.selected),
             "rejected": [encode(item) for item in self.rejected],
             "scores": {key: int(value) for key, value in self.scores.items()},
-            "rationales": {
-                key: list(value) for key, value in self.rationales.items()
-            },
-            "selection_rationale": list(
-                self.rationales[self.selected.branch_id]
-            ),
+            "rationales": {key: list(value) for key, value in self.rationales.items()},
+            "selection_rationale": list(self.rationales[self.selected.branch_id]),
         }
 
     def to_profile_g_dict(self) -> dict[str, Any]:
@@ -615,8 +596,7 @@ def _score_branch(branch: PlanBranch) -> tuple[int, tuple[str, ...]]:
     cost = Decimal(str(branch.estimated_cost))
     proof_coverage = min(
         Decimal(1),
-        Decimal(len(branch.validation_proof))
-        / Decimal(max(1, len(branch.validation_commands))),
+        Decimal(len(branch.validation_proof)) / Decimal(max(1, len(branch.validation_commands))),
     )
     cost_efficiency = Decimal(1) / (Decimal(1) + cost)
     score = (
@@ -626,9 +606,7 @@ def _score_branch(branch: PlanBranch) -> tuple[int, tuple[str, ...]]:
         + Decimal("0.05") * proof_coverage
     )
     score_millionths = int(
-        (score * Decimal(1_000_000)).quantize(
-            Decimal("1"), rounding=ROUND_HALF_UP
-        )
+        (score * Decimal(1_000_000)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
     )
     rationale = (
         f"expected objective delta contributes {_to_millionths(Decimal('0.55') * delta)} millionths",
@@ -652,9 +630,7 @@ def evaluate_plan_branches(
     if not candidates:
         raise ValueError("at least one plan branch is required")
     branch_ids = [branch.branch_id for branch in candidates]
-    duplicates = sorted(
-        {branch_id for branch_id in branch_ids if branch_ids.count(branch_id) > 1}
-    )
+    duplicates = sorted({branch_id for branch_id in branch_ids if branch_ids.count(branch_id) > 1})
     if duplicates:
         raise ValueError(f"plan branch ids must be unique: {', '.join(duplicates)}")
 
@@ -813,9 +789,7 @@ class ProofAwarePlanCandidate:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ProofAwarePlanCandidate":
         if not isinstance(payload, Mapping):
-            raise PlanBranchValidationError(
-                "each proof-aware plan candidate must be a JSON object"
-            )
+            raise PlanBranchValidationError("each proof-aware plan candidate must be a JSON object")
         allowed = {
             "candidate_id",
             "branch",
@@ -841,8 +815,7 @@ class ProofAwarePlanCandidate:
         unknown = sorted(str(key) for key in payload if key not in allowed)
         if unknown:
             raise PlanBranchValidationError(
-                "unknown proof-aware plan candidate fields: "
-                + ", ".join(unknown)
+                "unknown proof-aware plan candidate fields: " + ", ".join(unknown)
             )
         branch_value = _first(payload, "branch", "plan_branch")
         candidate = cls(
@@ -851,21 +824,13 @@ class ProofAwarePlanCandidate:
                 if isinstance(branch_value, PlanBranch)
                 else PlanBranch.from_dict(branch_value)
             ),
-            obligation_impact=_first(
-                payload, "obligation_impact", "obligation_impacts"
-            ),
+            obligation_impact=_first(payload, "obligation_impact", "obligation_impacts"),
             required_assurance=_first(payload, "required_assurance"),
             proof_cost=_first(payload, "proof_cost"),
-            cache_likelihood=_first(
-                payload, "cache_likelihood", "cache_hit_likelihood"
-            ),
+            cache_likelihood=_first(payload, "cache_likelihood", "cache_hit_likelihood"),
             dependencies=_first(payload, "dependencies", "depends_on"),
-            expected_evidence_delta=_first(
-                payload, "expected_evidence_delta", "evidence_delta"
-            ),
-            resource_classes=_first(
-                payload, "resource_classes", "required_resource_classes"
-            ),
+            expected_evidence_delta=_first(payload, "expected_evidence_delta", "evidence_delta"),
+            resource_classes=_first(payload, "resource_classes", "required_resource_classes"),
             proof_critical_path=payload.get(
                 "proof_critical_path",
                 payload.get("proof_critical_path_length", 0.0),
@@ -876,19 +841,13 @@ class ProofAwarePlanCandidate:
         )
         supplied_id = str(payload.get("candidate_id") or "").strip()
         if supplied_id and supplied_id != candidate.candidate_id:
-            raise PlanBranchValidationError(
-                "proof-aware candidate_id must match branch.branch_id"
-            )
+            raise PlanBranchValidationError("proof-aware candidate_id must match branch.branch_id")
         return candidate
 
     def to_dict(self, *, profile_g: bool = False) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "candidate_id": self.candidate_id,
-            "branch": (
-                self.branch.to_profile_g_dict()
-                if profile_g
-                else self.branch.to_dict()
-            ),
+            "branch": (self.branch.to_profile_g_dict() if profile_g else self.branch.to_dict()),
             "obligation_impact": list(self.obligation_impact),
             "required_assurance": self.required_assurance,
             "dependencies": list(self.dependencies),
@@ -905,10 +864,7 @@ class ProofAwarePlanCandidate:
         }
         if profile_g:
             payload.update(
-                {
-                    f"{name}_millionths": _to_millionths(value)
-                    for name, value in metrics.items()
-                }
+                {f"{name}_millionths": _to_millionths(value) for name, value in metrics.items()}
             )
         else:
             payload.update(metrics)
@@ -951,10 +907,7 @@ class ProofPlanningWeights:
     def to_dict(self, *, profile_g: bool = False) -> dict[str, Any]:
         payload = asdict(self)
         if profile_g:
-            return {
-                f"{name}_millionths": _to_millionths(value)
-                for name, value in payload.items()
-            }
+            return {f"{name}_millionths": _to_millionths(value) for name, value in payload.items()}
         return payload
 
 
@@ -1068,15 +1021,11 @@ class ProofAwarePlanEvaluation:
 
     @property
     def scores(self) -> Mapping[str, int]:
-        return MappingProxyType(
-            {item.candidate_id: item.score_millionths for item in self.ranked}
-        )
+        return MappingProxyType({item.candidate_id: item.score_millionths for item in self.ranked})
 
     @property
     def rationales(self) -> Mapping[str, tuple[str, ...]]:
-        return MappingProxyType(
-            {item.candidate_id: item.rationale for item in self.ranked}
-        )
+        return MappingProxyType({item.candidate_id: item.rationale for item in self.ranked})
 
     @property
     def selected_candidate(self) -> ProofAwarePlanCandidate:
@@ -1086,13 +1035,9 @@ class ProofAwarePlanEvaluation:
         return {
             "evaluator_version": self.evaluator_version,
             "selected": self.selected.to_dict(profile_g=profile_g),
-            "rejected": [
-                item.to_dict(profile_g=profile_g) for item in self.rejected
-            ],
+            "rejected": [item.to_dict(profile_g=profile_g) for item in self.rejected],
             "scores": dict(self.scores),
-            "rationales": {
-                key: list(value) for key, value in self.rationales.items()
-            },
+            "rationales": {key: list(value) for key, value in self.rationales.items()},
             "policy": self.policy.to_dict(profile_g=profile_g),
         }
 
@@ -1110,25 +1055,19 @@ def _proof_plan_score(
     policy: ProofAwarePlanPolicy,
 ) -> tuple[int, tuple[str, ...]]:
     weights = policy.weights
-    available = {
-        item.casefold() for item in policy.available_resource_classes
-    }
-    required_resources = {
-        item.casefold() for item in candidate.resource_classes
-    }
+    available = {item.casefold() for item in policy.available_resource_classes}
+    required_resources = {item.casefold() for item in candidate.resource_classes}
     resource_availability = (
         Decimal(1)
         if not available
-        else Decimal(len(required_resources & available))
-        / Decimal(len(required_resources))
+        else Decimal(len(required_resources & available)) / Decimal(len(required_resources))
     )
     satisfied = {item.casefold() for item in policy.satisfied_dependencies}
     required_dependencies = {item.casefold() for item in candidate.dependencies}
     dependency_readiness = (
         Decimal(1)
         if not required_dependencies or not policy.satisfied_dependencies
-        else Decimal(len(required_dependencies & satisfied))
-        / Decimal(len(required_dependencies))
+        else Decimal(len(required_dependencies & satisfied)) / Decimal(len(required_dependencies))
     )
     factors: tuple[tuple[str, Decimal, Decimal], ...] = (
         (
@@ -1180,10 +1119,7 @@ def _proof_plan_score(
             dependency_readiness,
         ),
     )
-    weighted = tuple(
-        (label, weight * factor / weights.total)
-        for label, weight, factor in factors
-    )
+    weighted = tuple((label, weight * factor / weights.total) for label, weight, factor in factors)
     score = sum((contribution for _, contribution in weighted), Decimal(0))
     score_millionths = _to_millionths(score)
     rationale = tuple(
@@ -1220,9 +1156,7 @@ def evaluate_proof_aware_plans(
             weights,
         )
     ):
-        raise ValueError(
-            "policy cannot be combined with direct proof planning overrides"
-        )
+        raise ValueError("policy cannot be combined with direct proof planning overrides")
     if policy is None:
         resolved_weights = (
             ProofPlanningWeights()
@@ -1251,16 +1185,10 @@ def evaluate_proof_aware_plans(
         raise ValueError("at least one proof-aware plan candidate is required")
     candidate_ids = [item.candidate_id for item in normalized]
     duplicates = sorted(
-        {
-            candidate_id
-            for candidate_id in candidate_ids
-            if candidate_ids.count(candidate_id) > 1
-        }
+        {candidate_id for candidate_id in candidate_ids if candidate_ids.count(candidate_id) > 1}
     )
     if duplicates:
-        raise ValueError(
-            "proof-aware candidate ids must be unique: " + ", ".join(duplicates)
-        )
+        raise ValueError("proof-aware candidate ids must be unique: " + ", ".join(duplicates))
 
     evaluated = [
         EvaluatedProofAwarePlan(candidate, score, rationale)
@@ -1313,9 +1241,7 @@ def _boolean(value: Any, field_name: str) -> bool:
 
 def _non_negative_integer(value: Any, field_name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise PlanBranchValidationError(
-            f"{field_name} must be a non-negative integer"
-        )
+        raise PlanBranchValidationError(f"{field_name} must be a non-negative integer")
     return value
 
 
@@ -1326,8 +1252,7 @@ def _casefold_set(values: Iterable[str]) -> set[str]:
 def _missing(required: Iterable[str], observed: Iterable[str]) -> tuple[str, ...]:
     observed_keys = _casefold_set(observed)
     return tuple(
-        item for item in required
-        if " ".join(item.casefold().split()) not in observed_keys
+        item for item in required if " ".join(item.casefold().split()) not in observed_keys
     )
 
 
@@ -1388,9 +1313,7 @@ class EvidenceAwarePlanCandidate:
             "resource_classes",
         )
         for name in required_string_fields:
-            object.__setattr__(
-                self, name, _string_tuple(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _string_tuple(getattr(self, name), name))
         for name in optional_string_fields:
             object.__setattr__(
                 self,
@@ -1398,21 +1321,15 @@ class EvidenceAwarePlanCandidate:
                 _string_tuple(getattr(self, name), name, allow_empty=True),
             )
         if _missing(self.validated_assumptions, self.assumptions):
-            raise PlanBranchValidationError(
-                "validated_assumptions must be a subset of assumptions"
-            )
+            raise PlanBranchValidationError("validated_assumptions must be a subset of assumptions")
         if _missing(self.supported_semantics, self.semantic_requirements):
             raise PlanBranchValidationError(
                 "supported_semantics must be a subset of semantic_requirements"
             )
         if _missing(self.critical_path, self.dependencies):
-            raise PlanBranchValidationError(
-                "critical_path must be a subset of dependencies"
-            )
+            raise PlanBranchValidationError("critical_path must be a subset of dependencies")
         for name in ("validation_feasible", "proof_feasible"):
-            object.__setattr__(
-                self, name, _boolean(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _boolean(getattr(self, name), name))
         object.__setattr__(
             self,
             "novelty",
@@ -1464,8 +1381,7 @@ class EvidenceAwarePlanCandidate:
         unknown = sorted(str(key) for key in payload if key not in allowed)
         if unknown:
             raise PlanBranchValidationError(
-                "unknown evidence-aware plan candidate fields: "
-                + ", ".join(unknown)
+                "unknown evidence-aware plan candidate fields: " + ", ".join(unknown)
             )
         # Runtime was added after the original evidence-aware schema.  It has
         # a safe zero default so older declarations remain readable.
@@ -1478,14 +1394,9 @@ class EvidenceAwarePlanCandidate:
                 "evidence-aware plan candidate is missing required fields: "
                 + ", ".join(sorted(set(missing)))
             )
-        values = {
-            name: payload[name]
-            for name in required
-        }
+        values = {name: payload[name] for name in required}
         if "estimated_runtime_seconds" in payload:
-            values["estimated_runtime_seconds"] = payload[
-                "estimated_runtime_seconds"
-            ]
+            values["estimated_runtime_seconds"] = payload["estimated_runtime_seconds"]
         branch_value = payload.get("branch", payload.get("plan_branch"))
         candidate = cls(
             branch=(
@@ -1505,11 +1416,7 @@ class EvidenceAwarePlanCandidate:
     def to_dict(self, *, profile_g: bool = False) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "candidate_id": self.candidate_id,
-            "branch": (
-                self.branch.to_profile_g_dict()
-                if profile_g
-                else self.branch.to_dict()
-            ),
+            "branch": (self.branch.to_profile_g_dict() if profile_g else self.branch.to_dict()),
         }
         for name in (
             "covered_acceptance_criteria",
@@ -1541,9 +1448,7 @@ class EvidenceAwarePlanCandidate:
                         self.estimated_resource_cost
                     ),
                     "estimated_tokens": self.estimated_tokens,
-                    "estimated_runtime_milliseconds": _to_millionths(
-                        self.estimated_runtime_seconds
-                    )
+                    "estimated_runtime_milliseconds": _to_millionths(self.estimated_runtime_seconds)
                     // 1_000,
                 }
             )
@@ -1579,9 +1484,7 @@ class EvidenceAwarePlanPolicy:
 
     def __post_init__(self) -> None:
         for name in ("acceptance_criteria", "evidence_terms"):
-            object.__setattr__(
-                self, name, _string_tuple(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _string_tuple(getattr(self, name), name))
         for name in (
             "trusted_assumptions",
             "supported_semantics",
@@ -1606,9 +1509,7 @@ class EvidenceAwarePlanPolicy:
         object.__setattr__(
             self,
             "max_estimated_tokens",
-            _non_negative_integer(
-                self.max_estimated_tokens, "max_estimated_tokens"
-            ),
+            _non_negative_integer(self.max_estimated_tokens, "max_estimated_tokens"),
         )
         object.__setattr__(
             self,
@@ -1625,37 +1526,27 @@ class EvidenceAwarePlanPolicy:
         object.__setattr__(
             self,
             "min_novelty",
-            _number(
-                self.min_novelty, "min_novelty", minimum=0.0, maximum=1.0
-            ),
+            _number(self.min_novelty, "min_novelty", minimum=0.0, maximum=1.0),
         )
         for name in ("require_validation", "require_proof"):
-            object.__setattr__(
-                self, name, _boolean(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _boolean(getattr(self, name), name))
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "EvidenceAwarePlanPolicy":
         if not isinstance(payload, Mapping):
-            raise PlanBranchValidationError(
-                "evidence-aware plan policy must be a JSON object"
-            )
+            raise PlanBranchValidationError("evidence-aware plan policy must be a JSON object")
         allowed = set(cls.__dataclass_fields__)
         unknown = sorted(str(key) for key in payload if key not in allowed)
         if unknown:
             raise PlanBranchValidationError(
-                "unknown evidence-aware plan policy fields: "
-                + ", ".join(unknown)
+                "unknown evidence-aware plan policy fields: " + ", ".join(unknown)
             )
         missing = [
-            name
-            for name in ("acceptance_criteria", "evidence_terms")
-            if name not in payload
+            name for name in ("acceptance_criteria", "evidence_terms") if name not in payload
         ]
         if missing:
             raise PlanBranchValidationError(
-                "evidence-aware plan policy is missing required fields: "
-                + ", ".join(missing)
+                "evidence-aware plan policy is missing required fields: " + ", ".join(missing)
             )
         return cls(**dict(payload))
 
@@ -1685,9 +1576,7 @@ class EvidenceAwarePlanPolicy:
                     else self.max_estimated_runtime_seconds
                 ),
                 "min_novelty_millionths" if profile_g else "min_novelty": (
-                    _to_millionths(self.min_novelty)
-                    if profile_g
-                    else self.min_novelty
+                    _to_millionths(self.min_novelty) if profile_g else self.min_novelty
                 ),
                 (
                     "max_estimated_resource_cost_millionths"
@@ -1724,28 +1613,16 @@ class PlanDimensionAssessment:
     reasons: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "dimension", PlanEvaluationDimension(self.dimension)
-        )
+        object.__setattr__(self, "dimension", PlanEvaluationDimension(self.dimension))
         for name in ("passed", "hard_gate"):
-            object.__setattr__(
-                self, name, _boolean(getattr(self, name), name)
-            )
-        score = _non_negative_integer(
-            self.score_millionths, "score_millionths"
-        )
+            object.__setattr__(self, name, _boolean(getattr(self, name), name))
+        score = _non_negative_integer(self.score_millionths, "score_millionths")
         if score > 1_000_000:
-            raise PlanBranchValidationError(
-                "score_millionths must not exceed 1000000"
-            )
+            raise PlanBranchValidationError("score_millionths must not exceed 1000000")
         object.__setattr__(self, "score_millionths", score)
-        reasons = tuple(
-            str(item).strip() for item in self.reasons if str(item).strip()
-        )
+        reasons = tuple(str(item).strip() for item in self.reasons if str(item).strip())
         if not reasons:
-            raise PlanBranchValidationError(
-                "dimension assessment requires at least one reason"
-            )
+            raise PlanBranchValidationError("dimension assessment requires at least one reason")
         object.__setattr__(self, "reasons", reasons)
 
     def to_dict(self) -> dict[str, Any]:
@@ -1783,13 +1660,15 @@ class PlanQualityCostMetrics:
             "estimated_branch_cost_millionths",
         ):
             value = _non_negative_integer(getattr(self, name), name)
-            if name in {
-                "quality_score_millionths",
-                "cost_efficiency_millionths",
-            } and value > 1_000_000:
-                raise PlanBranchValidationError(
-                    f"{name} must not exceed 1000000"
-                )
+            if (
+                name
+                in {
+                    "quality_score_millionths",
+                    "cost_efficiency_millionths",
+                }
+                and value > 1_000_000
+            ):
+                raise PlanBranchValidationError(f"{name} must not exceed 1000000")
             object.__setattr__(self, name, value)
 
     def to_dict(self) -> dict[str, Any]:
@@ -1823,16 +1702,10 @@ class EvaluatedEvidenceAwarePlan:
                 "evaluation must contain every plan dimension exactly once"
             )
         object.__setattr__(self, "dimensions", dimensions)
-        failures = tuple(
-            str(item).strip()
-            for item in self.hard_gate_failures
-            if str(item).strip()
-        )
+        failures = tuple(str(item).strip() for item in self.hard_gate_failures if str(item).strip())
         object.__setattr__(self, "hard_gate_failures", failures)
         expected_failures = {
-            item.dimension.value
-            for item in dimensions
-            if item.hard_gate and not item.passed
+            item.dimension.value for item in dimensions if item.hard_gate and not item.passed
         }
         if set(failures) != expected_failures:
             raise PlanBranchValidationError(
@@ -1849,11 +1722,7 @@ class EvaluatedEvidenceAwarePlan:
 
     @property
     def rationale(self) -> tuple[str, ...]:
-        return tuple(
-            reason
-            for assessment in self.dimensions
-            for reason in assessment.reasons
-        )
+        return tuple(reason for assessment in self.dimensions for reason in assessment.reasons)
 
     @property
     def quality_cost_metrics(self) -> PlanQualityCostMetrics:
@@ -1875,16 +1744,12 @@ class EvaluatedEvidenceAwarePlan:
             quality_score_millionths=quality,
             cost_efficiency_millionths=cost_dimension.score_millionths,
             estimated_tokens=self.candidate.estimated_tokens,
-            estimated_runtime_milliseconds=_to_millionths(
-                self.candidate.estimated_runtime_seconds
-            )
+            estimated_runtime_milliseconds=_to_millionths(self.candidate.estimated_runtime_seconds)
             // 1_000,
             estimated_resource_cost_millionths=_to_millionths(
                 self.candidate.estimated_resource_cost
             ),
-            estimated_branch_cost_millionths=_to_millionths(
-                self.candidate.branch.estimated_cost
-            ),
+            estimated_branch_cost_millionths=_to_millionths(self.candidate.branch.estimated_cost),
         )
 
     def to_dict(self, *, profile_g: bool = False) -> dict[str, Any]:
@@ -1909,35 +1774,23 @@ class EvidenceAwarePlanEvaluation:
 
     def __post_init__(self) -> None:
         if self.evaluator_version != EVIDENCE_AWARE_PLAN_EVALUATOR_VERSION:
-            raise PlanBranchValidationError(
-                "unsupported evidence-aware plan evaluator version"
-            )
+            raise PlanBranchValidationError("unsupported evidence-aware plan evaluator version")
         all_items = (*self.admissible, *self.rejected)
         ids = [item.candidate_id for item in all_items]
         if len(ids) != len(set(ids)):
-            raise PlanBranchValidationError(
-                "evaluated evidence-aware candidate ids must be unique"
-            )
+            raise PlanBranchValidationError("evaluated evidence-aware candidate ids must be unique")
         if any(not item.admissible for item in self.admissible):
-            raise PlanBranchValidationError(
-                "admissible plans must pass every hard gate"
-            )
+            raise PlanBranchValidationError("admissible plans must pass every hard gate")
         if any(item.admissible for item in self.rejected):
-            raise PlanBranchValidationError(
-                "rejected plans must fail at least one hard gate"
-            )
+            raise PlanBranchValidationError("rejected plans must fail at least one hard gate")
         if self.selected is not None and (
             not self.selected.admissible
             or not self.admissible
             or self.selected != self.admissible[0]
         ):
-            raise PlanBranchValidationError(
-                "selected plan must be the first admissible plan"
-            )
+            raise PlanBranchValidationError("selected plan must be the first admissible plan")
         if self.selected is None and self.admissible:
-            raise PlanBranchValidationError(
-                "an admissible plan must be selected"
-            )
+            raise PlanBranchValidationError("an admissible plan must be selected")
 
     @property
     def ranked(self) -> tuple[EvaluatedEvidenceAwarePlan, ...]:
@@ -1956,8 +1809,7 @@ class EvidenceAwarePlanEvaluation:
         expected = set(PlanEvaluationDimension)
         return bool(self.ranked) and all(
             len(item.dimensions) == len(expected)
-            and {assessment.dimension for assessment in item.dimensions}
-            == expected
+            and {assessment.dimension for assessment in item.dimensions} == expected
             for item in self.ranked
         )
 
@@ -1985,44 +1837,29 @@ class EvidenceAwarePlanEvaluation:
                 continue
             if not item.admissible:
                 reasons[item.candidate_id] = tuple(
-                    f"hard_gate_failed:{failure}"
-                    for failure in item.hard_gate_failures
+                    f"hard_gate_failed:{failure}" for failure in item.hard_gate_failures
                 )
             elif selected is None:
                 reasons[item.candidate_id] = ("no_admissible_selection",)
             elif item.score_millionths < selected.score_millionths:
-                reasons[item.candidate_id] = (
-                    "lower_deterministic_quality_cost_score",
-                )
+                reasons[item.candidate_id] = ("lower_deterministic_quality_cost_score",)
             else:
-                reasons[item.candidate_id] = (
-                    "deterministic_candidate_id_tie_break",
-                )
+                reasons[item.candidate_id] = ("deterministic_candidate_id_tie_break",)
         return MappingProxyType(reasons)
 
     def to_dict(self, *, profile_g: bool = False) -> dict[str, Any]:
         return {
             "evaluator_version": self.evaluator_version,
-            "requirement_ids": [
-                AUTHORITY_VIOLATION_REJECTION_EVIDENCE_ID
-            ],
+            "requirement_ids": [AUTHORITY_VIOLATION_REJECTION_EVIDENCE_ID],
             "evidence_ids": list(self.evidence_ids),
             "selected": (
-                self.selected.to_dict(profile_g=profile_g)
-                if self.selected is not None
-                else None
+                self.selected.to_dict(profile_g=profile_g) if self.selected is not None else None
             ),
-            "admissible": [
-                item.to_dict(profile_g=profile_g) for item in self.admissible
-            ],
-            "rejected": [
-                item.to_dict(profile_g=profile_g) for item in self.rejected
-            ],
+            "admissible": [item.to_dict(profile_g=profile_g) for item in self.admissible],
+            "rejected": [item.to_dict(profile_g=profile_g) for item in self.rejected],
             "non_selection_reasons": {
                 candidate_id: list(reasons)
-                for candidate_id, reasons in sorted(
-                    self.non_selection_reasons.items()
-                )
+                for candidate_id, reasons in sorted(self.non_selection_reasons.items())
             },
             "paired_quality_cost_metrics": [
                 item.quality_cost_metrics.to_dict() for item in self.ranked
@@ -2057,18 +1894,11 @@ def _assess_evidence_aware_plan(
     candidate: EvidenceAwarePlanCandidate,
     policy: EvidenceAwarePlanPolicy,
 ) -> EvaluatedEvidenceAwarePlan:
-    missing_acceptance = _missing(
-        policy.acceptance_criteria, candidate.covered_acceptance_criteria
-    )
-    missing_evidence = _missing(
-        policy.evidence_terms, candidate.covered_evidence_terms
-    )
+    missing_acceptance = _missing(policy.acceptance_criteria, candidate.covered_acceptance_criteria)
+    missing_evidence = _missing(policy.evidence_terms, candidate.covered_evidence_terms)
     coverage_failures = tuple(
-        f"missing frozen acceptance criterion: {item}"
-        for item in missing_acceptance
-    ) + tuple(
-        f"missing objective evidence term: {item}" for item in missing_evidence
-    )
+        f"missing frozen acceptance criterion: {item}" for item in missing_acceptance
+    ) + tuple(f"missing objective evidence term: {item}" for item in missing_evidence)
     covered_count = (
         len(policy.acceptance_criteria)
         + len(policy.evidence_terms)
@@ -2080,54 +1910,42 @@ def _assess_evidence_aware_plan(
 
     unvalidated = _missing(candidate.assumptions, candidate.validated_assumptions)
     untrusted = _missing(candidate.assumptions, policy.trusted_assumptions)
-    locally_unsupported = _missing(
-        candidate.semantic_requirements, candidate.supported_semantics
-    )
-    policy_unsupported = _missing(
-        candidate.semantic_requirements, policy.supported_semantics
-    )
-    assumption_failures = tuple(
-        f"assumption lacks validation evidence: {item}" for item in unvalidated
-    ) + tuple(
-        f"assumption is not trusted by frozen policy: {item}" for item in untrusted
-    ) + tuple(
-        f"required semantics are not supported by candidate evidence: {item}"
-        for item in locally_unsupported
-    ) + tuple(
-        f"required semantics are unsupported by frozen policy: {item}"
-        for item in policy_unsupported
+    locally_unsupported = _missing(candidate.semantic_requirements, candidate.supported_semantics)
+    policy_unsupported = _missing(candidate.semantic_requirements, policy.supported_semantics)
+    assumption_failures = (
+        tuple(f"assumption lacks validation evidence: {item}" for item in unvalidated)
+        + tuple(f"assumption is not trusted by frozen policy: {item}" for item in untrusted)
+        + tuple(
+            f"required semantics are not supported by candidate evidence: {item}"
+            for item in locally_unsupported
+        )
+        + tuple(
+            f"required semantics are unsupported by frozen policy: {item}"
+            for item in policy_unsupported
+        )
     )
 
-    unsatisfied = _missing(
-        candidate.dependencies, policy.satisfied_dependencies
-    )
-    critical_unsatisfied = _missing(
-        candidate.critical_path, policy.satisfied_dependencies
-    )
-    dependency_failures = tuple(
-        f"unsatisfied dependency: {item}" for item in unsatisfied
-    )
+    unsatisfied = _missing(candidate.dependencies, policy.satisfied_dependencies)
+    critical_unsatisfied = _missing(candidate.critical_path, policy.satisfied_dependencies)
+    dependency_failures = tuple(f"unsatisfied dependency: {item}" for item in unsatisfied)
     dependency_successes = (
         f"{len(candidate.dependencies)} dependencies are satisfied",
         f"{len(candidate.critical_path)} critical-path dependencies are ready",
     )
 
-    unauthorized_candidate = _missing(
-        candidate.changed_scopes, candidate.authorized_scopes
-    )
-    unauthorized_policy = _missing(
-        candidate.changed_scopes, policy.allowed_scopes
-    )
-    conflict_failures = tuple(
-        f"unresolved conflict: {item}" for item in candidate.unresolved_conflicts
-    ) + tuple(
-        f"candidate authority does not cover changed scope: {item}"
-        for item in unauthorized_candidate
-    ) + tuple(
-        f"frozen policy does not authorize changed scope: {item}"
-        for item in unauthorized_policy
-    ) + tuple(
-        f"authority violation: {item}" for item in candidate.authority_violations
+    unauthorized_candidate = _missing(candidate.changed_scopes, candidate.authorized_scopes)
+    unauthorized_policy = _missing(candidate.changed_scopes, policy.allowed_scopes)
+    conflict_failures = (
+        tuple(f"unresolved conflict: {item}" for item in candidate.unresolved_conflicts)
+        + tuple(
+            f"candidate authority does not cover changed scope: {item}"
+            for item in unauthorized_candidate
+        )
+        + tuple(
+            f"frozen policy does not authorize changed scope: {item}"
+            for item in unauthorized_policy
+        )
+        + tuple(f"authority violation: {item}" for item in candidate.authority_violations)
     )
 
     validation_failures: tuple[str, ...] = ()
@@ -2137,40 +1955,23 @@ def _assess_evidence_aware_plan(
         validation_failures += ("required proof is not feasible",)
 
     novelty_failures = (
-        (
-            f"novelty {candidate.novelty:.6f} is below policy minimum "
-            f"{policy.min_novelty:.6f}",
-        )
+        (f"novelty {candidate.novelty:.6f} is below policy minimum {policy.min_novelty:.6f}",)
         if candidate.novelty < policy.min_novelty
         else ()
     )
 
-    missing_resources = _missing(
-        candidate.resource_classes, policy.available_resource_classes
-    )
+    missing_resources = _missing(candidate.resource_classes, policy.available_resource_classes)
     resource_failures = tuple(
-        f"required resource class is unavailable: {item}"
-        for item in missing_resources
+        f"required resource class is unavailable: {item}" for item in missing_resources
     )
     if candidate.estimated_resource_cost > policy.max_estimated_resource_cost:
-        resource_failures += (
-            "estimated resource cost exceeds the frozen policy bound",
-        )
+        resource_failures += ("estimated resource cost exceeds the frozen policy bound",)
     if candidate.estimated_tokens > policy.max_estimated_tokens:
-        resource_failures += (
-            "estimated token cost exceeds the frozen policy bound",
-        )
-    if (
-        candidate.estimated_runtime_seconds
-        > policy.max_estimated_runtime_seconds
-    ):
-        resource_failures += (
-            "estimated runtime exceeds the frozen policy bound",
-        )
+        resource_failures += ("estimated token cost exceeds the frozen policy bound",)
+    if candidate.estimated_runtime_seconds > policy.max_estimated_runtime_seconds:
+        resource_failures += ("estimated runtime exceeds the frozen policy bound",)
 
-    assumptions_total = len(candidate.assumptions) + len(
-        candidate.semantic_requirements
-    )
+    assumptions_total = len(candidate.assumptions) + len(candidate.semantic_requirements)
     assumption_score = (
         Decimal(1)
         if assumptions_total == 0
@@ -2192,14 +1993,12 @@ def _assess_evidence_aware_plan(
     # actionable without double-counting the score.
     if critical_unsatisfied:
         dependency_failures += tuple(
-            f"critical-path dependency is not ready: {item}"
-            for item in critical_unsatisfied
+            f"critical-path dependency is not ready: {item}" for item in critical_unsatisfied
         )
     cost_ratios = (
         Decimal(str(candidate.estimated_resource_cost))
         / Decimal(str(policy.max_estimated_resource_cost or 1)),
-        Decimal(candidate.estimated_tokens)
-        / Decimal(policy.max_estimated_tokens or 1),
+        Decimal(candidate.estimated_tokens) / Decimal(policy.max_estimated_tokens or 1),
         Decimal(str(candidate.estimated_runtime_seconds))
         / Decimal(str(policy.max_estimated_runtime_seconds or 1)),
     )
@@ -2208,9 +2007,7 @@ def _assess_evidence_aware_plan(
         coverage_score + Decimal(str(candidate.branch.expected_objective_delta))
     ) / Decimal(2)
     conflict_risk_score = (
-        Decimal(0)
-        if conflict_failures
-        else Decimal(1) - Decimal(str(candidate.branch.risk))
+        Decimal(0) if conflict_failures else Decimal(1) - Decimal(str(candidate.branch.risk))
     )
 
     dimensions = (
@@ -2219,8 +2016,7 @@ def _assess_evidence_aware_plan(
             failures=coverage_failures,
             successes=(
                 "all frozen acceptance criteria and objective evidence terms are covered",
-                "expected objective delta is "
-                f"{candidate.branch.expected_objective_delta:.6f}",
+                f"expected objective delta is {candidate.branch.expected_objective_delta:.6f}",
             ),
             hard_gate=True,
             score=acceptance_quality_score,
@@ -2228,9 +2024,7 @@ def _assess_evidence_aware_plan(
         _dimension(
             PlanEvaluationDimension.ASSUMPTIONS_AND_SEMANTICS,
             failures=assumption_failures,
-            successes=(
-                "all assumptions are validated and all required semantics are supported",
-            ),
+            successes=("all assumptions are validated and all required semantics are supported",),
             hard_gate=True,
             score=max(Decimal(0), assumption_score),
         ),
@@ -2261,9 +2055,7 @@ def _assess_evidence_aware_plan(
         _dimension(
             PlanEvaluationDimension.NOVELTY,
             failures=novelty_failures,
-            successes=(
-                f"novelty is {candidate.novelty:.6f}",
-            ),
+            successes=(f"novelty is {candidate.novelty:.6f}",),
             hard_gate=policy.min_novelty > 0,
             score=Decimal(str(candidate.novelty)),
         ),
@@ -2273,12 +2065,9 @@ def _assess_evidence_aware_plan(
             successes=(
                 "required resources are available",
                 f"estimated token cost is {candidate.estimated_tokens}",
-                "estimated runtime is "
-                f"{candidate.estimated_runtime_seconds:.6f} seconds",
-                "estimated resource cost is "
-                f"{candidate.estimated_resource_cost:.6f}",
-                "estimated branch cost is "
-                f"{candidate.branch.estimated_cost:.6f}",
+                f"estimated runtime is {candidate.estimated_runtime_seconds:.6f} seconds",
+                f"estimated resource cost is {candidate.estimated_resource_cost:.6f}",
+                f"estimated branch cost is {candidate.branch.estimated_cost:.6f}",
             ),
             hard_gate=True,
             score=cost_efficiency,
@@ -2291,9 +2080,7 @@ def _assess_evidence_aware_plan(
         Decimal(0),
     ) / Decimal(len(dimensions))
     failures = tuple(
-        item.dimension.value
-        for item in dimensions
-        if item.hard_gate and not item.passed
+        item.dimension.value for item in dimensions if item.hard_gate and not item.passed
     )
     return EvaluatedEvidenceAwarePlan(
         candidate=candidate,
@@ -2340,15 +2127,10 @@ def evaluate_evidence_aware_plans(
         raise ValueError("at least one evidence-aware plan candidate is required")
     candidate_ids = [item.candidate_id for item in normalized]
     duplicates = sorted(
-        candidate_id
-        for candidate_id in set(candidate_ids)
-        if candidate_ids.count(candidate_id) > 1
+        candidate_id for candidate_id in set(candidate_ids) if candidate_ids.count(candidate_id) > 1
     )
     if duplicates:
-        raise ValueError(
-            "evidence-aware candidate ids must be unique: "
-            + ", ".join(duplicates)
-        )
+        raise ValueError("evidence-aware candidate ids must be unique: " + ", ".join(duplicates))
     evaluated = [_assess_evidence_aware_plan(item, resolved_policy) for item in normalized]
     admissible = sorted(
         (item for item in evaluated if item.admissible),
@@ -2392,9 +2174,7 @@ def validate_evidence_aware_plan_evaluation(
     """
 
     if not isinstance(evaluation, EvidenceAwarePlanEvaluation):
-        raise PlanBranchValidationError(
-            "evaluation must be EvidenceAwarePlanEvaluation"
-        )
+        raise PlanBranchValidationError("evaluation must be EvidenceAwarePlanEvaluation")
     recomputed = evaluate_evidence_aware_plans(
         (item.candidate for item in evaluation.ranked),
         policy=evaluation.policy,
@@ -2422,9 +2202,7 @@ def evaluate_analysis_proposals(
     by changing its branch id or numeric claim.
     """
 
-    confidence_floor = _number(
-        min_confidence, "min_confidence", minimum=0.0, maximum=1.0
-    )
+    confidence_floor = _number(min_confidence, "min_confidence", minimum=0.0, maximum=1.0)
     novelty_floor = _number(min_novelty, "min_novelty", minimum=0.0, maximum=1.0)
     limit = int(max_novel_proposals)
     if limit < 0:
@@ -2470,9 +2248,7 @@ def evaluate_analysis_proposals(
         accepted_branch_ids.add(proposal.branch.branch_id)
 
     accepted.sort(key=lambda item: item.branch.branch_id)
-    plan_evaluation = (
-        evaluate_plan_branches(item.branch for item in accepted) if accepted else None
-    )
+    plan_evaluation = evaluate_plan_branches(item.branch for item in accepted) if accepted else None
     # Preserve deterministic rejection order but make policy failures easy to
     # compare across providers that return candidates in a different order.
     rejected.sort(
@@ -2526,9 +2302,7 @@ def _proposal_strings(
     value = _proposal_value(proposal, *names)
     field_name = names[0]
     if required and not present:
-        raise PlanBranchValidationError(
-            f"objective work proposal {field_name} must be recorded"
-        )
+        raise PlanBranchValidationError(f"objective work proposal {field_name} must be recorded")
     if value in (None, ""):
         if required and not allow_empty:
             raise PlanBranchValidationError(
@@ -2614,11 +2388,7 @@ class ObjectiveWorkEvaluationPolicy:
                 raise ValueError(f"{name} must be a non-negative integer")
         if self.remaining_token_budget is not None:
             raw_tokens = self.remaining_token_budget
-            if (
-                isinstance(raw_tokens, bool)
-                or not isinstance(raw_tokens, int)
-                or raw_tokens < 0
-            ):
+            if isinstance(raw_tokens, bool) or not isinstance(raw_tokens, int) or raw_tokens < 0:
                 raise ValueError("remaining_token_budget must be a non-negative integer or None")
 
     @property
@@ -2632,15 +2402,9 @@ class ObjectiveWorkEvaluationPolicy:
     def to_dict(self, *, profile_g: bool = False) -> dict[str, Any]:
         result = asdict(self)
         if profile_g:
-            result["min_confidence_millionths"] = _to_millionths(
-                result.pop("min_confidence")
-            )
-            result["min_novelty_millionths"] = _to_millionths(
-                result.pop("min_novelty")
-            )
-            result["max_total_cost_millionths"] = _to_millionths(
-                result.pop("max_total_cost")
-            )
+            result["min_confidence_millionths"] = _to_millionths(result.pop("min_confidence"))
+            result["min_novelty_millionths"] = _to_millionths(result.pop("min_novelty"))
+            result["max_total_cost_millionths"] = _to_millionths(result.pop("max_total_cost"))
         return result
 
 
@@ -2798,9 +2562,7 @@ def _objective_work_candidate(proposal: object) -> _ObjectiveWorkCandidate:
     # admission.  Scheduler work that omits execution/proof surfaces is not a
     # complete objective-work proposal.
     _proposal_strings(proposal, "dependencies", "depends_on")
-    _proposal_strings(
-        proposal, "predicted_files", "files", required=True, allow_empty=True
-    )
+    _proposal_strings(proposal, "predicted_files", "files", required=True, allow_empty=True)
     _proposal_strings(
         proposal,
         "predicted_symbols",
@@ -2899,15 +2661,11 @@ def evaluate_objective_work_proposals(
 
     resolved_policy = policy or ObjectiveWorkEvaluationPolicy()
     required_terms = {
-        _normalized_semantic_value(str(term))
-        for term in objective_terms
-        if str(term).strip()
+        _normalized_semantic_value(str(term)) for term in objective_terms if str(term).strip()
     }
     known_ids = {str(item).strip() for item in known_canonical_ids if str(item).strip()}
     known_semantics = {
-        _normalized_semantic_value(str(item))
-        for item in known_semantic_keys
-        if str(item).strip()
+        _normalized_semantic_value(str(item)) for item in known_semantic_keys if str(item).strip()
     }
     candidates = [_objective_work_candidate(proposal) for proposal in proposals]
     candidates.sort(
@@ -2934,8 +2692,7 @@ def evaluate_objective_work_proposals(
     for candidate in candidates:
         normalized_semantic = _normalized_semantic_value(candidate.semantic_key)
         candidate_terms = {
-            _normalized_semantic_value(term)
-            for term in candidate.parent_objective_terms
+            _normalized_semantic_value(term) for term in candidate.parent_objective_terms
         }
         work_kind = _normalized_semantic_value(
             str(_proposal_value(candidate.proposal, "kind", "work_kind", default="task"))
@@ -2950,11 +2707,7 @@ def evaluate_objective_work_proposals(
             # equivalent within the same cycle must not receive another chance.
             observed_ids.add(candidate.canonical_id)
             observed_semantics.add(normalized_semantic)
-            if (
-                work_kind != "goal"
-                and required_terms
-                and not (required_terms & candidate_terms)
-            ):
+            if work_kind != "goal" and required_terms and not (required_terms & candidate_terms):
                 reason = "no_parent_objective_term_coverage"
             elif candidate.confidence < resolved_policy.min_confidence:
                 reason = "confidence_below_threshold"
@@ -3023,9 +2776,7 @@ class PlanSearchHardFailure:
     reason_codes: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "constraint", PlanSearchHardConstraint(self.constraint)
-        )
+        object.__setattr__(self, "constraint", PlanSearchHardConstraint(self.constraint))
         object.__setattr__(
             self,
             "reason_codes",
@@ -3041,9 +2792,7 @@ class PlanSearchHardFailure:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "PlanSearchHardFailure":
         if set(payload) != {"constraint", "reason_codes"}:
-            raise PlanBranchValidationError(
-                "plan-search hard failure must use the closed schema"
-            )
+            raise PlanBranchValidationError("plan-search hard failure must use the closed schema")
         return cls(
             constraint=payload.get("constraint", ""),
             reason_codes=payload.get("reason_codes") or (),
@@ -3083,9 +2832,7 @@ class AndOrPlanBranch:
             "repository_tree_id",
             "context_id",
         ):
-            object.__setattr__(
-                self, name, _required_string(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _required_string(getattr(self, name), name))
         for name in (
             "required_obligation_ids",
             "covered_obligation_ids",
@@ -3095,7 +2842,8 @@ class AndOrPlanBranch:
             value = _string_tuple(
                 getattr(self, name),
                 name,
-                allow_empty=name in {
+                allow_empty=name
+                in {
                     "required_uncertainty_ids",
                     "reduced_uncertainty_ids",
                 },
@@ -3105,9 +2853,7 @@ class AndOrPlanBranch:
         if isinstance(self.producer_kinds, (str, bytes)) or not isinstance(
             self.producer_kinds, Sequence
         ):
-            raise PlanBranchValidationError(
-                "producer_kinds must be an array of strings"
-            )
+            raise PlanBranchValidationError("producer_kinds must be an array of strings")
         producer_kinds = tuple(
             _required_string(item, f"producer_kinds[{index}]")
             for index, item in enumerate(self.producer_kinds)
@@ -3117,30 +2863,22 @@ class AndOrPlanBranch:
                 "alternative_ids and producer_kinds must have equal length"
             )
         pairs = tuple(sorted(zip(alternative_ids, producer_kinds)))
-        object.__setattr__(
-            self, "alternative_ids", tuple(item[0] for item in pairs)
-        )
-        object.__setattr__(
-            self, "producer_kinds", tuple(item[1] for item in pairs)
-        )
+        object.__setattr__(self, "alternative_ids", tuple(item[0] for item in pairs))
+        object.__setattr__(self, "producer_kinds", tuple(item[1] for item in pairs))
         for name in (
             "critical_path_length",
             "estimated_cost_microunits",
             "estimated_tokens",
             "estimated_time_milliseconds",
         ):
-            object.__setattr__(
-                self, name, _non_negative_integer(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _non_negative_integer(getattr(self, name), name))
         for name in (
             "conflict_risk_millionths",
             "historical_failure_millionths",
         ):
             value = _non_negative_integer(getattr(self, name), name)
             if value > 1_000_000:
-                raise PlanBranchValidationError(
-                    f"{name} must be at most 1000000"
-                )
+                raise PlanBranchValidationError(f"{name} must be at most 1000000")
             object.__setattr__(self, name, value)
         failures = tuple(
             item
@@ -3180,9 +2918,7 @@ class AndOrPlanBranch:
             "estimated_cost_microunits": self.estimated_cost_microunits,
             "estimated_tokens": self.estimated_tokens,
             "estimated_time_milliseconds": self.estimated_time_milliseconds,
-            "historical_failure_millionths": (
-                self.historical_failure_millionths
-            ),
+            "historical_failure_millionths": (self.historical_failure_millionths),
             "hard_failures": [item.to_dict() for item in self.hard_failures],
         }
 
@@ -3190,9 +2926,7 @@ class AndOrPlanBranch:
     def from_dict(cls, payload: Mapping[str, Any]) -> "AndOrPlanBranch":
         fields = set(cls.__dataclass_fields__)
         if set(payload) != fields:
-            raise PlanBranchValidationError(
-                "AND/OR plan branch must use the closed schema"
-            )
+            raise PlanBranchValidationError("AND/OR plan branch must use the closed schema")
         return cls(**dict(payload))
 
 
@@ -3206,9 +2940,7 @@ class EvaluatedAndOrPlanBranch:
         if not isinstance(self.branch, AndOrPlanBranch):
             raise PlanBranchValidationError("branch must be AndOrPlanBranch")
         if self.branch.admissible != (self.score_millionths is not None):
-            raise PlanBranchValidationError(
-                "hard-pruned branches must not receive a soft score"
-            )
+            raise PlanBranchValidationError("hard-pruned branches must not receive a soft score")
         scores = dict(self.soft_scores)
         expected = {
             "evidence_coverage",
@@ -3223,19 +2955,12 @@ class EvaluatedAndOrPlanBranch:
                 "admissible branch is missing a soft evaluation dimension"
             )
         if not self.branch.admissible and scores:
-            raise PlanBranchValidationError(
-                "hard-pruned branch cannot contain soft scores"
-            )
+            raise PlanBranchValidationError("hard-pruned branch cannot contain soft scores")
         if any(
-            isinstance(value, bool)
-            or not isinstance(value, int)
-            or value < 0
-            or value > 1_000_000
+            isinstance(value, bool) or not isinstance(value, int) or value < 0 or value > 1_000_000
             for value in scores.values()
         ):
-            raise PlanBranchValidationError(
-                "soft scores must be integer millionths"
-            )
+            raise PlanBranchValidationError("soft scores must be integer millionths")
         object.__setattr__(self, "soft_scores", MappingProxyType(scores))
 
     @property
@@ -3250,13 +2975,9 @@ class EvaluatedAndOrPlanBranch:
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "EvaluatedAndOrPlanBranch":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "EvaluatedAndOrPlanBranch":
         if set(payload) != {"branch", "score_millionths", "soft_scores"}:
-            raise PlanBranchValidationError(
-                "evaluated AND/OR branch must use the closed schema"
-            )
+            raise PlanBranchValidationError("evaluated AND/OR branch must use the closed schema")
         return cls(
             branch=AndOrPlanBranch.from_dict(payload.get("branch") or {}),
             score_millionths=payload.get("score_millionths"),
@@ -3281,14 +3002,10 @@ class AndOrPlanEvaluation:
         if any(item.score_millionths is not None for item in self.pruned):
             raise PlanBranchValidationError("pruned branches must be unscored")
         if self.selected != (self.ranked[0] if self.ranked else None):
-            raise PlanBranchValidationError(
-                "selected branch must be the first deterministic rank"
-            )
+            raise PlanBranchValidationError("selected branch must be the first deterministic rank")
         ids = [item.branch_id for item in (*self.ranked, *self.pruned)]
         if len(ids) != len(set(ids)):
-            raise PlanBranchValidationError(
-                "AND/OR evaluation contains duplicate branches"
-            )
+            raise PlanBranchValidationError("AND/OR evaluation contains duplicate branches")
 
     @property
     def admissible(self) -> tuple[EvaluatedAndOrPlanBranch, ...]:
@@ -3314,16 +3031,12 @@ class AndOrPlanEvaluation:
             "ranked",
             "pruned",
         }:
-            raise PlanBranchValidationError(
-                "AND/OR evaluation must use the closed schema"
-            )
+            raise PlanBranchValidationError("AND/OR evaluation must use the closed schema")
         ranked = tuple(
-            EvaluatedAndOrPlanBranch.from_dict(item)
-            for item in payload.get("ranked") or ()
+            EvaluatedAndOrPlanBranch.from_dict(item) for item in payload.get("ranked") or ()
         )
         pruned = tuple(
-            EvaluatedAndOrPlanBranch.from_dict(item)
-            for item in payload.get("pruned") or ()
+            EvaluatedAndOrPlanBranch.from_dict(item) for item in payload.get("pruned") or ()
         )
         selected_payload = payload.get("selected")
         result = cls(
@@ -3336,9 +3049,7 @@ class AndOrPlanEvaluation:
             pruned=pruned,
             evaluator_version=payload.get("evaluator_version", ""),
         )
-        recomputed = evaluate_and_or_plan_branches(
-            item.branch for item in (*ranked, *pruned)
-        )
+        recomputed = evaluate_and_or_plan_branches(item.branch for item in (*ranked, *pruned))
         if recomputed != result:
             raise PlanBranchValidationError(
                 "AND/OR evaluation does not match deterministic recomputation"
@@ -3354,25 +3065,18 @@ def _ratio_score(observed: int, required: int) -> int:
 
 def _score_and_or_branch(branch: AndOrPlanBranch) -> EvaluatedAndOrPlanBranch:
     if branch.hard_failures:
-        return EvaluatedAndOrPlanBranch(
-            branch=branch, score_millionths=None, soft_scores={}
-        )
+        return EvaluatedAndOrPlanBranch(branch=branch, score_millionths=None, soft_scores={})
     required = set(branch.required_obligation_ids)
     covered = required.intersection(branch.covered_obligation_ids)
     uncertainties = set(branch.required_uncertainty_ids)
     reduced = uncertainties.intersection(branch.reduced_uncertainty_ids)
     scores = {
         "evidence_coverage": _ratio_score(len(covered), len(required)),
-        "uncertainty_reduction": _ratio_score(
-            len(reduced), len(uncertainties)
-        ),
+        "uncertainty_reduction": _ratio_score(len(reduced), len(uncertainties)),
         "critical_path": 1_000_000 // (1 + branch.critical_path_length),
         "conflict_risk": 1_000_000 - branch.conflict_risk_millionths,
-        "cost": 1_000_000_000_000
-        // (1_000_000 + branch.estimated_cost_microunits),
-        "historical_failure": (
-            1_000_000 - branch.historical_failure_millionths
-        ),
+        "cost": 1_000_000_000_000 // (1_000_000 + branch.estimated_cost_microunits),
+        "historical_failure": (1_000_000 - branch.historical_failure_millionths),
     }
     # Equal weights keep every named objective visible and avoid float drift.
     score = sum(scores.values()) // len(scores)
@@ -3393,14 +3097,10 @@ def evaluate_and_or_plan_branches(
         for item in branches
     )
     if not normalized:
-        raise PlanBranchValidationError(
-            "at least one AND/OR plan branch is required"
-        )
+        raise PlanBranchValidationError("at least one AND/OR plan branch is required")
     ids = [item.branch_id for item in normalized]
     if len(ids) != len(set(ids)):
-        raise PlanBranchValidationError(
-            "AND/OR plan branch identifiers must be unique"
-        )
+        raise PlanBranchValidationError("AND/OR plan branch identifiers must be unique")
     evaluated = tuple(_score_and_or_branch(item) for item in normalized)
     ranked = tuple(
         sorted(
@@ -3448,9 +3148,7 @@ def validate_and_or_plan_evaluation(
     """Recompute an AND/OR evaluation before trusting persisted scores."""
 
     if not isinstance(evaluation, AndOrPlanEvaluation):
-        raise PlanBranchValidationError(
-            "evaluation must be AndOrPlanEvaluation"
-        )
+        raise PlanBranchValidationError("evaluation must be AndOrPlanEvaluation")
     recomputed = evaluate_and_or_plan_branches(
         item.branch for item in (*evaluation.ranked, *evaluation.pruned)
     )

@@ -72,7 +72,9 @@ class TestMCPServerUNI160PdfTools(unittest.TestCase):
             with patch.dict(
                 pdf_tools._API,
                 {
-                    "pdf_ingest_to_graphrag": lambda **_: (_ for _ in ()).throw(RuntimeError("ingest backend exploded")),
+                    "pdf_ingest_to_graphrag": lambda **_: (_ for _ in ()).throw(
+                        RuntimeError("ingest backend exploded")
+                    ),
                 },
                 clear=False,
             ):
@@ -86,19 +88,26 @@ class TestMCPServerUNI160PdfTools(unittest.TestCase):
         async def _run() -> None:
             invalid_document = await pdf_tools.pdf_analyze_relationships("")
             self.assertEqual(invalid_document.get("status"), "error")
-            self.assertIn("document_id must be a non-empty string", str(invalid_document.get("error", "")))
+            self.assertIn(
+                "document_id must be a non-empty string", str(invalid_document.get("error", ""))
+            )
 
             invalid_types = await pdf_tools.pdf_analyze_relationships(
                 "doc-1",
                 relationship_types=["SIGNED_BY", ""],
             )
             self.assertEqual(invalid_types.get("status"), "error")
-            self.assertIn("relationship_types must be a list of non-empty strings", str(invalid_types.get("error", "")))
+            self.assertIn(
+                "relationship_types must be a list of non-empty strings",
+                str(invalid_types.get("error", "")),
+            )
 
             with patch.dict(
                 pdf_tools._API,
                 {
-                    "pdf_analyze_relationships": lambda **_: (_ for _ in ()).throw(RuntimeError("relationships backend exploded")),
+                    "pdf_analyze_relationships": lambda **_: (_ for _ in ()).throw(
+                        RuntimeError("relationships backend exploded")
+                    ),
                 },
                 clear=False,
             ):
@@ -112,23 +121,33 @@ class TestMCPServerUNI160PdfTools(unittest.TestCase):
         async def _run() -> None:
             invalid_docs = await pdf_tools.pdf_cross_document_analysis(document_ids=[])
             self.assertEqual(invalid_docs.get("status"), "error")
-            self.assertIn("document_ids must be provided as a non-empty array", str(invalid_docs.get("error", "")))
+            self.assertIn(
+                "document_ids must be provided as a non-empty array",
+                str(invalid_docs.get("error", "")),
+            )
 
             invalid_types = await pdf_tools.pdf_cross_document_analysis(
                 document_ids=["doc-1", "doc-2"],
                 analysis_types=["entities", ""],
             )
             self.assertEqual(invalid_types.get("status"), "error")
-            self.assertIn("analysis_types must be a list of non-empty strings", str(invalid_types.get("error", "")))
+            self.assertIn(
+                "analysis_types must be a list of non-empty strings",
+                str(invalid_types.get("error", "")),
+            )
 
             with patch.dict(
                 pdf_tools._API,
                 {
-                    "pdf_cross_document_analysis": lambda **_: (_ for _ in ()).throw(RuntimeError("cross-document backend exploded")),
+                    "pdf_cross_document_analysis": lambda **_: (_ for _ in ()).throw(
+                        RuntimeError("cross-document backend exploded")
+                    ),
                 },
                 clear=False,
             ):
-                wrapped = await pdf_tools.pdf_cross_document_analysis(document_ids=["doc-1", "doc-2"])
+                wrapped = await pdf_tools.pdf_cross_document_analysis(
+                    document_ids=["doc-1", "doc-2"]
+                )
             self.assertEqual(wrapped.get("status"), "error")
             self.assertIn("pdf_cross_document_analysis failed", str(wrapped.get("error", "")))
 
@@ -143,7 +162,9 @@ class TestMCPServerUNI160PdfTools(unittest.TestCase):
             with patch.dict(
                 pdf_tools._API,
                 {
-                    "pdf_query_corpus": lambda **_: (_ for _ in ()).throw(RuntimeError("query backend exploded")),
+                    "pdf_query_corpus": lambda **_: (_ for _ in ()).throw(
+                        RuntimeError("query backend exploded")
+                    ),
                 },
                 clear=False,
             ):
@@ -157,21 +178,28 @@ class TestMCPServerUNI160PdfTools(unittest.TestCase):
         async def _run() -> None:
             invalid_source = await pdf_tools.pdf_extract_entities(pdf_source="")
             self.assertEqual(invalid_source.get("status"), "error")
-            self.assertIn("pdf_source must be a non-empty string", str(invalid_source.get("error", "")))
+            self.assertIn(
+                "pdf_source must be a non-empty string", str(invalid_source.get("error", ""))
+            )
 
             invalid_entities = await pdf_tools.pdf_extract_entities(
                 pdf_source="file.pdf",
                 entity_types=["ORG", ""],
             )
             self.assertEqual(invalid_entities.get("status"), "error")
-            self.assertIn("entity_types must be a list of non-empty strings", str(invalid_entities.get("error", "")))
+            self.assertIn(
+                "entity_types must be a list of non-empty strings",
+                str(invalid_entities.get("error", "")),
+            )
 
             invalid_patterns = await pdf_tools.pdf_extract_entities(
                 pdf_source="file.pdf",
                 custom_patterns=["bad"],
             )
             self.assertEqual(invalid_patterns.get("status"), "error")
-            self.assertIn("custom_patterns must be an object", str(invalid_patterns.get("error", "")))
+            self.assertIn(
+                "custom_patterns must be an object", str(invalid_patterns.get("error", ""))
+            )
 
         anyio.run(_run)
 
@@ -179,19 +207,27 @@ class TestMCPServerUNI160PdfTools(unittest.TestCase):
         async def _run() -> None:
             invalid_sources = await pdf_tools.pdf_batch_process(pdf_sources=[""])
             self.assertEqual(invalid_sources.get("status"), "error")
-            self.assertIn("pdf_sources entries must be non-empty strings or objects", str(invalid_sources.get("error", "")))
+            self.assertIn(
+                "pdf_sources entries must be non-empty strings or objects",
+                str(invalid_sources.get("error", "")),
+            )
 
             invalid_callback = await pdf_tools.pdf_batch_process(
                 pdf_sources=["a.pdf"],
                 progress_callback="",
             )
             self.assertEqual(invalid_callback.get("status"), "error")
-            self.assertIn("progress_callback must be a non-empty string", str(invalid_callback.get("error", "")))
+            self.assertIn(
+                "progress_callback must be a non-empty string",
+                str(invalid_callback.get("error", "")),
+            )
 
             with patch.dict(
                 pdf_tools._API,
                 {
-                    "pdf_batch_process": lambda **_: (_ for _ in ()).throw(RuntimeError("batch backend exploded")),
+                    "pdf_batch_process": lambda **_: (_ for _ in ()).throw(
+                        RuntimeError("batch backend exploded")
+                    ),
                 },
                 clear=False,
             ):
@@ -203,9 +239,13 @@ class TestMCPServerUNI160PdfTools(unittest.TestCase):
 
     def test_pdf_query_knowledge_graph_validation_and_exception_envelope(self) -> None:
         async def _run() -> None:
-            invalid_graph = await pdf_tools.pdf_query_knowledge_graph(graph_id="", query="MATCH (n) RETURN n")
+            invalid_graph = await pdf_tools.pdf_query_knowledge_graph(
+                graph_id="", query="MATCH (n) RETURN n"
+            )
             self.assertEqual(invalid_graph.get("status"), "error")
-            self.assertIn("graph_id must be a non-empty string", str(invalid_graph.get("error", "")))
+            self.assertIn(
+                "graph_id must be a non-empty string", str(invalid_graph.get("error", ""))
+            )
 
             invalid_type = await pdf_tools.pdf_query_knowledge_graph(
                 graph_id="graph-1",
@@ -218,7 +258,9 @@ class TestMCPServerUNI160PdfTools(unittest.TestCase):
             with patch.dict(
                 pdf_tools._API,
                 {
-                    "pdf_query_knowledge_graph": lambda **_: (_ for _ in ()).throw(RuntimeError("graph backend exploded")),
+                    "pdf_query_knowledge_graph": lambda **_: (_ for _ in ()).throw(
+                        RuntimeError("graph backend exploded")
+                    ),
                 },
                 clear=False,
             ):
@@ -243,12 +285,17 @@ class TestMCPServerUNI160PdfTools(unittest.TestCase):
                 overlap_size=200,
             )
             self.assertEqual(invalid_overlap.get("status"), "error")
-            self.assertIn("overlap_size must be less than or equal to max_chunk_size", str(invalid_overlap.get("error", "")))
+            self.assertIn(
+                "overlap_size must be less than or equal to max_chunk_size",
+                str(invalid_overlap.get("error", "")),
+            )
 
             with patch.dict(
                 pdf_tools._API,
                 {
-                    "pdf_optimize_for_llm": lambda **_: (_ for _ in ()).throw(RuntimeError("optimize backend exploded")),
+                    "pdf_optimize_for_llm": lambda **_: (_ for _ in ()).throw(
+                        RuntimeError("optimize backend exploded")
+                    ),
                 },
                 clear=False,
             ):
@@ -305,7 +352,9 @@ class TestMCPServerUNI160PdfTools(unittest.TestCase):
                 self.assertEqual(optimized.get("status"), "error")
                 self.assertEqual(optimized.get("error"), "pdf delegate failure")
 
-                graph = await pdf_tools.pdf_query_knowledge_graph(graph_id="graph-1", query="MATCH (n) RETURN n")
+                graph = await pdf_tools.pdf_query_knowledge_graph(
+                    graph_id="graph-1", query="MATCH (n) RETURN n"
+                )
                 self.assertEqual(graph.get("status"), "error")
                 self.assertEqual(graph.get("error"), "pdf delegate failure")
 

@@ -34,16 +34,17 @@ Implemented **double-checked locking** pattern with a threading.Lock:
 # AFTER (THREAD-SAFE):
 _global_cache_lock = Lock()
 
+
 def get_global_cache(**kwargs):
     global _global_cache
-    
+
     # First check (without lock, for performance)
     if _global_cache is None:
         with _global_cache_lock:  # ← Acquire lock
             # Second check (with lock, ensures only one thread creates instance)
             if _global_cache is None:
                 _global_cache = GitHubAPICache(**kwargs)
-    
+
     return _global_cache
 ```
 

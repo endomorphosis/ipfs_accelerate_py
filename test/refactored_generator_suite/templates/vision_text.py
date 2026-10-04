@@ -8,20 +8,27 @@ This module provides the architecture template for vision-text models like CLIP,
 from typing import Dict, Any, List
 from .base_architecture import BaseArchitectureTemplate
 
+
 class VisionTextArchitectureTemplate(BaseArchitectureTemplate):
     """Template for vision-text architecture models like CLIP, BLIP, etc."""
-    
+
     def __init__(self):
         """Initialize the vision-text architecture template."""
         super().__init__()
         self.architecture_type = "vision-encoder-text-decoder"
         self.architecture_name = "Vision-Text Architecture"
-        self.supported_task_types = ["image_text_matching", "visual_question_answering", "image_captioning"]
+        self.supported_task_types = [
+            "image_text_matching",
+            "visual_question_answering",
+            "image_captioning",
+        ]
         self.default_task_type = "image_text_matching"
-        self.model_description = "This is a multimodal model that processes both vision and text inputs."
+        self.model_description = (
+            "This is a multimodal model that processes both vision and text inputs."
+        )
         self.hidden_size = 768  # Default hidden size, varies by model
         self.test_input = "test.jpg"  # Default test file for images
-        
+
     def get_model_class(self, task_type: str) -> str:
         """Get vision-text model class for task type."""
         if task_type == "image_text_matching":
@@ -32,14 +39,14 @@ class VisionTextArchitectureTemplate(BaseArchitectureTemplate):
             return "self.transformers.VisionEncoderDecoderModel"
         else:
             return "self.transformers.AutoModel"
-    
+
     def get_processor_class(self, task_type: str) -> str:
         """Get vision-text processor class for task type."""
         if task_type == "image_text_matching":
             return "self.transformers.CLIPProcessor"
         else:
             return "self.transformers.AutoProcessor"
-    
+
     def get_input_processing_code(self, task_type: str) -> str:
         """Get vision-text input processing code."""
         if task_type == "image_text_matching":
@@ -226,7 +233,7 @@ else:
 # Move inputs to device
 inputs = {k: v.to(device) for k, v in inputs.items()}
 """
-    
+
     def get_output_processing_code(self, task_type: str) -> str:
         """Get vision-text output processing code."""
         if task_type == "image_text_matching":
@@ -293,7 +300,7 @@ else:
     # Fallback to returning the full output
     result = outputs
 """
-    
+
     def get_mock_processor_code(self) -> str:
         """Get vision-text mock processor code."""
         return """
@@ -336,7 +343,7 @@ def mock_tokenize(text=None, images=None, return_tensors="pt", padding=None, tru
     
     return result
 """
-    
+
     def get_mock_output_code(self) -> str:
         """Get vision-text mock output code."""
         return """
@@ -347,7 +354,7 @@ result.text_embeds = torch.rand((batch_size, hidden_size))
 result.image_embeds = torch.rand((batch_size, hidden_size))
 return result
 """
-    
+
     def get_compatibility_matrix(self) -> Dict[str, bool]:
         """Get vision-text hardware compatibility matrix."""
         return {
@@ -356,5 +363,5 @@ return result
             "rocm": True,
             "mps": True,
             "openvino": True,
-            "qnn": False  # Limited support for multimodal models in Qualcomm QNN
+            "qnn": False,  # Limited support for multimodal models in Qualcomm QNN
         }

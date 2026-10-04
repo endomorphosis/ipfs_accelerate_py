@@ -94,7 +94,9 @@ image_sizes = [(image.height, image.width) for image in images]
 outputs = processor.post_process_keypoint_detection(outputs, image_sizes)
 
 for output in outputs:
-    for keypoints, scores, descriptors in zip(output["keypoints"], output["scores"], output["descriptors"]):
+    for keypoints, scores, descriptors in zip(
+        output["keypoints"], output["scores"], output["descriptors"]
+    ):
         print(f"Keypoints: {keypoints}")
         print(f"Scores: {scores}")
         print(f"Descriptors: {descriptors}")
@@ -111,7 +113,7 @@ plt.scatter(
     outputs[0]["keypoints"][:, 1],
     c=outputs[0]["scores"] * 100,
     s=outputs[0]["scores"] * 50,
-    alpha=0.8
+    alpha=0.8,
 )
 plt.savefig(f"output_image.png")
 ```

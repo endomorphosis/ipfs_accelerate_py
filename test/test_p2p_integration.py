@@ -13,7 +13,7 @@ import sys
 import json
 import logging
 
-logging.basicConfig(level=logging.INFO, format='%(message)s')
+logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -22,16 +22,21 @@ def test_backend_functions():
     logger.info("\n=== Testing Backend Functions ===\n")
 
     try:
-        from ipfs_accelerate_py.mcp_server.tools.dashboard_data import get_peer_status, get_cache_stats
+        from ipfs_accelerate_py.mcp_server.tools.dashboard_data import (
+            get_peer_status,
+            get_cache_stats,
+        )
 
         # Test get_peer_status
         logger.info("1. Testing get_peer_status()...")
         peer_status = get_peer_status()
         logger.info(f"   Result: {json.dumps(peer_status, indent=6)}")
 
-        if not peer_status.get('enabled'):
+        if not peer_status.get("enabled"):
             logger.info("   ⚠️  P2P is disabled (libp2p not installed)")
-            logger.info("   💡 To enable: pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p.git@main' pymultihash>=0.8.2")
+            logger.info(
+                "   💡 To enable: pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p.git@main' pymultihash>=0.8.2"
+            )
         else:
             logger.info("   ✅ P2P is enabled")
             logger.info(f"   📊 Connected peers: {peer_status.get('peer_count', 0)}")
@@ -39,9 +44,11 @@ def test_backend_functions():
         # Test get_cache_stats
         logger.info("\n2. Testing get_cache_stats()...")
         cache_stats = get_cache_stats()
-        logger.info(f"   Result: {json.dumps({k: v for k, v in cache_stats.items() if k in ['available', 'p2p_enabled', 'p2p_peers', 'total_entries']}, indent=6)}")
+        logger.info(
+            f"   Result: {json.dumps({k: v for k, v in cache_stats.items() if k in ['available', 'p2p_enabled', 'p2p_peers', 'total_entries']}, indent=6)}"
+        )
 
-        if cache_stats.get('available'):
+        if cache_stats.get("available"):
             logger.info("   ✅ Cache is available")
         else:
             logger.info("   ❌ Cache is not available")
@@ -59,19 +66,25 @@ def test_frontend_functions():
 
     try:
         # Read dashboard.js
-        with open('ipfs_accelerate_py/static/js/dashboard.js', 'r') as f:
+        with open("ipfs_accelerate_py/static/js/dashboard.js", "r") as f:
             content = f.read()
 
         checks = [
-            ('refreshPeerStatus() defined', 'async function refreshPeerStatus()' in content),
-            ('refreshCacheStats() defined', 'async function refreshCacheStats()' in content),
-            ('refreshPeerStatus() called in overview', 'refreshPeerStatus()' in content and 'case \'overview\':' in content),
-            ('refreshCacheStats() called in overview', 'refreshCacheStats()' in content and 'case \'overview\':' in content),
-            ('API endpoint /api/mcp/peers', '/api/mcp/peers' in content),
-            ('API endpoint /api/mcp/cache/stats', '/api/mcp/cache/stats' in content),
-            ('peer-status element updated', 'getElementById(\'peer-status\')' in content),
-            ('peer-count element updated', 'getElementById(\'peer-count\')' in content),
-            ('p2p-enabled element updated', 'getElementById(\'p2p-enabled\')' in content),
+            ("refreshPeerStatus() defined", "async function refreshPeerStatus()" in content),
+            ("refreshCacheStats() defined", "async function refreshCacheStats()" in content),
+            (
+                "refreshPeerStatus() called in overview",
+                "refreshPeerStatus()" in content and "case 'overview':" in content,
+            ),
+            (
+                "refreshCacheStats() called in overview",
+                "refreshCacheStats()" in content and "case 'overview':" in content,
+            ),
+            ("API endpoint /api/mcp/peers", "/api/mcp/peers" in content),
+            ("API endpoint /api/mcp/cache/stats", "/api/mcp/cache/stats" in content),
+            ("peer-status element updated", "getElementById('peer-status')" in content),
+            ("peer-count element updated", "getElementById('peer-count')" in content),
+            ("p2p-enabled element updated", "getElementById('p2p-enabled')" in content),
         ]
 
         all_passed = True
@@ -101,13 +114,17 @@ def test_api_routes():
         logger.info("1. Checking Flask routes exist...")
 
         # Read mcp_dashboard.py source
-        with open('ipfs_accelerate_py/mcp_dashboard.py', 'r') as f:
+        with open("ipfs_accelerate_py/mcp_dashboard.py", "r") as f:
             content = f.read()
 
         checks = [
-            ('/api/mcp/peers route', '@self.app.route(\'/api/mcp/peers\')' in content),
-            ('/api/mcp/cache/stats route', '@self.app.route(\'/api/mcp/cache/stats\')' in content),
-            ('get_peer_status import', 'from ipfs_accelerate_py.mcp_server.tools.dashboard_data import get_peer_status' in content),
+            ("/api/mcp/peers route", "@self.app.route('/api/mcp/peers')" in content),
+            ("/api/mcp/cache/stats route", "@self.app.route('/api/mcp/cache/stats')" in content),
+            (
+                "get_peer_status import",
+                "from ipfs_accelerate_py.mcp_server.tools.dashboard_data import get_peer_status"
+                in content,
+            ),
         ]
 
         all_passed = True
@@ -130,9 +147,13 @@ def check_libp2p_installation():
     logger.info("\n=== Checking libp2p Installation ===\n")
 
     dependencies = [
-        ('libp2p', 'libp2p', "pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p.git@main'"),
-        ('pymultihash', 'pymultihash', 'pip install pymultihash>=0.8.2'),
-        ('multiformats', 'multiformats', 'pip install multiformats>=0.3.0'),
+        (
+            "libp2p",
+            "libp2p",
+            "pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p.git@main'",
+        ),
+        ("pymultihash", "pymultihash", "pip install pymultihash>=0.8.2"),
+        ("multiformats", "multiformats", "pip install multiformats>=0.3.0"),
     ]
 
     all_installed = True
@@ -155,10 +176,10 @@ def main():
     logger.info("=" * 70)
 
     results = {
-        'Backend Functions': test_backend_functions(),
-        'Frontend Functions': test_frontend_functions(),
-        'API Routes': test_api_routes(),
-        'libp2p Installation': check_libp2p_installation(),
+        "Backend Functions": test_backend_functions(),
+        "Frontend Functions": test_frontend_functions(),
+        "API Routes": test_api_routes(),
+        "libp2p Installation": check_libp2p_installation(),
     }
 
     logger.info("\n" + "=" * 70)
@@ -189,5 +210,5 @@ def main():
     return 0 if all_passed else 1
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

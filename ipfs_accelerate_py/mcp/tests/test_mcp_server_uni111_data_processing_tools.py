@@ -62,7 +62,9 @@ class TestMCPServerUNI111DataProcessingTools(unittest.TestCase):
 
     def test_transform_data_rejects_non_object_parameters(self) -> None:
         async def _run() -> None:
-            result = await transform_data(data={"x": 1}, transformation="normalize", parameters=["bad"])  # type: ignore[arg-type]
+            result = await transform_data(
+                data={"x": 1}, transformation="normalize", parameters=["bad"]
+            )  # type: ignore[arg-type]
             self.assertEqual(result.get("status"), "error")
             self.assertIn("parameters must be an object", str(result.get("message", "")))
 
@@ -72,13 +74,17 @@ class TestMCPServerUNI111DataProcessingTools(unittest.TestCase):
         async def _run() -> None:
             result = await convert_format(data={"x": 1}, source_format="", target_format="json")
             self.assertEqual(result.get("status"), "error")
-            self.assertIn("source_format and target_format are required", str(result.get("message", "")))
+            self.assertIn(
+                "source_format and target_format are required", str(result.get("message", ""))
+            )
 
         anyio.run(_run)
 
     def test_convert_format_rejects_non_object_options(self) -> None:
         async def _run() -> None:
-            result = await convert_format(data={"x": 1}, source_format="json", target_format="json", options="bad")  # type: ignore[arg-type]
+            result = await convert_format(
+                data={"x": 1}, source_format="json", target_format="json", options="bad"
+            )  # type: ignore[arg-type]
             self.assertEqual(result.get("status"), "error")
             self.assertIn("options must be an object", str(result.get("message", "")))
 
@@ -94,7 +100,9 @@ class TestMCPServerUNI111DataProcessingTools(unittest.TestCase):
 
     def test_validate_data_rejects_non_array_rules(self) -> None:
         async def _run() -> None:
-            result = await validate_data(data={"x": 1}, validation_type="schema", rules={"bad": True})  # type: ignore[arg-type]
+            result = await validate_data(
+                data={"x": 1}, validation_type="schema", rules={"bad": True}
+            )  # type: ignore[arg-type]
             self.assertEqual(result.get("status"), "error")
             self.assertIn("rules must be an array", str(result.get("message", "")))
 
@@ -102,13 +110,17 @@ class TestMCPServerUNI111DataProcessingTools(unittest.TestCase):
 
     def test_validate_data_rejects_non_object_rules_entries(self) -> None:
         async def _run() -> None:
-            result = await validate_data(data={"x": 1}, validation_type="schema", rules=[{"ok": True}, "bad"])  # type: ignore[list-item]
+            result = await validate_data(
+                data={"x": 1}, validation_type="schema", rules=[{"ok": True}, "bad"]
+            )  # type: ignore[list-item]
             self.assertEqual(result.get("status"), "error")
             self.assertIn("rules entries must be objects", str(result.get("message", "")))
 
         anyio.run(_run)
 
-    def test_data_processing_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+    def test_data_processing_wrappers_infer_error_status_from_contradictory_delegate_payloads(
+        self,
+    ) -> None:
         async def _contradictory_failure(**_: object) -> dict:
             return {"status": "success", "success": False, "error": "delegate failed"}
 
@@ -125,7 +137,9 @@ class TestMCPServerUNI111DataProcessingTools(unittest.TestCase):
             ):
                 chunked = await chunk_text(text="abcdef")
                 transformed = await transform_data(data={"x": 1}, transformation="normalize")
-                converted = await convert_format(data={"x": 1}, source_format="json", target_format="yaml")
+                converted = await convert_format(
+                    data={"x": 1}, source_format="json", target_format="yaml"
+                )
                 validated = await validate_data(data={"x": 1}, validation_type="schema")
 
             self.assertEqual(chunked.get("status"), "error")

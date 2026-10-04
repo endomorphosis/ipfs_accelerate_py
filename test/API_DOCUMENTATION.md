@@ -14,9 +14,7 @@ accelerator = create_accelerator(auto_detect_hardware=True)
 
 # Run inference with automatic hardware selection
 result = accelerate(
-    model_id="bert-base-uncased",
-    model_type="text",
-    input="This is a sample text for embedding."
+    model_id="bert-base-uncased", model_type="text", input="This is a sample text for embedding."
 )
 ```
 
@@ -26,7 +24,7 @@ result = accelerate(
 from ipfs_accelerate.hardware import (
     HardwareAbstraction,
     detect_hardware_capabilities,
-    get_optimal_backend
+    get_optimal_backend,
 )
 
 # Get hardware capabilities
@@ -35,7 +33,7 @@ capabilities = detect_hardware_capabilities()
 # Create hardware abstraction layer with specific backends
 hal = HardwareAbstraction(
     backend_order=["cuda", "openvino", "cpu"],
-    model_preferences={"text": "cuda", "vision": "openvino"}
+    model_preferences={"text": "cuda", "vision": "openvino"},
 )
 
 # Initialize hardware backends
@@ -45,11 +43,7 @@ hal.initialize()
 backend = get_optimal_backend("text", capabilities)
 
 # Execute operation on specific backend
-result = hal.execute(
-    operation="matmul",
-    inputs={"a": tensor_a, "b": tensor_b},
-    backend="cuda"
-)
+result = hal.execute(operation="matmul", inputs={"a": tensor_a, "b": tensor_b}, backend="cuda")
 ```
 
 ### Resource Pool
@@ -61,7 +55,7 @@ from ipfs_accelerate.resource_pool import ResourcePool
 pool = ResourcePool(
     max_memory=8 * 1024 * 1024 * 1024,  # 8GB
     device_prefixes=["cuda", "cpu"],
-    enable_memory_tracking=True
+    enable_memory_tracking=True,
 )
 
 # Register a model with the pool
@@ -82,7 +76,7 @@ from ipfs_accelerate.hardware.detection import (
     check_cuda_support,
     check_openvino_support,
     check_mps_support,
-    get_ram_info
+    get_ram_info,
 )
 
 # Detect all hardware capabilities
@@ -103,11 +97,7 @@ print(f"CUDA compute capability: {cuda_info['compute_capability']}")
 ### Model Loading
 
 ```python
-from ipfs_accelerate.models import (
-    load_model,
-    list_available_models,
-    get_model_info
-)
+from ipfs_accelerate.models import load_model, list_available_models, get_model_info
 
 # Get available models
 models = list_available_models()
@@ -121,7 +111,7 @@ model = load_model(
     model_type="text",
     device="cuda",
     quantization="int8",
-    batch_size=8
+    batch_size=8,
 )
 
 # Run inference
@@ -135,7 +125,7 @@ from ipfs_accelerate.benchmark import (
     benchmark_model,
     compare_hardware,
     profile_memory,
-    generate_report
+    generate_report,
 )
 
 # Benchmark a model on specific hardware
@@ -144,29 +134,21 @@ results = benchmark_model(
     hardware=["cuda", "openvino", "cpu"],
     batch_sizes=[1, 2, 4, 8, 16],
     iterations=100,
-    warmup=10
+    warmup=10,
 )
 
 # Compare hardware performance
 comparison = compare_hardware(
-    model_id="bert-base-uncased",
-    hardware=["cuda", "openvino", "cpu"],
-    metric="throughput"
+    model_id="bert-base-uncased", hardware=["cuda", "openvino", "cpu"], metric="throughput"
 )
 
 # Profile memory usage
 memory_profile = profile_memory(
-    model_id="bert-base-uncased",
-    hardware="cuda",
-    batch_sizes=[1, 8, 16]
+    model_id="bert-base-uncased", hardware="cuda", batch_sizes=[1, 8, 16]
 )
 
 # Generate benchmark report
-report = generate_report(
-    results=results,
-    format="html",
-    output_path="benchmark_report.html"
-)
+report = generate_report(results=results, format="html", output_path="benchmark_report.html")
 ```
 
 ## TypeScript SDK API
@@ -558,9 +540,7 @@ from duckdb_api.simulation_validation.db_integration import SimulationValidation
 from duckdb_api.simulation_validation.simulation_validation_framework import get_framework_instance
 
 # Initialize database integration
-db_integration = SimulationValidationDBIntegration(
-    db_path="benchmark_db.duckdb"
-)
+db_integration = SimulationValidationDBIntegration(db_path="benchmark_db.duckdb")
 
 # Initialize database schema
 db_integration.initialize_database()
@@ -576,10 +556,7 @@ db_integration.store_drift_detection_results(drift_results)
 hw_results = db_integration.get_simulation_results_by_hardware("gpu_rtx3080")
 model_results = db_integration.get_hardware_results_by_model("bert-base-uncased")
 validation_results = db_integration.get_validation_results_by_criteria(
-    hardware_id="gpu_rtx3080",
-    model_id="bert-base-uncased",
-    batch_size=16,
-    precision="fp16"
+    hardware_id="gpu_rtx3080", model_id="bert-base-uncased", batch_size=16, precision="fp16"
 )
 
 # Get latest calibration parameters
@@ -587,8 +564,7 @@ latest_params = db_integration.get_latest_calibration_parameters()
 
 # Get drift detection history
 drift_history = db_integration.get_drift_detection_history(
-    hardware_type="gpu_rtx3080",
-    model_type="bert-base-uncased"
+    hardware_type="gpu_rtx3080", model_type="bert-base-uncased"
 )
 
 # Get MAPE by hardware and model
@@ -596,14 +572,13 @@ mape_results = db_integration.get_mape_by_hardware_and_model()
 
 # Analyze calibration effectiveness
 effectiveness = db_integration.analyze_calibration_effectiveness(
-    before_version="uncalibrated_v1.0",
-    after_version="calibrated_v1.0"
+    before_version="uncalibrated_v1.0", after_version="calibrated_v1.0"
 )
 
 # Export visualization data
 db_integration.export_visualization_data(
     export_path="visualization_data.json",
-    metrics=["throughput_items_per_second", "average_latency_ms"]
+    metrics=["throughput_items_per_second", "average_latency_ms"],
 )
 
 # Integrate with the framework

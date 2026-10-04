@@ -408,16 +408,12 @@ def test_undeclared_shared_checkout_mutation_fails_before_validation_or_completi
     assert result["validation_result"]["attempted"] is False
     assert validation_calls == []
     assert completion_calls == []
-    assert protected.read_text(encoding="utf-8") == (
-        '{"human_review_asserted": true}\n'
-    )
+    assert protected.read_text(encoding="utf-8") == ('{"human_review_asserted": true}\n')
     assert result["protected_path_violation"]["shared_checkout_restored"] is False
     incident = json.loads(
-        (
-            tmp_path
-            / "state"
-            / "implementation-protected-path-incident.json"
-        ).read_text(encoding="utf-8")
+        (tmp_path / "state" / "implementation-protected-path-incident.json").read_text(
+            encoding="utf-8"
+        )
     )
     assert incident["requires_operator_clearance"] is True
 
@@ -427,9 +423,7 @@ def test_external_protected_update_preserves_candidate_without_consuming_attempt
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     daemon, repo, _workspace, protected = _protected_git_worktree_daemon(tmp_path)
-    seeded_context_path = (
-        repo / "docs" / "architecture" / "untracked-operator-context.md"
-    )
+    seeded_context_path = repo / "docs" / "architecture" / "untracked-operator-context.md"
     seeded_context_path.parent.mkdir(parents=True)
     seeded_context_path.write_text(
         "operator context that the implementation did not change\n",
@@ -478,10 +472,7 @@ def test_external_protected_update_preserves_candidate_without_consuming_attempt
             "git",
             "cat-file",
             "-e",
-            (
-                f"{rescue_branch}:"
-                "docs/architecture/untracked-operator-context.md"
-            ),
+            (f"{rescue_branch}:docs/architecture/untracked-operator-context.md"),
         ],
         cwd=repo,
         text=True,
@@ -537,9 +528,7 @@ def test_validation_mutation_fails_before_shared_checkout_completion(
 
     assert result["returncode"] == 1
     assert result["reason"] == "implementation_protected_path_mutated"
-    assert result["validation_result"]["reason"] == (
-        "implementation_protected_path_mutated"
-    )
+    assert result["validation_result"]["reason"] == ("implementation_protected_path_mutated")
     assert completion_calls == []
     assert protected.read_text(encoding="utf-8") == "changed-by-validation\n"
 
@@ -629,11 +618,7 @@ def test_crash_snapshot_reconciliation_accepts_device_renumbering_only(
         attempt=1,
         workspace_path=workspace,
     )
-    active_path = (
-        tmp_path
-        / "state"
-        / "implementation-protected-path-active.json"
-    )
+    active_path = tmp_path / "state" / "implementation-protected-path-active.json"
     active = json.loads(active_path.read_text(encoding="utf-8"))
     assert set(active["snapshot"]) == {"shared_checkout", "workspace"}
     for scope in active["snapshot"].values():
@@ -649,11 +634,7 @@ def test_crash_snapshot_reconciliation_accepts_device_renumbering_only(
     assert result["blocked"] is False
     assert result["reason"] == "crash_reconciliation_device_renumbered"
     assert not active_path.exists()
-    assert not (
-        tmp_path
-        / "state"
-        / "implementation-protected-path-incident.json"
-    ).exists()
+    assert not (tmp_path / "state" / "implementation-protected-path-incident.json").exists()
 
 
 def test_crash_snapshot_reconciliation_rejects_device_and_inode_changes(
@@ -668,11 +649,7 @@ def test_crash_snapshot_reconciliation_rejects_device_and_inode_changes(
         attempt=1,
         workspace_path=tmp_path,
     )
-    active_path = (
-        tmp_path
-        / "state"
-        / "implementation-protected-path-active.json"
-    )
+    active_path = tmp_path / "state" / "implementation-protected-path-active.json"
     active = json.loads(active_path.read_text(encoding="utf-8"))
     for scope in active["snapshot"].values():
         for identity in scope["paths"].values():
@@ -785,9 +762,7 @@ def test_crash_reconciliation_rejects_missing_ephemeral_workspace_when_shared_ch
 def test_ephemeral_snapshot_rejects_checkout_without_git_identity(
     tmp_path: Path,
 ) -> None:
-    daemon, repo, workspace, _protected = _protected_git_worktree_daemon(
-        tmp_path
-    )
+    daemon, repo, workspace, _protected = _protected_git_worktree_daemon(tmp_path)
     _git(repo, "worktree", "remove", "--force", str(workspace))
     workspace.mkdir()
 
@@ -804,12 +779,9 @@ def test_ephemeral_snapshot_rejects_checkout_without_git_identity(
     assert not daemon._implementation_protected_active_snapshot_path().exists()
     assert not daemon._implementation_protected_incident_path().exists()
     events = [
-        json.loads(line)
-        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+        json.loads(line) for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
     ]
-    assert events[-1]["type"] == (
-        "implementation_protected_path_snapshot_failed"
-    )
+    assert events[-1]["type"] == ("implementation_protected_path_snapshot_failed")
     assert events[-1]["errors"][-1]["identity"]["error"] == (
         "ephemeral workspace has no stable Git HEAD"
     )
@@ -849,14 +821,12 @@ def test_ephemeral_fence_accepts_concurrent_daemon_owned_completion_commit(
     assert violation == {}
     assert not daemon._implementation_protected_incident_path().exists()
     events = [
-        json.loads(line)
-        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+        json.loads(line) for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
     ]
     accepted = [
         event
         for event in events
-        if event["type"]
-        == "implementation_protected_path_concurrent_update_accepted"
+        if event["type"] == "implementation_protected_path_concurrent_update_accepted"
     ]
     assert len(accepted) == 1
     assert accepted[0]["before_head"] != accepted[0]["after_head"]
@@ -884,9 +854,7 @@ def test_ephemeral_fence_accepts_tagged_generated_board_commit(
         f"user.email={BACKLOG_REFINERY_AUTHOR_EMAIL}",
         "commit",
         "-m",
-        generated_protected_board_commit_subject(
-            "Agent: record retry-budget guardrail outputs"
-        ),
+        generated_protected_board_commit_subject("Agent: record retry-budget guardrail outputs"),
     )
 
     violation = daemon._implementation_protected_path_violation(
@@ -984,9 +952,7 @@ def test_operator_clearance_requires_exact_untrusted_commit_and_writes_receipt(
     assert cleared["approved_commits"] == [operator_commit]
     assert not daemon._implementation_protected_incident_path().exists()
     assert not daemon._implementation_protected_active_snapshot_path().exists()
-    receipt = json.loads(
-        Path(cleared["receipt_path"]).read_text(encoding="utf-8")
-    )
+    receipt = json.loads(Path(cleared["receipt_path"]).read_text(encoding="utf-8"))
     assert receipt["schema"] == "implementation-protected-path-clearance-v1"
     assert receipt["operator_note"] == "Reviewed concurrent policy update."
     assert receipt["history"][0]["trusted_generator"] is False
@@ -1012,17 +978,13 @@ def test_operator_clearance_rejects_workspace_protected_path_mutation(
         workspace_path=workspace,
         before=before,
     )
-    assert "workspace" in {
-        item["scope"] for item in violation["mutations"]
-    }
+    assert "workspace" in {item["scope"] for item in violation["mutations"]}
 
     result = daemon.clear_implementation_protected_path_incident(
         operator_note="This must remain blocked.",
     )
     assert result["cleared"] is False
-    assert result["reason"] == (
-        "implementation_workspace_mutation_requires_manual_recovery"
-    )
+    assert result["reason"] == ("implementation_workspace_mutation_requires_manual_recovery")
     assert daemon._implementation_protected_incident_path().exists()
 
 
@@ -1057,9 +1019,7 @@ def test_operator_clearance_can_approve_wholly_disposed_ephemeral_workspace(
         workspace_path=workspace,
         before=before,
     )
-    assert {
-        item["scope"] for item in violation["mutations"]
-    } == {"shared_checkout", "workspace"}
+    assert {item["scope"] for item in violation["mutations"]} == {"shared_checkout", "workspace"}
 
     result = daemon.clear_implementation_protected_path_incident(
         approved_commits=[operator_commit],
@@ -1069,9 +1029,7 @@ def test_operator_clearance_can_approve_wholly_disposed_ephemeral_workspace(
 
     assert result["cleared"] is True
     assert result["disposed_ephemeral_workspace_approved"] is True
-    receipt = json.loads(
-        Path(result["receipt_path"]).read_text(encoding="utf-8")
-    )
+    receipt = json.loads(Path(result["receipt_path"]).read_text(encoding="utf-8"))
     proof = receipt["disposed_ephemeral_workspace_proof"]
     assert proof["tracked_path_count"] == proof["deleted_path_count"] == 1
     assert proof["protected_deleted_paths"] == [POLICY_PATH]
@@ -1080,9 +1038,7 @@ def test_operator_clearance_can_approve_wholly_disposed_ephemeral_workspace(
 def test_operator_clearance_accepts_disposed_exact_baseline_mirror(
     tmp_path: Path,
 ) -> None:
-    daemon, repo, workspace, _protected = _protected_git_worktree_daemon(
-        tmp_path
-    )
+    daemon, repo, workspace, _protected = _protected_git_worktree_daemon(tmp_path)
     task = _task(outputs=["src/example.py"])
     before = daemon._implementation_protected_path_snapshot(workspace)
     before["workspace"].pop("git_head")
@@ -1100,29 +1056,22 @@ def test_operator_clearance_accepts_disposed_exact_baseline_mirror(
         workspace_path=workspace,
         before=before,
     )
-    assert {
-        item["scope"] for item in violation["mutations"]
-    } == {"workspace"}
+    assert {item["scope"] for item in violation["mutations"]} == {"workspace"}
     assert violation["mutations"][0]["change"] == "created"
     _git(repo, "worktree", "remove", "--force", str(workspace))
 
     result = daemon.clear_implementation_protected_path_incident(
         operator_note=(
-            "Reviewed an invalid checkout which only mirrored the exact "
-            "protected baseline."
+            "Reviewed an invalid checkout which only mirrored the exact protected baseline."
         ),
         approve_disposed_ephemeral_workspace=True,
     )
 
     assert result["cleared"] is True
-    assert result["reason"] == (
-        "operator_approved_mirrored_ephemeral_workspace"
-    )
+    assert result["reason"] == ("operator_approved_mirrored_ephemeral_workspace")
     assert result["mirrored_ephemeral_workspace_approved"] is True
     assert result["disposed_ephemeral_workspace_approved"] is False
-    receipt = json.loads(
-        Path(result["receipt_path"]).read_text(encoding="utf-8")
-    )
+    receipt = json.loads(Path(result["receipt_path"]).read_text(encoding="utf-8"))
     proof = receipt["mirrored_ephemeral_workspace_proof"]
     assert proof["workspace_absent"] is True
     assert proof["workspace_unregistered"] is True
@@ -1218,8 +1167,7 @@ def test_latched_incident_checkpoint_acknowledges_wake_and_stops_replay(
 
     first = daemon.run_once()
     event_count = sum(
-        json.loads(line)["type"]
-        == "implementation_protected_path_incident_blocked"
+        json.loads(line)["type"] == "implementation_protected_path_incident_blocked"
         for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
     )
     second = daemon.run_once()
@@ -1230,11 +1178,13 @@ def test_latched_incident_checkpoint_acknowledges_wake_and_stops_replay(
     assert second["blocked"] is True
     assert second["unchanged"] is True
     assert event_count == 1
-    assert sum(
-        json.loads(line)["type"]
-        == "implementation_protected_path_incident_blocked"
-        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
-    ) == 1
+    assert (
+        sum(
+            json.loads(line)["type"] == "implementation_protected_path_incident_blocked"
+            for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+        )
+        == 1
+    )
 
 
 def test_supervisor_commits_generated_updates_to_protected_todo_board(
@@ -1277,9 +1227,7 @@ def test_supervisor_commits_generated_updates_to_protected_todo_board(
             "tasks.todo.md",
         ]
     )
-    supervisor = PortalImplementationSupervisor(
-        supervisor_config_from_args(args, repo_root=repo)
-    )
+    supervisor = PortalImplementationSupervisor(supervisor_config_from_args(args, repo_root=repo))
 
     findings = supervisor.record_dependency_guardrails()
 
@@ -1296,11 +1244,7 @@ def test_supervisor_blocks_maintenance_while_protected_snapshot_is_active(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     supervisor = _supervisor(tmp_path)
-    active_path = (
-        tmp_path
-        / "state"
-        / "implementation-protected-path-active.json"
-    )
+    active_path = tmp_path / "state" / "implementation-protected-path-active.json"
     active_path.parent.mkdir(parents=True)
     active_path.write_text('{"schema":"active"}\n', encoding="utf-8")
     monkeypatch.setattr(
@@ -1403,9 +1347,10 @@ def test_supervisor_maintenance_lease_is_removed_on_exception(
 
     def failing_maintenance(_update_phase, *, include_refill: bool):
         assert include_refill is False
-        assert json.loads(lock_path.read_text(encoding="utf-8"))[
-            "lease_role"
-        ] == "supervisor_maintenance"
+        assert (
+            json.loads(lock_path.read_text(encoding="utf-8"))["lease_role"]
+            == "supervisor_maintenance"
+        )
         raise RuntimeError("maintenance failed")
 
     monkeypatch.setattr(
@@ -1507,9 +1452,7 @@ def test_stale_lock_cleanup_preserves_implementation_lease_protocol_files(
 ) -> None:
     daemon = _daemon(tmp_path)
     implementation_lock_path = tmp_path / "state" / "implementation.lock"
-    update_guard_path = (
-        tmp_path / "state" / ".implementation.lock.update.lock"
-    )
+    update_guard_path = tmp_path / "state" / ".implementation.lock.update.lock"
     generic_lock_path = tmp_path / "state" / "merge-repair.lock"
     implementation_lock_path.parent.mkdir(parents=True)
     for path in (
@@ -1555,8 +1498,7 @@ def test_runtime_lock_owner_accepts_python_module_entrypoint(
         supervisor_runtime,
         "process_args",
         lambda _pid: (
-            "python -m ipfs_accelerate_py.agent_supervisor.todo_daemon."
-            "implementation_daemon"
+            "python -m ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon"
         ),
     )
 
@@ -1667,10 +1609,7 @@ def test_windows_process_args_uses_powershell_and_fails_closed(
         )
 
     monkeypatch.setattr(core_module.subprocess, "run", run)
-    assert (
-        core_module.process_args(1234)
-        == "python -m package.implementation_daemon"
-    )
+    assert core_module.process_args(1234) == "python -m package.implementation_daemon"
     assert commands[0][0] == "powershell.exe"
 
     monkeypatch.setattr(

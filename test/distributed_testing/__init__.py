@@ -23,7 +23,8 @@ import sys as _sys
 _sys.modules["distributed_testing"] = _sys.modules[__name__]
 
 try:
-	from . import browser_recovery_strategies as _browser_recovery_strategies
-	_sys.modules["distributed_testing.browser_recovery_strategies"] = _browser_recovery_strategies
+    from . import browser_recovery_strategies as _browser_recovery_strategies
+
+    _sys.modules["distributed_testing.browser_recovery_strategies"] = _browser_recovery_strategies
 except Exception:
-	pass
+    pass

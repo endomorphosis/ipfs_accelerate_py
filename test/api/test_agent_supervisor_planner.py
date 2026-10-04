@@ -67,9 +67,7 @@ def test_materialized_dag_records_every_prerequisite_kind_with_provenance() -> N
     assert {(edge.source_task_cid, edge.target_task_cid) for edge in graph.edges} == {
         ("cid-build", "cid-use")
     }
-    assert all(
-        edge.provenance["field"] and edge.provenance["value"] for edge in graph.edges
-    )
+    assert all(edge.provenance["field"] and edge.provenance["value"] for edge in graph.edges)
     assert all(edge.provenance["resolution"] for edge in graph.edges)
 
 
@@ -119,16 +117,11 @@ def test_critical_path_schedule_uses_receipts_and_all_priority_dimensions() -> N
     # A mutable task status is not merge proof.  Only a successful receipt
     # makes its dependent task schedulable.
     completed_status = materialize_task_dependency_dag(
-        [
-            {**task, "status": "completed"} if task["task_id"] == "A" else task
-            for task in tasks
-        ],
+        [{**task, "status": "completed"} if task["task_id"] == "A" else task for task in tasks],
         now=11_000,
     )
     assert (
-        next(
-            record for record in completed_status.schedule if record.task_id == "B"
-        ).claimable
+        next(record for record in completed_status.schedule if record.task_id == "B").claimable
         is False
     )
     with_receipt = critical_path_schedule(
@@ -136,10 +129,7 @@ def test_critical_path_schedule_uses_receipts_and_all_priority_dimensions() -> N
         merge_receipts=[{"task_cid": "cid-a", "status": "succeeded"}],
         now=11_000,
     )
-    assert (
-        next(record for record in with_receipt if record.task_id == "B").claimable
-        is True
-    )
+    assert next(record for record in with_receipt if record.task_id == "B").claimable is True
 
 
 def test_cycle_and_missing_dependency_emit_bounded_repairs_without_blocking_independent_work() -> (
@@ -165,22 +155,12 @@ def test_cycle_and_missing_dependency_emit_bounded_repairs_without_blocking_inde
         "missing_dependency",
         "dependency_cycle",
     }
+    assert next(record for record in graph.schedule if record.task_id == "READY").claimable is True
     assert (
-        next(record for record in graph.schedule if record.task_id == "READY").claimable
-        is True
+        next(record for record in graph.schedule if record.task_id == "MISSING").claimable is False
     )
-    assert (
-        next(
-            record for record in graph.schedule if record.task_id == "MISSING"
-        ).claimable
-        is False
-    )
-    assert not next(
-        record for record in graph.schedule if record.task_id == "A"
-    ).claimable
-    assert not next(
-        record for record in graph.schedule if record.task_id == "B"
-    ).claimable
+    assert not next(record for record in graph.schedule if record.task_id == "A").claimable
+    assert not next(record for record in graph.schedule if record.task_id == "B").claimable
 
 
 def test_converging_dependency_dag_is_not_misclassified_as_a_cycle() -> None:
@@ -202,10 +182,7 @@ def test_converging_dependency_dag_is_not_misclassified_as_a_cycle() -> None:
 
     assert graph.repair_evidence == []
     assert graph.invalid_task_cids == []
-    assert {
-        (edge.source_task_cid, edge.target_task_cid)
-        for edge in graph.edges
-    } == {
+    assert {(edge.source_task_cid, edge.target_task_cid) for edge in graph.edges} == {
         ("cid-a", "cid-b"),
         ("cid-a", "cid-c"),
         ("cid-b", "cid-c"),
@@ -372,9 +349,7 @@ def test_bundle_lane_planner_preserves_task_specific_implementation_timeout(
     extended_board = tmp_path / "srt-015.todo.md"
     ordinary_board = tmp_path / "ordinary.todo.md"
     extended_board.write_text(
-        "## SRT-015 Canonical design\n\n"
-        "- Status: todo\n"
-        "- Implementation timeout seconds: 7200\n",
+        "## SRT-015 Canonical design\n\n- Status: todo\n- Implementation timeout seconds: 7200\n",
         encoding="utf-8",
     )
     ordinary_board.write_text(
@@ -425,22 +400,11 @@ def test_bundle_lane_planner_preserves_task_specific_implementation_timeout(
     extended = by_key["semantic-roundtrip/canonical-design"]
     ordinary = by_key["semantic-roundtrip/ordinary"]
 
-    assert (
-        extended.queue_payload["tasks"][0]["implementation_timeout_seconds"]
-        == "7200"
-    )
+    assert extended.queue_payload["tasks"][0]["implementation_timeout_seconds"] == "7200"
     assert extended.implementation_max_timeout == 7200
     assert ordinary.implementation_max_timeout == 1800
-    assert (
-        extended.command[extended.command.index("--implementation-timeout") + 1]
-        == "1800"
-    )
-    assert (
-        extended.command[
-            extended.command.index("--implementation-max-timeout") + 1
-        ]
-        == "7200.0"
-    )
+    assert extended.command[extended.command.index("--implementation-timeout") + 1] == "1800"
+    assert extended.command[extended.command.index("--implementation-max-timeout") + 1] == "7200.0"
     assert "--implementation-max-timeout" not in ordinary.command
 
 
@@ -451,9 +415,7 @@ def test_bundle_lane_planner_mirrors_provider_default_hard_timeout(
     provider_board = tmp_path / "provider.todo.md"
     ordinary_board = tmp_path / "ordinary.todo.md"
     provider_board.write_text(
-        "## SRT-018 Provider task\n\n"
-        "- Status: todo\n"
-        "- Requires provider: true\n",
+        "## SRT-018 Provider task\n\n- Status: todo\n- Requires provider: true\n",
         encoding="utf-8",
     )
     ordinary_board.write_text(
@@ -536,18 +498,9 @@ def test_bundle_lane_planner_mirrors_provider_default_hard_timeout(
 
     assert provider.queue_payload["tasks"][0]["requires_provider"] is True
     assert provider_policy.max_timeout_seconds == 7200
-    assert provider.implementation_max_timeout == (
-        provider_policy.max_timeout_seconds
-    )
-    assert (
-        provider.command[
-            provider.command.index("--implementation-max-timeout") + 1
-        ]
-        == "7200.0"
-    )
-    assert ordinary.implementation_max_timeout == (
-        ordinary_policy.max_timeout_seconds
-    )
+    assert provider.implementation_max_timeout == (provider_policy.max_timeout_seconds)
+    assert provider.command[provider.command.index("--implementation-max-timeout") + 1] == "7200.0"
+    assert ordinary.implementation_max_timeout == (ordinary_policy.max_timeout_seconds)
     assert ordinary.implementation_max_timeout == 1800
     assert "--implementation-max-timeout" not in ordinary.command
 
@@ -680,10 +633,7 @@ def test_bundle_index_enrichment_preserves_member_receipt_dependencies(
     # The lease dependency stays member-scoped. Registration aliases it to the
     # exact execution slice that owns the member's successful receipt.
     assert child["tasks"][0]["dependency_task_cids"] == ["cid-root-member"]
-    assert (
-        child["task_dependency_graph"]["edges"][0]["source_task_cid"]
-        == "cid-root-member"
-    )
+    assert child["task_dependency_graph"]["edges"][0]["source_task_cid"] == "cid-root-member"
     assert root["schedule_rank"] < child["schedule_rank"]
 
     lanes = plan_bundle_lanes(
@@ -729,9 +679,7 @@ def test_truncated_graph_repairs_still_block_every_invalid_bundle(
 
     assert payload["claimable"] is False
     assert payload["dependency_repair_evidence"][0]["kind"] == "missing_dependency"
-    assert payload["dependency_repair_evidence"][0]["provenance"][
-        "evidence_truncated"
-    ] is True
+    assert payload["dependency_repair_evidence"][0]["provenance"]["evidence_truncated"] is True
     with LeaseCoordinator(tmp_path / "coordination.sqlite3") as coordinator:
         registered = coordinator.register_bundle(payload, created_at_ms=1)
         with pytest.raises(DependencyNotReadyError):
@@ -961,8 +909,7 @@ def test_external_authority_bundle_is_rejected_before_coordination_creation(
             "bundle_key": lane.bundle_key,
             "accepted": False,
             "error": (
-                "bundle requires external execution authority "
-                "'operator-gate-first/v1'"
+                "bundle requires external execution authority 'operator-gate-first/v1'"
                 if authority_location == "bundle"
                 else "execution slice requires external execution authority "
                 "'operator-gate-first/v1'"
@@ -1016,10 +963,7 @@ def test_planner_preserves_external_execution_authority_for_launch_policy(
         log_dir=tmp_path / "logs",
     )
     assert len(lanes) == 1
-    assert (
-        lanes[0].queue_payload["execution_authority"]
-        == "operator-gate-first/v1"
-    )
+    assert lanes[0].queue_payload["execution_authority"] == "operator-gate-first/v1"
     coordination_path = tmp_path / "must-not-exist.duckdb"
     result = launch_bundle_lanes(
         lanes,
@@ -1042,9 +986,7 @@ def test_bundle_launcher_surfaces_dependency_evidence_and_unblocks_after_success
     dependent = {
         "bundle_key": "bundle/child",
         "tasks": [{"task_id": "CHILD", "goal": "use root"}],
-        "dependency_task_cids": [
-            root_lane.queue_payload["profile_g"]["canonical_task_cid"]
-        ],  # type: ignore[index]
+        "dependency_task_cids": [root_lane.queue_payload["profile_g"]["canonical_task_cid"]],  # type: ignore[index]
     }
     child_lane = _lane(tmp_path, dependent)
     starts: list[list[str]] = []
@@ -1076,9 +1018,7 @@ def test_bundle_launcher_surfaces_dependency_evidence_and_unblocks_after_success
 
     root_grant = LeaseGrant(**initial[1]["lease"])
     with LeaseCoordinator(coordination_path) as coordinator:
-        coordinator.receipt(
-            root_grant, status="succeeded", output={"merge_commit": "abc123"}
-        )
+        coordinator.receipt(root_grant, status="succeeded", output={"merge_commit": "abc123"})
 
     retried = launch_bundle_lanes(
         [replace(child_lane, claimable=True)],

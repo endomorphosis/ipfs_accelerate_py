@@ -142,9 +142,7 @@ def _authorized_mutation_request(
     )
 
 
-def _guard_rejection_payload(
-    request: OperationRequest, scenario: str
-) -> dict[str, Any]:
+def _guard_rejection_payload(request: OperationRequest, scenario: str) -> dict[str, Any]:
     payload = request.to_record()
     payload.pop("content_id")
     if scenario == "unauthorized":
@@ -202,12 +200,8 @@ def test_cli_discovery_binds_the_python_schema_population() -> None:
 
     assert cli_manifest.surface is ControlSurface.CLI
     assert cli_manifest.operations == python_manifest.operations
-    assert dict(cli_manifest.request_schema_ids) == dict(
-        python_manifest.request_schema_ids
-    )
-    assert dict(cli_manifest.result_schema_ids) == dict(
-        python_manifest.result_schema_ids
-    )
+    assert dict(cli_manifest.request_schema_ids) == dict(python_manifest.request_schema_ids)
+    assert dict(cli_manifest.result_schema_ids) == dict(python_manifest.result_schema_ids)
     assert cli_manifest.schema_population_id == python_manifest.schema_population_id
 
 
@@ -242,9 +236,7 @@ def test_cli_discovery_is_repeatable_and_initializes_no_runtime(
     )
 
     first = agent_cli_discovery_manifest()
-    assert cli.main(
-        ["agent"], agent_service_factory=forbidden_factory
-    ) == 1
+    assert cli.main(["agent"], agent_service_factory=forbidden_factory) == 1
     capsys.readouterr()
     second = agent_cli_discovery_manifest()
     after = capture_control_discovery_runtime_state(
@@ -291,9 +283,7 @@ def test_every_cli_operation_has_exact_python_execution_parity(
     repo_root.mkdir()
     state_root.mkdir()
     service = _service(repo_root, state_root)
-    command_by_operation = {
-        operation: command for command, operation in COMMAND_OPERATIONS.items()
-    }
+    command_by_operation = {operation: command for command, operation in COMMAND_OPERATIONS.items()}
 
     for operation in sorted(Operation, key=lambda item: item.value):
         if operation.mutating:
@@ -326,9 +316,7 @@ def test_every_cli_operation_has_exact_python_execution_parity(
         )
 
         expected_exit = (
-            0
-            if OperationResult.from_dict(python_record).succeeded
-            else AGENT_CLI_EXIT_FAILED
+            0 if OperationResult.from_dict(python_record).succeeded else AGENT_CLI_EXIT_FAILED
         )
         assert code == expected_exit, operation.value
         assert cli_record == python_record, operation.value
@@ -412,9 +400,7 @@ def test_cli_direct_mutation_flags_preserve_python_parity_and_idempotency(
             "--parameters-json",
             json.dumps(dict(request.parameters)),
             "--expected-effects-json",
-            json.dumps(
-                [effect.to_record() for effect in request.expected_effects]
-            ),
+            json.dumps([effect.to_record() for effect in request.expected_effects]),
             "--idempotency-key",
             request.idempotency_key,
             "--authorization-json",

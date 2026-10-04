@@ -38,6 +38,7 @@ We can now initialize the pipeline with a [Swin2SR model](https://huggingface.co
 from transformers import pipeline
 import torch
 from accelerate.test_utils.testing import get_backend
+
 # automatically detects the underlying device type (CUDA, CPU, XPU, MPS, etc.)
 device, _, _ = get_backend()
 pipe = pipeline(task="image-to-image", model="caidas/swin2SR-lightweight-x2-64", device=device)
@@ -74,9 +75,11 @@ print(upscaled.size)
 If you wish to do inference yourself with no pipeline, you can use the `Swin2SRForImageSuperResolution` and `Swin2SRImageProcessor` classes of transformers. We will use the same model checkpoint for this. Let's initialize the model and the processor.
 
 ```python
-from transformers import Swin2SRForImageSuperResolution, Swin2SRImageProcessor 
+from transformers import Swin2SRForImageSuperResolution, Swin2SRImageProcessor
 
-model = Swin2SRForImageSuperResolution.from_pretrained("caidas/swin2SR-lightweight-x2-64").to(device)
+model = Swin2SRForImageSuperResolution.from_pretrained("caidas/swin2SR-lightweight-x2-64").to(
+    device
+)
 processor = Swin2SRImageProcessor("caidas/swin2SR-lightweight-x2-64")
 ```
 
@@ -95,7 +98,7 @@ We can now infer the image by passing pixel values to the model.
 import torch
 
 with torch.no_grad():
-  outputs = model(pixel_values)
+    outputs = model(pixel_values)
 ```
 Output is an object of type `ImageSuperResolutionOutput` that looks like below 👇 
 

@@ -54,12 +54,14 @@ def _normalize_payload(payload: Any) -> Dict[str, Any]:
 async def municipal_bluebook_validator_info() -> Dict[str, Any]:
     """Return metadata about the municipal Bluebook citation validator CLI entrypoint."""
     try:
-        envelope = _normalize_payload({
-            "status": "success",
-            "entrypoint": "municipal_bluebook_citation_validator.main",
-            "callable": callable(_API.get("validator_main")),
-            "fallback": not bool(_API),
-        })
+        envelope = _normalize_payload(
+            {
+                "status": "success",
+                "entrypoint": "municipal_bluebook_citation_validator.main",
+                "callable": callable(_API.get("validator_main")),
+                "fallback": not bool(_API),
+            }
+        )
         envelope.setdefault("success", True)
         envelope.setdefault("entrypoint", "municipal_bluebook_citation_validator.main")
         envelope.setdefault("callable", False)
@@ -94,13 +96,15 @@ async def municipal_bluebook_validator_invoke(
             return _error_result("validator entrypoint unavailable")
 
         if not bool(allow_execution):
-            envelope = _normalize_payload({
-                "status": "success",
-                "entrypoint": "municipal_bluebook_citation_validator.main",
-                "invoked": False,
-                "dry_run": True,
-                "argv": normalized_argv,
-            })
+            envelope = _normalize_payload(
+                {
+                    "status": "success",
+                    "entrypoint": "municipal_bluebook_citation_validator.main",
+                    "invoked": False,
+                    "dry_run": True,
+                    "argv": normalized_argv,
+                }
+            )
             envelope.setdefault("success", True)
             envelope.setdefault("entrypoint", "municipal_bluebook_citation_validator.main")
             envelope.setdefault("invoked", False)
@@ -119,7 +123,9 @@ async def municipal_bluebook_validator_invoke(
                     "invoked": True,
                     "dry_run": False,
                     "argv": normalized_argv,
-                    "exit_code": int(invocation_result) if isinstance(invocation_result, int) else 0,
+                    "exit_code": int(invocation_result)
+                    if isinstance(invocation_result, int)
+                    else 0,
                 }
             )
         envelope.setdefault("success", True)

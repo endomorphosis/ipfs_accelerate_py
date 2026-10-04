@@ -105,17 +105,16 @@ print(f"Confidence: {result['confidence']:.2f}")
 
 # More detailed classification with additional information
 detailed_result = classify_model(
-    model_name="gpt2",
-    model_class="GPT2LMHeadModel",
-    tasks=["text-generation", "text-completion"]
+    model_name="gpt2", model_class="GPT2LMHeadModel", tasks=["text-generation", "text-completion"]
 )
 print(f"Model family: {detailed_result['family']}")
 print(f"Confidence: {detailed_result['confidence']:.2f}")
 
 # Get the recommended template for a model
 from model_family_classifier import ModelFamilyClassifier
+
 classifier = ModelFamilyClassifier()
-template = classifier.get_template_for_family(detailed_result['family'])
+template = classifier.get_template_for_family(detailed_result["family"])
 print(f"Recommended template: {template}")
 ```
 
@@ -136,15 +135,15 @@ model_subfamily = model_info["subfamily"]
 integration = ResourcePoolBridgeIntegration(
     max_connections=4,
     browser_preferences={
-        'audio': 'firefox',     # Firefox has better compute shader performance for audio
-        'vision': 'chrome',     # Chrome has good WebGPU support for vision models
-        'text_embedding': 'edge',  # Edge has excellent WebNN support for text embeddings
-        'text_generation': 'edge',  # Edge works well for text generation
-        'multimodal': 'chrome',    # Chrome handles multimodal models well
-        'text_to_x': 'chrome',     # Chrome for text-to-X generation models
-        'scientific': 'chrome'     # Chrome for scientific models
+        "audio": "firefox",  # Firefox has better compute shader performance for audio
+        "vision": "chrome",  # Chrome has good WebGPU support for vision models
+        "text_embedding": "edge",  # Edge has excellent WebNN support for text embeddings
+        "text_generation": "edge",  # Edge works well for text generation
+        "multimodal": "chrome",  # Chrome handles multimodal models well
+        "text_to_x": "chrome",  # Chrome for text-to-X generation models
+        "scientific": "chrome",  # Chrome for scientific models
     },
-    adaptive_scaling=True
+    adaptive_scaling=True,
 )
 
 # Step 3: Initialize integration
@@ -163,7 +162,7 @@ if model_family == "audio":
         execution_options["streaming"] = True
     elif model_subfamily == "music_generation":
         execution_options["batch_size"] = 1  # Music generation needs more memory
-    
+
 elif model_family == "vision":
     # Vision models benefit from shader precompilation and parallel loading
     execution_options["precompile_shaders"] = True
@@ -171,12 +170,12 @@ elif model_family == "vision":
     # Video models need special handling
     if model_subfamily == "video_understanding":
         execution_options["frame_buffer_size"] = 16
-    
+
 elif model_family == "text_embedding":
     # Text embedding models work well with WebNN
-    execution_options["platform"] = "webnn" 
+    execution_options["platform"] = "webnn"
     execution_options["webnn_ops_fallback"] = False  # Use pure WebNN when possible
-    
+
 elif model_family == "text_generation":
     # Text generation models need memory optimization
     execution_options["kv_cache_optimization"] = True
@@ -184,33 +183,35 @@ elif model_family == "text_generation":
     # Add specialized handling for different subfamilies
     if model_subfamily == "causal_lm":
         execution_options["precision"] = 8  # Use 8-bit precision for causal LMs
-    
+
 elif model_family == "multimodal":
     # Multimodal models need parallel loading
     execution_options["parallel_loading"] = True
     execution_options["platform"] = "webgpu"
-    
+
 elif model_family == "text_to_x":
     # Text-to-X models need specialized settings
     execution_options["platform"] = "webgpu"
     execution_options["precompile_shaders"] = True
-    
+
 # Step 5: Get model with optimized browser selection
 model = integration.get_model(
     model_type=model_family,
     model_name="bert-base-uncased",
     hardware_preferences={
-        'priority_list': ['webgpu', 'webnn', 'cpu'],
-        'model_family': model_family,
-        'model_subfamily': model_subfamily,
-        'execution_options': execution_options
-    }
+        "priority_list": ["webgpu", "webnn", "cpu"],
+        "model_family": model_family,
+        "model_subfamily": model_subfamily,
+        "execution_options": execution_options,
+    },
 )
 
 # Step 6: Run inference with browser-specific optimizations
 result = model({"input_ids": [101, 2023, 2003, 1037, 3231, 102]})
 print(f"Model executed on {result['browser']} browser with {result['platform']} platform")
-print(f"Performance: {result['metrics']['latency_ms']}ms latency, {result['metrics']['throughput_items_per_second']} items/sec")
+print(
+    f"Performance: {result['metrics']['latency_ms']}ms latency, {result['metrics']['throughput_items_per_second']} items/sec"
+)
 ```
 
 ## Integration with Traditional Hardware Detection
@@ -307,8 +308,8 @@ result = classify_model(
     hw_compatibility={
         "cuda": {"compatible": True, "memory_usage": {"peak": 1500}},
         "mps": {"compatible": True},
-        "rocm": {"compatible": False}
-    }
+        "rocm": {"compatible": False},
+    },
 )
 
 print(f"Model family: {result['family']}")  # audio
@@ -317,8 +318,10 @@ print(f"Confidence: {result['confidence']:.2f}")
 
 # Examine detailed analysis
 for analysis in result["analyses"]:
-    print(f"- {analysis['source']}: {analysis.get('family')} " + 
-          f"(confidence: {analysis.get('confidence', 0):.2f})")
+    print(
+        f"- {analysis['source']}: {analysis.get('family')} "
+        + f"(confidence: {analysis.get('confidence', 0):.2f})"
+    )
 ```
 
 ## Persisting Classifications with Model Database
@@ -336,14 +339,11 @@ result = classify_model(
     model_name="gpt2",
     model_class="GPT2LMHeadModel",
     tasks=["text-generation"],
-    model_db_path=model_db_path
+    model_db_path=model_db_path,
 )
 
 # Next time, classification will use the database if model is found
-cached_result = classify_model(
-    model_name="gpt2",
-    model_db_path=model_db_path
-)
+cached_result = classify_model(model_name="gpt2", model_db_path=model_db_path)
 
 print(f"Cached result: {cached_result['family']}")
 ```
@@ -361,7 +361,7 @@ custom_families = {
         "description": "Retrieval and search models",
         "keywords": ["retrieval", "search", "index", "rag", "retrieve"],
         "tasks": ["retrieval", "dense-passage-retrieval", "document-search"],
-        "methods": ["retrieve", "search", "index", "query"]
+        "methods": ["retrieve", "search", "index", "query"],
     },
     # Add other custom families...
 }
@@ -385,15 +385,12 @@ classifier = ModelFamilyClassifier()
 
 # First, classify the model
 classification = classifier.classify_model(
-    model_name="gpt2",
-    model_class="GPT2LMHeadModel",
-    tasks=["text-generation"]
+    model_name="gpt2", model_class="GPT2LMHeadModel", tasks=["text-generation"]
 )
 
 # Get the recommended template
 template = classifier.get_template_for_family(
-    classification["family"], 
-    classification.get("subfamily")
+    classification["family"], classification.get("subfamily")
 )
 
 print(f"Model: {classification['model_name']}")
@@ -419,17 +416,17 @@ if family == "embedding":
     test_cases = [
         {"text": "Hello world", "expected_dim": 768},
         {"text": "Multiple sentences. For testing.", "expected_dim": 768},
-        {"pairs": [["This is a test", "This is similar"]], "expected_score_range": [0.7, 1.0]}
+        {"pairs": [["This is a test", "This is similar"]], "expected_score_range": [0.7, 1.0]},
     ]
 elif family == "text_generation":
     test_cases = [
         {"prompt": "Once upon a time", "max_length": 50, "expected_min_length": 10},
-        {"prompt": "The best way to learn", "max_length": 30, "expected_min_length": 5}
+        {"prompt": "The best way to learn", "max_length": 30, "expected_min_length": 5},
     ]
 elif family == "vision":
     test_cases = [
         {"image_path": "test.jpg", "expected_classes": ["person", "dog"]},
-        {"image_path": "test2.jpg", "expected_shape": [1, 1000]}
+        {"image_path": "test2.jpg", "expected_shape": [1, 1000]},
     ]
 
 # Generate appropriate imports based on family
@@ -438,11 +435,15 @@ if family == "embedding":
 elif family == "text_generation":
     imports = ["import torch", "from transformers import AutoModelForCausalLM, AutoTokenizer"]
 elif family == "vision":
-    imports = ["import torch", "import PIL", "from transformers import AutoImageProcessor, AutoModelForImageClassification"]
+    imports = [
+        "import torch",
+        "import PIL",
+        "from transformers import AutoImageProcessor, AutoModelForImageClassification",
+    ]
 
 # Generate the test file
 test_content = f"""
-# Test file for {model_info['model_name']} ({family})
+# Test file for {model_info["model_name"]} ({family})
 {chr(10).join(imports)}
 
 def test_{family}_model():
@@ -468,16 +469,20 @@ family = model_info["family"]
 # Get the resource pool
 pool = get_global_resource_pool()
 
+
 # Create model constructor function that uses the classification
 def create_model():
     if family == "embedding":
         from transformers import AutoModel
+
         return AutoModel.from_pretrained("bert-base-uncased")
     elif family == "text_generation":
         from transformers import AutoModelForCausalLM
+
         return AutoModelForCausalLM.from_pretrained("gpt2")
     # Add other model families as needed
-    
+
+
 # The resource pool will use optimal hardware based on model type
 model = pool.get_model(family, "bert-base-uncased", constructor=create_model)
 ```
@@ -495,22 +500,10 @@ The classifier returns a detailed data structure that includes:
     "subfamily_confidence": 0.75,
     "source": "combined_analysis",
     "analyses": [
-        {
-            "family": "embedding",
-            "confidence": 0.8,
-            "source": "name_analysis"
-        },
-        {
-            "family": "embedding",
-            "confidence": 0.9,
-            "source": "class_analysis"
-        },
-        {
-            "family": "embedding",
-            "confidence": 0.85,
-            "source": "task_analysis"
-        }
-    ]
+        {"family": "embedding", "confidence": 0.8, "source": "name_analysis"},
+        {"family": "embedding", "confidence": 0.9, "source": "class_analysis"},
+        {"family": "embedding", "confidence": 0.85, "source": "task_analysis"},
+    ],
 }
 ```
 

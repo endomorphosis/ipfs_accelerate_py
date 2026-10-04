@@ -129,8 +129,13 @@ class TestMCPServerMCPPlusPlusEventDAG(unittest.TestCase):
         )
 
         rebuilt = EventDAGStore.from_snapshot(store.export_snapshot())
-        self.assertEqual(rebuilt.get_lineage("cid-merge"), ["cid-root", "cid-branch-1", "cid-merge"])
-        self.assertEqual(rebuilt.replay_from_root("cid-root"), ["cid-root", "cid-branch-1", "cid-branch-2", "cid-merge"])
+        self.assertEqual(
+            rebuilt.get_lineage("cid-merge"), ["cid-root", "cid-branch-1", "cid-merge"]
+        )
+        self.assertEqual(
+            rebuilt.replay_from_root("cid-root"),
+            ["cid-root", "cid-branch-1", "cid-branch-2", "cid-merge"],
+        )
 
     def test_rejects_conflicting_duplicate_event_payload(self) -> None:
         store = EventDAGStore()
@@ -195,7 +200,9 @@ class TestMCPServerMCPPlusPlusEventDAG(unittest.TestCase):
         fresh = store.export_snapshot()
         fresh_events = fresh.get("events") or []
         self.assertEqual(
-            (((fresh_events[0].get("payload") or {}).get("meta") or {}).get("attrs") or {}).get("priority"),
+            (((fresh_events[0].get("payload") or {}).get("meta") or {}).get("attrs") or {}).get(
+                "priority"
+            ),
             1,
         )
 

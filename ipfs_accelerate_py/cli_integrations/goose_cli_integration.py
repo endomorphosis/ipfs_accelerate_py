@@ -44,7 +44,9 @@ class GooseCLIIntegration(DualModeWrapper):
 
         return get_llm_provider("goose_cli")
 
-    def chat(self, prompt: str, *, model: Optional[str] = None, timeout: float = 180.0, **kwargs: Any) -> Dict[str, Any]:
+    def chat(
+        self, prompt: str, *, model: Optional[str] = None, timeout: float = 180.0, **kwargs: Any
+    ) -> Dict[str, Any]:
         from ..llm_router import get_llm_provider
 
         text = get_llm_provider("goose_cli").generate(

@@ -70,6 +70,7 @@ Convert the code above into a tool by wrapping it in a function and adding the `
 ```py
 from transformers import tool
 
+
 @tool
 def model_download_counter(task: str) -> str:
     """
@@ -110,6 +111,7 @@ Write the following code below to a file named `model_download.py`.
 ```py
 from transformers import Tool
 from huggingface_hub import list_models
+
 
 class HFModelDownloadsTool(Tool):
     name = "model_download_counter"
@@ -198,9 +200,7 @@ from transformers import ToolCollection, ReactCodeAgent
 
 image_tool_collection = ToolCollection(collection_slug="")
 agent = ReactCodeAgent(tools=[*image_tool_collection], add_base_tools=True)
-agent.run(
-    "Please draw me a picture of rivers and lakes."
-)
+agent.run("Please draw me a picture of rivers and lakes.")
 ```
 
 ## Tool integrations
@@ -248,5 +248,7 @@ from transformers import Tool, ReactCodeAgent
 
 search_tool = Tool.from_langchain(load_tools(["serpapi"])[0])
 agent = ReactCodeAgent(tools=[search_tool])
-agent.run("How many more blocks (also denoted as layers) in BERT base encoder than the encoder from the architecture proposed in Attention is All You Need?")
+agent.run(
+    "How many more blocks (also denoted as layers) in BERT base encoder than the encoder from the architecture proposed in Attention is All You Need?"
+)
 ```

@@ -12,8 +12,9 @@ import logging
 from pathlib import Path
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
 
 def generate_bert_test(output_dir):
     """Generate a minimal BERT test file."""
@@ -124,10 +125,11 @@ if __name__ == "__main__":
     sys.exit(main())
 '''
     output_file = os.path.join(output_dir, "test_bert.py")
-    with open(output_file, 'w') as f:
+    with open(output_file, "w") as f:
         f.write(content)
-    
+
     return output_file
+
 
 def generate_gpt2_test(output_dir):
     """Generate a minimal GPT-2 test file."""
@@ -238,10 +240,11 @@ if __name__ == "__main__":
     sys.exit(main())
 '''
     output_file = os.path.join(output_dir, "test_gpt2.py")
-    with open(output_file, 'w') as f:
+    with open(output_file, "w") as f:
         f.write(content)
-    
+
     return output_file
+
 
 def generate_t5_test(output_dir):
     """Generate a minimal T5 test file."""
@@ -352,10 +355,11 @@ if __name__ == "__main__":
     sys.exit(main())
 '''
     output_file = os.path.join(output_dir, "test_t5.py")
-    with open(output_file, 'w') as f:
+    with open(output_file, "w") as f:
         f.write(content)
-    
+
     return output_file
+
 
 def generate_vit_test(output_dir):
     """Generate a minimal ViT test file."""
@@ -500,10 +504,11 @@ if __name__ == "__main__":
     sys.exit(main())
 '''
     output_file = os.path.join(output_dir, "test_vit.py")
-    with open(output_file, 'w') as f:
+    with open(output_file, "w") as f:
         f.write(content)
-    
+
     return output_file
+
 
 def generate_clip_test(output_dir):
     """Generate a minimal CLIP test file."""
@@ -649,10 +654,11 @@ if __name__ == "__main__":
     sys.exit(main())
 '''
     output_file = os.path.join(output_dir, "test_clip.py")
-    with open(output_file, 'w') as f:
+    with open(output_file, "w") as f:
         f.write(content)
-    
+
     return output_file
+
 
 def generate_whisper_test(output_dir):
     """Generate a minimal Whisper test file."""
@@ -779,16 +785,17 @@ if __name__ == "__main__":
     sys.exit(main())
 '''
     output_file = os.path.join(output_dir, "test_whisper.py")
-    with open(output_file, 'w') as f:
+    with open(output_file, "w") as f:
         f.write(content)
-    
+
     return output_file
+
 
 def generate_all_minimal_tests(output_dir):
     """Generate minimal test files for all model types."""
     # Create output directory if needed
     os.makedirs(output_dir, exist_ok=True)
-    
+
     # Generate tests for each model type
     files = [
         generate_bert_test(output_dir),
@@ -796,23 +803,24 @@ def generate_all_minimal_tests(output_dir):
         generate_t5_test(output_dir),
         generate_vit_test(output_dir),
         generate_clip_test(output_dir),
-        generate_whisper_test(output_dir)
+        generate_whisper_test(output_dir),
     ]
-    
+
     # Validate the files
     valid_files = 0
     for file_path in files:
         try:
             # Compile the file to check for syntax errors
-            with open(file_path, 'r') as f:
+            with open(file_path, "r") as f:
                 source = f.read()
-            compile(source, file_path, 'exec')
+            compile(source, file_path, "exec")
             logger.info(f"Validation successful for {file_path}")
             valid_files += 1
         except Exception as e:
             logger.error(f"Validation failed for {file_path}: {e}")
-    
+
     return valid_files, len(files)
+
 
 def main():
     """Main function."""
@@ -820,17 +828,18 @@ def main():
     if len(sys.argv) < 2:
         print("Usage: python generate_minimal_test.py <output_dir>")
         return 1
-    
+
     # Get the output directory from arguments
     output_dir = sys.argv[1]
-    
+
     # Generate the tests
     valid_files, total_files = generate_all_minimal_tests(output_dir)
-    
+
     # Print results
     print(f"Generated {valid_files} of {total_files} test files successfully")
-    
+
     return 0 if valid_files == total_files else 1
+
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -15,7 +15,9 @@ class _FakeBackendManager:
     def __init__(self):
         self.calls = []
 
-    async def execute_task(self, *, task, model, inputs, preferred_types=None, required_protocols=None, parameters=None):
+    async def execute_task(
+        self, *, task, model, inputs, preferred_types=None, required_protocols=None, parameters=None
+    ):
         self.calls.append(
             {
                 "task": task,
@@ -38,7 +40,9 @@ class _FakeBackendManager:
 
 
 @pytest.mark.parametrize("target_backend", ["docker", "kubernetes"])
-def test_orchestrator_proxy_task_routes_backend_target_via_backend_manager(monkeypatch, tmp_path, target_backend):
+def test_orchestrator_proxy_task_routes_backend_target_via_backend_manager(
+    monkeypatch, tmp_path, target_backend
+):
     fake_manager = _FakeBackendManager()
 
     import ipfs_accelerate_py.inference_backend_manager as ibm

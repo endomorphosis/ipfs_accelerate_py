@@ -24,23 +24,23 @@ from ipfs_accelerate_py.error_handler import CLIErrorHandler
 
 def simulate_cli_errors():
     """Simulate various CLI errors to demonstrate auto-healing."""
-    
+
     print("=" * 80)
     print("Auto-Healing Error Handler Example")
     print("=" * 80)
     print()
-    
+
     # Example 1: Basic error capture (no auto-features)
     print("Example 1: Basic Error Capture (no auto-features)")
     print("-" * 80)
-    
+
     handler = CLIErrorHandler(
-        repo='endomorphosis/ipfs_accelerate_py',
+        repo="endomorphosis/ipfs_accelerate_py",
         enable_auto_issue=False,
         enable_auto_pr=False,
-        enable_auto_heal=False
+        enable_auto_heal=False,
     )
-    
+
     try:
         # Simulate an error
         raise ValueError("Invalid model configuration: missing 'model_path' parameter")
@@ -48,53 +48,55 @@ def simulate_cli_errors():
         signature = handler.capture_error(
             e,
             context={
-                'command': 'inference generate',
-                'model': 'bert-base-uncased',
-                'operation': 'load_model'
-            }
+                "command": "inference generate",
+                "model": "bert-base-uncased",
+                "operation": "load_model",
+            },
         )
         print(f"✓ Error captured with signature: {signature[:16] if signature else 'N/A'}...")
         print(f"  Error type: {type(e).__name__}")
         print(f"  Severity: {handler._determine_severity(e)}")
         print(f"  Captured errors: {len(handler._captured_errors)}")
-    
+
     print()
-    
+
     # Example 2: Error capture with auto-issue enabled (simulation)
     print("Example 2: Auto-Issue Creation (simulated)")
     print("-" * 80)
-    
+
     handler_auto = CLIErrorHandler(
-        repo='endomorphosis/ipfs_accelerate_py',
+        repo="endomorphosis/ipfs_accelerate_py",
         enable_auto_issue=True,
         enable_auto_pr=False,
-        enable_auto_heal=False
+        enable_auto_heal=False,
     )
-    
+
     try:
         # Simulate a different error
         raise RuntimeError("CUDA out of memory: tried to allocate 2.50 GiB")
     except Exception as e:
         # Capture the error
-        handler_auto.capture_error(e, context={'gpu': 'NVIDIA RTX 3090', 'batch_size': 32})
+        handler_auto.capture_error(e, context={"gpu": "NVIDIA RTX 3090", "batch_size": 32})
         print(f"✓ Error captured")
-        print(f"  Auto-issue creation: {'ENABLED' if handler_auto.enable_auto_issue else 'DISABLED'}")
+        print(
+            f"  Auto-issue creation: {'ENABLED' if handler_auto.enable_auto_issue else 'DISABLED'}"
+        )
         print(f"  Note: Actual issue creation requires GitHub CLI authentication")
         print(f"  To test: export IPFS_AUTO_ISSUE=true && gh auth login")
-    
+
     print()
-    
+
     # Example 3: Full auto-healing pipeline (simulation)
     print("Example 3: Full Auto-Healing Pipeline (simulated)")
     print("-" * 80)
-    
+
     handler_full = CLIErrorHandler(
-        repo='endomorphosis/ipfs_accelerate_py',
+        repo="endomorphosis/ipfs_accelerate_py",
         enable_auto_issue=True,
         enable_auto_pr=True,
-        enable_auto_heal=True
+        enable_auto_heal=True,
     )
-    
+
     try:
         # Simulate a critical error
         raise MemoryError("Cannot allocate memory for tensor of shape [1024, 1024, 1024]")
@@ -110,18 +112,17 @@ def simulate_cli_errors():
         print("    1. Create a GitHub issue with full error details")
         print("    2. Generate a draft PR to fix the issue")
         print("    3. Invoke GitHub Copilot to suggest fixes")
-    
+
     print()
-    
+
     # Example 4: CLI function wrapping
     print("Example 4: CLI Function Wrapping")
     print("-" * 80)
-    
+
     handler_wrapper = CLIErrorHandler(
-        repo='endomorphosis/ipfs_accelerate_py',
-        enable_auto_issue=False
+        repo="endomorphosis/ipfs_accelerate_py", enable_auto_issue=False
     )
-    
+
     @handler_wrapper.wrap_cli_main
     def example_cli_function():
         """Example CLI function that might fail."""
@@ -132,21 +133,23 @@ def simulate_cli_errors():
         # raise ValueError("Example error")
         print("  ✓ CLI function completed successfully")
         return 0
-    
+
     result = example_cli_function()
     print(f"  Exit code: {result}")
-    
+
     print()
-    
+
     # Example 5: Environment-based configuration
     print("Example 5: Environment-Based Configuration")
     print("-" * 80)
-    
+
     print("  Current environment settings:")
     print(f"    IPFS_AUTO_ISSUE: {os.environ.get('IPFS_AUTO_ISSUE', 'not set')}")
     print(f"    IPFS_AUTO_PR: {os.environ.get('IPFS_AUTO_PR', 'not set')}")
     print(f"    IPFS_AUTO_HEAL: {os.environ.get('IPFS_AUTO_HEAL', 'not set')}")
-    print(f"    IPFS_REPO: {os.environ.get('IPFS_REPO', 'not set (default: endomorphosis/ipfs_accelerate_py)')}")
+    print(
+        f"    IPFS_REPO: {os.environ.get('IPFS_REPO', 'not set (default: endomorphosis/ipfs_accelerate_py)')}"
+    )
     print()
     print("  To enable auto-healing features:")
     print("    export IPFS_AUTO_ISSUE=true")
@@ -155,15 +158,15 @@ def simulate_cli_errors():
     print()
     print("  Then run:")
     print("    ipfs-accelerate <any-command>")
-    
+
     print()
-    
+
     # Cleanup
     handler.cleanup()
     handler_auto.cleanup()
     handler_full.cleanup()
     handler_wrapper.cleanup()
-    
+
     print("=" * 80)
     print("Example Complete")
     print("=" * 80)
@@ -181,13 +184,13 @@ def simulate_cli_errors():
 
 def demonstrate_error_aggregation():
     """Demonstrate P2P error aggregation features."""
-    
+
     print()
     print("=" * 80)
     print("Error Aggregation Example")
     print("=" * 80)
     print()
-    
+
     print("Error aggregation features:")
     print("  • Shares errors across distributed instances")
     print("  • Deduplicates similar errors")
@@ -204,7 +207,7 @@ def demonstrate_error_aggregation():
     print()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     try:
         simulate_cli_errors()
         demonstrate_error_aggregation()
@@ -216,5 +219,6 @@ if __name__ == '__main__':
     except Exception as e:
         print(f"\n✗ Example failed with error: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)

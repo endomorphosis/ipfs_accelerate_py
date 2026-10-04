@@ -110,7 +110,9 @@ async def scrape_pubmed_medical_research(
         return _error_result("max_results must be an integer >= 1", max_results=max_results)
     if email is not None and (not isinstance(email, str) or not email.strip()):
         return _error_result("email must be null or a non-empty string", email=email)
-    if research_type is not None and (not isinstance(research_type, str) or not research_type.strip()):
+    if research_type is not None and (
+        not isinstance(research_type, str) or not research_type.strip()
+    ):
         return _error_result(
             "research_type must be null or a non-empty string",
             research_type=research_type,

@@ -15,7 +15,7 @@ Design goals:
 Environment variables:
 - `IPFS_BACKEND`: force backend name (registered provider)
 - `ENABLE_IPFS_KIT`: enable ipfs_kit_py backend (preferred, default: true)
-- `ENABLE_HF_CACHE`: enable HuggingFace cache backend (default: true) 
+- `ENABLE_HF_CACHE`: enable HuggingFace cache backend (default: true)
 - `IPFS_KIT_DISABLE`: disable ipfs_kit_py backend completely
 - `KUBO_CMD`: override ipfs CLI command (default: "ipfs")
 """
@@ -79,7 +79,7 @@ def _backend_cache_key() -> tuple:
 @runtime_checkable
 class IPFSBackend(Protocol):
     """Protocol for IPFS backend implementations."""
-    
+
     def add_bytes(self, data: bytes, *, pin: bool = True) -> str: ...
 
     def cat(self, cid: str) -> bytes: ...
@@ -114,6 +114,7 @@ ProviderFactory = Callable[[], IPFSBackend]
 @dataclass(frozen=True)
 class ProviderInfo:
     """Information about a registered backend provider."""
+
     name: str
     factory: ProviderFactory
 
@@ -130,64 +131,68 @@ def register_ipfs_backend(name: str, factory: ProviderFactory) -> None:
 
 class IPFSKitBackend:
     """IPFS backend using ipfs_kit_py (preferred)."""
-    
+
     def __init__(self, cache_dir: Optional[str] = None, deps: object = None) -> None:
         """Initialize ipfs_kit_py backend.
-        
+
         Args:
             cache_dir: Directory for local caching
             deps: Optional dependency injection container
         """
-        self._cache_dir = cache_dir or os.getenv("IPFS_KIT_CACHE_DIR") or \
-                         os.path.join(os.path.expanduser("~"), ".cache", "ipfs_kit")
+        self._cache_dir = (
+            cache_dir
+            or os.getenv("IPFS_KIT_CACHE_DIR")
+            or os.path.join(os.path.expanduser("~"), ".cache", "ipfs_kit")
+        )
         self._deps = deps
         self._storage = None
         self._init_storage()
-    
+
     def _init_storage(self):
         """Initialize ipfs_kit storage."""
         try:
             # Use existing IPFSKitStorage from ipfs_kit_integration
             from .ipfs_kit_integration import get_storage
+
             self._storage = get_storage(
                 enable_ipfs_kit=True,
                 cache_dir=self._cache_dir,
                 deps=self._deps,
-                force_fallback=False
+                force_fallback=False,
             )
         except Exception as e:
             raise RuntimeError(f"Failed to initialize ipfs_kit_py backend: {e}")
-    
+
     def add_bytes(self, data: bytes, *, pin: bool = True) -> str:
         """Add bytes to IPFS and return CID."""
         return self._storage.store(data, pin=pin)
-    
+
     def cat(self, cid: str) -> bytes:
         """Retrieve data by CID."""
         result = self._storage.retrieve(cid)
         if result is None:
             raise RuntimeError(f"CID not found: {cid}")
         return result
-    
+
     def pin(self, cid: str) -> None:
         """Pin content by CID."""
         if not self._storage.pin(cid):
             raise RuntimeError(f"Failed to pin CID: {cid}")
-    
+
     def unpin(self, cid: str) -> None:
         """Unpin content by CID."""
         if not self._storage.unpin(cid):
             raise RuntimeError(f"Failed to unpin CID: {cid}")
-    
+
     def block_put(self, data: bytes, *, codec: str = "raw") -> str:
         """Store a raw block and return its CID."""
         # For raw blocks, just use add_bytes
         return self.add_bytes(data, pin=True)
-    
+
     def block_get(self, cid: str) -> bytes:
         """Get a raw block by CID."""
         return self.cat(cid)
-    
+
     def add_path(
         self,
         path: str,
@@ -198,18 +203,18 @@ class IPFSKitBackend:
     ) -> str:
         """Add a file or directory to IPFS."""
         return self._storage.store(Path(path), pin=pin)
-    
+
     def get_to_path(self, cid: str, *, output_path: str) -> None:
         """Retrieve content and save to path."""
         data = self.cat(cid)
         Path(output_path).write_bytes(data)
-    
+
     def ls(self, cid: str) -> list[str]:
         """List directory contents."""
         # This would require more complex IPFS directory handling
         # For now, return empty list as not all backends support this
         return []
-    
+
     def dag_export(self, cid: str) -> bytes:
         """Export DAG as CAR file."""
         # Not implemented in basic storage layer
@@ -218,62 +223,65 @@ class IPFSKitBackend:
 
 class HuggingFaceCacheBackend:
     """IPFS backend using HuggingFace model cache."""
-    
+
     def __init__(self, cache_dir: Optional[str] = None) -> None:
         """Initialize HuggingFace cache backend.
-        
+
         Args:
             cache_dir: Directory for cache (defaults to HF_HOME)
         """
-        self._cache_dir = Path(cache_dir or os.getenv("HF_HOME") or 
-                               os.path.join(os.path.expanduser("~"), ".cache", "huggingface"))
+        self._cache_dir = Path(
+            cache_dir
+            or os.getenv("HF_HOME")
+            or os.path.join(os.path.expanduser("~"), ".cache", "huggingface")
+        )
         self._ipfs_cache = self._cache_dir / "ipfs_blocks"
         self._ipfs_cache.mkdir(parents=True, exist_ok=True)
-    
+
     def _generate_cid(self, data: bytes) -> str:
         """Generate a CID-like identifier for data."""
         hash_value = hashlib.sha256(data).hexdigest()
         return f"bafy{hash_value[:56]}"
-    
+
     def add_bytes(self, data: bytes, *, pin: bool = True) -> str:
         """Store bytes in HF cache and return CID."""
         cid = self._generate_cid(data)
         block_path = self._ipfs_cache / cid
         block_path.write_bytes(data)
-        
+
         # Store metadata about pinning
         if pin:
             meta_path = self._ipfs_cache / f"{cid}.meta"
             meta_path.write_text(json.dumps({"pinned": True}))
-        
+
         return cid
-    
+
     def cat(self, cid: str) -> bytes:
         """Retrieve data by CID from HF cache."""
         block_path = self._ipfs_cache / cid
         if not block_path.exists():
             raise RuntimeError(f"CID not found in HF cache: {cid}")
         return block_path.read_bytes()
-    
+
     def pin(self, cid: str) -> None:
         """Mark content as pinned in HF cache."""
         meta_path = self._ipfs_cache / f"{cid}.meta"
         meta_path.write_text(json.dumps({"pinned": True}))
-    
+
     def unpin(self, cid: str) -> None:
         """Unmark content as pinned in HF cache."""
         meta_path = self._ipfs_cache / f"{cid}.meta"
         if meta_path.exists():
             meta_path.unlink()
-    
+
     def block_put(self, data: bytes, *, codec: str = "raw") -> str:
         """Store a raw block in HF cache."""
         return self.add_bytes(data, pin=True)
-    
+
     def block_get(self, cid: str) -> bytes:
         """Get a raw block by CID from HF cache."""
         return self.cat(cid)
-    
+
     def add_path(
         self,
         path: str,
@@ -285,16 +293,16 @@ class HuggingFaceCacheBackend:
         """Add file to HF cache."""
         data = Path(path).read_bytes()
         return self.add_bytes(data, pin=pin)
-    
+
     def get_to_path(self, cid: str, *, output_path: str) -> None:
         """Retrieve content and save to path."""
         data = self.cat(cid)
         Path(output_path).write_bytes(data)
-    
+
     def ls(self, cid: str) -> list[str]:
         """List directory contents (not supported in HF cache)."""
         return []
-    
+
     def dag_export(self, cid: str) -> bytes:
         """Export DAG (not supported in HF cache)."""
         raise RuntimeError("dag_export not available in HF cache backend")
@@ -302,10 +310,10 @@ class HuggingFaceCacheBackend:
 
 class KuboCLIBackend:
     """IPFS backend using local Kubo CLI."""
-    
+
     def __init__(self, cmd: Optional[str] = None) -> None:
         """Initialize Kubo CLI backend.
-        
+
         Args:
             cmd: IPFS CLI command (defaults to 'ipfs')
         """
@@ -328,7 +336,9 @@ class KuboCLIBackend:
     def add_bytes(self, data: bytes, *, pin: bool = True) -> str:
         """Add bytes to IPFS via CLI."""
         pin_flag = "true" if pin else "false"
-        out = self._run(["add", "-Q", f"--pin={pin_flag}", "--stdin-name", "data.bin"], input_bytes=data)
+        out = self._run(
+            ["add", "-Q", f"--pin={pin_flag}", "--stdin-name", "data.bin"], input_bytes=data
+        )
         return out.decode("utf-8", errors="replace").strip()
 
     def cat(self, cid: str) -> bytes:
@@ -349,7 +359,9 @@ class KuboCLIBackend:
             handle.write(data)
             handle.flush()
             try:
-                out = self._run(["block", "put", "--cid-version", "1", "--format", str(codec), handle.name])
+                out = self._run(
+                    ["block", "put", "--cid-version", "1", "--format", str(codec), handle.name]
+                )
             except RuntimeError as e:
                 # Some IPFS CLIs don't support these flags
                 msg = str(e)
@@ -415,7 +427,7 @@ def _get_ipfs_kit_backend(deps: object = None) -> Optional[IPFSBackend]:
     # Check if disabled
     if _truthy(os.getenv("IPFS_KIT_DISABLE")):
         return None
-    
+
     # Check if enabled (default: true)
     if not _truthy(os.getenv("ENABLE_IPFS_KIT", "true")):
         return None
@@ -449,7 +461,7 @@ def _get_kubo_backend() -> Optional[IPFSBackend]:
 @lru_cache(maxsize=1)
 def _get_default_backend_cached(cache_key: tuple, deps: object = None) -> IPFSBackend:
     """Get the default backend with caching.
-    
+
     This tries backends in order of preference:
     1. ipfs_kit_py (preferred for distributed storage)
     2. HuggingFace cache (good for model storage)
@@ -460,14 +472,14 @@ def _get_default_backend_cached(cache_key: tuple, deps: object = None) -> IPFSBa
     if backend_name and backend_name in _PROVIDER_REGISTRY:
         provider = _PROVIDER_REGISTRY[backend_name]
         return provider.factory()
-    
+
     # Try backends in order of preference
     backends = [
         ("ipfs_kit", lambda: _get_ipfs_kit_backend(deps)),
         ("hf_cache", _get_hf_cache_backend),
         ("kubo", _get_kubo_backend),
     ]
-    
+
     for name, factory in backends:
         try:
             backend = factory()
@@ -475,41 +487,44 @@ def _get_default_backend_cached(cache_key: tuple, deps: object = None) -> IPFSBa
                 return backend
         except Exception:
             continue
-    
+
     # If all fail, use Kubo as absolute fallback
     return KuboCLIBackend()
 
 
 def get_backend(*, deps: object = None, backend: Optional[IPFSBackend] = None) -> IPFSBackend:
     """Get the IPFS backend to use.
-    
+
     Args:
         deps: Optional dependency injection container
         backend: Optional explicit backend instance
-    
+
     Returns:
         IPFSBackend instance
     """
     # Use explicit backend if provided
     if backend is not None:
         return backend
-    
+
     # Check for global override
     if _DEFAULT_BACKEND_OVERRIDE is not None:
         return _DEFAULT_BACKEND_OVERRIDE
-    
+
     # Get cached backend
     if _cache_enabled():
         cache_key = _backend_cache_key()
         return _get_default_backend_cached(cache_key, deps)
-    
+
     # No caching - create new backend
     return _get_default_backend_cached.__wrapped__(_backend_cache_key(), deps)
 
 
 # Convenience functions that use the default backend
 
-def add_bytes(data: bytes, *, pin: bool = True, backend: Optional[IPFSBackend] = None, deps: object = None) -> str:
+
+def add_bytes(
+    data: bytes, *, pin: bool = True, backend: Optional[IPFSBackend] = None, deps: object = None
+) -> str:
     """Add bytes to IPFS and return CID."""
     return get_backend(deps=deps, backend=backend).add_bytes(data, pin=pin)
 
@@ -529,7 +544,9 @@ def unpin(cid: str, *, backend: Optional[IPFSBackend] = None, deps: object = Non
     get_backend(deps=deps, backend=backend).unpin(cid)
 
 
-def block_put(data: bytes, *, codec: str = "raw", backend: Optional[IPFSBackend] = None, deps: object = None) -> str:
+def block_put(
+    data: bytes, *, codec: str = "raw", backend: Optional[IPFSBackend] = None, deps: object = None
+) -> str:
     """Store a raw block and return its CID."""
     return get_backend(deps=deps, backend=backend).block_put(data, codec=codec)
 
@@ -546,13 +563,17 @@ def add_path(
     pin: bool = True,
     chunker: Optional[str] = None,
     backend: Optional[IPFSBackend] = None,
-    deps: object = None
+    deps: object = None,
 ) -> str:
     """Add a file or directory to IPFS."""
-    return get_backend(deps=deps, backend=backend).add_path(path, recursive=recursive, pin=pin, chunker=chunker)
+    return get_backend(deps=deps, backend=backend).add_path(
+        path, recursive=recursive, pin=pin, chunker=chunker
+    )
 
 
-def get_to_path(cid: str, *, output_path: str, backend: Optional[IPFSBackend] = None, deps: object = None) -> None:
+def get_to_path(
+    cid: str, *, output_path: str, backend: Optional[IPFSBackend] = None, deps: object = None
+) -> None:
     """Retrieve content and save to path."""
     get_backend(deps=deps, backend=backend).get_to_path(cid, output_path=output_path)
 

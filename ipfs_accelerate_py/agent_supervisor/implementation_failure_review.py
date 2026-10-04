@@ -22,9 +22,7 @@ from typing import Any, Iterable, Mapping, Sequence
 from .formal_verification_contracts import canonical_json, content_identity
 
 
-FAILURE_REVIEW_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/implementation-failure-review@1"
-)
+FAILURE_REVIEW_SCHEMA = "ipfs_accelerate_py/agent-supervisor/implementation-failure-review@1"
 FAILURE_REVIEW_POLICY_VERSION = "deterministic-failure-review-v1"
 
 # Failures that may never be accepted by the reviewer.
@@ -82,26 +80,13 @@ def _normalize_path(value: Any) -> str:
     path = str(value or "").strip().replace("\\", "/")
     while path.startswith("./"):
         path = path[2:]
-    if (
-        not path
-        or path.startswith("/")
-        or "\0" in path
-        or ".." in PurePosixPath(path).parts
-    ):
+    if not path or path.startswith("/") or "\0" in path or ".." in PurePosixPath(path).parts:
         return ""
     return PurePosixPath(path).as_posix()
 
 
 def _normalized_paths(values: Iterable[Any]) -> tuple[str, ...]:
-    return tuple(
-        sorted(
-            {
-                path
-                for value in values
-                if (path := _normalize_path(value))
-            }
-        )
-    )
+    return tuple(sorted({path for value in values if (path := _normalize_path(value))}))
 
 
 def _as_str_tuple(values: Any) -> tuple[str, ...]:
@@ -112,15 +97,7 @@ def _as_str_tuple(values: Any) -> tuple[str, ...]:
         return (text,) if text else ()
     if not isinstance(values, (list, tuple, set, frozenset)):
         return ()
-    return tuple(
-        sorted(
-            {
-                str(item).strip()
-                for item in values
-                if str(item).strip()
-            }
-        )
-    )
+    return tuple(sorted({str(item).strip() for item in values if str(item).strip()}))
 
 
 def _mapping(value: Any) -> Mapping[str, Any]:
@@ -136,9 +113,7 @@ def _finding_codes_from_validation(
     proposal = _mapping(validation_result.get("proposal_gate"))
     codes.update(_as_str_tuple(proposal.get("reason_codes")))
     codes.update(_as_str_tuple(proposal.get("finding_codes")))
-    proposal_validation = _mapping(
-        validation_result.get("proposal_validation")
-    )
+    proposal_validation = _mapping(validation_result.get("proposal_validation"))
     findings = proposal_validation.get("findings") or ()
     if isinstance(findings, Sequence) and not isinstance(findings, (str, bytes)):
         for finding in findings:
@@ -164,14 +139,9 @@ def _changed_paths_from_validation(
     ):
         container = _mapping(validation_result.get(container_key))
         for key in ("changed_paths", "changed_files", "paths"):
-            paths.update(
-                path
-                for path in _normalized_paths(container.get(key) or ())
-            )
+            paths.update(path for path in _normalized_paths(container.get(key) or ()))
     # Nested proposal object.
-    proposal_validation = _mapping(
-        validation_result.get("proposal_validation")
-    )
+    proposal_validation = _mapping(validation_result.get("proposal_validation"))
     proposal = _mapping(proposal_validation.get("proposal"))
     paths.update(_normalized_paths(proposal.get("changed_paths") or ()))
     return tuple(sorted(paths))
@@ -209,9 +179,7 @@ def _scope_projection(
         payload = _mapping(validation_result.get(key))
         if payload:
             return dict(payload)
-    proposal_validation = _mapping(
-        validation_result.get("proposal_validation")
-    )
+    proposal_validation = _mapping(validation_result.get("proposal_validation"))
     nested = _mapping(proposal_validation.get("scope_adjudication"))
     return dict(nested) if nested else {}
 
@@ -312,9 +280,7 @@ def _guidance_lines(
     if missing_outputs:
         lines.append("")
         lines.append("### Missing or unfinished expected outputs")
-        lines.append(
-            "Implement **every** declared output before finishing the attempt:"
-        )
+        lines.append("Implement **every** declared output before finishing the attempt:")
         for path in missing_outputs:
             lines.append(f"- create/update `{path}`")
     if out_of_scope_paths or denied_paths:
@@ -341,9 +307,7 @@ def _guidance_lines(
         lines.append("### Failed validation commands")
         for command in failed_commands:
             lines.append(f"- `{command}`")
-        lines.append(
-            "Re-run these commands after edits and keep them green before exit."
-        )
+        lines.append("Re-run these commands after edits and keep them green before exit.")
     if FailureReviewReason.ENVIRONMENT_VALIDATION_UNAVAILABLE.value in reason_codes:
         lines.append("")
         lines.append("### Environment")
@@ -473,9 +437,7 @@ class ImplementationFailureReviewReceipt:
             str(self.policy_version or FAILURE_REVIEW_POLICY_VERSION).strip(),
         )
         if self.proof_authoritative or self.completion_authoritative:
-            raise ValueError(
-                "failure review cannot claim proof or completion authority"
-            )
+            raise ValueError("failure review cannot claim proof or completion authority")
 
     @property
     def accepted(self) -> bool:
@@ -531,20 +493,14 @@ class ImplementationFailureReviewReceipt:
             finding_codes=tuple(payload.get("finding_codes") or ()),
             expected_outputs=tuple(payload.get("expected_outputs") or ()),
             changed_paths=tuple(payload.get("changed_paths") or ()),
-            missing_expected_outputs=tuple(
-                payload.get("missing_expected_outputs") or ()
-            ),
+            missing_expected_outputs=tuple(payload.get("missing_expected_outputs") or ()),
             out_of_scope_paths=tuple(payload.get("out_of_scope_paths") or ()),
             justified_paths=tuple(payload.get("justified_paths") or ()),
             denied_paths=tuple(payload.get("denied_paths") or ()),
             failed_commands=tuple(payload.get("failed_commands") or ()),
             guidance_markdown=str(payload.get("guidance_markdown") or ""),
-            next_attempt_prompt_addendum=str(
-                payload.get("next_attempt_prompt_addendum") or ""
-            ),
-            policy_version=str(
-                payload.get("policy_version") or FAILURE_REVIEW_POLICY_VERSION
-            ),
+            next_attempt_prompt_addendum=str(payload.get("next_attempt_prompt_addendum") or ""),
+            policy_version=str(payload.get("policy_version") or FAILURE_REVIEW_POLICY_VERSION),
         )
         if payload.get("receipt_id") not in (None, "", result.receipt_id):
             raise ValueError("failure review receipt identity is forged")
@@ -574,9 +530,7 @@ def review_implementation_failure(
 
     validation = _mapping(validation_result)
     finding_codes = _finding_codes_from_validation(validation)
-    changed = _normalized_paths(
-        (*changed_paths, *_changed_paths_from_validation(validation))
-    )
+    changed = _normalized_paths((*changed_paths, *_changed_paths_from_validation(validation)))
     expected = _normalized_paths(expected_outputs)
     workspace = Path(workspace_path) if workspace_path else None
     missing = _missing_expected_outputs(
@@ -594,8 +548,7 @@ def review_implementation_failure(
         if expected
         and path not in set(expected)
         and not any(
-            path == declared or path.startswith(declared.rstrip("/") + "/")
-            for declared in expected
+            path == declared or path.startswith(declared.rstrip("/") + "/") for declared in expected
         )
     )
     failed_commands = _failed_commands_from_validation(validation)
@@ -605,66 +558,44 @@ def review_implementation_failure(
         proposal_accepted is False
         or error == "proposal_validation_failed"
         or reason in {"proposal_gate_failed", "proposal_validation_failed"}
-        or (
-            not validation.get("passed", True)
-            and "proposal" in reason
-        )
+        or (not validation.get("passed", True) and "proposal" in reason)
     )
 
     reason_codes: list[str] = []
-    hard_denies = tuple(
-        code for code in finding_codes if code in _HARD_DENY_FINDING_CODES
-    )
+    hard_denies = tuple(code for code in finding_codes if code in _HARD_DENY_FINDING_CODES)
     if hard_denies:
         reason_codes.append(FailureReviewReason.HARD_DENY_FINDINGS.value)
     if finding_codes and set(finding_codes) <= _SCOPE_RELATED_FINDING_CODES:
         if scope_accepted and justified:
-            reason_codes.append(
-                FailureReviewReason.SCOPE_EXPANSION_JUSTIFIED.value
-            )
+            reason_codes.append(FailureReviewReason.SCOPE_EXPANSION_JUSTIFIED.value)
         elif denied or out_of_scope:
-            reason_codes.append(
-                FailureReviewReason.SCOPE_EXPANSION_DENIED.value
-            )
+            reason_codes.append(FailureReviewReason.SCOPE_EXPANSION_DENIED.value)
     elif out_of_scope or denied:
         reason_codes.append(FailureReviewReason.SCOPE_EXPANSION_DENIED.value)
     if missing and len(missing) == len(expected) and not changed:
         reason_codes.append(FailureReviewReason.EMPTY_OR_NO_CHANGE.value)
     elif missing:
-        reason_codes.append(
-            FailureReviewReason.INCOMPLETE_EXPECTED_OUTPUTS.value
-        )
+        reason_codes.append(FailureReviewReason.INCOMPLETE_EXPECTED_OUTPUTS.value)
     if proposal_failed:
         reason_codes.append(FailureReviewReason.PROPOSAL_GATE_FAILED.value)
     if failed_commands or (
-        validation.get("attempted") and validation.get("passed") is False
-        and not proposal_failed
+        validation.get("attempted") and validation.get("passed") is False and not proposal_failed
     ):
-        reason_codes.append(
-            FailureReviewReason.VALIDATION_COMMAND_FAILED.value
-        )
+        reason_codes.append(FailureReviewReason.VALIDATION_COMMAND_FAILED.value)
     if _is_environment_failure(validation, log_excerpt=log_excerpt):
-        reason_codes.append(
-            FailureReviewReason.ENVIRONMENT_VALIDATION_UNAVAILABLE.value
-        )
+        reason_codes.append(FailureReviewReason.ENVIRONMENT_VALIDATION_UNAVAILABLE.value)
     if out_of_scope or (
         changed
         and expected
         and not set(changed).issubset(set(expected))
         and len(changed) > len(expected)
     ):
-        reason_codes.append(
-            FailureReviewReason.LARGE_OR_UNDECLARED_REFACTOR.value
-        )
+        reason_codes.append(FailureReviewReason.LARGE_OR_UNDECLARED_REFACTOR.value)
     if not reason_codes:
         if finding_codes or failed_commands or missing:
-            reason_codes.append(
-                FailureReviewReason.GENERIC_IMPLEMENTATION_FAILURE.value
-            )
+            reason_codes.append(FailureReviewReason.GENERIC_IMPLEMENTATION_FAILURE.value)
         else:
-            reason_codes.append(
-                FailureReviewReason.NO_ACTIONABLE_EVIDENCE.value
-            )
+            reason_codes.append(FailureReviewReason.NO_ACTIONABLE_EVIDENCE.value)
     reason_codes = list(dict.fromkeys(reason_codes))
 
     # Fail-closed accept: only pure justified scope after successful
@@ -681,8 +612,7 @@ def review_implementation_failure(
             proposal_accepted is True
             or (
                 # Proposal will be revalidated by the caller after accept.
-                set(finding_codes) <= _SCOPE_RELATED_FINDING_CODES
-                and justified
+                set(finding_codes) <= _SCOPE_RELATED_FINDING_CODES and justified
             )
         )
     )
@@ -707,20 +637,13 @@ def review_implementation_failure(
         )
     )
     addendum_lines = [
-        "Prior attempt failure review "
-        f"({decision.value}; reasons: {', '.join(reason_codes)}).",
+        f"Prior attempt failure review ({decision.value}; reasons: {', '.join(reason_codes)}).",
     ]
     if missing:
-        addendum_lines.append(
-            "Still required outputs: " + ", ".join(missing) + "."
-        )
+        addendum_lines.append("Still required outputs: " + ", ".join(missing) + ".")
     if denied or out_of_scope:
         blocked = tuple(dict.fromkeys((*denied, *out_of_scope)))
-        addendum_lines.append(
-            "Do not modify these out-of-scope paths: "
-            + ", ".join(blocked)
-            + "."
-        )
+        addendum_lines.append("Do not modify these out-of-scope paths: " + ", ".join(blocked) + ".")
     if justified and decision is not FailureReviewDecision.ACCEPT:
         addendum_lines.append(
             "Import/test-linked companions previously justified: "
@@ -728,9 +651,7 @@ def review_implementation_failure(
             + ". Prefer declaring them on the task board if they must stick."
         )
     if failed_commands:
-        addendum_lines.append(
-            "Re-run and fix: " + " | ".join(failed_commands[:4]) + "."
-        )
+        addendum_lines.append("Re-run and fix: " + " | ".join(failed_commands[:4]) + ".")
     addendum_lines.append(
         "Stay inside declared Outputs/Predicted files; finish all expected "
         "outputs; avoid renames, submodule edits, and undeclared new modules."

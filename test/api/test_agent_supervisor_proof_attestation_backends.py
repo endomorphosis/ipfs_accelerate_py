@@ -46,9 +46,7 @@ def _policy(
 ) -> AttestationBackendPolicy:
     return AttestationBackendPolicy(
         backend_id=(
-            "backend:simulated"
-            if mode is AttestationBackendMode.SIMULATED
-            else "backend:provekit"
+            "backend:simulated" if mode is AttestationBackendMode.SIMULATED else "backend:provekit"
         ),
         backend_version="0.1.7",
         circuit_id="circuit:receipt-binding",
@@ -122,9 +120,7 @@ def _request(policy: AttestationBackendPolicy | None = None):
     return prepare_receipt_attestation(
         _receipt(),
         backend_policy=checked,
-        witness=PrivateAttestationWitness(
-            {"private_premise": "witness-secret-REF-265"}
-        ),
+        witness=PrivateAttestationWitness({"private_premise": "witness-secret-REF-265"}),
     )
 
 
@@ -132,9 +128,7 @@ def test_health_distinguishes_all_backend_readiness_states() -> None:
     assert _health(_policy(mode=AttestationBackendMode.SIMULATED)).status is (
         CapabilityHealth.SIMULATED
     )
-    assert _health(configured=False, available=False).status is (
-        CapabilityHealth.UNAVAILABLE
-    )
+    assert _health(configured=False, available=False).status is (CapabilityHealth.UNAVAILABLE)
     assert _health(outcomes={}, available=False).status is CapabilityHealth.CONFIGURED
     assert _health(outcomes={}).status is CapabilityHealth.AVAILABLE
     failed = _outcomes()
@@ -153,13 +147,9 @@ def test_policy_and_statement_pin_every_backend_version() -> None:
     assert statement.public_inputs["backend_version"] == policy.backend_version
     assert statement.public_inputs["circuit_version"] == policy.circuit_version
     assert (
-        statement.public_inputs["public_input_schema_version"]
-        == policy.public_input_schema_version
+        statement.public_inputs["public_input_schema_version"] == policy.public_input_schema_version
     )
-    assert (
-        statement.public_inputs["verification_key_version"]
-        == policy.verification_key_version
-    )
+    assert statement.public_inputs["verification_key_version"] == policy.verification_key_version
     assert ReceiptAttestationStatement.from_dict(statement.to_dict()) == statement
 
     for field_name in (

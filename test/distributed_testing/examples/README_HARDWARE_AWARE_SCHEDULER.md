@@ -179,7 +179,7 @@ The thermal management system helps prevent overheating:
 thermal_state = {
     "temperature": 78.0,  # Celsius
     "throttling_active": True,
-    "fan_speed_percent": 85
+    "fan_speed_percent": 85,
 }
 orchestrator.update_thermal_state(device_id, thermal_state)
 

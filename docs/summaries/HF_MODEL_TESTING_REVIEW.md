@@ -124,19 +124,15 @@ test/
 import logging
 from unittest.mock import MagicMock
 
+
 # Hardware detection
 def check_hardware():
-    capabilities = {
-        "cpu": True,
-        "cuda": False,
-        "cuda_devices": 0,
-        "mps": False,
-        "openvino": False
-    }
+    capabilities = {"cpu": True, "cuda": False, "cuda_devices": 0, "mps": False, "openvino": False}
     if HAS_TORCH:
         capabilities["cuda"] = torch.cuda.is_available()
         capabilities["cuda_devices"] = torch.cuda.device_count()
     return capabilities
+
 
 HW_CAPABILITIES = check_hardware()
 
@@ -148,12 +144,13 @@ CLIP_MODELS_REGISTRY = {
     }
 }
 
+
 class TestClipModels:
     """Test class for clip models."""
-    
+
     def __init__(self, model_id=None):
         self.model_id = model_id or "openai/clip-vit-base-patch32"
-    
+
     def test_pipeline(self, device="auto"):
         """Test the model using pipeline API."""
         results = {
@@ -161,13 +158,13 @@ class TestClipModels:
             "device": device,
             "task": self.task,
         }
-        
+
         try:
             # Load model
             load_start_time = time.time()
             pipeline = transformers.pipeline(**pipeline_kwargs)
             load_time = time.time() - load_start_time
-            
+
             # Run inference
             output = pipeline(pipeline_input)
             results["pipeline_success"] = True
@@ -175,7 +172,7 @@ class TestClipModels:
         except Exception as e:
             results["pipeline_success"] = False
             results["error"] = str(e)
-        
+
         return results
 ```
 
@@ -204,18 +201,18 @@ def test_bert_base_uncased():
     # Load model and tokenizer
     tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
     model = AutoModel.from_pretrained("bert-base-uncased")
-    
+
     # Test with simple input
     text = "This is a test input"
     inputs = tokenizer(text, return_tensors="pt")
-    
+
     # Run model
     with torch.no_grad():
         outputs = model(**inputs)
-    
+
     # Verify output shape
-    assert outputs.last_hidden_state.shape == (1, len(inputs['input_ids'][0]), 768)
-    
+    assert outputs.last_hidden_state.shape == (1, len(inputs["input_ids"][0]), 768)
+
     print(f"✅ BERT test passed")
 ```
 
@@ -239,31 +236,21 @@ def test_bert_base_uncased():
 ```python
 class HFTGIMultiplexer:
     """Class to manage multiple HuggingFace TGI API keys."""
-    
+
     def __init__(self):
         self.hf_tgi_clients = {}
         self.hf_tgi_lock = threading.RLock()
-    
+
     def add_hf_tgi_key(self, key_name, api_key, model_id=None):
         """Add a new HF TGI API key with its own client."""
-        metadata = {
-            "hf_api_key": api_key,
-            "model_id": model_id or "google/t5-efficient-tiny"
-        }
-        
-        client = hf_tgi(
-            resources={},
-            metadata=metadata
-        )
-        
-        self.hf_tgi_clients[key_name] = {
-            "client": client,
-            "usage": 0,
-            "endpoints": {}
-        }
-        
+        metadata = {"hf_api_key": api_key, "model_id": model_id or "google/t5-efficient-tiny"}
+
+        client = hf_tgi(resources={}, metadata=metadata)
+
+        self.hf_tgi_clients[key_name] = {"client": client, "usage": 0, "endpoints": {}}
+
         return key_name
-    
+
     def get_hf_tgi_client(self, key_name=None, strategy="round-robin"):
         """Get a HF TGI client by key name or strategy."""
         # Implementation...
@@ -292,16 +279,14 @@ class IntegrationTestRunner:
     def __init__(self):
         self.coordinator = Coordinator()
         self.workers = []
-    
+
     def run_tests(self, test_suite):
         """Run a suite of integration tests across workers."""
         for test in test_suite:
             # Schedule on appropriate hardware
-            worker = self.coordinator.select_worker(
-                test.hardware_requirements
-            )
+            worker = self.coordinator.select_worker(test.hardware_requirements)
             result = worker.execute_test(test)
-            
+
             # Handle failures with recovery
             if result.failed:
                 recovery = ErrorRecoveryStrategy(test)
@@ -410,14 +395,15 @@ def test_{model}_model():
 def test_model_on_cuda():
     """Test model on CUDA devices."""
     assert torch.cuda.is_available(), "CUDA not available"
-    
+
     model = load_model("bert-base-uncased")
     model = model.cuda()
-    
+
     inputs = tokenizer("test", return_tensors="pt").to("cuda")
     outputs = model(**inputs)
-    
+
     assert outputs.device.type == "cuda"
+
 
 @pytest.mark.rocm
 def test_model_on_rocm():
@@ -427,11 +413,12 @@ def test_model_on_rocm():
     model = model.to("cuda")
     # ...
 
+
 @pytest.mark.mps
 def test_model_on_apple_silicon():
     """Test model on M1/M2/M3 chips."""
     assert torch.backends.mps.is_available(), "MPS not available"
-    
+
     model = model.to("mps")
     inputs = inputs.to("mps")
     # ...
@@ -456,6 +443,7 @@ def test_model_on_apple_silicon():
 # Pattern for graceful degradation
 try:
     import torch
+
     HAS_TORCH = True
 except ImportError:
     torch = MagicMock()
@@ -464,10 +452,12 @@ except ImportError:
 
 try:
     import transformers
+
     HAS_TRANSFORMERS = True
 except ImportError:
     transformers = MagicMock()
     HAS_TRANSFORMERS = False
+
 
 # Tests continue with mock implementations
 def create_mock_processor():
@@ -476,9 +466,11 @@ def create_mock_processor():
             batch_size = 1 if isinstance(text, str) else len(text)
             return {
                 "input_ids": torch.ones((batch_size, 10), dtype=torch.long),
-                "attention_mask": torch.ones((batch_size, 10), dtype=torch.long)
+                "attention_mask": torch.ones((batch_size, 10), dtype=torch.long),
             }
+
     return MockProcessor()
+
 
 # Use real or mock based on availability
 if HAS_TRANSFORMERS:
@@ -560,22 +552,25 @@ import os
 import sys
 from pathlib import Path
 
+
 def pytest_configure() -> None:
     """Configure pytest before tests run."""
     # Add repo root to path
     repo_root = Path(__file__).resolve().parent
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
-    
+
     # Set environment variables
     os.environ.setdefault("TEST_MODE", "development")
     os.environ.setdefault("RUN_LONG_TESTS", "1")
     os.environ.setdefault("IPFS_ACCEL_RUN_INTEGRATION_TESTS", "1")
-    
+
     # Suppress warnings
     import warnings
+
     warnings.filterwarnings("ignore", message=r"Can't initialize NVML")
     warnings.filterwarnings("ignore", message=r"websockets\.legacy is deprecated")
+
 
 @pytest.fixture(scope="session")
 def anyio_backend() -> str:
@@ -588,11 +583,13 @@ def anyio_backend() -> str:
 ```python
 from test.common.fixtures import *
 
+
 def pytest_configure(config):
     """Register custom markers."""
     config.addinivalue_line("markers", "model: mark test as model test")
     config.addinivalue_line("markers", "cuda: mark test as CUDA test")
     config.addinivalue_line("markers", "hardware: mark test as hardware test")
+
 
 def pytest_collection_modifyitems(config, items):
     """Dynamically mark tests based on capabilities."""
@@ -602,16 +599,17 @@ def pytest_collection_modifyitems(config, items):
         if isinstance(hw_caps, dict) and hw_caps.get("cuda"):
             item.add_marker(pytest.mark.cuda)
 
+
 def pytest_runtest_setup(item):
     """Skip tests based on hardware availability."""
-    if 'cuda' in item.keywords:
+    if "cuda" in item.keywords:
         hardware_info = detect_hardware()
-        if not hardware_info['platforms']['cuda']['available']:
+        if not hardware_info["platforms"]["cuda"]["available"]:
             pytest.skip("CUDA not available")
-    
-    if 'rocm' in item.keywords:
+
+    if "rocm" in item.keywords:
         hardware_info = detect_hardware()
-        if not hardware_info['platforms']['rocm']['available']:
+        if not hardware_info["platforms"]["rocm"]["available"]:
             pytest.skip("ROCm not available")
 ```
 
@@ -640,57 +638,57 @@ def pytest_runtest_setup(item):
 def detect_hardware() -> Dict[str, Any]:
     """Detect available hardware platforms."""
     result = {
-        'platforms': {
-            'cpu': {'available': True},
-            'cuda': {'available': False},
-            'rocm': {'available': False},
-            'mps': {'available': False},
-            'openvino': {'available': False},
-            'qualcomm': {'available': False},
-            'webgpu': {'available': False},
-            'webnn': {'available': False},
+        "platforms": {
+            "cpu": {"available": True},
+            "cuda": {"available": False},
+            "rocm": {"available": False},
+            "mps": {"available": False},
+            "openvino": {"available": False},
+            "qualcomm": {"available": False},
+            "webgpu": {"available": False},
+            "webnn": {"available": False},
         }
     }
-    
+
     # Detect CUDA
     if HAS_TORCH:
-        result['platforms']['cuda']['available'] = torch.cuda.is_available()
-        if result['platforms']['cuda']['available']:
-            result['platforms']['cuda']['device_count'] = torch.cuda.device_count()
-            result['platforms']['cuda']['devices'] = [
-                {'name': torch.cuda.get_device_name(i)}
-                for i in range(torch.cuda.device_count())
+        result["platforms"]["cuda"]["available"] = torch.cuda.is_available()
+        if result["platforms"]["cuda"]["available"]:
+            result["platforms"]["cuda"]["device_count"] = torch.cuda.device_count()
+            result["platforms"]["cuda"]["devices"] = [
+                {"name": torch.cuda.get_device_name(i)} for i in range(torch.cuda.device_count())
             ]
-            result['platforms']['cuda']['compute_capability'] = [
-                torch.cuda.get_device_capability(i)
-                for i in range(torch.cuda.device_count())
+            result["platforms"]["cuda"]["compute_capability"] = [
+                torch.cuda.get_device_capability(i) for i in range(torch.cuda.device_count())
             ]
-    
+
     # Detect ROCm (AMD GPUs)
-    if HAS_TORCH and hasattr(torch.version, 'hip'):
-        result['platforms']['rocm']['available'] = True
-        result['platforms']['rocm']['version'] = torch.version.hip
-    
+    if HAS_TORCH and hasattr(torch.version, "hip"):
+        result["platforms"]["rocm"]["available"] = True
+        result["platforms"]["rocm"]["version"] = torch.version.hip
+
     # Detect MPS (Apple Silicon)
-    if HAS_TORCH and hasattr(torch, 'mps'):
-        if hasattr(torch.mps, 'is_available'):
-            result['platforms']['mps']['available'] = torch.mps.is_available()
-    
+    if HAS_TORCH and hasattr(torch, "mps"):
+        if hasattr(torch.mps, "is_available"):
+            result["platforms"]["mps"]["available"] = torch.mps.is_available()
+
     # Detect OpenVINO
     try:
         import openvino
-        result['platforms']['openvino']['available'] = True
-        result['platforms']['openvino']['version'] = openvino.__version__
+
+        result["platforms"]["openvino"]["available"] = True
+        result["platforms"]["openvino"]["version"] = openvino.__version__
     except ImportError:
         pass
-    
+
     # Detect Qualcomm QNN/SNPE
     try:
         import qnnpy
-        result['platforms']['qualcomm']['available'] = True
+
+        result["platforms"]["qualcomm"]["available"] = True
     except ImportError:
         pass
-    
+
     return result
 ```
 
@@ -704,65 +702,73 @@ def hardware_info():
     """Get hardware information."""
     return detect_hardware()
 
+
 @pytest.fixture
 def cpu_device():
     """Get CPU device."""
-    return setup_platform('cpu')
+    return setup_platform("cpu")
+
 
 @pytest.fixture
 def cuda_device():
     """Get CUDA device if available."""
     hardware_info = detect_hardware()
-    if hardware_info['platforms']['cuda']['available']:
-        return setup_platform('cuda')
+    if hardware_info["platforms"]["cuda"]["available"]:
+        return setup_platform("cuda")
     pytest.skip("CUDA not available")
+
 
 @pytest.fixture
 def rocm_device():
     """Get ROCm device if available."""
     hardware_info = detect_hardware()
-    if hardware_info['platforms']['rocm']['available']:
-        return setup_platform('cuda')  # ROCm uses 'cuda' device
+    if hardware_info["platforms"]["rocm"]["available"]:
+        return setup_platform("cuda")  # ROCm uses 'cuda' device
     pytest.skip("ROCm not available")
+
 
 @pytest.fixture
 def mps_device():
     """Get MPS device if available."""
     hardware_info = detect_hardware()
-    if hardware_info['platforms']['mps']['available']:
-        return setup_platform('mps')
+    if hardware_info["platforms"]["mps"]["available"]:
+        return setup_platform("mps")
     pytest.skip("MPS not available")
+
 
 @pytest.fixture
 def openvino_device():
     """Get OpenVINO device if available."""
     hardware_info = detect_hardware()
-    if hardware_info['platforms']['openvino']['available']:
-        return setup_platform('openvino')
+    if hardware_info["platforms"]["openvino"]["available"]:
+        return setup_platform("openvino")
     pytest.skip("OpenVINO not available")
 ```
 
 ### Hardware-Aware Test Example
 
 ```python
-@pytest.mark.parametrize("device", [
-    pytest.param("cpu", marks=pytest.mark.cpu),
-    pytest.param("cuda", marks=pytest.mark.cuda),
-    pytest.param("rocm", marks=pytest.mark.rocm),
-    pytest.param("mps", marks=pytest.mark.mps),
-])
+@pytest.mark.parametrize(
+    "device",
+    [
+        pytest.param("cpu", marks=pytest.mark.cpu),
+        pytest.param("cuda", marks=pytest.mark.cuda),
+        pytest.param("rocm", marks=pytest.mark.rocm),
+        pytest.param("mps", marks=pytest.mark.mps),
+    ],
+)
 def test_model_on_multiple_hardware(device):
     """Test model across multiple hardware platforms."""
     # Hardware validation done by pytest_runtest_setup
-    
+
     # Load model
     model = load_model("bert-base-uncased")
     model = model.to(device)
-    
+
     # Run inference
     inputs = tokenizer("test", return_tensors="pt").to(device)
     outputs = model(**inputs)
-    
+
     # Validate
     assert outputs.last_hidden_state.device.type == device
     assert not torch.isnan(outputs.last_hidden_state).any()
@@ -813,51 +819,52 @@ def test_model_on_multiple_hardware(device):
 ```python
 # test/distributed_testing/run_integration_tests.py
 
+
 class IntegrationTestRunner:
     def __init__(self, config_path=None):
         self.config = self.load_config(config_path)
         self.coordinator = Coordinator(self.config)
         self.workers = []
         self.results = []
-    
+
     def setup(self):
         """Initialize workers and resources."""
-        for worker_config in self.config.get('workers', []):
+        for worker_config in self.config.get("workers", []):
             worker = Worker(worker_config)
             worker.start()
             self.workers.append(worker)
-        
+
         self.coordinator.register_workers(self.workers)
-    
+
     def run_test_suite(self, test_suite_name):
         """Run a complete test suite."""
         test_suite = self.load_test_suite(test_suite_name)
-        
+
         for test_case in test_suite:
             # Schedule test
             worker = self.coordinator.select_worker(test_case)
-            
+
             # Execute test
             result = worker.execute_test(test_case)
-            
+
             # Handle failures
             if not result.success:
                 recovery = ErrorRecoveryStrategy(test_case)
                 result = recovery.retry(test_case, max_attempts=3)
-            
+
             # Store result
             self.results.append(result)
-        
+
         return self.aggregate_results()
-    
+
     def aggregate_results(self):
         """Aggregate test results."""
         return {
-            'total': len(self.results),
-            'passed': sum(1 for r in self.results if r.success),
-            'failed': sum(1 for r in self.results if not r.success),
-            'skipped': sum(1 for r in self.results if r.skipped),
-            'duration': sum(r.duration for r in self.results),
+            "total": len(self.results),
+            "passed": sum(1 for r in self.results if r.success),
+            "failed": sum(1 for r in self.results if not r.success),
+            "skipped": sum(1 for r in self.results if r.skipped),
+            "duration": sum(r.duration for r in self.results),
         }
 ```
 
@@ -871,22 +878,19 @@ def test_multi_model_pipeline():
     # Load models
     text_model = load_model("bert-base-uncased")
     vision_model = load_model("openai/clip-vit-base-patch32")
-    
+
     # Process text
     text_inputs = tokenizer("A photo of a cat", return_tensors="pt")
     text_features = text_model(**text_inputs).last_hidden_state
-    
+
     # Process image
     image = load_test_image("cat.jpg")
     image_inputs = image_processor(image, return_tensors="pt")
     image_features = vision_model.get_image_features(**image_inputs)
-    
+
     # Compute similarity
-    similarity = torch.cosine_similarity(
-        text_features.mean(dim=1),
-        image_features
-    )
-    
+    similarity = torch.cosine_similarity(text_features.mean(dim=1), image_features)
+
     # Validate
     assert similarity > 0.5, "Text-image similarity too low"
 ```
@@ -969,6 +973,7 @@ class TestClipModels:
     def test_pipeline(self, device="auto"):
         results = {"success": True}
         return results  # No assertion!
+
 
 # Should be:
 class TestClipModels:
@@ -1149,11 +1154,14 @@ class TestClipModels:
 2. **Cross-Hardware Testing**
    ```python
    @pytest.mark.integration
-   @pytest.mark.parametrize("devices", [
-       ("cpu", "cpu"),
-       ("cuda:0", "cuda:1"),
-       ("cpu", "cuda"),
-   ])
+   @pytest.mark.parametrize(
+       "devices",
+       [
+           ("cpu", "cpu"),
+           ("cuda:0", "cuda:1"),
+           ("cpu", "cuda"),
+       ],
+   )
    def test_distributed_inference(devices):
        """Test inference across multiple devices."""
        model_part1 = load_model_part("encoder").to(devices[0])

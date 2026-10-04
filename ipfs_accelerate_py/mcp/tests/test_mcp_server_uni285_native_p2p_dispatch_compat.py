@@ -22,13 +22,17 @@ class TestMCPServerUNI285NativeP2PDispatchCompat(unittest.TestCase):
         return response["result"]
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_native_p2p_dispatch_infers_error_status_from_contradictory_delegate_payloads(self, mock_wrapper) -> None:
+    def test_native_p2p_dispatch_infers_error_status_from_contradictory_delegate_payloads(
+        self, mock_wrapper
+    ) -> None:
         class DummyServer:
             def __init__(self):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -43,17 +47,20 @@ class TestMCPServerUNI285NativeP2PDispatchCompat(unittest.TestCase):
             return {"status": "success", "success": False, "error": "delegate failure"}
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.object(
-                native_p2p_tools,
-                "_request_status",
-                side_effect=_contradictory_failure,
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.object(
+                    native_p2p_tools,
+                    "_request_status",
+                    side_effect=_contradictory_failure,
+                ),
             ):
                 server = create_mcp_server(name="native-p2p-dispatch-compat-errors")
                 dispatch = server.tools["tools_dispatch"]["function"]

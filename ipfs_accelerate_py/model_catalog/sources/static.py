@@ -196,9 +196,7 @@ def _timestamp(value: Any, field_name: str) -> Optional[str]:
         if len(raw.encode("utf-8")) > 64:
             raise ValueError("%s exceeds 64 UTF-8 bytes" % field_name)
         try:
-            parsed = datetime.fromisoformat(
-                raw[:-1] + "+00:00" if raw.endswith("Z") else raw
-            )
+            parsed = datetime.fromisoformat(raw[:-1] + "+00:00" if raw.endswith("Z") else raw)
         except ValueError as exc:
             raise ValueError("%s is not an ISO 8601 timestamp" % field_name) from exc
     else:
@@ -207,19 +205,14 @@ def _timestamp(value: Any, field_name: str) -> Optional[str]:
     # these legacy values as UTC preserves the instant text deterministically.
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc).isoformat(timespec="microseconds").replace(
-        "+00:00", "Z"
-    )
+    return parsed.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def _mapping(value: Any) -> Mapping[str, Any]:
     if isinstance(value, Mapping):
         return value
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
-        return {
-            field.name: getattr(value, field.name)
-            for field in dataclasses.fields(value)
-        }
+        return {field.name: getattr(value, field.name) for field in dataclasses.fields(value)}
     method = getattr(value, "to_dict", None)
     if callable(method):
         converted = method()
@@ -253,10 +246,7 @@ def _sequence(value: Any, field_name: str, maximum: int = 64) -> Tuple[Any, ...]
 
 def _aliases(row: Mapping[str, Any], canonical_name: str) -> Tuple[str, ...]:
     values = _first(row, ("aliases", "alias", "model_aliases", "provider_aliases"))
-    aliases = {
-        _canonical_name(item, "alias")
-        for item in _sequence(values, "aliases")
-    }
+    aliases = {_canonical_name(item, "alias") for item in _sequence(values, "aliases")}
     aliases.discard(canonical_name)
     return tuple(sorted(aliases))
 
@@ -452,9 +442,7 @@ def _provenance(
 def _split_seed(
     row: Mapping[str, Any], default_provider: str
 ) -> Tuple[str, Optional[str], Optional[str]]:
-    provider_raw = _first(
-        row, ("provider", "provider_name", "backend", "api", "vendor")
-    )
+    provider_raw = _first(row, ("provider", "provider_name", "backend", "api", "vendor"))
     if row.get("__provider_only__") is True:
         model_raw = None
     else:
@@ -462,9 +450,7 @@ def _split_seed(
         # seed while model_name is presentation text.  Rows having only the
         # latter remain supported for older JSON inventories.
         model_raw = _first(row, ("model", "model_id", "id", "name", "model_name"))
-    record_id = _safe_record_id(
-        _first(row, ("source_record_id", "record_id", "model_id", "id"))
-    )
+    record_id = _safe_record_id(_first(row, ("source_record_id", "record_id", "model_id", "id")))
     if model_raw is None:
         if provider_raw is None:
             raise ValueError("row has neither a provider nor a model name")
@@ -528,9 +514,7 @@ def _normalize_input(
                     else {"provider_name": key, "name": item}
                     for key, item in providers.items()
                 ]
-            elif isinstance(providers, Sequence) and not isinstance(
-                providers, (str, bytes)
-            ):
+            elif isinstance(providers, Sequence) and not isinstance(providers, (str, bytes)):
                 providers = [
                     (
                         (
@@ -569,9 +553,7 @@ def _normalize_input(
                         model_row = _mapping(item)
                     except ValueError:
                         model_row = {"name": item}
-                    normalized_models.append(
-                        dict(model_row, source_record_id=key)
-                    )
+                    normalized_models.append(dict(model_row, source_record_id=key))
                 models = normalized_models
             if not isinstance(providers, Sequence) or isinstance(providers, (str, bytes)):
                 raise ValueError("providers must be an array or object")
@@ -662,9 +644,7 @@ class StaticCatalogSource:
         if isinstance(max_records, bool) or not isinstance(max_records, int):
             raise ValueError("max_records must be an integer")
         if max_records < 0 or max_records > MAX_SNAPSHOT_RECORDS:
-            raise ValueError(
-                "max_records must be between 0 and %d" % MAX_SNAPSHOT_RECORDS
-            )
+            raise ValueError("max_records must be between 0 and %d" % MAX_SNAPSHOT_RECORDS)
         self._records = records
         self._path = None if path is None else Path(path)
         self.source = _canonical_name(source, "source")
@@ -676,11 +656,7 @@ class StaticCatalogSource:
         self.default_precedence = default_precedence
 
     def _supplied_value(self) -> Any:
-        return (
-            self._records
-            if self._path is None
-            else _read_explicit_path(self._path)
-        )
+        return self._records if self._path is None else _read_explicit_path(self._path)
 
     def load(self) -> CatalogSourceResult:
         supplied = self._supplied_value()
@@ -697,12 +673,8 @@ class StaticCatalogSource:
             raise ValueError("precedence must be an integer")
         if raw_precedence < -1_000_000 or raw_precedence > 1_000_000:
             raise ValueError("precedence is outside the supported bound")
-        revision = self.revision or _first(
-            envelope, ("source_revision", "revision")
-        )
-        revision = _bounded_text(
-            revision, "source revision", MAX_SOURCE_REVISION_BYTES
-        )
+        revision = self.revision or _first(envelope, ("source_revision", "revision"))
+        revision = _bounded_text(revision, "source revision", MAX_SOURCE_REVISION_BYTES)
         created_at = _timestamp(envelope.get("created_at"), "source created_at")
         updated_at = _timestamp(
             _first(envelope, ("updated_at", "observed_at")),
@@ -744,9 +716,7 @@ class StaticCatalogSource:
                             if raw_row.lifecycle == LifecycleState.DEPRECATED
                             else LifecycleState.DECLARED
                         ),
-                        provenance=_provenance(
-                            self.source, raw_row.provider_id, source_observed
-                        ),
+                        provenance=_provenance(self.source, raw_row.provider_id, source_observed),
                     )
                     rank = _candidate_key(raw_precedence, provider)
                     if (
@@ -758,9 +728,7 @@ class StaticCatalogSource:
                 elif isinstance(raw_row, ModelDescriptor):
                     # A canonical model can be retained even when the provider
                     # seed is unavailable; its identity remains unchanged.
-                    provenance = _provenance(
-                        self.source, raw_row.model_id, source_observed
-                    )
+                    provenance = _provenance(self.source, raw_row.model_id, source_observed)
                     model = dataclasses.replace(
                         raw_row,
                         state=OperationalState(),
@@ -801,23 +769,20 @@ class StaticCatalogSource:
                 row_precedence = _first(row, ("precedence", "priority"))
                 if row_precedence is None:
                     row_precedence = raw_precedence
-                if isinstance(row_precedence, bool) or not isinstance(
-                    row_precedence, int
-                ):
+                if isinstance(row_precedence, bool) or not isinstance(row_precedence, int):
                     raise ValueError("row precedence must be an integer")
-                provider_name, model_name, record_id = _split_seed(
-                    row, self.default_provider
-                )
+                provider_name, model_name, record_id = _split_seed(row, self.default_provider)
                 row_created, row_updated, row_observed = _row_timestamps(row)
                 observed = row_observed or row_updated or row_created or source_observed
-                row_revision = _bounded_text(
-                    _first(row, ("source_revision", "revision", "model_revision")),
-                    "row revision",
-                    MAX_SOURCE_REVISION_BYTES,
-                ) or revision
-                labels = _labels(
-                    row, row_precedence, row_revision, row_created, row_updated
+                row_revision = (
+                    _bounded_text(
+                        _first(row, ("source_revision", "revision", "model_revision")),
+                        "row revision",
+                        MAX_SOURCE_REVISION_BYTES,
+                    )
+                    or revision
                 )
+                labels = _labels(row, row_precedence, row_revision, row_created, row_updated)
                 provenance = _provenance(self.source, record_id, observed)
                 provider_only = model_name is None
                 display_name = _bounded_text(
@@ -866,11 +831,7 @@ class StaticCatalogSource:
                                 "display_name",
                                 "title",
                                 "model_display_name",
-                                (
-                                    "model_name"
-                                    if row.get("model_id") is not None
-                                    else "_missing"
-                                ),
+                                ("model_name" if row.get("model_id") is not None else "_missing"),
                             ),
                         ),
                         "display name",

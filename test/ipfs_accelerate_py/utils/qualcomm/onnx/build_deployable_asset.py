@@ -8,6 +8,7 @@ import onnx
 import onnx_graphsurgeon as gs
 from onnx_graphsurgeon.ir.tensor import Tensor
 
+
 def _natively_quantize_tensor(
     variable: Tensor,
     scales: np.ndarray,
@@ -33,16 +34,15 @@ def _natively_quantize_tensor(
     scales_fullrank = scales.reshape(broadcast_shape)
     zero_points_fullrank = zero_points.reshape(broadcast_shape)
     w_unclipped = (
-        np.round(
-            variable.values.astype(np.float64) / scales_fullrank.astype(np.float64)
-        ).astype(np.int64)
+        np.round(variable.values.astype(np.float64) / scales_fullrank.astype(np.float64)).astype(
+            np.int64
+        )
         - zero_points_fullrank
     )
 
     w_unclipped_min = w_unclipped.min()
     w_unclipped_max = w_unclipped.max()
     if w_unclipped_min < iinfo.min or iinfo.max < w_unclipped_max:
-
         print(
             f"Parameter {name} in quantized range [{w_unclipped.min()}, {w_unclipped.max()}] is being clipped to [{iinfo.min}, {iinfo.max}]; this may result in accuracy loss."
         )
@@ -66,9 +66,7 @@ def convert_to_deployable_onnx(onnx_filepath: str):
     unquantized_dtype = np.dtype("float32")
 
     for node in graph.nodes:
-        bias_present = (
-            node.op in ["Gemm", "Conv", "TransposeConv"] and len(node.inputs) == 3
-        )
+        bias_present = node.op in ["Gemm", "Conv", "TransposeConv"] and len(node.inputs) == 3
         for inputs in node.inputs:
             for dequantized_node in inputs.inputs:
                 if (
@@ -77,7 +75,6 @@ def convert_to_deployable_onnx(onnx_filepath: str):
                     and dequantized_node.i(0, 0).op == "QuantizeLinear"
                     and isinstance(dequantized_node.i(0, 0).inputs[0], gs.Constant)
                 ):
-
                     quantize_node = dequantized_node.i(0, 0)
 
                     scales_w = quantize_node.inputs[1].values
@@ -112,16 +109,13 @@ def convert_to_deployable_onnx(onnx_filepath: str):
                         and node.inputs[0].inputs[0].op == "DequantizeLinear"
                         and len(node.inputs[0].inputs[0].inputs) > 2
                     ):
-
                         bias_var = node.inputs[2]
 
                         # Scale of bias is product of scale of weights and inputs
                         input_scales = node.i(0, 0).inputs[1].values
 
                         scales_b = np.array(input_scales * scales_w)
-                        zero_points_b = np.full(scales_b.shape, 0).astype(
-                            b_quantized_dtype
-                        )
+                        zero_points_b = np.full(scales_b.shape, 0).astype(b_quantized_dtype)
                         # Quantize the bias
                         quantized_bias = _natively_quantize_tensor(
                             bias_var,
@@ -164,7 +158,6 @@ def convert_to_deployable_onnx(onnx_filepath: str):
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser(
         prog="Convert to deployable ONNX asset (QDQ that maps to QOp representation)"
     )

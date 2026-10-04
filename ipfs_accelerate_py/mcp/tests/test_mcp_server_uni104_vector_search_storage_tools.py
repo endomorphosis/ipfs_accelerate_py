@@ -85,15 +85,19 @@ class TestMCPServerUNI104VectorSearchStorageTools(unittest.TestCase):
             return {"status": "success", "results": [], "total_found": 0}
 
         async def _run() -> None:
-            with patch(
-                "ipfs_accelerate_py.mcp_server.tools.vector_tools.native_vector_tools.create_vector_index",
-                new=_fake_create,
-            ), patch(
-                "ipfs_accelerate_py.mcp_server.tools.vector_tools.native_vector_tools.search_vector_index",
-                new=_fake_search,
-            ), patch(
-                "ipfs_accelerate_py.mcp_server.tools.search_tools.native_search_tools.similarity_search",
-                new=_fake_similarity,
+            with (
+                patch(
+                    "ipfs_accelerate_py.mcp_server.tools.vector_tools.native_vector_tools.create_vector_index",
+                    new=_fake_create,
+                ),
+                patch(
+                    "ipfs_accelerate_py.mcp_server.tools.vector_tools.native_vector_tools.search_vector_index",
+                    new=_fake_search,
+                ),
+                patch(
+                    "ipfs_accelerate_py.mcp_server.tools.search_tools.native_search_tools.similarity_search",
+                    new=_fake_similarity,
+                ),
             ):
                 result = await orchestrate_vector_search_storage(
                     vectors=[[0.1, 0.2], [0.2, 0.3]],

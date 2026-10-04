@@ -63,6 +63,7 @@ class TestMCPServerUNI101SecurityTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.security_tools.native_security_tools._CHECK_ACCESS_PERMISSION"
             ) as mock_impl:
+
                 async def _impl(**kwargs):
                     return {"status": "success", **kwargs}
 
@@ -86,6 +87,7 @@ class TestMCPServerUNI101SecurityTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.security_tools.native_security_tools._CHECK_ACCESS_PERMISSION"
             ) as mock_impl:
+
                 async def _impl(**kwargs):
                     return {"status": "success", "allowed": True, **kwargs}
 

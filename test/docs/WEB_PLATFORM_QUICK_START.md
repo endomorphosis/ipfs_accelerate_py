@@ -43,7 +43,7 @@ result = init_webgpu(
     web_api_mode="simulation",  # or "browser" in actual web environment
     compute_shaders=model_type == "audio",
     parallel_loading=model_type == "multimodal",
-    precompile_shaders=True  # beneficial for all models except in Safari
+    precompile_shaders=True,  # beneficial for all models except in Safari
 )
 ```
 
@@ -53,12 +53,10 @@ result = init_webgpu(
 # Use WebAssembly fallback for browsers without WebGPU (e.g., Safari)
 if not capabilities["webgpu"]["available"]:
     from fixed_web_platform.webgpu_wasm_fallback import dispatch_operation
-    
+
     # Dispatch to WebAssembly fallback
     result = dispatch_operation(
-        operation="inference",
-        inputs={"input_data": input_data},
-        webgpu_available=False
+        operation="inference", inputs={"input_data": input_data}, webgpu_available=False
     )
 ```
 
@@ -79,19 +77,14 @@ browser = detector.get_capabilities()["browser_info"]["name"]
 os.environ["WEBGPU_COMPUTE_SHADERS_ENABLED"] = "1"
 if browser == "firefox":
     os.environ["MOZ_WEBGPU_ADVANCED_COMPUTE"] = "1"
-    firefox_config = optimize_for_firefox({
-        "model_name": "whisper-tiny",
-        "workgroup_size": "256x1x1"
-    })
+    firefox_config = optimize_for_firefox(
+        {"model_name": "whisper-tiny", "workgroup_size": "256x1x1"}
+    )
     audio_processor = firefox_config["processor"]
 
 # Initialize WebGPU with optimizations
 model = WhisperModel("whisper-tiny")  # Your model loading code
-result = init_webgpu(
-    model=model,
-    compute_shaders=True,
-    precompile_shaders=True
-)
+result = init_webgpu(model=model, compute_shaders=True, precompile_shaders=True)
 
 # Process audio
 transcription = model.transcribe("audio.mp3")
@@ -107,7 +100,7 @@ precision_config = configure_precision(
     model_name="llama-7b",
     default_bits=4,  # Use 4-bit for most layers
     attention_bits=8,  # Higher precision for attention
-    feed_forward_bits=4  # 4-bit for feed forward
+    feed_forward_bits=4,  # 4-bit for feed forward
 )
 
 # Initialize with 4-bit precision
@@ -115,7 +108,7 @@ model = LLaMAModel("llama-7b")  # Your model loading code
 result = init_webgpu(
     model=model,
     precision_config=precision_config,
-    progressive_loading=True  # Load components progressively
+    progressive_loading=True,  # Load components progressively
 )
 
 # Generate text
@@ -131,11 +124,7 @@ os.environ["WEBGPU_SHADER_PRECOMPILE_ENABLED"] = "1"
 
 # Initialize with parallel loading
 model = CLIPModel("clip-vit-base-patch32")  # Your model loading code
-result = init_webgpu(
-    model=model,
-    parallel_loading=True,
-    precompile_shaders=True
-)
+result = init_webgpu(model=model, parallel_loading=True, precompile_shaders=True)
 
 # Process image and text
 similarity = model.compute_similarity("image.jpg", "A description of the image")

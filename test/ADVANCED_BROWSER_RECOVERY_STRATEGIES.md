@@ -63,14 +63,13 @@ The system includes comprehensive monitoring and analysis:
 ```python
 from distributed_testing.browser_recovery_strategies import recover_browser
 
+
 # Recover from a browser failure
 async def handle_error(bridge, error):
-    success = await recover_browser(bridge, error, {
-        "browser": "firefox",
-        "model": "whisper-tiny",
-        "platform": "webgpu"
-    })
-    
+    success = await recover_browser(
+        bridge, error, {"browser": "firefox", "model": "whisper-tiny", "platform": "webgpu"}
+    )
+
     if success:
         print("Recovery successful")
     else:
@@ -83,8 +82,11 @@ For more control, you can use the ProgressiveRecoveryManager directly:
 
 ```python
 from distributed_testing.browser_recovery_strategies import (
-    ProgressiveRecoveryManager, BrowserType, ModelType, RecoveryLevel,
-    categorize_browser_failure
+    ProgressiveRecoveryManager,
+    BrowserType,
+    ModelType,
+    RecoveryLevel,
+    categorize_browser_failure,
 )
 
 # Create recovery manager
@@ -99,7 +101,7 @@ success = await recovery_manager.execute_progressive_recovery(
     BrowserType.FIREFOX,
     ModelType.AUDIO,
     failure_info,
-    start_level=RecoveryLevel.MODERATE  # Skip simple retries
+    start_level=RecoveryLevel.MODERATE,  # Skip simple retries
 )
 
 # Get performance statistics
@@ -112,36 +114,32 @@ This example shows how to integrate with the existing circuit breaker pattern:
 
 ```python
 from ipfs_accelerate_selenium_bridge import (
-    BrowserAutomationBridge, CircuitBreaker, 
-    CircuitState, CircuitOpenError
+    BrowserAutomationBridge,
+    CircuitBreaker,
+    CircuitState,
+    CircuitOpenError,
 )
 from distributed_testing.browser_recovery_strategies import recover_browser
 
+
 async def run_with_fault_tolerance(model_name, browser_name):
     bridge = BrowserAutomationBridge(
-        platform="webgpu",
-        browser_name=browser_name,
-        model_type=model_name
+        platform="webgpu", browser_name=browser_name, model_type=model_name
     )
-    
+
     circuit = CircuitBreaker(f"browser_{browser_name}")
-    
+
     try:
         # Try operation with circuit breaker protection
-        result = circuit.execute(
-            lambda: bridge.run_test(model_name, "test input")
-        )
+        result = circuit.execute(lambda: bridge.run_test(model_name, "test input"))
         return result
     except CircuitOpenError:
         # Circuit is open, cannot retry
         return {"error": "Circuit is open"}
     except Exception as e:
         # Try to recover
-        recovered = await recover_browser(bridge, e, {
-            "browser": browser_name,
-            "model": model_name
-        })
-        
+        recovered = await recover_browser(bridge, e, {"browser": browser_name, "model": model_name})
+
         if recovered:
             # Retry operation after recovery
             return bridge.run_test(model_name, "test input")

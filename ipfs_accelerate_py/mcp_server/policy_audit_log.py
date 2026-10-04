@@ -113,7 +113,7 @@ class PolicyAuditLog:
 
     def recent(self, n: int = 20) -> List[PolicyAuditEntry]:
         with self._lock:
-            return list(self._entries[-max(0, int(n)):])
+            return list(self._entries[-max(0, int(n)) :])
 
     def clear(self) -> int:
         with self._lock:
@@ -127,7 +127,11 @@ class PolicyAuditLog:
             total = int(self._total_recorded)
             in_memory = len(self._entries)
         allow = int(counts.get("allow", 0) + counts.get("allow_with_obligations", 0))
-        deny = int(counts.get("deny", 0) + counts.get("authorization_denied", 0) + counts.get("policy_denied", 0))
+        deny = int(
+            counts.get("deny", 0)
+            + counts.get("authorization_denied", 0)
+            + counts.get("policy_denied", 0)
+        )
         return {
             "enabled": self._enabled,
             "total_recorded": total,

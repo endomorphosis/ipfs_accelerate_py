@@ -641,9 +641,7 @@ report_gen = BenchmarkTimingReport(db_path="./benchmark_db.duckdb")
 
 # Generate HTML report
 report_path = report_gen.generate_timing_report(
-    output_format="html",
-    output_path="custom_report.html",
-    days_lookback=60
+    output_format="html", output_path="custom_report.html", days_lookback=60
 )
 
 print(f"Report generated: {report_path}")
@@ -673,7 +671,7 @@ success = run_benchmarks(
     output_dir="./custom_results",
     timeout=1200,
     report_format="markdown",
-    force_hardware=["rocm"]
+    force_hardware=["rocm"],
 )
 
 if success:
@@ -694,14 +692,12 @@ orchestrator = ComprehensiveBenchmarkOrchestrator(
     db_path="./benchmark_db.duckdb",
     output_dir="./benchmark_results",
     small_models=True,
-    batch_sizes=[1, 4, 16]
+    batch_sizes=[1, 4, 16],
 )
 
 # Run benchmarks for specific models and hardware
 results = orchestrator.run_all_benchmarks(
-    model_types=["bert", "t5"],
-    hardware_types=["cpu", "cuda"],
-    skip_unsupported=True
+    model_types=["bert", "t5"], hardware_types=["cpu", "cuda"], skip_unsupported=True
 )
 
 # Generate report

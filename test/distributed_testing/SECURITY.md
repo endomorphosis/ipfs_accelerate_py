@@ -133,10 +133,7 @@ app.middlewares.append(auth_middleware)
 from security import SecurityManager
 
 # Initialize worker with API key
-worker = DistributedTestingWorker(
-    coordinator_url="http://localhost:8080",
-    api_key="your-api-key"
-)
+worker = DistributedTestingWorker(coordinator_url="http://localhost:8080", api_key="your-api-key")
 
 # Worker will automatically handle token authentication
 ```

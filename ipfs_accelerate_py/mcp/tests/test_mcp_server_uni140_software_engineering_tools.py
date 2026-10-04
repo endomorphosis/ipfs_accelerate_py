@@ -87,7 +87,9 @@ class TestMCPServerUNI140SoftwareEngineeringTools(unittest.TestCase):
 
     def test_analyze_github_actions_validation(self) -> None:
         async def _run() -> None:
-            result = await analyze_github_actions(repository_url="https://github.com/example/repo", max_runs=0)
+            result = await analyze_github_actions(
+                repository_url="https://github.com/example/repo", max_runs=0
+            )
             self.assertEqual(result.get("status"), "error")
             self.assertIn("max_runs", str(result.get("error", "")))
 
@@ -124,11 +126,17 @@ class TestMCPServerUNI140SoftwareEngineeringTools(unittest.TestCase):
         async def _run() -> None:
             result = await detect_error_patterns(error_logs="timeout")  # type: ignore[arg-type]
             self.assertEqual(result.get("status"), "error")
-            self.assertIn("error_logs must be a list of at least 1 non-empty strings", str(result.get("error", "")))
+            self.assertIn(
+                "error_logs must be a list of at least 1 non-empty strings",
+                str(result.get("error", "")),
+            )
 
             result = await detect_error_patterns(error_logs=[])
             self.assertEqual(result.get("status"), "error")
-            self.assertIn("error_logs must be a list of at least 1 non-empty strings", str(result.get("error", "")))
+            self.assertIn(
+                "error_logs must be a list of at least 1 non-empty strings",
+                str(result.get("error", "")),
+            )
 
         anyio.run(_run)
 
@@ -140,11 +148,15 @@ class TestMCPServerUNI140SoftwareEngineeringTools(unittest.TestCase):
 
             result = await monitor_healing_effectiveness("bad")  # type: ignore[arg-type]
             self.assertEqual(result.get("status"), "error")
-            self.assertIn("healing_history must be a list of at least 1 objects", str(result.get("error", "")))
+            self.assertIn(
+                "healing_history must be a list of at least 1 objects", str(result.get("error", ""))
+            )
 
             result = await monitor_healing_effectiveness([])
             self.assertEqual(result.get("status"), "error")
-            self.assertIn("healing_history must be a list of at least 1 objects", str(result.get("error", "")))
+            self.assertIn(
+                "healing_history must be a list of at least 1 objects", str(result.get("error", ""))
+            )
 
         anyio.run(_run)
 
@@ -199,6 +211,7 @@ class TestMCPServerUNI140SoftwareEngineeringTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.software_engineering_tools.native_software_engineering_tools._API"
             ) as mock_api:
+
                 async def _impl(**_: object) -> dict:
                     return {"status": "success"}
 
@@ -210,7 +223,9 @@ class TestMCPServerUNI140SoftwareEngineeringTools(unittest.TestCase):
             self.assertEqual(result.get("errors"), [])
             self.assertEqual(result.get("warnings"), [])
             self.assertEqual(result.get("patterns"), [])
-            self.assertEqual(result.get("statistics"), {"total_lines": 0, "error_lines": 0, "warning_lines": 0})
+            self.assertEqual(
+                result.get("statistics"), {"total_lines": 0, "error_lines": 0, "warning_lines": 0}
+            )
 
         anyio.run(_run)
 
@@ -219,11 +234,14 @@ class TestMCPServerUNI140SoftwareEngineeringTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.software_engineering_tools.native_software_engineering_tools._API"
             ) as mock_api:
+
                 async def _impl(**_: object) -> dict:
                     return {"status": "success"}
 
                 mock_api.__getitem__.return_value = _impl
-                result = await parse_kubernetes_logs(log_content="2026-01-01T00:00:00.000Z INFO [api] ok")
+                result = await parse_kubernetes_logs(
+                    log_content="2026-01-01T00:00:00.000Z INFO [api] ok"
+                )
 
             self.assertEqual(result.get("status"), "success")
             self.assertEqual(result.get("success"), True)
@@ -238,11 +256,14 @@ class TestMCPServerUNI140SoftwareEngineeringTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.software_engineering_tools.native_software_engineering_tools._API"
             ) as mock_api:
+
                 async def _impl(**_: object) -> dict:
                     return {"status": "success"}
 
                 mock_api.__getitem__.return_value = _impl
-                result = await coordinate_auto_healing(error_report={"success": True, "patterns": []})
+                result = await coordinate_auto_healing(
+                    error_report={"success": True, "patterns": []}
+                )
 
             self.assertEqual(result.get("status"), "success")
             self.assertEqual(result.get("success"), True)
@@ -258,6 +279,7 @@ class TestMCPServerUNI140SoftwareEngineeringTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.software_engineering_tools.native_software_engineering_tools._API"
             ) as mock_api:
+
                 async def _impl(**_: object) -> dict:
                     return {"status": "success"}
 
@@ -265,7 +287,9 @@ class TestMCPServerUNI140SoftwareEngineeringTools(unittest.TestCase):
                 service_result = await analyze_service_health({"entries": []}, "api")
                 pod_result = await analyze_pod_health({"entries": []}, "api-0")
                 fixes_result = await suggest_fixes("timeout waiting for lock")
-                monitor_result = await monitor_healing_effectiveness([{"action": "restart-service"}])
+                monitor_result = await monitor_healing_effectiveness(
+                    [{"action": "restart-service"}]
+                )
 
             self.assertEqual(service_result.get("health_status"), "healthy")
             self.assertEqual((service_result.get("metrics") or {}).get("error_rate"), 0.0)
@@ -282,6 +306,7 @@ class TestMCPServerUNI140SoftwareEngineeringTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.software_engineering_tools.native_software_engineering_tools._API"
             ) as mock_api:
+
                 async def _impl(**_: object) -> dict:
                     return {"error": "github unavailable"}
 
@@ -293,11 +318,14 @@ class TestMCPServerUNI140SoftwareEngineeringTools(unittest.TestCase):
 
         anyio.run(_run)
 
-    def test_software_engineering_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+    def test_software_engineering_wrappers_infer_error_status_from_contradictory_delegate_payloads(
+        self,
+    ) -> None:
         async def _run() -> None:
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.software_engineering_tools.native_software_engineering_tools._API"
             ) as mock_api:
+
                 async def _impl(**_: object) -> dict:
                     return {"status": "success", "success": False, "error": "delegate failure"}
 

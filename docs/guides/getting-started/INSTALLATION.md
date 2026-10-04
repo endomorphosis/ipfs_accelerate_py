@@ -204,6 +204,7 @@ nvcc --version
 
 ```python
 import torch
+
 print(f"CUDA available: {torch.cuda.is_available()}")
 print(f"CUDA devices: {torch.cuda.device_count()}")
 ```
@@ -236,6 +237,7 @@ source /opt/intel/openvino_2023/setupvars.sh
 ```python
 try:
     from openvino.runtime import Core
+
     ie = Core()
     print("OpenVINO available")
     print(f"Available devices: {ie.available_devices}")
@@ -278,6 +280,7 @@ Apple Silicon support is built into macOS and PyTorch:
 
 ```python
 import torch
+
 print(f"MPS available: {torch.backends.mps.is_available()}")
 print(f"MPS built: {torch.backends.mps.is_built()}")
 ```
@@ -447,10 +450,11 @@ Basic functionality test for IPFS Accelerate Python
 import anyio
 from ipfs_accelerate_py import ipfs_accelerate_py
 
+
 def test_basic_functionality():
     """Test basic framework functionality."""
     print("Testing IPFS Accelerate Python...")
-    
+
     # Initialize framework
     try:
         accelerator = ipfs_accelerate_py({}, {})
@@ -458,10 +462,10 @@ def test_basic_functionality():
     except Exception as e:
         print(f"✗ Framework initialization failed: {e}")
         return False
-    
+
     # Test hardware detection
     try:
-        if hasattr(accelerator, 'hardware_detection'):
+        if hasattr(accelerator, "hardware_detection"):
             hardware_info = accelerator.hardware_detection.detect_all_hardware()
             print(f"✓ Hardware detection successful")
             print(f"  Available hardware: {list(hardware_info.keys())}")
@@ -469,41 +473,43 @@ def test_basic_functionality():
             print("⚠ Hardware detection not available")
     except Exception as e:
         print(f"✗ Hardware detection failed: {e}")
-    
+
     # Test basic inference
     try:
         result = accelerator.process(
             model="bert-base-uncased",
             input_data={"input_ids": [101, 2054, 2003, 102]},
-            endpoint_type="text_embedding"
+            endpoint_type="text_embedding",
         )
         print("✓ Basic inference successful")
     except Exception as e:
         print(f"✗ Basic inference failed: {e}")
-    
+
     print("Basic functionality test completed!")
     return True
+
 
 async def test_async_functionality():
     """Test asynchronous functionality."""
     print("\nTesting async functionality...")
-    
+
     try:
         accelerator = ipfs_accelerate_py({}, {})
-        
+
         result = await accelerator.process_async(
             model="bert-base-uncased",
             input_data={"input_ids": [101, 2054, 2003, 102]},
-            endpoint_type="text_embedding"
+            endpoint_type="text_embedding",
         )
         print("✓ Async inference successful")
     except Exception as e:
         print(f"✗ Async inference failed: {e}")
 
+
 if __name__ == "__main__":
     # Run basic tests
     test_basic_functionality()
-    
+
     # Run async tests
     anyio.run(test_async_functionality)
 ```
@@ -524,26 +530,28 @@ Hardware verification test
 
 from ipfs_accelerate_py import ipfs_accelerate_py
 
+
 def test_hardware():
     """Test hardware acceleration capabilities."""
     print("Hardware Verification Test")
     print("=" * 30)
-    
+
     accelerator = ipfs_accelerate_py({}, {})
-    
-    if hasattr(accelerator, 'hardware_detection'):
+
+    if hasattr(accelerator, "hardware_detection"):
         hardware_info = accelerator.hardware_detection.detect_all_hardware()
-        
+
         for hardware_type, info in hardware_info.items():
             status = "✓ Available" if info.get("available", False) else "✗ Not available"
             print(f"{hardware_type.upper()}: {status}")
-            
+
             if info.get("available", False):
                 for key, value in info.items():
                     if key != "available":
                         print(f"  {key}: {value}")
     else:
         print("Hardware detection not available")
+
 
 if __name__ == "__main__":
     test_hardware()
@@ -560,36 +568,35 @@ IPFS connectivity test
 import anyio
 from ipfs_accelerate_py import ipfs_accelerate_py
 
+
 async def test_ipfs():
     """Test IPFS connectivity."""
     print("IPFS Connectivity Test")
     print("=" * 25)
-    
+
     config = {
-        "ipfs": {
-            "gateway": "http://localhost:8080/ipfs/",
-            "local_node": "http://localhost:5001"
-        }
+        "ipfs": {"gateway": "http://localhost:8080/ipfs/", "local_node": "http://localhost:5001"}
     }
-    
+
     accelerator = ipfs_accelerate_py(config, {})
-    
+
     try:
         # Test basic IPFS operations
         test_data = b"Hello, IPFS!"
         cid = await accelerator.store_to_ipfs(test_data)
         print(f"✓ Stored data to IPFS: {cid}")
-        
+
         retrieved_data = await accelerator.query_ipfs(cid)
         if retrieved_data == test_data:
             print("✓ Data retrieval successful")
         else:
             print("✗ Data retrieval failed: content mismatch")
-            
+
     except Exception as e:
         print(f"✗ IPFS test failed: {e}")
         print("  Make sure IPFS daemon is running:")
         print("  ipfs daemon")
+
 
 if __name__ == "__main__":
     anyio.run(test_ipfs)
@@ -666,17 +673,13 @@ Enable debug logging for troubleshooting:
 
 ```python
 import logging
+
 logging.basicConfig(level=logging.DEBUG)
 
 from ipfs_accelerate_py import ipfs_accelerate_py
 
 # Enable debug mode in configuration
-config = {
-    "logging": {
-        "level": "DEBUG",
-        "enable_performance_logging": True
-    }
-}
+config = {"logging": {"level": "DEBUG", "enable_performance_logging": True}}
 
 accelerator = ipfs_accelerate_py(config, {})
 ```

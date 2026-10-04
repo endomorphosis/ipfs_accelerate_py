@@ -67,6 +67,7 @@ async def ensure_libp2p_installed_async() -> bool:
         return True
     return await install_libp2p_runtime_async(quiet=True, timeout=120, upgrade=True)
 
+
 # Protocol ID per MCP++ spec
 MCP_P2P_PROTOCOL = "/mcp+p2p/1.0.0"
 
@@ -118,11 +119,7 @@ async def _bootstrap_dial_candidates(peer_addr: str) -> Tuple[str, ...]:
         resolved = await Multiaddr(configured).resolve()
     except Exception:
         return (configured,)
-    peer_suffix = (
-        f"/p2p/{configured.rsplit('/p2p/', 1)[-1]}"
-        if "/p2p/" in configured
-        else ""
-    )
+    peer_suffix = f"/p2p/{configured.rsplit('/p2p/', 1)[-1]}" if "/p2p/" in configured else ""
     candidates = {
         str(value)
         for value in resolved
@@ -146,6 +143,7 @@ async def _bootstrap_dial_candidates(peer_addr: str) -> Tuple[str, ...]:
 @dataclass
 class PeerInfo:
     """Information about a connected P2P peer."""
+
     peer_id: str
     multiaddrs: List[str] = field(default_factory=list)
     protocols: List[str] = field(default_factory=list)
@@ -167,6 +165,7 @@ class PeerInfo:
 @dataclass
 class P2PMessage:
     """A message sent over the /mcp+p2p/1.0.0 protocol."""
+
     msg_type: str  # "request" | "response" | "notification"
     method: str = ""
     params: Dict[str, Any] = field(default_factory=dict)
@@ -178,16 +177,19 @@ class P2PMessage:
 
     def encode(self) -> bytes:
         """Encode message as length-prefixed JSON for wire transport."""
-        payload = json.dumps({
-            "type": self.msg_type,
-            "method": self.method,
-            "params": self.params,
-            "id": self.msg_id,
-            "result": self.result,
-            "error": self.error,
-            "sender": self.sender_peer_id,
-            "timestamp": self.timestamp,
-        }, separators=(",", ":")).encode("utf-8")
+        payload = json.dumps(
+            {
+                "type": self.msg_type,
+                "method": self.method,
+                "params": self.params,
+                "id": self.msg_id,
+                "result": self.result,
+                "error": self.error,
+                "sender": self.sender_peer_id,
+                "timestamp": self.timestamp,
+            },
+            separators=(",", ":"),
+        ).encode("utf-8")
         # 4-byte big-endian length prefix
         length = len(payload).to_bytes(4, "big")
         return length + payload
@@ -202,7 +204,7 @@ class P2PMessage:
             raise ValueError(f"Message size {length} exceeds limit {MAX_P2P_MESSAGE_SIZE}")
         if len(data) < 4 + length:
             raise ValueError(f"Incomplete message: expected {length} bytes, got {len(data) - 4}")
-        payload = json.loads(data[4:4 + length].decode("utf-8"))
+        payload = json.loads(data[4 : 4 + length].decode("utf-8"))
         return cls(
             msg_type=payload.get("type", "request"),
             method=payload.get("method", ""),
@@ -234,20 +236,26 @@ class MCPp2pNode:
             await node.stop()
     """
 
-    def __init__(self, listen_addrs: Optional[List[str]] = None,
-                 bootstrap_peers: Optional[List[str]] = None,
-                 advertise_addrs: Optional[List[str]] = None):
+    def __init__(
+        self,
+        listen_addrs: Optional[List[str]] = None,
+        bootstrap_peers: Optional[List[str]] = None,
+        advertise_addrs: Optional[List[str]] = None,
+    ):
         env_listen = self._env_list("MCPPP_P2P_LISTEN_ADDRS")
         env_bootstrap = self._env_list("MCPPP_P2P_BOOTSTRAP_PEERS", preserve_empty=True)
         env_advertise = self._env_list("MCPPP_P2P_ADVERTISE_ADDRS")
         env_advertise_interfaces = self._env_list("MCPPP_P2P_ADVERTISE_INTERFACES")
         self._listen_addrs = (
-            list(listen_addrs) if listen_addrs is not None
+            list(listen_addrs)
+            if listen_addrs is not None
             else env_listen or [LEANSTRAL_P2P_LISTEN_ADDR]
         )
         self._bootstrap_peers = (
-            list(bootstrap_peers) if bootstrap_peers is not None
-            else env_bootstrap if env_bootstrap is not None
+            list(bootstrap_peers)
+            if bootstrap_peers is not None
+            else env_bootstrap
+            if env_bootstrap is not None
             else list(DEFAULT_BOOTSTRAP_PEERS)
         )
         self._advertise_addrs = (
@@ -282,10 +290,7 @@ class MCPp2pNode:
     @property
     def mdns_enabled(self) -> bool:
         """Whether local mDNS advertisement and discovery are enabled."""
-        return (
-            os.environ.get("MCPPP_P2P_MDNS", "1").strip().casefold()
-            not in _DISABLED_ENV_VALUES
-        )
+        return os.environ.get("MCPPP_P2P_MDNS", "1").strip().casefold() not in _DISABLED_ENV_VALUES
 
     @property
     def peer_id(self) -> str:
@@ -439,9 +444,7 @@ class MCPp2pNode:
     def _mount_rendezvous_service(self) -> bool:
         """Mount the rendezvous protocol on this exact service peer when requested."""
 
-        mode = os.environ.get(
-            "MCPPP_P2P_RENDEZVOUS_SERVICE", ""
-        ).strip().casefold()
+        mode = os.environ.get("MCPPP_P2P_RENDEZVOUS_SERVICE", "").strip().casefold()
         if mode != "same_as_service_peer" or self._host is None:
             self._rendezvous_service = None
             return False
@@ -478,8 +481,7 @@ class MCPp2pNode:
         if not installed:
             logger.error(
                 "libp2p could not be installed. P2P transport in stub mode. "
-                "Manual install: pip install %r"
-                % (PY_LIBP2P_MAIN_SPEC,)
+                "Manual install: pip install %r" % (PY_LIBP2P_MAIN_SPEC,)
             )
             self._started = True
             self._operational = False
@@ -508,17 +510,12 @@ class MCPp2pNode:
             self._operational = True
             if self.mdns_enabled:
                 await self._start_mdns_advertisement()
-            logger.info(
-                "MCPp2pNode started: peer_id=%s, addrs=%s",
-                self.peer_id, self.multiaddrs
-            )
+            logger.info("MCPp2pNode started: peer_id=%s, addrs=%s", self.peer_id, self.multiaddrs)
 
             # Bootstrap: connect to known peers (with timeout)
             for peer_addr in self._bootstrap_peers:
                 nursery.start_soon(self._connect_bootstrap_with_timeout, peer_addr)
-            rendezvous_peer = os.environ.get(
-                "IPFS_ACCELERATE_P2P_RENDEZVOUS_PEER", ""
-            ).strip()
+            rendezvous_peer = os.environ.get("IPFS_ACCELERATE_P2P_RENDEZVOUS_PEER", "").strip()
             rendezvous_auto = os.environ.get(
                 "MCPPP_P2P_RENDEZVOUS_AUTO", "1"
             ).strip().casefold() not in {"0", "false", "no", "off"}
@@ -528,7 +525,9 @@ class MCPp2pNode:
         except ImportError as e:
             logger.warning(
                 "libp2p not available (%s). P2P transport running in stub mode. "
-                "Install via MCP++ runtime: %s", e, LIBP2P_INSTALL_HINT
+                "Install via MCP++ runtime: %s",
+                e,
+                LIBP2P_INSTALL_HINT,
             )
             self._started = True  # Mark as started in stub mode
             self._operational = False
@@ -630,9 +629,7 @@ class MCPp2pNode:
         while remaining:
             chunk = await stream.read(remaining)
             if not chunk:
-                raise ConnectionError(
-                    f"Peer closed connection with {remaining} bytes remaining"
-                )
+                raise ConnectionError(f"Peer closed connection with {remaining} bytes remaining")
             chunks.append(chunk)
             remaining -= len(chunk)
         return b"".join(chunks)
@@ -640,6 +637,7 @@ class MCPp2pNode:
     async def _connect_bootstrap_with_timeout(self, peer_addr: str) -> None:
         """Connect to a bootstrap peer with a 10-second timeout."""
         import trio
+
         started = time.monotonic()
         success = False
         error = None
@@ -650,18 +648,20 @@ class MCPp2pNode:
             logger.debug(f"Bootstrap peer connection timed out: {peer_addr}")
         elif not success:
             error = "connect_failed"
-        self._bootstrap_attempts.append({
-            "mechanism": "bootstrap",
-            "target": peer_addr,
-            "attempted": True,
-            "success": bool(success and not cancel_scope.cancelled_caught),
-            "timeout_s": 10.0,
-            "duration_ms": (time.monotonic() - started) * 1000.0,
-            "error": error,
-            "observer_peer_id": self.peer_id,
-            "namespace": "",
-            "details": {},
-        })
+        self._bootstrap_attempts.append(
+            {
+                "mechanism": "bootstrap",
+                "target": peer_addr,
+                "attempted": True,
+                "success": bool(success and not cancel_scope.cancelled_caught),
+                "timeout_s": 10.0,
+                "duration_ms": (time.monotonic() - started) * 1000.0,
+                "error": error,
+                "observer_peer_id": self.peer_id,
+                "namespace": "",
+                "details": {},
+            }
+        )
 
     async def _connect_bootstrap(self, peer_addr: str) -> bool:
         """Connect to a bootstrap peer."""
@@ -728,9 +728,7 @@ class MCPp2pNode:
         if not (0.0 < float(timeout) <= 10.0):
             raise ValueError("rendezvous timeout must be within (0, 10] seconds")
 
-        target = os.environ.get(
-            "IPFS_ACCELERATE_P2P_RENDEZVOUS_PEER", ""
-        ).strip()
+        target = os.environ.get("IPFS_ACCELERATE_P2P_RENDEZVOUS_PEER", "").strip()
         rendezvous_namespace = (
             namespace
             or os.environ.get("IPFS_ACCELERATE_P2P_RENDEZVOUS_NS", "")
@@ -818,7 +816,8 @@ class MCPp2pNode:
         if self._concurrent_streams >= self._max_concurrent_streams:
             try:
                 error_msg = P2PMessage(
-                    msg_type="response", error="Server overloaded (backpressure)",
+                    msg_type="response",
+                    error="Server overloaded (backpressure)",
                     sender_peer_id=self.peer_id or "",
                 )
                 await stream.write(error_msg.encode())
@@ -854,18 +853,27 @@ class MCPp2pNode:
                         result = await self._tool_handler(msg.method, params)
                     if exec_scope.cancelled_caught:
                         response = P2PMessage(
-                            msg_type="response", method=msg.method, msg_id=msg.msg_id,
-                            error="Tool execution timeout (30s)", sender_peer_id=self.peer_id,
+                            msg_type="response",
+                            method=msg.method,
+                            msg_id=msg.msg_id,
+                            error="Tool execution timeout (30s)",
+                            sender_peer_id=self.peer_id,
                         )
                     else:
                         response = P2PMessage(
-                            msg_type="response", method=msg.method, msg_id=msg.msg_id,
-                            result=result, sender_peer_id=self.peer_id,
+                            msg_type="response",
+                            method=msg.method,
+                            msg_id=msg.msg_id,
+                            result=result,
+                            sender_peer_id=self.peer_id,
                         )
                 except Exception as e:
                     response = P2PMessage(
-                        msg_type="response", method=msg.method, msg_id=msg.msg_id,
-                        error=str(e), sender_peer_id=self.peer_id,
+                        msg_type="response",
+                        method=msg.method,
+                        msg_id=msg.msg_id,
+                        error=str(e),
+                        sender_peer_id=self.peer_id,
                     )
 
                 await stream.write(response.encode())
@@ -880,9 +888,14 @@ class MCPp2pNode:
         finally:
             self._concurrent_streams -= 1
 
-    async def call_tool(self, peer_id: str, method: str,
-                        params: Dict[str, Any], timeout: float = 30.0,
-                        max_retries: int = 3) -> Any:
+    async def call_tool(
+        self,
+        peer_id: str,
+        method: str,
+        params: Dict[str, Any],
+        timeout: float = 30.0,
+        max_retries: int = 3,
+    ) -> Any:
         """Call a tool on a remote peer via /mcp+p2p/1.0.0 with retry and circuit breaker.
 
         Args:
@@ -934,22 +947,29 @@ class MCPp2pNode:
                     cb["opened_at"] = time.time()
                     logger.warning(
                         "Circuit breaker OPEN for peer %s after %d failures",
-                        peer_id, cb["failures"],
+                        peer_id,
+                        cb["failures"],
                     )
                 if attempt < max_retries - 1:
-                    backoff = min(2 ** attempt * 0.5, 10.0)
+                    backoff = min(2**attempt * 0.5, 10.0)
                     logger.info(
                         "P2P call to %s/%s failed (attempt %d/%d), retrying in %.1fs: %s",
-                        peer_id, method, attempt + 1, max_retries, backoff, e,
+                        peer_id,
+                        method,
+                        attempt + 1,
+                        max_retries,
+                        backoff,
+                        e,
                     )
                     import trio
+
                     await trio.sleep(backoff)
 
         raise last_error  # type: ignore[misc]
 
     def _get_circuit_breaker(self, peer_id: str) -> Dict[str, Any]:
         """Get or create circuit breaker state for a peer."""
-        if not hasattr(self, '_circuit_breakers'):
+        if not hasattr(self, "_circuit_breakers"):
             self._circuit_breakers: Dict[str, Dict[str, Any]] = {}
         if peer_id not in self._circuit_breakers:
             self._circuit_breakers[peer_id] = {
@@ -961,8 +981,9 @@ class MCPp2pNode:
             }
         return self._circuit_breakers[peer_id]
 
-    async def _call_tool_once(self, peer_id: str, method: str,
-                              params: Dict[str, Any], timeout: float) -> Any:
+    async def _call_tool_once(
+        self, peer_id: str, method: str, params: Dict[str, Any], timeout: float
+    ) -> Any:
         """Single attempt to call a tool on a remote peer."""
 
         try:
@@ -988,9 +1009,7 @@ class MCPp2pNode:
                 length_bytes = await self._read_exact(stream, 4)
                 length = int.from_bytes(length_bytes, "big")
                 if length > MAX_P2P_MESSAGE_SIZE:
-                    raise ConnectionError(
-                        f"Peer response exceeds {MAX_P2P_MESSAGE_SIZE} bytes"
-                    )
+                    raise ConnectionError(f"Peer response exceeds {MAX_P2P_MESSAGE_SIZE} bytes")
                 payload = await self._read_exact(stream, length)
                 response = P2PMessage.decode(length_bytes + payload)
 
@@ -1086,12 +1105,10 @@ class MCPp2pNode:
     def to_dict(self) -> Dict[str, Any]:
         """Serialize node state for status endpoints."""
         mdns_configured = self.mdns_enabled
-        rendezvous_target = os.environ.get(
-            "IPFS_ACCELERATE_P2P_RENDEZVOUS_PEER", ""
-        ).strip()
-        rendezvous_service_mode = os.environ.get(
-            "MCPPP_P2P_RENDEZVOUS_SERVICE", ""
-        ).strip().casefold()
+        rendezvous_target = os.environ.get("IPFS_ACCELERATE_P2P_RENDEZVOUS_PEER", "").strip()
+        rendezvous_service_mode = (
+            os.environ.get("MCPPP_P2P_RENDEZVOUS_SERVICE", "").strip().casefold()
+        )
         rendezvous_service_implemented = self._rendezvous_service is not None
         rendezvous_client_implemented = bool(
             self._rendezvous_connectivity
@@ -1104,9 +1121,7 @@ class MCPp2pNode:
         rendezvous_implemented = bool(
             rendezvous_service_implemented or rendezvous_client_implemented
         )
-        rendezvous_advertised = bool(
-            self._operational and rendezvous_service_implemented
-        )
+        rendezvous_advertised = bool(self._operational and rendezvous_service_implemented)
         return {
             "p2p_requested": True,
             "p2p_enabled": self._started,
@@ -1165,8 +1180,7 @@ class MCPp2pNode:
                 },
                 "rendezvous": {
                     "configured": bool(
-                        rendezvous_target
-                        or rendezvous_service_mode == "same_as_service_peer"
+                        rendezvous_target or rendezvous_service_mode == "same_as_service_peer"
                     ),
                     "implemented": rendezvous_implemented,
                     "advertised": rendezvous_advertised,

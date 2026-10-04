@@ -99,10 +99,7 @@ def test_builtin_descriptors_publish_embedding_specific_metadata() -> None:
     assert huggingface.state.configured is None
     assert dict(huggingface.labels)["locality"] == "local"
     assert dict(huggingface.labels)["device"] == "cpu,cuda"
-    assert (
-        embeddings_router.get_provider_descriptor("hf_api").state.authorized
-        is None
-    )
+    assert embeddings_router.get_provider_descriptor("hf_api").state.authorized is None
 
 
 def test_model_facts_and_unknown_overrides_are_not_invented() -> None:
@@ -180,9 +177,7 @@ def test_discovery_does_not_construct_factories_import_runtimes_or_probe(
         monkeypatch.setattr(embeddings_router, name, blocked)
 
     assert embeddings_router.get_provider_descriptor("fixture").name == "fixture"
-    assert "fixture" in {
-        provider.name for provider in embeddings_router.list_providers()
-    }
+    assert "fixture" in {provider.name for provider in embeddings_router.list_providers()}
     assert isinstance(embeddings_router.get_catalog_snapshot(), CatalogSnapshot)
     assert events == []
 
@@ -268,9 +263,7 @@ def test_registered_metadata_and_resolution_match_generation_selection(
         descriptor=provider,
         models=(model,),
     )
-    monkeypatch.setenv(
-        "IPFS_ACCELERATE_PY_EMBEDDINGS_PROVIDER", "catalog_alias"
-    )
+    monkeypatch.setenv("IPFS_ACCELERATE_PY_EMBEDDINGS_PROVIDER", "catalog_alias")
 
     resolved = embeddings_router.resolve_model("fixture/embed-v1")
     vectors = embeddings_router.embed_texts(
@@ -280,9 +273,7 @@ def test_registered_metadata_and_resolution_match_generation_selection(
 
     assert resolved.provider_id == provider.provider_id
     assert resolved.model_id == model.model_id
-    assert embeddings_router.get_last_embedding_trace()["provider_used"] == (
-        "catalog_fixture"
-    )
+    assert embeddings_router.get_last_embedding_trace()["provider_used"] == ("catalog_fixture")
     assert vectors == [[0.0, 1.0], [1.0, 2.0]]
     assert calls == [["one", "two"]]
 

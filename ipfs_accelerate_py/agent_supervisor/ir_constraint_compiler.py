@@ -45,9 +45,7 @@ from .semantic_dependency_graph import MandatoryClosure
 
 
 IR_CONSTRAINT_COMPILER_VERSION: Final[int] = 1
-IR_CONFORMANCE_REQUIREMENT_ID: Final[str] = (
-    "287667496524558776121661391058779883318"
-)
+IR_CONFORMANCE_REQUIREMENT_ID: Final[str] = "287667496524558776121661391058779883318"
 PLAN_ADMISSION_REQUEST_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/plan-admission-request@1"
 )
@@ -119,23 +117,17 @@ def _plain(value: Any) -> Any:
     if value is None or isinstance(value, (str, bool, int)):
         return value
     if isinstance(value, float):
-        raise IRConstraintCompilerError(
-            "floating point values are not canonical admission data"
-        )
+        raise IRConstraintCompilerError("floating point values are not canonical admission data")
     if isinstance(value, Mapping):
         if not all(isinstance(key, str) for key in value):
             raise IRConstraintCompilerError("admission mapping keys must be strings")
         return {key: _plain(value[key]) for key in sorted(value)}
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return [_plain(item) for item in value]
     converter = getattr(value, "to_dict", None)
     if callable(converter):
         return _plain(converter())
-    raise IRConstraintCompilerError(
-        f"unsupported admission value: {type(value).__name__}"
-    )
+    raise IRConstraintCompilerError(f"unsupported admission value: {type(value).__name__}")
 
 
 def _freeze(value: Any) -> Any:
@@ -151,9 +143,7 @@ def _text(value: Any, name: str, *, required: bool = True) -> str:
     if not isinstance(value, str):
         raise IRConstraintCompilerError(f"{name} must be a string")
     if value != value.strip() or "\x00" in value:
-        raise IRConstraintCompilerError(
-            f"{name} must not contain surrounding whitespace or NUL"
-        )
+        raise IRConstraintCompilerError(f"{name} must not contain surrounding whitespace or NUL")
     if required and not value:
         raise IRConstraintCompilerError(f"{name} is required")
     return value
@@ -315,9 +305,7 @@ class ProgramDependency:
     reason_codes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "dependency_id", _text(self.dependency_id, "dependency_id")
-        )
+        object.__setattr__(self, "dependency_id", _text(self.dependency_id, "dependency_id"))
         object.__setattr__(self, "action_id", _text(self.action_id, "action_id"))
         for name in (
             "depends_on_action_ids",
@@ -326,22 +314,14 @@ class ProgramDependency:
         ):
             object.__setattr__(self, name, _strings(getattr(self, name), name))
         for name in ("expected_root", "observed_root"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=False)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=False))
         if not isinstance(self.required, bool) or not isinstance(self.satisfied, bool):
-            raise IRConstraintCompilerError(
-                "dependency required/satisfied values must be booleans"
-            )
+            raise IRConstraintCompilerError("dependency required/satisfied values must be booleans")
 
     @property
     def current(self) -> bool:
-        return (
-            not self.expected_root
-            or (
-                bool(self.observed_root)
-                and self.expected_root == self.observed_root
-            )
+        return not self.expected_root or (
+            bool(self.observed_root) and self.expected_root == self.observed_root
         )
 
     @property
@@ -386,17 +366,11 @@ class AdmissionAssumption:
     evidence_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "assumption_id", _text(self.assumption_id, "assumption_id")
-        )
+        object.__setattr__(self, "assumption_id", _text(self.assumption_id, "assumption_id"))
         object.__setattr__(self, "action_ids", _strings(self.action_ids, "action_ids"))
-        object.__setattr__(
-            self, "evidence_ids", _strings(self.evidence_ids, "evidence_ids")
-        )
+        object.__setattr__(self, "evidence_ids", _strings(self.evidence_ids, "evidence_ids"))
         if not isinstance(self.required, bool) or not isinstance(self.satisfied, bool):
-            raise IRConstraintCompilerError(
-                "assumption required/satisfied values must be booleans"
-            )
+            raise IRConstraintCompilerError("assumption required/satisfied values must be booleans")
 
     @property
     def passed(self) -> bool:
@@ -431,13 +405,9 @@ class ValidationRequirement:
     required: bool = True
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "requirement_id", _text(self.requirement_id, "requirement_id")
-        )
+        object.__setattr__(self, "requirement_id", _text(self.requirement_id, "requirement_id"))
         object.__setattr__(self, "action_ids", _strings(self.action_ids, "action_ids"))
-        object.__setattr__(
-            self, "command", _text(self.command, "command", required=False)
-        )
+        object.__setattr__(self, "command", _text(self.command, "command", required=False))
         if not isinstance(self.required, bool):
             raise IRConstraintCompilerError("validation required must be boolean")
 
@@ -468,9 +438,7 @@ class ValidationResult:
     reason_codes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "requirement_id", _text(self.requirement_id, "requirement_id")
-        )
+        object.__setattr__(self, "requirement_id", _text(self.requirement_id, "requirement_id"))
         object.__setattr__(self, "status", ValidationStatus(self.status))
         object.__setattr__(
             self,
@@ -480,9 +448,7 @@ class ValidationResult:
         object.__setattr__(
             self, "evidence_id", _text(self.evidence_id, "evidence_id", required=False)
         )
-        object.__setattr__(
-            self, "reason_codes", _strings(self.reason_codes, "reason_codes")
-        )
+        object.__setattr__(self, "reason_codes", _strings(self.reason_codes, "reason_codes"))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -625,9 +591,7 @@ def _coerce_records(values: Any, kind: type, name: str) -> tuple[Any, ...]:
         elif isinstance(item, Mapping) and callable(decoder):
             result.append(decoder(item))
         else:
-            raise IRConstraintCompilerError(
-                f"{name} must contain {kind.__name__} records"
-            )
+            raise IRConstraintCompilerError(f"{name} must contain {kind.__name__} records")
     return tuple(result)
 
 
@@ -658,9 +622,7 @@ def _candidate_graph(candidate: Mapping[str, Any]) -> dict[str, Any]:
         embedded = item.get("effects", ())
         if isinstance(embedded, Mapping):
             embedded = (embedded,)
-        if embedded and (
-            isinstance(embedded, str) or not isinstance(embedded, Sequence)
-        ):
+        if embedded and (isinstance(embedded, str) or not isinstance(embedded, Sequence)):
             raise IRConstraintCompilerError("embedded effects must be a sequence")
         for index, raw_effect in enumerate(embedded):
             if not isinstance(raw_effect, Mapping):
@@ -684,13 +646,9 @@ def _candidate_graph(candidate: Mapping[str, Any]) -> dict[str, Any]:
             raise IRConstraintCompilerError("candidate effects must be objects")
         effect = _plain(raw)
         effect_id = _text(effect.get("effect_id", ""), "effect_id")
-        action_id = _text(
-            effect.get("action_id", effect.get("task_id", "")), "effect action_id"
-        )
+        action_id = _text(effect.get("action_id", effect.get("task_id", "")), "effect action_id")
         if action_id not in actions:
-            raise IRConstraintCompilerError(
-                "candidate effect references an unknown action"
-            )
+            raise IRConstraintCompilerError("candidate effect references an unknown action")
         effect["effect_id"] = effect_id
         effect["action_id"] = action_id
         effect.pop("task_id", None)
@@ -709,9 +667,7 @@ def _candidate_graph(candidate: Mapping[str, Any]) -> dict[str, Any]:
             )
         action["depends_on"] = list(dependencies)
         action["effect_ids"] = sorted(
-            effect_id
-            for effect_id, effect in effects.items()
-            if effect["action_id"] == action_id
+            effect_id for effect_id, effect in effects.items() if effect["action_id"] == action_id
         )
 
     return {
@@ -767,20 +723,15 @@ class PlanAdmissionRequest:
             _text(self.repository_tree_id, "repository_tree_id"),
         )
         if not isinstance(self.intent_request, IntentConformanceRequest):
-            raise IRConstraintCompilerError(
-                "intent_request must be IntentConformanceRequest"
-            )
+            raise IRConstraintCompilerError("intent_request must be IntentConformanceRequest")
         if any(not isinstance(item, LegalCompilationResult) for item in self.legal_results):
             raise IRConstraintCompilerError(
                 "legal_results must contain LegalCompilationResult records"
             )
         if not isinstance(self.security_policy, SecurityPolicyReceipt):
-            raise IRConstraintCompilerError(
-                "security_policy must be SecurityPolicyReceipt"
-            )
+            raise IRConstraintCompilerError("security_policy must be SecurityPolicyReceipt")
         if any(
-            not isinstance(item, SecurityAuthorizationRequest)
-            for item in self.security_requests
+            not isinstance(item, SecurityAuthorizationRequest) for item in self.security_requests
         ):
             raise IRConstraintCompilerError(
                 "security_requests must contain SecurityAuthorizationRequest records"
@@ -788,9 +739,7 @@ class PlanAdmissionRequest:
         if not isinstance(self.authority, AdmissionAuthority):
             if not isinstance(self.authority, Mapping):
                 raise IRConstraintCompilerError("authority is malformed")
-            object.__setattr__(
-                self, "authority", AdmissionAuthority.from_dict(self.authority)
-            )
+            object.__setattr__(self, "authority", AdmissionAuthority.from_dict(self.authority))
         coercions = (
             ("action_bindings", ActionDomainBinding),
             ("root_bindings", RootBinding),
@@ -801,17 +750,21 @@ class PlanAdmissionRequest:
         )
         for name, kind in coercions:
             values = _coerce_records(getattr(self, name), kind, name)
-            key_name = next(
-                candidate
-                for candidate in (
-                    "action_id",
-                    "kind",
-                    "dependency_id",
-                    "assumption_id",
-                    "requirement_id",
+            key_name = (
+                next(
+                    candidate
+                    for candidate in (
+                        "action_id",
+                        "kind",
+                        "dependency_id",
+                        "assumption_id",
+                        "requirement_id",
+                    )
+                    if hasattr(values[0], candidate)
                 )
-                if hasattr(values[0], candidate)
-            ) if values else ""
+                if values
+                else ""
+            )
             if key_name:
                 values = tuple(sorted(values, key=lambda item: getattr(item, key_name)))
                 keys = [getattr(item, key_name) for item in values]
@@ -819,9 +772,7 @@ class PlanAdmissionRequest:
                     raise IRConstraintCompilerError(f"{name} IDs must be unique")
             object.__setattr__(self, name, values)
         if any(not isinstance(item, ProofReceipt) for item in self.proof_results):
-            raise IRConstraintCompilerError(
-                "proof_results must contain ProofReceipt records"
-            )
+            raise IRConstraintCompilerError("proof_results must contain ProofReceipt records")
         object.__setattr__(
             self,
             "proof_results",
@@ -845,15 +796,11 @@ class PlanAdmissionRequest:
         if self.decision_request is not None and not isinstance(
             self.decision_request, DecisionRequest
         ):
-            raise IRConstraintCompilerError(
-                "decision_request must be a DecisionRequest"
-            )
+            raise IRConstraintCompilerError("decision_request must be a DecisionRequest")
         if self.mandatory_closure is not None and not isinstance(
             self.mandatory_closure, MandatoryClosure
         ):
-            raise IRConstraintCompilerError(
-                "mandatory_closure must be MandatoryClosure"
-            )
+            raise IRConstraintCompilerError("mandatory_closure must be MandatoryClosure")
         if not isinstance(self.graph_complete, bool):
             raise IRConstraintCompilerError("graph_complete must be boolean")
 
@@ -867,9 +814,7 @@ class PlanAdmissionRequest:
 
     @property
     def semantic_roots(self) -> Mapping[str, str]:
-        return MappingProxyType(
-            {item.kind: item.expected for item in self.root_bindings}
-        )
+        return MappingProxyType({item.kind: item.expected for item in self.root_bindings})
 
     @property
     def request_id(self) -> str:
@@ -891,27 +836,17 @@ class PlanAdmissionRequest:
             "action_bindings": [item.to_dict() for item in self.action_bindings],
             "authority": self.authority.to_dict(),
             "root_bindings": [item.to_dict() for item in self.root_bindings],
-            "program_dependencies": [
-                item.to_dict() for item in self.program_dependencies
-            ],
+            "program_dependencies": [item.to_dict() for item in self.program_dependencies],
             "assumptions": [item.to_dict() for item in self.assumptions],
             "proof_results": [item.to_dict() for item in self.proof_results],
-            "validation_requirements": [
-                item.to_dict() for item in self.validation_requirements
-            ],
-            "validation_results": [
-                item.to_dict() for item in self.validation_results
-            ],
+            "validation_requirements": [item.to_dict() for item in self.validation_requirements],
+            "validation_results": [item.to_dict() for item in self.validation_results],
             "generated_formula_ids": list(self.generated_formula_ids),
             "decision_request": (
-                self.decision_request.to_dict()
-                if self.decision_request is not None
-                else None
+                self.decision_request.to_dict() if self.decision_request is not None else None
             ),
             "mandatory_closure": (
-                self.mandatory_closure.to_dict()
-                if self.mandatory_closure is not None
-                else None
+                self.mandatory_closure.to_dict() if self.mandatory_closure is not None else None
             ),
             "graph_complete": self.graph_complete,
             "permissions_are_grants": False,
@@ -941,18 +876,12 @@ class PlanAdmissionRequest:
             action_bindings=tuple(value.get("action_bindings") or ()),
             authority=value.get("authority") or {},
             root_bindings=tuple(value.get("root_bindings") or ()),
-            program_dependencies=tuple(
-                value.get("program_dependencies") or ()
-            ),
+            program_dependencies=tuple(value.get("program_dependencies") or ()),
             assumptions=tuple(value.get("assumptions") or ()),
             proof_results=tuple(value.get("proof_results") or ()),
-            validation_requirements=tuple(
-                value.get("validation_requirements") or ()
-            ),
+            validation_requirements=tuple(value.get("validation_requirements") or ()),
             validation_results=tuple(value.get("validation_results") or ()),
-            generated_formula_ids=tuple(
-                value.get("generated_formula_ids") or ()
-            ),
+            generated_formula_ids=tuple(value.get("generated_formula_ids") or ()),
             decision_request=value.get("decision_request"),
             mandatory_closure=value.get("mandatory_closure"),
             graph_complete=value.get("graph_complete", True),
@@ -1045,9 +974,7 @@ class PlanAdmissionReceipt:
             )
         )
         object.__setattr__(self, "rejection_reasons", rejections)
-        examples = _coerce_records(
-            self.counterexamples, AdmissionCounterexample, "counterexamples"
-        )
+        examples = _coerce_records(self.counterexamples, AdmissionCounterexample, "counterexamples")
         examples = tuple(
             sorted(
                 {item.counterexample_id: item for item in examples}.values(),
@@ -1056,13 +983,9 @@ class PlanAdmissionReceipt:
         )
         object.__setattr__(self, "counterexamples", examples)
         if self.verdict is PlanAdmissionVerdict.ADMITTED and rejections:
-            raise IRConstraintCompilerError(
-                "admitted receipt cannot carry rejection reasons"
-            )
+            raise IRConstraintCompilerError("admitted receipt cannot carry rejection reasons")
         if self.verdict is PlanAdmissionVerdict.REJECTED and not rejections:
-            raise IRConstraintCompilerError(
-                "rejected receipt requires rejection reasons"
-            )
+            raise IRConstraintCompilerError("rejected receipt requires rejection reasons")
 
     @property
     def admitted(self) -> bool:
@@ -1157,16 +1080,13 @@ class PlanAdmissionReceipt:
             proof_result_ids=tuple(value.get("proof_result_ids") or ()),
             checked_validation_ids=tuple(value.get("checked_validation_ids") or ()),
             rejection_reasons=tuple(
-                AdmissionRejection.from_dict(item)
-                for item in value.get("rejection_reasons") or ()
+                AdmissionRejection.from_dict(item) for item in value.get("rejection_reasons") or ()
             ),
             counterexamples=tuple(
                 AdmissionCounterexample.from_dict(item)
                 for item in value.get("counterexamples") or ()
             ),
-            local_replan_action_ids=tuple(
-                value.get("local_replan_action_ids") or ()
-            ),
+            local_replan_action_ids=tuple(value.get("local_replan_action_ids") or ()),
             closure_id=value.get("closure_id", ""),
         )
         if value.get("receipt_id") != result.receipt_id:
@@ -1181,34 +1101,26 @@ class PlanAdmissionReceipt:
             raise IRConstraintCompilerError(
                 "plan-admission reason-code projection does not match findings"
             )
-        for raw, rejection in zip(
-            value.get("rejection_reasons") or (), result.rejection_reasons
-        ):
+        for raw, rejection in zip(value.get("rejection_reasons") or (), result.rejection_reasons):
             claimed = str(raw.get("rejection_id") or "")
             if claimed and claimed != rejection.rejection_id:
                 raise IRConstraintCompilerError(
                     "plan-admission rejection identity does not match content"
                 )
-        for raw, counterexample in zip(
-            value.get("counterexamples") or (), result.counterexamples
-        ):
+        for raw, counterexample in zip(value.get("counterexamples") or (), result.counterexamples):
             claimed = str(raw.get("counterexample_id") or "")
             if claimed and claimed != counterexample.counterexample_id:
                 raise IRConstraintCompilerError(
                     "plan-admission counterexample identity does not match content"
                 )
         if bool(value.get("authorizes_execution", False)):
-            raise IRConstraintCompilerError(
-                "plan admission cannot authorize execution"
-            )
+            raise IRConstraintCompilerError("plan admission cannot authorize execution")
         if bool(value.get("permissions_are_grants", False)):
             raise IRConstraintCompilerError(
                 "legal permissions cannot be promoted to authority grants"
             )
         if bool(value.get("generated_formulas_are_proofs", False)):
-            raise IRConstraintCompilerError(
-                "generated formulas cannot be promoted to proofs"
-            )
+            raise IRConstraintCompilerError("generated formulas cannot be promoted to proofs")
         return result
 
 
@@ -1225,9 +1137,7 @@ class IRConstraintCompiler:
 
     def compile(self, request: PlanAdmissionRequest) -> PlanAdmissionReceipt:
         if not isinstance(request, PlanAdmissionRequest):
-            raise IRConstraintCompilerError(
-                "request must be a PlanAdmissionRequest"
-            )
+            raise IRConstraintCompilerError("request must be a PlanAdmissionRequest")
         rejections: list[AdmissionRejection] = []
 
         def reject(
@@ -1290,9 +1200,7 @@ class IRConstraintCompiler:
                 )
 
         legal_by_id = {_record_id(item): item for item in request.legal_results}
-        security_request_by_id = {
-            item.content_id: item for item in request.security_requests
-        }
+        security_request_by_id = {item.content_id: item for item in request.security_requests}
         used_legal: set[str] = set()
         used_security: set[str] = set()
         for action_id, binding in sorted(binding_by_action.items()):
@@ -1304,9 +1212,7 @@ class IRConstraintCompiler:
                     action_id=action_id,
                 )
             unknown_legal = set(binding.legal_result_ids) - set(legal_by_id)
-            unknown_security = set(binding.security_request_ids) - set(
-                security_request_by_id
-            )
+            unknown_security = set(binding.security_request_ids) - set(security_request_by_id)
             if unknown_legal or unknown_security:
                 reject(
                     AdmissionRejectionCode.DOMAIN_BINDING_MISMATCH,
@@ -1368,13 +1274,10 @@ class IRConstraintCompiler:
 
         legal_permissions: list[str] = []
         required_proof_ids: set[str] = {
-            item.obligation_id
-            for item in request.intent_request.constraint_set.proof_obligations
+            item.obligation_id for item in request.intent_request.constraint_set.proof_obligations
         }
         for result_id, result in sorted(legal_by_id.items()):
-            legal_permissions.extend(
-                item.provision_id for item in result.permissions
-            )
+            legal_permissions.extend(item.provision_id for item in result.permissions)
             if result.fail_closed or not result.accepted:
                 reject(
                     AdmissionRejectionCode.LEGAL_INCOMPLETE,
@@ -1454,9 +1357,7 @@ class IRConstraintCompiler:
                     source_ids=(security_request.content_id,),
                     details=mismatches,
                 )
-            decision = evaluate_security_authorization(
-                request.security_policy, security_request
-            )
+            decision = evaluate_security_authorization(request.security_policy, security_request)
             security_decisions.append(decision)
             if decision.outcome is SecurityDecisionOutcome.PERMIT:
                 security_grants.append(decision.content_id)
@@ -1476,9 +1377,7 @@ class IRConstraintCompiler:
                         *decision.matched_policy_ids,
                         *decision.reason_codes,
                     ),
-                    details={
-                        "checks": [item.to_dict() for item in decision.checks]
-                    },
+                    details={"checks": [item.to_dict() for item in decision.checks]},
                 )
 
         if not request.authority.matched:
@@ -1491,8 +1390,7 @@ class IRConstraintCompiler:
         for security_request in request.security_requests:
             if (
                 security_request.principal != request.authority.principal
-                or security_request.requested_authority
-                != request.authority.requested_authority
+                or security_request.requested_authority != request.authority.requested_authority
             ):
                 reject(
                     AdmissionRejectionCode.AUTHORITY_MISMATCH,
@@ -1586,9 +1484,7 @@ class IRConstraintCompiler:
                 and item.freshness is EvidenceFreshness.CURRENT
                 and item.authoritative_verdict is ProofVerdict.PROVED
                 and item.satisfies(
-                    required_assurance_by_id.get(
-                        obligation_id, AssuranceLevel.KERNEL_VERIFIED
-                    )
+                    required_assurance_by_id.get(obligation_id, AssuranceLevel.KERNEL_VERIFIED)
                 )
             ]
             if not receipts:
@@ -1612,9 +1508,7 @@ class IRConstraintCompiler:
                     source_ids=tuple(item.receipt_id for item in receipts),
                 )
 
-        validation_by_id = {
-            item.requirement_id: item for item in request.validation_results
-        }
+        validation_by_id = {item.requirement_id: item for item in request.validation_results}
         for requirement in request.validation_requirements:
             if not requirement.required:
                 continue
@@ -1695,33 +1589,24 @@ class IRConstraintCompiler:
             candidate_graph_id=request.candidate_graph_id,
             repository_tree_id=request.repository_tree_id,
             verdict=(
-                PlanAdmissionVerdict.REJECTED
-                if rejections
-                else PlanAdmissionVerdict.ADMITTED
+                PlanAdmissionVerdict.REJECTED if rejections else PlanAdmissionVerdict.ADMITTED
             ),
             semantic_roots=request.semantic_roots,
             intent_result_id=intent_result.result_id,
             legal_result_ids=tuple(legal_by_id),
             legal_permission_ids=tuple(legal_permissions),
-            security_decision_ids=tuple(
-                item.content_id for item in security_decisions
-            ),
+            security_decision_ids=tuple(item.content_id for item in security_decisions),
             security_grant_ids=(
                 request.authority.grant_source_ids
-                if security_grants
-                and len(security_grants) == len(request.security_requests)
+                if security_grants and len(security_grants) == len(request.security_requests)
                 else ()
             ),
             checked_dependency_ids=tuple(
                 item.dependency_id for item in request.program_dependencies
             ),
-            checked_assumption_ids=tuple(
-                item.assumption_id for item in request.assumptions
-            ),
+            checked_assumption_ids=tuple(item.assumption_id for item in request.assumptions),
             generated_formula_ids=request.generated_formula_ids,
-            proof_result_ids=tuple(
-                item.receipt_id for item in request.proof_results
-            ),
+            proof_result_ids=tuple(item.receipt_id for item in request.proof_results),
             checked_validation_ids=tuple(
                 item.requirement_id for item in request.validation_requirements
             ),

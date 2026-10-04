@@ -31,22 +31,18 @@ from distributed_testing.ci.register_providers import register_all_providers
 register_all_providers()
 
 # Create a CI provider
-ci_provider = await CIProviderFactory.create_provider("github", {
-    "token": "YOUR_TOKEN",
-    "repository": "owner/repo"
-})
+ci_provider = await CIProviderFactory.create_provider(
+    "github", {"token": "YOUR_TOKEN", "repository": "owner/repo"}
+)
 
 # Create a test result reporter
 reporter = TestResultReporter(
-    ci_provider=ci_provider,
-    report_dir="./reports",
-    artifact_dir="./artifacts"
+    ci_provider=ci_provider, report_dir="./reports", artifact_dir="./artifacts"
 )
 
 # Automatically collect and upload artifacts with URL retrieval
 artifacts = await reporter.collect_and_upload_artifacts(
-    test_run_id="test-123",
-    artifact_patterns=["./results/*.json", "./logs/*.log"]
+    test_run_id="test-123", artifact_patterns=["./results/*.json", "./logs/*.log"]
 )
 
 # Create a test result with artifact URLs
@@ -58,16 +54,11 @@ test_result = TestRunResult(
     failed_tests=1,
     skipped_tests=0,
     duration_seconds=15.5,
-    metadata={
-        "artifacts": artifacts
-    }
+    metadata={"artifacts": artifacts},
 )
 
 # Generate reports with artifact URLs included
-report_files = await reporter.report_test_result(
-    test_result,
-    formats=["markdown", "html", "json"]
-)
+report_files = await reporter.report_test_result(test_result, formats=["markdown", "html", "json"])
 ```
 
 ### 2. Bulk URL Retrieval
@@ -77,8 +68,7 @@ The artifact URL retrieval system provides efficient bulk retrieval of multiple 
 ```python
 # Retrieve multiple artifact URLs in parallel
 artifact_urls = await reporter.get_artifact_urls(
-    test_run_id="test-123",
-    artifact_names=["test_results.json", "test_metrics.csv", "test_log.txt"]
+    test_run_id="test-123", artifact_names=["test_results.json", "test_metrics.csv", "test_log.txt"]
 )
 
 # Use the URLs in reports, notifications, or dashboards
@@ -89,30 +79,32 @@ for name, url in artifact_urls.items():
 The `get_artifact_urls` method implements parallel URL retrieval using AnyIO tasks, which is 3-10x faster than sequential retrieval:
 
 ```python
-async def get_artifact_urls(self, test_run_id: str, artifact_names: List[str]) -> Dict[str, Optional[str]]:
+async def get_artifact_urls(
+    self, test_run_id: str, artifact_names: List[str]
+) -> Dict[str, Optional[str]]:
     """
     Retrieve URLs for multiple artifacts in bulk.
-    
+
     This method efficiently retrieves URLs for multiple artifacts in a single operation,
     which is more efficient than retrieving them one by one.
-    
+
     Args:
         test_run_id: Test run ID
         artifact_names: List of artifact names
-        
+
     Returns:
         Dictionary mapping artifact names to their URLs (or None if not found)
     """
-    if not self.ci_provider or not hasattr(self.ci_provider, 'get_artifact_url'):
+    if not self.ci_provider or not hasattr(self.ci_provider, "get_artifact_url"):
         logger.warning("CI provider doesn't support get_artifact_url method")
         return {name: None for name in artifact_names}
-    
+
     # Create tasks for retrieving URLs in parallel
     tasks = []
     for name in artifact_names:
         task = anyio.create_task_group()
         tasks.append((name, task))
-    
+
     # Wait for all tasks to complete
     urls = {}
     for name, task in tasks:
@@ -122,7 +114,7 @@ async def get_artifact_urls(self, test_run_id: str, artifact_names: List[str]) -
         except Exception as e:
             logger.error(f"Error retrieving artifact URL for {name}: {str(e)}")
             urls[name] = None
-    
+
     return urls
 ```
 
@@ -137,10 +129,7 @@ from distributed_testing.ci.artifact_discovery import discover_artifacts
 artifacts = await discover_artifacts(
     test_run_id="test-123",
     provider="github",
-    config={
-        "token": "YOUR_GITHUB_TOKEN",
-        "repository": "owner/repo"
-    }
+    config={"token": "YOUR_GITHUB_TOKEN", "repository": "owner/repo"},
 )
 
 # Get URLs for all discovered artifacts in parallel
@@ -189,42 +178,34 @@ from distributed_testing.ci.result_reporter import TestResultReporter
 from distributed_testing.ci.api_interface import CIProviderFactory
 
 # Create CI provider
-provider = await CIProviderFactory.create_provider("github", {
-    "token": "YOUR_GITHUB_TOKEN",
-    "repository": "owner/repo"
-})
+provider = await CIProviderFactory.create_provider(
+    "github", {"token": "YOUR_GITHUB_TOKEN", "repository": "owner/repo"}
+)
 
 # Create reporter
 reporter = TestResultReporter(
-    ci_provider=provider,
-    report_dir="./reports",
-    artifact_dir="./artifacts"
+    ci_provider=provider, report_dir="./reports", artifact_dir="./artifacts"
 )
 
 # Create coordinator
 coordinator = DistributedTestingCoordinator(
-    db_path="./coordinator.db",
-    enable_batch_processing=True
+    db_path="./coordinator.db", enable_batch_processing=True
 )
 
 # Register a task
-task_id = await coordinator.register_task({
-    "name": "Integration Test",
-    "type": "test",
-    "priority": 1,
-    "parameters": {
-        "test_file": "test_integration.py",
-        "timeout": 30
-    },
-    "metadata": {
-        "test_run_id": "test-123"
+task_id = await coordinator.register_task(
+    {
+        "name": "Integration Test",
+        "type": "test",
+        "priority": 1,
+        "parameters": {"test_file": "test_integration.py", "timeout": 30},
+        "metadata": {"test_run_id": "test-123"},
     }
-})
+)
 
 # Upload artifacts with automatic URL retrieval
 artifacts = await reporter.collect_and_upload_artifacts(
-    test_run_id="test-123",
-    artifact_patterns=["./artifacts/*.json", "./artifacts/*.log"]
+    test_run_id="test-123", artifact_patterns=["./artifacts/*.json", "./artifacts/*.log"]
 )
 
 # Create test result with artifact URLs
@@ -236,10 +217,7 @@ test_result = TestRunResult(
     failed_tests=1,
     skipped_tests=0,
     duration_seconds=15.5,
-    metadata={
-        "task_id": task_id,
-        "artifacts": artifacts
-    }
+    metadata={"task_id": task_id, "artifacts": artifacts},
 )
 
 # Send test result to coordinator
@@ -337,7 +315,7 @@ The URL validation system is fully integrated with TestResultReporter:
    urls = await reporter.get_artifact_urls(
        test_run_id="test-123",
        artifact_names=["artifact1.json", "artifact2.log"],
-       validate=True  # Enable URL validation
+       validate=True,  # Enable URL validation
    )
    ```
 
@@ -347,7 +325,7 @@ The URL validation system is fully integrated with TestResultReporter:
        test_run_id="test-123",
        artifact_patterns=["./artifacts/*.json"],
        validate_urls=True,  # Enable URL validation
-       include_health_info=True  # Include health metrics in artifact metadata
+       include_health_info=True,  # Include health metrics in artifact metadata
    )
    ```
 
@@ -367,8 +345,8 @@ The URL validation system is fully integrated with TestResultReporter:
            "last_checked": 1647408123.45,
            "status_code": 200,
            "availability": 100.0,
-           "history": [...]
-       }
+           "history": [...],
+       },
    }
    ```
 
@@ -401,7 +379,7 @@ else:
 # Validate multiple URLs in parallel
 urls_to_validate = [
     "https://github.com/owner/repo/actions/runs/123/artifacts/456",
-    "https://github.com/owner/repo/actions/runs/123/artifacts/457"
+    "https://github.com/owner/repo/actions/runs/123/artifacts/457",
 ]
 
 results = await validate_urls(urls_to_validate)
@@ -424,7 +402,7 @@ with open("health_report.html", "w") as f:
     f.write(html_report)
 
 # Generate a report for the last 7 days
-report = await generate_health_report(timespan=7*86400, format="json")
+report = await generate_health_report(timespan=7 * 86400, format="json")
 ```
 
 #### Integration with TestResultReporter
@@ -440,7 +418,7 @@ artifacts = await reporter.collect_and_upload_artifacts(
     test_run_id="test-123",
     artifact_patterns=["./artifacts/*.json"],
     validate_urls=True,
-    include_health_info=True
+    include_health_info=True,
 )
 
 # Display validation results
