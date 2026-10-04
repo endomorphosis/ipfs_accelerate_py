@@ -1,0 +1,80 @@
+<?xml version='1.0' encoding='utf-8'?>
+<testsuites name="pytest tests (bounded publication projection)">
+  <testsuite name="pytest" errors="0" failures="2" skipped="0" tests="71" time="64.729" timestamp="2026-10-04T07:59:34.750553+00:00">
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_successful_native_methods_retire_runtime_callback_and_allow_fresh_rebind" time="1.036" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_close_without_genuine_cleanup_observation_retains_handler[stop]" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_close_without_genuine_cleanup_observation_retains_handler[fence]" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_close_without_genuine_cleanup_observation_retains_handler[cleanup]" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_close_without_genuine_cleanup_observation_retains_handler[single_worker]" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_close_without_genuine_cleanup_observation_retains_handler[members]" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_foreign_handler_and_token_are_never_removed" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_active_callback_refuses_retirement_then_detaches_after_return" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_same_thread_callback_cannot_retire_itself_reentrantly" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_legacy_binding_remains_exact_dict_and_duplicate_bind_refuses" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_already_locked_rpc_selection_supports_non_reentrant_owner_locks" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_retired_token_cannot_detach_same_handler_rebound_with_fresh_identity" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_callback_failure_releases_active_custody_and_allows_retirement[RuntimeError]" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_callback_failure_releases_active_custody_and_allows_retirement[KeyboardInterrupt]" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_same_thread_retirement_fails_without_blocking_either_owner_lock[allocate_lock]" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_same_thread_retirement_fails_without_blocking_either_owner_lock[RLock]" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_callback_selection_waits_for_owner_custody_and_cannot_use_retired_handler" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_retirement_mode_requires_exact_boolean_before_binding[None]" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_retirement_mode_requires_exact_boolean_before_binding[0]" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_retirement_mode_requires_exact_boolean_before_binding[1]" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_retirement_mode_requires_exact_boolean_before_binding[yes]" time="0.003" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_retirement_mode_requires_exact_boolean_before_binding[value4]" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_noncallable_binding_rejects_without_lifetime_changes" time="0.001" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_default_owner_socket_path_compacts_an_overlong_store_path" time="0.001" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_explicit_owner_socket_path_is_not_silently_rewritten" time="0.001" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_protected_qualification_completion_is_atomic_and_idempotent" time="1.059" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_closed_owner_command_is_atomic_and_rolls_back_callback_failure" time="0.884" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_error_code_preserves_duckdb_fatal_detail" time="0.002" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_owner_rebuilds_task_status_indexes_after_art_fatal" time="0.869">
+      <failure message="AssertionError: assert 'tasks_status_idx' in {'tasks_goal_replacement_idx', 'tasks_ordinal_idx'}">Original traceback, captured output, local paths and source excerpts omitted; outcome and assertion message retained.</failure>
+    </testcase>
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_owner_drops_status_indexes_around_receipt_cas" time="0.881">
+      <failure message="assert False&#10; +  where False = any(&lt;generator object test_owner_drops_status_indexes_around_receipt_cas.&lt;locals&gt;.&lt;genexpr&gt; at &lt;object_address&gt;&gt;)">Original traceback, captured output, local paths and source excerpts omitted; outcome and assertion message retained.</failure>
+    </testcase>
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_gateway_attach_recovers_after_exclusive_owner_poison" time="0.891" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_commit_observer_runs_after_owner_transaction_lock_release" time="0.909" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_blocked_downstream_observer_does_not_block_later_owner_transaction" time="0.881" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_failing_downstream_observer_cannot_undo_or_disable_owner_operations" time="1.000" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_grant_rejects_self_admission_unknown_mutation_and_scope_promotion" time="0.901" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_live_grant_revocation_is_checked_on_every_request" time="0.839" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_transaction_idempotency_lookup_cannot_cross_admitted_command_key" time="0.931" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_live_grant_expiry_is_checked_on_every_request" time="1.848" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_completion_progress_is_reserved_for_status_session_grants" time="0.861" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_completion_progress_accepts_canonical_empty_control_receipt" time="0.001" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_request_ids_are_compact_on_open_and_every_followup_request[]" time="0.890" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_request_ids_are_compact_on_open_and_every_followup_request[ request:leading-space]" time="0.847" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_request_ids_are_compact_on_open_and_every_followup_request[request:embedded space]" time="0.848" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_request_ids_are_compact_on_open_and_every_followup_request[rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr]" time="0.836" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_request_ids_are_compact_on_open_and_every_followup_request[7]" time="0.986" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_partial_response_timeout_poison_closes_the_client_transport" time="0.103" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_grant_is_kernel_bound_to_an_independent_process" time="1.111" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_status_bootstrap_cannot_admit_unbound_non_federated_board" time="0.865" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_status_bootstrap_rebinds_each_distinct_process_read_only" time="1.460" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_budget_policy_and_usage_query_are_tenant_scoped" time="0.881" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_partial_federation_commands_cannot_commit[federation.create-True]" time="0.910" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_partial_federation_commands_cannot_commit[supervisor.register-False]" time="0.868" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_manifest_rejects_duplicate_and_out_of_order_mutations[duplicate]" time="0.870" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_manifest_rejects_duplicate_and_out_of_order_mutations[out_of_order]" time="0.891" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_manifest_rejects_duplicate_and_out_of_order_mutations[omitted_history]" time="0.924" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_receipt_manifest_requires_exact_atomic_task_revision_history[missing]" time="0.993" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_receipt_manifest_requires_exact_atomic_task_revision_history[reordered]" time="0.930" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_receipt_manifest_requires_exact_atomic_task_revision_history[duplicate]" time="0.897" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_receipt_manifest_requires_exact_atomic_task_revision_history[mismatched]" time="0.815" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_receipt_manifest_requires_exact_atomic_task_revision_history[mismatched_timestamp]" time="0.851" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_receipt_manifest_requires_exact_atomic_task_revision_history[mismatched_idempotency]" time="0.843" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_receipt_manifest_requires_exact_atomic_task_revision_history[bool_store_seal]" time="0.824" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_receipt_manifest_requires_exact_atomic_task_revision_history[stale_cas]" time="0.887" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_receipt_manifest_requires_exact_atomic_task_revision_history[gapped_history]" time="0.930" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_retry_cooldown_extension_rejects_bool_for_integer_identity" time="0.001" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_receipt_command_admission_rejects_nonclosed_json_or_fields[unknown_field]" time="0.864" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_receipt_command_admission_rejects_nonclosed_json_or_fields[duplicate_body_key]" time="0.928" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_expected_receipt_owner_rejects_bool_for_integer_identity" time="0.881" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_stale_store_revision_is_rejected_before_domain_mutation" time="0.913" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_owner_rejects_zero_row_task_cas_before_history_or_seals" time="0.973" />
+    <testcase classname="api.causal_federation.test_typed_state_owner" name="test_explicit_database_status_scope_is_read_only_and_rejects_drift" time="0.908" />
+  </testsuite>
+</testsuites>

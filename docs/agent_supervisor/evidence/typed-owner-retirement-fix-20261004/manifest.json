@@ -1,0 +1,73 @@
+{
+  "component": "typed-owner-callback-retirement-controls",
+  "member_bytes": 30466,
+  "member_count": 13,
+  "members": [
+    {
+      "bytes": 650,
+      "path": "README.txt",
+      "sha256": "c079a74ebe512e150d36b532b95b81de26e56b2d9777ff4fa252e3e2eeab94ce"
+    },
+    {
+      "bytes": 1578,
+      "path": "baseline-indexes-01.command.json",
+      "sha256": "822b09566753c8d4ddd6f226cfd4b266f92988893618313467be07637ec800d6"
+    },
+    {
+      "bytes": 115,
+      "path": "baseline-indexes-01.exit.json",
+      "sha256": "38c89dceabb974b81b6be335afc45d261d669893708aa0e1ed50796cf36476b0"
+    },
+    {
+      "bytes": 1165,
+      "path": "baseline-indexes-01.xml",
+      "sha256": "7b6acc8c13f0f95cacdcf9cd632ee94da844f791edae4398494ab94bf0ccfd17"
+    },
+    {
+      "bytes": 2213,
+      "path": "original-artifact-digests.json",
+      "sha256": "8084241283c67c3ac7288f91702722a3fb4576f0e186d1a15223a89f6bb24861"
+    },
+    {
+      "bytes": 2045,
+      "path": "owner-controls-01.command.json",
+      "sha256": "d9f0c40e5a2d9cac8ce8dbc4d3cb80455d6b1e78244073a18b4b95744f7633d7"
+    },
+    {
+      "bytes": 148,
+      "path": "owner-controls-01.exit.json",
+      "sha256": "a9c9515c2504c1099eb7c68f7698b66967ae4fbc9e096ef090c15885ac4014ea"
+    },
+    {
+      "bytes": 12699,
+      "path": "owner-controls-01.xml",
+      "sha256": "0a79e485290bae12f26f0fa9c2f86935f5b39bddcec2108975303b0fb9f3a600"
+    },
+    {
+      "bytes": 1833,
+      "path": "retirement-01.command.json",
+      "sha256": "46fedce01e287687d3be008336cc47653ad58d043c76ad0d49ea30eff2053e0f"
+    },
+    {
+      "bytes": 148,
+      "path": "retirement-01.exit.json",
+      "sha256": "20c9193f7a76c36bf0e63fee3012ea3b8a108559d2d5bc839ffacb583658ac43"
+    },
+    {
+      "bytes": 4038,
+      "path": "retirement-01.xml",
+      "sha256": "d34b90549d77025655474f7e21e06b1f39e28020c6a89cf93767037ede454c4f"
+    },
+    {
+      "bytes": 1729,
+      "path": "source-and-test-pins.json",
+      "sha256": "c92f8f11392d17030bbff70c42ad652938ed299ab2f7862dacc0f6299000b8e6"
+    },
+    {
+      "bytes": 2105,
+      "path": "summary.json",
+      "sha256": "87c1a572c3ebbfeef48a9583e7d31ce94b85803d314f4748468c31af6b72b618"
+    }
+  ],
+  "schema": "bounded-evidence-manifest@1"
+}

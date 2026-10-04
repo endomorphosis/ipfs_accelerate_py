@@ -1,0 +1,50 @@
+{
+  "argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-m",
+    "benchmarks.agent_supervisor.container_coding.terminal_deployment",
+    "bundle",
+    "--output",
+    "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/bundle",
+    "--source",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+    "--datasets",
+    "/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004",
+    "--kit",
+    "/home/barberb/lift_coding/external/ipfs_kit",
+    "--extension-dir",
+    "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64",
+    "--source384-config",
+    "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/source384-config.json",
+    "--torch-cpu-wheel",
+    "/home/barberb/lift_coding/artifacts/source384-torch-wheel-20261003/torch-2.13.0+cpu-cp312-cp312-manylinux_2_28_aarch64.whl",
+    "--torch-cpu-wheel-sha256",
+    "6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604",
+    "--lean-toolchain",
+    "/home/barberb/.elan/toolchains/leanprover--lean4---v4.34.1",
+    "--setup-cache-policy",
+    "source384-native-aarch64-dontneed@1"
+  ],
+  "benchmark_executed": false,
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "delta_policy": "complete current archive inventory; upstream additions and removals explicitly retained",
+  "env": {
+    "HF_HUB_OFFLINE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:/home/barberb/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "free_bytes": 823458459648,
+  "profile": "source384-5cpu-16gib-extended@1",
+  "provider_calls": 0,
+  "source_revisions": {
+    "datasets": "37f556040bccdce81f0bc3de6ee52d02b147ba2c",
+    "kit": "a9b98beac1ef14278b4adf4f2289cd509530fb86",
+    "source": "b81c27f961cef3cbf2092dec4a59167fee31661e"
+  }
+}

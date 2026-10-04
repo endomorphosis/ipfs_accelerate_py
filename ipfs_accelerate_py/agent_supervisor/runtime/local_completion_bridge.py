@@ -7,6 +7,7 @@ CAS still decides whether a task can complete.
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 from pathlib import Path
 import re
@@ -475,7 +476,19 @@ def bind_owner_local_completion_service(
     gateway = server._command_gateway
     if gateway is None:
         raise local.LocalPlanningError("native typed owner gateway is unavailable")
-    binding = gateway.bind_local_task_validation_handler(handler, retirable=retirable)
+    if retirable:
+        # Retirement needs explicit custody support. Reject an older gateway
+        # before installing a handler that this runtime could not detach.
+        try:
+            inspect.signature(gateway.bind_local_task_validation_handler).bind(handler, retirable=True)
+            inspect.signature(gateway.unbind_local_task_validation_handler).bind(handler, object())
+        except (AttributeError, TypeError, ValueError) as error:
+            raise local.LocalPlanningError("native typed owner gateway does not support completion retirement") from error
+        binding = gateway.bind_local_task_validation_handler(handler, retirable=True)
+    else:
+        # The ordinary, owner-lifetime service keeps its original one-argument
+        # binding contract, including gateways without optional retirement.
+        binding = gateway.bind_local_task_validation_handler(handler)
     if retirable:
         try:
             return OwnerLocalCompletionService(_COMPLETION_SERVICE_SEAL, server=server,

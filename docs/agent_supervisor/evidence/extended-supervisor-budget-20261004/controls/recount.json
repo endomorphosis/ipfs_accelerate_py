@@ -1,0 +1,87 @@
+{
+  "counts": {
+    "errors": 0,
+    "failed": 0,
+    "passed": 706,
+    "skipped": 2
+  },
+  "deduplication_key": [
+    "classname",
+    "name"
+  ],
+  "distinct_cases": 708,
+  "groups": [
+    {
+      "counts": {
+        "errors": 0,
+        "failed": 0,
+        "passed": 228,
+        "skipped": 0
+      },
+      "export_prefix": "controls/01-transport-03",
+      "source_group": "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/transport-03.xml"
+    },
+    {
+      "counts": {
+        "errors": 0,
+        "failed": 0,
+        "passed": 79,
+        "skipped": 2
+      },
+      "export_prefix": "controls/02-context-01",
+      "source_group": "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/context-01.xml"
+    },
+    {
+      "counts": {
+        "errors": 0,
+        "failed": 0,
+        "passed": 201,
+        "skipped": 2
+      },
+      "export_prefix": "controls/03-final-profile-01",
+      "source_group": "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/final-profile-01.xml"
+    },
+    {
+      "counts": {
+        "errors": 0,
+        "failed": 0,
+        "passed": 64,
+        "skipped": 0
+      },
+      "export_prefix": "controls/04-focused-01",
+      "source_group": "/home/barberb/lift_coding/artifacts/extended-driver-budget-20261004/focused-01.xml"
+    },
+    {
+      "counts": {
+        "errors": 0,
+        "failed": 0,
+        "passed": 302,
+        "skipped": 0
+      },
+      "export_prefix": "controls/05-controls-01",
+      "source_group": "/home/barberb/lift_coding/artifacts/local-benchmark-memory-profile-20261004/controls-01.xml"
+    },
+    {
+      "counts": {
+        "errors": 0,
+        "failed": 0,
+        "passed": 7,
+        "skipped": 0
+      },
+      "export_prefix": "controls/06-native-02",
+      "source_group": "/home/barberb/lift_coding/artifacts/local-benchmark-memory-profile-20261004/native-02.xml"
+    }
+  ],
+  "native_seven_breakdown": {
+    "actual_pinned_checkpoint_gte_inference_with_warm_reopened_registry_replay": 1,
+    "fresh_numeric_worker_subprocess": true,
+    "preparation_and_tamper_cases": 6,
+    "same_fixture_used_by_seven_cases": true
+  },
+  "schema": "deduplicated-selected-control-outcomes@1",
+  "source_binding_limits": [
+    "Parent transport/context/final-profile commands have no per-run before/after source-pin record.",
+    "Driver focused receipt pins the earlier central Harbor930 budget; later final-profile coverage exercises Harbor960.",
+    "D controls and native02 receipts retain their explicit source pins; compilation and Docker qualification are distinct scopes."
+  ]
+}

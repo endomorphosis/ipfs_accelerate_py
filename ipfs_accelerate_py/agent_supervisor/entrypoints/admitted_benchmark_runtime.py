@@ -621,6 +621,11 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                 from ..runtime.finite_proof_query_execution import PROFILE as PROOF_QUERY_PROFILE
                 from ..task_sources.board_control_plane import infer_board_namespace
                 target_branch = _git(repository, "branch", "--show-current")
+                if finite_execution_scope is None and inventory_execution_scope is None:
+                    gateway = server._command_gateway
+                    with gateway._grants_lock:
+                        runtime._ordinary_completion_binding_before = (
+                            gateway, gateway._local_task_validation_handler)
                 runtime.completion_service = bind_owner_local_completion_service(
                     server=server, portal_attempt_root=runtime.state / "run" / "admitted_database_portal_attempts",
                     repo_root=repository, merge_queue_dir=runtime.state / "merge_queue",
@@ -636,6 +641,12 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
         except BaseException as construction_error:
             if inventory_execution_scope is None and (
                     finite_execution_scope is None or not finite_execution_scope._uses_paired_receiving()):
+                if finite_execution_scope is None:
+                    try:
+                        runtime._close_unlaunched_construction()
+                    except BaseException as cleanup_error:
+                        runtime._construction_cleanup_failed = True
+                        raise RuntimeError("ordinary constructor cleanup unproven; resource custody retained") from cleanup_error
                 raise
             cleanup_kind = "inventory" if inventory_execution_scope is not None else "proof-query"
             from ..runtime.local_completion_bridge import _CompletionBindingCleanupError
@@ -682,6 +693,54 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                     }, sort_keys=True) + "\n")
                 raise RuntimeError(f"{cleanup_kind} constructor cleanup unproven; resource custody retained") from cleanup_error
             raise
+
+    def _close_unlaunched_construction(self):
+        """Dispose an ordinary failed constructor without inventing a STOP."""
+        if getattr(self, "_children", ()):
+            raise RuntimeError("ordinary construction has undisposed process custody")
+        process = getattr(self, "process", None)
+        if process is not None:
+            observed = process.snapshot(self.profile)
+            if observed.members or observed.roots:
+                raise RuntimeError("ordinary construction has a live native process tree")
+        stop = getattr(self, "_bootstrap_stop", None)
+        if stop is not None:
+            stop.set()
+        listener = getattr(self, "_listener", None)
+        if listener is not None:
+            listener.close()
+        thread = getattr(self, "_bootstrap_thread", None)
+        if thread is not None and thread.ident is not None:
+            # The bootstrap channel itself has a five-second receive bound.
+            thread.join(timeout=6)
+            if thread.is_alive():
+                raise RuntimeError("ordinary constructor bootstrap remains active")
+        before = getattr(self, "_ordinary_completion_binding_before", None)
+        if before is not None:
+            gateway, previous_handler = before
+            with gateway._grants_lock:
+                if gateway._local_task_validation_handler is not previous_handler:
+                    raise RuntimeError("ordinary construction has unresolved completion binding custody")
+        if getattr(self, "completion_service", None):
+            raise RuntimeError("ordinary construction has undisposed completion custody")
+        coordinator = getattr(self, "coordinator", None)
+        released = False
+        if coordinator is not None:
+            lease = getattr(self, "lease", None)
+            if lease is not None:
+                coordinator.release(lease, expected_fencing_token=lease.fencing_token,
+                                    expected_fence_epoch=lease.fence_epoch)
+                released = True
+            coordinator.close()
+        if getattr(self, "state", None) is not None and self.state.is_dir():
+            (self.state / "construction-cleanup.json").write_text(json.dumps({
+                "schema": "ordinary-unlaunched-constructor-cleanup@1",
+                "native_STOP_proved": False,
+                "process_observation": "empty_native_tree" if process is not None else "lifecycle_not_constructed",
+                "bootstrap_stopped": thread is None or not thread.is_alive(),
+                "run_lease_released": released,
+                "completion_authority": False,
+            }, sort_keys=True) + "\n")
 
     def _bounded_lifecycle_response(self, request):
         response = self.orchestrator(request)

@@ -1,0 +1,35 @@
+{
+  "advantage_claimed": false,
+  "archive_sha256": "ae86d76bbb31c1b78e899d99aad7a31f823530544eb7422ddfe5f3b2811b91b7",
+  "completed_token_score": null,
+  "execution_budget": {
+    "cleanup_seconds": 60,
+    "driver_seconds": 900,
+    "exec_seconds": 910,
+    "harbor_seconds": 960,
+    "qualification_exec_seconds": 630,
+    "qualification_seconds": 600,
+    "source384_seconds": 180
+  },
+  "full_trial_service_pause": "User-authorized Leanstral pause is managed separately by the root controller; outcome and restoration have not been inferred in this package.",
+  "full_trial_status": "pending",
+  "manifest_sealed": false,
+  "manifest_sha256": "ae3cc26eb669de301659106ce23f4204f33fdc5b4e1bc3598db81d20c1ea4317",
+  "official_reward": null,
+  "qualification_controller_seconds": 416.99846173600235,
+  "qualification_official_verifier_executed": false,
+  "qualification_passed": true,
+  "qualification_provider_calls": 0,
+  "resource_profile": "source384-5cpu-16gib-extended@1",
+  "schema": "extended-budget-qualified-pending-full-trial@1",
+  "selected_controls": {
+    "distinct": 708,
+    "passed": 706,
+    "skipped": 2
+  },
+  "source_revisions": {
+    "datasets": "37f556040bccdce81f0bc3de6ee52d02b147ba2c",
+    "kit": "a9b98beac1ef14278b4adf4f2289cd509530fb86",
+    "source": "b81c27f961cef3cbf2092dec4a59167fee31661e"
+  }
+}

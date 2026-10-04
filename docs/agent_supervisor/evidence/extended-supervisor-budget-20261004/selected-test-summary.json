@@ -1,0 +1,16 @@
+{
+  "schema": "selected-test-outcomes@1",
+  "distinct_cases": 708,
+  "passed": 706,
+  "skipped": 2,
+  "failed": 0,
+  "groups": [
+    "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/transport-03.xml",
+    "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/context-01.xml",
+    "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/final-profile-01.xml",
+    "/home/barberb/lift_coding/artifacts/extended-driver-budget-20261004/focused-01.xml",
+    "/home/barberb/lift_coding/artifacts/local-benchmark-memory-profile-20261004/controls-01.xml",
+    "/home/barberb/lift_coding/artifacts/local-benchmark-memory-profile-20261004/native-02.xml"
+  ],
+  "scope": "selected tests; no task score or complete upstream suite claim"
+}

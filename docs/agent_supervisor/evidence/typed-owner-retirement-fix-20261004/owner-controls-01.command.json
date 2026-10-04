@@ -1,0 +1,41 @@
+{
+  "command": {
+    "argv": [
+      "<PYTHON_EXECUTABLE>",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-o",
+      "cache_dir=<PRIVATE_STATE>/owner-controls-01/pytest-cache",
+      "test/api/test_owner_completion_service_retirement.py",
+      "test/api/causal_federation/test_typed_state_owner.py",
+      "--junitxml=<EVIDENCE_ROOT>/owner-controls-01.xml"
+    ],
+    "cwd": "<ACCELERATE_CHECKOUT>",
+    "environment_overrides": {
+      "CUDA_VISIBLE_DEVICES": "",
+      "HF_HUB_OFFLINE": "1",
+      "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "<PRIVATE_STATE>/owner-controls-01/seal.duckdb",
+      "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "<PRIVATE_STATE>/owner-controls-01/keys.db",
+      "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": "<PRIVATE_STATE>/owner-controls-01/scheduler.json",
+      "MKL_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1",
+      "OMP_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "PYTHONDONTWRITEBYTECODE": "1",
+      "PYTHONPATH": "<ACCELERATE_CHECKOUT>:<DATASETS_CHECKOUT>",
+      "TOKENIZERS_PARALLELISM": "false",
+      "TRANSFORMERS_OFFLINE": "1"
+    },
+    "source_pins": {
+      "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "45a442ec7b3c87f3f7eeb1d7fcdc005d6c078a25e3a63b6bc599ba534dfd588a",
+      "ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py": "a5d15cade2892f62b7852191bbe21e4c08601066f13d0f74f0ad0855cbef6d27",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "d49d2ee166483c6e503dd2f88d2df9ba1d4954972e8214253b0a1ccbd349e0bb",
+      "test/api/causal_federation/test_typed_state_owner.py": "d185ebfa9072b6ba1b09f38e24a31b8422a38c7ff84dd0ece24e58d4ccd6222e",
+      "test/api/test_owner_completion_service_retirement.py": "6e164a092938cfa9799660d457ebfff1879a49aa0f9afbd53415c67c05b410fe"
+    }
+  },
+  "normalization": "Interpreter, checkout and private-state paths replaced with declared placeholders; this is a projection, not the original command bytes.",
+  "schema": "redacted-test-command@1"
+}

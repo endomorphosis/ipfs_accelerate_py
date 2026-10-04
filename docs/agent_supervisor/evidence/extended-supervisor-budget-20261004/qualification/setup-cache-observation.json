@@ -1,0 +1,14 @@
+{
+  "admission_authority": false,
+  "advice_is_best_effort": true,
+  "completed": true,
+  "credential_contents_recorded": false,
+  "freed_bytes_claimed": false,
+  "global_drop_caches": false,
+  "policy": "source384-native-aarch64-dontneed@1",
+  "selection": {
+    "manifest_sha256": "ae3cc26eb669de301659106ce23f4204f33fdc5b4e1bc3598db81d20c1ea4317",
+    "policy": "source384-native-aarch64-dontneed@1",
+    "schema": "terminal-setup-cache-selection@1"
+  }
+}

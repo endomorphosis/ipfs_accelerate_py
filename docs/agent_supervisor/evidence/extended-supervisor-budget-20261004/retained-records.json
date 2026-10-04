@@ -1,0 +1,272 @@
+{
+  "/home/barberb/lift_coding/artifacts/extended-driver-budget-20261004/focused-01-command.json": {
+    "bytes": 3070,
+    "raw_body_exported": true,
+    "sha256": "b66b18647c5eeb900b6f52905d04bc9409759e6a98efdbc01ce0db8927eeff88"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-driver-budget-20261004/focused-01-exit.json": {
+    "bytes": 197,
+    "raw_body_exported": true,
+    "sha256": "c6d67261daeae3ae21f5547fb03568027010a316259fbb6e3aab9168cd95bad1"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-driver-budget-20261004/focused-01.xml": {
+    "bytes": 13005,
+    "raw_body_exported": true,
+    "sha256": "bad4a7b8a98294c6f150cb01ba1d293d06851249394198d782af841e1f2ec973"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/build-audit.json": {
+    "bytes": 34132,
+    "raw_body_exported": true,
+    "sha256": "9b58a87b3549f4f9473a0ac5ea5571eb0cee2dfa58c90f8f4c21175c6230e7ea"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/build-command.json": {
+    "bytes": 2344,
+    "raw_body_exported": true,
+    "sha256": "930bf903a52b44579bb07446561277b6b9e6895a9a57001871e3b2490c12cc9a"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/build-exit.json": {
+    "bytes": 54,
+    "raw_body_exported": true,
+    "sha256": "c0bae897ba5b0b74b85f9f5f9b215b30931775ba17d851a850428c10febbc7bf"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/build_fresh.py": {
+    "bytes": 4296,
+    "raw_body_exported": false,
+    "sha256": "81cbb08143d01f41ef6b0a44f0720ae5abe4a2a8a364b7bce2dedae71bdaa0ce"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/bundle/manifest.json": {
+    "bytes": 6201747,
+    "raw_body_exported": false,
+    "sha256": "ae3cc26eb669de301659106ce23f4204f33fdc5b4e1bc3598db81d20c1ea4317"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/bundle/setup-cache-selection.json": {
+    "bytes": 191,
+    "raw_body_exported": true,
+    "sha256": "efba21e2e01251e3cb4036a6e09af327b5955c9fa2278e0e12e7c8e7d979dab4"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/context-01-command.json": {
+    "bytes": 1988,
+    "raw_body_exported": true,
+    "sha256": "3257bfcb495f61c2fe831ce9ed15cf1343761b3836d59d2180a23df3f68ba4e0"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/context-01-exit.json": {
+    "bytes": 115,
+    "raw_body_exported": true,
+    "sha256": "f1a2e09f7b3a02214e77cb4ec857f0d4b66f700d98ed58252606562460cf4641"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/context-01.xml": {
+    "bytes": 16349,
+    "raw_body_exported": true,
+    "sha256": "296982e653fd3e857117e74aa1525110bcb655c107edb3f8578d231ce4a1b163"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/final-profile-01-command.json": {
+    "bytes": 2190,
+    "raw_body_exported": true,
+    "sha256": "03751885bd4697967343f6cdb7b50745c9daa480a5dd1a27b235f7f1a89d85d4"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/final-profile-01-exit.json": {
+    "bytes": 116,
+    "raw_body_exported": true,
+    "sha256": "ae0b86e15a0e7e80a21ee61c97c225f57dc6ef54ed2b47f6c055a12b93f278f5"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/final-profile-01.xml": {
+    "bytes": 42152,
+    "raw_body_exported": true,
+    "sha256": "1efe29d92757f3c96514e168dc4217c116f79e4ffba610861dfd115ce9398663"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/frozen-production-pins.json": {
+    "bytes": 1907973,
+    "raw_body_exported": false,
+    "sha256": "e9cf55cecdfa89500056dd283dae139489f136ffa55a29204f4aad1ae232fc08"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/full_trial.py": {
+    "bytes": 4652,
+    "raw_body_exported": false,
+    "sha256": "771c3a2ef48548d88796644a4090d5afd5483ef6a5f7a23144335655983627f7"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/input-review.json": {
+    "bytes": 1105,
+    "raw_body_exported": true,
+    "sha256": "d9ad19aa816667ed4e7fee73fd408144669a4c81e01a13f791fcdf759c7abded"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/intent-requirements.json": {
+    "bytes": 13832,
+    "raw_body_exported": false,
+    "sha256": "2ed3848faead5300591b880501b5f3d439b6721cf70eac797f7b4b1ac7a1c3da"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/launch_qualification.py": {
+    "bytes": 2705,
+    "raw_body_exported": false,
+    "sha256": "40441913072b35d7bc83c5217567412d30a6093815061b1196a7006a8498772b"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/qualification-01/admission-estimate.json": {
+    "bytes": 283,
+    "raw_body_exported": true,
+    "sha256": "06c3b82a1c9578c3f00bb20cab4ecb81cdb175cb7d7d19fd2bc94095936a1856"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/qualification-01/native-inference.json": {
+    "bytes": 4505885,
+    "raw_body_exported": false,
+    "sha256": "a47e2c835c074acc36a1e21995a7fec5b797c469c7471f1caf926bde89e8227a"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/qualification-01/qualification.json": {
+    "bytes": 180486,
+    "raw_body_exported": false,
+    "sha256": "82eefff067b3ec613f60fbd0845992e890570e773b14f0dc3a908c8048803e24"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/qualification-01/resources.json": {
+    "bytes": 250,
+    "raw_body_exported": true,
+    "sha256": "88daad88b433c106a2f1bb95994ef1996a9ff6465136aa587ec3907ab93692bc"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/qualification-01/source384-context.json": {
+    "bytes": 45293,
+    "raw_body_exported": false,
+    "sha256": "e24ae139193f5851570cd035ac1aa290638d467bfa1e3c0985dfab6b672c7acd"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/qualification-01/source384-result.json": {
+    "bytes": 41576,
+    "raw_body_exported": false,
+    "sha256": "0a42d4d72b24147f79a69a1f442a51700feac82e607d584567b4ae423a05753d"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/qualification-after-pins.json": {
+    "bytes": 1907973,
+    "raw_body_exported": false,
+    "sha256": "e9cf55cecdfa89500056dd283dae139489f136ffa55a29204f4aad1ae232fc08"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/qualification-before-pins.json": {
+    "bytes": 1907973,
+    "raw_body_exported": false,
+    "sha256": "e9cf55cecdfa89500056dd283dae139489f136ffa55a29204f4aad1ae232fc08"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/qualification-command.json": {
+    "bytes": 3362,
+    "raw_body_exported": true,
+    "sha256": "54de9c03f823ce01772ee70d9c5ff4988edfe92b891f63efb52c4eaa26c6d38d"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/qualification-containers-after.json": {
+    "bytes": 36,
+    "raw_body_exported": true,
+    "sha256": "11c8e4d6b9ed9a59fde466cfd0aa636f30594fd28fe2d25fb0490db81ffc2463"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/qualification-containers-before.json": {
+    "bytes": 36,
+    "raw_body_exported": true,
+    "sha256": "11c8e4d6b9ed9a59fde466cfd0aa636f30594fd28fe2d25fb0490db81ffc2463"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/qualification-controller-command.json": {
+    "bytes": 1030,
+    "raw_body_exported": true,
+    "sha256": "3631219fa43bad5df43e57abd03a3cd9bbe373ed8510165712e30ab1ea86bf4d"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/qualification-controller-exit.json": {
+    "bytes": 54,
+    "raw_body_exported": true,
+    "sha256": "0437b401a120c24fa6ed29f7d5d9a466b257f2a6b536dee3212b5885871d2114"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/qualification-exit.json": {
+    "bytes": 275,
+    "raw_body_exported": true,
+    "sha256": "024096761a845df30c77f7a2522fa6d8415bb32a800110226be813fdf220b9de"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/qualification-public-task-pins.json": {
+    "bytes": 270,
+    "raw_body_exported": true,
+    "sha256": "c2bd9ed3e63cbb7d5202f7c3fe124aaeb45010d8d176d77223e405a6e16806a3"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/run-admission.json": {
+    "bytes": 923,
+    "raw_body_exported": true,
+    "sha256": "b88ffa0d0b1b06640fb65114334cd675e7265964b97e744b6a2906efa84b6b89"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/run_qualification.py": {
+    "bytes": 8449,
+    "raw_body_exported": false,
+    "sha256": "8cc408f6144e416f7e4655260dfa6fb7c0bc0aedb86b6fa56cfc99146340a2c6"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/run_tests.py": {
+    "bytes": 1642,
+    "raw_body_exported": false,
+    "sha256": "6c02034db7306f4979dfeba3aed392fe13304dfb295a14d63336c51314ab8574"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/selected-test-summary.json": {
+    "bytes": 787,
+    "raw_body_exported": true,
+    "sha256": "4346b5d55ea3c790e79623e5036bb759948a64fc095739eac16c9894222e80c0"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/solver-profile.json": {
+    "bytes": 342,
+    "raw_body_exported": true,
+    "sha256": "e28ce7fccf6da83ca0ed02fefd9c2704fa8895186c33bc315c2d46b6ced89a42"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/source384-config.json": {
+    "bytes": 1963,
+    "raw_body_exported": false,
+    "sha256": "484ea034486a13c2204e9e21a1409919bd8986057c0c9facfc7de34df6218b08"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/transport-01-command.json": {
+    "bytes": 2180,
+    "raw_body_exported": true,
+    "sha256": "ba2e35a16acfccdf8ffd41071b80bed254f7c3fa7f4bc31d98890d867f095864"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/transport-01-exit.json": {
+    "bytes": 114,
+    "raw_body_exported": true,
+    "sha256": "b74dc9663407c8804a95c24498123a8cc796be4cab68950b89a3c86d63f9c2d4"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/transport-02-command.json": {
+    "bytes": 2180,
+    "raw_body_exported": true,
+    "sha256": "198195192a7307959339ee9fd373f54debd9f0315dfcb3d5e6bfea78d7da27f6"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/transport-02-exit.json": {
+    "bytes": 117,
+    "raw_body_exported": true,
+    "sha256": "8443b9ba5715125b98622271b3052cb282f0b4cb3a7be108d2281825e2b18d84"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/transport-03-command.json": {
+    "bytes": 2269,
+    "raw_body_exported": true,
+    "sha256": "6e7a10d94436b20020681bda00883e71914c457575e4beaa023b2bc93c4a4ea7"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/transport-03-exit.json": {
+    "bytes": 116,
+    "raw_body_exported": true,
+    "sha256": "99456f6a6cc46c7269fda45964010d47a60c581d93f63c6f42cb8b8bfc361cdb"
+  },
+  "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/transport-03.xml": {
+    "bytes": 45481,
+    "raw_body_exported": true,
+    "sha256": "bd7ebe3f2dd946586238f8d118c1c343fdd09aeb3f868c9f9bfec726a0aee7b3"
+  },
+  "/home/barberb/lift_coding/artifacts/local-benchmark-memory-profile-20261004/controls-01-command.json": {
+    "bytes": 5401,
+    "raw_body_exported": true,
+    "sha256": "081d2641ec467dd74f9d6055a96a5e24ffaaaf171fcd01aae96964cb9c33b065"
+  },
+  "/home/barberb/lift_coding/artifacts/local-benchmark-memory-profile-20261004/controls-01-exit.json": {
+    "bytes": 149,
+    "raw_body_exported": true,
+    "sha256": "3057a6cfed39f030f30c4c6b83c46fe048c1dcbe10f369128027470db63c844b"
+  },
+  "/home/barberb/lift_coding/artifacts/local-benchmark-memory-profile-20261004/controls-01.xml": {
+    "bytes": 55732,
+    "raw_body_exported": true,
+    "sha256": "b3c00d11244243c435dd82e162d2728d9f45fa2c4aa281523f8f09e51420facd"
+  },
+  "/home/barberb/lift_coding/artifacts/local-benchmark-memory-profile-20261004/native-02-command.json": {
+    "bytes": 3503,
+    "raw_body_exported": true,
+    "sha256": "1e4dbb8692db18d5338e03231a2f80d8f77f6b41aa7beb5f0fdc8568cb7fdad7"
+  },
+  "/home/barberb/lift_coding/artifacts/local-benchmark-memory-profile-20261004/native-02-exit.json": {
+    "bytes": 147,
+    "raw_body_exported": true,
+    "sha256": "150677dae488005b500c52907200d69270998b073ed994f8c224246ae3c1d9e9"
+  },
+  "/home/barberb/lift_coding/artifacts/local-benchmark-memory-profile-20261004/native-02.xml": {
+    "bytes": 1496,
+    "raw_body_exported": true,
+    "sha256": "144091f89df6ed3e99890a493a367250dec16b118bd864368bf85d07b9422905"
+  }
+}

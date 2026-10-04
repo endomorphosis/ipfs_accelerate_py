@@ -1,0 +1,58 @@
+{
+  "admission_sha256": "b88ffa0d0b1b06640fb65114334cd675e7265964b97e744b6a2906efa84b6b89",
+  "argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/extended-supervisor-budget-20261004/run_qualification.py"
+  ],
+  "benchmark_result": false,
+  "build_audit_sha256": "9b58a87b3549f4f9473a0ac5ea5571eb0cee2dfa58c90f8f4c21175c6230e7ea",
+  "cache_policy": "source384-native-aarch64-dontneed@1",
+  "component_review": {
+    "environment_gated_local_cases": 2,
+    "new_profile_requires_actual_docker_qualification": true,
+    "passed_scopes": [
+      "profile/transport and preparation controls",
+      "signed native runtime and dispatch budgets",
+      "datasets scheduler and codebase admission controls",
+      "seven source-unit integration cases: one actual checkpoint/GTE inference plus preparation/tamper controls, with same-process warm and reopened-registry replay"
+    ],
+    "resource_blocked_scopes": [],
+    "unresolved_code_or_test_packaging_failures": []
+  },
+  "credential_contents_recorded": false,
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "diagnostic_only": false,
+  "env": {
+    "HF_HUB_OFFLINE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:/home/barberb/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "inherited_environment_recipe": "/home/barberb/lift_coding/artifacts/source384-full-supervisor-preflight-20261003/prepare-command.json",
+  "inherited_environment_recipe_sha256": "5204f81fb32b680286cfdba8a147b64a473efea6a856accfecaf8e870a42443e",
+  "intent_requirement_contract_sha256": "2ed3848faead5300591b880501b5f3d439b6721cf70eac797f7b4b1ac7a1c3da",
+  "later_full_harbor_setup_seconds": 1800,
+  "official_verifier_executed": false,
+  "preceding_ordinary_qualifier": "/home/barberb/lift_coding/artifacts/source384-production-cache-20261003/run_qualification.py",
+  "preceding_ordinary_qualifier_sha256": "ad677991909587b0bdca064b8526c32b2af7b3e7f9f465552b50efc7766a876a",
+  "provider_calls": 0,
+  "qualification_aggregate_setup_timeout": null,
+  "qualification_exec_seconds": 630,
+  "qualification_inner_seconds": 600,
+  "qualification_outer_seconds": 2600,
+  "resource_profile": "source384-5cpu-16gib-extended@1",
+  "reviewed_input_receipt_sha256": "d9ad19aa816667ed4e7fee73fd408144669a4c81e01a13f791fcdf759c7abded",
+  "runtime_hooks_installed": false,
+  "script_sha256": "8cc408f6144e416f7e4655260dfa6fb7c0bc0aedb86b6fa56cfc99146340a2c6",
+  "selected_archive_sha256": "ae86d76bbb31c1b78e899d99aad7a31f823530544eb7422ddfe5f3b2811b91b7",
+  "selected_manifest_sha256": "ae3cc26eb669de301659106ce23f4204f33fdc5b4e1bc3598db81d20c1ea4317",
+  "setup_operation_timeouts_unchanged": true,
+  "solver_discovery_sha256": "e28ce7fccf6da83ca0ed02fefd9c2704fa8895186c33bc315c2d46b6ced89a42",
+  "source384_native_seconds": 180
+}

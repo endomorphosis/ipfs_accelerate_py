@@ -1,0 +1,28 @@
+<?xml version='1.0' encoding='utf-8'?>
+<testsuites name="pytest tests (bounded publication projection)">
+  <testsuite name="pytest" errors="0" failures="0" skipped="0" tests="23" time="17.141" timestamp="2026-10-04T07:58:53.599637+00:00">
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_successful_native_methods_retire_runtime_callback_and_allow_fresh_rebind" time="0.926" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_close_without_genuine_cleanup_observation_retains_handler[stop]" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_close_without_genuine_cleanup_observation_retains_handler[fence]" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_close_without_genuine_cleanup_observation_retains_handler[cleanup]" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_close_without_genuine_cleanup_observation_retains_handler[single_worker]" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_close_without_genuine_cleanup_observation_retains_handler[members]" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_foreign_handler_and_token_are_never_removed" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_active_callback_refuses_retirement_then_detaches_after_return" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_same_thread_callback_cannot_retire_itself_reentrantly" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_legacy_binding_remains_exact_dict_and_duplicate_bind_refuses" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_already_locked_rpc_selection_supports_non_reentrant_owner_locks" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_retired_token_cannot_detach_same_handler_rebound_with_fresh_identity" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_callback_failure_releases_active_custody_and_allows_retirement[RuntimeError]" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_callback_failure_releases_active_custody_and_allows_retirement[KeyboardInterrupt]" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_same_thread_retirement_fails_without_blocking_either_owner_lock[allocate_lock]" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_same_thread_retirement_fails_without_blocking_either_owner_lock[RLock]" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_callback_selection_waits_for_owner_custody_and_cannot_use_retired_handler" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_retirement_mode_requires_exact_boolean_before_binding[None]" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_retirement_mode_requires_exact_boolean_before_binding[0]" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_retirement_mode_requires_exact_boolean_before_binding[1]" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_retirement_mode_requires_exact_boolean_before_binding[yes]" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_retirement_mode_requires_exact_boolean_before_binding[value4]" time="0.001" />
+    <testcase classname="api.test_owner_completion_service_retirement" name="test_noncallable_binding_rejects_without_lifetime_changes" time="0.001" />
+  </testsuite>
+</testsuites>

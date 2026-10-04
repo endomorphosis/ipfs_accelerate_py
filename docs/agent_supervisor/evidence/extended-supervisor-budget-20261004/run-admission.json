@@ -1,0 +1,21 @@
+{
+  "schema": "bounded-docker-run-admission@1",
+  "root_go_received": true,
+  "current_producer_component_review_complete": true,
+  "fresh_archive_audited": true,
+  "build_audit_sha256": "9b58a87b3549f4f9473a0ac5ea5571eb0cee2dfa58c90f8f4c21175c6230e7ea",
+  "component_review": {
+    "passed_scopes": [
+      "profile/transport and preparation controls",
+      "signed native runtime and dispatch budgets",
+      "datasets scheduler and codebase admission controls",
+      "seven source-unit integration cases: one actual checkpoint/GTE inference plus preparation/tamper controls, with same-process warm and reopened-registry replay"
+    ],
+    "resource_blocked_scopes": [],
+    "unresolved_code_or_test_packaging_failures": [],
+    "environment_gated_local_cases": 2,
+    "new_profile_requires_actual_docker_qualification": true
+  },
+  "new_profile_previously_docker_qualified": false,
+  "full_task_score_claimed": false
+}

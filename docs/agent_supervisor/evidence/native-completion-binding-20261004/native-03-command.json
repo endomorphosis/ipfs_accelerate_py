@@ -1,0 +1,41 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "-o",
+    "cache_dir=/home/barberb/lift_coding/artifacts/native-completion-binding-20261004/private-native-03/pytest-cache",
+    "--basetemp=/home/barberb/lift_coding/artifacts/native-completion-binding-20261004/private-native-03/tmp",
+    "test/integration/test_admitted_benchmark_runtime.py::test_actual_native_implementation_binds_owner_validation_and_completes_authored_repair",
+    "--junitxml=/home/barberb/lift_coding/artifacts/native-completion-binding-20261004/native-03.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "environment_overrides": {
+    "CUDA_VISIBLE_DEVICES": "",
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/native-completion-binding-20261004/private-native-03/seal.duckdb",
+    "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "/home/barberb/lift_coding/artifacts/native-completion-binding-20261004/private-native-03/keys.db",
+    "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": "/home/barberb/lift_coding/artifacts/native-completion-binding-20261004/private-native-03/scheduler.json",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_MAX_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "hidden_verifier_used": false,
+  "production_scheduler_ledger_mutated": false,
+  "provider_calls": 0,
+  "source_pins": {
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "45a442ec7b3c87f3f7eeb1d7fcdc005d6c078a25e3a63b6bc599ba534dfd588a",
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py": "a5d15cade2892f62b7852191bbe21e4c08601066f13d0f74f0ad0855cbef6d27",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "d49d2ee166483c6e503dd2f88d2df9ba1d4954972e8214253b0a1ccbd349e0bb",
+    "test/api/test_owner_completion_service_retirement.py": "6e164a092938cfa9799660d457ebfff1879a49aa0f9afbd53415c67c05b410fe",
+    "test/integration/test_admitted_benchmark_runtime.py": "764c196de1d12a81676ec0904556260534b08aba3635e42caa66fc25fb9496d4"
+  }
+}

@@ -1,0 +1,110 @@
+{
+  "files": [
+    {
+      "bytes": 2862,
+      "path": "README.md",
+      "sha256": "6dc673343fdf220bcc7611d0018bac70e85fa4030c1797a11eef6fd035f4c91d"
+    },
+    {
+      "bytes": 2434,
+      "path": "before-01-command.json",
+      "sha256": "ee6df524550e2a12d98948fe7b2cbc73b6580441164502695cd8c592ab03a3b6"
+    },
+    {
+      "bytes": 195,
+      "path": "before-01-exit.json",
+      "sha256": "ca45b9792a151ac97e65495bc8923d0d62891c20e7ab9a52892e047253ef6eb4"
+    },
+    {
+      "bytes": 8662,
+      "path": "build_component.py",
+      "sha256": "101ee9ae80cbadbeefe1518e20becdde4e0b4785ecd3844508adcfe44ba7667c"
+    },
+    {
+      "bytes": 2688,
+      "path": "native-01-command.json",
+      "sha256": "f6ce60b24f5a96f0b7d983d77a90e139c661a0208346993a7351c50100142950"
+    },
+    {
+      "bytes": 196,
+      "path": "native-01-exit.json",
+      "sha256": "06e72fcf2ae5cf96c377a3659e848cc6c9d6e740aa65bb30d4f683aecd2c50a4"
+    },
+    {
+      "bytes": 2545,
+      "path": "native-02-command.json",
+      "sha256": "b1044af0253e83afda3e9b19dc521eea88aaf9cbddba54f053966d4ff6e8e0f5"
+    },
+    {
+      "bytes": 895,
+      "path": "native-02-diagnostic.json",
+      "sha256": "1281b1d8c6f032097bca6d845a1b92505812c9d282090059d6416dbdc9ac18cb"
+    },
+    {
+      "bytes": 196,
+      "path": "native-02-exit.json",
+      "sha256": "22e309c2e80fd7b8d63828055634fdd62ffe54640d35518c58345c874ea0cbe9"
+    },
+    {
+      "bytes": 2545,
+      "path": "native-03-command.json",
+      "sha256": "15f62395504c33c03eb1cb8da8ab8dcae722a81b36d70931a650182805c0dfea"
+    },
+    {
+      "bytes": 196,
+      "path": "native-03-exit.json",
+      "sha256": "eb07a90771e7fe1d2bbd0658444a74c5663732d4e70735346e57486dd82d1d0f"
+    },
+    {
+      "bytes": 439,
+      "path": "native-03.xml",
+      "sha256": "15750db8e042ef230025d6ec34e27062858da03579442a5a07f14bd96fd96b05"
+    },
+    {
+      "bytes": 2409,
+      "path": "observation.json",
+      "sha256": "d612ce60ba271accdc4b64d853edb5c1b85816d15d9f2dd16e2c228558ef88e7"
+    },
+    {
+      "bytes": 1052,
+      "path": "original-source-records.json",
+      "sha256": "6f2df72ae189c55a99bd5c0e8241f3932b2de591b29e2d0affc499769868c94b"
+    },
+    {
+      "bytes": 2898,
+      "path": "prior-failures.json",
+      "sha256": "cef420b5d5623e72985ad833cdef0f52f2b0fd83e293e7d2d8e1825d989bc6ec"
+    },
+    {
+      "bytes": 2589,
+      "path": "regression-01-command.json",
+      "sha256": "3166fcedcb5921c0bcf1369087802f77db20ecdc6393361fe17d703aa7a14122"
+    },
+    {
+      "bytes": 198,
+      "path": "regression-01-exit.json",
+      "sha256": "33459e87021507039c023dacdd3fcdcb575c0b1e6faa13e62bc71851d6927251"
+    },
+    {
+      "bytes": 2589,
+      "path": "regression-02-command.json",
+      "sha256": "295e0857e2f58e84a6a13d69a3bd7d507b3c0562b05d5c9456932d22056700d4"
+    },
+    {
+      "bytes": 197,
+      "path": "regression-02-exit.json",
+      "sha256": "0451197fe9a9c6685e067d87c98abbe7ee8f003de66f1c9254cc666bc606145e"
+    },
+    {
+      "bytes": 9361,
+      "path": "regression-02.xml",
+      "sha256": "fecd45d49f536a38a018aa67fc400835ed3b16d7a33cdf179ac4be58db5e511c"
+    },
+    {
+      "bytes": 2552,
+      "path": "run_controls.py",
+      "sha256": "e5cafb919926aa9acd7d9f480dfedd178cd16c1924f50a7ac5720605e4ccb711"
+    }
+  ],
+  "schema": "native-completion-binding-public-evidence@1"
+}

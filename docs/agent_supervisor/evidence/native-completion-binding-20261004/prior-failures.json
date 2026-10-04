@@ -1,0 +1,66 @@
+[
+  {
+    "failures": [
+      {
+        "classname": "integration.test_admitted_benchmark_runtime",
+        "failure_body_sha256": "1ccec2677c2d7682af9b69f0905bfac2d204ed383770de3490f07929b4b4b70c",
+        "kind": "error",
+        "name": "test_actual_native_implementation_binds_owner_validation_and_completes_authored_repair[implementation]"
+      }
+    ],
+    "label": "before-01",
+    "qualifying": false,
+    "raw_failure_bodies_exported": false,
+    "scope": "Actual native implementation constructor reproduced unexpected retirable keyword before START.",
+    "xml_bytes": 12269,
+    "xml_sha256": "e031788ebb46f08525aa18f30cd7a4e538d60397e0ca88a34a6c1fd5a63f10cc"
+  },
+  {
+    "failures": [
+      {
+        "classname": "integration.test_admitted_benchmark_runtime",
+        "failure_body_sha256": "464e06d90ad0001baa5a3582afab9ffb1e210f825552dde319d45cad633824d1",
+        "kind": "failure",
+        "name": "test_actual_native_implementation_binds_owner_validation_and_completes_authored_repair[implementation]"
+      }
+    ],
+    "label": "native-01",
+    "qualifying": false,
+    "raw_failure_bodies_exported": false,
+    "scope": "Native START passed; old fixture's absolute Python validation launcher failed sealed pre-merge validation and task remained in_progress at90 seconds.",
+    "xml_bytes": 2739,
+    "xml_sha256": "d68744f0ca9cb02397f76ac3894b482ce289c0188ad2ae191cec40fdf03d9f81"
+  },
+  {
+    "failures": [
+      {
+        "classname": "integration.test_admitted_benchmark_runtime",
+        "failure_body_sha256": "92b18f8e8deb5314c7d61bd41f4924659514ceabf160f89cfe81b2edd16891d9",
+        "kind": "failure",
+        "name": "test_actual_native_implementation_binds_owner_validation_and_completes_authored_repair[implementation]"
+      }
+    ],
+    "label": "native-02",
+    "qualifying": false,
+    "raw_failure_bodies_exported": false,
+    "scope": "Retained native rerun established the same declared-validation fixture cause; production policy was preserved.",
+    "xml_bytes": 2429,
+    "xml_sha256": "05ed9ff6ae34f4baca25f3eaece046dbb4253bcdde34944648dc1c4ddd66dadb"
+  },
+  {
+    "failures": [
+      {
+        "classname": "integration.test_admitted_benchmark_runtime",
+        "failure_body_sha256": "b57d488a935dade18dbbe5b61cc9016a0e4368b231025a75032cbf233e1d2a7c",
+        "kind": "failure",
+        "name": "test_failed_implementation_constructor_closes_unlaunched_native_resources[after-binding]"
+      }
+    ],
+    "label": "regression-01",
+    "qualifying": false,
+    "raw_failure_bodies_exported": false,
+    "scope": "One test incorrectly reopened a coordinator intentionally retained after install-then-raise; its process lock correctly refused the second connection. Test was corrected to inspect and tear down the retained coordinator.",
+    "xml_bytes": 28257,
+    "xml_sha256": "7bad9da21cc05ab63d084001c9cd631fc93cd69d47134b5717ae14fe3b8e9866"
+  }
+]

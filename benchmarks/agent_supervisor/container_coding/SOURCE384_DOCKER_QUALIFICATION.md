@@ -1035,3 +1035,29 @@ versus extended comparison. The larger signed native lifetime is bounded at
 retains its separate 90-second cap. Cold indexing and planning remain charged to
 agent time. A new archive and actual-container qualification are required before
 reporting a task score from this profile.
+
+The first extended archive (`ae86d76bbb31c1b78e899d99aad7a31f823530544eb7422ddfe5f3b2811b91b7`)
+passed actual Docker qualification: Source384 70.18 s, warm observation 9.09 s,
+and 416.998 s controller time. The selected controls comprise 706 distinct passes
+and two environment-gated skips. The retained full trial then ran for 326.949 s,
+received official reward 0, and failed before START at an incompatible completion
+gateway `retirable` keyword. It neither exhausted the new 840 s work cutoff nor
+reported a native admission refusal. Doctor produced a candidate and verified
+local header contract, with no provider invocations; task completion and a token
+advantage remain unestablished.
+
+The user explicitly authorized pausing the separate Leanstral service during
+that full trial. Available RAM increased from about 41 GiB to 104 GiB after its
+63,527 MiB GPU allocation was released. The service and model readiness were
+restored afterward. Qualification preceded this pause; the two timing scopes
+therefore also differ in host workload. See the retained
+[extended-profile evidence](../../../docs/agent_supervisor/evidence/extended-supervisor-budget-20261004/README.md).
+
+The completion-gateway correction preserves the one-argument ordinary binding
+contract and adds explicit callback retirement with an opaque identity token.
+Retirement refuses active transaction or callback custody. Ordinary constructor
+failure now stops bootstrap resources and releases the unused run lease when
+no callback was installed. An interruption after callback installation retains
+ownership and reports incomplete cleanup; it does not silently detach an
+ordinary lifetime callback. Native implementation controls exercise actual
+START, an authored repair, public validation, task completion, and STOP.

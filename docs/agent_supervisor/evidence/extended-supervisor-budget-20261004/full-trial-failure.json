@@ -1,0 +1,18 @@
+{
+  "schema": "extended-full-trial-failure@1",
+  "trial": "fix-code-vulnerability__G3RrYeJ",
+  "reward": {
+    "reward": 0.0
+  },
+  "task_completed": false,
+  "driver_seconds": 326.9487749050022,
+  "work_cutoff_seconds": 840,
+  "error_phase": "native_execution",
+  "error_type": "TypeError",
+  "error_message": "TypedStateOwnerGateway.bind_local_task_validation_handler() got an unexpected keyword argument 'retirable'",
+  "affected_repository": "ipfs_accelerate_py",
+  "work_budget_exhausted": false,
+  "native_admission_refusal_observed": false,
+  "provider_calls": 0,
+  "raw_verifier_or_model_bodies_exported": false
+}
