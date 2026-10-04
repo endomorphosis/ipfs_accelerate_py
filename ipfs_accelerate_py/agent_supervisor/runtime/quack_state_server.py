@@ -78,6 +78,9 @@ from ..task_sources.quack_capabilities import (
     QuackCapabilityReport,
     probe_quack_capabilities,
 )
+from .worker_grant_broker import (
+    TypedStateOwnerGrantBroker, read_sealed_worker_bootstrap, sealed_worker_bootstrap,
+)
 
 # ---------------------------------------------------------------------------
 # Interface / schema identities
@@ -4316,6 +4319,9 @@ class QuackStateServer:
     _logs: list[str] = field(default_factory=list, init=False, repr=False)
     _command_gateway: Any = field(default=None, init=False, repr=False)
     _database_status_startup_json: bytes | None = field(default=None, init=False, repr=False)
+    typed_command_socket_override: Path | None = None
+    _grant_broker: Any = field(default=None, init=False, repr=False)
+    _grant_bootstrap_fd: int | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.config, QuackStateServerConfig):
@@ -4366,6 +4372,8 @@ class QuackStateServer:
         return db.with_name(f".{db.name}{OWNER_MARKER_SUFFIX}")
 
     def typed_command_socket_path(self) -> Path:
+        if self.typed_command_socket_override is not None:
+            return Path(self.typed_command_socket_override)
         from ..task_sources.typed_state_owner import (
             TYPED_STATE_OWNER_SOCKET_FILENAME,
             compact_default_owner_socket_path,
@@ -4378,6 +4386,102 @@ class QuackStateServer:
     def typed_command_token_path(self) -> Path:
         from ..task_sources.typed_state_owner import TYPED_STATE_OWNER_TOKEN_FILENAME
         return self.config.state_dir / TYPED_STATE_OWNER_TOKEN_FILENAME
+
+    def start_supervisor_grant_broker(self, *, bootstrap_secret_fd: int | None = None) -> Mapping[str, str]:
+        """Enable the private worker facet, retaining bootstrap only in a sealed fd.
+
+        A separate launcher can create the descriptor before forking this owner
+        and pass the same sealed descriptor only to its authorized supervisor.
+        Public ready files and the Quack read token never provide this authority.
+        """
+        from ..task_sources import typed_state_owner as typed
+        from ..task_sources.intent_repository import IntentRepository, IntentRepositoryError
+        from ..task_sources.database_task_source import (
+            execute_quack_owner_command, quack_owner_command_error_code, DatabaseTaskSourceError,
+        )
+
+        with self._lock:
+            if (self._lifecycle is not ServerLifecycle.READY or self._identity is None
+                    or self._connection is None or self._command_gateway is None
+                    or self._grant_broker is not None):
+                raise QuackStateServerControlError("worker broker requires one ready exclusive owner")
+            descriptor = sealed_worker_bootstrap() if bootstrap_secret_fd is None else os.dup(bootstrap_secret_fd)
+            broker = None
+            try:
+                secret = read_sealed_worker_bootstrap(descriptor)
+                identity = self._identity
+                repository = IntentRepository(bound_connection=self._connection, install_schema=False,
+                                              owner_id=identity.server_id, session_id=identity.process_birth_id)
+
+                def handle(command, payload, request_id, grant):
+                    # The gateway holds this same owner lock and rechecks the
+                    # exact peer/session grant immediately before dispatch.
+                    if self._lifecycle is not ServerLifecycle.READY or self._identity != identity:
+                        raise QuackStateServerControlError("worker command owner is no longer live")
+                    try:
+                        return execute_quack_owner_command(
+                            repository, command, payload, request_id=request_id,
+                            store_id=identity.store_id, store_generation=str(identity.generation),
+                        )
+                    except (IntentRepositoryError, DatabaseTaskSourceError, KeyError) as exc:
+                        raise typed.TypedStateOwnerDatabaseTaskCommandError(quack_owner_command_error_code(exc)) from exc
+
+                def credential(kind, client_id, birth, peer_pid):
+                    with self._lock:
+                        if self._lifecycle is not ServerLifecycle.READY or self._identity != identity:
+                            raise QuackStateServerControlError("worker credential owner is no longer live")
+                        if birth != typed.kernel_process_birth_id(peer_pid):
+                            raise QuackStateServerControlError("worker peer birth changed")
+                        if kind == typed.TYPED_STATE_OWNER_CREDENTIAL_READ_TRANSPORT:
+                            return self._vault.resolve(identity.secret_handle)
+                        if kind == typed.TYPED_STATE_OWNER_CREDENTIAL_HASH_OBSERVATION:
+                            if self._command_gateway._hash_observation_store is None:
+                                raise QuackStateServerControlError("hash observation schema is not admitted")
+                            token, _ = self._command_gateway.issue_grant(
+                                client_id=client_id, process_birth_id=birth, peer_pid=peer_pid,
+                                allowed_operations=(typed.HASH_OBSERVATION_SERVICE_OPERATION,),
+                                ttl_seconds=typed.DATABASE_TASK_COMMAND_GRANT_TTL_SECONDS,
+                            )
+                            return token
+                        if (kind != typed.TYPED_STATE_OWNER_CREDENTIAL_DATABASE_TASK_COMMAND
+                                or client_id != f"database-task-source:{peer_pid}"):
+                            raise QuackStateServerControlError("worker credential scope is not admitted")
+                        token, _ = self._command_gateway.issue_grant(
+                            client_id=client_id, process_birth_id=birth, peer_pid=peer_pid,
+                            allowed_database_task_commands=tuple(typed.DATABASE_TASK_COMMANDS),
+                            ttl_seconds=typed.DATABASE_TASK_COMMAND_GRANT_TTL_SECONDS,
+                        )
+                        return token
+
+                broker = TypedStateOwnerGrantBroker(
+                    socket_path=self.typed_command_socket_path().parent / typed.TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_FILENAME,
+                    bootstrap_secret=secret, store_id=identity.store_id, resolve_credential=credential,
+                )
+                self._command_gateway.bind_database_task_command_handler(handle)
+                broker.start()
+                self._grant_broker = broker
+                self._grant_bootstrap_fd = descriptor
+                return {
+                    typed.TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_ENV: str(broker.socket_path),
+                    typed.TYPED_STATE_OWNER_GRANT_BROKER_SECRET_FD_ENV: str(descriptor),
+                    typed.TYPED_STATE_OWNER_SOCKET_ENV: str(self.typed_command_socket_path()),
+                }
+            except BaseException:
+                if broker is not None:
+                    broker.stop()
+                os.close(descriptor)
+                raise
+
+    def _stop_worker_facets(self) -> None:
+        broker, self._grant_broker = self._grant_broker, None
+        if broker is not None:
+            broker.stop()
+        descriptor, self._grant_bootstrap_fd = self._grant_bootstrap_fd, None
+        if descriptor is not None:
+            os.close(descriptor)
+        gateway, self._command_gateway = self._command_gateway, None
+        if gateway is not None:
+            gateway.stop()
 
     def configure_database_status_before_start(
         self,
@@ -5036,6 +5140,10 @@ class QuackStateServer:
                 raise
 
     def _emergency_cleanup(self) -> None:
+        try:
+            self._stop_worker_facets()
+        except Exception as exc:
+            self._log(f"worker facet cleanup warning: {type(exc).__name__}")
         gateway = self._command_gateway
         self._command_gateway = None
         if gateway is not None:
@@ -5211,7 +5319,8 @@ class QuackStateServer:
                 self._lifecycle = ServerLifecycle.STOPPED
                 return {"stopped": True, "already": True}
 
-            self._lifecycle = ServerLifecycle.STOPPING
+            if self._lifecycle is ServerLifecycle.STOPPING:
+                raise QuackStateServerControlError("owner shutdown is already in progress")
             identity = self._identity
             owner = self._owner
             expected_fence = fence_token
@@ -5234,6 +5343,12 @@ class QuackStateServer:
                         "stop control server_id does not match live owner"
                     )
 
+            self._lifecycle = ServerLifecycle.STOPPING
+
+        # Quiesce client threads without holding the lock they need to observe
+        # STOPPING. No worker can dispatch once that lifecycle seal is set.
+        self._stop_worker_facets()
+        with self._lock:
             try:
                 if self.transport is not None:
                     self.transport.stop(self._connection)
@@ -6092,6 +6207,7 @@ def build_server(
     owner_liveness_probe: Callable[[ProcessBirthIdentity], OwnerLiveness] | None = None,
     repository_root: Path | str | None = None,
     allow_legacy_board_unstall: bool = False,
+    typed_command_socket_path: Path | str | None = None,
 ) -> QuackStateServer:
     """Construct a configured :class:`QuackStateServer`.
 
@@ -6121,6 +6237,7 @@ def build_server(
     )
     return QuackStateServer(
         config=config,
+        typed_command_socket_override=None if typed_command_socket_path is None else Path(typed_command_socket_path),
         transport=transport,
         capability_probe=capability_probe,
         migrate=migrate,
@@ -6131,6 +6248,7 @@ def build_server(
 
 
 __all__ = (
+    "TypedStateOwnerGrantBroker",
     "DEFAULT_LOOPBACK_HOST",
     "DEFAULT_STORE_ID",
     "ExclusiveOwnerLease",

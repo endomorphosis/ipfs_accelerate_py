@@ -1159,6 +1159,7 @@ def test_grant_broker_recovers_only_same_uid_stale_socket(
     )
     broker_path = tmp_path / "owner" / "grants.sock"
     broker_path.parent.mkdir()
+    broker_path.parent.chmod(0o700)
 
     stale = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     stale.bind(str(broker_path))
