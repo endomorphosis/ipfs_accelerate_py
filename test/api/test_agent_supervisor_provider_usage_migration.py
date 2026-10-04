@@ -63,9 +63,7 @@ def test_requirement_and_authority_bounds() -> None:
     assert MIGRATION_MAY_RETRY_SIDE_EFFECTING_AGENT_WORK is False
     assert MIGRATION_MAY_ROUTE_TO_FORBIDDEN_ENDPOINT is False
     assert MIGRATION_MAY_CHANGE_PROMPT_SOURCE_OUTPUT_CONTRACTS is False
-    assert set(registered_consumer_ids()) == {
-        item.value for item in ConsumerId
-    }
+    assert set(registered_consumer_ids()) == {item.value for item in ConsumerId}
     schemas = discover_migration_schemas()
     assert any("provider-usage-migration" in item for item in schemas)
 
@@ -322,9 +320,7 @@ def discover():
 """
     records, violations = scan_module_callsites(
         source,
-        module_path=(
-            "ipfs_accelerate_py/agent_supervisor/provider_usage_migration.py"
-        ),
+        module_path=("ipfs_accelerate_py/agent_supervisor/provider_usage_migration.py"),
     )
     assert violations == []
 
@@ -336,14 +332,9 @@ def plan():
 """
     _records, violations = scan_module_callsites(
         bare,
-        module_path=(
-            "ipfs_accelerate_py/agent_supervisor/planning/task_proposal_router.py"
-        ),
+        module_path=("ipfs_accelerate_py/agent_supervisor/planning/task_proposal_router.py"),
     )
-    assert any(
-        item.kind is CallsiteViolationKind.MISSING_ATTRIBUTION
-        for item in violations
-    )
+    assert any(item.kind is CallsiteViolationKind.MISSING_ATTRIBUTION for item in violations)
 
 
 def test_ast_inventory_accepts_migrated_consumer_fixture() -> None:
@@ -361,14 +352,9 @@ def _call_text_provider(prompt):
 """
     _records, violations = scan_module_callsites(
         migrated,
-        module_path=(
-            "ipfs_accelerate_py/agent_supervisor/planning/task_proposal_router.py"
-        ),
+        module_path=("ipfs_accelerate_py/agent_supervisor/planning/task_proposal_router.py"),
     )
-    assert not any(
-        item.kind is CallsiteViolationKind.MISSING_ATTRIBUTION
-        for item in violations
-    )
+    assert not any(item.kind is CallsiteViolationKind.MISSING_ATTRIBUTION for item in violations)
 
 
 def test_repository_inventory_covers_in_scope_consumers() -> None:
@@ -436,23 +422,19 @@ def test_declared_flat_surfaces_export_migration_status() -> None:
 
     flat_paths = {
         ConsumerId.TASK_PROPOSAL_ROUTER: (
-            REPO_ROOT
-            / "ipfs_accelerate_py/agent_supervisor/task_proposal_router.py"
+            REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/task_proposal_router.py"
         ),
         ConsumerId.PROMPT_GOAL_PLANNER: (
-            REPO_ROOT
-            / "ipfs_accelerate_py/agent_supervisor/prompt_goal_planner.py"
+            REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/prompt_goal_planner.py"
         ),
         ConsumerId.RESCUE_PLANNER: (
             REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/rescue_planner.py"
         ),
         ConsumerId.LEANSTRAL_PROOF_PROVIDER: (
-            REPO_ROOT
-            / "ipfs_accelerate_py/agent_supervisor/leanstral_proof_provider.py"
+            REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/leanstral_proof_provider.py"
         ),
         ConsumerId.LEANSTRAL_GOAL_DEVELOPMENT: (
-            REPO_ROOT
-            / "ipfs_accelerate_py/agent_supervisor/leanstral_goal_development.py"
+            REPO_ROOT / "ipfs_accelerate_py/agent_supervisor/leanstral_goal_development.py"
         ),
     }
     for consumer, path in flat_paths.items():
@@ -474,9 +456,7 @@ def test_declared_flat_surfaces_export_migration_status() -> None:
             fromlist=["*"],
         )
         assert module is not None
-        assert any(
-            not name.startswith("__") for name in dir(module)
-        )
+        assert any(not name.startswith("__") for name in dir(module))
 
 
 def test_consumer_modules_import_migration_helpers() -> None:
@@ -497,8 +477,6 @@ def test_consumer_modules_import_migration_helpers() -> None:
 def test_cold_import_is_provider_free() -> None:
     import importlib
 
-    module = importlib.import_module(
-        "ipfs_accelerate_py.agent_supervisor.provider_usage_migration"
-    )
+    module = importlib.import_module("ipfs_accelerate_py.agent_supervisor.provider_usage_migration")
     assert module.COMPLETE_PROVIDER_CALLSITE_REQUIREMENT_ID
     assert module.MIGRATION_IS_COMPLETION_EVIDENCE is False

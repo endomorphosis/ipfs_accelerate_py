@@ -318,8 +318,7 @@ def test_live_router_compiles_oversized_roadmap_without_character_slicing(
     )
     plan.write_text(
         "\n\n".join(
-            f"Roadmap section {index}: " + ("bounded evidence " * 80)
-            for index in range(30)
+            f"Roadmap section {index}: " + ("bounded evidence " * 80) for index in range(30)
         ),
         encoding="utf-8",
     )
@@ -343,9 +342,7 @@ def test_live_router_compiles_oversized_roadmap_without_character_slicing(
         prompt_builder=prompt_builder,
         plan_char_limit=32,
         context_max_input_tokens=1_600,
-        context_tokenizer=lambda text: max(
-            1, len(text.encode("utf-8")) // 12
-        ),
+        context_tokenizer=lambda text: max(1, len(text.encode("utf-8")) // 12),
     )
 
     first = run_task_proposal_router(config)
@@ -357,14 +354,8 @@ def test_live_router_compiles_oversized_roadmap_without_character_slicing(
     assert first["context_truncated"] is True
     decisions = first["context_decisions"]
     assert decisions
-    assert any(
-        item["included"] and item["reason"] == "ranked_fit"
-        for item in decisions
-    )
-    assert any(
-        not item["included"] and item["reason"] == "token_budget"
-        for item in decisions
-    )
+    assert any(item["included"] and item["reason"] == "ranked_fit" for item in decisions)
+    assert any(not item["included"] and item["reason"] == "token_budget" for item in decisions)
     assert first["context_estimator"] == "provider_tokenizer"
 
 
@@ -378,9 +369,7 @@ def test_all_planning_prompts_are_canonical_capsules_without_ast_bodies(
         context_max_input_tokens=4_000,
         context_reserved_tool_tokens=100,
         provider_context_window=4_500,
-        context_tokenizer=lambda text: max(
-            1, len(text.encode("utf-8")) // 12
-        ),
+        context_tokenizer=lambda text: max(1, len(text.encode("utf-8")) // 12),
     )
 
     structured = json.loads(
@@ -404,9 +393,7 @@ def test_all_planning_prompts_are_canonical_capsules_without_ast_bodies(
             "recursive_graph": {"body": "RECURSIVE_GRAPH_MUST_NOT_APPEAR"},
             "analysis_pipeline": {
                 "result_id": "analysis-result",
-                "ranked_evidence_references": [
-                    {"body": "DECODED_ARTIFACT_MUST_NOT_APPEAR"}
-                ],
+                "ranked_evidence_references": [{"body": "DECODED_ARTIFACT_MUST_NOT_APPEAR"}],
             },
         },
         proposal_count=2,
@@ -415,9 +402,7 @@ def test_all_planning_prompts_are_canonical_capsules_without_ast_bodies(
     analysis = json.loads(analysis_prompt)
 
     assert structured["stage"] == analysis["stage"] == "planning"
-    assert structured["goal"]["subgoal"]["acceptance"] == (
-        "Keep this criterion immutable."
-    )
+    assert structured["goal"]["subgoal"]["acceptance"] == ("Keep this criterion immutable.")
     assert structured["acceptance"]["exact_branch_count"] == 2
     assert analysis["goal"]["objective_terms"] == [
         "coverage-a",

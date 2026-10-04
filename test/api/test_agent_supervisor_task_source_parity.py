@@ -158,9 +158,7 @@ def test_status_transaction_preserves_cids_terminal_outcome_and_replay_is_noop(
     assert terminal.terminal
     assert terminal.ready_task_cids == ()
     assert dual.parity().valid
-    assert dict(terminal.statuses) == {
-        task_cid: "completed" for task_cid in terminal.task_cids
-    }
+    assert dict(terminal.statuses) == {task_cid: "completed" for task_cid in terminal.task_cids}
 
 
 def test_crash_after_first_leg_resumes_exactly_once(tmp_path: Path) -> None:
@@ -226,9 +224,7 @@ def test_corrupt_projection_is_quarantined_and_rebuilt_only_from_snapshot(
     _graph, _tree_id, markdown, database = _sources(tmp_path)
     verified = canonical_projection_snapshot(markdown)
     connection = duckdb.connect(str(database.path))
-    connection.execute(
-        "UPDATE tasks SET goal_cid = 'goal:corrupt' WHERE task_alias = 'FIX-001'"
-    )
+    connection.execute("UPDATE tasks SET goal_cid = 'goal:corrupt' WHERE task_alias = 'FIX-001'")
     connection.close()
     assert not database.check_integrity().valid
 

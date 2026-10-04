@@ -149,10 +149,7 @@ def test_proof_snapshot_exposes_all_records_dimensions_and_latencies() -> None:
                 "provider_id": "provider:lean",
                 "template_id": "template:lease-uniqueness",
                 "resource_class": "cpu-proof-kernel",
-                **{
-                    field: index + 1
-                    for index, field in enumerate(PROOF_LATENCY_FIELDS)
-                },
+                **{field: index + 1 for index, field in enumerate(PROOF_LATENCY_FIELDS)},
             }
         ],
         generated_at="2026-07-23T00:00:06Z",
@@ -173,14 +170,15 @@ def test_proof_snapshot_exposes_all_records_dimensions_and_latencies() -> None:
     assert snapshot["totals"]["receipt_count"] == 1
     assert snapshot["totals"]["cache_hit_count"] == 1
     assert snapshot["totals"]["resource_sample_count"] == 1
-    assert {
-        row["assurance"] for row in snapshot["assurance_counts"]
-    } == set(ASSURANCE_LEVELS)
-    assert sum(
-        row["receipt_count"]
-        for row in snapshot["assurance_counts"]
-        if row["assurance"] == "kernel_verified"
-    ) == 1
+    assert {row["assurance"] for row in snapshot["assurance_counts"]} == set(ASSURANCE_LEVELS)
+    assert (
+        sum(
+            row["receipt_count"]
+            for row in snapshot["assurance_counts"]
+            if row["assurance"] == "kernel_verified"
+        )
+        == 1
+    )
     for row in snapshot["metrics"]:
         assert all(row[name] != "unknown" for name in PROOF_METRIC_DIMENSIONS)
     for field in PROOF_LATENCY_FIELDS:
@@ -208,9 +206,7 @@ def test_json_and_duckdb_projections_are_equivalent_and_query_bounded(
 
     write_proof_metrics_snapshot(path, snapshot)
 
-    assert read_proof_metrics_artifact(path)["query_store"]["artifact_kind"] == (
-        PROOF_METRICS_KIND
-    )
+    assert read_proof_metrics_artifact(path)["query_store"]["artifact_kind"] == (PROOF_METRICS_KIND)
     assert (tmp_path / "proof_metrics.duckdb").exists()
     for table, expected in (
         ("proof_obligations", len(snapshot["obligations"])),
@@ -223,9 +219,7 @@ def test_json_and_duckdb_projections_are_equivalent_and_query_bounded(
         ("proof_metrics", len(snapshot["metrics"])),
     ):
         json_query = query_artifact(path, table=table, limit=100)
-        database_query = query_artifact(
-            tmp_path / "proof_metrics.duckdb", table=table, limit=100
-        )
+        database_query = query_artifact(tmp_path / "proof_metrics.duckdb", table=table, limit=100)
         assert json_query["rows"] == database_query["rows"]
         assert json_query["row_count"] == expected
 
@@ -267,9 +261,7 @@ def test_query_projection_never_contains_witness_or_transcript_material(
                 "template_id": "template:lease-uniqueness",
                 "resource_class": "cpu-proof-solver",
                 "verdict": "inconclusive",
-                "evidence": [
-                    {"metadata": {"private_premise": secret, "proof_log": transcript}}
-                ],
+                "evidence": [{"metadata": {"private_premise": secret, "proof_log": transcript}}],
             }
         ],
     )
@@ -496,19 +488,14 @@ def test_operational_quality_metrics_are_dimensioned_and_sum_safe(
     assert totals["false_completion_prevention_count"] == 1
 
     route_rows = {
-        row["provider_id"]: row
-        for row in snapshot["metrics"]
-        if row["availability_check_count"]
+        row["provider_id"]: row for row in snapshot["metrics"] if row["availability_check_count"]
     }
     assert route_rows["provider:route-a"]["availability_rate"] == 1.0
-    assert route_rows["provider:route-b"]["availability_rate"] == pytest.approx(
-        1 / 3, abs=1e-6
-    )
+    assert route_rows["provider:route-b"]["availability_rate"] == pytest.approx(1 / 3, abs=1e-6)
     # The total is recomputed from additive counters, never by averaging the
     # two provider-local ratios.
     assert totals["availability_rate"] != pytest.approx(
-        sum(row["availability_rate"] for row in route_rows.values())
-        / len(route_rows)
+        sum(row["availability_rate"] for row in route_rows.values()) / len(route_rows)
     )
 
     path = tmp_path / "operational-proof-metrics.json"

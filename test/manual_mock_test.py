@@ -27,7 +27,9 @@ if using_real_inference and not using_mocks:
     print(f"🚀 Using REAL INFERENCE with actual models")
 else:
     print(f"🔷 Using MOCK OBJECTS for CI/CD testing only")
-    print(f"   Dependencies: transformers={HAS_TRANSFORMERS}, torch={HAS_TORCH}, tokenizers={HAS_TOKENIZERS}, sentencepiece={HAS_SENTENCEPIECE}")
+    print(
+        f"   Dependencies: transformers={HAS_TRANSFORMERS}, torch={HAS_TORCH}, tokenizers={HAS_TOKENIZERS}, sentencepiece={HAS_SENTENCEPIECE}"
+    )
 
 print("\n===== MOCK DEPENDENCIES TEST =====")
 # Test with mock dependencies
@@ -47,13 +49,15 @@ if using_real_inference and not using_mocks:
     print(f"🚀 Using REAL INFERENCE with actual models")
 else:
     print(f"🔷 Using MOCK OBJECTS for CI/CD testing only")
-    print(f"   Dependencies: transformers={HAS_TRANSFORMERS}, torch={HAS_TORCH}, tokenizers={HAS_TOKENIZERS}, sentencepiece={HAS_SENTENCEPIECE}")
+    print(
+        f"   Dependencies: transformers={HAS_TRANSFORMERS}, torch={HAS_TORCH}, tokenizers={HAS_TOKENIZERS}, sentencepiece={HAS_SENTENCEPIECE}"
+    )
 
 print("\n===== PARTIAL MOCK DEPENDENCIES TEST =====")
 # Test with partial mock dependencies
 HAS_TRANSFORMERS = True
 HAS_TORCH = True
-HAS_TOKENIZERS = False  # Mock tokenizers 
+HAS_TOKENIZERS = False  # Mock tokenizers
 HAS_SENTENCEPIECE = True
 
 # Apply detection logic
@@ -67,7 +71,9 @@ if using_real_inference and not using_mocks:
     print(f"🚀 Using REAL INFERENCE with actual models")
 else:
     print(f"🔷 Using MOCK OBJECTS for CI/CD testing only")
-    print(f"   Dependencies: transformers={HAS_TRANSFORMERS}, torch={HAS_TORCH}, tokenizers={HAS_TOKENIZERS}, sentencepiece={HAS_SENTENCEPIECE}")
+    print(
+        f"   Dependencies: transformers={HAS_TRANSFORMERS}, torch={HAS_TORCH}, tokenizers={HAS_TOKENIZERS}, sentencepiece={HAS_SENTENCEPIECE}"
+    )
 
 print("\n===== VERIFICATION SUMMARY =====")
 print("\nThis test verifies that our mock detection logic correctly identifies:")

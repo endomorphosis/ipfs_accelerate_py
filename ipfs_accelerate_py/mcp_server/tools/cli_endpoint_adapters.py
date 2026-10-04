@@ -31,16 +31,19 @@ except Exception:
 
     class ClaudeCodeAdapter:  # type: ignore[no-redef]
         """Stub when legacy module unavailable."""
+
         def __init__(self, *a: Any, **kw: Any) -> None:
             pass
 
     class OpenAICodexAdapter:  # type: ignore[no-redef]
         """Stub when legacy module unavailable."""
+
         def __init__(self, *a: Any, **kw: Any) -> None:
             pass
 
     class GeminiCLIAdapter:  # type: ignore[no-redef]
         """Stub when legacy module unavailable."""
+
         def __init__(self, *a: Any, **kw: Any) -> None:
             pass
 

@@ -4,7 +4,9 @@ from ipfs_accelerate_py.api_backends.hf_tgi import hf_tgi
 def test_hf_tgi_run_inference_normalizes_generated_text(monkeypatch):
     backend = hf_tgi.__new__(hf_tgi)
 
-    def fake_generate_text(model_id, inputs, parameters=None, api_token=None, request_id=None, endpoint_id=None):
+    def fake_generate_text(
+        model_id, inputs, parameters=None, api_token=None, request_id=None, endpoint_id=None
+    ):
         return {
             "generated_text": f"reply:{inputs}",
             "request_id": request_id,

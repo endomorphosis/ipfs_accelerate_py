@@ -70,9 +70,7 @@ def test_provider_task_gets_bounded_progress_aware_timeout(tmp_path: Path) -> No
     daemon = _daemon(tmp_path)
 
     ordinary = daemon._implementation_timeout_policy(_task())
-    provider = daemon._implementation_timeout_policy(
-        _task(metadata={"requires provider": "true"})
-    )
+    provider = daemon._implementation_timeout_policy(_task(metadata={"requires provider": "true"}))
     extended = daemon._implementation_timeout_policy(
         _task(metadata={"implementation timeout seconds": "7200"})
     )
@@ -131,10 +129,7 @@ def test_progress_output_renews_idle_deadline_but_not_hard_cap(
 
     hard_cap_log = tmp_path / "hard-cap.log"
     hard_cap_script = (
-        "import time\n"
-        "for index in range(100):\n"
-        " print(index, flush=True)\n"
-        " time.sleep(0.03)\n"
+        "import time\nfor index in range(100):\n print(index, flush=True)\n time.sleep(0.03)\n"
     )
     with hard_cap_log.open("w", encoding="utf-8") as log_fh:
         with pytest.raises(subprocess.TimeoutExpired) as raised:
@@ -156,12 +151,7 @@ def test_absolute_timeout_output_emits_progress_without_extending_deadline(
     tmp_path: Path,
 ) -> None:
     log_path = tmp_path / "absolute.log"
-    script = (
-        "import time\n"
-        "for index in range(100):\n"
-        " print(index, flush=True)\n"
-        " time.sleep(0.03)\n"
-    )
+    script = "import time\nfor index in range(100):\n print(index, flush=True)\n time.sleep(0.03)\n"
     progress_events: list[dict[str, object]] = []
     with log_path.open("w", encoding="utf-8") as log_fh:
         with pytest.raises(subprocess.TimeoutExpired) as raised:
@@ -291,15 +281,11 @@ def test_checkpoint_manifest_is_cid_bound_and_propagated_to_retry(
         returncode=124,
         timeout_result={
             "timeout_reason": "hard_timeout",
-            "timeout_policy": (
-                daemon._implementation_timeout_policy(task).to_dict()
-            ),
+            "timeout_policy": (daemon._implementation_timeout_policy(task).to_dict()),
         },
     )
     assert diagnostic is not None
-    assert diagnostic.failure["checkpoint_manifest"]["manifest_cid"] == (
-        manifest["manifest_cid"]
-    )
+    assert diagnostic.failure["checkpoint_manifest"]["manifest_cid"] == (manifest["manifest_cid"])
 
     restarted = _daemon(tmp_path)
     retry_prompt = restarted._build_implementation_prompt(task, attempt=2)
@@ -311,6 +297,4 @@ def test_checkpoint_manifest_is_cid_bound_and_propagated_to_retry(
         attempt=2,
         checkpoint_dir=checkpoint_dir,
     )
-    assert environment[IMPLEMENTATION_CHECKPOINT_DIR_ENV] == str(
-        checkpoint_dir
-    )
+    assert environment[IMPLEMENTATION_CHECKPOINT_DIR_ENV] == str(checkpoint_dir)

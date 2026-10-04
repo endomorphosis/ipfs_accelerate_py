@@ -83,17 +83,18 @@ The implementation supports multiple visualization technologies:
 ### Basic Initialization
 
 ```python
-from duckdb_api.simulation_validation.visualization.validation_visualizer_db_connector import ValidationVisualizerDBConnector
+from duckdb_api.simulation_validation.visualization.validation_visualizer_db_connector import (
+    ValidationVisualizerDBConnector,
+)
 from duckdb_api.simulation_validation.db_integration import SimulationValidationDBIntegration
-from duckdb_api.simulation_validation.visualization.validation_visualizer import ValidationVisualizer
+from duckdb_api.simulation_validation.visualization.validation_visualizer import (
+    ValidationVisualizer,
+)
 
 # Initialize components with default settings
 db_integration = SimulationValidationDBIntegration()
 visualizer = ValidationVisualizer()
-connector = ValidationVisualizerDBConnector(
-    db_integration=db_integration,
-    visualizer=visualizer
-)
+connector = ValidationVisualizerDBConnector(db_integration=db_integration, visualizer=visualizer)
 
 # Or initialize with a single line (components will be created automatically)
 connector = ValidationVisualizerDBConnector()
@@ -110,7 +111,7 @@ chart_path = connector.create_mape_comparison_chart_from_db(
     model_ids=["bert-base-uncased"],
     metric_name="throughput_items_per_second",
     output_path="mape_comparison.html",
-    interactive=True
+    interactive=True,
 )
 ```
 
@@ -121,7 +122,7 @@ chart_path = connector.create_mape_comparison_chart_from_db(
 heatmap_path = connector.create_hardware_comparison_heatmap_from_db(
     metric_name="average_latency_ms",
     model_ids=["bert-base-uncased", "vit-base-patch16-224"],
-    output_path="hardware_heatmap.html"
+    output_path="hardware_heatmap.html",
 )
 ```
 
@@ -134,7 +135,7 @@ timeseries_path = connector.create_time_series_chart_from_db(
     hardware_id="gpu_rtx3080",
     model_id="bert-base-uncased",
     output_path="time_series.html",
-    show_trend=True
+    show_trend=True,
 )
 ```
 
@@ -146,7 +147,7 @@ drift_path = connector.create_drift_visualization_from_db(
     hardware_type="gpu_rtx3080",
     model_type="bert-base-uncased",
     output_path="drift_visualization.html",
-    interactive=True
+    interactive=True,
 )
 ```
 
@@ -157,7 +158,7 @@ drift_path = connector.create_drift_visualization_from_db(
 calibration_path = connector.create_calibration_improvement_chart_from_db(
     hardware_type="gpu_rtx3080",
     model_type="bert-base-uncased",
-    output_path="calibration_improvement.html"
+    output_path="calibration_improvement.html",
 )
 ```
 
@@ -170,7 +171,7 @@ comparison_path = connector.create_simulation_vs_hardware_chart_from_db(
     hardware_id="gpu_rtx3080",
     model_id="bert-base-uncased",
     output_path="sim_vs_hw.html",
-    interactive=True
+    interactive=True,
 )
 ```
 
@@ -183,7 +184,7 @@ metrics_path = connector.create_metrics_over_time_chart_from_db(
     hardware_type="gpu_rtx3080",
     model_id="bert-base-uncased",
     time_bucket="day",
-    output_path="metrics_over_time.html"
+    output_path="metrics_over_time.html",
 )
 ```
 
@@ -195,7 +196,7 @@ dashboard_path = connector.create_comprehensive_dashboard_from_db(
     hardware_id="gpu_rtx3080",
     model_id="bert-base-uncased",
     output_path="dashboard.html",
-    include_sections=["summary", "mape_by_hardware", "hardware_heatmap", "time_series"]
+    include_sections=["summary", "mape_by_hardware", "hardware_heatmap", "time_series"],
 )
 ```
 
@@ -208,7 +209,7 @@ success = connector.export_visualization_data_from_db(
     export_path="simulation_vs_hardware_data.json",
     hardware_type="gpu_rtx3080",
     model_id="bert-base-uncased",
-    metric="throughput_items_per_second"
+    metric="throughput_items_per_second",
 )
 ```
 
@@ -220,7 +221,7 @@ viz_path = connector.visualize_calibration_effectiveness_from_db(
     hardware_type="gpu_rtx3080",
     model_type="bert-base-uncased",
     output_path="calibration_effectiveness.html",
-    interactive=True
+    interactive=True,
 )
 ```
 

@@ -46,7 +46,11 @@ class DatasetArtifact:
     def cache_hit_ratio(self) -> float:
         """Fraction of current records served from the prior snapshot."""
 
-        return self.reused_record_count / self.scanned_record_count if self.scanned_record_count else 0.0
+        return (
+            self.reused_record_count / self.scanned_record_count
+            if self.scanned_record_count
+            else 0.0
+        )
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -232,7 +236,10 @@ class ObjectiveDatasetStore:
                 manager.save_dataset(dataset_id, dataset)
                 managed = manager.get_dataset(dataset_id)
                 if hasattr(managed, "save"):
-                    result = managed.save(str(written_parquet or jsonl_path), format="parquet" if written_parquet else "jsonl")
+                    result = managed.save(
+                        str(written_parquet or jsonl_path),
+                        format="parquet" if written_parquet else "jsonl",
+                    )
                     if isinstance(result, dict):
                         manager_result = result
             backend = "ipfs_datasets_py" if manager_cls is not None else dataset_backend
@@ -344,7 +351,9 @@ class ObjectiveDatasetStore:
         reason_counts: dict[str, int] = {}
         for row in rows:
             reason = str(row.get("reason_code") or row.get("reason") or "unspecified").strip()
-            reason_counts[reason or "unspecified"] = reason_counts.get(reason or "unspecified", 0) + 1
+            reason_counts[reason or "unspecified"] = (
+                reason_counts.get(reason or "unspecified", 0) + 1
+            )
 
         artifact = DatasetScanDetailsArtifact(
             artifact_id=f"sha256:{content_sha256}",
@@ -469,9 +478,9 @@ class ObjectiveDatasetStore:
             created_at=created_at,
             metadata=artifact_metadata,
         )
-        manifest_text = json.dumps(
-            artifact.to_dict(), ensure_ascii=False, indent=2, sort_keys=True
-        ) + "\n"
+        manifest_text = (
+            json.dumps(artifact.to_dict(), ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+        )
         if not jsonl_path.exists():
             _atomic_write_bytes(jsonl_path, encoded)
         elif jsonl_path.read_bytes() != encoded:
@@ -554,10 +563,7 @@ class ObjectiveDatasetStore:
 
         payload = index.canonical_dict()
         encoded = (
-            json.dumps(
-                payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
-            )
-            + "\n"
+            json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True) + "\n"
         ).encode("utf-8")
         digest = sha256(encoded).hexdigest()
         safe_name = _safe_dataset_id(normalized_name)
@@ -590,9 +596,9 @@ class ObjectiveDatasetStore:
             active_receipt_count=len(index.active_receipt_ids),
             created_at=created_at,
         )
-        manifest_text = json.dumps(
-            artifact.to_dict(), ensure_ascii=False, indent=2, sort_keys=True
-        ) + "\n"
+        manifest_text = (
+            json.dumps(artifact.to_dict(), ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+        )
         if not json_path.exists():
             _atomic_write_bytes(json_path, encoded)
         elif json_path.read_bytes() != encoded:
@@ -606,7 +612,10 @@ class ObjectiveDatasetStore:
 
     def load_proof_scope_index(
         self,
-        index: str | Path | Mapping[str, Any] | DatasetProofScopeIndexArtifact = "proof-scope-index",
+        index: str
+        | Path
+        | Mapping[str, Any]
+        | DatasetProofScopeIndexArtifact = "proof-scope-index",
         *,
         canonical_artifacts: Iterable[Any] | None = None,
         semantic_graph: Any = None,
@@ -626,11 +635,7 @@ class ObjectiveDatasetStore:
                     manifest = json.loads(index.read_text(encoding="utf-8"))
                 except (OSError, TypeError, ValueError):
                     manifest = {}
-                raw_path = (
-                    manifest.get("json_path")
-                    if isinstance(manifest, Mapping)
-                    else None
-                )
+                raw_path = manifest.get("json_path") if isinstance(manifest, Mapping) else None
                 path = Path(str(raw_path)) if raw_path else None
             else:
                 path = index
@@ -657,11 +662,7 @@ class ObjectiveDatasetStore:
     ) -> dict[str, Any]:
         """Return the latest proof-scope index manifest for ``index_name``."""
 
-        path = (
-            self.root
-            / "proof-scope-indexes"
-            / f"{_safe_dataset_id(index_name)}.latest.json"
-        )
+        path = self.root / "proof-scope-indexes" / f"{_safe_dataset_id(index_name)}.latest.json"
         try:
             value = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, TypeError, ValueError):
@@ -725,7 +726,11 @@ class ObjectiveDatasetStore:
 
         from ..objectives.scan_receipts import ExhaustionBinding, evaluate_exhaustion_quorum
 
-        resolved = binding if isinstance(binding, ExhaustionBinding) else ExhaustionBinding.from_dict(binding)
+        resolved = (
+            binding
+            if isinstance(binding, ExhaustionBinding)
+            else ExhaustionBinding.from_dict(binding)
+        )
         previous = self.load_exhaustion_quorum(resolved.repository_id)
         prior_members = previous.get("members", ()) if isinstance(previous, Mapping) else ()
         result = evaluate_exhaustion_quorum(
@@ -817,7 +822,9 @@ def _normalized_paths(value: Any) -> tuple[str, ...]:
 
 
 def _safe_dataset_id(value: str) -> str:
-    safe = "".join(char if char.isalnum() or char in {"-", "_", "."} else "-" for char in value.strip())
+    safe = "".join(
+        char if char.isalnum() or char in {"-", "_", "."} else "-" for char in value.strip()
+    )
     safe = safe.strip("-._")
     return safe or "objective-dataset"
 

@@ -104,14 +104,8 @@ def test_canonical_identity_is_order_independent_and_binds_all_versions(
 
     assert reordered.artifact_id == first.artifact_id
     assert reordered.key.key_id == first.key.key_id
-    assert (
-        RuntimeArtifactRecord.from_dict(first.to_dict()).artifact_id
-        == first.artifact_id
-    )
-    assert (
-        CanonicalArtifactIdentity.from_dict(first.identity.to_dict())
-        == first.identity
-    )
+    assert RuntimeArtifactRecord.from_dict(first.to_dict()).artifact_id == first.artifact_id
+    assert CanonicalArtifactIdentity.from_dict(first.identity.to_dict()) == first.identity
 
     changed_payload = store.put(
         {"a": {"first": 1, "second": 2}, "z": [3, 2, 0]},
@@ -125,11 +119,7 @@ def test_canonical_identity_is_order_independent_and_binds_all_versions(
         _binding(producer_revision="producer:runtime-cas@2"),
         _binding(policy_revision="policy:runtime-cas@2"),
         _binding(capability_revision="capability:runtime-cas@2"),
-        _binding(
-            semantic_dependencies=(
-                _dependency(revision="tree:sha256:changed"),
-            )
-        ),
+        _binding(semantic_dependencies=(_dependency(revision="tree:sha256:changed"),)),
     )
     versioned = tuple(
         store.put(
@@ -142,13 +132,16 @@ def test_canonical_identity_is_order_independent_and_binds_all_versions(
         )
         for item in changed_bindings
     )
-    assert len(
-        {
-            first.artifact_id,
-            changed_payload.artifact_id,
-            *(item.artifact_id for item in versioned),
-        }
-    ) == 6
+    assert (
+        len(
+            {
+                first.artifact_id,
+                changed_payload.artifact_id,
+                *(item.artifact_id for item in versioned),
+            }
+        )
+        == 6
+    )
 
     left = store.put(
         {"value": "left"},
@@ -177,9 +170,7 @@ def test_canonical_identity_is_order_independent_and_binds_all_versions(
         dependencies=(right, left),
     )
     assert reversed_child.artifact_id == child.artifact_id
-    assert child.identity.dependency_ids == tuple(
-        sorted((left.artifact_id, right.artifact_id))
-    )
+    assert child.identity.dependency_ids == tuple(sorted((left.artifact_id, right.artifact_id)))
 
     forged = first.identity.to_dict()
     forged["artifact_id"] = "runtime-artifact:sha256:" + "0" * 64
@@ -290,9 +281,7 @@ def test_drafts_never_merge_with_authoritative_receipts(
             authority=RuntimeAuthority.AUTHORITATIVE,
             dependencies=(draft,),
         )
-    with pytest.raises(
-        AuthorityIsolationError, match="non-authoritative artifacts"
-    ):
+    with pytest.raises(AuthorityIsolationError, match="non-authoritative artifacts"):
         store.project(
             "draft-proof",
             draft,
@@ -321,9 +310,7 @@ def test_authoritative_dependency_closure_cannot_launder_a_draft(
         dependencies=(draft,),
     )
 
-    with pytest.raises(
-        AuthorityIsolationError, match="closure cannot contain drafts"
-    ):
+    with pytest.raises(AuthorityIsolationError, match="closure cannot contain drafts"):
         store.put(
             {"receipt": "must-not-upgrade"},
             binding=_binding(task_id="ASI-100-transitive-receipt"),
@@ -578,14 +565,10 @@ def test_exact_warm_reuse_and_semantic_change_invalidate_only_descendants(
         )
 
     analysis_key = key("analysis", changed_source)
-    analysis, produced = store.get_or_compute(
-        analysis_key, produce("analysis")
-    )
+    analysis, produced = store.get_or_compute(analysis_key, produce("analysis"))
     assert produced
     plan_key = key("planning", changed_source, analysis)
-    plan, produced = store.get_or_compute(
-        plan_key, produce("planning"), dependencies=(analysis,)
-    )
+    plan, produced = store.get_or_compute(plan_key, produce("planning"), dependencies=(analysis,))
     assert produced
     validation_key = key("validation", changed_source, plan)
     validation, produced = store.get_or_compute(
@@ -596,13 +579,9 @@ def test_exact_warm_reuse_and_semantic_change_invalidate_only_descendants(
     assert produced
 
     independent_key = key("independent", unrelated_source)
-    independent, produced = store.get_or_compute(
-        independent_key, produce("independent")
-    )
+    independent, produced = store.get_or_compute(independent_key, produce("independent"))
     assert produced
-    independent_child_key = key(
-        "independent-child", unrelated_source, independent
-    )
+    independent_child_key = key("independent-child", unrelated_source, independent)
     independent_child, produced = store.get_or_compute(
         independent_child_key,
         produce("independent-child"),
@@ -659,9 +638,7 @@ def test_exact_warm_reuse_and_semantic_change_invalidate_only_descendants(
     assert all(store.lookup(item).hit for item in preserved)
 
     new_analysis_key = key("analysis", replacement)
-    new_analysis, produced = store.get_or_compute(
-        new_analysis_key, produce("analysis@2")
-    )
+    new_analysis, produced = store.get_or_compute(new_analysis_key, produce("analysis@2"))
     assert produced
     new_plan_key = key("planning", replacement, new_analysis)
     new_plan, produced = store.get_or_compute(

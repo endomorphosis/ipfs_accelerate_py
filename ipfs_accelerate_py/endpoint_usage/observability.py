@@ -22,9 +22,7 @@ from .schema import (
     UsageSnapshot,
 )
 
-USAGE_OBSERVABILITY_REQUIREMENT_ID = (
-    "requirement:endpoint-usage-observability.v1"
-)
+USAGE_OBSERVABILITY_REQUIREMENT_ID = "requirement:endpoint-usage-observability.v1"
 USAGE_METRICS_SCHEMA_VERSION = "ai.endpoint_usage.metrics.v1"
 
 MAX_METRIC_SERIES = 4_096
@@ -60,9 +58,7 @@ _FORBIDDEN_LABEL_KEYS = frozenset(
 )
 
 _PROVIDER_SAFE = re.compile(r"^provider:[a-z0-9._:-]{1,80}$|^[a-z0-9._:-]{1,64}$")
-_DEPLOYMENT_SAFE = re.compile(
-    r"^deployment:[a-z0-9._:-]{1,80}$|^[a-z0-9._:-]{1,64}$"
-)
+_DEPLOYMENT_SAFE = re.compile(r"^deployment:[a-z0-9._:-]{1,80}$|^[a-z0-9._:-]{1,64}$")
 
 # Metric name -> required label keys (exact match).
 _METRIC_LABELS: Dict[str, Tuple[str, ...]] = {
@@ -85,9 +81,7 @@ _METRIC_LABELS: Dict[str, Tuple[str, ...]] = {
 }
 
 _BOUNDED_VALUES: Dict[str, frozenset] = {
-    "outcome": frozenset(
-        ("accepted", "denied", "expired", "success", "error", "other")
-    ),
+    "outcome": frozenset(("accepted", "denied", "expired", "success", "error", "other")),
     "reason": frozenset(
         (
             "ok",
@@ -247,9 +241,7 @@ class UsageObservability:
             self._deployments.add(text)
         return text
 
-    def _labels(
-        self, metric: str, labels: Mapping[str, Any]
-    ) -> Tuple[Tuple[str, str], ...]:
+    def _labels(self, metric: str, labels: Mapping[str, Any]) -> Tuple[Tuple[str, str], ...]:
         expected = _METRIC_LABELS.get(metric)
         if expected is None:
             raise ValueError("unknown usage metric: %s" % metric)
@@ -332,16 +324,12 @@ class UsageObservability:
                 reason="expiry_reclamation",
             )
         elif kind == UsageEventKind.CORRECTION.value:
-            self.record_reconciliation(
-                "correction", provider=provider, deployment=deployment
-            )
+            self.record_reconciliation("correction", provider=provider, deployment=deployment)
         elif kind in {
             UsageEventKind.OBSERVATION_SUCCESS.value,
             UsageEventKind.OBSERVATION_FAILURE.value,
         }:
-            self.record_reconciliation(
-                "import", provider=provider, deployment=deployment
-            )
+            self.record_reconciliation("import", provider=provider, deployment=deployment)
             # Estimate error when both estimate and observation units present
             # is computed by record_estimate_error from the control/router path.
         # Reset-like reason codes
@@ -381,9 +369,7 @@ class UsageObservability:
                 "reason": reason,
             },
         )
-        self.record_reservation(
-            provider=provider, deployment=deployment, outcome="denied"
-        )
+        self.record_reservation(provider=provider, deployment=deployment, outcome="denied")
 
     def record_expiry(
         self,
@@ -401,9 +387,7 @@ class UsageObservability:
                 "reason": reason,
             },
         )
-        self.record_reservation(
-            provider=provider, deployment=deployment, outcome="expired"
-        )
+        self.record_reservation(provider=provider, deployment=deployment, outcome="expired")
 
     def record_estimate_error(
         self,
@@ -459,7 +443,11 @@ class UsageObservability:
             )
         for item in headroom:
             if hasattr(item, "to_dict"):
-                dim = item.dimension.value if hasattr(item.dimension, "value") else str(item.dimension)
+                dim = (
+                    item.dimension.value
+                    if hasattr(item.dimension, "value")
+                    else str(item.dimension)
+                )
                 band = headroom_band(item.available, item.ceiling, state=item.state)
             elif isinstance(item, Mapping):
                 dim = str(item.get("dimension") or "other")
@@ -619,9 +607,8 @@ class UsageObservability:
                 deployment=deployments.get(scope_id, "other"),
             )
         # Store health from basic document shape.
-        healthy = (
-            isinstance(document.get("revision"), int)
-            and isinstance(document.get("events"), list)
+        healthy = isinstance(document.get("revision"), int) and isinstance(
+            document.get("events"), list
         )
         self.record_store_health(healthy=healthy)
 

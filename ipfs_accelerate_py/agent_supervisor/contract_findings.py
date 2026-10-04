@@ -96,9 +96,7 @@ MILLION: Final[int] = 1_000_000
 CALL_SLICE_STEP_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/contract-finding/call-slice-step@1"
 )
-CALL_SLICE_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/contract-finding/call-slice@1"
-)
+CALL_SLICE_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/contract-finding/call-slice@1"
 EVIDENCE_REFS_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/contract-finding/evidence-refs@1"
 )
@@ -252,9 +250,7 @@ def _text(
     if "\x00" in value:
         raise ContractFindingError(f"{field_name} must not contain NUL")
     if len(value.encode("utf-8")) > maximum:
-        raise ContractFindingBoundsError(
-            f"{field_name} exceeds {maximum} bytes"
-        )
+        raise ContractFindingBoundsError(f"{field_name} exceeds {maximum} bytes")
     if required and not value.strip():
         raise ContractFindingError(f"{field_name} must be non-empty")
     return value
@@ -278,9 +274,7 @@ def _integer(
     if value < minimum:
         raise ContractFindingError(f"{field_name} must be >= {minimum}")
     if maximum is not None and value > maximum:
-        raise ContractFindingBoundsError(
-            f"{field_name} exceeds maximum {maximum}"
-        )
+        raise ContractFindingBoundsError(f"{field_name} exceeds maximum {maximum}")
     return value
 
 
@@ -291,12 +285,8 @@ def _enum(value: Any, enum_type: type[E], *, field_name: str) -> E:
         try:
             return enum_type(value)
         except ValueError as exc:
-            raise ContractFindingError(
-                f"{field_name} is not a valid {enum_type.__name__}"
-            ) from exc
-    raise ContractFindingError(
-        f"{field_name} must be a {enum_type.__name__} or string"
-    )
+            raise ContractFindingError(f"{field_name} is not a valid {enum_type.__name__}") from exc
+    raise ContractFindingError(f"{field_name} must be a {enum_type.__name__} or string")
 
 
 def _strings(
@@ -314,13 +304,9 @@ def _strings(
             raise ContractFindingError(f"{field_name} is required")
         return ()
     if isinstance(values, str) or not isinstance(values, Sequence):
-        raise ContractFindingError(
-            f"{field_name} must be a sequence of strings"
-        )
+        raise ContractFindingError(f"{field_name} must be a sequence of strings")
     if len(values) > maximum:
-        raise ContractFindingBoundsError(
-            f"{field_name} exceeds {maximum} items"
-        )
+        raise ContractFindingBoundsError(f"{field_name} exceeds {maximum} items")
     items: list[str] = []
     seen: set[str] = set()
     for index, raw in enumerate(values):
@@ -331,9 +317,7 @@ def _strings(
             maximum=item_bytes,
         )
         if unique and text in seen:
-            raise ContractFindingError(
-                f"{field_name} contains duplicate entry {text!r}"
-            )
+            raise ContractFindingError(f"{field_name} contains duplicate entry {text!r}")
         seen.add(text)
         items.append(text)
     if sort:
@@ -348,14 +332,10 @@ def _check_header(payload: Mapping[str, Any], expected_schema: str) -> None:
         raise ContractFindingError("payload must be an object")
     schema = payload.get("schema")
     if schema != expected_schema:
-        raise ContractFindingError(
-            f"unsupported schema {schema!r}; expected {expected_schema!r}"
-        )
+        raise ContractFindingError(f"unsupported schema {schema!r}; expected {expected_schema!r}")
     version = payload.get("schema_version", payload.get("contract_version"))
     if version is not None and int(version) != CONTRACT_FINDINGS_VERSION:
-        raise ContractFindingError(
-            f"unsupported schema_version {version!r}"
-        )
+        raise ContractFindingError(f"unsupported schema_version {version!r}")
 
 
 def _reject_unknown(
@@ -366,9 +346,7 @@ def _reject_unknown(
 ) -> None:
     unknown = set(payload) - allowed
     if unknown:
-        raise ContractFindingError(
-            f"{artifact_name} contains unknown fields: {sorted(unknown)}"
-        )
+        raise ContractFindingError(f"{artifact_name} contains unknown fields: {sorted(unknown)}")
 
 
 def _check_identity(
@@ -409,13 +387,9 @@ def _record(
     if isinstance(value, Mapping):
         from_dict = getattr(cls, "from_dict", None)
         if from_dict is None:
-            raise ContractFindingError(
-                f"{field_name} cannot be decoded from mapping"
-            )
+            raise ContractFindingError(f"{field_name} cannot be decoded from mapping")
         return from_dict(value)
-    raise ContractFindingError(
-        f"{field_name} must be a {cls.__name__} or mapping"
-    )
+    raise ContractFindingError(f"{field_name} must be a {cls.__name__} or mapping")
 
 
 def _records(
@@ -428,13 +402,9 @@ def _records(
     if values is None:
         return ()
     if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
-        raise ContractFindingError(
-            f"{field_name} must be a sequence of {cls.__name__}"
-        )
+        raise ContractFindingError(f"{field_name} must be a sequence of {cls.__name__}")
     if len(values) > maximum:
-        raise ContractFindingBoundsError(
-            f"{field_name} exceeds {maximum} items"
-        )
+        raise ContractFindingBoundsError(f"{field_name} exceeds {maximum} items")
     result: list[T] = []
     for index, item in enumerate(values):
         field = f"{field_name}[{index}]"
@@ -501,9 +471,7 @@ class CallSliceStep(_FindingContract):
     resolution: str = "resolved"
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "symbol", _text(self.symbol, field_name="symbol")
-        )
+        object.__setattr__(self, "symbol", _text(self.symbol, field_name="symbol"))
         for name in ("interface", "repository_id", "path", "kind", "resolution"):
             object.__setattr__(
                 self,
@@ -620,8 +588,7 @@ class CallSlice(_FindingContract):
         _check_header(payload, cls.SCHEMA)
         _reject_unknown(
             payload,
-            _header_fields()
-            | {"steps", "entry_symbol", "exit_symbol", "slice_id"},
+            _header_fields() | {"steps", "entry_symbol", "exit_symbol", "slice_id"},
             artifact_name="call slice",
         )
         result = cls(
@@ -759,19 +726,13 @@ class AnalyzerVersions(_FindingContract):
                     pairs.append(
                         (
                             _text(item[0], field_name=f"versions[{index}].name"),
-                            _text(
-                                item[1], field_name=f"versions[{index}].version"
-                            ),
+                            _text(item[1], field_name=f"versions[{index}].version"),
                         )
                     )
                 else:
-                    raise ContractFindingError(
-                        "analyzer versions must be name/version pairs"
-                    )
+                    raise ContractFindingError("analyzer versions must be name/version pairs")
         else:
-            raise ContractFindingError(
-                "analyzer versions must be a mapping or sequence of pairs"
-            )
+            raise ContractFindingError("analyzer versions must be a mapping or sequence of pairs")
         if len(pairs) > MAX_ANALYZER_VERSIONS:
             raise ContractFindingBoundsError(
                 f"analyzer versions exceed {MAX_ANALYZER_VERSIONS} items"
@@ -791,10 +752,7 @@ class AnalyzerVersions(_FindingContract):
 
     def _payload(self) -> dict[str, Any]:
         return {
-            "versions": tuple(
-                {"name": name, "version": version}
-                for name, version in self.versions
-            )
+            "versions": tuple({"name": name, "version": version} for name, version in self.versions)
         }
 
     def to_record(self) -> dict[str, Any]:
@@ -815,9 +773,7 @@ class AnalyzerVersions(_FindingContract):
         else:
             for item in raw:
                 if isinstance(item, Mapping):
-                    pairs.append(
-                        (item.get("name", ""), item.get("version", ""))
-                    )
+                    pairs.append((item.get("name", ""), item.get("version", "")))
                 elif isinstance(item, Sequence) and len(item) == 2:
                     pairs.append((item[0], item[1]))
         result = cls(versions=tuple(pairs))
@@ -869,9 +825,7 @@ class SemanticDedupKey(_FindingContract):
         object.__setattr__(
             self,
             "interfaces",
-            _strings(
-                self.interfaces, field_name="interfaces", unique=True, sort=True
-            ),
+            _strings(self.interfaces, field_name="interfaces", unique=True, sort=True),
         )
         object.__setattr__(
             self,
@@ -971,15 +925,12 @@ def validate_severity_binding(
     min_confidence = _MIN_CONFIDENCE_FOR_SEVERITY[severity_e]
     if confidence < min_confidence:
         raise PoisonedSeverityError(
-            f"severity {severity_e.value} requires confidence "
-            f">= {min_confidence}; got {confidence}"
+            f"severity {severity_e.value} requires confidence >= {min_confidence}; got {confidence}"
         )
 
     if severity_e is FindingSeverity.CRITICAL:
         if status_e is not FindingStatus.CONTRACT_BROKEN:
-            raise PoisonedSeverityError(
-                "critical severity requires contract_broken status"
-            )
+            raise PoisonedSeverityError("critical severity requires contract_broken status")
         if claim_e not in {
             ClaimLevel.MODEL_DISPROVED,
             ClaimLevel.RUNTIME_WITNESSED,
@@ -988,13 +939,9 @@ def validate_severity_binding(
                 "critical severity requires model_disproved or runtime_witnessed"
             )
         if not has_counterexample:
-            raise PoisonedSeverityError(
-                "critical severity requires a counterexample reference"
-            )
+            raise PoisonedSeverityError("critical severity requires a counterexample reference")
         if freshness_e is EvidenceFreshness.STALE:
-            raise PoisonedSeverityError(
-                "critical severity cannot bind stale evidence"
-            )
+            raise PoisonedSeverityError("critical severity cannot bind stale evidence")
 
     if status_e is FindingStatus.CONTRACT_BROKEN:
         if claim_e not in {
@@ -1005,9 +952,7 @@ def validate_severity_binding(
                 "contract_broken requires model_disproved or runtime_witnessed"
             )
         if not has_counterexample:
-            raise PoisonedSeverityError(
-                "contract_broken requires a counterexample reference"
-            )
+            raise PoisonedSeverityError("contract_broken requires a counterexample reference")
 
 
 def is_partial_finding(
@@ -1093,8 +1038,7 @@ def validate_vulnerability_evidence_policy(
     if ok:
         return
     raise VulnerabilityEvidencePolicyError(
-        "vulnerability label requires threat path and impact; missing "
-        + ", ".join(missing)
+        "vulnerability label requires threat path and impact; missing " + ", ".join(missing)
     )
 
 
@@ -1138,9 +1082,7 @@ class ContractFindingRecord(_FindingContract):
     call_slice: CallSlice = field(default_factory=CallSlice)
     evidence: EvidenceReferences = field(default_factory=EvidenceReferences)
     assumptions: tuple[str, ...] = ()
-    analyzer_versions: AnalyzerVersions = field(
-        default_factory=AnalyzerVersions
-    )
+    analyzer_versions: AnalyzerVersions = field(default_factory=AnalyzerVersions)
     remediation_scope: tuple[str, ...] = ()
     supersedes_cids: tuple[str, ...] = ()
     superseded_by_cid: str = ""
@@ -1202,9 +1144,7 @@ class ContractFindingRecord(_FindingContract):
         object.__setattr__(
             self,
             "symbols",
-            _strings(
-                self.symbols, field_name="symbols", unique=True, sort=True
-            ),
+            _strings(self.symbols, field_name="symbols", unique=True, sort=True),
         )
         object.__setattr__(
             self,
@@ -1343,9 +1283,7 @@ class ContractFindingRecord(_FindingContract):
                 maximum=MAX_LABELS,
             ),
         )
-        object.__setattr__(
-            self, "partial", _boolean(self.partial, field_name="partial")
-        )
+        object.__setattr__(self, "partial", _boolean(self.partial, field_name="partial"))
         object.__setattr__(
             self,
             "partial_missing_fields",
@@ -1409,9 +1347,7 @@ class ContractFindingRecord(_FindingContract):
             and self.status is FindingStatus.CONTRACT_BROKEN
             and not self.partial
         ):
-            raise StaleFindingError(
-                "contract_broken findings cannot bind stale evidence"
-            )
+            raise StaleFindingError("contract_broken findings cannot bind stale evidence")
 
         _bounded(self, artifact_name="contract finding record")
 
@@ -1610,42 +1546,32 @@ class ContractFindingRecord(_FindingContract):
             call_slice=payload.get("call_slice") or CallSlice(),
             evidence=payload.get("evidence") or EvidenceReferences(),
             assumptions=tuple(payload.get("assumptions") or ()),
-            analyzer_versions=payload.get("analyzer_versions")
-            or AnalyzerVersions(),
+            analyzer_versions=payload.get("analyzer_versions") or AnalyzerVersions(),
             remediation_scope=tuple(payload.get("remediation_scope") or ()),
             supersedes_cids=tuple(payload.get("supersedes_cids") or ()),
             superseded_by_cid=payload.get("superseded_by_cid", ""),
             rejection_reasons=tuple(payload.get("rejection_reasons") or ()),
             tree_id=payload.get("tree_id", ""),
             policy_revision=payload.get("policy_revision", ""),
-            repository_observation_id=payload.get(
-                "repository_observation_id", ""
-            ),
+            repository_observation_id=payload.get("repository_observation_id", ""),
             verdict=payload.get("verdict", ""),
             labels=tuple(payload.get("labels") or ()),
             threat_path_cid=payload.get("threat_path_cid", ""),
             impact=payload.get("impact", ""),
             partial=payload.get("partial", False),
-            partial_missing_fields=tuple(
-                payload.get("partial_missing_fields") or ()
-            ),
-            allow_poisoned_severity=payload.get(
-                "allow_poisoned_severity", False
-            ),
+            partial_missing_fields=tuple(payload.get("partial_missing_fields") or ()),
+            allow_poisoned_severity=payload.get("allow_poisoned_severity", False),
         )
-        if "semantic_key_id" in payload and payload[
-            "semantic_key_id"
-        ] != result.semantic_key_id:
-            raise ForgedFindingIdentityError(
-                "finding semantic_key_id does not match derived key"
-            )
+        if "semantic_key_id" in payload and payload["semantic_key_id"] != result.semantic_key_id:
+            raise ForgedFindingIdentityError("finding semantic_key_id does not match derived key")
         if "actionable" in payload and bool(payload["actionable"]) != result.actionable:
             raise ForgedFindingIdentityError(
                 "finding actionable projection does not match derived state"
             )
-        if "is_vulnerability" in payload and bool(
-            payload["is_vulnerability"]
-        ) != result.is_vulnerability:
+        if (
+            "is_vulnerability" in payload
+            and bool(payload["is_vulnerability"]) != result.is_vulnerability
+        ):
             raise ForgedFindingIdentityError(
                 "finding is_vulnerability projection does not match labels"
             )
@@ -1686,9 +1612,7 @@ class FindingProjectionEntry(_FindingContract):
         object.__setattr__(
             self,
             "admission",
-            _enum(
-                self.admission, FindingAdmissionState, field_name="admission"
-            ),
+            _enum(self.admission, FindingAdmissionState, field_name="admission"),
         )
         object.__setattr__(
             self,
@@ -1809,9 +1733,7 @@ class LedgerEvent(_FindingContract):
     payload_digest: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "kind", _enum(self.kind, LedgerEventKind, field_name="kind")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, LedgerEventKind, field_name="kind"))
         object.__setattr__(
             self,
             "finding_cid",
@@ -1962,9 +1884,7 @@ class AppendReceipt(_FindingContract):
         object.__setattr__(
             self,
             "admission",
-            _enum(
-                self.admission, FindingAdmissionState, field_name="admission"
-            ),
+            _enum(self.admission, FindingAdmissionState, field_name="admission"),
         )
         object.__setattr__(
             self,
@@ -2045,9 +1965,7 @@ class AppendReceipt(_FindingContract):
             finding_cid=payload.get("finding_cid", ""),
             sequence=payload.get("sequence", 0),
             semantic_key_id=payload.get("semantic_key_id", ""),
-            admission=payload.get(
-                "admission", FindingAdmissionState.ADMITTED
-            ),
+            admission=payload.get("admission", FindingAdmissionState.ADMITTED),
             prior_finding_cid=payload.get("prior_finding_cid", ""),
             reasons=tuple(payload.get("reasons") or ()),
             event_id=payload.get("event_id", ""),
@@ -2069,9 +1987,7 @@ class AppendReceipt(_FindingContract):
             "",
             GOAL_ID,
         ):
-            raise ForgedFindingIdentityError(
-                f"append receipt goal_id must be {GOAL_ID!r}"
-            )
+            raise ForgedFindingIdentityError(f"append receipt goal_id must be {GOAL_ID!r}")
         claimed_terms = payload.get("evidence_terms")
         if claimed_terms is not None and tuple(claimed_terms) != (
             FINDING_LEDGER_G100_EVIDENCE_TERMS
@@ -2132,25 +2048,15 @@ class ProjectionSnapshot(_FindingContract):
 
     @property
     def admitted(self) -> tuple[FindingProjectionEntry, ...]:
-        return tuple(
-            e
-            for e in self.entries
-            if e.admission is FindingAdmissionState.ADMITTED
-        )
+        return tuple(e for e in self.entries if e.admission is FindingAdmissionState.ADMITTED)
 
     @property
     def stale(self) -> tuple[FindingProjectionEntry, ...]:
-        return tuple(
-            e for e in self.entries if e.admission is FindingAdmissionState.STALE
-        )
+        return tuple(e for e in self.entries if e.admission is FindingAdmissionState.STALE)
 
     @property
     def conflicts(self) -> tuple[FindingProjectionEntry, ...]:
-        return tuple(
-            e
-            for e in self.entries
-            if e.admission is FindingAdmissionState.CONFLICT
-        )
+        return tuple(e for e in self.entries if e.admission is FindingAdmissionState.CONFLICT)
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -2220,9 +2126,7 @@ class ProjectionSnapshot(_FindingContract):
             "",
             GOAL_ID,
         ):
-            raise ForgedFindingIdentityError(
-                f"projection goal_id must be {GOAL_ID!r}"
-            )
+            raise ForgedFindingIdentityError(f"projection goal_id must be {GOAL_ID!r}")
         claimed_terms = payload.get("evidence_terms")
         if claimed_terms is not None and tuple(claimed_terms) != (
             FINDING_LEDGER_G100_EVIDENCE_TERMS
@@ -2230,15 +2134,12 @@ class ProjectionSnapshot(_FindingContract):
             raise ForgedFindingIdentityError(
                 "projection evidence_terms do not match VFS-G100 terms"
             )
-        if "history_is_append_only" in payload and payload[
-            "history_is_append_only"
-        ] is not True:
-            raise ForgedFindingIdentityError(
-                "projection must declare append-only history"
-            )
-        if "projection_is_mutable_current_tree" in payload and payload[
-            "projection_is_mutable_current_tree"
-        ] is not True:
+        if "history_is_append_only" in payload and payload["history_is_append_only"] is not True:
+            raise ForgedFindingIdentityError("projection must declare append-only history")
+        if (
+            "projection_is_mutable_current_tree" in payload
+            and payload["projection_is_mutable_current_tree"] is not True
+        ):
             raise ForgedFindingIdentityError(
                 "projection must declare mutable current-tree separation"
             )
@@ -2251,9 +2152,7 @@ class ProjectionSnapshot(_FindingContract):
         return result
 
 
-def claims_contradict(
-    left: ContractFindingRecord, right: ContractFindingRecord
-) -> bool:
+def claims_contradict(left: ContractFindingRecord, right: ContractFindingRecord) -> bool:
     """True when two findings share scope but disagree on claim material."""
 
     if left.semantic_key_id == right.semantic_key_id:
@@ -2451,9 +2350,7 @@ class ContractFindingLedger:
             except BlockingIOError:
                 if time.monotonic() - start >= deadline:
                     handle.close()
-                    raise LedgerConcurrencyError(
-                        "timed out acquiring finding ledger lock"
-                    )
+                    raise LedgerConcurrencyError("timed out acquiring finding ledger lock")
                 time.sleep(0.01)
 
     def _release_file_lock(self, handle) -> None:
@@ -2482,20 +2379,14 @@ class ContractFindingLedger:
         if path.exists():
             existing = ContractFindingRecord.from_dict(_read_json(path))
             if existing.finding_cid != record.finding_cid:
-                raise FindingCollisionError(
-                    "record path maps to a different finding CID"
-                )
+                raise FindingCollisionError("record path maps to a different finding CID")
             if existing.to_dict() != record.to_dict():
-                raise FindingCollisionError(
-                    "distinct finding payloads share one content identity"
-                )
+                raise FindingCollisionError("distinct finding payloads share one content identity")
             return
         _atomic_write_json(path, record.to_record())
 
     def _append_event(self, event: LedgerEvent) -> None:
-        line = (
-            canonical_json_bytes(event.to_record()).decode("utf-8") + "\n"
-        )
+        line = canonical_json_bytes(event.to_record()).decode("utf-8") + "\n"
         with self._events_path.open("a", encoding="utf-8") as handle:
             handle.write(line)
             handle.flush()
@@ -2506,9 +2397,7 @@ class ContractFindingLedger:
 
     def _save_projection(self, snapshot: ProjectionSnapshot) -> None:
         if len(snapshot.entries) > self.max_projection_entries:
-            raise LedgerCapacityError(
-                f"projection exceeds {self.max_projection_entries} entries"
-            )
+            raise LedgerCapacityError(f"projection exceeds {self.max_projection_entries} entries")
         _atomic_write_json(self._projection_path, snapshot.to_record())
 
     def _next_sequence(self, meta: dict[str, Any]) -> int:
@@ -2546,11 +2435,7 @@ class ContractFindingLedger:
         rejection_reasons: Sequence[str] = (),
         superseded_by_cid: str = "",
     ) -> ProjectionSnapshot:
-        entries = [
-            entry
-            for entry in snapshot.entries
-            if entry.finding_cid != record.finding_cid
-        ]
+        entries = [entry for entry in snapshot.entries if entry.finding_cid != record.finding_cid]
         entries.append(
             FindingProjectionEntry(
                 finding_cid=record.finding_cid,
@@ -2558,9 +2443,7 @@ class ContractFindingLedger:
                 admission=admission,
                 tree_id=record.tree_id,
                 superseded_by_cid=superseded_by_cid or record.superseded_by_cid,
-                rejection_reasons=tuple(
-                    rejection_reasons or record.rejection_reasons
-                ),
+                rejection_reasons=tuple(rejection_reasons or record.rejection_reasons),
                 conflict_cids=tuple(conflict_cids),
             )
         )
@@ -2597,11 +2480,8 @@ class ContractFindingLedger:
                         semantic_key_id=entry.semantic_key_id,
                         admission=admission,
                         tree_id=entry.tree_id,
-                        superseded_by_cid=superseded_by_cid
-                        or entry.superseded_by_cid,
-                        rejection_reasons=tuple(reasons)
-                        if reasons
-                        else entry.rejection_reasons,
+                        superseded_by_cid=superseded_by_cid or entry.superseded_by_cid,
+                        rejection_reasons=tuple(reasons) if reasons else entry.rejection_reasons,
                         conflict_cids=tuple(conflict_cids)
                         if conflict_cids
                         else entry.conflict_cids,
@@ -2610,9 +2490,7 @@ class ContractFindingLedger:
             else:
                 entries.append(entry)
         if not found:
-            raise ContractFindingError(
-                f"finding {finding_cid} is not in the current projection"
-            )
+            raise ContractFindingError(f"finding {finding_cid} is not in the current projection")
         entries.sort(key=lambda e: (e.semantic_key_id, e.finding_cid))
         return ProjectionSnapshot(
             entries=tuple(entries),
@@ -2712,12 +2590,8 @@ class ContractFindingLedger:
     ) -> AppendReceipt:
         meta = self._load_meta()
         record_count = int(meta.get("record_count", 0))
-        if record_count >= self.max_entries and not self._record_path(
-            record.finding_cid
-        ).exists():
-            raise LedgerCapacityError(
-                f"ledger exceeds max_entries={self.max_entries}"
-            )
+        if record_count >= self.max_entries and not self._record_path(record.finding_cid).exists():
+            raise LedgerCapacityError(f"ledger exceeds max_entries={self.max_entries}")
 
         snapshot = self._load_projection()
         reasons = tuple(reject_reasons) or record.rejection_reasons
@@ -2726,9 +2600,7 @@ class ContractFindingLedger:
         existing_same = self.get(record.finding_cid)
         if existing_same is not None:
             if existing_same.to_dict() != record.to_dict():
-                raise FindingCollisionError(
-                    "distinct finding payloads share one content identity"
-                )
+                raise FindingCollisionError("distinct finding payloads share one content identity")
             sequence = self._next_sequence(meta)
             event = LedgerEvent(
                 kind=LedgerEventKind.DUPLICATE,
@@ -2884,9 +2756,7 @@ class ContractFindingLedger:
             sequence=sequence,
             semantic_key_id=record.semantic_key_id,
             related_cids=tuple(conflict_cids),
-            reasons=(
-                ("contradictory_claims",) if conflict_cids else ()
-            )
+            reasons=(("contradictory_claims",) if conflict_cids else ())
             + (
                 tuple(f"missing:{field}" for field in record.partial_missing_fields)
                 if record.partial
@@ -2946,9 +2816,7 @@ class ContractFindingLedger:
                 record = self.require(finding_cid)
                 meta = self._load_meta()
                 sequence = self._next_sequence(meta)
-                rejected = record.with_updates(
-                    rejection_reasons=tuple(reasons)
-                )
+                rejected = record.with_updates(rejection_reasons=tuple(reasons))
                 # New CID for the rejected view of the same observation so
                 # history preserves the original admitted body.
                 # Prefer updating projection only: keep original record.
@@ -3003,12 +2871,8 @@ class ContractFindingLedger:
             try:
                 prior = self.require(prior_cid)
                 # Bind supersession edges on the replacement body.
-                supersedes = tuple(
-                    sorted(set(replacement.supersedes_cids) | {prior_cid})
-                )
-                replacement = replacement.with_updates(
-                    supersedes_cids=supersedes
-                )
+                supersedes = tuple(sorted(set(replacement.supersedes_cids) | {prior_cid}))
+                replacement = replacement.with_updates(supersedes_cids=supersedes)
                 # Append replacement first (without semantic-dedup against prior
                 # because prior will be marked superseded).
                 meta = self._load_meta()
@@ -3024,9 +2888,7 @@ class ContractFindingLedger:
                 sequence = self._next_sequence(meta)
                 if existing is None:
                     if int(meta.get("record_count", 0)) >= self.max_entries:
-                        raise LedgerCapacityError(
-                            f"ledger exceeds max_entries={self.max_entries}"
-                        )
+                        raise LedgerCapacityError(f"ledger exceeds max_entries={self.max_entries}")
                     self._write_record(replacement)
                     meta["record_count"] = int(meta.get("record_count", 0)) + 1
 
@@ -3115,11 +2977,14 @@ class ContractFindingLedger:
                         match = True
                     if (
                         repository_observation_id is not None
-                        and record.repository_observation_id
-                        == repository_observation_id
+                        and record.repository_observation_id == repository_observation_id
                     ):
                         match = True
-                    if finding_cids is None and tree_id is None and repository_observation_id is None:
+                    if (
+                        finding_cids is None
+                        and tree_id is None
+                        and repository_observation_id is None
+                    ):
                         # Explicit no-op filter: invalidate records already
                         # marked freshness=stale in the body.
                         if record.freshness is EvidenceFreshness.STALE:
@@ -3216,11 +3081,8 @@ class ContractFindingLedger:
                         FindingProjectionEntry(
                             finding_cid=cid,
                             semantic_key_id=key or "unknown",
-                            admission=admission.get(
-                                cid, FindingAdmissionState.ADMITTED
-                            ),
-                            tree_id=tree_ids.get(cid, "")
-                            or (record.tree_id if record else ""),
+                            admission=admission.get(cid, FindingAdmissionState.ADMITTED),
+                            tree_id=tree_ids.get(cid, "") or (record.tree_id if record else ""),
                             superseded_by_cid=supersedes.get(cid, ""),
                             rejection_reasons=rejections.get(cid, ()),
                             conflict_cids=tuple(sorted(conflicts.get(cid, ()))),
@@ -3231,9 +3093,7 @@ class ContractFindingLedger:
                 snapshot = ProjectionSnapshot(
                     entries=tuple(entries),
                     history_length=int(meta.get("sequence", len(events))),
-                    tree_id=next(
-                        (e.tree_id for e in entries if e.tree_id), ""
-                    ),
+                    tree_id=next((e.tree_id for e in entries if e.tree_id), ""),
                 )
                 self._save_projection(snapshot)
                 return snapshot

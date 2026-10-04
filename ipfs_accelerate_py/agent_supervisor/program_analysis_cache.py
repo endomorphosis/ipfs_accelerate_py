@@ -178,9 +178,7 @@ class ProgramAnalysisCacheError(RuntimeError):
     """Base class for program-analysis cache failures."""
 
 
-class ProgramAnalysisCacheValidationError(
-    ProgramAnalysisCacheError, ValueError
-):
+class ProgramAnalysisCacheValidationError(ProgramAnalysisCacheError, ValueError):
     """A key, receipt, or authority claim failed validation."""
 
 
@@ -359,9 +357,7 @@ def _canonical_json_bytes(value: Any) -> bytes:
         converter = getattr(item, "to_dict", None)
         if callable(converter):
             return normalize(converter())
-        raise ValueError(
-            f"unsupported canonical JSON value: {type(item).__name__}"
-        )
+        raise ValueError(f"unsupported canonical JSON value: {type(item).__name__}")
 
     return json.dumps(
         normalize(value),
@@ -392,15 +388,11 @@ def _identity_component(value: Any, name: str) -> Any:
         if not value:
             raise ProgramAnalysisCacheValidationError(f"{name} must not be empty")
         if "\x00" in value:
-            raise ProgramAnalysisCacheValidationError(
-                f"{name} must not contain NUL"
-            )
+            raise ProgramAnalysisCacheValidationError(f"{name} must not contain NUL")
     try:
         return json.loads(canonical_program_analysis_json(value))
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
-        raise ProgramAnalysisCacheValidationError(
-            f"{name} must be canonical JSON"
-        ) from exc
+        raise ProgramAnalysisCacheValidationError(f"{name} must be canonical JSON") from exc
 
 
 def _sha256_text(value: str) -> str:
@@ -439,9 +431,7 @@ class ProgramAnalysisCacheKey:
         component_kind: ProgramAnalysisComponentKind | str = (
             ProgramAnalysisComponentKind.INVENTORY
         ),
-        authority: ProgramAnalysisAuthority | str = (
-            ProgramAnalysisAuthority.AUTHORITATIVE
-        ),
+        authority: ProgramAnalysisAuthority | str = (ProgramAnalysisAuthority.AUTHORITATIVE),
         *,
         repository_tree_identity: Any = None,
         repository_forest_identity: Any = None,
@@ -468,25 +458,11 @@ class ProgramAnalysisCacheKey:
                 canonical_program_analysis_json(item) != canonical_forest
                 for item in forest_candidates[1:]
             ):
-                raise ProgramAnalysisCacheValidationError(
-                    "forest identity aliases disagree"
-                )
-        policy = (
-            policy_revision if policy_revision is not None else policy_digest
-        )
-        capability = (
-            capability_revision
-            if capability_revision is not None
-            else capability_digest
-        )
-        assumption = (
-            assumption_digest
-            if assumption_digest is not None
-            else assumptions_digest
-        )
-        toolchain_value = (
-            toolchain_version if toolchain_version is not None else toolchain
-        )
+                raise ProgramAnalysisCacheValidationError("forest identity aliases disagree")
+        policy = policy_revision if policy_revision is not None else policy_digest
+        capability = capability_revision if capability_revision is not None else capability_digest
+        assumption = assumption_digest if assumption_digest is not None else assumptions_digest
+        toolchain_value = toolchain_version if toolchain_version is not None else toolchain
         values = {
             "forest_identity": forest,
             "objective_revision": objective_revision,
@@ -506,9 +482,7 @@ class ProgramAnalysisCacheKey:
             "component_kind",
             ProgramAnalysisComponentKind.coerce(component_kind),
         )
-        object.__setattr__(
-            self, "authority", ProgramAnalysisAuthority.coerce(authority)
-        )
+        object.__setattr__(self, "authority", ProgramAnalysisAuthority.coerce(authority))
 
     @property
     def repository_tree_identity(self) -> Any:
@@ -586,9 +560,7 @@ class ProgramAnalysisCacheKey:
             objective_revision=self.objective_revision,
             analyzer_version=self.analyzer_version,
             schema_version=self.schema_version,
-            configuration_digest=digest_program_analysis_input(
-                folded_configuration
-            ),
+            configuration_digest=digest_program_analysis_input(folded_configuration),
             query_digest=self.query_digest,
             policy_digest=self.policy_revision,
         )
@@ -612,11 +584,7 @@ class ProgramAnalysisCacheKey:
         )
         dependencies: list[SemanticDependencyIdentity] = []
         for namespace, key, value in dimensions:
-            revision = (
-                value
-                if isinstance(value, str)
-                else canonical_program_analysis_json(value)
-            )
+            revision = value if isinstance(value, str) else canonical_program_analysis_json(value)
             dependencies.append(
                 SemanticDependencyIdentity(
                     namespace=f"program_analysis/{namespace}",
@@ -698,26 +666,16 @@ class ProgramAnalysisCacheKey:
                 ),
             ),
             objective_revision=value.get("objective_revision"),
-            policy_revision=value.get(
-                "policy_revision", value.get("policy_digest")
-            ),
+            policy_revision=value.get("policy_revision", value.get("policy_digest")),
             analyzer_version=value.get("analyzer_version"),
             schema_version=value.get("schema_version"),
             configuration_digest=value.get("configuration_digest"),
             query_digest=value.get("query_digest"),
-            capability_revision=value.get(
-                "capability_revision", value.get("capability_digest")
-            ),
-            assumption_digest=value.get(
-                "assumption_digest", value.get("assumptions_digest")
-            ),
-            toolchain_version=value.get(
-                "toolchain_version", value.get("toolchain")
-            ),
+            capability_revision=value.get("capability_revision", value.get("capability_digest")),
+            assumption_digest=value.get("assumption_digest", value.get("assumptions_digest")),
+            toolchain_version=value.get("toolchain_version", value.get("toolchain")),
             component_kind=value.get("component_kind", "inventory"),
-            authority=value.get(
-                "authority", ProgramAnalysisAuthority.AUTHORITATIVE.value
-            ),
+            authority=value.get("authority", ProgramAnalysisAuthority.AUTHORITATIVE.value),
         )
 
 
@@ -739,12 +697,8 @@ def build_program_analysis_cache_key(
     assumptions_digest: Any = None,
     toolchain_version: Any = None,
     toolchain: Any = None,
-    component_kind: ProgramAnalysisComponentKind | str = (
-        ProgramAnalysisComponentKind.INVENTORY
-    ),
-    authority: ProgramAnalysisAuthority | str = (
-        ProgramAnalysisAuthority.AUTHORITATIVE
-    ),
+    component_kind: ProgramAnalysisComponentKind | str = (ProgramAnalysisComponentKind.INVENTORY),
+    authority: ProgramAnalysisAuthority | str = (ProgramAnalysisAuthority.AUTHORITATIVE),
 ) -> ProgramAnalysisCacheKey:
     """Build a program-analysis key while accepting common aliases."""
 
@@ -830,8 +784,7 @@ class ProgramAnalysisLookupResult:
             and self.key.authority.is_completion_capable
             and (
                 self.runtime_artifact is None
-                or self.runtime_artifact.identity.authority
-                is RuntimeAuthority.AUTHORITATIVE
+                or self.runtime_artifact.identity.authority is RuntimeAuthority.AUTHORITATIVE
             )
         )
 
@@ -944,8 +897,7 @@ def compact_program_analysis_receipt(
         payload[_RUNTIME_ARTIFACT_FIELD] = runtime_artifact_id
     if blob_refs:
         payload[_BLOB_REFS_FIELD] = [
-            item.to_dict() if isinstance(item, BlobReference) else dict(item)
-            for item in blob_refs
+            item.to_dict() if isinstance(item, BlobReference) else dict(item) for item in blob_refs
         ]
     payload.setdefault("schema", PROGRAM_ANALYSIS_RECEIPT_SCHEMA)
     if key is not None:
@@ -1032,11 +984,7 @@ class ProgramAnalysisCache:
             if max_artifact_bytes is None
             else max_artifact_bytes
         )
-        artifact_count_quota = (
-            max(max_entries * 4, 64)
-            if max_artifacts is None
-            else max_artifacts
-        )
+        artifact_count_quota = max(max_entries * 4, 64) if max_artifacts is None else max_artifacts
         self.artifact_store = BoundedArtifactStore(
             self.path / "artifacts",
             quotas=ArtifactQuotaPolicy(
@@ -1082,9 +1030,7 @@ class ProgramAnalysisCache:
             program_key = _extract_program_key(entry.receipt)
             if program_key is None:
                 continue
-            runtime_id = str(
-                entry.receipt.get(_RUNTIME_ARTIFACT_FIELD) or ""
-            )
+            runtime_id = str(entry.receipt.get(_RUNTIME_ARTIFACT_FIELD) or "")
             if runtime_id:
                 index[program_key.key_id] = runtime_id
         path = self._index_path()
@@ -1136,9 +1082,7 @@ class ProgramAnalysisCache:
             except FileNotFoundError:
                 pass
 
-    def _register_index(
-        self, key: ProgramAnalysisCacheKey, runtime_artifact_id: str
-    ) -> None:
+    def _register_index(self, key: ProgramAnalysisCacheKey, runtime_artifact_id: str) -> None:
         with self._index_lock:
             self._component_index[key.key_id] = runtime_artifact_id
         self._persist_component_index()
@@ -1180,9 +1124,7 @@ class ProgramAnalysisCache:
         key: ProgramAnalysisCacheKey,
         receipt: Mapping[str, Any],
         *,
-        dependencies: Sequence[
-            RuntimeArtifactRecord | Mapping[str, Any] | str
-        ] = (),
+        dependencies: Sequence[RuntimeArtifactRecord | Mapping[str, Any] | str] = (),
         ttl_seconds: int | None,
         outcome: AnalysisOutcome,
     ) -> RuntimeArtifactRecord:
@@ -1196,9 +1138,7 @@ class ProgramAnalysisCache:
             )
             for item in dependencies
         ):
-            raise AuthorityIsolationError(
-                "authoritative program receipts cannot depend on drafts"
-            )
+            raise AuthorityIsolationError("authoritative program receipts cannot depend on drafts")
         payload = {
             "schema": PROGRAM_ANALYSIS_CACHE_ENTRY_SCHEMA,
             "key_id": key.key_id,
@@ -1233,14 +1173,9 @@ class ProgramAnalysisCache:
             ),
             payload_schema=PROGRAM_ANALYSIS_CACHE_ENTRY_SCHEMA,
             projection_key=key.key_id
-            if authority is RuntimeAuthority.AUTHORITATIVE
-            and outcome.is_completion_evidence
+            if authority is RuntimeAuthority.AUTHORITATIVE and outcome.is_completion_evidence
             else None,
-            tree_id=(
-                key.forest_identity
-                if isinstance(key.forest_identity, str)
-                else None
-            ),
+            tree_id=(key.forest_identity if isinstance(key.forest_identity, str) else None),
         )
 
     def _lookup_runtime(
@@ -1325,9 +1260,7 @@ class ProgramAnalysisCache:
                     ProgramAnalysisLookupStatus.REJECTED,
                     cache_key,
                     entry=entry,
-                    reason_codes=(
-                        ProgramAnalysisCacheReason.AUTHORITY_ISOLATION.value,
-                    ),
+                    reason_codes=(ProgramAnalysisCacheReason.AUTHORITY_ISOLATION.value,),
                 )
             runtime_artifact: RuntimeArtifactRecord | None = None
             runtime_id = str(entry.receipt.get(_RUNTIME_ARTIFACT_FIELD) or "")
@@ -1336,8 +1269,7 @@ class ProgramAnalysisCache:
                     runtime_id,
                     key=cache_key,
                     require_fresh=(
-                        require_completion_evidence
-                        or cache_key.authority.is_completion_capable
+                        require_completion_evidence or cache_key.authority.is_completion_capable
                     ),
                 )
                 if not runtime_lookup.hit:
@@ -1358,22 +1290,17 @@ class ProgramAnalysisCache:
                     ProgramAnalysisLookupStatus.INVALIDATED,
                     cache_key,
                     entry=entry,
-                    reason_codes=(
-                        ProgramAnalysisCacheReason.RUNTIME_ARTIFACT_MISS.value,
-                    ),
+                    reason_codes=(ProgramAnalysisCacheReason.RUNTIME_ARTIFACT_MISS.value,),
                 )
             if require_completion_evidence and not (
-                entry.is_completion_evidence
-                and cache_key.authority.is_completion_capable
+                entry.is_completion_evidence and cache_key.authority.is_completion_capable
             ):
                 return ProgramAnalysisLookupResult(
                     ProgramAnalysisLookupStatus.INVALIDATED,
                     cache_key,
                     entry=entry,
                     runtime_artifact=runtime_artifact,
-                    reason_codes=(
-                        ProgramAnalysisCacheReason.NOT_COMPLETION_EVIDENCE.value,
-                    ),
+                    reason_codes=(ProgramAnalysisCacheReason.NOT_COMPLETION_EVIDENCE.value,),
                 )
             return ProgramAnalysisLookupResult(
                 ProgramAnalysisLookupStatus.HIT,
@@ -1390,27 +1317,15 @@ class ProgramAnalysisCache:
                 if reason == AnalysisCacheReason.STALE_ENTRY.value:
                     mapped.append(ProgramAnalysisCacheReason.STALE_ENTRY.value)
                 elif reason == AnalysisCacheReason.STALE_NEGATIVE_ENTRY.value:
-                    mapped.append(
-                        ProgramAnalysisCacheReason.STALE_NEGATIVE_ENTRY.value
-                    )
+                    mapped.append(ProgramAnalysisCacheReason.STALE_NEGATIVE_ENTRY.value)
                 elif reason == AnalysisCacheReason.CORRUPT_ENTRY.value:
-                    mapped.append(
-                        ProgramAnalysisCacheReason.CORRUPT_ENTRY.value
-                    )
+                    mapped.append(ProgramAnalysisCacheReason.CORRUPT_ENTRY.value)
                 elif reason == AnalysisCacheReason.NOT_COMPLETION_EVIDENCE.value:
-                    mapped.append(
-                        ProgramAnalysisCacheReason.NOT_COMPLETION_EVIDENCE.value
-                    )
-                elif reason == (
-                    AnalysisCacheReason.REPOSITORY_TREE_IDENTITY_CHANGED.value
-                ):
-                    mapped.append(
-                        ProgramAnalysisCacheReason.FOREST_IDENTITY_CHANGED.value
-                    )
+                    mapped.append(ProgramAnalysisCacheReason.NOT_COMPLETION_EVIDENCE.value)
+                elif reason == (AnalysisCacheReason.REPOSITORY_TREE_IDENTITY_CHANGED.value):
+                    mapped.append(ProgramAnalysisCacheReason.FOREST_IDENTITY_CHANGED.value)
                 elif reason == AnalysisCacheReason.POLICY_DIGEST_CHANGED.value:
-                    mapped.append(
-                        ProgramAnalysisCacheReason.POLICY_REVISION_CHANGED.value
-                    )
+                    mapped.append(ProgramAnalysisCacheReason.POLICY_REVISION_CHANGED.value)
                 else:
                     mapped.append(reason)
             # Prefer program-key dimension reasons when a near neighbour exists.
@@ -1423,8 +1338,7 @@ class ProgramAnalysisCache:
                 ProgramAnalysisLookupStatus.INVALIDATED,
                 cache_key,
                 entry=analysis_lookup.entry,
-                reason_codes=tuple(mapped)
-                or (ProgramAnalysisCacheReason.CACHE_MISS.value,),
+                reason_codes=tuple(mapped) or (ProgramAnalysisCacheReason.CACHE_MISS.value,),
             )
 
         candidate = self._closest_program_candidate(cache_key)
@@ -1451,9 +1365,7 @@ class ProgramAnalysisCache:
         status: AnalysisOutcome | str | None = None,
         ttl_seconds: int | None = None,
         blob_bodies: Sequence[Any] = (),
-        dependencies: Sequence[
-            RuntimeArtifactRecord | Mapping[str, Any] | str
-        ] = (),
+        dependencies: Sequence[RuntimeArtifactRecord | Mapping[str, Any] | str] = (),
         store_runtime_artifact: bool = True,
     ) -> ProgramAnalysisStoreResult:
         """Persist a compact receipt plus optional immutable artifact bodies."""
@@ -1468,8 +1380,7 @@ class ProgramAnalysisCache:
                         kind=f"{cache_key.component_kind.value}_body",
                         retention_class=(
                             RetentionClass.AUTHORITATIVE
-                            if cache_key.authority
-                            is ProgramAnalysisAuthority.AUTHORITATIVE
+                            if cache_key.authority is ProgramAnalysisAuthority.AUTHORITATIVE
                             else RetentionClass.ROUTINE
                         ),
                         outcome=(
@@ -1529,9 +1440,7 @@ class ProgramAnalysisCache:
                 return ProgramAnalysisStoreResult(
                     False,
                     cache_key,
-                    reason_codes=(
-                        ProgramAnalysisCacheReason.AUTHORITY_ISOLATION.value,
-                    ),
+                    reason_codes=(ProgramAnalysisCacheReason.AUTHORITY_ISOLATION.value,),
                 )
             except Exception as exc:  # noqa: BLE001
                 return ProgramAnalysisStoreResult(
@@ -1553,13 +1462,9 @@ class ProgramAnalysisCache:
             reasons = []
             for reason in stored.reason_codes:
                 if reason == AnalysisCacheReason.MALFORMED_RECEIPT.value:
-                    reasons.append(
-                        ProgramAnalysisCacheReason.MALFORMED_RECEIPT.value
-                    )
+                    reasons.append(ProgramAnalysisCacheReason.MALFORMED_RECEIPT.value)
                 elif reason == AnalysisCacheReason.ENTRY_TOO_LARGE.value:
-                    reasons.append(
-                        ProgramAnalysisCacheReason.ENTRY_TOO_LARGE.value
-                    )
+                    reasons.append(ProgramAnalysisCacheReason.ENTRY_TOO_LARGE.value)
                 else:
                     reasons.append(reason)
             return ProgramAnalysisStoreResult(
@@ -1633,9 +1538,7 @@ class ProgramAnalysisCache:
         wait_timeout_seconds: float | None = None,
         require_completion_evidence: bool = True,
         store_runtime_artifact: bool = True,
-        dependencies: Sequence[
-            RuntimeArtifactRecord | Mapping[str, Any] | str
-        ] = (),
+        dependencies: Sequence[RuntimeArtifactRecord | Mapping[str, Any] | str] = (),
     ) -> ProgramAnalysisLookupResult:
         """Return a completion hit or run ``producer`` once under single-flight.
 
@@ -1668,9 +1571,7 @@ class ProgramAnalysisCache:
                 pub_ttl = ttl_seconds
             if isinstance(inner, ProgramAnalysisStoreResult):
                 if not inner.stored:
-                    raise ProgramAnalysisCacheError(
-                        "producer returned a failed store result"
-                    )
+                    raise ProgramAnalysisCacheError("producer returned a failed store result")
                 return CachePublication(
                     inner.entry.receipt if inner.entry is not None else {},
                     store=False,
@@ -1678,9 +1579,7 @@ class ProgramAnalysisCache:
                 )
             if isinstance(inner, ProgramAnalysisLookupResult):
                 if inner.receipt is None:
-                    raise ProgramAnalysisCacheError(
-                        "producer returned a non-hit lookup result"
-                    )
+                    raise ProgramAnalysisCacheError("producer returned a non-hit lookup result")
                 return CachePublication(
                     dict(inner.receipt),
                     store=False,
@@ -1697,8 +1596,7 @@ class ProgramAnalysisCache:
             )
             if not stored.stored:
                 raise ProgramAnalysisCacheError(
-                    "failed to persist program analysis receipt: "
-                    + ",".join(stored.reason_codes)
+                    "failed to persist program analysis receipt: " + ",".join(stored.reason_codes)
                 )
             # Already persisted; coordinator must not double-store.
             return CachePublication(
@@ -1712,9 +1610,7 @@ class ProgramAnalysisCache:
             _wrapped_producer,
             ttl_seconds=ttl_seconds,
             wait_timeout_seconds=wait_timeout_seconds,
-            completion_validator=(
-                _completion_validator if require_completion_evidence else None
-            ),
+            completion_validator=(_completion_validator if require_completion_evidence else None),
         )
         # Re-read through the program facade so runtime invalidation and
         # authority isolation always gate completion.
@@ -1734,8 +1630,7 @@ class ProgramAnalysisCache:
                 else ProgramAnalysisLookupStatus.INVALIDATED,
                 cache_key,
                 entry=coordination.lookup.entry,
-                reason_codes=result.reason_codes
-                or tuple(coordination.lookup.reason_codes),
+                reason_codes=result.reason_codes or tuple(coordination.lookup.reason_codes),
                 coordination=coordination,
             )
         return replace(result, coordination=coordination)
@@ -1823,33 +1718,23 @@ class ProgramAnalysisCache:
 
         filters: dict[str, Any] = {}
         if forest_identity is not None:
-            filters["forest_identity"] = _identity_component(
-                forest_identity, "forest_identity"
-            )
+            filters["forest_identity"] = _identity_component(forest_identity, "forest_identity")
         if objective_revision is not None:
             filters["objective_revision"] = _identity_component(
                 objective_revision, "objective_revision"
             )
         if policy_revision is not None:
-            filters["policy_revision"] = _identity_component(
-                policy_revision, "policy_revision"
-            )
+            filters["policy_revision"] = _identity_component(policy_revision, "policy_revision")
         if analyzer_version is not None:
-            filters["analyzer_version"] = _identity_component(
-                analyzer_version, "analyzer_version"
-            )
+            filters["analyzer_version"] = _identity_component(analyzer_version, "analyzer_version")
         if schema_version is not None:
-            filters["schema_version"] = _identity_component(
-                schema_version, "schema_version"
-            )
+            filters["schema_version"] = _identity_component(schema_version, "schema_version")
         if configuration_digest is not None:
             filters["configuration_digest"] = _identity_component(
                 configuration_digest, "configuration_digest"
             )
         if query_digest is not None:
-            filters["query_digest"] = _identity_component(
-                query_digest, "query_digest"
-            )
+            filters["query_digest"] = _identity_component(query_digest, "query_digest")
         if capability_revision is not None:
             filters["capability_revision"] = _identity_component(
                 capability_revision, "capability_revision"
@@ -1863,9 +1748,7 @@ class ProgramAnalysisCache:
                 toolchain_version, "toolchain_version"
             )
         if component_kind is not None:
-            filters["component_kind"] = ProgramAnalysisComponentKind.coerce(
-                component_kind
-            ).value
+            filters["component_kind"] = ProgramAnalysisComponentKind.coerce(component_kind).value
         if authority is not None:
             filters["authority"] = ProgramAnalysisAuthority.coerce(authority).value
         if not filters:
@@ -1908,9 +1791,7 @@ class ProgramAnalysisCache:
         invalidated_runtime: list[str] = []
         for artifact_id in sorted(set(runtime_ids)):
             try:
-                result = self.runtime_cas.invalidate(
-                    artifact_id, include_root=True, reason=reason
-                )
+                result = self.runtime_cas.invalidate(artifact_id, include_root=True, reason=reason)
                 invalidated_runtime.extend(result.invalidated_artifact_ids)
             except Exception:  # noqa: BLE001 - best-effort cleanup
                 continue
@@ -1933,9 +1814,7 @@ class ProgramAnalysisCache:
     ) -> Mapping[str, Any]:
         """Invalidate RuntimeCAS dependents of one semantic dependency."""
 
-        result = self.runtime_cas.invalidate_semantic_dependency(
-            dependency, reason=reason
-        )
+        result = self.runtime_cas.invalidate_semantic_dependency(dependency, reason=reason)
         removed_key_ids: list[str] = []
         for path in list(self.analysis_cache._entry_paths()):  # noqa: SLF001
             try:
@@ -1978,9 +1857,7 @@ class ProgramAnalysisCache:
         """Return receipt and large-body usage with their declared bounds."""
 
         base = self.analysis_cache.stats()
-        component_counts: dict[str, int] = {
-            kind.value: 0 for kind in ProgramAnalysisComponentKind
-        }
+        component_counts: dict[str, int] = {kind.value: 0 for kind in ProgramAnalysisComponentKind}
         runtime_count = 0
         for path in self.analysis_cache._entry_paths():  # noqa: SLF001
             try:
@@ -1995,9 +1872,7 @@ class ProgramAnalysisCache:
             if entry.receipt.get(_RUNTIME_ARTIFACT_FIELD):
                 runtime_count += 1
         artifact_usage: Mapping[str, Any] = {}
-        artifact_quotas: Mapping[str, Any] = (
-            self.artifact_store.quotas.to_dict()
-        )
+        artifact_quotas: Mapping[str, Any] = self.artifact_store.quotas.to_dict()
         try:
             artifact_usage = self.artifact_store.usage()
         except Exception:  # noqa: BLE001

@@ -178,9 +178,7 @@ def test_claim_level_vocabulary_is_exact_and_non_hierarchical() -> None:
     }
     validate_claim_promotion(ClaimLevel.MODEL_PROVED, ClaimLevel.MODEL_PROVED)
     with pytest.raises(ClaimPromotionError):
-        validate_claim_promotion(
-            ClaimLevel.OBSERVED_SYNTAX, ClaimLevel.RESOLVED_STATIC
-        )
+        validate_claim_promotion(ClaimLevel.OBSERVED_SYNTAX, ClaimLevel.RESOLVED_STATIC)
     with pytest.raises(ClaimPromotionError):
         ClaimLevel.ZK_TRACE_ATTESTED.require(ClaimLevel.MODEL_PROVED)
 

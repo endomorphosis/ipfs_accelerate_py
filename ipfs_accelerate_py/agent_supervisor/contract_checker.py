@@ -128,9 +128,7 @@ CLOSED_SUPPORTED_ASPECTS: Final[tuple[SemanticAspect, ...]] = (
     SemanticAspect.FALLBACK_DEGRADATION,
 )
 
-CALL_PATH_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/contract-check/call-path@1"
-)
+CALL_PATH_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/contract-check/call-path@1"
 CALL_PATH_STEP_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/contract-check/call-path-step@1"
 )
@@ -146,9 +144,7 @@ CONTRACT_CHECK_RESULT_SCHEMA: Final[str] = (
 CONTRACT_CHECK_REPORT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/contract-check/report@1"
 )
-CHECK_BINDING_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/contract-check/binding@1"
-)
+CHECK_BINDING_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/contract-check/binding@1"
 
 
 class ContractCheckerError(ContractValidationError):
@@ -312,9 +308,7 @@ def _text(
     if not isinstance(value, str):
         raise ContractCheckerError(f"{field_name} must be a string")
     if len(value.encode("utf-8")) > maximum:
-        raise ContractCheckBoundsError(
-            f"{field_name} exceeds {maximum} bytes"
-        )
+        raise ContractCheckBoundsError(f"{field_name} exceeds {maximum} bytes")
     if required and not value:
         raise ContractCheckerError(f"{field_name} must be non-empty")
     return value
@@ -338,9 +332,7 @@ def _integer(
     if value < minimum:
         raise ContractCheckerError(f"{field_name} must be >= {minimum}")
     if maximum is not None and value > maximum:
-        raise ContractCheckBoundsError(
-            f"{field_name} exceeds maximum {maximum}"
-        )
+        raise ContractCheckBoundsError(f"{field_name} exceeds maximum {maximum}")
     return value
 
 
@@ -362,12 +354,8 @@ def _enum(value: Any, enum_type: type[E], *, field_name: str) -> E:
         try:
             return enum_type(value)
         except ValueError as exc:
-            raise ContractCheckerError(
-                f"{field_name} is not a valid {enum_type.__name__}"
-            ) from exc
-    raise ContractCheckerError(
-        f"{field_name} must be a {enum_type.__name__} or string"
-    )
+            raise ContractCheckerError(f"{field_name} is not a valid {enum_type.__name__}") from exc
+    raise ContractCheckerError(f"{field_name} must be a {enum_type.__name__} or string")
 
 
 def _strings(
@@ -386,9 +374,7 @@ def _strings(
     if isinstance(values, str) or not isinstance(values, Sequence):
         raise ContractCheckerError(f"{field_name} must be a sequence of strings")
     if len(values) > maximum:
-        raise ContractCheckBoundsError(
-            f"{field_name} exceeds {maximum} items"
-        )
+        raise ContractCheckBoundsError(f"{field_name} exceeds {maximum} items")
     items: list[str] = []
     seen: set[str] = set()
     for index, raw in enumerate(values):
@@ -412,9 +398,7 @@ def _timestamp(value: Any, *, field_name: str) -> str:
     try:
         parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError as exc:
-        raise ContractCheckerError(
-            f"{field_name} must be an ISO-8601 timestamp"
-        ) from exc
+        raise ContractCheckerError(f"{field_name} must be an ISO-8601 timestamp") from exc
     if parsed.tzinfo is None:
         raise ContractCheckerError(f"{field_name} must be timezone-aware")
     return text
@@ -429,14 +413,10 @@ def _check_header(payload: Mapping[str, Any], expected_schema: str) -> None:
         raise ContractCheckerError("payload must be a mapping")
     schema = payload.get("schema")
     if schema != expected_schema:
-        raise ContractCheckerError(
-            f"schema must be {expected_schema!r}, got {schema!r}"
-        )
+        raise ContractCheckerError(f"schema must be {expected_schema!r}, got {schema!r}")
     version = payload.get("contract_version", payload.get("schema_version"))
     if version not in (None, CONTRACT_CHECKER_VERSION, PROGRAM_CONTRACT_VERSION):
-        raise UnsupportedVersionError(
-            f"unsupported contract_version {version!r}"
-        )
+        raise UnsupportedVersionError(f"unsupported contract_version {version!r}")
 
 
 def _reject_unknown(
@@ -447,9 +427,7 @@ def _reject_unknown(
 ) -> None:
     unknown = sorted(set(payload) - allowed)
     if unknown:
-        raise ContractCheckerError(
-            f"{artifact_name} has unknown fields: {', '.join(unknown)}"
-        )
+        raise ContractCheckerError(f"{artifact_name} has unknown fields: {', '.join(unknown)}")
 
 
 def _check_identity(
@@ -464,9 +442,7 @@ def _check_identity(
         if claimed in (None, ""):
             continue
         if claimed != derived:
-            raise ForgedIdentityError(
-                f"{artifact_name} {name} does not match derived identity"
-            )
+            raise ForgedIdentityError(f"{artifact_name} {name} does not match derived identity")
 
 
 def _bounded(
@@ -477,9 +453,7 @@ def _bounded(
 ) -> None:
     size = len(record.canonical_bytes())
     if size > maximum:
-        raise ContractCheckBoundsError(
-            f"{artifact_name} exceeds {maximum} bytes ({size})"
-        )
+        raise ContractCheckBoundsError(f"{artifact_name} exceeds {maximum} bytes ({size})")
 
 
 def _record(
@@ -493,13 +467,9 @@ def _record(
     if isinstance(value, Mapping):
         from_dict = getattr(typ, "from_dict", None)
         if from_dict is None:
-            raise ContractCheckerError(
-                f"{field_name} cannot be constructed from a mapping"
-            )
+            raise ContractCheckerError(f"{field_name} cannot be constructed from a mapping")
         return from_dict(value)
-    raise ContractCheckerError(
-        f"{field_name} must be a {typ.__name__} or mapping"
-    )
+    raise ContractCheckerError(f"{field_name} must be a {typ.__name__} or mapping")
 
 
 def _records(
@@ -514,12 +484,9 @@ def _records(
     if isinstance(values, str) or not isinstance(values, Sequence):
         raise ContractCheckerError(f"{field_name} must be a sequence")
     if len(values) > maximum:
-        raise ContractCheckBoundsError(
-            f"{field_name} exceeds {maximum} items"
-        )
+        raise ContractCheckBoundsError(f"{field_name} exceeds {maximum} items")
     return tuple(
-        _record(item, typ, field_name=f"{field_name}[{index}]")
-        for index, item in enumerate(values)
+        _record(item, typ, field_name=f"{field_name}[{index}]") for index, item in enumerate(values)
     )
 
 
@@ -533,12 +500,7 @@ def _header_fields() -> set[str]:
 
 
 def _now_iso() -> str:
-    return (
-        datetime.now(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _fact(value: Any) -> str:
@@ -553,15 +515,9 @@ def _fact(value: Any) -> str:
     if isinstance(value, (int, str)):
         text = str(value)
     elif isinstance(value, TypeShape):
-        text = (
-            f"type:{value.constructor.value}"
-            f"{':' + value.name if value.name else ''}"
-        )
+        text = f"type:{value.constructor.value}{':' + value.name if value.name else ''}"
     elif isinstance(value, ParameterSpec):
-        text = (
-            f"param:{value.name}:{value.optionality.value}:"
-            f"{value.type_shape.constructor.value}"
-        )
+        text = f"param:{value.name}:{value.optionality.value}:{value.type_shape.constructor.value}"
     elif isinstance(value, ReturnSpec):
         text = f"return:{value.type_shape.constructor.value}"
     elif isinstance(value, ErrorSpec):
@@ -574,9 +530,7 @@ def _fact(value: Any) -> str:
     elif isinstance(value, CapabilitySpec):
         text = f"cap:{value.capability_name}:{value.mode.value}"
     elif isinstance(value, AuthorizationSpec):
-        text = (
-            f"auth:{value.mode.value}:scopes={','.join(value.scopes) or '-'}"
-        )
+        text = f"auth:{value.mode.value}:scopes={','.join(value.scopes) or '-'}"
     elif isinstance(value, IdempotenceSpec):
         text = f"idempotence:{value.mode.value}"
     elif isinstance(value, OrderingSpec):
@@ -620,9 +574,7 @@ def _path_is_traversal(path: str) -> bool:
     if not path:
         return False
     normalized = path.replace("\\", "/")
-    if normalized.startswith("/") or (
-        len(normalized) >= 2 and normalized[1] == ":"
-    ):
+    if normalized.startswith("/") or (len(normalized) >= 2 and normalized[1] == ":"):
         return True
     parts = [part for part in normalized.split("/") if part not in ("", ".")]
     return any(part == ".." for part in parts)
@@ -710,9 +662,7 @@ class CallPathStep(_CheckContract):
             ),
         )
         if self.target_path and _path_is_traversal(self.target_path):
-            object.__setattr__(
-                self, "resolution", CallPathResolution.PATH_TRAVERSAL
-            )
+            object.__setattr__(self, "resolution", CallPathResolution.PATH_TRAVERSAL)
         _bounded(self, artifact_name="call path step")
 
     @property
@@ -785,9 +735,7 @@ class CallPath(_CheckContract):
 
     def __post_init__(self) -> None:
         for name in ("repository_id", "tree_id", "policy_revision", "path_name"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
         object.__setattr__(
             self,
             "steps",
@@ -803,9 +751,7 @@ class CallPath(_CheckContract):
         # Enforce deterministic step indices 0..n-1.
         for index, step in enumerate(self.steps):
             if step.step_index != index:
-                raise ContractCheckerError(
-                    "call path steps must use contiguous step_index from 0"
-                )
+                raise ContractCheckerError("call path steps must use contiguous step_index from 0")
         object.__setattr__(
             self,
             "entry_interface",
@@ -967,9 +913,7 @@ class CheckBinding(_CheckContract):
             "expected_contract_id",
             "observed_contract_id",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
         for name in (
             "repository_observation_id",
             "call_path_id",
@@ -1110,12 +1054,8 @@ class CheckBinding(_CheckContract):
             "checker_version": self.checker_version,
             "subject_matches": self.subject_matches,
             "cache_binding_freshness": self.cache_binding_freshness.value,
-            "has_complete_binding_dimensions": (
-                self.has_complete_binding_dimensions
-            ),
-            "diverging_binding_dimensions": list(
-                self.diverging_binding_dimensions()
-            ),
+            "has_complete_binding_dimensions": (self.has_complete_binding_dimensions),
+            "diverging_binding_dimensions": list(self.diverging_binding_dimensions()),
             "exact_binding_dimensions": self.exact_binding_dimensions,
         }
 
@@ -1172,19 +1112,13 @@ class CheckBinding(_CheckContract):
             policy_revision=payload.get("policy_revision", ""),
             observed_repository_id=payload.get("observed_repository_id", ""),
             observed_tree_id=payload.get("observed_tree_id", ""),
-            observed_policy_revision=payload.get(
-                "observed_policy_revision", ""
-            ),
+            observed_policy_revision=payload.get("observed_policy_revision", ""),
             expected_contract_id=payload.get("expected_contract_id", ""),
             observed_contract_id=payload.get("observed_contract_id", ""),
-            repository_observation_id=payload.get(
-                "repository_observation_id", ""
-            ),
+            repository_observation_id=payload.get("repository_observation_id", ""),
             call_path_id=payload.get("call_path_id", ""),
             cache_generation=payload.get("cache_generation", ""),
-            expected_cache_generation=payload.get(
-                "expected_cache_generation", ""
-            ),
+            expected_cache_generation=payload.get("expected_cache_generation", ""),
             checker_version=payload.get("checker_version", CHECKER_VERSION),
         )
         _check_identity(
@@ -1194,21 +1128,14 @@ class CheckBinding(_CheckContract):
             artifact_name="check binding",
         )
         claimed_subject = payload.get("subject_matches")
-        if (
-            claimed_subject is not None
-            and claimed_subject is not result.subject_matches
-        ):
-            raise ForgedIdentityError(
-                "subject_matches does not match exact binding identities"
-            )
+        if claimed_subject is not None and claimed_subject is not result.subject_matches:
+            raise ForgedIdentityError("subject_matches does not match exact binding identities")
         claimed_freshness = payload.get("cache_binding_freshness")
         if (
             claimed_freshness is not None
             and claimed_freshness != result.cache_binding_freshness.value
         ):
-            raise ForgedIdentityError(
-                "cache_binding_freshness does not match generation binding"
-            )
+            raise ForgedIdentityError("cache_binding_freshness does not match generation binding")
         claimed_complete = payload.get("has_complete_binding_dimensions")
         if (
             claimed_complete is not None
@@ -1252,9 +1179,7 @@ class AspectCheckResult(_CheckContract):
             "verdict",
             _enum(self.verdict, AspectVerdict, field_name="verdict"),
         )
-        object.__setattr__(
-            self, "rule_id", _text(self.rule_id, field_name="rule_id")
-        )
+        object.__setattr__(self, "rule_id", _text(self.rule_id, field_name="rule_id"))
         for name in ("expected_fact", "observed_fact", "summary"):
             object.__setattr__(
                 self,
@@ -1357,9 +1282,7 @@ class ContractCounterexample(_CheckContract):
             "aspect",
             _enum(self.aspect, SemanticAspect, field_name="aspect"),
         )
-        object.__setattr__(
-            self, "rule_id", _text(self.rule_id, field_name="rule_id")
-        )
+        object.__setattr__(self, "rule_id", _text(self.rule_id, field_name="rule_id"))
         for name in ("expected_fact", "observed_fact", "summary"):
             object.__setattr__(
                 self,
@@ -1390,9 +1313,7 @@ class ContractCounterexample(_CheckContract):
         object.__setattr__(
             self,
             "authority_expires_at",
-            _timestamp(
-                self.authority_expires_at, field_name="authority_expires_at"
-            ),
+            _timestamp(self.authority_expires_at, field_name="authority_expires_at"),
         )
         object.__setattr__(
             self,
@@ -1416,17 +1337,12 @@ class ContractCounterexample(_CheckContract):
         )
         if self.evidence != CONTRACT_COUNTEREXAMPLE_EVIDENCE:
             raise ContractCheckerError(
-                "counterexample evidence must be "
-                f"{CONTRACT_COUNTEREXAMPLE_EVIDENCE!r}"
+                f"counterexample evidence must be {CONTRACT_COUNTEREXAMPLE_EVIDENCE!r}"
             )
         if self.call_path_id != self.binding.call_path_id:
-            raise ScopeMismatchError(
-                "counterexample call path must match its exact binding"
-            )
+            raise ScopeMismatchError("counterexample call path must match its exact binding")
         if self.conclusive and self.freshness is CacheFreshness.STALE:
-            raise StaleAuthorityError(
-                "a conclusive counterexample cannot have stale authority"
-            )
+            raise StaleAuthorityError("a conclusive counterexample cannot have stale authority")
         _bounded(self, artifact_name="contract counterexample")
 
     @property
@@ -1435,8 +1351,7 @@ class ContractCounterexample(_CheckContract):
             return CacheFreshness.STALE
         return (
             CacheFreshness.CURRENT
-            if _datetime(self.evaluated_at)
-            < _datetime(self.authority_expires_at)
+            if _datetime(self.evaluated_at) < _datetime(self.authority_expires_at)
             else CacheFreshness.STALE
         )
 
@@ -1515,9 +1430,7 @@ class ContractCounterexample(_CheckContract):
             call_path_id=payload.get("call_path_id", ""),
             artifact_ref=payload.get("artifact_ref", ""),
             conclusive=bool(payload.get("conclusive", True)),
-            evidence=payload.get(
-                "evidence", CONTRACT_COUNTEREXAMPLE_EVIDENCE
-            ),
+            evidence=payload.get("evidence", CONTRACT_COUNTEREXAMPLE_EVIDENCE),
         )
         _check_identity(
             payload,
@@ -1578,9 +1491,7 @@ class CodeProofObligation(_CheckContract):
             "observed_contract_id",
             "goal_id",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
         object.__setattr__(
             self,
             "evaluated_at",
@@ -1589,9 +1500,7 @@ class CodeProofObligation(_CheckContract):
         object.__setattr__(
             self,
             "authority_expires_at",
-            _timestamp(
-                self.authority_expires_at, field_name="authority_expires_at"
-            ),
+            _timestamp(self.authority_expires_at, field_name="authority_expires_at"),
         )
         for name in ("result_id", "counterexample_id", "primary_aspect"):
             object.__setattr__(
@@ -1618,13 +1527,9 @@ class CodeProofObligation(_CheckContract):
                 "CodeProofObligation requires complete exact binding dimensions"
             )
         if self.expected_contract_id != self.binding.expected_contract_id:
-            raise ScopeMismatchError(
-                "obligation expected_contract_id must match binding"
-            )
+            raise ScopeMismatchError("obligation expected_contract_id must match binding")
         if self.observed_contract_id != self.binding.observed_contract_id:
-            raise ScopeMismatchError(
-                "obligation observed_contract_id must match binding"
-            )
+            raise ScopeMismatchError("obligation observed_contract_id must match binding")
         if self.kind.conclusive and not self.binding.subject_matches:
             if not (
                 self.kind is ContractCheckResultKind.WITNESSED_MISMATCH
@@ -1635,13 +1540,9 @@ class CodeProofObligation(_CheckContract):
                     "subject binding unless the primary aspect is identity"
                 )
         if self.binding.cache_binding_freshness is CacheFreshness.STALE:
-            raise StaleAuthorityError(
-                "CodeProofObligation cannot bind a stale cache generation"
-            )
+            raise StaleAuthorityError("CodeProofObligation cannot bind a stale cache generation")
         if _datetime(self.evaluated_at) >= _datetime(self.authority_expires_at):
-            raise StaleAuthorityError(
-                "CodeProofObligation cannot bind an expired authority window"
-            )
+            raise StaleAuthorityError("CodeProofObligation cannot bind an expired authority window")
         _bounded(self, artifact_name="code proof obligation")
 
     @property
@@ -1719,9 +1620,7 @@ class CodeProofObligation(_CheckContract):
             result_id=payload.get("result_id", ""),
             counterexample_id=payload.get("counterexample_id", ""),
             primary_aspect=payload.get("primary_aspect", ""),
-            observation_layer=payload.get(
-                "observation_layer", ObservationLayer.SYMBOLIC
-            ),
+            observation_layer=payload.get("observation_layer", ObservationLayer.SYMBOLIC),
             evidence=payload.get("evidence", CONTRACT_CHECK_RESULT_EVIDENCE),
         )
         _check_identity(
@@ -1731,13 +1630,8 @@ class CodeProofObligation(_CheckContract):
             artifact_name="code proof obligation",
         )
         claimed_level = payload.get("claim_level")
-        if (
-            claimed_level is not None
-            and claimed_level != result.claim_level.value
-        ):
-            raise ForgedIdentityError(
-                "claim_level does not match result kind claim class"
-            )
+        if claimed_level is not None and claimed_level != result.claim_level.value:
+            raise ForgedIdentityError("claim_level does not match result kind claim class")
         return result
 
     @classmethod
@@ -1831,9 +1725,7 @@ class ContractCheckResult(_CheckContract):
         object.__setattr__(
             self,
             "authority_expires_at",
-            _timestamp(
-                self.authority_expires_at, field_name="authority_expires_at"
-            ),
+            _timestamp(self.authority_expires_at, field_name="authority_expires_at"),
         )
         if self.counterexample is not None:
             object.__setattr__(
@@ -1872,8 +1764,7 @@ class ContractCheckResult(_CheckContract):
         object.__setattr__(
             self,
             "checker_version",
-            _text(self.checker_version, field_name="checker_version")
-            or CHECKER_VERSION,
+            _text(self.checker_version, field_name="checker_version") or CHECKER_VERSION,
         )
         object.__setattr__(
             self,
@@ -1882,70 +1773,44 @@ class ContractCheckResult(_CheckContract):
         )
         if self.evidence != CONTRACT_CHECK_RESULT_EVIDENCE:
             raise ContractCheckerError(
-                "check result evidence must be "
-                f"{CONTRACT_CHECK_RESULT_EVIDENCE!r}"
+                f"check result evidence must be {CONTRACT_CHECK_RESULT_EVIDENCE!r}"
             )
         self._validate_kind_invariants()
         _bounded(self, artifact_name="contract check result")
 
     def _validate_kind_invariants(self) -> None:
         if self.call_path_id != self.binding.call_path_id:
-            raise ScopeMismatchError(
-                "check result call path must match its exact binding"
-            )
+            raise ScopeMismatchError("check result call path must match its exact binding")
         if self.checker_version != self.binding.checker_version:
-            raise ScopeMismatchError(
-                "check result checker version must match its exact binding"
-            )
+            raise ScopeMismatchError("check result checker version must match its exact binding")
         bound_cache_freshness = self.binding.cache_binding_freshness
         if (
             bound_cache_freshness is not CacheFreshness.UNKNOWN
             and self.cache_freshness is not bound_cache_freshness
         ):
-            raise StaleAuthorityError(
-                "cache freshness does not match the bound cache generations"
-            )
+            raise StaleAuthorityError("cache freshness does not match the bound cache generations")
         # Conclusive outcomes require complete exact-binding dimensions.
-        if (
-            self.kind.conclusive
-            and not self.binding.has_complete_binding_dimensions
-        ):
+        if self.kind.conclusive and not self.binding.has_complete_binding_dimensions:
             raise ScopeMismatchError(
                 f"{self.kind.value} requires complete repository, symbol, "
                 "interface, and policy identities on both sides"
             )
         if self.kind is ContractCheckResultKind.WITNESSED_MISMATCH:
             if self.counterexample is None:
-                raise ContractCheckerError(
-                    "witnessed_mismatch requires a counterexample"
-                )
+                raise ContractCheckerError("witnessed_mismatch requires a counterexample")
             if not self.counterexample.conclusive:
-                raise ContractCheckerError(
-                    "witnessed_mismatch counterexample must be conclusive"
-                )
+                raise ContractCheckerError("witnessed_mismatch counterexample must be conclusive")
             if self.counterexample.freshness is CacheFreshness.STALE:
-                raise StaleAuthorityError(
-                    "witnessed_mismatch cannot use a stale counterexample"
-                )
-            if (
-                self.counterexample.binding.binding_id
-                != self.binding.binding_id
-            ):
-                raise ContractCheckerError(
-                    "counterexample binding must match check result binding"
-                )
+                raise StaleAuthorityError("witnessed_mismatch cannot use a stale counterexample")
+            if self.counterexample.binding.binding_id != self.binding.binding_id:
+                raise ContractCheckerError("counterexample binding must match check result binding")
             if self.counterexample.call_path_id != self.call_path_id:
-                raise ScopeMismatchError(
-                    "counterexample call path must match check result"
-                )
+                raise ScopeMismatchError("counterexample call path must match check result")
             if (
                 self.counterexample.evaluated_at != self.evaluated_at
-                or self.counterexample.authority_expires_at
-                != self.authority_expires_at
+                or self.counterexample.authority_expires_at != self.authority_expires_at
             ):
-                raise StaleAuthorityError(
-                    "counterexample freshness window must match check result"
-                )
+                raise StaleAuthorityError("counterexample freshness window must match check result")
             # Non-identity contract_broken claims require shared subject binding.
             if (
                 self.counterexample.aspect is not SemanticAspect.IDENTITY
@@ -1956,14 +1821,10 @@ class ContractCheckResult(_CheckContract):
                     "repository, symbol, interface, and policy binding"
                 )
         elif self.counterexample is not None:
-            raise ContractCheckerError(
-                f"{self.kind.value} must not carry a counterexample"
-            )
+            raise ContractCheckerError(f"{self.kind.value} must not carry a counterexample")
         if self.kind is ContractCheckResultKind.PROVED_COMPATIBLE:
             if not self.binding.subject_matches:
-                raise ScopeMismatchError(
-                    "proved_compatible requires exact shared subject binding"
-                )
+                raise ScopeMismatchError("proved_compatible requires exact shared subject binding")
             for item in self.aspect_results:
                 if item.closed_rule and item.verdict.blocks_proved_compatible:
                     raise ContractCheckerError(
@@ -1975,21 +1836,16 @@ class ContractCheckResult(_CheckContract):
                     )
         if self.kind is ContractCheckResultKind.RUNTIME_WITNESS:
             if not self.binding.subject_matches:
-                raise ScopeMismatchError(
-                    "runtime_witness requires exact shared subject binding"
-                )
+                raise ScopeMismatchError("runtime_witness requires exact shared subject binding")
             for item in self.aspect_results:
                 if item.closed_rule and item.verdict.blocks_proved_compatible:
                     raise ContractCheckerError(
                         "runtime_witness cannot include blocking aspect verdicts"
                     )
         if self.kind is ContractCheckResultKind.UNKNOWN and not any(
-            item.verdict is AspectVerdict.UNKNOWN
-            for item in self.aspect_results
+            item.verdict is AspectVerdict.UNKNOWN for item in self.aspect_results
         ):
-            raise ContractCheckerError(
-                "unknown result requires an explicit unknown aspect verdict"
-            )
+            raise ContractCheckerError("unknown result requires an explicit unknown aspect verdict")
         if (
             self.kind is not ContractCheckResultKind.STALE
             and self.freshness is CacheFreshness.STALE
@@ -1999,9 +1855,7 @@ class ContractCheckResult(_CheckContract):
             )
         if self.kind is ContractCheckResultKind.STALE:
             if self.freshness is not CacheFreshness.STALE:
-                raise ContractCheckerError(
-                    "stale result requires stale cache or expired authority"
-                )
+                raise ContractCheckerError("stale result requires stale cache or expired authority")
         if self.kind is ContractCheckResultKind.TIMEOUT:
             if self.elapsed_ms < self.budget_ms and self.budget_ms > 0:
                 # Allow explicit timeout injection only when budget is zero
@@ -2017,9 +1871,7 @@ class ContractCheckResult(_CheckContract):
 
     @property
     def freshness(self) -> CacheFreshness:
-        if _datetime(self.evaluated_at) >= _datetime(
-            self.authority_expires_at
-        ):
+        if _datetime(self.evaluated_at) >= _datetime(self.authority_expires_at):
             return CacheFreshness.STALE
         if self.cache_freshness is CacheFreshness.STALE:
             return CacheFreshness.STALE
@@ -2030,9 +1882,7 @@ class ContractCheckResult(_CheckContract):
     @property
     def mismatch_aspects(self) -> tuple[SemanticAspect, ...]:
         return tuple(
-            item.aspect
-            for item in self.aspect_results
-            if item.verdict is AspectVerdict.MISMATCH
+            item.aspect for item in self.aspect_results if item.verdict is AspectVerdict.MISMATCH
         )
 
     @property
@@ -2062,9 +1912,7 @@ class ContractCheckResult(_CheckContract):
             "evaluated_at": self.evaluated_at,
             "authority_expires_at": self.authority_expires_at,
             "counterexample": (
-                None
-                if self.counterexample is None
-                else self.counterexample.to_dict()
+                None if self.counterexample is None else self.counterexample.to_dict()
             ),
             "call_path_id": self.call_path_id,
             "cache_freshness": self.cache_freshness.value,
@@ -2122,9 +1970,7 @@ class ContractCheckResult(_CheckContract):
             authority_expires_at=payload.get("authority_expires_at", ""),
             counterexample=payload.get("counterexample"),
             call_path_id=payload.get("call_path_id", ""),
-            cache_freshness=payload.get(
-                "cache_freshness", CacheFreshness.CURRENT
-            ),
+            cache_freshness=payload.get("cache_freshness", CacheFreshness.CURRENT),
             budget_ms=payload.get("budget_ms", DEFAULT_BUDGET_MS),
             elapsed_ms=payload.get("elapsed_ms", 0),
             checker_version=payload.get("checker_version", CHECKER_VERSION),
@@ -2137,13 +1983,8 @@ class ContractCheckResult(_CheckContract):
             artifact_name="contract check result",
         )
         claimed_level = payload.get("claim_level")
-        if (
-            claimed_level is not None
-            and claimed_level != result.claim_level.value
-        ):
-            raise ForgedIdentityError(
-                "claim_level does not match result kind claim class"
-            )
+        if claimed_level is not None and claimed_level != result.claim_level.value:
+            raise ForgedIdentityError("claim_level does not match result kind claim class")
         return result
 
 
@@ -2164,9 +2005,7 @@ class ContractCheckReport(_CheckContract):
 
     def __post_init__(self) -> None:
         for name in ("repository_id", "tree_id", "policy_revision"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
         object.__setattr__(
             self,
             "results",
@@ -2185,9 +2024,7 @@ class ContractCheckReport(_CheckContract):
         object.__setattr__(
             self,
             "authority_expires_at",
-            _timestamp(
-                self.authority_expires_at, field_name="authority_expires_at"
-            ),
+            _timestamp(self.authority_expires_at, field_name="authority_expires_at"),
         )
         object.__setattr__(
             self,
@@ -2202,8 +2039,7 @@ class ContractCheckReport(_CheckContract):
         object.__setattr__(
             self,
             "checker_version",
-            _text(self.checker_version, field_name="checker_version")
-            or CHECKER_VERSION,
+            _text(self.checker_version, field_name="checker_version") or CHECKER_VERSION,
         )
         for result in self.results:
             if (
@@ -2211,16 +2047,12 @@ class ContractCheckReport(_CheckContract):
                 or result.binding.tree_id != self.tree_id
                 or result.binding.policy_revision != self.policy_revision
             ):
-                raise ScopeMismatchError(
-                    "report results must match repository, tree, and policy"
-                )
+                raise ScopeMismatchError("report results must match repository, tree, and policy")
             if (
                 result.evaluated_at != self.evaluated_at
                 or result.authority_expires_at != self.authority_expires_at
             ):
-                raise StaleAuthorityError(
-                    "report results must match the report freshness window"
-                )
+                raise StaleAuthorityError("report results must match the report freshness window")
         _bounded(self, maximum=MAX_RECORD_BYTES * 4, artifact_name="check report")
 
     @property
@@ -2286,9 +2118,7 @@ class ContractCheckReport(_CheckContract):
         )
         claimed = payload.get("counts_by_kind")
         if claimed is not None and claimed != result.counts_by_kind:
-            raise ForgedIdentityError(
-                "counts_by_kind does not match derived state"
-            )
+            raise ForgedIdentityError("counts_by_kind does not match derived state")
         return result
 
 
@@ -2325,10 +2155,7 @@ def _unsupported_or_unknown(
     *,
     rule_id: str,
 ) -> AspectCheckResult | None:
-    if (
-        expected_status is SupportStatus.UNSUPPORTED
-        or observed_status is SupportStatus.UNSUPPORTED
-    ):
+    if expected_status is SupportStatus.UNSUPPORTED or observed_status is SupportStatus.UNSUPPORTED:
         return _aspect_result(
             aspect,
             AspectVerdict.UNSUPPORTED,
@@ -2338,10 +2165,7 @@ def _unsupported_or_unknown(
             summary=f"{aspect.value} marked unsupported",
             closed_rule=True,
         )
-    if (
-        expected_status is SupportStatus.UNKNOWN
-        or observed_status is SupportStatus.UNKNOWN
-    ):
+    if expected_status is SupportStatus.UNKNOWN or observed_status is SupportStatus.UNKNOWN:
         return _aspect_result(
             aspect,
             AspectVerdict.UNKNOWN,
@@ -2467,9 +2291,7 @@ def check_inputs(
                 rule_id=rule,
                 expected_fact=_fact(required),
                 observed_fact=_fact(provided),
-                summary=(
-                    f"required input {name!r} observed as optional"
-                ),
+                summary=(f"required input {name!r} observed as optional"),
             )
         if not provided.is_input_compatible_with(required):
             return _aspect_result(
@@ -2522,9 +2344,7 @@ def check_outputs(
             observed_fact=_fact(observed.returns),
             summary="return type is a structural subtype of expectation",
         )
-    relation = compare_type_shapes(
-        observed.returns.type_shape, expected.returns.type_shape
-    )
+    relation = compare_type_shapes(observed.returns.type_shape, expected.returns.type_shape)
     return _aspect_result(
         SemanticAspect.OUTPUTS,
         AspectVerdict.MISMATCH,
@@ -2557,9 +2377,7 @@ def check_errors(
             # observation may not have exercised the error path.
             continue
         observed_err = observed_by_name[name]
-        if expected_err.code and observed_err.code and (
-            expected_err.code != observed_err.code
-        ):
+        if expected_err.code and observed_err.code and (expected_err.code != observed_err.code):
             return _aspect_result(
                 SemanticAspect.ERRORS,
                 AspectVerdict.MISMATCH,
@@ -2662,9 +2480,7 @@ def check_side_effects(
 
     rule = "rule:side-effects/required-forbidden@1"
     expected_required = [
-        effect
-        for effect in expected.side_effects
-        if effect.polarity is EffectPolarity.REQUIRED
+        effect for effect in expected.side_effects if effect.polarity is EffectPolarity.REQUIRED
     ]
     expected_forbidden = {
         effect.effect_kind
@@ -2678,9 +2494,7 @@ def check_side_effects(
         in {EffectPolarity.ALLOWED, EffectPolarity.REQUIRED, EffectPolarity.OBSERVED}
     }
     observed_effects = [
-        effect
-        for effect in observed.side_effects
-        if effect.effect_kind is not EffectKind.NONE
+        effect for effect in observed.side_effects if effect.effect_kind is not EffectKind.NONE
     ]
     # Required effects must appear (observed or allowed polarity).
     observed_kinds = {effect.effect_kind for effect in observed_effects}
@@ -2692,9 +2506,7 @@ def check_side_effects(
                 rule_id=rule,
                 expected_fact=_fact(required),
                 observed_fact="omitted",
-                summary=(
-                    f"required effect {required.effect_kind.value} is omitted"
-                ),
+                summary=(f"required effect {required.effect_kind.value} is omitted"),
             )
     # Forbidden effects must not be observed.
     for effect in observed_effects:
@@ -2705,9 +2517,7 @@ def check_side_effects(
                 rule_id=rule,
                 expected_fact=f"forbidden:{effect.effect_kind.value}",
                 observed_fact=_fact(effect),
-                summary=(
-                    f"forbidden effect {effect.effect_kind.value} was observed"
-                ),
+                summary=(f"forbidden effect {effect.effect_kind.value} was observed"),
             )
         if expected_allowed and effect.effect_kind not in expected_allowed:
             # Unknown extra effect under a non-empty allowance set is ambiguous
@@ -2725,9 +2535,7 @@ def check_side_effects(
                 SemanticAspect.SIDE_EFFECTS,
                 AspectVerdict.AMBIGUOUS,
                 rule_id=rule,
-                expected_fact=_fact(
-                    sorted(item.value for item in expected_allowed)
-                ),
+                expected_fact=_fact(sorted(item.value for item in expected_allowed)),
                 observed_fact=_fact(effect),
                 summary=(
                     f"observed effect {effect.effect_kind.value} is outside "
@@ -2755,9 +2563,7 @@ def check_side_effects(
                 rule_id=rule,
                 expected_fact=_fact(matching_allowances),
                 observed_fact=_fact(effect),
-                summary=(
-                    f"effect {effect.effect_kind.value} target is not allowed"
-                ),
+                summary=(f"effect {effect.effect_kind.value} target is not allowed"),
             )
     return _aspect_result(
         SemanticAspect.SIDE_EFFECTS,
@@ -2781,9 +2587,7 @@ def check_capabilities(
             rule_id=rule,
             summary="no expected capabilities",
         )
-    observed_names = {
-        item.capability_name: item for item in observed.capabilities
-    }
+    observed_names = {item.capability_name: item for item in observed.capabilities}
     for item in expected.capabilities:
         if item.mode is CapabilityMode.REQUIRED:
             if item.capability_name not in observed_names:
@@ -2793,9 +2597,7 @@ def check_capabilities(
                     rule_id=rule,
                     expected_fact=_fact(item),
                     observed_fact="missing",
-                    summary=(
-                        f"required capability {item.capability_name!r} missing"
-                    ),
+                    summary=(f"required capability {item.capability_name!r} missing"),
                 )
             observed_item = observed_names[item.capability_name]
             if observed_item.mode is CapabilityMode.FORBIDDEN:
@@ -2806,8 +2608,7 @@ def check_capabilities(
                     expected_fact=_fact(item),
                     observed_fact=_fact(observed_item),
                     summary=(
-                        f"required capability {item.capability_name!r} "
-                        "is forbidden in observation"
+                        f"required capability {item.capability_name!r} is forbidden in observation"
                     ),
                 )
         if item.mode is CapabilityMode.FORBIDDEN:
@@ -2824,10 +2625,7 @@ def check_capabilities(
                     rule_id=rule,
                     expected_fact=_fact(item),
                     observed_fact=_fact(observed_item),
-                    summary=(
-                        f"forbidden capability {item.capability_name!r} "
-                        "is present"
-                    ),
+                    summary=(f"forbidden capability {item.capability_name!r} is present"),
                 )
     return _aspect_result(
         SemanticAspect.CAPABILITIES,
@@ -3310,8 +3108,7 @@ def minimal_counterexample(
         expected_fact=aspect_result.expected_fact or "null",
         observed_fact=aspect_result.observed_fact or "null",
         witness_steps=tuple(steps),
-        summary=aspect_result.summary
-        or f"{aspect_result.aspect.value} mismatch",
+        summary=aspect_result.summary or f"{aspect_result.aspect.value} mismatch",
         evaluated_at=evaluated_at,
         authority_expires_at=authority_expires_at,
         call_path_id="" if call_path is None else call_path.path_id,
@@ -3347,9 +3144,7 @@ def _aggregate_kind(
         return ContractCheckResultKind.STALE
     if _datetime(evaluated_at) >= _datetime(authority_expires_at):
         return ContractCheckResultKind.STALE
-    if force_timeout or (
-        budget_ms >= 0 and elapsed_ms >= budget_ms and budget_ms > 0
-    ):
+    if force_timeout or (budget_ms >= 0 and elapsed_ms >= budget_ms and budget_ms > 0):
         return ContractCheckResultKind.TIMEOUT
     if force_timeout and budget_ms == 0:
         return ContractCheckResultKind.TIMEOUT
@@ -3456,9 +3251,7 @@ def compare_contracts(
         authority_expires = (
             expires.isoformat().replace("+00:00", "Z")
             if expires.tzinfo
-            else expires.replace(tzinfo=timezone.utc)
-            .isoformat()
-            .replace("+00:00", "Z")
+            else expires.replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
         )
     else:
         authority_expires = authority_expires_at
@@ -3482,29 +3275,17 @@ def compare_contracts(
             raise ScopeMismatchError(
                 "call path must share repository, tree, and policy with contracts"
             )
-        if (
-            call_path.entry_interface
-            and call_path.entry_interface
-            not in {
-                expected.interface.interface_name,
-                expected.interface.interface_id,
-            }
-        ):
-            raise ScopeMismatchError(
-                "call path entry interface must match the expected interface"
-            )
-        if (
-            call_path.exit_symbol
-            and call_path.exit_symbol
-            not in {
-                expected.symbol.symbol_name,
-                expected.symbol.qualified_name,
-                expected.symbol.symbol_id,
-            }
-        ):
-            raise ScopeMismatchError(
-                "call path exit symbol must match the expected symbol"
-            )
+        if call_path.entry_interface and call_path.entry_interface not in {
+            expected.interface.interface_name,
+            expected.interface.interface_id,
+        }:
+            raise ScopeMismatchError("call path entry interface must match the expected interface")
+        if call_path.exit_symbol and call_path.exit_symbol not in {
+            expected.symbol.symbol_name,
+            expected.symbol.qualified_name,
+            expected.symbol.symbol_id,
+        }:
+            raise ScopeMismatchError("call path exit symbol must match the expected symbol")
 
     binding = make_binding(
         expected,
@@ -3538,9 +3319,9 @@ def compare_contracts(
         )
 
     # Unsupported residual clauses from either side.
-    unsupported_aspects = {
-        item.aspect for item in expected.unsupported
-    } | {item.aspect for item in observed.unsupported}
+    unsupported_aspects = {item.aspect for item in expected.unsupported} | {
+        item.aspect for item in observed.unsupported
+    }
 
     for aspect in selected:
         if aspect is SemanticAspect.SOURCE_PRECEDENCE:
@@ -3591,28 +3372,21 @@ def compare_contracts(
             )
             continue
         # Skip duplicate inputs mismatch if path traversal already recorded.
-        if (
-            aspect is SemanticAspect.INPUTS
-            and any(
-                item.aspect is SemanticAspect.INPUTS
-                and item.verdict is AspectVerdict.MISMATCH
-                for item in aspect_results
-            )
+        if aspect is SemanticAspect.INPUTS and any(
+            item.aspect is SemanticAspect.INPUTS and item.verdict is AspectVerdict.MISMATCH
+            for item in aspect_results
         ):
             continue
         aspect_results.append(checker(expected, observed))
 
     # Stable order by closed aspect order then residual.
     order = {aspect: index for index, aspect in enumerate(CLOSED_SUPPORTED_ASPECTS)}
-    aspect_results.sort(
-        key=lambda item: (order.get(item.aspect, 1_000), item.rule_id)
-    )
+    aspect_results.sort(key=lambda item: (order.get(item.aspect, 1_000), item.rule_id))
 
     if require_same_subject and not _binds_exact_subject(expected, observed):
         # Ensure identity mismatch is present and primary.
         if not any(
-            item.aspect is SemanticAspect.IDENTITY
-            and item.verdict is AspectVerdict.MISMATCH
+            item.aspect is SemanticAspect.IDENTITY and item.verdict is AspectVerdict.MISMATCH
             for item in aspect_results
         ):
             aspect_results.insert(0, check_identity(expected, observed))
@@ -3639,11 +3413,7 @@ def compare_contracts(
         primary = _select_primary_mismatch(aspect_results)
         if primary is None and call_path is not None and call_path.has_path_traversal:
             primary = next(
-                (
-                    item
-                    for item in aspect_results
-                    if item.verdict is AspectVerdict.MISMATCH
-                ),
+                (item for item in aspect_results if item.verdict is AspectVerdict.MISMATCH),
                 None,
             )
         if primary is None:
@@ -3662,14 +3432,11 @@ def compare_contracts(
         summary = "all closed supported rules proved compatible"
     elif kind is ContractCheckResultKind.RUNTIME_WITNESS:
         summary = (
-            "hermetic runtime observation confirms declared behavior under "
-            "exact subject binding"
+            "hermetic runtime observation confirms declared behavior under exact subject binding"
         )
     elif kind is ContractCheckResultKind.WITNESSED_MISMATCH:
         summary = (
-            counterexample.summary
-            if counterexample is not None
-            else "conclusive contract mismatch"
+            counterexample.summary if counterexample is not None else "conclusive contract mismatch"
         )
     elif kind is ContractCheckResultKind.AMBIGUOUS:
         summary = "contract comparison is ambiguous under declared path/evidence"
@@ -3741,12 +3508,8 @@ class ContractChecker:
         checker_version: str = CHECKER_VERSION,
     ) -> None:
         self.budget_ms = _integer(budget_ms, field_name="budget_ms", minimum=0)
-        self.aspects = (
-            tuple(aspects) if aspects is not None else CLOSED_SUPPORTED_ASPECTS
-        )
-        self.checker_version = _text(
-            checker_version, field_name="checker_version"
-        )
+        self.aspects = tuple(aspects) if aspects is not None else CLOSED_SUPPORTED_ASPECTS
+        self.checker_version = _text(checker_version, field_name="checker_version")
 
     def check(
         self,
@@ -3804,9 +3567,7 @@ class ContractChecker:
         # Pair expected/observed by subject binding.
         for expected in bundle.expected:
             matched = [
-                observed
-                for observed in bundle.observed
-                if observed.binds_same_subject(expected)
+                observed for observed in bundle.observed if observed.binds_same_subject(expected)
             ]
             if not matched:
                 # No observation: incomplete identity-style result via a
@@ -3856,14 +3617,8 @@ class ContractChecker:
         counts = {kind.value: 0 for kind in ContractCheckResultKind}
         for item in results:
             counts[item.kind.value] = counts.get(item.kind.value, 0) + 1
-        summary = (
-            "checked "
-            f"{len(results)} pair(s): "
-            + ", ".join(
-                f"{name}={count}"
-                for name, count in sorted(counts.items())
-                if count
-            )
+        summary = f"checked {len(results)} pair(s): " + ", ".join(
+            f"{name}={count}" for name, count in sorted(counts.items()) if count
         )
         return ContractCheckReport(
             repository_id=bundle.repository_id,
@@ -3883,10 +3638,7 @@ class ContractChecker:
         paths: Sequence[CallPath],
         **kwargs: Any,
     ) -> tuple[ContractCheckResult, ...]:
-        results = [
-            self.check(expected, observed, call_path=path, **kwargs)
-            for path in paths
-        ]
+        results = [self.check(expected, observed, call_path=path, **kwargs) for path in paths]
         return tuple(sorted(results, key=lambda item: item.result_id))
 
 

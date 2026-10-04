@@ -67,9 +67,7 @@ def _now() -> datetime:
 
 
 def _rfc(dt: datetime) -> str:
-    return dt.astimezone(timezone.utc).isoformat(timespec="microseconds").replace(
-        "+00:00", "Z"
-    )
+    return dt.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 @pytest.fixture(autouse=True)
@@ -240,9 +238,7 @@ def _headroom_available(snap: UsageSnapshot, dimension: UsageDimension) -> Optio
 
 
 def test_usage_routing_requirement_id_exported() -> None:
-    assert USAGE_ROUTING_REQUIREMENT_ID == (
-        "requirement:embeddings-router-usage-routing.v1"
-    )
+    assert USAGE_ROUTING_REQUIREMENT_ID == ("requirement:embeddings-router-usage-routing.v1")
     assert embeddings_router.EMBEDDING_USAGE_OPERATION == "embedding.generate"
 
 
@@ -281,12 +277,7 @@ def test_embedding_fallback_compatible_rejects_dimension_drift() -> None:
     bad = dict(origin, embedding_dimensions="384")
     assert embedding_fallback_compatible(origin, ok) is True
     assert embedding_fallback_compatible(origin, bad) is False
-    assert (
-        embedding_fallback_compatible(
-            origin, dict(origin, normalization="l2")
-        )
-        is False
-    )
+    assert embedding_fallback_compatible(origin, dict(origin, normalization="l2")) is False
 
 
 # ---------------------------------------------------------------------------
@@ -436,9 +427,7 @@ def test_enforce_denies_when_capacity_exhausted() -> None:
             ["blocked"],
             provider_instance=provider,
             usage_coordinator=coord,
-            usage_policy=RoutingPolicy(
-                mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE
-            ),
+            usage_policy=RoutingPolicy(mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE),
             usage_candidates=[cand],
             usage_provider_by_binding={cand.binding_id: provider},
             usage_request=UsageRoutingRequest(
@@ -523,9 +512,7 @@ def test_physical_sub_batches_settle_exactly_once() -> None:
     clock = FakeClock(_now())
     coord = _coord(clock)
     scope = _scope("batch")
-    _configure_embedding_limits(
-        coord, scope, requests=20, embedding_inputs=100, batch_items=100
-    )
+    _configure_embedding_limits(coord, scope, requests=20, embedding_inputs=100, batch_items=100)
     cand = _candidate(provider_key="batch", scope=scope)
     provider = _CountingProvider("batch")
 
@@ -593,9 +580,7 @@ def test_partial_batch_preserves_completed_member_usage() -> None:
             max_workers=1,
             provider_instance=provider,
             usage_coordinator=coord,
-            usage_policy=RoutingPolicy(
-                mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE
-            ),
+            usage_policy=RoutingPolicy(mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE),
             usage_candidates=[cand],
             usage_provider_by_binding={cand.binding_id: provider},
             usage_request=UsageRoutingRequest(
@@ -634,9 +619,7 @@ def test_cancel_before_dispatch_does_not_charge() -> None:
             ["never"],
             provider_instance=provider,
             usage_coordinator=coord,
-            usage_policy=RoutingPolicy(
-                mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE
-            ),
+            usage_policy=RoutingPolicy(mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE),
             usage_candidates=[cand],
             usage_provider_by_binding={cand.binding_id: provider},
             usage_request=UsageRoutingRequest(
@@ -708,12 +691,8 @@ def test_compatible_fallback_advances_on_capacity_error() -> None:
         "locality": "remote",
         "embedding_dimensions": "2",
     }
-    cand_a = _candidate(
-        provider_key="fb-a", scope=scope_a, score=50, labels=dict(labels)
-    )
-    cand_b = _candidate(
-        provider_key="fb-b", scope=scope_b, score=10, labels=dict(labels)
-    )
+    cand_a = _candidate(provider_key="fb-a", scope=scope_a, score=50, labels=dict(labels))
+    cand_b = _candidate(provider_key="fb-b", scope=scope_b, score=10, labels=dict(labels))
     provider_a = _CountingProvider(
         "fb-a",
         fail_times=1,
@@ -827,9 +806,7 @@ def test_output_shape_validation_remains_authoritative() -> None:
             ["a", "b"],
             provider_instance=_BadShape(),  # type: ignore[arg-type]
             usage_coordinator=coord,
-            usage_policy=RoutingPolicy(
-                mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE
-            ),
+            usage_policy=RoutingPolicy(mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE),
             usage_candidates=[cand],
             usage_provider_by_binding={cand.binding_id: _BadShape()},  # type: ignore[dict-item]
             usage_request=UsageRoutingRequest(

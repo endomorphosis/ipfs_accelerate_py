@@ -26,9 +26,7 @@ from ..prompt.prompt_workflow import (
 )
 
 
-RECOVERY_DIAGNOSTIC_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/recovery-diagnostic@1"
-)
+RECOVERY_DIAGNOSTIC_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/recovery-diagnostic@1"
 RECOVERY_DIAGNOSTIC_REQUIREMENT_ID: Final = (
     "asi-155:unified-incident-diagnosis-and-programmatic-recovery"
 )
@@ -129,9 +127,7 @@ class RecoveryDiagnosticLimits:
         ):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-                raise RecoveryDiagnosticError(
-                    f"{name} must be a positive integer"
-                )
+                raise RecoveryDiagnosticError(f"{name} must be a positive integer")
 
 
 def _bounded_json(
@@ -155,9 +151,7 @@ def _bounded_json(
             return item
         if isinstance(item, float):
             if not (item == item and abs(item) != float("inf")):
-                raise RecoveryDiagnosticError(
-                    f"{name} contains a non-finite number"
-                )
+                raise RecoveryDiagnosticError(f"{name} contains a non-finite number")
             return item
         if isinstance(item, Enum):
             return item.value
@@ -179,13 +173,9 @@ def _bounded_json(
                     continue
                 result[key] = visit(item[raw_key], depth + 1, key)
             return result
-        if isinstance(item, Sequence) and not isinstance(
-            item, (str, bytes, bytearray, memoryview)
-        ):
+        if isinstance(item, Sequence) and not isinstance(item, (str, bytes, bytearray, memoryview)):
             return [visit(member, depth + 1, key_name) for member in item]
-        raise RecoveryDiagnosticError(
-            f"{name} contains unsupported type {type(item).__name__}"
-        )
+        raise RecoveryDiagnosticError(f"{name} contains unsupported type {type(item).__name__}")
 
     result = visit(value, 0)
     try:
@@ -210,9 +200,7 @@ def _semantic(value: Any) -> Any:
             for key, member in sorted(value.items(), key=lambda pair: str(pair[0]))
             if str(key).lower().replace("-", "_") not in _VOLATILE_KEYS
         }
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         return [_semantic(member) for member in value]
     return value
 
@@ -221,15 +209,8 @@ def _deep_freeze(value: Any) -> Any:
     """Make CID-bearing diagnostic values recursively immutable."""
 
     if isinstance(value, Mapping):
-        return MappingProxyType(
-            {
-                str(key): _deep_freeze(member)
-                for key, member in value.items()
-            }
-        )
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray, memoryview)
-    ):
+        return MappingProxyType({str(key): _deep_freeze(member) for key, member in value.items()})
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview)):
         return tuple(_deep_freeze(member) for member in value)
     return value
 
@@ -239,37 +220,32 @@ def _truthy(record: Mapping[str, Any], *names: str) -> bool:
 
 
 def _state(record: Mapping[str, Any]) -> str:
-    return str(
-        record.get("state")
-        or record.get("status")
-        or record.get("outcome")
-        or ""
-    ).strip().lower()
+    return (
+        str(record.get("state") or record.get("status") or record.get("outcome") or "")
+        .strip()
+        .lower()
+    )
 
 
 def _failed(record: Mapping[str, Any]) -> bool:
     state = _state(record)
-    return (
-        _truthy(record, "failed", "fault", "unhealthy", "unavailable", "corrupt")
-        or state
-        in {
-            "blocked",
-            "corrupt",
-            "dead",
-            "error",
-            "expired",
-            "failed",
-            "faulted",
-            "interrupted",
-            "lost",
-            "missing",
-            "offline",
-            "stalled",
-            "timed_out",
-            "unavailable",
-            "unhealthy",
-        }
-    )
+    return _truthy(record, "failed", "fault", "unhealthy", "unavailable", "corrupt") or state in {
+        "blocked",
+        "corrupt",
+        "dead",
+        "error",
+        "expired",
+        "failed",
+        "faulted",
+        "interrupted",
+        "lost",
+        "missing",
+        "offline",
+        "stalled",
+        "timed_out",
+        "unavailable",
+        "unhealthy",
+    }
 
 
 def _explicitly_false(record: Mapping[str, Any], *names: str) -> bool:
@@ -277,10 +253,13 @@ def _explicitly_false(record: Mapping[str, Any], *names: str) -> bool:
 
 
 def _healthy(record: Mapping[str, Any]) -> bool:
-    return (
-        _truthy(record, "alive", "healthy", "ok", "ready", "running")
-        or _state(record) in {"alive", "healthy", "ok", "ready", "running"}
-    )
+    return _truthy(record, "alive", "healthy", "ok", "ready", "running") or _state(record) in {
+        "alive",
+        "healthy",
+        "ok",
+        "ready",
+        "running",
+    }
 
 
 def _stale(record: Mapping[str, Any]) -> bool:
@@ -291,11 +270,7 @@ def _stale(record: Mapping[str, Any]) -> bool:
 
 
 def _more_than_one(value: Any) -> bool:
-    return (
-        isinstance(value, int)
-        and not isinstance(value, bool)
-        and value > 1
-    )
+    return isinstance(value, int) and not isinstance(value, bool) and value > 1
 
 
 @dataclass(frozen=True)
@@ -315,17 +290,11 @@ class RecoveryEvidence:
 
     def __post_init__(self) -> None:
         if not isinstance(self.kind, RecoveryEvidenceKind):
-            object.__setattr__(
-                self, "kind", RecoveryEvidenceKind(str(self.kind))
-            )
+            object.__setattr__(self, "kind", RecoveryEvidenceKind(str(self.kind)))
         if not isinstance(self.value, Mapping):
             raise RecoveryDiagnosticError("evidence value must be a mapping")
-        frozen = _bounded_json(
-            self.value, limits=self._limits, name=f"{self.kind.value} evidence"
-        )
-        object.__setattr__(
-            self, "value", _deep_freeze(frozen)
-        )
+        frozen = _bounded_json(self.value, limits=self._limits, name=f"{self.kind.value} evidence")
+        object.__setattr__(self, "value", _deep_freeze(frozen))
         target = str(self.target_id or "").strip()
         if "\x00" in target:
             raise RecoveryDiagnosticError("target_id contains NUL")
@@ -335,9 +304,7 @@ class RecoveryEvidence:
             or not isinstance(self.observed_at_ms, int)
             or self.observed_at_ms < 0
         ):
-            raise RecoveryDiagnosticError(
-                "observed_at_ms must be a nonnegative integer"
-            )
+            raise RecoveryDiagnosticError("observed_at_ms must be a nonnegative integer")
         expected = prompt_workflow_cid(self.semantic_record())
         if self.evidence_cid and self.evidence_cid != expected:
             raise RecoveryDiagnosticError("evidence CID does not match content")
@@ -387,19 +354,15 @@ class RecoveryDiagnosis:
     def health(self) -> Mapping[str, Any]:
         return self.incident.health
 
-    def evidence_for(
-        self, kind: RecoveryEvidenceKind | str
-    ) -> tuple[RecoveryEvidence, ...]:
+    def evidence_for(self, kind: RecoveryEvidenceKind | str) -> tuple[RecoveryEvidence, ...]:
         selected = (
-            kind
-            if isinstance(kind, RecoveryEvidenceKind)
-            else RecoveryEvidenceKind(str(kind))
+            kind if isinstance(kind, RecoveryEvidenceKind) else RecoveryEvidenceKind(str(kind))
         )
         return tuple(item for item in self.evidence if item.kind is selected)
 
 
 def _classify(
-    records: Mapping[RecoveryEvidenceKind, tuple[RecoveryEvidence, ...]]
+    records: Mapping[RecoveryEvidenceKind, tuple[RecoveryEvidence, ...]],
 ) -> tuple[IncidentKind, tuple[str, ...], bool, bool]:
     def values(kind: RecoveryEvidenceKind) -> tuple[Mapping[str, Any], ...]:
         return tuple(item.value for item in records.get(kind, ()))
@@ -428,13 +391,10 @@ def _classify(
     ):
         candidates.append((IncidentKind.SPLIT_BRAIN, "multiple_live_owners"))
     if any(
-        _truthy(item, "corrupt", "digest_mismatch", "integrity_failed")
-        or _failed(item)
+        _truthy(item, "corrupt", "digest_mismatch", "integrity_failed") or _failed(item)
         for item in source
     ):
-        candidates.append(
-            (IncidentKind.CORRUPT_TASK_SOURCE, "task_source_integrity_failed")
-        )
+        candidates.append((IncidentKind.CORRUPT_TASK_SOURCE, "task_source_integrity_failed"))
     if any(
         _truthy(
             item,
@@ -443,30 +403,23 @@ def _classify(
             "insufficient_space",
             "read_only",
         )
-        or _state(item)
-        in {"full", "exhausted", "insufficient_space", "read_only"}
+        or _state(item) in {"full", "exhausted", "insufficient_space", "read_only"}
         for item in disk
     ):
-        candidates.append(
-            (IncidentKind.RESOURCE_EXHAUSTION, "disk_resource_exhausted")
-        )
+        candidates.append((IncidentKind.RESOURCE_EXHAUSTION, "disk_resource_exhausted"))
     if any(
-        _truthy(item, "dirty", "conflicted")
-        or _state(item) in {"dirty", "conflicted"}
+        _truthy(item, "dirty", "conflicted") or _state(item) in {"dirty", "conflicted"}
         for item in worktree
     ):
         candidates.append((IncidentKind.DIRTY_WORKTREE, "worktree_dirty"))
     if any(_failed(item) for item in merge):
         candidates.append((IncidentKind.MERGE_FAILURE, "merge_failed"))
     if any(_failed(item) for item in validation):
-        candidates.append(
-            (IncidentKind.VALIDATION_FAILURE, "validation_failed")
-        )
+        candidates.append((IncidentKind.VALIDATION_FAILURE, "validation_failed"))
     if any(_stale(item) for item in lease):
         candidates.append((IncidentKind.STALE_LEASE, "lease_expired"))
     if any(
-        _truthy(item, "orphaned")
-        or (_stale(item) and not _truthy(item, "owner_live"))
+        _truthy(item, "orphaned") or (_stale(item) and not _truthy(item, "owner_live"))
         for item in lock
     ):
         candidates.append((IncidentKind.ORPHANED_LOCK, "lock_orphaned"))
@@ -481,9 +434,7 @@ def _classify(
     ):
         candidates.append((IncidentKind.STALE_HEARTBEAT, "progress_signal_stale"))
     if any(_failed(item) for item in provider):
-        candidates.append(
-            (IncidentKind.PROVIDER_UNAVAILABLE, "provider_unavailable")
-        )
+        candidates.append((IncidentKind.PROVIDER_UNAVAILABLE, "provider_unavailable"))
     if any(
         _truthy(
             item,
@@ -494,19 +445,15 @@ def _classify(
         or _state(item) == "stale_lifecycle"
         for item in status
     ):
-        candidates.append(
-            (IncidentKind.STALE_LIFECYCLE, "lifecycle_projection_stale")
-        )
+        candidates.append((IncidentKind.STALE_LIFECYCLE, "lifecycle_projection_stale"))
     if any(
-        _failed(item)
-        or _explicitly_false(item, "alive", "healthy", "ok", "ready")
+        _failed(item) or _explicitly_false(item, "alive", "healthy", "ok", "ready")
         for item in process + health + task
     ):
         candidates.append((IncidentKind.LANE_FAILURE, "live_lane_fault"))
 
     explicitly_stale_projection = any(
-        _truthy(item, "projection_stale", "stale_projection")
-        or _state(item) == "stale_projection"
+        _truthy(item, "projection_stale", "stale_projection") or _state(item) == "stale_projection"
         for item in status + health
     )
     live_state_healthy = (
@@ -514,11 +461,7 @@ def _classify(
         and any(_healthy(item) for item in health)
         and (
             not heartbeat
-            or any(
-                _healthy(item)
-                or _state(item) in {"current", "fresh"}
-                for item in heartbeat
-            )
+            or any(_healthy(item) or _state(item) in {"current", "fresh"} for item in heartbeat)
         )
     )
     projection_stale = explicitly_stale_projection or (
@@ -526,9 +469,7 @@ def _classify(
     )
     if projection_stale and live_state_healthy:
         candidates = [
-            candidate
-            for candidate in candidates
-            if candidate[0] is not IncidentKind.LANE_FAILURE
+            candidate for candidate in candidates if candidate[0] is not IncidentKind.LANE_FAILURE
         ]
     live_signal_fault = bool(candidates)
     if projection_stale and not live_signal_fault:
@@ -540,9 +481,7 @@ def _classify(
         )
     if candidates:
         selected = candidates[0][0]
-        reasons = tuple(
-            sorted({reason for kind, reason in candidates if kind is selected})
-        )
+        reasons = tuple(sorted({reason for kind, reason in candidates if kind is selected}))
         return selected, reasons, True, False
     return IncidentKind.UNKNOWN, ("no_supported_fault_signal",), False, False
 
@@ -571,9 +510,7 @@ def _coerce_items(
         )
     if isinstance(raw, Mapping):
         raw_items: Sequence[Any] = (raw,)
-    elif isinstance(raw, Sequence) and not isinstance(
-        raw, (str, bytes, bytearray, memoryview)
-    ):
+    elif isinstance(raw, Sequence) and not isinstance(raw, (str, bytes, bytearray, memoryview)):
         raw_items = raw
     else:
         raise RecoveryDiagnosticError(f"{kind.value} evidence must be a mapping")
@@ -581,9 +518,7 @@ def _coerce_items(
     for raw_item in raw_items:
         if isinstance(raw_item, RecoveryEvidence):
             if raw_item.kind is not kind:
-                raise RecoveryDiagnosticError(
-                    "evidence kind does not match its slot"
-                )
+                raise RecoveryDiagnosticError("evidence kind does not match its slot")
             item = RecoveryEvidence(
                 kind=raw_item.kind,
                 value=raw_item.value,
@@ -594,9 +529,7 @@ def _coerce_items(
             )
         else:
             if not isinstance(raw_item, Mapping):
-                raise RecoveryDiagnosticError(
-                    f"{kind.value} evidence item must be a mapping"
-                )
+                raise RecoveryDiagnosticError(f"{kind.value} evidence item must be a mapping")
             target = ""
             for key in _IDENTITY_KEYS:
                 if raw_item.get(key):
@@ -647,9 +580,7 @@ def diagnose_supervisor_incident(
         or not isinstance(observed_at_ms, int)
         or observed_at_ms < 0
     ):
-        raise RecoveryDiagnosticError(
-            "observed_at_ms must be a nonnegative integer"
-        )
+        raise RecoveryDiagnosticError("observed_at_ms must be a nonnegative integer")
     if len(prior_actions) > selected_limits.max_prior_actions:
         raise RecoveryDiagnosticError("prior actions exceed bound")
     inputs = {
@@ -701,9 +632,7 @@ def diagnose_supervisor_incident(
         allow_nan=False,
     ).encode("utf-8")
     if len(aggregate_payload) > selected_limits.max_serialized_bytes:
-        raise RecoveryDiagnosticError(
-            "aggregate diagnostic evidence exceeds serialized byte bound"
-        )
+        raise RecoveryDiagnosticError("aggregate diagnostic evidence exceeds serialized byte bound")
 
     kind, reasons, live_fault, stale_projection = _classify(grouped)
     target_kinds = {
@@ -729,17 +658,11 @@ def diagnose_supervisor_incident(
             RecoveryEvidenceKind.TASK,
         },
         IncidentKind.DIRTY_WORKTREE: {RecoveryEvidenceKind.WORKTREE},
-        IncidentKind.VALIDATION_FAILURE: {
-            RecoveryEvidenceKind.VALIDATION
-        },
+        IncidentKind.VALIDATION_FAILURE: {RecoveryEvidenceKind.VALIDATION},
         IncidentKind.MERGE_FAILURE: {RecoveryEvidenceKind.MERGE},
-        IncidentKind.CORRUPT_TASK_SOURCE: {
-            RecoveryEvidenceKind.TASK_SOURCE
-        },
+        IncidentKind.CORRUPT_TASK_SOURCE: {RecoveryEvidenceKind.TASK_SOURCE},
         IncidentKind.RESOURCE_EXHAUSTION: {RecoveryEvidenceKind.DISK},
-        IncidentKind.PROVIDER_UNAVAILABLE: {
-            RecoveryEvidenceKind.PROVIDER
-        },
+        IncidentKind.PROVIDER_UNAVAILABLE: {RecoveryEvidenceKind.PROVIDER},
         IncidentKind.SPLIT_BRAIN: {RecoveryEvidenceKind.PROCESS},
         IncidentKind.UNKNOWN: {
             RecoveryEvidenceKind.STATUS,
@@ -748,11 +671,7 @@ def diagnose_supervisor_incident(
     }[kind]
     target_ids = tuple(
         sorted(
-            {
-                item.target_id
-                for item in evidence
-                if item.target_id and item.kind in target_kinds
-            }
+            {item.target_id for item in evidence if item.target_id and item.kind in target_kinds}
         )
     )
     if not target_ids:
@@ -760,9 +679,7 @@ def diagnose_supervisor_incident(
     if len(target_ids) > selected_limits.max_targets:
         raise RecoveryDiagnosticError("diagnostic targets exceed bound")
     prior_cids = tuple(
-        item.evidence_cid
-        for item in evidence
-        if item.kind is RecoveryEvidenceKind.PRIOR_ACTION
+        item.evidence_cid for item in evidence if item.kind is RecoveryEvidenceKind.PRIOR_ACTION
     )
     semantic_health = {
         "classification": kind.value,
@@ -798,11 +715,7 @@ def diagnose_supervisor_incident(
         health=semantic_health,
         prior_recovery_cids=prior_cids,
         cooldown_key=f"{kind.value}:{target_ids[0]}",
-        status=(
-            RecordStatus.FAILED
-            if live_fault
-            else RecordStatus.BLOCKED
-        ),
+        status=(RecordStatus.FAILED if live_fault else RecordStatus.BLOCKED),
         observed_at_ms=observed_at_ms,
         updated_at_ms=observed_at_ms,
     )
@@ -818,19 +731,13 @@ def diagnose_supervisor_incident(
 class RecoveryDiagnostics:
     """Reusable bounded diagnostic facade for supervisor integrations."""
 
-    def __init__(
-        self, limits: RecoveryDiagnosticLimits | None = None
-    ) -> None:
+    def __init__(self, limits: RecoveryDiagnosticLimits | None = None) -> None:
         self.limits = limits or RecoveryDiagnosticLimits()
 
     def diagnose(self, **evidence: Any) -> RecoveryDiagnosis:
         if "limits" in evidence:
-            raise RecoveryDiagnosticError(
-                "diagnostic facade limits are fixed at construction"
-            )
-        return diagnose_supervisor_incident(
-            **evidence, limits=self.limits
-        )
+            raise RecoveryDiagnosticError("diagnostic facade limits are fixed at construction")
+        return diagnose_supervisor_incident(**evidence, limits=self.limits)
 
     derive = diagnose
 

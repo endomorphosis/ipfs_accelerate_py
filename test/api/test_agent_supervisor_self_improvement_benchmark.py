@@ -106,18 +106,12 @@ def _measurement(
         detected_defects=seeded_defects,
         escaped_defects=0,
         false_rejections=0,
-        merge_conflicts=(
-            1 if kind is PairedFixtureKind.CONFLICTING_PARALLEL else 0
-        ),
+        merge_conflicts=(1 if kind is PairedFixtureKind.CONFLICTING_PARALLEL else 0),
         duplicate_executions=0,
         unauthorized_mutations=0,
         terminal_outcome=terminal_outcome,
-        state_digest_before=(
-            STATE_DIGEST if kind is PairedFixtureKind.RESTART else ""
-        ),
-        state_digest_after=(
-            STATE_DIGEST if kind is PairedFixtureKind.RESTART else ""
-        ),
+        state_digest_before=(STATE_DIGEST if kind is PairedFixtureKind.RESTART else ""),
+        state_digest_after=(STATE_DIGEST if kind is PairedFixtureKind.RESTART else ""),
     )
 
 
@@ -162,16 +156,13 @@ def _requirement_evidence(
 def test_benchmark_uses_complete_stable_package_root_rollout_surface() -> None:
     stable_exports = supervisor_api.PAIRED_ROLLOUT_STABLE_EXPORTS
 
-    assert PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID == (
-        "300500866741873729474343907613893393545"
-    )
+    assert PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID == ("300500866741873729474343907613893393545")
     assert PAIRED_ROLLOUT_LAZY_EXPORT_GOAL_ID == "ASI-G114"
     assert set(stable_exports) == set(rollout_module.__all__)
     assert len(stable_exports) == len(set(stable_exports))
     assert all(name in supervisor_api.__all__ for name in stable_exports)
     assert all(
-        getattr(supervisor_api, name) is getattr(rollout_module, name)
-        for name in stable_exports
+        getattr(supervisor_api, name) is getattr(rollout_module, name) for name in stable_exports
     )
     assert (
         supervisor_api.evaluate_paired_self_improvement_rollout
@@ -205,24 +196,15 @@ def test_closed_paired_population_passes_every_asi_023_gate() -> None:
     assert report["nonnegotiable_gate_passed"]
     assert report["paired_gate_passed"]
     assert report["fixture_count"] == len(REQUIRED_PAIRED_FIXTURE_KINDS)
-    assert {
-        item["fixture_kind"] for item in report["fixtures"]
-    } == {kind.value for kind in REQUIRED_PAIRED_FIXTURE_KINDS}
+    assert {item["fixture_kind"] for item in report["fixtures"]} == {
+        kind.value for kind in REQUIRED_PAIRED_FIXTURE_KINDS
+    }
     assert report.reason_codes == ()
 
     metrics = report["metrics"]
-    assert (
-        metrics["median_input_token_reduction_bps"]
-        >= MIN_MEDIAN_INPUT_TOKEN_REDUCTION_BPS
-    )
-    assert (
-        metrics["repeated_fixture_cache_reuse_bps"]
-        >= MIN_REPEATED_FIXTURE_CACHE_REUSE_BPS
-    )
-    assert (
-        metrics["independent_lane_throughput_bps"]
-        >= MIN_INDEPENDENT_LANE_THROUGHPUT_BPS
-    )
+    assert metrics["median_input_token_reduction_bps"] >= MIN_MEDIAN_INPUT_TOKEN_REDUCTION_BPS
+    assert metrics["repeated_fixture_cache_reuse_bps"] >= MIN_REPEATED_FIXTURE_CACHE_REUSE_BPS
+    assert metrics["independent_lane_throughput_bps"] >= MIN_INDEPENDENT_LANE_THROUGHPUT_BPS
     assert metrics["candidate_false_completions"] == 0
     assert metrics["candidate_authority_violations"] == 0
     assert metrics["candidate_stale_authoritative_hits"] == 0
@@ -232,9 +214,7 @@ def test_closed_paired_population_passes_every_asi_023_gate() -> None:
     assert _requirement_evidence(
         report, SHADOW_FALSE_COMPLETION_REQUIREMENT_ID
     ).requirement_satisfied
-    assert _requirement_evidence(
-        report, PAIRED_EFFICIENCY_REQUIREMENT_ID
-    ).requirement_satisfied
+    assert _requirement_evidence(report, PAIRED_EFFICIENCY_REQUIREMENT_ID).requirement_satisfied
 
 
 def test_g090_fixture_families_share_every_required_gate_and_safety_invariant() -> None:
@@ -266,9 +246,7 @@ def test_g090_fixture_families_share_every_required_gate_and_safety_invariant() 
         "refill": {PairedFixtureKind.DRAINED_REFILL},
     }
 
-    assert set().union(*families.values()) == set(
-        REQUIRED_PAIRED_FIXTURE_KINDS
-    )
+    assert set().union(*families.values()) == set(REQUIRED_PAIRED_FIXTURE_KINDS)
     assert all(
         report[name]
         for name in (
@@ -292,8 +270,7 @@ def test_g090_fixture_families_share_every_required_gate_and_safety_invariant() 
     assert PAIRED_ROLLOUT_REQUIRED_EXHAUSTIVE_RECEIPTS == 2
 
     fixtures = {
-        PairedFixtureKind(item["fixture_kind"]): item["candidate"]
-        for item in report["fixtures"]
+        PairedFixtureKind(item["fixture_kind"]): item["candidate"] for item in report["fixtures"]
     }
     for measurement in fixtures.values():
         assert measurement["false_completions"] == 0
@@ -302,18 +279,16 @@ def test_g090_fixture_families_share_every_required_gate_and_safety_invariant() 
         assert measurement["escaped_defects"] == 0
         assert measurement["duplicate_executions"] == 0
         assert measurement["unauthorized_mutations"] == 0
-    assert fixtures[PairedFixtureKind.FAILED_VALIDATION][
-        "detected_defects"
-    ] == fixtures[PairedFixtureKind.FAILED_VALIDATION]["seeded_defects"]
-    assert fixtures[PairedFixtureKind.PROVIDER_UNAVAILABLE][
-        "terminal_outcome"
-    ] == "degraded"
-    assert fixtures[PairedFixtureKind.RESTART][
-        "state_digest_before"
-    ] == fixtures[PairedFixtureKind.RESTART]["state_digest_after"]
-    assert fixtures[PairedFixtureKind.DRAINED_REFILL][
-        "terminal_outcome"
-    ] == "exhausted"
+    assert (
+        fixtures[PairedFixtureKind.FAILED_VALIDATION]["detected_defects"]
+        == fixtures[PairedFixtureKind.FAILED_VALIDATION]["seeded_defects"]
+    )
+    assert fixtures[PairedFixtureKind.PROVIDER_UNAVAILABLE]["terminal_outcome"] == "degraded"
+    assert (
+        fixtures[PairedFixtureKind.RESTART]["state_digest_before"]
+        == fixtures[PairedFixtureKind.RESTART]["state_digest_after"]
+    )
+    assert fixtures[PairedFixtureKind.DRAINED_REFILL]["terminal_outcome"] == "exhausted"
 
 
 def test_omitted_rollout_mode_proves_gates_but_never_promotes() -> None:
@@ -330,9 +305,7 @@ def test_omitted_rollout_mode_proves_gates_but_never_promotes() -> None:
     assert report["throughput_gate_passed"]
     assert not report.promotion_allowed
     assert report.effective_mode is SelfImprovementRolloutMode.SHADOW
-    assert _requirement_evidence(
-        report, PAIRED_EFFICIENCY_REQUIREMENT_ID
-    ).requirement_satisfied
+    assert _requirement_evidence(report, PAIRED_EFFICIENCY_REQUIREMENT_ID).requirement_satisfied
 
 
 def test_either_reviewed_planning_improvement_can_pass_the_gate() -> None:
@@ -354,9 +327,7 @@ def test_either_reviewed_planning_improvement_can_pass_the_gate() -> None:
     )
 
     assert report["planning_gate_passed"]
-    assert (
-        report["metrics"]["planning_coverage_improvement_bps"] >= 1_000
-    )
+    assert report["metrics"]["planning_coverage_improvement_bps"] >= 1_000
     assert report["metrics"]["invalid_plan_branch_reduction_bps"] == 0
     assert report.promotion_allowed
 
@@ -397,9 +368,7 @@ def test_nonnegotiable_violation_always_forces_shadow(
     assert report.effective_mode is SelfImprovementRolloutMode.SHADOW
     assert not report["nonnegotiable_gate_passed"]
     assert reason in report.reason_codes
-    assert not _requirement_evidence(
-        report, PAIRED_EFFICIENCY_REQUIREMENT_ID
-    ).requirement_satisfied
+    assert not _requirement_evidence(report, PAIRED_EFFICIENCY_REQUIREMENT_ID).requirement_satisfied
 
 
 @pytest.mark.parametrize(
@@ -515,9 +484,7 @@ def test_each_paired_regression_independently_forces_shadow(
     assert report.effective_mode is SelfImprovementRolloutMode.SHADOW
     assert not report["paired_gate_passed"]
     assert reason in report.reason_codes
-    assert not _requirement_evidence(
-        report, PAIRED_EFFICIENCY_REQUIREMENT_ID
-    ).requirement_satisfied
+    assert not _requirement_evidence(report, PAIRED_EFFICIENCY_REQUIREMENT_ID).requirement_satisfied
 
 
 def test_fault_fixtures_must_fail_closed_and_restart_must_be_stable() -> None:
@@ -526,45 +493,31 @@ def test_fault_fixtures_must_fail_closed_and_restart_must_be_stable() -> None:
         PairedFixtureKind.MALFORMED_OUTPUT,
         terminal_outcome="accepted",
     )
-    malformed_report = evaluate_paired_self_improvement_rollout(
-        malformed, evaluated_at=NOW
-    )
-    assert "candidate_malformed_output_not_rejected" in (
-        malformed_report.reason_codes
-    )
+    malformed_report = evaluate_paired_self_improvement_rollout(malformed, evaluated_at=NOW)
+    assert "candidate_malformed_output_not_rejected" in (malformed_report.reason_codes)
 
     provider = _replace_candidate(
         _fixtures(),
         PairedFixtureKind.PROVIDER_UNAVAILABLE,
         terminal_outcome="accepted",
     )
-    provider_report = evaluate_paired_self_improvement_rollout(
-        provider, evaluated_at=NOW
-    )
-    assert "candidate_provider_unavailable_overclaimed" in (
-        provider_report.reason_codes
-    )
+    provider_report = evaluate_paired_self_improvement_rollout(provider, evaluated_at=NOW)
+    assert "candidate_provider_unavailable_overclaimed" in (provider_report.reason_codes)
 
     contradictory = _replace_candidate(
         _fixtures(),
         PairedFixtureKind.CONTRADICTORY,
         terminal_outcome="accepted",
     )
-    contradictory_report = evaluate_paired_self_improvement_rollout(
-        contradictory, evaluated_at=NOW
-    )
-    assert "candidate_contradiction_not_rejected" in (
-        contradictory_report.reason_codes
-    )
+    contradictory_report = evaluate_paired_self_improvement_rollout(contradictory, evaluated_at=NOW)
+    assert "candidate_contradiction_not_rejected" in (contradictory_report.reason_codes)
 
     restart = _replace_candidate(
         _fixtures(),
         PairedFixtureKind.RESTART,
         state_digest_after="sha256:" + "b" * 64,
     )
-    restart_report = evaluate_paired_self_improvement_rollout(
-        restart, evaluated_at=NOW
-    )
+    restart_report = evaluate_paired_self_improvement_rollout(restart, evaluated_at=NOW)
     assert "candidate_restart_unstable" in restart_report.reason_codes
     assert all(
         report.effective_mode is SelfImprovementRolloutMode.SHADOW
@@ -616,9 +569,7 @@ def test_missing_fixture_is_a_gate_failure_not_a_smaller_benchmark() -> None:
     assert not _requirement_evidence(
         report, SHADOW_FALSE_COMPLETION_REQUIREMENT_ID
     ).requirement_satisfied
-    assert not _requirement_evidence(
-        report, PAIRED_EFFICIENCY_REQUIREMENT_ID
-    ).requirement_satisfied
+    assert not _requirement_evidence(report, PAIRED_EFFICIENCY_REQUIREMENT_ID).requirement_satisfied
 
 
 def test_policy_cannot_weaken_thresholds_bounds_or_population() -> None:
@@ -635,43 +586,36 @@ def test_policy_cannot_weaken_thresholds_bounds_or_population() -> None:
     with pytest.raises(PairedRolloutValidationError, match="cannot weaken"):
         PairedRolloutPolicy(max_report_bytes=2 * 1024 * 1024 + 1)
     with pytest.raises(PairedRolloutValidationError, match="non-narrowable"):
-        PairedRolloutPolicy(
-            required_fixture_kinds=REQUIRED_PAIRED_FIXTURE_KINDS[:-1]
-        )
+        PairedRolloutPolicy(required_fixture_kinds=REQUIRED_PAIRED_FIXTURE_KINDS[:-1])
 
 
 def test_report_round_trip_recomputes_metrics_and_rejects_tampering() -> None:
-    report = evaluate_paired_self_improvement_rollout(
-        _fixtures(), evaluated_at=NOW
-    )
-    assert PairedRolloutReport.from_dict(report.to_dict()).to_dict() == (
-        report.to_dict()
-    )
+    report = evaluate_paired_self_improvement_rollout(_fixtures(), evaluated_at=NOW)
+    assert PairedRolloutReport.from_dict(report.to_dict()).to_dict() == (report.to_dict())
 
     tampered = report.to_dict()
     tampered["metrics"]["candidate_false_completions"] = 1
     material = {
-        key: value
-        for key, value in tampered.items()
-        if key not in {"report_id", "evaluated_at"}
+        key: value for key, value in tampered.items() if key not in {"report_id", "evaluated_at"}
     }
     import hashlib
     import json
 
-    tampered["report_id"] = "sha256:" + hashlib.sha256(
-        json.dumps(
-            material,
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=False,
-            allow_nan=False,
-        ).encode("utf-8")
-    ).hexdigest()
+    tampered["report_id"] = (
+        "sha256:"
+        + hashlib.sha256(
+            json.dumps(
+                material,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            ).encode("utf-8")
+        ).hexdigest()
+    )
     forged_typed = PairedRolloutReport(tampered)
     with pytest.raises(PairedRolloutValidationError, match="fixture evidence"):
-        _requirement_evidence(
-            forged_typed, SHADOW_FALSE_COMPLETION_REQUIREMENT_ID
-        )
+        _requirement_evidence(forged_typed, SHADOW_FALSE_COMPLETION_REQUIREMENT_ID)
     with pytest.raises(PairedRolloutValidationError, match="fixture evidence"):
         PairedRolloutReport.from_dict(tampered)
 
@@ -697,19 +641,20 @@ def test_report_round_trip_recomputes_metrics_and_rejects_tampering() -> None:
     ):
         legacy["metrics"].pop(name)
     legacy_material = {
-        key: value
-        for key, value in legacy.items()
-        if key not in {"report_id", "evaluated_at"}
+        key: value for key, value in legacy.items() if key not in {"report_id", "evaluated_at"}
     }
-    legacy["report_id"] = "sha256:" + hashlib.sha256(
-        json.dumps(
-            legacy_material,
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=False,
-            allow_nan=False,
-        ).encode("utf-8")
-    ).hexdigest()
+    legacy["report_id"] = (
+        "sha256:"
+        + hashlib.sha256(
+            json.dumps(
+                legacy_material,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            ).encode("utf-8")
+        ).hexdigest()
+    )
     restored_legacy = PairedRolloutReport.from_dict(legacy)
     assert restored_legacy.to_dict() == legacy
     assert not _requirement_evidence(
@@ -718,9 +663,7 @@ def test_report_round_trip_recomputes_metrics_and_rejects_tampering() -> None:
 
 
 def test_requirement_evidence_rejects_unknown_ids_and_is_round_trip_stable() -> None:
-    report = evaluate_paired_self_improvement_rollout(
-        _fixtures(), evaluated_at=NOW
-    )
+    report = evaluate_paired_self_improvement_rollout(_fixtures(), evaluated_at=NOW)
     restored = PairedRolloutReport.from_dict(report.to_dict())
 
     for requirement_id in (
@@ -746,9 +689,7 @@ def test_requirement_evidence_rejects_unknown_ids_and_is_round_trip_stable() -> 
     ):
         _requirement_evidence(report, "not-a-reviewed-requirement")
 
-    tampered = _requirement_evidence(
-        report, PAIRED_EFFICIENCY_REQUIREMENT_ID
-    ).to_dict()
+    tampered = _requirement_evidence(report, PAIRED_EFFICIENCY_REQUIREMENT_ID).to_dict()
     tampered["repository_tree"] = "sha256:" + "d" * 64
     with pytest.raises(
         PairedRolloutValidationError,
@@ -769,9 +710,7 @@ def test_bounded_report_store_is_idempotent_and_restart_safe(tmp_path) -> None:
     assert path.stat().st_mode & 0o777 == 0o600
     assert path.stat().st_size <= report["policy"]["max_report_bytes"]
     assert store.persist(report) == path
-    reloaded = PairedRolloutReportStore(
-        tmp_path / "rollout-reports"
-    ).load(report.report_id)
+    reloaded = PairedRolloutReportStore(tmp_path / "rollout-reports").load(report.report_id)
     assert reloaded.to_dict() == report.to_dict()
     assert reloaded.promotion_allowed
 

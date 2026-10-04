@@ -87,10 +87,7 @@ def run():
     assert calls["WireClient"].ambiguous is True
     assert calls["WireClient"].details["import_candidate"] == "package.transport.Client"
     assert calls["registry.dispatch"].ambiguous is True
-    assert (
-        calls["registry.dispatch"].details["import_candidate"]
-        == "package.registry.dispatch"
-    )
+    assert calls["registry.dispatch"].details["import_candidate"] == "package.registry.dispatch"
     assert all(item.relationship == "calls_candidate" for item in calls.values())
 
 
@@ -194,9 +191,7 @@ def test_json_schema_refs_duplicate_keys_and_spans_are_retained() -> None:
         "#/$defs/Identifier",
         "https://example.invalid/common.json#/$defs/Remote",
     }
-    local, external = sorted(
-        _facts(result, "schema_reference"), key=lambda item: item.target
-    )
+    local, external = sorted(_facts(result, "schema_reference"), key=lambda item: item.target)
     assert local.ambiguous is False
     assert external.ambiguous is True
     assert {item.name for item in _facts(result, "schema_property")} == {
@@ -207,9 +202,7 @@ def test_json_schema_refs_duplicate_keys_and_spans_are_retained() -> None:
         "id",
         "remote",
     }
-    duplicate = next(
-        item for item in result.diagnostics if item.code == "duplicate_json_key"
-    )
+    duplicate = next(item for item in result.diagnostics if item.code == "duplicate_json_key")
     assert duplicate.details["key"] == "required"
     assert duplicate.span.line_start == 12
     assert "$ref #/$defs/Identifier" in result.ast_record.imports
@@ -247,9 +240,7 @@ def test_mcp_and_generated_manifest_evidence_is_typed() -> None:
   "resources": [{"uri": "ipfs://{cid}"}]
 }
 """
-    result = adapt_json_source(
-        source, path="src/generated/mcp.manifest.json"
-    )
+    result = adapt_json_source(source, path="src/generated/mcp.manifest.json")
 
     assert result.status == "success"
     assert result.language == "mcp-manifest"
@@ -302,21 +293,13 @@ Implementations SHOULD raise `FileNotFoundError`.
         "VFS Contract",
         "Errors",
     ]
-    normative_refs = {
-        item.name
-        for item in _facts(result, "code_reference")
-        if item.normative
-    }
+    normative_refs = {item.name for item in _facts(result, "code_reference") if item.normative}
     example_refs = {
-        item.name
-        for item in _facts(result, "code_reference")
-        if item.details["example"]
+        item.name for item in _facts(result, "code_reference") if item.details["example"]
     }
     assert normative_refs == {"vfs.stat", "vfs.read", "FileNotFoundError"}
     assert example_refs == {"unsafe_read"}
-    assert all(
-        item.normative is False for item in _facts(result, "code_fence")
-    )
+    assert all(item.normative is False for item in _facts(result, "code_fence"))
     assert not any("unsafe_read" in item for item in result.ast_record.interfaces)
     assert result.ast_record.calls == ()
 
@@ -362,17 +345,10 @@ def test_mixed_batch_reuses_canonical_records_in_the_same_index() -> None:
 
     second = build_program_evidence_index(documents, previous=first)
     assert second.analysis_index.stats.reused_blob_count == 3
+    assert all(result.reused for result in second.results if result.status != "unsupported")
+    first_records = {item.path: item.ast_record for item in first.analysis_index.path_records}
     assert all(
-        result.reused
-        for result in second.results
-        if result.status != "unsupported"
-    )
-    first_records = {
-        item.path: item.ast_record for item in first.analysis_index.path_records
-    }
-    assert all(
-        item.ast_record is first_records[item.path]
-        for item in second.analysis_index.path_records
+        item.ast_record is first_records[item.path] for item in second.analysis_index.path_records
     )
 
 
@@ -387,9 +363,4 @@ def test_explicit_unsupported_and_record_only_api() -> None:
     assert result.record is None
     assert result.language == "unknown"
     assert result.diagnostics[0].details["path"] == "config/service.yaml"
-    assert (
-        build_program_ast_blob_record(
-            "service: enabled\n", path="config/service.yaml"
-        )
-        is None
-    )
+    assert build_program_ast_blob_record("service: enabled\n", path="config/service.yaml") is None

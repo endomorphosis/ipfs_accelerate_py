@@ -29,10 +29,13 @@ def _load_hardware_tools_api() -> Dict[str, Any]:
             "get_basic_hardware_recommendations": _get_basic_hardware_recommendations,
         }
     except Exception:
-        logger.warning("Source hardware_tools import unavailable, using fallback hardware functions")
+        logger.warning(
+            "Source hardware_tools import unavailable, using fallback hardware functions"
+        )
 
         def _hardware_info_fallback(include_detailed: bool = False) -> Dict[str, Any]:
             import platform
+
             return {
                 "status": "success",
                 "platform": platform.system(),
@@ -126,9 +129,7 @@ async def hardware_get_basic_info(include_detailed: bool = False) -> Dict[str, A
         return _error_result(str(exc), include_detailed=include_detailed)
 
 
-async def hardware_test(
-    accelerator: str = "all", test_level: str = "basic"
-) -> Dict[str, Any]:
+async def hardware_test(accelerator: str = "all", test_level: str = "basic") -> Dict[str, Any]:
     """Run hardware tests on the specified accelerator."""
     try:
         result = _API["test_hardware"](accelerator=accelerator, test_level=test_level)
@@ -144,14 +145,10 @@ async def hardware_recommend(
 ) -> Dict[str, Any]:
     """Recommend hardware configuration for a given model type and task."""
     try:
-        result = _API["recommend_hardware"](
-            model_type=model_type, model_size=model_size, task=task
-        )
+        result = _API["recommend_hardware"](model_type=model_type, model_size=model_size, task=task)
         return _normalize_payload(result)
     except Exception as exc:
-        return _error_result(
-            str(exc), model_type=model_type, model_size=model_size, task=task
-        )
+        return _error_result(str(exc), model_type=model_type, model_size=model_size, task=task)
 
 
 def register_native_hardware_tools(manager: Any) -> None:

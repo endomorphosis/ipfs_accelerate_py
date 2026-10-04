@@ -30,9 +30,11 @@ from transformers import AutoTokenizer
 
 tokenizer = AutoTokenizer.from_pretrained("google/gemma-2-2b")
 tokenizer("We are very happy to show you the 🤗 Transformers library", return_tensors="pt")
-{'input_ids': tensor([[     2,   1734,    708,   1508,   4915,    577,   1500,    692,    573,
-         156808, 128149,   9581, 235265]]), 
- 'attention_mask': tensor([[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]])
+{
+    "input_ids": tensor(
+        [[2, 1734, 708, 1508, 4915, 577, 1500, 692, 573, 156808, 128149, 9581, 235265]]
+    ),
+    "attention_mask": tensor([[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]]),
 }
 ```
 
@@ -61,9 +63,11 @@ from transformers import AutoTokenizer
 
 tokenizer = AutoTokenizer.from_pretrained("google/gemma-2-2b")
 tokenizer("We are very happy to show you the 🤗 Transformers library.", return_tensors="pt")
-{'input_ids': tensor([[     2,   1734,    708,   1508,   4915,    577,   1500,    692,    573,
-         156808, 128149,   9581, 235265]]), 
- 'attention_mask': tensor([[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]])
+{
+    "input_ids": tensor(
+        [[2, 1734, 708, 1508, 4915, 577, 1500, 692, 573, 156808, 128149, 9581, 235265]]
+    ),
+    "attention_mask": tensor([[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]]),
 }
 ```
 
@@ -121,7 +125,11 @@ Save the tokenizer so you can reuse it with direct access to the `image_token`, 
 ```py
 vision_tokenizer = AutoTokenizer.from_pretrained(
     "llava-hf/llava-1.5-7b-hf",
-    extra_special_tokens={"image_token": "<image>", "boi_token": "<image_start>", "eoi_token": "<image_end>"}
+    extra_special_tokens={
+        "image_token": "<image>",
+        "boi_token": "<image_start>",
+        "eoi_token": "<image_end>",
+    },
 )
 print(vision_tokenizer.image_token, vision_tokenizer.image_token_id)
 ("<image>", 32000)
@@ -198,7 +206,9 @@ Add the `subfolder` parameter to [`~PreTrainedModel.from_pretrained`] to specify
 ```py
 from transformers import AutoTokenizer
 
-tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3-8B-Instruct", subfolder="original") 
+tokenizer = AutoTokenizer.from_pretrained(
+    "meta-llama/Meta-Llama-3-8B-Instruct", subfolder="original"
+)
 ```
 
 ### Create a tiktoken tokenizer
@@ -233,9 +243,11 @@ from transformers import AutoTokenizer
 
 tokenizer = AutoTokenizer.from_pretrained("google/gemma-2-2b")
 tokenizer("We are very happy to show you the 🤗 Transformers library.", return_tensors="pt")
-{'input_ids': tensor([[     2,   1734,    708,   1508,   4915,    577,   1500,    692,    573,
-         156808, 128149,   9581, 235265]]), 
- 'attention_mask': tensor([[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]])
+{
+    "input_ids": tensor(
+        [[2, 1734, 708, 1508, 4915, 577, 1500, 692, 573, 156808, 128149, 9581, 235265]]
+    ),
+    "attention_mask": tensor([[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]]),
 }
 ```
 
@@ -249,7 +261,19 @@ In the first step, a string of text is split into tokens by the [`~PreTrainedTok
 ```py
 tokens = tokenizer.tokenize("We are very happy to show you the 🤗 Transformers library")
 print(tokens)
-['We', '▁are', '▁very', '▁happy', '▁to', '▁show', '▁you', '▁the', '▁🤗', '▁Transformers', '▁library']
+[
+    "We",
+    "▁are",
+    "▁very",
+    "▁happy",
+    "▁to",
+    "▁show",
+    "▁you",
+    "▁the",
+    "▁🤗",
+    "▁Transformers",
+    "▁library",
+]
 ```
 
 Gemma uses a [SentencePiece](./tokenizer_summary.md#sentencepiece) tokenizer which replaces spaces with an underscore `_`.
@@ -273,7 +297,7 @@ Lastly, the model prediction typically generates numerical outputs which are con
 ```py
 decoded_string = tokenizer.decode(ids)
 print(decoded_string)
-'We are very happy to show you the 🤗 Transformers library'
+"We are very happy to show you the 🤗 Transformers library"
 ```
 
 </hfoption>
@@ -300,8 +324,8 @@ When you [`~PreTrainedTokenizer.decode`] the ids, you'll see `<bos>` at the begi
 ```py
 print(tokenizer.decode(model_inputs["input_ids"]))
 print(tokenizer.decode(ids))
-'<bos>We are very happy to show you the 🤗 Transformers library.'
-'We are very happy to show you the 🤗 Transformers library'
+"<bos>We are very happy to show you the 🤗 Transformers library."
+"We are very happy to show you the 🤗 Transformers library"
 ```
 
 Not all models need special tokens, but if they do, a tokenizer automatically adds them.
@@ -321,13 +345,16 @@ batch_sentences = [
 encoded_inputs = tokenizer(batch_sentences, return_tensors="pt")
 print(encoded_inputs)
 {
- 'input_ids': 
-    [[2, 1860, 1212, 1105, 2257, 14457, 235336], 
-     [2, 4454, 235303, 235251, 1742, 693, 9242, 1105, 2257, 14457, 235269, 48782, 235265], 
-     [2, 1841, 1105, 29754, 37453, 235336]], 
- 'attention_mask': [[1, 1, 1, 1, 1, 1, 1], 
-                    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], 
-                    [1, 1, 1, 1, 1, 1]]
+    "input_ids": [
+        [2, 1860, 1212, 1105, 2257, 14457, 235336],
+        [2, 4454, 235303, 235251, 1742, 693, 9242, 1105, 2257, 14457, 235269, 48782, 235265],
+        [2, 1841, 1105, 29754, 37453, 235336],
+    ],
+    "attention_mask": [
+        [1, 1, 1, 1, 1, 1, 1],
+        [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        [1, 1, 1, 1, 1, 1],
+    ],
 }
 ```
 

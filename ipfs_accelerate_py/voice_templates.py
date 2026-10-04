@@ -173,13 +173,9 @@ def template_fields(template: str) -> tuple[str, ...]:
             if field is None:
                 continue
             if not _FIELD_RE.fullmatch(field):
-                raise VoiceTemplateValidationError(
-                    f"unsupported template placeholder {field!r}"
-                )
+                raise VoiceTemplateValidationError(f"unsupported template placeholder {field!r}")
             if format_spec or conversion:
-                raise VoiceTemplateValidationError(
-                    f"formatting is not allowed for {field!r}"
-                )
+                raise VoiceTemplateValidationError(f"formatting is not allowed for {field!r}")
             if field not in fields:
                 fields.append(field)
     except VoiceTemplateValidationError:
@@ -210,9 +206,7 @@ def normalize_spoken_text(text: str) -> str:
     spoken = re.sub(r"([.!?])(?:\s*\1)+", r"\1", spoken)
     spoken = re.sub(r"\s*\n+\s*", " ", spoken).strip(" \t\r\n-")
     if not spoken:
-        raise VoiceGroundingValidationError(
-            "empty_spoken_response_after_citation_stripping"
-        )
+        raise VoiceGroundingValidationError("empty_spoken_response_after_citation_stripping")
     return spoken
 
 

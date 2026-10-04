@@ -135,9 +135,7 @@ def binding_fingerprint_for_item(
         assurance_s = str(assurance or "")
     return BindingFingerprint(
         repository_tree_id=str(
-            repository_tree_id
-            or (obligation.repository_tree_id if obligation else "")
-            or ""
+            repository_tree_id or (obligation.repository_tree_id if obligation else "") or ""
         ),
         property_id=str(item.property_id or ""),
         cache_key_id=str(item.cache_key_id or ""),
@@ -235,19 +233,11 @@ class ReproofReport:
 
     @property
     def cache_hits(self) -> int:
-        return sum(
-            1
-            for item in self.results
-            if item.disposition is ReproofDisposition.CACHE_HIT
-        )
+        return sum(1 for item in self.results if item.disposition is ReproofDisposition.CACHE_HIT)
 
     @property
     def re_solved(self) -> int:
-        return sum(
-            1
-            for item in self.results
-            if item.disposition is ReproofDisposition.RE_SOLVED
-        )
+        return sum(1 for item in self.results if item.disposition is ReproofDisposition.RE_SOLVED)
 
     def to_dict(self, *, include_id: bool = True) -> dict[str, Any]:
         # Canonical contracts reject floats; coerce metric rates to millis.
@@ -287,9 +277,7 @@ def _key_for_item(
     resource_budget: Any,
 ) -> ProofCacheKey:
     if item.obligation is None:
-        raise CodeProofReproofError(
-            f"item {item.property_id!r} has no obligation to re-prove"
-        )
+        raise CodeProofReproofError(f"item {item.property_id!r} has no obligation to re-prove")
     return build_code_proof_cache_key(
         item.obligation,
         translator_id=translator_id,
@@ -340,9 +328,7 @@ def reprove_code_proof_compilation(
     """
 
     if not isinstance(compilation, CodeProofObligationCompilation):
-        raise CodeProofReproofError(
-            "compilation must be a CodeProofObligationCompilation"
-        )
+        raise CodeProofReproofError("compilation must be a CodeProofObligationCompilation")
     if not callable(prove):
         raise CodeProofReproofError("prove must be callable")
 
@@ -424,9 +410,7 @@ def reprove_code_proof_compilation(
         )
         required = item.required_assurance
         if not isinstance(required, AssuranceLevel):
-            required = AssuranceLevel(
-                str(required or AssuranceLevel.KERNEL_VERIFIED.value)
-            )
+            required = AssuranceLevel(str(required or AssuranceLevel.KERNEL_VERIFIED.value))
 
         provider_calls = {"n": 0}
 
@@ -526,9 +510,7 @@ def reprove_code_proof_compilation(
                     "provider_calls": provider_calls["n"],
                     "outcome_status": outcome.status,
                 },
-                receipt_id=(
-                    str(outcome.receipt.receipt_id) if outcome.receipt is not None else ""
-                ),
+                receipt_id=(str(outcome.receipt.receipt_id) if outcome.receipt is not None else ""),
                 authoritative_assurance=(
                     outcome.receipt.authoritative_assurance.value
                     if outcome.receipt is not None
@@ -544,9 +526,9 @@ def reprove_code_proof_compilation(
         "wrong_tree_binding_never_accepted",
     ]
     if previous is not None:
-        delta: ProofDeltaResult = build_code_proof_query(
-            compilation=compilation
-        ).proof_delta(previous)
+        delta: ProofDeltaResult = build_code_proof_query(compilation=compilation).proof_delta(
+            previous
+        )
         delta_payload = delta.to_dict()
         notes.append("proof_delta_attached")
 

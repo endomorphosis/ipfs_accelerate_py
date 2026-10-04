@@ -100,8 +100,7 @@ class TaskKind(str, Enum):
 class FindingLedgerReader(Protocol):
     """Minimal ledger interface needed by the planner."""
 
-    def get(self, finding_cid: str) -> ContractFindingRecord | None:
-        ...
+    def get(self, finding_cid: str) -> ContractFindingRecord | None: ...
 
 
 def _required_text(value: Any, name: str) -> str:
@@ -112,9 +111,9 @@ def _required_text(value: Any, name: str) -> str:
 
 
 def _stable_id(prefix: str, payload: Mapping[str, Any]) -> str:
-    encoded = json.dumps(
-        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True
-    ).encode("utf-8")
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode(
+        "utf-8"
+    )
     return f"{prefix}:{hashlib.sha256(encoded).hexdigest()}"
 
 
@@ -144,8 +143,7 @@ def _safe_output_paths(
     for value in record.remediation_scope:
         candidate = _path(value)
         if candidate and (
-            "/" in candidate
-            or candidate.endswith((".py", ".js", ".ts", ".tsx", ".json", ".md"))
+            "/" in candidate or candidate.endswith((".py", ".js", ".ts", ".tsx", ".json", ".md"))
         ):
             candidates.append(candidate)
     for step in record.call_slice.steps:
@@ -165,8 +163,7 @@ def _safe_output_paths(
         ):
             return ()
         if normalized_roots and not any(
-            output == root or output.startswith(root + "/")
-            for root in normalized_roots
+            output == root or output.startswith(root + "/") for root in normalized_roots
         ):
             return ()
     return outputs
@@ -227,13 +224,9 @@ class RefillGoal:
     def __post_init__(self) -> None:
         object.__setattr__(self, "goal_id", _required_text(self.goal_id, "goal_id"))
         object.__setattr__(self, "title", _required_text(self.title, "title"))
-        object.__setattr__(
-            self, "root_cause_family", str(self.root_cause_family or "").strip()
-        )
+        object.__setattr__(self, "root_cause_family", str(self.root_cause_family or "").strip())
         object.__setattr__(self, "semantic_key", str(self.semantic_key or "").strip())
-        object.__setattr__(
-            self, "parent_goal_id", str(self.parent_goal_id or "").strip()
-        )
+        object.__setattr__(self, "parent_goal_id", str(self.parent_goal_id or "").strip())
         ancestors = tuple(str(value).strip() for value in self.ancestor_goal_ids)
         if any(not value for value in ancestors) or len(set(ancestors)) != len(ancestors):
             raise RefillAncestryError("goal ancestry must be non-empty and acyclic")
@@ -389,7 +382,10 @@ class RefillState:
                 raise SymbolicFindingRefillError(f"{name} contains duplicate keys")
             object.__setattr__(self, name, pairs)
         diagnostic_states = tuple(
-            sorted((str(key), str(signature), int(count)) for key, signature, count in self.diagnostic_states)
+            sorted(
+                (str(key), str(signature), int(count))
+                for key, signature, count in self.diagnostic_states
+            )
         )
         if any(count < 1 for _, _, count in diagnostic_states):
             raise SymbolicFindingRefillError("diagnostic counts must be positive")
@@ -423,7 +419,9 @@ class SymbolicFindingRefillPolicy:
             "max_retries",
             "max_output_paths",
         )
-        if any(not isinstance(getattr(self, name), int) or getattr(self, name) < 1 for name in positive):
+        if any(
+            not isinstance(getattr(self, name), int) or getattr(self, name) < 1 for name in positive
+        ):
             raise SymbolicFindingRefillError("refill policy bounds must be positive integers")
         if self.refill_threshold > self.open_work_ceiling:
             raise SymbolicFindingRefillError("refill threshold exceeds open-work ceiling")
@@ -434,9 +432,7 @@ class SymbolicFindingRefillPolicy:
         if not isinstance(self.cooldown_seconds, int) or self.cooldown_seconds < 0:
             raise SymbolicFindingRefillError("cooldown_seconds must be non-negative")
         object.__setattr__(self, "output_roots", _unique(self.output_roots))
-        object.__setattr__(
-            self, "validation_commands", _unique(self.validation_commands)
-        )
+        object.__setattr__(self, "validation_commands", _unique(self.validation_commands))
 
 
 @dataclass(frozen=True)
@@ -487,12 +483,20 @@ def _task_open(value: RefillTask | Mapping[str, Any]) -> bool:
     if isinstance(value, RefillTask):
         return value.open
     return str(value.get("status", "open")).casefold() in {
-        "open", "ready", "pending", "in_progress", "blocked"
+        "open",
+        "ready",
+        "pending",
+        "in_progress",
+        "blocked",
     }
 
 
 def _task_value(value: RefillTask | Mapping[str, Any], name: str, default: Any = "") -> Any:
-    return getattr(value, name, default) if not isinstance(value, Mapping) else value.get(name, default)
+    return (
+        getattr(value, name, default)
+        if not isinstance(value, Mapping)
+        else value.get(name, default)
+    )
 
 
 def _finding_bound(record: ContractFindingRecord, binding: RefillBinding) -> bool:
@@ -503,9 +507,7 @@ def _finding_bound(record: ContractFindingRecord, binding: RefillBinding) -> boo
     )
 
 
-def _validate_goal_forest(
-    goals: Sequence[RefillGoal], policy: SymbolicFindingRefillPolicy
-) -> None:
+def _validate_goal_forest(goals: Sequence[RefillGoal], policy: SymbolicFindingRefillPolicy) -> None:
     by_id = {goal.goal_id: goal for goal in goals}
     if len(by_id) != len(goals):
         raise RefillAncestryError("goal forest contains duplicate goal ids")
@@ -526,9 +528,7 @@ def _validate_goal_forest(
         raise RefillAncestryError("goal forest exceeds the maximum child count")
 
 
-def _diagnostic_signature(
-    disposition: FindingDisposition, reasons: Sequence[str]
-) -> str:
+def _diagnostic_signature(disposition: FindingDisposition, reasons: Sequence[str]) -> str:
     return _stable_id(
         "refill-diagnostic",
         {"disposition": disposition.value, "reasons": sorted(reasons)},
@@ -536,9 +536,7 @@ def _diagnostic_signature(
 
 
 def _is_ambiguous(record: ContractFindingRecord) -> bool:
-    return _enum_text(record.status) in {
-        "ambiguous", "suspected", "unsupported", "inconclusive"
-    }
+    return _enum_text(record.status) in {"ambiguous", "suspected", "unsupported", "inconclusive"}
 
 
 def _is_stale(record: ContractFindingRecord) -> bool:
@@ -553,11 +551,7 @@ def _goal_for_family(
     policy: SymbolicFindingRefillPolicy,
 ) -> tuple[RefillGoal | None, FindingDisposition | None]:
     matches = sorted(
-        (
-            goal
-            for goal in (*goals, *proposed)
-            if goal.root_cause_family == family
-        ),
+        (goal for goal in (*goals, *proposed) if goal.root_cause_family == family),
         key=lambda goal: goal.goal_id,
     )
     if len(matches) == 1:
@@ -570,9 +564,7 @@ def _goal_for_family(
     )
     if parent is None:
         raise RefillAncestryError("refinement_goal_id is absent from the goal forest")
-    child_count = sum(
-        goal.parent_goal_id == parent.goal_id for goal in (*goals, *proposed)
-    )
+    child_count = sum(goal.parent_goal_id == parent.goal_id for goal in (*goals, *proposed))
     if child_count >= policy.max_children:
         return None, FindingDisposition.CHILD_LIMIT
     depth = parent.depth + 1
@@ -609,7 +601,9 @@ def _topological_candidates(
     edges: dict[str, set[str]] = {key: set() for key in by_key}
     for key, candidate in by_key.items():
         deps = set(candidate.dependency_keys)
-        if key in deps or any(dep not in by_key and dep not in existing_by_finding_key for dep in deps):
+        if key in deps or any(
+            dep not in by_key and dep not in existing_by_finding_key for dep in deps
+        ):
             rejected[key] = FindingDisposition.DEPENDENCY_REJECTED
             continue
         candidate_deps = {dep for dep in deps if dep in by_key}
@@ -679,8 +673,7 @@ def refill_symbolic_findings(
     semantic_task_ids = dict(state.semantic_task_ids)
     review_task_ids = dict(state.review_task_ids)
     diagnostic_states = {
-        key: (signature, count)
-        for key, signature, count in state.diagnostic_states
+        key: (signature, count) for key, signature, count in state.diagnostic_states
     }
     exhausted_finding_keys: set[str] = set()
     for task in tasks:
@@ -813,8 +806,7 @@ def refill_symbolic_findings(
         receipt_id = receipt.receipt_id
         semantic_key = receipt.semantic_key_id
         retry_review = (
-            semantic_key in exhausted_finding_keys
-            and semantic_key not in review_task_ids
+            semantic_key in exhausted_finding_keys and semantic_key not in review_task_ids
         )
         if receipt_id in seen and not retry_review:
             retain(receipt, semantic_key, FindingDisposition.REPLAY, "receipt_replay")
@@ -838,11 +830,15 @@ def refill_symbolic_findings(
             continue
         finding = ledger.get(receipt.finding_cid)
         if finding is None:
-            retain(receipt, semantic_key, FindingDisposition.MISSING_FINDING, "finding_not_in_ledger")
+            retain(
+                receipt, semantic_key, FindingDisposition.MISSING_FINDING, "finding_not_in_ledger"
+            )
             continue
         semantic_key = finding.semantic_key_id
         if receipt.semantic_key_id and receipt.semantic_key_id != semantic_key:
-            retain(receipt, semantic_key, FindingDisposition.REJECTED, "receipt_semantic_key_mismatch")
+            retain(
+                receipt, semantic_key, FindingDisposition.REJECTED, "receipt_semantic_key_mismatch"
+            )
             continue
         exhausted = semantic_key in exhausted_finding_keys
         if semantic_key in existing_by_finding_key and not exhausted:
@@ -858,13 +854,23 @@ def refill_symbolic_findings(
             retain(receipt, semantic_key, FindingDisposition.UNACTIONABLE, "finding_not_actionable")
             continue
         if not _finding_bound(finding, binding):
-            retain(receipt, semantic_key, FindingDisposition.UNBOUND, "repository_tree_or_policy_mismatch")
+            retain(
+                receipt,
+                semantic_key,
+                FindingDisposition.UNBOUND,
+                "repository_tree_or_policy_mismatch",
+            )
             continue
         outputs = _safe_output_paths(
             finding, roots=policy.output_roots, maximum=policy.max_output_paths
         )
         if not outputs:
-            retain(receipt, semantic_key, FindingDisposition.IMPRECISE_SCOPE, "output_scope_not_bounded")
+            retain(
+                receipt,
+                semantic_key,
+                FindingDisposition.IMPRECISE_SCOPE,
+                "output_scope_not_bounded",
+            )
             continue
         goal, rejected = _goal_for_family(
             finding.root_cause_family,
@@ -889,7 +895,12 @@ def refill_symbolic_findings(
         else:
             surplus = surplus_by_goal.get(goal.goal_id, 0)
             if surplus >= policy.max_surplus_per_goal:
-                retain(receipt, semantic_key, FindingDisposition.SURPLUS_LIMIT, "per_goal_surplus_limit")
+                retain(
+                    receipt,
+                    semantic_key,
+                    FindingDisposition.SURPLUS_LIMIT,
+                    "per_goal_surplus_limit",
+                )
                 continue
             surplus_by_goal[goal.goal_id] = surplus + 1
 
@@ -992,9 +1003,7 @@ def refill_symbolic_findings(
 
     used_goal_ids = {task.goal_id for task in new_tasks}
     proposed_goals = [goal for goal in proposed_goals if goal.goal_id in used_goal_ids]
-    max_backoff_count = max(
-        (count for _, count in diagnostic_states.values()), default=1
-    )
+    max_backoff_count = max((count for _, count in diagnostic_states.values()), default=1)
     backoff_factor = 2 ** min(max_backoff_count - 1, 5)
     next_state = RefillState(
         last_sequence=max_sequence,
@@ -1003,8 +1012,7 @@ def refill_symbolic_findings(
         seen_receipt_ids=tuple(seen),
         semantic_task_ids=tuple(semantic_task_ids.items()),
         diagnostic_states=tuple(
-            (key, signature, count)
-            for key, (signature, count) in diagnostic_states.items()
+            (key, signature, count) for key, (signature, count) in diagnostic_states.items()
         ),
         review_task_ids=tuple(review_task_ids.items()),
     )

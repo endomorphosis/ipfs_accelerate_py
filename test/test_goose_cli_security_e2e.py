@@ -344,9 +344,7 @@ def _fake_manifest(*, content: bytes, version: str = f"v{PINNED_VERSION}") -> Di
 def _fake_run_version(version: str = PINNED_VERSION):
     def run(command, **kwargs):
         if command and str(command[0]).endswith(("goose", "goose.exe")) and "--version" in command:
-            return subprocess.CompletedProcess(
-                command, 0, stdout=f"goose {version}\n", stderr=""
-            )
+            return subprocess.CompletedProcess(command, 0, stdout=f"goose {version}\n", stderr="")
         if command and command[0] == "ldd":
             return subprocess.CompletedProcess(
                 command, 0, stdout="ldd (GNU libc) 2.39\n", stderr=""
@@ -360,9 +358,7 @@ def _write_payload_download(payload: bytes):
     calls: List[Dict[str, Any]] = []
 
     def download(url: str, destination: Path, timeout_seconds: float) -> None:
-        calls.append(
-            {"url": url, "destination": str(destination), "timeout": timeout_seconds}
-        )
+        calls.append({"url": url, "destination": str(destination), "timeout": timeout_seconds})
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(payload)
 
@@ -492,9 +488,7 @@ def test_impact_surface_registry_names_regression_targets() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_explicit_lazy_install_via_ensure_goose(
-    managed_root: Path, tmp_path: Path
-) -> None:
+def test_explicit_lazy_install_via_ensure_goose(managed_root: Path, tmp_path: Path) -> None:
     payload = _make_tar_bz2({"goose": b"#!/bin/sh\necho goose\n"})
     manifest = _fake_manifest(content=payload)
     download = _write_payload_download(payload)
@@ -637,9 +631,7 @@ def test_stale_version_rejected(managed_root: Path, tmp_path: Path) -> None:
 def test_argv_metacharacters_no_shell_execution() -> None:
     recorder = _RecordingPopen()
     runner = ProcessRunner(popen_factory=recorder)
-    result = runner.run(
-        _py("import sys; print(repr(sys.argv[1]))") + [ARGV_METACHARS]
-    )
+    result = runner.run(_py("import sys; print(repr(sys.argv[1]))") + [ARGV_METACHARS])
     assert result.ok
     assert ARGV_METACHARS in result.stdout
     assert "pwned" not in result.stdout or ARGV_METACHARS in result.stdout
@@ -672,14 +664,13 @@ def test_timeout_and_orphan_child_killed(tmp_path: Path) -> None:
         "open(marker, 'w').write(str(child.pid))",
         "time.sleep(60)",
     )
-    runner = ProcessRunner(
-        bounds=ProcessBounds(term_grace_seconds=0.1, kill_wait_seconds=0.5)
-    )
+    runner = ProcessRunner(bounds=ProcessBounds(term_grace_seconds=0.1, kill_wait_seconds=0.5))
     with pytest.raises(Exception) as ei:
         runner.run(parent, timeout_seconds=0.35)
-    assert "timeout" in str(ei.value).lower() or getattr(
-        getattr(ei.value, "code", None), "value", ""
-    ) == "timeout"
+    assert (
+        "timeout" in str(ei.value).lower()
+        or getattr(getattr(ei.value, "code", None), "value", "") == "timeout"
+    )
     # Child should not remain as orphan.
     deadline = time.time() + 3.0
     while time.time() < deadline:
@@ -814,9 +805,7 @@ def test_provider_quota_failure_classified(fake_bin: Path) -> None:
     assert result.ok is False
     assert result.metadata.get("goose_error_kind") == GooseErrorKind.QUOTA_RATE_LIMIT.value
     _assert_no_leak(result.to_dict(), PROMPT_SHAPED_SECRET, CREDENTIAL_ENV_VALUE)
-    kind, _msg, _retryable = classify_goose_failure(
-        exit_code=1, stderr="quota exceeded", stdout=""
-    )
+    kind, _msg, _retryable = classify_goose_failure(exit_code=1, stderr="quota exceeded", stdout="")
     assert kind is GooseErrorKind.QUOTA_RATE_LIMIT
 
 
@@ -941,9 +930,7 @@ def test_router_safe_chat_and_no_side_effect_retry(
             provider.capabilities = capabilities_for_version(PINNED_VERSION)  # type: ignore[attr-defined]
 
     # Side-effect aware: agent kwargs must disable cache/retry helpers.
-    assert llm_router._kwargs_are_side_effecting(
-        {"agent": True, "allow_side_effects": True}
-    )
+    assert llm_router._kwargs_are_side_effecting({"agent": True, "allow_side_effects": True})
     assert not llm_router._kwargs_are_side_effecting({"agent": False})
 
     # After side effects started, no automatic retry (router helper).
@@ -1024,9 +1011,7 @@ def test_endpoint_chat_authorized_agent_and_stream_cancel(
     work = tmp_path / "work"
     work.mkdir()
     argv_path = tmp_path / "ep_argv.json"
-    exe = _write_executable(
-        fake_bin, _json_success_script("endpoint-chat", include_tool=False)
-    )
+    exe = _write_executable(fake_bin, _json_success_script("endpoint-chat", include_tool=False))
     monkeypatch.setenv("GOOSE_FAKE_ARGV_PATH", str(argv_path))
     monkeypatch.setenv("OPENAI_API_KEY", CREDENTIAL_ENV_VALUE)
 
@@ -1209,9 +1194,7 @@ def _fake_acp_script(*, crash_after_prompt: bool = False) -> str:
     )
 
 
-def test_acp_session_crash_marks_uncertain_no_auto_replay(
-    fake_bin: Path, tmp_path: Path
-) -> None:
+def test_acp_session_crash_marks_uncertain_no_auto_replay(fake_bin: Path, tmp_path: Path) -> None:
     from ipfs_accelerate_py.cli_runtime.acp import ACPBounds
 
     state_root = tmp_path / "acp-state"
@@ -1310,7 +1293,11 @@ def test_worker_chat_allowed_agent_denied_path_escape_duplicate(
                 },
             }
         )
-    assert "agent" in str(ei.value).lower() or "not allowed" in str(ei.value).lower() or "policy" in str(ei.value).lower()
+    assert (
+        "agent" in str(ei.value).lower()
+        or "not allowed" in str(ei.value).lower()
+        or "policy" in str(ei.value).lower()
+    )
 
     # Path escape rejected
     outside = tmp_path / ".." / "escape_matrix"
@@ -1410,7 +1397,9 @@ def test_no_cross_provider_fallback_after_goose_side_effects(
             }
         )
     # Must not have fallen back to openai/codex/etc after goose side effects.
-    assert all(p in {"goose_cli", "goose", "goose_agent", "None"} or "goose" in p for p in providers_seen)
+    assert all(
+        p in {"goose_cli", "goose", "goose_agent", "None"} or "goose" in p for p in providers_seen
+    )
     assert "openai" not in providers_seen
     assert "codex_cli" not in providers_seen
 

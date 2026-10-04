@@ -132,15 +132,12 @@ See comprehensive examples in:
 2. **Distributed Inference Logging**
    ```python
    logger = ProvenanceLogger()
-   logger.log_inference("bert-base", {
-       "input": "text",
-       "duration_ms": 150
-   })
+   logger.log_inference("bert-base", {"input": "text", "duration_ms": 150})
    ```
 
 3. **Worker Coordination**
    ```python
-   coordinator = WorkflowCoordinator({'enable_p2p': True})
+   coordinator = WorkflowCoordinator({"enable_p2p": True})
    coordinator.submit_task("task-001", "inference", {...})
    task = coordinator.get_next_task("worker-001")
    ```
@@ -148,10 +145,7 @@ See comprehensive examples in:
 4. **GitHub Copilot Activity Tracking**
    ```python
    logger = ProvenanceLogger()
-   logger.log_pr_activity(123, "copilot_suggestion", {
-       "file": "model.py",
-       "accepted": True
-   })
+   logger.log_pr_activity(123, "copilot_suggestion", {"file": "model.py", "accepted": True})
    ```
 
 ### Testing

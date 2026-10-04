@@ -317,9 +317,7 @@ def _provider_output(request_id: str, proposals: list[dict[str, Any]] | None = N
 
 
 def test_route_interface_and_capability_boundary() -> None:
-    route = create_formalized_goal_development_route(
-        llm_generate=lambda *_a, **_k: ""
-    )
+    route = create_formalized_goal_development_route(llm_generate=lambda *_a, **_k: "")
     capability = route.capabilities()
 
     assert route.interface == FORMALIZED_GOAL_DEVELOPMENT_ROUTE_INTERFACE
@@ -383,9 +381,7 @@ def test_prose_cannot_bypass_formalization(prose_payload: Any) -> None:
 
 def test_missing_formal_goal_is_rejected_without_model_call() -> None:
     calls: list[Any] = []
-    route = FormalizedGoalDevelopmentRoute(
-        llm_generate=lambda *_a, **_k: calls.append(True) or ""
-    )
+    route = FormalizedGoalDevelopmentRoute(llm_generate=lambda *_a, **_k: calls.append(True) or "")
 
     result = route.develop(_route_request(formal_goal=None))
 
@@ -399,9 +395,7 @@ def test_unconfirmed_formal_goal_is_rejected() -> None:
     formal = _formal_goal(status="draft")
     # FormalGoal constructor may reject non-confirmed status depending on
     # contract version; if construction succeeds, the route must still gate.
-    route = FormalizedGoalDevelopmentRoute(
-        llm_generate=lambda *_a, **_k: calls.append(True) or ""
-    )
+    route = FormalizedGoalDevelopmentRoute(llm_generate=lambda *_a, **_k: calls.append(True) or "")
     result = route.develop(_route_request(formal_goal=formal))
 
     assert result.rejected
@@ -431,9 +425,7 @@ def test_ambiguity_requiring_selection_cannot_reach_leanstral() -> None:
         )
 
     # Also reject a raw mapping that tries to smuggle unresolved ambiguity.
-    route = FormalizedGoalDevelopmentRoute(
-        llm_generate=lambda *_a, **_k: calls.append(True) or ""
-    )
+    route = FormalizedGoalDevelopmentRoute(llm_generate=lambda *_a, **_k: calls.append(True) or "")
     smuggled = {
         "formal_goal_id": "formal:ambiguous",
         "selected_interpretation_id": "interp:a",
@@ -486,9 +478,7 @@ def test_ambiguity_requiring_selection_cannot_reach_leanstral() -> None:
 
 def test_missing_templates_rejected_before_model() -> None:
     calls: list[Any] = []
-    route = FormalizedGoalDevelopmentRoute(
-        llm_generate=lambda *_a, **_k: calls.append(True) or ""
-    )
+    route = FormalizedGoalDevelopmentRoute(llm_generate=lambda *_a, **_k: calls.append(True) or "")
     result = route.develop(_route_request(templates=()))
     assert result.gate_reason is FormalizationGateReason.MISSING_TEMPLATES
     assert calls == []
@@ -630,9 +620,7 @@ def test_confirmed_formal_goal_routes_to_unverified_draft() -> None:
         "subgoal:validation",
     ]
     # Template-bound formula IDs — model cannot invent formulas.
-    assert result.draft.proposals[0].satisfaction_formula_id == (
-        "formula:reviewed-implementation"
-    )
+    assert result.draft.proposals[0].satisfaction_formula_id == ("formula:reviewed-implementation")
     assert result["authoritative"] is False
     assert result["verified"] is False
     assert result["admitted"] is False
@@ -657,9 +645,7 @@ def test_confirmed_formal_goal_routes_to_unverified_draft() -> None:
             "root",
         ),
         (
-            lambda data: data["proposals"][0].update(
-                {"formula": "forall x, privileged x"}
-            ),
+            lambda data: data["proposals"][0].update({"formula": "forall x, privileged x"}),
             "formula",
         ),
         (
@@ -674,22 +660,16 @@ def test_confirmed_formal_goal_routes_to_unverified_draft() -> None:
         (lambda data: data.update({"admitted": True}), "admission"),
         (lambda data: data.update({"complete": True}), "completion"),
         (
-            lambda data: data["proposals"][0].update(
-                {"assumption_ids": ["assumption:invented"]}
-            ),
+            lambda data: data["proposals"][0].update({"assumption_ids": ["assumption:invented"]}),
             "assumptions",
         ),
         (
-            lambda data: data["proposals"][0].update(
-                {"template_id": "template:invented"}
-            ),
+            lambda data: data["proposals"][0].update({"template_id": "template:invented"}),
             "template",
         ),
     ],
 )
-def test_hostile_provider_output_cannot_mutate_authority_surfaces(
-    mutate, marker
-) -> None:
+def test_hostile_provider_output_cannot_mutate_authority_surfaces(mutate, marker) -> None:
     request = _route_request()
 
     def generate(prompt: str, **_kwargs: Any) -> str:
@@ -724,15 +704,11 @@ def test_hostile_provider_output_cannot_mutate_authority_surfaces(
         ),
         (TimeoutError(), GoalDevelopmentFallbackReason.TIMEOUT),
         (
-            ProofProviderError(
-                ProviderFailureCode.RESOURCE_EXHAUSTED, "route overloaded"
-            ),
+            ProofProviderError(ProviderFailureCode.RESOURCE_EXHAUSTED, "route overloaded"),
             GoalDevelopmentFallbackReason.OVERLOADED,
         ),
         (
-            ProofProviderError(
-                ProviderFailureCode.MALFORMED_RESPONSE, "bad backend response"
-            ),
+            ProofProviderError(ProviderFailureCode.MALFORMED_RESPONSE, "bad backend response"),
             GoalDevelopmentFallbackReason.MALFORMED_OUTPUT,
         ),
     ],
@@ -755,9 +731,7 @@ def test_transport_failures_fall_back_deterministically(failure, expected) -> No
 def test_timeout_and_cancellation_do_not_stall_supervisor() -> None:
     cancellation = CancellationToken()
     cancellation.cancel()
-    route = FormalizedGoalDevelopmentRoute(
-        llm_generate=lambda *_a, **_k: "unused"
-    )
+    route = FormalizedGoalDevelopmentRoute(llm_generate=lambda *_a, **_k: "unused")
     cancelled = route.develop(_route_request(), cancellation=cancellation)
 
     release = threading.Event()
@@ -783,9 +757,7 @@ def test_timeout_and_cancellation_do_not_stall_supervisor() -> None:
 
 
 def test_malformed_json_falls_back_without_raising() -> None:
-    route = FormalizedGoalDevelopmentRoute(
-        llm_generate=lambda *_a, **_k: "not json at all"
-    )
+    route = FormalizedGoalDevelopmentRoute(llm_generate=lambda *_a, **_k: "not json at all")
     result = route.develop(_route_request())
     assert result.status is FormalizedRouteStatus.DETERMINISTIC_FALLBACK
     assert result.fallback_reason is GoalDevelopmentFallbackReason.MALFORMED_OUTPUT

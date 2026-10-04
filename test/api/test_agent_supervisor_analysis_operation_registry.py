@@ -100,9 +100,7 @@ def test_logic_families_are_explicit_and_never_conflated() -> None:
     for spec in default_operation_specs():
         if spec.operation in logical:
             assert {item.value for item in spec.logic_families} == EXPECTED_FAMILIES
-            assert (
-                ProvenanceRequirement.LOGIC_FAMILY in spec.provenance.required
-            )
+            assert ProvenanceRequirement.LOGIC_FAMILY in spec.provenance.required
         else:
             assert spec.logic_families == ()
 
@@ -116,12 +114,8 @@ def test_logic_families_are_explicit_and_never_conflated() -> None:
 
 def test_operation_compatibility_aliases_preserve_canonical_ids() -> None:
     assert normalize_analysis_operation("ast_symbol_impact").value == "symbol_impact"
-    assert normalize_analysis_operation("graph_retrieval").value == (
-        "graphrag_retrieval"
-    )
-    assert normalize_analysis_operation("legal_logic_analysis").value == (
-        "logic_translation"
-    )
+    assert normalize_analysis_operation("graph_retrieval").value == ("graphrag_retrieval")
+    assert normalize_analysis_operation("legal_logic_analysis").value == ("logic_translation")
     assert normalize_analysis_operation("proof_candidate_selection").value == (
         "proof_candidate_analysis"
     )
@@ -154,14 +148,15 @@ def test_reference_normalization_unifies_local_and_remote_shapes() -> None:
 
     assert dict(local) == dict(remote)
     assert local["score_millionths"] == 750_000
-    assert normalize_analysis_reference(
-        {"artifact_id": "artifact:one", "score_millionths": 1}
-    )["score_millionths"] == 1
+    assert (
+        normalize_analysis_reference({"artifact_id": "artifact:one", "score_millionths": 1})[
+            "score_millionths"
+        ]
+        == 1
+    )
     assert "provider_decoration" not in local
     with pytest.raises(AnalysisOperationRegistryError):
-        normalize_analysis_reference(
-            {"artifact_id": "artifact:one", "source_code": "secret"}
-        )
+        normalize_analysis_reference({"artifact_id": "artifact:one", "source_code": "secret"})
 
 
 def test_authority_and_safety_contracts_cannot_be_enabled() -> None:
@@ -201,18 +196,13 @@ def test_default_registry_discovery_is_lazy_and_complete() -> None:
     registry = create_default_analysis_operation_registry()
 
     assert registry.frozen is False
-    assert {item.operation.value for item in registry.operations()} == (
-        EXPECTED_OPERATIONS
-    )
+    assert {item.operation.value for item in registry.operations()} == (EXPECTED_OPERATIONS)
     assert [item.producer_id for item in registry.producers()] == [
         LOCAL_ANALYSIS_PRODUCER_ID,
         IPFS_DATASETS_ANALYSIS_PRODUCER_ID,
     ]
     assert all(item.non_authoritative for item in registry.discover_capabilities())
-    assert all(
-        AnalysisProducer.from_dict(item.to_dict()) == item
-        for item in registry.producers()
-    )
+    assert all(AnalysisProducer.from_dict(item.to_dict()) == item for item in registry.producers())
     assert registry.frozen is False
     record = registry.to_dict()
     assert record["authority"]["repository_mutation"] is False
@@ -262,9 +252,7 @@ def test_build_request_is_registry_tree_policy_and_family_bound() -> None:
     stale_artifact = registry.build_request(
         "symbol_impact",
         "question",
-        artifact_references=(
-            {"artifact_id": "artifact:stale", "tree_id": "tree:stale"},
-        ),
+        artifact_references=({"artifact_id": "artifact:stale", "tree_id": "tree:stale"},),
         repository_id="repo",
         tree_id="tree:current",
         objective_revision="objective",
@@ -345,9 +333,7 @@ def _single_operation_registry(*, optional_fail: bool = False):
         capabilities=spec.capability_requirements,
     )
     local = _FixtureProducer(local_declaration.capability)
-    optional = _FixtureProducer(
-        optional_declaration.capability, fail=optional_fail
-    )
+    optional = _FixtureProducer(optional_declaration.capability, fail=optional_fail)
     registry.register_producer(local_declaration, provider=local)
     registry.register_producer(optional_declaration, provider=optional)
     return registry, local, optional
@@ -358,9 +344,7 @@ def _logic_registry(backend):
     for spec in default_operation_specs():
         if spec.logic_families:
             registry.register_operation(spec)
-    local_declaration, optional_declaration = (
-        registry_logic_producer_declarations()
-    )
+    local_declaration, optional_declaration = registry_logic_producer_declarations()
     registry.register_producer(
         local_declaration,
         provider=create_local_registry_logic_producer(),
@@ -421,8 +405,9 @@ def test_explicit_local_and_remote_success_share_reference_shape() -> None:
     local_shape = set(local.evidence_references[0])
     remote_shape = set(remote.evidence_references[0])
     assert local_shape == remote_shape
-    assert local.evidence_references[0]["reference_id"] == (
-        remote.evidence_references[0]["reference_id"]
+    assert (
+        local.evidence_references[0]["reference_id"]
+        == (remote.evidence_references[0]["reference_id"])
     )
     assert local.evidence_references[0]["producer_id"] == "local"
     assert remote.evidence_references[0]["producer_id"] == "optional"
@@ -456,9 +441,7 @@ def test_stale_optional_logic_reference_uses_typed_local_fallback() -> None:
 
     assert result.status is AnalysisTransportStatus.FALLBACK
     assert result.provider_id == LOCAL_ANALYSIS_PRODUCER_ID
-    assert result.fallback_from_provider_id == (
-        IPFS_DATASETS_ANALYSIS_PRODUCER_ID
-    )
+    assert result.fallback_from_provider_id == (IPFS_DATASETS_ANALYSIS_PRODUCER_ID)
     assert result.fallback_attempted is True
 
 
@@ -469,8 +452,7 @@ def test_logic_family_binding_stays_within_provenance_bound() -> None:
                 "status": "candidate",
                 "evidence_references": [{"artifact_id": "artifact:one"}],
                 "provenance_references": [
-                    {"record_id": f"record:{index}", "kind": "provider"}
-                    for index in range(64)
+                    {"record_id": f"record:{index}", "kind": "provider"} for index in range(64)
                 ],
             }
 
@@ -491,8 +473,7 @@ def test_logic_family_binding_stays_within_provenance_bound() -> None:
     assert len(result.provenance_references) == 64
     assert result.truncated is True
     assert any(
-        item.get("kind") == "logic_family"
-        and item.get("record_id") == "dcec"
+        item.get("kind") == "logic_family" and item.get("record_id") == "dcec"
         for item in result.provenance_references
     )
 
@@ -561,9 +542,7 @@ def test_batch_rejects_cross_tree_and_preserves_family_provenance() -> None:
         ("counterexample_candidate_analysis", "event_calculus"),
     ],
 )
-def test_default_local_producer_executes_complete_portfolio(
-    operation, logic_family
-) -> None:
+def test_default_local_producer_executes_complete_portfolio(operation, logic_family) -> None:
     registry = create_default_analysis_operation_registry()
     request = registry.build_request(
         operation,
@@ -588,16 +567,14 @@ def test_default_local_producer_executes_complete_portfolio(
     assert result.provider_id == LOCAL_ANALYSIS_PRODUCER_ID
     assert result.evidence_references
     assert all(
-        item["producer_id"] == LOCAL_ANALYSIS_PRODUCER_ID
-        for item in result.evidence_references
+        item["producer_id"] == LOCAL_ANALYSIS_PRODUCER_ID for item in result.evidence_references
     )
     assert result.non_authoritative
     assert result.completion_authority is False
     assert result.safe_for_completion_reasoning is False
     if logic_family:
         assert any(
-            item.get("kind") == "logic_family"
-            and item.get("record_id") == logic_family
+            item.get("kind") == "logic_family" and item.get("record_id") == logic_family
             for item in result.provenance_references
         )
 
@@ -609,15 +586,11 @@ def test_default_optional_activation_failure_falls_back_without_import_probe() -
         calls.append("activate")
         raise ModuleNotFoundError("ipfs_datasets_py")
 
-    registry = create_default_analysis_operation_registry(
-        optional_provider_factory=unavailable
-    )
+    registry = create_default_analysis_operation_registry(optional_provider_factory=unavailable)
     request = registry.build_request(
         "logic_translation",
         "Translate the obligation",
-        artifact_references=(
-            {"artifact_id": "norm:one", "summary": "must validate"},
-        ),
+        artifact_references=({"artifact_id": "norm:one", "summary": "must validate"},),
         repository_id="repo",
         tree_id="tree",
         objective_revision="objective",
@@ -629,9 +602,7 @@ def test_default_optional_activation_failure_falls_back_without_import_probe() -
     assert calls == ["activate"]
     assert result.status is AnalysisTransportStatus.FALLBACK
     assert result.provider_id == LOCAL_ANALYSIS_PRODUCER_ID
-    assert result.fallback_from_provider_id == (
-        IPFS_DATASETS_ANALYSIS_PRODUCER_ID
-    )
+    assert result.fallback_from_provider_id == (IPFS_DATASETS_ANALYSIS_PRODUCER_ID)
     assert result.fallback_attempted is True
     assert result.evidence_references
 

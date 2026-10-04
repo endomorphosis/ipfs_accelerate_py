@@ -36,7 +36,9 @@ def canonical_json_bytes(value: Any) -> bytes:
         raise ValueError(f"unsupported canonical task identity value: {type(item).__name__}")
 
     check(value)
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
 
 
 def canonical_content_cid(value: Any) -> str:
@@ -74,8 +76,7 @@ def board_namespace_from_path(path: str | Path) -> str:
 
 def _mapping_value(source: Mapping[str, Any], *keys: str) -> Any:
     normalized = {
-        str(key).strip().casefold().replace("_", " "): value
-        for key, value in source.items()
+        str(key).strip().casefold().replace("_", " "): value for key, value in source.items()
     }
     for key in keys:
         candidate = normalized.get(key.casefold().replace("_", " "))
@@ -304,10 +305,9 @@ def canonical_bundle_identity(bundle: Mapping[str, Any]) -> TaskIdentity:
         for value in _sequence(bundle.get("execution_slice_task_ids"))
         if str(value).strip()
     }
-    if (
-        "execution_slice_task_cids" in bundle
-        or "execution_slice_task_ids" in bundle
-    ) and (selected_cids or selected_ids):
+    if ("execution_slice_task_cids" in bundle or "execution_slice_task_ids" in bundle) and (
+        selected_cids or selected_ids
+    ):
         selected_tasks = [
             (item, identity)
             for item, identity in identified_tasks
@@ -327,9 +327,7 @@ def canonical_bundle_identity(bundle: Mapping[str, Any]) -> TaskIdentity:
         "outputs": [],
     }
     display_ids = sorted(
-        str(item.get("task_id"))
-        for item, _ in identified_tasks
-        if item.get("task_id")
+        str(item.get("task_id")) for item, _ in identified_tasks if item.get("task_id")
     )
     return canonical_task_identity(
         {**material, "task_id": ",".join(display_ids)},

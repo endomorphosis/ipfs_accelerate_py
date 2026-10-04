@@ -229,7 +229,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--timeout-s", type=float, default=180.0, help="Per-task wait timeout")
 
     p.add_argument("--image", type=str, default="nvidia/cuda:12.4.0-base")
-    p.add_argument("--gpus", type=str, default="all", help='Value for docker "--gpus" (e.g. all, device=0)')
+    p.add_argument(
+        "--gpus", type=str, default="all", help='Value for docker "--gpus" (e.g. all, device=0)'
+    )
     p.add_argument("--stream-output", action="store_true", help="Use streaming execution path")
 
     p.add_argument(
@@ -239,9 +241,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Container command (default: nvidia-smi)",
     )
 
-    p.add_argument("--shared-token", type=str, default=os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_SHARED_TOKEN"))
-    p.add_argument("--shuffle-targets", action="store_true", help="Shuffle target order before round-robin")
-    p.add_argument("--output", type=str, default=None, help="Write JSON report to this path instead of stdout")
+    p.add_argument(
+        "--shared-token",
+        type=str,
+        default=os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_SHARED_TOKEN"),
+    )
+    p.add_argument(
+        "--shuffle-targets", action="store_true", help="Shuffle target order before round-robin"
+    )
+    p.add_argument(
+        "--output", type=str, default=None, help="Write JSON report to this path instead of stdout"
+    )
 
     return p
 

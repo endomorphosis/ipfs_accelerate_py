@@ -172,11 +172,7 @@ def test_reads_are_side_effect_free_and_bind_revisions() -> None:
         assert_no_prompt_media_or_output(
             {k: v for k, v in payload.items() if k not in {"error"}}
             if False
-            else {
-                k: v
-                for k, v in payload.items()
-                if str(k).casefold() not in {"error"}
-            }
+            else {k: v for k, v in payload.items() if str(k).casefold() not in {"error"}}
         )
     assert status["count"] >= 1
     assert health["healthy"] is True
@@ -207,14 +203,10 @@ def test_detail_redaction_hides_account_and_cost_without_detail_authority() -> N
 
 def test_pagination_is_bounded() -> None:
     scope, _, _, service, _, _ = _harness()
-    page = service.limits(
-        scope.scope_id, authorities=[USAGE_READ_AUTHORITY], limit=1
-    )
+    page = service.limits(scope.scope_id, authorities=[USAGE_READ_AUTHORITY], limit=1)
     assert page["success"] is True
     assert page["count"] == 1
-    oversized = service.limits(
-        scope.scope_id, authorities=[USAGE_READ_AUTHORITY], limit=10_000
-    )
+    oversized = service.limits(scope.scope_id, authorities=[USAGE_READ_AUTHORITY], limit=10_000)
     assert oversized["success"] is False
     assert oversized["error_code"] == "unbounded_page"
 
@@ -278,11 +270,7 @@ def test_admin_mutations_require_guardrails_and_audit() -> None:
         lease_id="lease",
         fence=1,
         source="model_output",
-        units={
-            "entries": [
-                {"dimension": "requests", "amount": {"kind": "finite", "value": 1}}
-            ]
-        },
+        units={"entries": [{"dimension": "requests", "amount": {"kind": "finite", "value": 1}}]},
     )
     assert model_denied["error_code"] == "mutation_denied_model_output"
 
@@ -295,11 +283,7 @@ def test_admin_mutations_require_guardrails_and_audit() -> None:
         fence=1,
         source="remote_peer",
         supersedes_event_id="evt-missing",
-        units={
-            "entries": [
-                {"dimension": "requests", "amount": {"kind": "finite", "value": 1}}
-            ]
-        },
+        units={"entries": [{"dimension": "requests", "amount": {"kind": "finite", "value": 1}}]},
     )
     assert peer_denied["error_code"] == "mutation_denied_remote_peer"
 
@@ -385,10 +369,7 @@ def test_override_and_import_with_expected_revision() -> None:
 
 
 def test_headroom_bands() -> None:
-    assert (
-        headroom_band(Quantity.finite(0), Quantity.finite(100))
-        == "exhausted"
-    )
+    assert headroom_band(Quantity.finite(0), Quantity.finite(100)) == "exhausted"
     assert headroom_band(Quantity.finite(5), Quantity.finite(100)) == "critical"
     assert headroom_band(Quantity.finite(20), Quantity.finite(100)) == "low"
     assert headroom_band(Quantity.finite(40), Quantity.finite(100)) == "medium"
@@ -414,7 +395,9 @@ def test_metrics_are_event_derived_and_low_cardinality() -> None:
         expected_effects=["reset"],
     )
     obs.ingest_document(store.read())
-    obs.record_denial(provider="provider:openai", deployment="deployment:chat", reason="limit_exhausted")
+    obs.record_denial(
+        provider="provider:openai", deployment="deployment:chat", reason="limit_exhausted"
+    )
     obs.record_wait(provider="provider:openai", deployment="deployment:chat")
     obs.record_reroute(provider="provider:openai", deployment="deployment:chat")
     obs.record_fallback(provider="provider:openai", deployment="deployment:chat")
@@ -498,9 +481,7 @@ def test_mcp_usage_tools_register_and_delegate() -> None:
     assert preview["reserved"] is False
 
     metrics = _run(
-        native_model_tools.model_catalog_usage_metrics(
-            authorities=[USAGE_READ_AUTHORITY]
-        )
+        native_model_tools.model_catalog_usage_metrics(authorities=[USAGE_READ_AUTHORITY])
     )
     assert metrics["success"] is True
 
@@ -541,12 +522,11 @@ def test_python_mcp_mcplusplus_schemas_and_reason_codes_agree() -> None:
     mcp_preview_schema = registry.tools["route_preview"]["input_schema"]
     idl_schemas = idl_registry.ai_usage_v1_input_schemas()
 
-    assert idl_schemas["model_catalog_usage"]["properties"]["operation"]["enum"] == (
-        mcp_usage_schema["properties"]["operation"]["enum"]
+    assert (
+        idl_schemas["model_catalog_usage"]["properties"]["operation"]["enum"]
+        == (mcp_usage_schema["properties"]["operation"]["enum"])
     )
-    assert set(idl_schemas["route_preview"]["properties"]) == set(
-        mcp_preview_schema["properties"]
-    )
+    assert set(idl_schemas["route_preview"]["properties"]) == set(mcp_preview_schema["properties"])
     assert idl_schemas["model_catalog_usage"]["required"] == mcp_usage_schema["required"]
 
     # Authorities agree
@@ -569,14 +549,11 @@ def test_python_mcp_mcplusplus_schemas_and_reason_codes_agree() -> None:
         "model_catalog_usage_metrics",
         "route_preview",
     }
-    catalog_cid = idl_registry.compute_interface_cid(
-        idl_registry.build_ai_catalog_v1_descriptor()
-    )
+    catalog_cid = idl_registry.compute_interface_cid(idl_registry.build_ai_catalog_v1_descriptor())
     assert catalog_cid.startswith("cidv1-sha256-")
     # Frozen catalog surface unchanged (matches test_mcplusplus_ai_catalog_idl)
     assert catalog_cid == (
-        "cidv1-sha256-13e0f0a7b9d8cae9b5d0ca0d5d4c1c0e"
-        "ea392e2225b5e5e3f05aa272bbf7315d"
+        "cidv1-sha256-13e0f0a7b9d8cae9b5d0ca0d5d4c1c0eea392e2225b5e5e3f05aa272bbf7315d"
     )
 
 

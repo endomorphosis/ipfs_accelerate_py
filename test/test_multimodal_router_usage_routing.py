@@ -67,9 +67,7 @@ def _now() -> datetime:
 
 
 def _rfc(dt: datetime) -> str:
-    return dt.astimezone(timezone.utc).isoformat(timespec="microseconds").replace(
-        "+00:00", "Z"
-    )
+    return dt.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 @pytest.fixture(autouse=True)
@@ -250,9 +248,7 @@ def _headroom_available(snap: UsageSnapshot, dimension: UsageDimension) -> Optio
 
 
 def test_usage_routing_requirement_id_exported() -> None:
-    assert USAGE_ROUTING_REQUIREMENT_ID == (
-        "requirement:multimodal-router-usage-routing.v1"
-    )
+    assert USAGE_ROUTING_REQUIREMENT_ID == ("requirement:multimodal-router-usage-routing.v1")
     assert MULTIMODAL_USAGE_OPERATION == "multimodal.generate"
 
 
@@ -271,9 +267,7 @@ def test_estimate_multimodal_usage_covers_modality_dimensions() -> None:
     assert vector.get(UsageDimension.IMAGES).amount.value == 1
     assert vector.get(UsageDimension.PIXELS).amount.value == 32 * 32
     assert vector.get(UsageDimension.MEDIA_BYTES).amount.value == len(image)
-    assert vector.get(UsageDimension.INPUT_TOKENS).amount.value >= estimate_text_tokens(
-        prompt
-    )
+    assert vector.get(UsageDimension.INPUT_TOKENS).amount.value >= estimate_text_tokens(prompt)
     assert vector.get(UsageDimension.OUTPUT_TOKENS).amount.value == 64
     assert vector.get(UsageDimension.CONCURRENT_REQUESTS).amount.value == 1
     settled = settle_multimodal_usage(
@@ -312,18 +306,8 @@ def test_multimodal_fallback_compatible_rejects_contract_drift() -> None:
     }
     ok = dict(origin, image_input_modes="inline,uri", requires_remote_upload="0")
     assert multimodal_fallback_compatible(origin, ok) is True
-    assert (
-        multimodal_fallback_compatible(
-            origin, dict(ok, locality="local")
-        )
-        is False
-    )
-    assert (
-        multimodal_fallback_compatible(
-            origin, dict(ok, requires_remote_upload="1")
-        )
-        is False
-    )
+    assert multimodal_fallback_compatible(origin, dict(ok, locality="local")) is False
+    assert multimodal_fallback_compatible(origin, dict(ok, requires_remote_upload="1")) is False
     assert (
         multimodal_fallback_compatible(
             origin,
@@ -350,9 +334,7 @@ def test_adversarial_ssrf_and_mime_fail_before_reservation() -> None:
             image="http://169.254.169.254/latest/meta-data/",
             provider_instance=provider,
             usage_coordinator=coord,
-            usage_policy=RoutingPolicy(
-                mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE
-            ),
+            usage_policy=RoutingPolicy(mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE),
             usage_candidates=[cand],
             usage_provider_by_binding={cand.binding_id: provider},
             usage_request=UsageRoutingRequest(
@@ -370,9 +352,7 @@ def test_adversarial_ssrf_and_mime_fail_before_reservation() -> None:
         validate_multimodal_media_input("file:///etc/passwd")
 
     with pytest.raises(MultimodalRouterError, match="MIME"):
-        validate_multimodal_media_input(
-            "data:application/x-msdownload;base64,AAA="
-        )
+        validate_multimodal_media_input("data:application/x-msdownload;base64,AAA=")
 
     with pytest.raises(MultimodalRouterError, match="max_media_bytes"):
         validate_multimodal_media_input(b"x" * 100, max_media_bytes=10)
@@ -533,9 +513,7 @@ def test_enforce_denies_when_capacity_exhausted() -> None:
             image=b"x",
             provider_instance=provider,
             usage_coordinator=coord,
-            usage_policy=RoutingPolicy(
-                mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE
-            ),
+            usage_policy=RoutingPolicy(mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE),
             usage_candidates=[cand],
             usage_provider_by_binding={cand.binding_id: provider},
             usage_request=UsageRoutingRequest(
@@ -638,9 +616,7 @@ def test_cancel_before_dispatch_does_not_charge() -> None:
             image=b"x",
             provider_instance=provider,
             usage_coordinator=coord,
-            usage_policy=RoutingPolicy(
-                mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE
-            ),
+            usage_policy=RoutingPolicy(mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE),
             usage_candidates=[cand],
             usage_provider_by_binding={cand.binding_id: provider},
             usage_request=UsageRoutingRequest(
@@ -717,12 +693,8 @@ def test_compatible_fallback_advances_on_capacity_error() -> None:
         "max_images": "1",
         "requires_remote_upload": "0",
     }
-    cand_a = _candidate(
-        provider_key="fb-a", scope=scope_a, score=50, labels=dict(labels)
-    )
-    cand_b = _candidate(
-        provider_key="fb-b", scope=scope_b, score=10, labels=dict(labels)
-    )
+    cand_a = _candidate(provider_key="fb-a", scope=scope_a, score=50, labels=dict(labels))
+    cand_b = _candidate(provider_key="fb-b", scope=scope_b, score=10, labels=dict(labels))
     provider_a = _CountingProvider(
         "fb-a",
         fail_times=1,
@@ -812,9 +784,7 @@ def test_forbidden_remote_upload_route_never_selected() -> None:
                 cand_b.binding_id: provider_b,
             },
             usage_request=UsageRoutingRequest(
-                required=estimate_multimodal_usage(
-                    "no-upload", image=b"local-only-bytes"
-                ),
+                required=estimate_multimodal_usage("no-upload", image=b"local-only-bytes"),
                 now=_rfc(clock.now()),
                 require_snapshot=True,
             ),
@@ -834,9 +804,7 @@ def test_provider_observation_updates_only_exact_scope() -> None:
     cand = _candidate(provider_key="obs-scope", scope=scope)
     provider = _CountingProvider("obs-scope")
 
-    before_other = _headroom_available(
-        coord.snapshot(other.scope_id), UsageDimension.REQUESTS
-    )
+    before_other = _headroom_available(coord.snapshot(other.scope_id), UsageDimension.REQUESTS)
     generate_multimodal(
         "scoped",
         image=b"x",
@@ -858,9 +826,7 @@ def test_provider_observation_updates_only_exact_scope() -> None:
             "reason_codes": ("provider_usage",),
         },
     )
-    after_other = _headroom_available(
-        coord.snapshot(other.scope_id), UsageDimension.REQUESTS
-    )
+    after_other = _headroom_available(coord.snapshot(other.scope_id), UsageDimension.REQUESTS)
     assert after_other == before_other
     admission = get_last_usage_admission()
     assert admission["selected_scope_id"] == scope.scope_id

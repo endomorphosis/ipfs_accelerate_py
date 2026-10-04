@@ -298,9 +298,7 @@ def test_cas_revision_events_watch_and_status_independent_identity(
 
 def test_writer_fencing_rejects_stale_and_concurrent_writers(tmp_path: Path) -> None:
     first = _materialized(tmp_path)
-    second = DuckDBTaskSource(
-        first.database_path, writer_id="writer:second", fencing_token=1
-    )
+    second = DuckDBTaskSource(first.database_path, writer_id="writer:second", fencing_token=1)
     lease = second.acquire_writer("writer:second", expected_fencing_token=1)
     task = second.get_task("REF-275")
     assert task is not None and lease.fencing_token == 2
@@ -361,9 +359,7 @@ def test_partial_corrupt_and_foreign_databases_fail_closed(tmp_path: Path) -> No
     source = _materialized(tmp_path / "valid")
     snapshot = source.snapshot()
     with pytest.raises(TaskSourceIntegrityError, match="foreign plan root"):
-        DuckDBTaskSource(
-            source.database_path, expected_plan_root_cid="plan:foreign"
-        ).snapshot()
+        DuckDBTaskSource(source.database_path, expected_plan_root_cid="plan:foreign").snapshot()
     with pytest.raises(TaskSourceIntegrityError, match="foreign repository"):
         DuckDBTaskSource(
             source.database_path, expected_repository_tree_id="tree:foreign"
@@ -394,9 +390,7 @@ def test_application_integrity_detects_manual_key_edge_and_json_corruption(
 ) -> None:
     source = _materialized(tmp_path)
     connection = duckdb.connect(str(source.database_path))
-    connection.execute(
-        "UPDATE tasks SET goal_cid = 'goal:missing' WHERE task_alias = 'REF-275'"
-    )
+    connection.execute("UPDATE tasks SET goal_cid = 'goal:missing' WHERE task_alias = 'REF-275'")
     connection.close()
 
     with pytest.raises(TaskSourceIntegrityError):

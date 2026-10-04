@@ -86,9 +86,7 @@ FAULT_REQUIREMENT_ID = "requirement:endpoint-usage-faults.v1"
 
 
 def _rfc(dt: datetime) -> str:
-    return dt.astimezone(timezone.utc).isoformat(timespec="microseconds").replace(
-        "+00:00", "Z"
-    )
+    return dt.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def _scope(key: str = "fault-a", *, cred: str = "fault-default") -> EndpointUsageScope:
@@ -100,9 +98,7 @@ def _scope(key: str = "fault-a", *, cred: str = "fault-default") -> EndpointUsag
         deployment_id=stable_id(
             "deployment", provider_id, "chat", "prod", "https://api.example.test/v1"
         ),
-        credential_pseudonym=credential_configuration_pseudonym(
-            "env:FAULT_USAGE_KEY", key_id=cred
-        ),
+        credential_pseudonym=credential_configuration_pseudonym("env:FAULT_USAGE_KEY", key_id=cred),
     )
 
 
@@ -138,9 +134,7 @@ def _coord(
     clock = clock or FakeClock(FIXED_NOW)
     if store is None:
         store = InMemoryUsageLedgerStore(clock=clock, writer_id=writer_id, fence=fence)
-    coord = UsageCoordinator(
-        store, writer_id=writer_id, fence=fence, partition=partition
-    )
+    coord = UsageCoordinator(store, writer_id=writer_id, fence=fence, partition=partition)
     return coord, clock, store
 
 
@@ -271,9 +265,7 @@ def test_malformed_metadata_is_rejected_or_bounded() -> None:
     assert any("invalid" in c for c in neg.reason_codes)
     # Negative prompt/total tokens must not appear as positive usage.
     usage_map = {
-        e.dimension: e.amount.value
-        for e in neg.usage.entries
-        if e.amount.kind.value == "finite"
+        e.dimension: e.amount.value for e in neg.usage.entries if e.amount.kind.value == "finite"
     }
     assert UsageDimension.INPUT_TOKENS not in usage_map
     assert UsageDimension.TOTAL_TOKENS not in usage_map
@@ -459,7 +451,7 @@ def test_single_flight_collapses_duplicate_work() -> None:
         barrier.wait()
         out = flight.do(
             "same-key",
-            lambda: (counter.__setitem__("n", counter["n"] + 1) or counter["n"]),
+            lambda: counter.__setitem__("n", counter["n"] + 1) or counter["n"],
         )
         results.append(out)
 
@@ -732,9 +724,7 @@ def test_coordinator_partition_scales_ceilings_conservatively() -> None:
 
     clock = FakeClock(FIXED_NOW)
     store = InMemoryUsageLedgerStore(clock=clock, writer_id="part-w", fence=1)
-    coord, _clock, _store = _coord(
-        clock, writer_id="part-w", fence=1, store=store, partition=part
-    )
+    coord, _clock, _store = _coord(clock, writer_id="part-w", fence=1, store=store, partition=part)
     scope = _scope("part")
     # Ceiling 10 → partition scale 2.
     coord.configure_limits(scope.scope_id, [_limit(scope.scope_id, UsageDimension.REQUESTS, 10)])

@@ -124,9 +124,10 @@ _SAFE_FAILED_PROBE_ERRORS = {"connect_failed", "timeout"}
 
 
 def _is_path_free_token(value: str, *, max_length: int = 128) -> bool:
-    return bool(value) and len(value) <= max_length and all(
-        character.isalnum() or character in "._:-"
-        for character in value
+    return (
+        bool(value)
+        and len(value) <= max_length
+        and all(character.isalnum() or character in "._:-" for character in value)
     )
 
 
@@ -216,11 +217,7 @@ class LeanstralCollectorConfig:
             raise ValueError("advertise interfaces must be path-free interface names")
 
         bootstraps = tuple(
-            dict.fromkeys(
-                str(peer).strip()
-                for peer in self.bootstrap_peers
-                if str(peer).strip()
-            )
+            dict.fromkeys(str(peer).strip() for peer in self.bootstrap_peers if str(peer).strip())
         )
         if not bootstraps:
             raise ValueError("at least one bootstrap peer must be configured")
@@ -236,13 +233,8 @@ class LeanstralCollectorConfig:
             raise ValueError("probe_timeout_s must be within (0, 10] seconds")
         if not (0.0 < float(self.model_timeout_s) <= MAX_TOPOLOGY_PROBE_TIMEOUT_S):
             raise ValueError("model_timeout_s must be within (0, 10] seconds")
-        if not (
-            float(self.client_process_timeout_s)
-            > (float(self.probe_timeout_s) * 4.0)
-        ):
-            raise ValueError(
-                "client_process_timeout_s must exceed four probe timeout windows"
-            )
+        if not (float(self.client_process_timeout_s) > (float(self.probe_timeout_s) * 4.0)):
+            raise ValueError("client_process_timeout_s must exceed four probe timeout windows")
 
         object.__setattr__(self, "endpoint_url", endpoint)
         object.__setattr__(self, "expected_transport_model_id", expected_model)
@@ -284,10 +276,7 @@ def _assert_path_free_identity(value: Any, *, field_name: str = "receipt") -> No
             raise TopologyCollectionError("identity_contains_control_character")
         if PureWindowsPath(value).is_absolute():
             raise TopologyCollectionError("identity_contains_local_path")
-        if (
-            Path(value).is_absolute()
-            and not value.startswith(_NETWORK_IDENTITY_PREFIXES)
-        ):
+        if Path(value).is_absolute() and not value.startswith(_NETWORK_IDENTITY_PREFIXES):
             raise TopologyCollectionError("identity_contains_local_path")
         if "../" in value or "..\\" in value:
             raise TopologyCollectionError("identity_contains_local_path")
@@ -378,11 +367,7 @@ def observe_ipv4_interfaces(
     except Exception as exc:
         raise TopologyCollectionError("interface_inventory_unavailable") from exc
 
-    allowed = {
-        str(interface).strip()
-        for interface in allowed_interfaces
-        if str(interface).strip()
-    }
+    allowed = {str(interface).strip() for interface in allowed_interfaces if str(interface).strip()}
     observed = []
     for interface in sorted(addresses):
         normalized = interface.casefold()
@@ -417,11 +402,7 @@ def _identity_model_record(model: Mapping[str, Any]) -> Dict[str, Any]:
     raw_model_id = str(model.get("transport_model_id") or "")
     model_name = str(model.get("name") or "")
     model_endpoint = str(model.get("endpoint") or "").rstrip("/")
-    if (
-        len(raw_model_id) > 1024
-        or len(model_name) > 256
-        or len(model_endpoint) > 2048
-    ):
+    if len(raw_model_id) > 1024 or len(model_name) > 256 or len(model_endpoint) > 2048:
         raise TopologyCollectionError("served_model_identity_too_long")
     if (
         raw_model_id.casefold().startswith("file://")
@@ -435,10 +416,7 @@ def _identity_model_record(model: Mapping[str, Any]) -> Dict[str, Any]:
     capabilities = model.get("capabilities")
     if not isinstance(capabilities, (list, tuple)):
         capabilities = []
-    if (
-        len(capabilities) > 32
-        or not all(type(item) is str for item in capabilities)
-    ):
+    if len(capabilities) > 32 or not all(type(item) is str for item in capabilities):
         raise TopologyCollectionError("served_model_capabilities_invalid")
     if not all(_is_path_free_token(item) for item in capabilities):
         raise TopologyCollectionError("served_model_capabilities_invalid")
@@ -742,10 +720,7 @@ def _validate_client_receipt(
         raise TopologyCollectionError("independent_client_receipt_cid_mismatch")
 
     client_peer_id = value.get("client_peer_id")
-    if (
-        type(client_peer_id) is not str
-        or not _is_path_free_token(client_peer_id, max_length=256)
-    ):
+    if type(client_peer_id) is not str or not _is_path_free_token(client_peer_id, max_length=256):
         raise TopologyCollectionError("independent_client_peer_id_missing")
     bootstraps = value.get("bootstrap_exercises")
     if (
@@ -829,10 +804,7 @@ def _validated_server_bootstrap_exercises(
     if not isinstance(bootstrap, Mapping):
         raise TopologyCollectionError("p2p_bootstrap_status_missing")
     configured = bootstrap.get("configured_peers")
-    if (
-        not isinstance(configured, list)
-        or sorted(configured) != sorted(configured_peers)
-    ):
+    if not isinstance(configured, list) or sorted(configured) != sorted(configured_peers):
         raise TopologyCollectionError("p2p_bootstrap_configuration_mismatch")
     attempts = bootstrap.get("attempts")
     if not isinstance(attempts, list) or not attempts:
@@ -855,12 +827,8 @@ def _validated_server_bootstrap_exercises(
         ):
             raise TopologyCollectionError("configured_bootstrap_exercise_invalid")
         error = attempt.get("error")
-        if (
-            (attempt["success"] is True and error is not None)
-            or (
-                attempt["success"] is False
-                and error not in _SAFE_FAILED_PROBE_ERRORS
-            )
+        if (attempt["success"] is True and error is not None) or (
+            attempt["success"] is False and error not in _SAFE_FAILED_PROBE_ERRORS
         ):
             raise TopologyCollectionError("configured_bootstrap_error_invalid")
         observed_targets.add(attempt["target"])
@@ -939,15 +907,11 @@ def assemble_topology_receipt(
     if server_status.get("listen_port") != LEANSTRAL_P2P_PORT:
         raise TopologyCollectionError("p2p_listen_port_mismatch")
     peer_id = server_status.get("peer_id")
-    if (
-        type(peer_id) is not str
-        or not _is_path_free_token(peer_id, max_length=256)
-    ):
+    if type(peer_id) is not str or not _is_path_free_token(peer_id, max_length=256):
         raise TopologyCollectionError("p2p_service_peer_id_missing")
 
     expected_multiaddrs = sorted(
-        f"/ip4/{address}/tcp/{LEANSTRAL_P2P_PORT}/p2p/{peer_id}"
-        for address in selection.selected
+        f"/ip4/{address}/tcp/{LEANSTRAL_P2P_PORT}/p2p/{peer_id}" for address in selection.selected
     )
     advertised_multiaddrs = server_status.get("multiaddrs")
     if (
@@ -1030,8 +994,7 @@ def assemble_topology_receipt(
             "existing_http_model_server_reused",
             "independent_client_subprocess",
             f"independent_client_receipt:{client_receipt['client_receipt_cid']}",
-            "configured_bootstrap_policy:"
-            f"{canonical_json_cid(list(config.bootstrap_peers))}",
+            f"configured_bootstrap_policy:{canonical_json_cid(list(config.bootstrap_peers))}",
             f"source_commit:{source_commit}",
         ],
     }
@@ -1117,17 +1080,12 @@ async def _wait_for_configured_bootstrap_attempts(
     with trio.move_on_after(float(timeout_s) + 0.25):
         while True:
             bootstrap = status.get("bootstrap")
-            attempts = (
-                bootstrap.get("attempts")
-                if isinstance(bootstrap, Mapping)
-                else None
-            )
+            attempts = bootstrap.get("attempts") if isinstance(bootstrap, Mapping) else None
             if isinstance(attempts, list):
                 attempted_targets = {
                     attempt.get("target")
                     for attempt in attempts
-                    if isinstance(attempt, Mapping)
-                    and attempt.get("attempted") is True
+                    if isinstance(attempt, Mapping) and attempt.get("attempted") is True
                 }
                 if attempted_targets == expected:
                     return status
@@ -1149,13 +1107,10 @@ async def _collect_leanstral_topology_impl(
     """Collect and validate one fresh Leanstral P2P topology receipt."""
 
     source_commit = (
-        require_clean_source_tree()
-        if _require_clean_source
-        else str(_source_commit or ("0" * 40))
+        require_clean_source_tree() if _require_clean_source else str(_source_commit or ("0" * 40))
     )
-    if (
-        len(source_commit) != 40
-        or any(character not in "0123456789abcdef" for character in source_commit)
+    if len(source_commit) != 40 or any(
+        character not in "0123456789abcdef" for character in source_commit
     ):
         raise TopologyCollectionError("source_commit_invalid")
 
@@ -1166,10 +1121,7 @@ async def _collect_leanstral_topology_impl(
     )
     if not selection.selected:
         raise TopologyCollectionError("policy_selected_advertised_addresses_empty")
-    advertise_addrs = [
-        f"/ip4/{address}/tcp/{LEANSTRAL_P2P_PORT}"
-        for address in selection.selected
-    ]
+    advertise_addrs = [f"/ip4/{address}/tcp/{LEANSTRAL_P2P_PORT}" for address in selection.selected]
 
     try:
         raw_http_models = await _model_provider(
@@ -1188,6 +1140,7 @@ async def _collect_leanstral_topology_impl(
 
     runner = _client_runner
     if runner is None:
+
         async def runner(**kwargs):
             return await _run_independent_client_subprocess(
                 **kwargs,
@@ -1272,11 +1225,7 @@ def _topology_error_codes(error: BaseException) -> set[str]:
     if isinstance(error, TopologyCollectionError):
         return {error.code}
     if isinstance(error, BaseExceptionGroup):
-        return {
-            code
-            for child in error.exceptions
-            for code in _topology_error_codes(child)
-        }
+        return {code for child in error.exceptions for code in _topology_error_codes(child)}
     return set()
 
 
@@ -1315,9 +1264,7 @@ def _csv_or_repeated(values: Sequence[str], env_name: str) -> Tuple[str, ...]:
         selected.extend(item.strip() for item in str(value).split(",") if item.strip())
     if not selected:
         selected.extend(
-            item.strip()
-            for item in os.environ.get(env_name, "").split(",")
-            if item.strip()
+            item.strip() for item in os.environ.get(env_name, "").split(",") if item.strip()
         )
     return tuple(dict.fromkeys(selected))
 
@@ -1395,9 +1342,7 @@ def _protocol_stdout_logging_boundary():
     original_level = root_logger.level
     protocol_handler = logging.StreamHandler(sys.stderr)
     protocol_handler.setFormatter(
-        logging.Formatter(
-            "%(asctime)s [%(levelname)s] [%(name)s] %(message)s"
-        )
+        logging.Formatter("%(asctime)s [%(levelname)s] [%(name)s] %(message)s")
     )
     for handler in original_handlers:
         root_logger.removeHandler(handler)
@@ -1459,11 +1404,7 @@ def _main(argv: Optional[Sequence[str]] = None) -> int:
         print(canonical_identity_json(collector_failure_receipt(code)))
         return 1
     except ValueError:
-        print(
-            canonical_identity_json(
-                collector_failure_receipt("collector_configuration_invalid")
-            )
-        )
+        print(canonical_identity_json(collector_failure_receipt("collector_configuration_invalid")))
         return 1
     except Exception:
         code = "collector_runtime_failed"

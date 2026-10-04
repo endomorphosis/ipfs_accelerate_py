@@ -217,12 +217,12 @@ sim_result = SimulationResult(
     metrics={
         "throughput_items_per_second": 95.0,
         "average_latency_ms": 16.0,
-        "peak_memory_mb": 2000
+        "peak_memory_mb": 2000,
     },
     simulation_params={
         "model_params": {"hidden_size": 768, "num_layers": 12},
-        "hardware_params": {"gpu_compute_capability": "8.6", "gpu_memory": 10240}
-    }
+        "hardware_params": {"gpu_compute_capability": "8.6", "gpu_memory": 10240},
+    },
 )
 
 # Create hardware result
@@ -235,18 +235,10 @@ hw_result = HardwareResult(
     metrics={
         "throughput_items_per_second": 90.0,
         "average_latency_ms": 17.0,
-        "peak_memory_mb": 2200
+        "peak_memory_mb": 2200,
     },
-    hardware_details={
-        "name": "NVIDIA RTX 3080",
-        "compute_capability": "8.6",
-        "vram_gb": 10
-    },
-    test_environment={
-        "os": "Linux",
-        "cuda_version": "11.4",
-        "driver_version": "470.82.01"
-    }
+    hardware_details={"name": "NVIDIA RTX 3080", "compute_capability": "8.6", "vram_gb": 10},
+    test_environment={"os": "Linux", "cuda_version": "11.4", "driver_version": "470.82.01"},
 )
 
 # Perform validation
@@ -265,7 +257,9 @@ for metric, comparison in validation_result.metrics_comparison.items():
 ### Basic Visualization
 
 ```python
-from duckdb_api.simulation_validation.visualization.validation_visualizer import ValidationVisualizer
+from duckdb_api.simulation_validation.visualization.validation_visualizer import (
+    ValidationVisualizer,
+)
 
 # Create visualizer
 visualizer = ValidationVisualizer()
@@ -275,7 +269,7 @@ visualizer.create_metric_comparison(
     simulation_values=[95.0, 92.0, 88.0, 90.0],
     hardware_values=[90.0, 89.0, 85.0, 88.0],
     metric_name="throughput_items_per_second",
-    output_path="metric_comparison.html"
+    output_path="metric_comparison.html",
 )
 
 # Create hardware comparison heatmap
@@ -284,14 +278,16 @@ visualizer.create_hardware_comparison_heatmap(
     model_types=["bert-base-uncased", "vit-base-patch16-224"],
     mape_values=[[5.2, 7.8], [10.5, 8.3], [15.2, 12.1]],
     metric_name="throughput_items_per_second",
-    output_path="hardware_heatmap.html"
+    output_path="hardware_heatmap.html",
 )
 ```
 
 ### Using the Framework
 
 ```python
-from duckdb_api.simulation_validation.simulation_validation_framework import SimulationValidationFramework
+from duckdb_api.simulation_validation.simulation_validation_framework import (
+    SimulationValidationFramework,
+)
 from duckdb_api.simulation_validation.db_integration import SimulationValidationDBIntegration
 
 # Create database integration
@@ -307,22 +303,19 @@ hw_id = db_integration.store_hardware_result(hw_result)
 
 # Validate simulation result
 validation_result = framework.validate_simulation_result(
-    simulation_result_id=sim_id,
-    hardware_result_id=hw_id,
-    validator_type="basic"
+    simulation_result_id=sim_id, hardware_result_id=hw_id, validator_type="basic"
 )
 
 # Generate validation report
 framework.generate_validation_report(
     validation_result_id=validation_result.id,
     output_format="markdown",
-    output_path="validation_report.md"
+    output_path="validation_report.md",
 )
 
 # Create visualization
 framework.visualize_validation_result(
-    validation_result_id=validation_result.id,
-    output_path="validation_visualization.html"
+    validation_result_id=validation_result.id, output_path="validation_visualization.html"
 )
 ```
 
@@ -365,7 +358,7 @@ framework.generate_validation_summary_report(
     validation_results=validation_results,
     statistical_summary=summary,
     output_format="markdown",
-    output_path=report_path
+    output_path=report_path,
 )
 ```
 
@@ -390,9 +383,7 @@ The calibration workflow improves simulation accuracy by adjusting simulation pa
 ```python
 # Collect validation results for a specific hardware and model
 validation_results = db_integration.get_validation_results_with_filters(
-    hardware_id="gpu_rtx3080",
-    model_id="bert-base-uncased",
-    limit=10
+    hardware_id="gpu_rtx3080", model_id="bert-base-uncased", limit=10
 )
 
 # Perform calibration
@@ -400,7 +391,7 @@ calibrator = BasicCalibrator()
 calibration_record = calibrator.calibrate(
     validation_results=validation_results,
     hardware_type="gpu_rtx3080",
-    model_type="bert-base-uncased"
+    model_type="bert-base-uncased",
 )
 
 # Store calibration record
@@ -408,15 +399,12 @@ cal_id = db_integration.store_calibration_record(calibration_record)
 
 # Generate calibration report
 framework.generate_calibration_report(
-    calibration_record_id=cal_id,
-    output_format="markdown",
-    output_path="calibration_report.md"
+    calibration_record_id=cal_id, output_format="markdown", output_path="calibration_report.md"
 )
 
 # Visualize calibration improvement
 framework.visualize_calibration_improvement(
-    calibration_record_id=cal_id,
-    output_path="calibration_improvement.html"
+    calibration_record_id=cal_id, output_path="calibration_improvement.html"
 )
 ```
 
@@ -447,7 +435,7 @@ historical_results = db_integration.get_validation_results_by_time_range(
     start_time="2025-01-01T00:00:00",
     end_time="2025-02-01T00:00:00",
     hardware_id="gpu_rtx3080",
-    model_id="bert-base-uncased"
+    model_id="bert-base-uncased",
 )
 
 # Get current validation results
@@ -455,7 +443,7 @@ current_results = db_integration.get_validation_results_by_time_range(
     start_time="2025-02-01T00:00:00",
     end_time="2025-03-01T00:00:00",
     hardware_id="gpu_rtx3080",
-    model_id="bert-base-uncased"
+    model_id="bert-base-uncased",
 )
 
 # Perform drift detection
@@ -464,7 +452,7 @@ drift_result = detector.detect_drift(
     historical_validation_results=historical_results,
     current_validation_results=current_results,
     hardware_type="gpu_rtx3080",
-    model_type="bert-base-uncased"
+    model_type="bert-base-uncased",
 )
 
 # Store drift detection result
@@ -472,15 +460,12 @@ drift_id = db_integration.store_drift_detection_result(drift_result)
 
 # Generate drift detection report
 framework.generate_drift_detection_report(
-    drift_detection_result_id=drift_id,
-    output_format="markdown",
-    output_path="drift_report.md"
+    drift_detection_result_id=drift_id, output_format="markdown", output_path="drift_report.md"
 )
 
 # Visualize drift detection
 framework.visualize_drift_detection(
-    drift_detection_result_id=drift_id,
-    output_path="drift_visualization.html"
+    drift_detection_result_id=drift_id, output_path="drift_visualization.html"
 )
 ```
 
@@ -499,7 +484,7 @@ visualizer.create_mape_comparison(
     model_types=["bert-base-uncased", "vit-base-patch16-224"],
     mape_values=[[5.2, 7.8], [10.5, 8.3], [15.2, 12.1]],
     metric_name="throughput_items_per_second",
-    output_path="mape_comparison.html"
+    output_path="mape_comparison.html",
 )
 
 # Using the DB connector
@@ -507,7 +492,7 @@ visualization_db_connector.create_mape_comparison_chart_from_db(
     hardware_ids=["gpu_rtx3080", "cpu_intel_xeon", "webgpu_chrome"],
     model_ids=["bert-base-uncased", "vit-base-patch16-224"],
     metric_name="throughput_items_per_second",
-    output_path="mape_comparison_db.html"
+    output_path="mape_comparison_db.html",
 )
 ```
 
@@ -522,14 +507,14 @@ visualizer.create_hardware_comparison_heatmap(
     model_types=["bert-base-uncased", "vit-base-patch16-224"],
     mape_values=[[5.2, 7.8], [10.5, 8.3], [15.2, 12.1]],
     metric_name="throughput_items_per_second",
-    output_path="hardware_heatmap.html"
+    output_path="hardware_heatmap.html",
 )
 
 # Using the DB connector
 visualization_db_connector.create_hardware_comparison_heatmap_from_db(
     metric_name="throughput_items_per_second",
     model_ids=["bert-base-uncased", "vit-base-patch16-224"],
-    output_path="hardware_heatmap_db.html"
+    output_path="hardware_heatmap_db.html",
 )
 ```
 
@@ -542,7 +527,7 @@ Error distribution histograms show the distribution of errors for a specific har
 visualizer.create_error_distribution(
     errors=[2.1, 3.5, 1.8, 4.2, 2.9, 3.7, 2.5, 3.1, 4.0, 2.3],
     metric_name="throughput_items_per_second",
-    output_path="error_distribution.html"
+    output_path="error_distribution.html",
 )
 
 # Using the DB connector
@@ -550,7 +535,7 @@ visualization_db_connector.create_error_distribution_from_db(
     hardware_id="gpu_rtx3080",
     model_id="bert-base-uncased",
     metric_name="throughput_items_per_second",
-    output_path="error_distribution_db.html"
+    output_path="error_distribution_db.html",
 )
 ```
 
@@ -565,7 +550,7 @@ visualizer.create_time_series(
     simulation_values=[90, 92, 88, 95, 91],
     hardware_values=[85, 90, 86, 92, 88],
     metric_name="throughput_items_per_second",
-    output_path="time_series.html"
+    output_path="time_series.html",
 )
 
 # Using the DB connector
@@ -573,7 +558,7 @@ visualization_db_connector.create_time_series_chart_from_db(
     metric_name="throughput_items_per_second",
     hardware_id="gpu_rtx3080",
     model_id="bert-base-uncased",
-    output_path="time_series_db.html"
+    output_path="time_series_db.html",
 )
 ```
 
@@ -586,7 +571,7 @@ Drift visualizations show changes in simulation accuracy over time:
 visualization_db_connector.create_drift_visualization_from_db(
     hardware_type="gpu_rtx3080",
     model_type="bert-base-uncased",
-    output_path="drift_visualization.html"
+    output_path="drift_visualization.html",
 )
 ```
 
@@ -599,7 +584,7 @@ Calibration improvement charts show the improvement in simulation accuracy after
 visualization_db_connector.create_calibration_improvement_chart_from_db(
     hardware_type="gpu_rtx3080",
     model_type="bert-base-uncased",
-    output_path="calibration_improvement.html"
+    output_path="calibration_improvement.html",
 )
 ```
 
@@ -612,7 +597,7 @@ Comprehensive dashboards combine multiple visualization types into a single dash
 visualization_db_connector.create_comprehensive_dashboard_from_db(
     hardware_id="gpu_rtx3080",
     model_id="bert-base-uncased",
-    output_path="comprehensive_dashboard.html"
+    output_path="comprehensive_dashboard.html",
 )
 ```
 
@@ -665,21 +650,17 @@ drift_result = db_integration.get_drift_detection_result_by_id(drift_id)
 ```python
 # Query by model and hardware
 hw_results = db_integration.get_hardware_results_by_model_and_hardware(
-    model_id="bert-base-uncased",
-    hardware_id="gpu_rtx3080"
+    model_id="bert-base-uncased", hardware_id="gpu_rtx3080"
 )
 
 # Query by time range
 sim_results = db_integration.get_simulation_results_by_time_range(
-    start_time="2025-03-01T00:00:00",
-    end_time="2025-03-15T00:00:00"
+    start_time="2025-03-01T00:00:00", end_time="2025-03-15T00:00:00"
 )
 
 # Query with filters
 val_results = db_integration.get_validation_results_with_filters(
-    model_id="bert-base-uncased",
-    hardware_id="gpu_rtx3080",
-    limit=10
+    model_id="bert-base-uncased", hardware_id="gpu_rtx3080", limit=10
 )
 ```
 
@@ -692,20 +673,21 @@ You can create custom validators by extending the `BasicValidator` class:
 ```python
 from duckdb_api.simulation_validation.statistical.basic_validator import BasicValidator
 
+
 class CustomValidator(BasicValidator):
     def __init__(self, custom_threshold=15.0):
         super().__init__()
         self.custom_threshold = custom_threshold
-    
+
     def validate(self, simulation_result, hardware_result):
         # Call the parent's validate method to get the basic validation result
         validation_result = super().validate(simulation_result, hardware_result)
-        
+
         # Add custom validation logic
         for metric, comparison in validation_result.metrics_comparison.items():
             # Add custom flags based on thresholds
             comparison["exceeds_threshold"] = comparison["mape"] > self.custom_threshold
-        
+
         return validation_result
 ```
 
@@ -716,35 +698,36 @@ You can create custom calibrators by extending the `BasicCalibrator` class:
 ```python
 from duckdb_api.simulation_validation.calibration.basic_calibrator import BasicCalibrator
 
+
 class CustomCalibrator(BasicCalibrator):
     def __init__(self, weight_recent=0.7):
         super().__init__()
         self.weight_recent = weight_recent
-    
+
     def calibrate(self, validation_results, hardware_type, model_type):
         # Sort validation results by timestamp
-        sorted_results = sorted(validation_results, 
-                               key=lambda x: x.validation_timestamp)
-        
+        sorted_results = sorted(validation_results, key=lambda x: x.validation_timestamp)
+
         # Split into older and more recent results
         split_idx = len(sorted_results) // 2
         older_results = sorted_results[:split_idx]
         recent_results = sorted_results[split_idx:]
-        
+
         # Calculate correction factors with weighted approach
         correction_factors = {}
-        
+
         for metric in ["throughput_items_per_second", "average_latency_ms", "peak_memory_mb"]:
             # Calculate for older results
             older_ratios = self._calculate_ratios(older_results, metric)
-            
+
             # Calculate for recent results
             recent_ratios = self._calculate_ratios(recent_results, metric)
-            
+
             # Combine with weighting
             if older_ratios and recent_ratios:
-                weighted_ratio = ((1 - self.weight_recent) * sum(older_ratios) / len(older_ratios) + 
-                                 self.weight_recent * sum(recent_ratios) / len(recent_ratios))
+                weighted_ratio = (1 - self.weight_recent) * sum(older_ratios) / len(
+                    older_ratios
+                ) + self.weight_recent * sum(recent_ratios) / len(recent_ratios)
                 correction_factors[metric] = round(weighted_ratio, 3)
             elif recent_ratios:
                 correction_factors[metric] = round(sum(recent_ratios) / len(recent_ratios), 3)
@@ -752,15 +735,15 @@ class CustomCalibrator(BasicCalibrator):
                 correction_factors[metric] = round(sum(older_ratios) / len(older_ratios), 3)
             else:
                 correction_factors[metric] = 1.0
-        
+
         # Create calibration record using parent's method
         return self._create_calibration_record(
             validation_results=validation_results,
             hardware_type=hardware_type,
             model_type=model_type,
-            correction_factors=correction_factors
+            correction_factors=correction_factors,
         )
-    
+
     def _calculate_ratios(self, validation_results, metric):
         """Calculate hardware/simulation ratios for a metric."""
         ratios = []
@@ -781,18 +764,22 @@ You can create custom drift detectors by extending the `BasicDriftDetector` clas
 ```python
 from duckdb_api.simulation_validation.drift_detection.basic_detector import BasicDriftDetector
 
+
 class CustomDriftDetector(BasicDriftDetector):
     def __init__(self, p_threshold=0.05, change_threshold=10.0, min_sample_size=5):
         super().__init__()
         self.p_threshold = p_threshold
         self.change_threshold = change_threshold
         self.min_sample_size = min_sample_size
-    
-    def detect_drift(self, historical_validation_results, current_validation_results, 
-                    hardware_type, model_type):
+
+    def detect_drift(
+        self, historical_validation_results, current_validation_results, hardware_type, model_type
+    ):
         # Check sample sizes
-        if (len(historical_validation_results) < self.min_sample_size or 
-            len(current_validation_results) < self.min_sample_size):
+        if (
+            len(historical_validation_results) < self.min_sample_size
+            or len(current_validation_results) < self.min_sample_size
+        ):
             # Not enough data for reliable drift detection
             return self._create_drift_detection_result(
                 historical_validation_results=historical_validation_results,
@@ -800,15 +787,15 @@ class CustomDriftDetector(BasicDriftDetector):
                 hardware_type=hardware_type,
                 model_type=model_type,
                 drift_metrics={},
-                is_significant=False
+                is_significant=False,
             )
-        
+
         # Use parent's detection method
         return super().detect_drift(
             historical_validation_results=historical_validation_results,
             current_validation_results=current_validation_results,
             hardware_type=hardware_type,
-            model_type=model_type
+            model_type=model_type,
         )
 ```
 
@@ -838,22 +825,18 @@ When working with large datasets, consider the following:
 # Process validation results in chunks
 chunk_size = 100
 total_results = db_integration.count_validation_results_with_filters(
-    hardware_id="gpu_rtx3080",
-    model_id="bert-base-uncased"
+    hardware_id="gpu_rtx3080", model_id="bert-base-uncased"
 )
 
 # Process in chunks
 for offset in range(0, total_results, chunk_size):
     results_chunk = db_integration.get_validation_results_with_filters(
-        hardware_id="gpu_rtx3080",
-        model_id="bert-base-uncased",
-        limit=chunk_size,
-        offset=offset
+        hardware_id="gpu_rtx3080", model_id="bert-base-uncased", limit=chunk_size, offset=offset
     )
-    
+
     # Process chunk
     process_results_chunk(results_chunk)
-    
+
     # Explicitly release memory
     del results_chunk
 ```
@@ -909,8 +892,7 @@ import logging
 
 # Set up logging
 logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
 # Create framework with logging

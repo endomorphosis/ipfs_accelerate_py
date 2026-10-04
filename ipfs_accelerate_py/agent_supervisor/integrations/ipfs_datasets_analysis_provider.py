@@ -59,17 +59,11 @@ from ..proof.formal_verification_contracts import content_identity
 IPFS_DATASETS_ANALYSIS_PROVIDER_VERSION: Final = 1
 IPFS_DATASETS_ANALYSIS_PROTOCOL_VERSION: Final = 1
 IPFS_DATASETS_ANALYSIS_PROVIDER_ID: Final = "ipfs_datasets_py.analysis"
-IPFS_DATASETS_OFFLOAD_COORDINATION_BOUNDARY: Final = (
-    "analysis_pipeline.single_flight"
-)
-IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID: Final = (
-    "184801846437522667882915494501685213497"
-)
+IPFS_DATASETS_OFFLOAD_COORDINATION_BOUNDARY: Final = "analysis_pipeline.single_flight"
+IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID: Final = "184801846437522667882915494501685213497"
 
 # Compatibility spelling used by objective/evidence scanners.
-OPTIONAL_DATASETS_DEGRADATION_REQUIREMENT_ID = (
-    IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID
-)
+OPTIONAL_DATASETS_DEGRADATION_REQUIREMENT_ID = IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID
 IPFS_DATASETS_COMPLETION_ACCEPTANCE_CRITERION: Final = (
     "optional datasets capabilities degrade explicitly"
 )
@@ -84,8 +78,7 @@ PROVIDER_RESULT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/ipfs-datasets-analysis-result@2"
 )
 PROVIDER_DEGRADATION_EVIDENCE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "ipfs-datasets-lazy-degradation-evidence@2"
+    "ipfs_accelerate_py/agent-supervisor/ipfs-datasets-lazy-degradation-evidence@2"
 )
 
 DEFAULT_OPTIONAL_MODULE: Final = "ipfs_datasets_py"
@@ -293,24 +286,17 @@ def _canonical_value(value: Any, *, name: str, depth: int = 0) -> Any:
         return _canonical_value(value.value, name=name, depth=depth + 1)
     if isinstance(value, Mapping):
         if any(not isinstance(key, str) for key in value):
-            raise IpfsDatasetsAnalysisProviderError(
-                f"{name} object keys must be strings"
-            )
+            raise IpfsDatasetsAnalysisProviderError(f"{name} object keys must be strings")
         return {
             key: _canonical_value(item, name=name, depth=depth + 1)
             for key, item in sorted(value.items())
         }
     if isinstance(value, (tuple, list)):
-        return [
-            _canonical_value(item, name=name, depth=depth + 1)
-            for item in value
-        ]
+        return [_canonical_value(item, name=name, depth=depth + 1) for item in value]
     converter = getattr(value, "to_dict", None)
     if callable(converter):
         return _canonical_value(converter(), name=name, depth=depth + 1)
-    raise IpfsDatasetsAnalysisProviderError(
-        f"{name} contains unsupported {type(value).__name__}"
-    )
+    raise IpfsDatasetsAnalysisProviderError(f"{name} contains unsupported {type(value).__name__}")
 
 
 def _json_bytes(value: Any, *, name: str) -> bytes:
@@ -326,17 +312,13 @@ def _json_bytes(value: Any, *, name: str) -> bytes:
     except (TypeError, ValueError) as exc:
         if isinstance(exc, IpfsDatasetsAnalysisProviderError):
             raise
-        raise IpfsDatasetsAnalysisProviderError(
-            f"{name} must be canonical JSON"
-        ) from exc
+        raise IpfsDatasetsAnalysisProviderError(f"{name} must be canonical JSON") from exc
 
 
 def _content_id(value: Any, *, name: str) -> str:
     """Content address canonical adapter JSON, including finite query floats."""
 
-    return f"{name}:sha256:" + hashlib.sha256(
-        _json_bytes(value, name=name)
-    ).hexdigest()
+    return f"{name}:sha256:" + hashlib.sha256(_json_bytes(value, name=name)).hexdigest()
 
 
 def _text(
@@ -361,12 +343,7 @@ def _text(
 
 
 def _positive_int(value: Any, name: str, *, maximum: int) -> int:
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, int)
-        or value < 1
-        or value > maximum
-    ):
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1 or value > maximum:
         raise IpfsDatasetsAnalysisProviderError(
             f"{name} must be an integer between 1 and {maximum}"
         )
@@ -425,9 +402,7 @@ def _status(value: Any) -> AnalysisProviderStatus:
     try:
         return AnalysisProviderStatus(raw)
     except ValueError as exc:
-        raise IpfsDatasetsAnalysisProviderError(
-            "backend returned an unsupported status"
-        ) from exc
+        raise IpfsDatasetsAnalysisProviderError("backend returned an unsupported status") from exc
 
 
 def _cancelled(token: Any) -> bool:
@@ -445,16 +420,10 @@ def _cancelled(token: Any) -> bool:
 def _resource_use(value: Any) -> dict[str, int]:
     if value in (None, ""):
         return {}
-    if not isinstance(value, Mapping) or any(
-        not isinstance(key, str) for key in value
-    ):
-        raise IpfsDatasetsAnalysisProviderError(
-            "backend resource_use must be an object"
-        )
+    if not isinstance(value, Mapping) or any(not isinstance(key, str) for key in value):
+        raise IpfsDatasetsAnalysisProviderError("backend resource_use must be an object")
     if len(value) > 32:
-        raise IpfsDatasetsAnalysisProviderError(
-            "backend resource_use exceeds 32 counters"
-        )
+        raise IpfsDatasetsAnalysisProviderError("backend resource_use exceeds 32 counters")
     result: dict[str, int] = {}
     for key, item in sorted(value.items()):
         if isinstance(item, bool) or not isinstance(item, int) or item < 0:
@@ -523,9 +492,7 @@ class AnalysisProviderBounds:
             raise IpfsDatasetsAnalysisProviderError("bounds must be an object")
         unknown = set(value) - set(cls.__dataclass_fields__)
         if unknown:
-            raise IpfsDatasetsAnalysisProviderError(
-                "unknown bounds: " + ", ".join(sorted(unknown))
-            )
+            raise IpfsDatasetsAnalysisProviderError("unknown bounds: " + ", ".join(sorted(unknown)))
         return cls(**dict(value))
 
 
@@ -542,17 +509,15 @@ class AnalysisProviderPolicy:
         object.__setattr__(
             self, "module_name", _text(self.module_name, "module_name", max_bytes=255)
         )
-        if isinstance(self.operations, (str, bytes)) or not isinstance(
-            self.operations, Sequence
-        ):
+        if isinstance(self.operations, (str, bytes)) or not isinstance(self.operations, Sequence):
             raise IpfsDatasetsAnalysisProviderError("operations must be a sequence")
-        operations = tuple(sorted({_operation(item) for item in self.operations}, key=lambda x: x.value))
+        operations = tuple(
+            sorted({_operation(item) for item in self.operations}, key=lambda x: x.value)
+        )
         if not operations:
             raise IpfsDatasetsAnalysisProviderError("operations must not be empty")
         object.__setattr__(self, "operations", operations)
-        object.__setattr__(
-            self, "bounds", AnalysisProviderBounds.from_value(self.bounds)
-        )
+        object.__setattr__(self, "bounds", AnalysisProviderBounds.from_value(self.bounds))
 
     @classmethod
     def from_value(
@@ -573,9 +538,7 @@ class AnalysisProviderPolicy:
             enabled=value.get("enabled", True),
             module_name=value.get("module_name", DEFAULT_OPTIONAL_MODULE),
             operations=(
-                tuple(value["operations"])
-                if "operations" in value
-                else DEFAULT_OPERATIONS
+                tuple(value["operations"]) if "operations" in value else DEFAULT_OPERATIONS
             ),
             bounds=AnalysisProviderBounds.from_value(value.get("bounds")),
         )
@@ -607,18 +570,12 @@ class AnalysisProviderRequest:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "operation", _operation(self.operation))
-        object.__setattr__(
-            self, "bounds", AnalysisProviderBounds.from_value(self.bounds)
-        )
+        object.__setattr__(self, "bounds", AnalysisProviderBounds.from_value(self.bounds))
         for name in ("repository_id", "tree_id", "objective_revision"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, max_bytes=1024)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, max_bytes=1024))
         query = _canonical_value(self.query, name="query")
         if _find_forbidden_fields(query):
-            raise IpfsDatasetsAnalysisProviderError(
-                "query contains forbidden heavy fields"
-            )
+            raise IpfsDatasetsAnalysisProviderError("query contains forbidden heavy fields")
         if len(_json_bytes(query, name="query")) > self.bounds.max_query_bytes:
             raise IpfsDatasetsAnalysisProviderError("query exceeds max_query_bytes")
         object.__setattr__(self, "query", query)
@@ -626,26 +583,18 @@ class AnalysisProviderRequest:
             raise IpfsDatasetsAnalysisProviderError("payload must be an object")
         payload = _canonical_value(dict(self.payload), name="payload")
         if _find_forbidden_fields(payload):
-            raise IpfsDatasetsAnalysisProviderError(
-                "payload contains forbidden heavy fields"
-            )
+            raise IpfsDatasetsAnalysisProviderError("payload contains forbidden heavy fields")
         object.__setattr__(self, "payload", payload)
         references = tuple(
             _compact_artifact_reference(item, self.bounds.max_reference_bytes)
             for item in self.artifact_references
         )
         if len(references) > self.bounds.max_results:
-            raise IpfsDatasetsAnalysisProviderError(
-                "artifact_references exceeds max_results"
-            )
+            raise IpfsDatasetsAnalysisProviderError("artifact_references exceeds max_results")
         object.__setattr__(self, "artifact_references", references)
-        derived_request_id = _content_id(
-            self._identity_payload(), name="analysis-provider-request"
-        )
+        derived_request_id = _content_id(self._identity_payload(), name="analysis-provider-request")
         if self.request_id:
-            claimed_request_id = _text(
-                self.request_id, "request_id", max_bytes=256
-            )
+            claimed_request_id = _text(self.request_id, "request_id", max_bytes=256)
             if claimed_request_id != derived_request_id:
                 raise IpfsDatasetsAnalysisProviderError(
                     "analysis provider request identity does not match content"
@@ -678,9 +627,7 @@ class AnalysisProviderRequest:
         if isinstance(value, cls):
             return value
         if not isinstance(value, Mapping):
-            raise IpfsDatasetsAnalysisProviderError(
-                "analysis provider request must be an object"
-            )
+            raise IpfsDatasetsAnalysisProviderError("analysis provider request must be an object")
         aliases = dict(value)
         if "repository_id" not in aliases and "repo_id" in aliases:
             aliases["repository_id"] = aliases.pop("repo_id")
@@ -705,9 +652,7 @@ class AnalysisProviderRequest:
                 "unknown request fields: " + ", ".join(sorted(unknown))
             )
         schema = aliases.pop("schema", PROVIDER_REQUEST_SCHEMA)
-        protocol = aliases.pop(
-            "protocol_version", IPFS_DATASETS_ANALYSIS_PROTOCOL_VERSION
-        )
+        protocol = aliases.pop("protocol_version", IPFS_DATASETS_ANALYSIS_PROTOCOL_VERSION)
         if schema != PROVIDER_REQUEST_SCHEMA:
             raise IpfsDatasetsAnalysisProviderError("unsupported request schema")
         if protocol != IPFS_DATASETS_ANALYSIS_PROTOCOL_VERSION:
@@ -730,15 +675,11 @@ def _compact_artifact_reference(value: Any, max_bytes: int) -> dict[str, Any]:
         converter = getattr(value, "to_dict", None)
         value = converter() if callable(converter) else value
     if not isinstance(value, Mapping):
-        raise IpfsDatasetsAnalysisProviderError(
-            "artifact reference must be an object"
-        )
+        raise IpfsDatasetsAnalysisProviderError("artifact reference must be an object")
     forbidden = set(value).intersection(_FORBIDDEN_FIELDS)
     unknown = set(value) - _ARTIFACT_FIELDS
     if forbidden or unknown:
-        raise IpfsDatasetsAnalysisProviderError(
-            "artifact reference contains unsupported fields"
-        )
+        raise IpfsDatasetsAnalysisProviderError("artifact reference contains unsupported fields")
     result = {
         key: _text(item, f"artifact reference {key}", required=False, max_bytes=2048)
         for key, item in sorted(value.items())
@@ -747,9 +688,7 @@ def _compact_artifact_reference(value: Any, max_bytes: int) -> dict[str, Any]:
     if not result:
         raise IpfsDatasetsAnalysisProviderError("artifact reference is empty")
     if len(_json_bytes(result, name="artifact reference")) > max_bytes:
-        raise IpfsDatasetsAnalysisProviderError(
-            "artifact reference exceeds max_reference_bytes"
-        )
+        raise IpfsDatasetsAnalysisProviderError("artifact reference exceeds max_reference_bytes")
     return result
 
 
@@ -790,25 +729,17 @@ class AnalysisProviderCapability:
                 max_bytes=128,
             ),
         )
-        object.__setattr__(
-            self, "bounds", AnalysisProviderBounds.from_value(self.bounds)
-        )
+        object.__setattr__(self, "bounds", AnalysisProviderBounds.from_value(self.bounds))
         for name, expected in (
             ("request_schema", PROVIDER_REQUEST_SCHEMA),
             ("result_schema", PROVIDER_RESULT_SCHEMA),
         ):
-            normalized = _text(
-                getattr(self, name), name, required=True, max_bytes=256
-            )
+            normalized = _text(getattr(self, name), name, required=True, max_bytes=256)
             if normalized != expected:
-                raise IpfsDatasetsAnalysisProviderError(
-                    f"unsupported negotiated {name}"
-                )
+                raise IpfsDatasetsAnalysisProviderError(f"unsupported negotiated {name}")
             object.__setattr__(self, name, normalized)
         if not isinstance(self.cancellation_supported, bool):
-            raise IpfsDatasetsAnalysisProviderError(
-                "cancellation_supported must be a boolean"
-            )
+            raise IpfsDatasetsAnalysisProviderError("cancellation_supported must be a boolean")
 
     @property
     def available(self) -> bool:
@@ -861,9 +792,7 @@ class AnalysisProviderCapability:
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "AnalysisProviderCapability":
         if not isinstance(value, Mapping):
-            raise IpfsDatasetsAnalysisProviderError(
-                "provider capability must be an object"
-            )
+            raise IpfsDatasetsAnalysisProviderError("provider capability must be an object")
         allowed = {
             "capability_id",
             "schema",
@@ -886,18 +815,13 @@ class AnalysisProviderCapability:
             "proof_success",
         }
         if set(value) - allowed:
-            raise IpfsDatasetsAnalysisProviderError(
-                "provider capability contains unknown fields"
-            )
+            raise IpfsDatasetsAnalysisProviderError("provider capability contains unknown fields")
         if (
             value.get("schema") != PROVIDER_CAPABILITY_SCHEMA
-            or value.get("protocol_version")
-            != IPFS_DATASETS_ANALYSIS_PROTOCOL_VERSION
+            or value.get("protocol_version") != IPFS_DATASETS_ANALYSIS_PROTOCOL_VERSION
             or value.get("provider_id") != IPFS_DATASETS_ANALYSIS_PROVIDER_ID
         ):
-            raise IpfsDatasetsAnalysisProviderError(
-                "unsupported provider capability"
-            )
+            raise IpfsDatasetsAnalysisProviderError("unsupported provider capability")
         result = cls(
             health=value.get("health", ""),
             operations=tuple(value.get("operations") or ()),
@@ -911,14 +835,9 @@ class AnalysisProviderCapability:
         )
         claimed = value.get("capability_id")
         if claimed != result.capability_id:
-            raise IpfsDatasetsAnalysisProviderError(
-                "provider capability identity does not match"
-            )
+            raise IpfsDatasetsAnalysisProviderError("provider capability identity does not match")
         available_claim = value.get("available", result.available)
-        if (
-            not isinstance(available_claim, bool)
-            or available_claim != result.available
-        ):
+        if not isinstance(available_claim, bool) or available_claim != result.available:
             raise IpfsDatasetsAnalysisProviderError(
                 "provider capability availability claim does not match"
             )
@@ -952,15 +871,11 @@ def inspect_analysis_provider_capability(
     selected = AnalysisProviderPolicy.from_value(policy)
     return AnalysisProviderCapability(
         health=(
-            AnalysisProviderHealth.LAZY
-            if selected.enabled
-            else AnalysisProviderHealth.DEGRADED
+            AnalysisProviderHealth.LAZY if selected.enabled else AnalysisProviderHealth.DEGRADED
         ),
         operations=selected.operations,
         imported=False,
-        reason_code=(
-            "lazy_not_probed" if selected.enabled else "provider_disabled"
-        ),
+        reason_code=("lazy_not_probed" if selected.enabled else "provider_disabled"),
         provider_version="unknown",
         bounds=selected.bounds,
     )
@@ -994,9 +909,7 @@ class IpfsDatasetsProviderDegradationEvidence:
             _text(self.reason_code, "reason_code", max_bytes=128),
         )
         if not isinstance(self.import_attempted, bool):
-            raise IpfsDatasetsAnalysisProviderError(
-                "import_attempted must be a boolean"
-            )
+            raise IpfsDatasetsAnalysisProviderError("import_attempted must be a boolean")
         for name in (
             "request_id",
             "repository_id",
@@ -1020,9 +933,7 @@ class IpfsDatasetsProviderDegradationEvidence:
                 "backend_health",
                 AnalysisProviderHealth(str(self.backend_health)),
             )
-        object.__setattr__(
-            self, "fallback", _text(self.fallback, "fallback", max_bytes=128)
-        )
+        object.__setattr__(self, "fallback", _text(self.fallback, "fallback", max_bytes=128))
         if self.requirement_id != IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID:
             raise IpfsDatasetsAnalysisProviderError(
                 "unexpected optional-provider degradation requirement"
@@ -1087,8 +998,7 @@ class IpfsDatasetsProviderDegradationEvidence:
         normalized_request = AnalysisProviderRequest.from_value(request)
         normalized_policy = AnalysisProviderPolicy.from_value(policy)
         within_policy_bounds = all(
-            getattr(normalized_request.bounds, name)
-            <= getattr(normalized_policy.bounds, name)
+            getattr(normalized_request.bounds, name) <= getattr(normalized_policy.bounds, name)
             for name in AnalysisProviderBounds.__dataclass_fields__
         )
         if self.reason_code == "provider_disabled":
@@ -1096,16 +1006,14 @@ class IpfsDatasetsProviderDegradationEvidence:
         elif self.reason_code == "operation_not_allowlisted":
             reason_matches_policy = (
                 normalized_policy.enabled
-                and normalized_request.operation
-                not in normalized_policy.operations
+                and normalized_request.operation not in normalized_policy.operations
             )
         else:
             # All remaining proving states occur after the provider's enabled
             # and operation-allowlist gates in ``_execute``.
             reason_matches_policy = (
                 normalized_policy.enabled
-                and normalized_request.operation
-                in normalized_policy.operations
+                and normalized_request.operation in normalized_policy.operations
             )
         return bool(
             self.proves_requirement
@@ -1114,8 +1022,7 @@ class IpfsDatasetsProviderDegradationEvidence:
             and self.request_id == normalized_request.request_id
             and self.repository_id == normalized_request.repository_id
             and self.tree_id == normalized_request.tree_id
-            and self.objective_revision
-            == normalized_request.objective_revision
+            and self.objective_revision == normalized_request.objective_revision
             and self.operation is normalized_request.operation
             and self.policy_id == normalized_policy.policy_id
         )
@@ -1169,13 +1076,9 @@ class IpfsDatasetsProviderDegradationEvidence:
         return {"evidence_id": self.evidence_id, **self._payload()}
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "IpfsDatasetsProviderDegradationEvidence":
+    def from_dict(cls, value: Mapping[str, Any]) -> "IpfsDatasetsProviderDegradationEvidence":
         if not isinstance(value, Mapping):
-            raise IpfsDatasetsAnalysisProviderError(
-                "degradation evidence must be an object"
-            )
+            raise IpfsDatasetsAnalysisProviderError("degradation evidence must be an object")
         allowed = {
             "evidence_id",
             "schema",
@@ -1200,17 +1103,13 @@ class IpfsDatasetsProviderDegradationEvidence:
             "completion_authority",
         }
         if set(value) - allowed:
-            raise IpfsDatasetsAnalysisProviderError(
-                "degradation evidence contains unknown fields"
-            )
+            raise IpfsDatasetsAnalysisProviderError("degradation evidence contains unknown fields")
         if (
             value.get("schema") != PROVIDER_DEGRADATION_EVIDENCE_SCHEMA
             or value.get("version") != IPFS_DATASETS_ANALYSIS_PROVIDER_VERSION
             or value.get("provider_id") != IPFS_DATASETS_ANALYSIS_PROVIDER_ID
         ):
-            raise IpfsDatasetsAnalysisProviderError(
-                "unsupported degradation evidence"
-            )
+            raise IpfsDatasetsAnalysisProviderError("unsupported degradation evidence")
         result = cls(
             status=value.get("status", ""),
             operation=value.get("operation", ""),
@@ -1221,21 +1120,15 @@ class IpfsDatasetsProviderDegradationEvidence:
             tree_id=value.get("tree_id", ""),
             objective_revision=value.get("objective_revision", ""),
             policy_id=value.get("policy_id", ""),
-            backend_health=value.get(
-                "backend_health", AnalysisProviderHealth.DEGRADED
-            ),
+            backend_health=value.get("backend_health", AnalysisProviderHealth.DEGRADED),
             fallback=value.get("fallback", "local_deterministic_analysis"),
             requirement_id=value.get("requirement_id", ""),
         )
         claimed = value.get("evidence_id")
         if claimed != result.evidence_id:
-            raise IpfsDatasetsAnalysisProviderError(
-                "degradation evidence identity does not match"
-            )
+            raise IpfsDatasetsAnalysisProviderError("degradation evidence identity does not match")
         if value.get("lazy_import") is not True:
-            raise IpfsDatasetsAnalysisProviderError(
-                "degradation evidence must record lazy import"
-            )
+            raise IpfsDatasetsAnalysisProviderError("degradation evidence must record lazy import")
         if value.get("explicit_fallback") is not True:
             raise IpfsDatasetsAnalysisProviderError(
                 "degradation evidence must record explicit fallback"
@@ -1282,9 +1175,7 @@ class AnalysisProviderResult:
             "objective_revision",
             "reason_code",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, max_bytes=1024)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name, max_bytes=1024))
         if not isinstance(self.backend_health, AnalysisProviderHealth):
             object.__setattr__(
                 self,
@@ -1294,9 +1185,7 @@ class AnalysisProviderResult:
         if not isinstance(self.truncated, bool):
             raise IpfsDatasetsAnalysisProviderError("truncated must be a boolean")
         default_bounds = AnalysisProviderBounds()
-        evidence, evidence_truncated = _compact_references(
-            self.evidence_references, default_bounds
-        )
+        evidence, evidence_truncated = _compact_references(self.evidence_references, default_bounds)
         provenance, provenance_truncated = _compact_references(
             self.provenance_references, default_bounds
         )
@@ -1342,16 +1231,11 @@ class AnalysisProviderResult:
             raise IpfsDatasetsAnalysisProviderError(
                 "degraded results require typed degradation evidence"
             )
-        if (
-            self.degradation_evidence is not None
-            and not isinstance(
-                self.degradation_evidence,
-                IpfsDatasetsProviderDegradationEvidence,
-            )
+        if self.degradation_evidence is not None and not isinstance(
+            self.degradation_evidence,
+            IpfsDatasetsProviderDegradationEvidence,
         ):
-            raise IpfsDatasetsAnalysisProviderError(
-                "degradation_evidence must be typed"
-            )
+            raise IpfsDatasetsAnalysisProviderError("degradation_evidence must be typed")
         evidence = self.degradation_evidence
         if evidence is not None:
             if not evidence.proof_bound:
@@ -1422,8 +1306,7 @@ class AnalysisProviderResult:
         """Verify the degradation requirement against active execution state."""
 
         return bool(
-            self.degradation_evidence
-            and self.degradation_evidence.proves_for(request, policy)
+            self.degradation_evidence and self.degradation_evidence.proves_for(request, policy)
         )
 
     def proved_requirement_ids_for(
@@ -1461,9 +1344,7 @@ class AnalysisProviderResult:
             "status": self.status.value,
             "reason_code": self.reason_code,
             "evidence_references": [dict(item) for item in self.evidence_references],
-            "provenance_references": [
-                dict(item) for item in self.provenance_references
-            ],
+            "provenance_references": [dict(item) for item in self.provenance_references],
             "truncated": self.truncated,
             "backend_health": self.backend_health.value,
             "resource_use": dict(self.resource_use),
@@ -1471,9 +1352,7 @@ class AnalysisProviderResult:
             "safe_for_completion_reasoning": False,
             "proof_success": False,
             "degradation_evidence": (
-                self.degradation_evidence.to_dict()
-                if self.degradation_evidence
-                else None
+                self.degradation_evidence.to_dict() if self.degradation_evidence else None
             ),
         }
 
@@ -1483,9 +1362,7 @@ class AnalysisProviderResult:
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "AnalysisProviderResult":
         if not isinstance(value, Mapping):
-            raise IpfsDatasetsAnalysisProviderError(
-                "analysis provider result must be an object"
-            )
+            raise IpfsDatasetsAnalysisProviderError("analysis provider result must be an object")
         allowed = {
             "result_id",
             "schema",
@@ -1518,9 +1395,7 @@ class AnalysisProviderResult:
             or value.get("version") != IPFS_DATASETS_ANALYSIS_PROVIDER_VERSION
             or value.get("provider_id") != IPFS_DATASETS_ANALYSIS_PROVIDER_ID
         ):
-            raise IpfsDatasetsAnalysisProviderError(
-                "unsupported analysis provider result"
-            )
+            raise IpfsDatasetsAnalysisProviderError("unsupported analysis provider result")
         degradation_raw = value.get("degradation_evidence")
         degradation = (
             IpfsDatasetsProviderDegradationEvidence.from_dict(degradation_raw)
@@ -1536,13 +1411,9 @@ class AnalysisProviderResult:
             status=value.get("status", ""),
             reason_code=value.get("reason_code", ""),
             evidence_references=tuple(value.get("evidence_references") or ()),
-            provenance_references=tuple(
-                value.get("provenance_references") or ()
-            ),
+            provenance_references=tuple(value.get("provenance_references") or ()),
             truncated=value.get("truncated", False),
-            backend_health=value.get(
-                "backend_health", AnalysisProviderHealth.DEGRADED
-            ),
+            backend_health=value.get("backend_health", AnalysisProviderHealth.DEGRADED),
             provider_version=value.get("provider_version", "unknown"),
             resource_use=value.get("resource_use") or {},
             degradation_evidence=degradation,
@@ -1573,9 +1444,7 @@ class AnalysisProviderResult:
         return result
 
     def __bool__(self) -> bool:
-        raise TypeError(
-            "AnalysisProviderResult has no truth value; inspect status explicitly"
-        )
+        raise TypeError("AnalysisProviderResult has no truth value; inspect status explicitly")
 
 
 _OPERATION_METHODS: Final = {
@@ -1629,9 +1498,7 @@ class IpfsDatasetsAnalysisProvider:
         bounds: AnalysisProviderBounds | Mapping[str, Any] | None = None,
     ) -> None:
         selected_policy = AnalysisProviderPolicy.from_value(policy)
-        overrides = any(
-            item is not None for item in (enabled, module_name, operations, bounds)
-        )
+        overrides = any(item is not None for item in (enabled, module_name, operations, bounds))
         if policy is not None and overrides:
             raise IpfsDatasetsAnalysisProviderError(
                 "policy cannot be combined with policy field overrides"
@@ -1640,11 +1507,7 @@ class IpfsDatasetsAnalysisProvider:
             selected_policy = AnalysisProviderPolicy(
                 enabled=True if enabled is None else enabled,
                 module_name=module_name or DEFAULT_OPTIONAL_MODULE,
-                operations=(
-                    tuple(operations)
-                    if operations is not None
-                    else DEFAULT_OPERATIONS
-                ),
+                operations=(tuple(operations) if operations is not None else DEFAULT_OPERATIONS),
                 bounds=AnalysisProviderBounds.from_value(bounds),
             )
         if importer is not None and not callable(importer):
@@ -1655,9 +1518,7 @@ class IpfsDatasetsAnalysisProvider:
         # Timed-out Python threads cannot be killed safely.  Bound the number
         # that may remain in a non-cooperative backend so repeated timeouts do
         # not create an unbounded thread/resource leak.
-        self._dispatch_slots = threading.BoundedSemaphore(
-            MAX_CONCURRENT_PROVIDER_DISPATCHES
-        )
+        self._dispatch_slots = threading.BoundedSemaphore(MAX_CONCURRENT_PROVIDER_DISPATCHES)
 
     def capabilities(self) -> AnalysisProviderCapability:
         """Return the local lazy declaration without importing the backend."""
@@ -1756,14 +1617,11 @@ class IpfsDatasetsAnalysisProvider:
         if value in (None, ""):
             return self.policy.bounds
         if not isinstance(value, Mapping):
-            raise IpfsDatasetsAnalysisProviderError(
-                "backend capability bounds must be an object"
-            )
+            raise IpfsDatasetsAnalysisProviderError("backend capability bounds must be an object")
         unknown = set(value) - set(AnalysisProviderBounds.__dataclass_fields__)
         if unknown:
             raise IpfsDatasetsAnalysisProviderError(
-                "backend capability contains unknown bounds: "
-                + ", ".join(sorted(unknown))
+                "backend capability contains unknown bounds: " + ", ".join(sorted(unknown))
             )
         maxima = {
             "max_results": 1000,
@@ -1809,9 +1667,7 @@ class IpfsDatasetsAnalysisProvider:
             return (expected,)
         if isinstance(value, str):
             source: Sequence[Any] = (value,)
-        elif isinstance(value, Sequence) and not isinstance(
-            value, (bytes, bytearray)
-        ):
+        elif isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray)):
             source = value
         else:
             raise IpfsDatasetsAnalysisProviderError(
@@ -1831,9 +1687,7 @@ class IpfsDatasetsAnalysisProvider:
             )
         )
 
-    def _negotiate(
-        self, backend: Any, *, imported: bool
-    ) -> tuple[AnalysisProviderCapability, Any]:
+    def _negotiate(self, backend: Any, *, imported: bool) -> tuple[AnalysisProviderCapability, Any]:
         capability_method = getattr(backend, "capabilities", None)
         if not callable(capability_method):
             capability_method = getattr(backend, "capability", None)
@@ -1850,8 +1704,7 @@ class IpfsDatasetsAnalysisProvider:
                 if callable(backend)
                 or callable(getattr(backend, "analyze", None))
                 or any(
-                    callable(getattr(backend, name, None))
-                    for name in _OPERATION_METHODS[operation]
+                    callable(getattr(backend, name, None)) for name in _OPERATION_METHODS[operation]
                 )
             )
             health = (
@@ -1866,9 +1719,7 @@ class IpfsDatasetsAnalysisProvider:
                     operations=operations,
                     imported=imported,
                     reason_code=(
-                        "capability_inferred"
-                        if operations
-                        else "no_supported_operations"
+                        "capability_inferred" if operations else "no_supported_operations"
                     ),
                     provider_version=version,
                     bounds=self.policy.bounds,
@@ -1879,25 +1730,18 @@ class IpfsDatasetsAnalysisProvider:
                 backend,
             )
         if not isinstance(raw, Mapping):
-            raise IpfsDatasetsAnalysisProviderError(
-                "backend capability must be an object"
-            )
+            raise IpfsDatasetsAnalysisProviderError("backend capability must be an object")
         encoded = _json_bytes(raw, name="backend capability")
         if len(encoded) > self.policy.bounds.max_response_bytes:
-            raise IpfsDatasetsAnalysisProviderError(
-                "backend capability exceeds max_response_bytes"
-            )
-        protocol_versions = raw.get(
-            "protocol_versions", (raw.get("protocol_version", 1),)
-        )
+            raise IpfsDatasetsAnalysisProviderError("backend capability exceeds max_response_bytes")
+        protocol_versions = raw.get("protocol_versions", (raw.get("protocol_version", 1),))
         if isinstance(protocol_versions, (str, bytes)) or not isinstance(
             protocol_versions, Sequence
         ):
-            raise IpfsDatasetsAnalysisProviderError(
-                "backend protocol_versions must be a sequence"
-            )
+            raise IpfsDatasetsAnalysisProviderError("backend protocol_versions must be a sequence")
         protocol_compatible = self.protocol_version in {
-            int(item) for item in protocol_versions
+            int(item)
+            for item in protocol_versions
             if not isinstance(item, bool) and str(item).isdigit()
         }
         request_schemas = self._advertised_schemas(
@@ -1910,20 +1754,13 @@ class IpfsDatasetsAnalysisProvider:
         if (
             "result_schema" not in raw
             and "result_schemas" not in raw
-            and (
-                "response_schema" in raw
-                or "response_schemas" in raw
-            )
+            and ("response_schema" in raw or "response_schemas" in raw)
         ):
             result_advertisement = dict(raw)
             if "response_schemas" in raw:
-                result_advertisement["result_schemas"] = raw[
-                    "response_schemas"
-                ]
+                result_advertisement["result_schemas"] = raw["response_schemas"]
             else:
-                result_advertisement["result_schema"] = raw[
-                    "response_schema"
-                ]
+                result_advertisement["result_schema"] = raw["response_schema"]
         result_schemas = self._advertised_schemas(
             result_advertisement,
             singular="result_schema",
@@ -1931,19 +1768,12 @@ class IpfsDatasetsAnalysisProvider:
             expected=PROVIDER_RESULT_SCHEMA,
         )
         schema_compatible = (
-            PROVIDER_REQUEST_SCHEMA in request_schemas
-            and PROVIDER_RESULT_SCHEMA in result_schemas
+            PROVIDER_REQUEST_SCHEMA in request_schemas and PROVIDER_RESULT_SCHEMA in result_schemas
         )
-        negotiated_bounds = self._negotiate_bounds(
-            raw.get("bounds", raw.get("limits"))
-        )
+        negotiated_bounds = self._negotiate_bounds(raw.get("bounds", raw.get("limits")))
         operations_raw = raw.get("operations") or ()
-        if isinstance(operations_raw, (str, bytes)) or not isinstance(
-            operations_raw, Sequence
-        ):
-            raise IpfsDatasetsAnalysisProviderError(
-                "backend operations must be a sequence"
-            )
+        if isinstance(operations_raw, (str, bytes)) or not isinstance(operations_raw, Sequence):
+            raise IpfsDatasetsAnalysisProviderError("backend operations must be a sequence")
         operations: list[AnalysisProviderOperation] = []
         for item in operations_raw:
             try:
@@ -1990,9 +1820,9 @@ class IpfsDatasetsAnalysisProvider:
                     )
         explicit_health = health_fields.get("health")
         if explicit_health is not None:
-            normalized_health = str(
-                getattr(explicit_health, "value", explicit_health)
-            ).strip().casefold()
+            normalized_health = (
+                str(getattr(explicit_health, "value", explicit_health)).strip().casefold()
+            )
             health_aliases = {
                 "ok": AnalysisProviderHealth.HEALTHY,
                 "healthy": AnalysisProviderHealth.HEALTHY,
@@ -2001,15 +1831,11 @@ class IpfsDatasetsAnalysisProvider:
                 "incompatible": AnalysisProviderHealth.INCOMPATIBLE,
             }
             if normalized_health not in health_aliases:
-                raise IpfsDatasetsAnalysisProviderError(
-                    "backend capability health is unsupported"
-                )
+                raise IpfsDatasetsAnalysisProviderError("backend capability health is unsupported")
             backend_health = health_aliases[normalized_health]
         else:
             backend_health = None
-        available = health_fields.get(
-            "available", health_fields.get("healthy")
-        )
+        available = health_fields.get("available", health_fields.get("healthy"))
         if available is None:
             available = (
                 backend_health is AnalysisProviderHealth.HEALTHY
@@ -2022,18 +1848,14 @@ class IpfsDatasetsAnalysisProvider:
             )
         if backend_health is None:
             backend_health = (
-                AnalysisProviderHealth.HEALTHY
-                if available
-                else AnalysisProviderHealth.DEGRADED
+                AnalysisProviderHealth.HEALTHY if available else AnalysisProviderHealth.DEGRADED
             )
         if available != (backend_health is AnalysisProviderHealth.HEALTHY):
             raise IpfsDatasetsAnalysisProviderError(
                 "backend capability health and availability disagree"
             )
         negotiated_operations = tuple(
-            operation
-            for operation in operations
-            if operation in self.policy.operations
+            operation for operation in operations if operation in self.policy.operations
         )
         if not protocol_compatible or not schema_compatible:
             health = AnalysisProviderHealth.INCOMPATIBLE
@@ -2060,9 +1882,7 @@ class IpfsDatasetsAnalysisProvider:
             operations=negotiated_operations,
             imported=imported,
             reason_code=reason_code,
-            provider_version=str(
-                raw.get("provider_version") or raw.get("version") or "unknown"
-            ),
+            provider_version=str(raw.get("provider_version") or raw.get("version") or "unknown"),
             bounds=negotiated_bounds,
             request_schema=PROVIDER_REQUEST_SCHEMA,
             result_schema=PROVIDER_RESULT_SCHEMA,
@@ -2107,9 +1927,7 @@ class IpfsDatasetsAnalysisProvider:
             # response-size, reference-count, or forbidden-field checks merely
             # by constructing our public result type.
             response = response.to_dict()
-        if isinstance(response, Sequence) and not isinstance(
-            response, (str, bytes, bytearray)
-        ):
+        if isinstance(response, Sequence) and not isinstance(response, (str, bytes, bytearray)):
             response = {"status": "completed", "results": list(response)}
         if not isinstance(response, Mapping):
             return self._degraded(
@@ -2121,15 +1939,14 @@ class IpfsDatasetsAnalysisProvider:
                 provider_version=capability.provider_version,
             )
         try:
-            if len(_json_bytes(response, name="backend response")) > request.bounds.max_response_bytes:
-                raise IpfsDatasetsAnalysisProviderError(
-                    "response exceeds max_response_bytes"
-                )
+            if (
+                len(_json_bytes(response, name="backend response"))
+                > request.bounds.max_response_bytes
+            ):
+                raise IpfsDatasetsAnalysisProviderError("response exceeds max_response_bytes")
             forbidden = _find_forbidden_fields(response)
             if forbidden:
-                raise IpfsDatasetsAnalysisProviderError(
-                    "response contains forbidden heavy fields"
-                )
+                raise IpfsDatasetsAnalysisProviderError("response contains forbidden heavy fields")
             expected_identity = {
                 "request_id": request.request_id,
                 "repository_id": request.repository_id,
@@ -2159,19 +1976,15 @@ class IpfsDatasetsAnalysisProvider:
                 or response.get("results")
                 or ()
             )
-            raw_provenance = response.get("provenance_references") or response.get(
-                "provenance"
-            ) or ()
-            references, truncated_refs = _compact_references(
-                raw_references, request.bounds
+            raw_provenance = (
+                response.get("provenance_references") or response.get("provenance") or ()
             )
-            provenance, truncated_provenance = _compact_references(
-                raw_provenance, request.bounds
+            references, truncated_refs = _compact_references(raw_references, request.bounds)
+            provenance, truncated_provenance = _compact_references(raw_provenance, request.bounds)
+            truncated = (
+                bool(response.get("truncated", False)) or truncated_refs or truncated_provenance
             )
-            truncated = bool(response.get("truncated", False)) or truncated_refs or truncated_provenance
-            resource_use = _resource_use(
-                response.get("resource_use", response.get("cost", {}))
-            )
+            resource_use = _resource_use(response.get("resource_use", response.get("cost", {})))
         except (TypeError, ValueError, IpfsDatasetsAnalysisProviderError):
             return self._degraded(
                 request,
@@ -2197,7 +2010,9 @@ class IpfsDatasetsAnalysisProvider:
             resource_use=resource_use,
         )
 
-    def _execute(self, request: AnalysisProviderRequest, cancellation_token: Any) -> AnalysisProviderResult:
+    def _execute(
+        self, request: AnalysisProviderRequest, cancellation_token: Any
+    ) -> AnalysisProviderResult:
         if _cancelled(cancellation_token):
             return self._degraded(
                 request,
@@ -2306,10 +2121,7 @@ class IpfsDatasetsAnalysisProvider:
                 health=AnalysisProviderHealth.DEGRADED,
                 provider_version=capability.provider_version,
             )
-        if (
-            cancellation_token is not None
-            and not capability.cancellation_supported
-        ):
+        if cancellation_token is not None and not capability.cancellation_supported:
             return self._degraded(
                 request,
                 AnalysisProviderStatus.UNSUPPORTED,
@@ -2375,32 +2187,25 @@ class IpfsDatasetsAnalysisProvider:
 
         if request is None:
             if "limits" in request_fields:
-                request_fields["bounds"] = self._bounds_from_limits(
-                    request_fields.pop("limits")
-                )
+                request_fields["bounds"] = self._bounds_from_limits(request_fields.pop("limits"))
             elif "bounds" not in request_fields:
                 request_fields["bounds"] = self.policy.bounds
             request = request_fields
-        elif (
-            not isinstance(request, (AnalysisProviderRequest, Mapping))
-            or (
-                isinstance(request, Mapping)
-                and request_fields
-                and not {
-                    "operation",
-                    "repository_id",
-                    "tree_id",
-                    "objective_revision",
-                    "query",
-                }.intersection(request)
-            )
+        elif not isinstance(request, (AnalysisProviderRequest, Mapping)) or (
+            isinstance(request, Mapping)
+            and request_fields
+            and not {
+                "operation",
+                "repository_id",
+                "tree_id",
+                "objective_revision",
+                "query",
+            }.intersection(request)
         ):
             # Pipeline compatibility: ``analyze(query, operation=..., ...)``.
             query = request
             limits = request_fields.pop("limits", None)
-            bounds = request_fields.pop(
-                "bounds", self._bounds_from_limits(limits)
-            )
+            bounds = request_fields.pop("bounds", self._bounds_from_limits(limits))
             request = {
                 **request_fields,
                 "query": query,
@@ -2488,20 +2293,12 @@ class IpfsDatasetsAnalysisProvider:
     ) -> AnalysisProviderResult:
         """Dispatch one compact batch of requests bound to the same tree."""
 
-        if isinstance(requests, (str, bytes, bytearray)) or not isinstance(
-            requests, Sequence
-        ):
-            raise IpfsDatasetsAnalysisProviderError(
-                "batch requests must be a sequence"
-            )
+        if isinstance(requests, (str, bytes, bytearray)) or not isinstance(requests, Sequence):
+            raise IpfsDatasetsAnalysisProviderError("batch requests must be a sequence")
         if not requests:
-            raise IpfsDatasetsAnalysisProviderError(
-                "batch requests must not be empty"
-            )
+            raise IpfsDatasetsAnalysisProviderError("batch requests must not be empty")
         if len(requests) > self.policy.bounds.max_batch_requests:
-            raise IpfsDatasetsAnalysisProviderError(
-                "batch requests exceeds max_batch_requests"
-            )
+            raise IpfsDatasetsAnalysisProviderError("batch requests exceeds max_batch_requests")
         normalized = tuple(self.build_request(item) for item in requests)
         first = normalized[0]
         relation = (
@@ -2519,13 +2316,10 @@ class IpfsDatasetsAnalysisProvider:
                     "batch requests must share repository, tree, and objective identities"
                 )
             if item.operation is AnalysisProviderOperation.BATCH_ANALYSIS:
-                raise IpfsDatasetsAnalysisProviderError(
-                    "nested batch requests are not supported"
-                )
+                raise IpfsDatasetsAnalysisProviderError("nested batch requests are not supported")
             if item.operation not in self.policy.operations:
                 raise IpfsDatasetsAnalysisProviderError(
-                    "batch child operation is not allowlisted: "
-                    + item.operation.value
+                    "batch child operation is not allowlisted: " + item.operation.value
                 )
         bound_values = {
             name: min(getattr(item.bounds, name) for item in normalized)
@@ -2540,9 +2334,7 @@ class IpfsDatasetsAnalysisProvider:
                 "request_id": item.request_id,
                 "operation": item.operation.value,
                 "query": item.query,
-                "artifact_references": [
-                    dict(reference) for reference in item.artifact_references
-                ],
+                "artifact_references": [dict(reference) for reference in item.artifact_references],
                 "payload": dict(item.payload),
                 "bounds": item.bounds.to_dict(),
             }
@@ -2603,17 +2395,13 @@ def _find_forbidden_fields(value: Any) -> tuple[str, ...]:
 
     def visit(item: Any, depth: int = 0) -> None:
         if depth > 8:
-            raise IpfsDatasetsAnalysisProviderError(
-                "backend response exceeds maximum depth"
-            )
+            raise IpfsDatasetsAnalysisProviderError("backend response exceeds maximum depth")
         if isinstance(item, Mapping):
             for key, nested in item.items():
                 if str(key).casefold() in _FORBIDDEN_FIELDS:
                     found.add(str(key))
                 visit(nested, depth + 1)
-        elif isinstance(item, Sequence) and not isinstance(
-            item, (str, bytes, bytearray)
-        ):
+        elif isinstance(item, Sequence) and not isinstance(item, (str, bytes, bytearray)):
             for nested in item:
                 visit(nested, depth + 1)
 
@@ -2628,21 +2416,15 @@ def _compact_references(
         source: Sequence[Any] = ()
     elif isinstance(value, Mapping):
         source = (value,)
-    elif isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         source = value
     else:
-        raise IpfsDatasetsAnalysisProviderError(
-            "backend references must be a sequence"
-        )
+        raise IpfsDatasetsAnalysisProviderError("backend references must be a sequence")
     truncated = len(source) > bounds.max_results
     result: list[Mapping[str, Any]] = []
     for raw in source:
         if not isinstance(raw, Mapping):
-            raise IpfsDatasetsAnalysisProviderError(
-                "backend evidence reference must be an object"
-            )
+            raise IpfsDatasetsAnalysisProviderError("backend evidence reference must be an object")
         if set(raw).intersection(_FORBIDDEN_FIELDS) or set(raw) - _REFERENCE_FIELDS:
             raise IpfsDatasetsAnalysisProviderError(
                 "backend evidence reference contains unsupported fields"
@@ -2659,18 +2441,12 @@ def _compact_references(
                         "reference score must be numeric"
                     ) from exc
                 if not math.isfinite(score):
-                    raise IpfsDatasetsAnalysisProviderError(
-                        "reference score must be finite"
-                    )
+                    raise IpfsDatasetsAnalysisProviderError("reference score must be finite")
                 item["score_millionths"] = (
-                    int(round(score * 1_000_000))
-                    if key == "score"
-                    else int(score)
+                    int(round(score * 1_000_000)) if key == "score" else int(score)
                 )
                 if not 0 <= item["score_millionths"] <= 1_000_000:
-                    raise IpfsDatasetsAnalysisProviderError(
-                        "reference score is out of range"
-                    )
+                    raise IpfsDatasetsAnalysisProviderError("reference score is out of range")
             else:
                 item[key] = _text(
                     nested,
@@ -2679,9 +2455,7 @@ def _compact_references(
                     max_bytes=2048,
                 )
         if not item:
-            raise IpfsDatasetsAnalysisProviderError(
-                "backend evidence reference is empty"
-            )
+            raise IpfsDatasetsAnalysisProviderError("backend evidence reference is empty")
         if len(_json_bytes(item, name="backend evidence reference")) > bounds.max_reference_bytes:
             raise IpfsDatasetsAnalysisProviderError(
                 "backend evidence reference exceeds max_reference_bytes"
@@ -2689,15 +2463,11 @@ def _compact_references(
         result.append(item)
     # Canonical order and identity deduplication make backend scheduling order
     # irrelevant to supervisor state.
-    unique = {
-        _json_bytes(item, name="backend evidence reference"): item for item in result
-    }
+    unique = {_json_bytes(item, name="backend evidence reference"): item for item in result}
     ordered = tuple(unique[key] for key in sorted(unique))
     return (
         ordered[: bounds.max_results],
-        truncated
-        or len(ordered) < len(result)
-        or len(ordered) > bounds.max_results,
+        truncated or len(ordered) < len(result) or len(ordered) > bounds.max_results,
     )
 
 
@@ -2719,8 +2489,7 @@ _REGISTRY_TOKEN_RE: Final = re.compile(r"[A-Za-z_][A-Za-z0-9_.:/-]*")
 _REGISTRY_MAX_REFERENCES: Final = 64
 
 
-def registry_analysis_producer_declarations(
-) -> tuple[AnalysisProducer, AnalysisProducer]:
+def registry_analysis_producer_declarations() -> tuple[AnalysisProducer, AnalysisProducer]:
     """Declare local and optional AST/GraphRAG producers without activation.
 
     This function is metadata-only.  In particular it neither imports
@@ -2771,8 +2540,7 @@ def _registry_request(value: Any) -> TransportAnalysisRequest:
             )
     tree_id = request.metadata["tree_id"]
     if any(
-        reference.get("tree_id")
-        and reference.get("tree_id") != tree_id
+        reference.get("tree_id") and reference.get("tree_id") != tree_id
         for reference in request.artifact_references
     ):
         raise IpfsDatasetsAnalysisProviderError(
@@ -2858,13 +2626,9 @@ def _registry_reference(
     if score_millionths is None:
         raw_score = source.get("score_millionths", source.get("score"))
         if raw_score not in (None, ""):
-            candidate[
-                "score_millionths" if "score_millionths" in source else "score"
-            ] = raw_score
+            candidate["score_millionths" if "score_millionths" in source else "score"] = raw_score
     if score_millionths is not None:
-        candidate["score_millionths"] = max(
-            0, min(1_000_000, int(score_millionths))
-        )
+        candidate["score_millionths"] = max(0, min(1_000_000, int(score_millionths)))
     return normalized_reference_payload(
         candidate,
         default_kind=operation.value,
@@ -2886,8 +2650,7 @@ def _registry_provenance_reference(
             "revision": metadata.get("objective_revision", ""),
             "artifact_id": metadata.get("policy_id", ""),
             "summary": (
-                f"{request.operation} request bound to "
-                f"{metadata.get('tree_id', 'unknown tree')}"
+                f"{request.operation} request bound to {metadata.get('tree_id', 'unknown tree')}"
             ),
         },
         default_kind="analysis_request",
@@ -2907,9 +2670,7 @@ def _registry_transport_response(
 ) -> dict[str, Any]:
     negotiated = negotiated_capability
     return {
-        "schema": getattr(
-            negotiated, "result_schema", ANALYSIS_TRANSPORT_RESULT_SCHEMA
-        ),
+        "schema": getattr(negotiated, "result_schema", ANALYSIS_TRANSPORT_RESULT_SCHEMA),
         "protocol_version": getattr(
             negotiated,
             "protocol_version",
@@ -2917,18 +2678,14 @@ def _registry_transport_response(
         ),
         "request_id": request.request_id,
         "operation": request.operation,
-        "capability_id": getattr(
-            negotiated, "capability_id", capability.capability_id
-        ),
+        "capability_id": getattr(negotiated, "capability_id", capability.capability_id),
         "capability_revision": getattr(
             negotiated,
             "capability_revision",
             capability.capability_revision,
         ),
         "evidence_references": [dict(item) for item in evidence_references],
-        "provenance_references": [
-            dict(item) for item in provenance_references
-        ],
+        "provenance_references": [dict(item) for item in provenance_references],
         "cost": dict(cost or {}),
         "verdict": "diagnostic_candidate",
         "truncated": bool(truncated),
@@ -3046,9 +2803,7 @@ class LocalRegistryAnalysisProducer:
         self.declaration = declaration or registry_analysis_producer_declarations()[0]
         self._adapters = {
             AnalysisOperation.SYMBOL_IMPACT: LocalSymbolImpactAnalysisAdapter(),
-            AnalysisOperation.GRAPH_RAG_RETRIEVAL: (
-                LocalGraphRAGRetrievalAdapter()
-            ),
+            AnalysisOperation.GRAPH_RAG_RETRIEVAL: (LocalGraphRAGRetrievalAdapter()),
         }
 
     def capabilities(self) -> TransportAnalysisCapability:
@@ -3075,13 +2830,9 @@ class LocalRegistryAnalysisProducer:
             raise RuntimeError("registry analysis request was cancelled")
         operation = normalize_analysis_operation(normalized.operation)
         adapter = self._adapters[operation]
-        evidence, truncated = adapter.project(
-            normalized, producer_id=self.declaration.producer_id
-        )
+        evidence, truncated = adapter.project(normalized, producer_id=self.declaration.producer_id)
         provenance = (
-            _registry_provenance_reference(
-                normalized, producer_id=self.declaration.producer_id
-            ),
+            _registry_provenance_reference(normalized, producer_id=self.declaration.producer_id),
         )
         return _registry_transport_response(
             normalized,
@@ -3090,9 +2841,7 @@ class LocalRegistryAnalysisProducer:
             provenance_references=provenance,
             negotiated_capability=negotiated_capability,
             cost={
-                "artifact_references_considered": len(
-                    normalized.artifact_references
-                ),
+                "artifact_references_considered": len(normalized.artifact_references),
                 "local_projection_calls": 1,
             },
             truncated=truncated,
@@ -3119,11 +2868,7 @@ def _legacy_registry_operation(operation: AnalysisOperation) -> AnalysisProvider
 def _legacy_artifact_reference(value: Mapping[str, Any]) -> dict[str, Any]:
     """Project a registry reference into the legacy adapter's compact schema."""
 
-    result = {
-        key: value[key]
-        for key in _ARTIFACT_FIELDS
-        if value.get(key) not in (None, "")
-    }
+    result = {key: value[key] for key in _ARTIFACT_FIELDS if value.get(key) not in (None, "")}
     if "record_id" not in result:
         identity = value.get("reference_id") or value.get("evidence_id")
         if identity not in (None, ""):
@@ -3152,9 +2897,7 @@ class IpfsDatasetsRegistryAnalysisProducer:
             raise IpfsDatasetsAnalysisProviderError(
                 "provider and provider_kwargs cannot be combined"
             )
-        self._provider = provider or IpfsDatasetsAnalysisProvider(
-            **dict(provider_kwargs or {})
-        )
+        self._provider = provider or IpfsDatasetsAnalysisProvider(**dict(provider_kwargs or {}))
 
     def capabilities(self) -> TransportAnalysisCapability:
         # Do not probe the legacy provider here.  Transport discovery and
@@ -3165,9 +2908,7 @@ class IpfsDatasetsRegistryAnalysisProducer:
 
     def supports(self, operation: Any) -> bool:
         try:
-            return normalize_analysis_operation(
-                operation
-            ) in _REGISTRY_ANALYSIS_OPERATIONS
+            return normalize_analysis_operation(operation) in _REGISTRY_ANALYSIS_OPERATIONS
         except Exception:
             return False
 
@@ -3189,8 +2930,7 @@ class IpfsDatasetsRegistryAnalysisProducer:
             objective_revision=metadata.get("objective_revision", ""),
             query={"text": normalized.question},
             artifact_references=tuple(
-                _legacy_artifact_reference(item)
-                for item in normalized.artifact_references
+                _legacy_artifact_reference(item) for item in normalized.artifact_references
             ),
             payload={
                 "registry_id": metadata.get("registry_id", ""),
@@ -3198,16 +2938,12 @@ class IpfsDatasetsRegistryAnalysisProducer:
                 "policy_id": metadata.get("policy_id", ""),
             },
         )
-        result = self._provider.analyze(
-            legacy_request, cancellation_token=cancellation_token
-        )
+        result = self._provider.analyze(legacy_request, cancellation_token=cancellation_token)
         if result.status is not AnalysisProviderStatus.COMPLETED:
             # Raising is intentional: AnalysisTransport turns this into a
             # typed optional-provider failure and invokes deterministic local
             # fallback with an explicit receipt.
-            raise RuntimeError(
-                f"optional datasets analysis failed: {result.reason_code}"
-            )
+            raise RuntimeError(f"optional datasets analysis failed: {result.reason_code}")
         tree_id = str(metadata.get("tree_id") or "")
         evidence = tuple(
             _registry_reference(
@@ -3227,11 +2963,7 @@ class IpfsDatasetsRegistryAnalysisProducer:
                 preserve_reference_id=True,
             )
             for item in result.provenance_references
-        ) + (
-            _registry_provenance_reference(
-                normalized, producer_id=self.declaration.producer_id
-            ),
-        )
+        ) + (_registry_provenance_reference(normalized, producer_id=self.declaration.producer_id),)
         return _registry_transport_response(
             normalized,
             capability=self.capabilities(),

@@ -9,19 +9,12 @@ from types import SimpleNamespace
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor import (
-
     FORMAL_VERIFICATION_CAPABILITY_REPORT_VERSION,
-
     FORMAL_VERIFICATION_CAPABILITY_SCHEMA_VERSION,
-
     CapabilityDimension,
-
     CapabilityHealth,
-
     FormalVerificationCapabilityProbe,
-
     FormalVerificationProbeConfig,
-
 )
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_capabilities import (
     EffectiveContextLimit,
@@ -359,10 +352,14 @@ def test_leanstral_route_is_discoverable_through_accelerator_source_wrapper(
     monkeypatch.syspath_prepend(str(tmp_path))
     loaded_accelerator = sys.modules["ipfs_accelerate_py"]
 
-    leanstral = FormalVerificationCapabilityProbe(
-        which=lambda _name: None,
-        environ={},
-    ).probe().provider("leanstral")
+    leanstral = (
+        FormalVerificationCapabilityProbe(
+            which=lambda _name: None,
+            environ={},
+        )
+        .probe()
+        .provider("leanstral")
+    )
     route = leanstral.leanstral_capability(LeanstralCapability.ROUTE_READINESS)
     provider_checks = {check.name: check for check in leanstral.provider_health}
 
@@ -508,9 +505,7 @@ def test_zkp_backend_health_requires_executable_and_circuit_artifacts(
     assert provider_checks["simulated ZKP backend"].status is CapabilityHealth.DEGRADED
     assert provider_checks["Groth16 backend"].status is CapabilityHealth.UNAVAILABLE
     assert "non-cryptographic" in provider_checks["simulated ZKP backend"].reason
-    assert any(
-        "not configured" in check.reason for check in zkp.circuit_health
-    )
+    assert any("not configured" in check.reason for check in zkp.circuit_health)
 
     artifact_dir = tmp_path / "groth16"
     artifact_dir.mkdir()
@@ -542,20 +537,19 @@ def test_leanstral_surfaces_are_independent_routing_capabilities() -> None:
             "ipfs_accelerate_py.llm_router",
         },
     )
-    leanstral = FormalVerificationCapabilityProbe(
-        find_spec=discovery.find_spec,
-        which=discovery.which,
-        environ={},
-    ).probe().provider("leanstral")
+    leanstral = (
+        FormalVerificationCapabilityProbe(
+            find_spec=discovery.find_spec,
+            which=discovery.which,
+            environ={},
+        )
+        .probe()
+        .provider("leanstral")
+    )
     tagged = [
-        check
-        for check in leanstral.provider_health
-        if "leanstral_capability" in check.metadata
+        check for check in leanstral.provider_health if "leanstral_capability" in check.metadata
     ]
-    capabilities = {
-        check.metadata["leanstral_capability"]: check
-        for check in tagged
-    }
+    capabilities = {check.metadata["leanstral_capability"]: check for check in tagged}
 
     assert len(tagged) == len(LeanstralCapability) == 5
     assert set(capabilities) == {item.value for item in LeanstralCapability}
@@ -564,19 +558,10 @@ def test_leanstral_surfaces_are_independent_routing_capabilities() -> None:
         is capabilities["route_readiness"]
     )
     assert capabilities["route_readiness"].status is CapabilityHealth.AVAILABLE
-    assert (
-        capabilities["local_model_execution"].status
-        is CapabilityHealth.UNAVAILABLE
-    )
-    assert (
-        capabilities["legal_language_preprocessing"].status
-        is CapabilityHealth.UNAVAILABLE
-    )
+    assert capabilities["local_model_execution"].status is CapabilityHealth.UNAVAILABLE
+    assert capabilities["legal_language_preprocessing"].status is CapabilityHealth.UNAVAILABLE
     assert capabilities["codec_availability"].status is CapabilityHealth.UNAVAILABLE
-    assert (
-        capabilities["kernel_verification"].status
-        is CapabilityHealth.UNAVAILABLE
-    )
+    assert capabilities["kernel_verification"].status is CapabilityHealth.UNAVAILABLE
     assert leanstral.status is CapabilityHealth.DEGRADED
 
 
@@ -590,27 +575,25 @@ def test_configured_local_model_does_not_depend_on_kernel_or_codec(
             "torch",
         },
     )
-    leanstral = FormalVerificationCapabilityProbe(
-        FormalVerificationProbeConfig(leanstral_model_path=str(model)),
-        find_spec=discovery.find_spec,
-        which=discovery.which,
-        environ={},
-    ).probe().provider("leanstral")
+    leanstral = (
+        FormalVerificationCapabilityProbe(
+            FormalVerificationProbeConfig(leanstral_model_path=str(model)),
+            find_spec=discovery.find_spec,
+            which=discovery.which,
+            environ={},
+        )
+        .probe()
+        .provider("leanstral")
+    )
     capabilities = {
         check.metadata["leanstral_capability"]: check
         for check in leanstral.provider_health
         if "leanstral_capability" in check.metadata
     }
 
-    assert (
-        capabilities["local_model_execution"].status
-        is CapabilityHealth.AVAILABLE
-    )
+    assert capabilities["local_model_execution"].status is CapabilityHealth.AVAILABLE
     assert capabilities["codec_availability"].status is CapabilityHealth.UNAVAILABLE
-    assert (
-        capabilities["kernel_verification"].status
-        is CapabilityHealth.UNAVAILABLE
-    )
+    assert capabilities["kernel_verification"].status is CapabilityHealth.UNAVAILABLE
 
 
 def test_effective_context_limit_uses_smallest_authority_and_reserves() -> None:
@@ -656,21 +639,25 @@ def test_context_limit_is_attached_to_route_health_and_can_fail_route() -> None:
             "ipfs_accelerate_py.llm_router",
         },
     )
-    leanstral = FormalVerificationCapabilityProbe(
-        FormalVerificationProbeConfig(
-            leanstral_route={
-                "route_id": "local-a",
-                "context_window_tokens": 8_192,
-            },
-            leanstral_server={"context_length": 4_096},
-            leanstral_model={"model_id": "leanstral-7b", "n_ctx": 2_048},
-            leanstral_output_reserve_tokens=1_536,
-            leanstral_safety_margin_tokens=512,
-        ),
-        find_spec=discovery.find_spec,
-        which=discovery.which,
-        environ={},
-    ).probe().provider("leanstral")
+    leanstral = (
+        FormalVerificationCapabilityProbe(
+            FormalVerificationProbeConfig(
+                leanstral_route={
+                    "route_id": "local-a",
+                    "context_window_tokens": 8_192,
+                },
+                leanstral_server={"context_length": 4_096},
+                leanstral_model={"model_id": "leanstral-7b", "n_ctx": 2_048},
+                leanstral_output_reserve_tokens=1_536,
+                leanstral_safety_margin_tokens=512,
+            ),
+            find_spec=discovery.find_spec,
+            which=discovery.which,
+            environ={},
+        )
+        .probe()
+        .provider("leanstral")
+    )
     route = next(
         check
         for check in leanstral.provider_health

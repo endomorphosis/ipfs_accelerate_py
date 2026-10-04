@@ -81,9 +81,7 @@ def _now() -> datetime:
 
 
 def _rfc(dt: datetime) -> str:
-    return dt.astimezone(timezone.utc).isoformat(timespec="microseconds").replace(
-        "+00:00", "Z"
-    )
+    return dt.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 @pytest.fixture(autouse=True)
@@ -346,9 +344,7 @@ def _headroom_available(snap: UsageSnapshot, dimension: UsageDimension) -> Optio
 
 
 def test_usage_routing_requirement_id_exported() -> None:
-    assert USAGE_ROUTING_REQUIREMENT_ID == (
-        "requirement:voice-router-usage-routing.v1"
-    )
+    assert USAGE_ROUTING_REQUIREMENT_ID == ("requirement:voice-router-usage-routing.v1")
     assert VOICE_TTS_USAGE_OPERATION == "audio.synthesize"
     assert VOICE_STT_USAGE_OPERATION == "audio.transcribe"
 
@@ -360,9 +356,7 @@ def test_estimate_synthesis_usage_covers_modality_dimensions() -> None:
     assert vector.get(UsageDimension.REQUESTS).amount.value == 1
     assert vector.get(UsageDimension.CHARACTERS).amount.value == len(text)
     assert vector.get(UsageDimension.INPUT_TOKENS).amount.value >= 1
-    assert vector.get(UsageDimension.MEDIA_BYTES).amount.value == len(
-        text.encode("utf-8")
-    )
+    assert vector.get(UsageDimension.MEDIA_BYTES).amount.value == len(text.encode("utf-8"))
     assert vector.get(UsageDimension.CONCURRENT_REQUESTS).amount.value == 1
     assert vector.get(UsageDimension.CONCURRENT_STREAMS).amount.value == 1
     assert estimate_synthesis_tokens("abcd") >= 1
@@ -373,9 +367,7 @@ def test_estimate_synthesis_usage_covers_modality_dimensions() -> None:
 
 def test_estimate_transcription_usage_covers_modality_dimensions() -> None:
     audio = b"x" * 16_000
-    vector = estimate_transcription_usage(
-        audio, declared_seconds=2.2, streaming=True
-    )
+    vector = estimate_transcription_usage(audio, declared_seconds=2.2, streaming=True)
     assert vector.get(UsageDimension.REQUESTS).amount.value == 1
     assert vector.get(UsageDimension.AUDIO_SECONDS).amount.value == 3
     assert vector.get(UsageDimension.MEDIA_BYTES).amount.value == 16_000
@@ -411,15 +403,10 @@ def test_voice_fallback_compatible_preserves_contracts() -> None:
     assert voice_fallback_compatible(origin, dict(origin, sample_rate="16000")) is False
     assert voice_fallback_compatible(origin, dict(origin, locality="local")) is False
     assert (
-        voice_fallback_compatible(
-            origin, dict(origin, operation=VOICE_STT_USAGE_OPERATION)
-        )
+        voice_fallback_compatible(origin, dict(origin, operation=VOICE_STT_USAGE_OPERATION))
         is False
     )
-    assert (
-        voice_fallback_compatible(origin, dict(origin, data_retention="store-30d"))
-        is False
-    )
+    assert voice_fallback_compatible(origin, dict(origin, data_retention="store-30d")) is False
 
 
 # ---------------------------------------------------------------------------
@@ -602,9 +589,7 @@ def test_enforce_denies_when_capacity_exhausted() -> None:
     coord = _coord(clock)
     scope = _scope("deny", VOICE_TTS_USAGE_OPERATION)
     _configure_tts_limits(coord, scope, requests=0)
-    cand = _candidate(
-        provider_key="deny", scope=scope, operation=VOICE_TTS_USAGE_OPERATION
-    )
+    cand = _candidate(provider_key="deny", scope=scope, operation=VOICE_TTS_USAGE_OPERATION)
     provider = _CountingTTS("deny")
 
     with pytest.raises(UsageCapacityError) as excinfo:
@@ -612,9 +597,7 @@ def test_enforce_denies_when_capacity_exhausted() -> None:
             "blocked",
             provider_instance=provider,  # type: ignore[arg-type]
             usage_coordinator=coord,
-            usage_policy=RoutingPolicy(
-                mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE
-            ),
+            usage_policy=RoutingPolicy(mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE),
             usage_candidates=[cand],
             usage_provider_by_binding={cand.binding_id: provider},  # type: ignore[dict-item]
             usage_request=UsageRoutingRequest(
@@ -644,9 +627,7 @@ def test_cache_hits_create_no_remote_charge(monkeypatch: pytest.MonkeyPatch) -> 
     coord = _coord(clock)
     scope = _scope("cache", VOICE_TTS_USAGE_OPERATION)
     _configure_tts_limits(coord, scope, requests=5)
-    cand = _candidate(
-        provider_key="cache", scope=scope, operation=VOICE_TTS_USAGE_OPERATION
-    )
+    cand = _candidate(provider_key="cache", scope=scope, operation=VOICE_TTS_USAGE_OPERATION)
     provider = _CountingTTS("cache")
     deps = RouterDeps()
 
@@ -700,9 +681,7 @@ def test_cancel_before_dispatch_does_not_charge() -> None:
     coord = _coord(clock)
     scope = _scope("cancel", VOICE_TTS_USAGE_OPERATION)
     _configure_tts_limits(coord, scope, requests=5)
-    cand = _candidate(
-        provider_key="cancel", scope=scope, operation=VOICE_TTS_USAGE_OPERATION
-    )
+    cand = _candidate(provider_key="cancel", scope=scope, operation=VOICE_TTS_USAGE_OPERATION)
     provider = _CountingTTS("cancel")
     cancel = threading.Event()
     cancel.set()
@@ -715,9 +694,7 @@ def test_cancel_before_dispatch_does_not_charge() -> None:
             "never",
             provider_instance=provider,  # type: ignore[arg-type]
             usage_coordinator=coord,
-            usage_policy=RoutingPolicy(
-                mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE
-            ),
+            usage_policy=RoutingPolicy(mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE),
             usage_candidates=[cand],
             usage_provider_by_binding={cand.binding_id: provider},  # type: ignore[dict-item]
             usage_request=UsageRoutingRequest(
@@ -742,9 +719,7 @@ def test_timeout_before_dispatch_does_not_charge() -> None:
     coord = _coord(clock)
     scope = _scope("timeout", VOICE_STT_USAGE_OPERATION)
     _configure_stt_limits(coord, scope, requests=5)
-    cand = _candidate(
-        provider_key="timeout", scope=scope, operation=VOICE_STT_USAGE_OPERATION
-    )
+    cand = _candidate(provider_key="timeout", scope=scope, operation=VOICE_STT_USAGE_OPERATION)
     provider = _CountingSTT("timeout")
     before = coord.snapshot(scope.scope_id)
     before_req = _headroom_available(before, UsageDimension.REQUESTS)
@@ -754,9 +729,7 @@ def test_timeout_before_dispatch_does_not_charge() -> None:
             b"audio",
             provider_instance=provider,  # type: ignore[arg-type]
             usage_coordinator=coord,
-            usage_policy=RoutingPolicy(
-                mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE
-            ),
+            usage_policy=RoutingPolicy(mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE),
             usage_candidates=[cand],
             usage_provider_by_binding={cand.binding_id: provider},  # type: ignore[dict-item]
             usage_request=UsageRoutingRequest(
@@ -780,9 +753,7 @@ def test_streaming_settles_monotonic_partial_usage() -> None:
     coord = _coord(clock)
     scope = _scope("stream", VOICE_STT_USAGE_OPERATION)
     _configure_stt_limits(coord, scope, requests=5, audio_seconds=100)
-    cand = _candidate(
-        provider_key="stream", scope=scope, operation=VOICE_STT_USAGE_OPERATION
-    )
+    cand = _candidate(provider_key="stream", scope=scope, operation=VOICE_STT_USAGE_OPERATION)
     provider = _CountingSTT("stream", transcript="partial stream ok")
     audio = b"\x01" * 4000
 
@@ -795,9 +766,7 @@ def test_streaming_settles_monotonic_partial_usage() -> None:
         audio,
         provider_instance=provider,  # type: ignore[arg-type]
         usage_coordinator=coord,
-        usage_policy=RoutingPolicy(
-            mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE
-        ),
+        usage_policy=RoutingPolicy(mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE),
         usage_candidates=[cand],
         usage_provider_by_binding={cand.binding_id: provider},  # type: ignore[dict-item]
         usage_request=UsageRoutingRequest(
@@ -825,9 +794,7 @@ def test_non_monotonic_stream_partials_fail() -> None:
     coord = _coord(clock)
     scope = _scope("nonmono", VOICE_TTS_USAGE_OPERATION)
     _configure_tts_limits(coord, scope, requests=5, characters=10_000)
-    cand = _candidate(
-        provider_key="nonmono", scope=scope, operation=VOICE_TTS_USAGE_OPERATION
-    )
+    cand = _candidate(provider_key="nonmono", scope=scope, operation=VOICE_TTS_USAGE_OPERATION)
     provider = _CountingTTS("nonmono")
 
     partials = [
@@ -839,9 +806,7 @@ def test_non_monotonic_stream_partials_fail() -> None:
             "stream me",
             provider_instance=provider,  # type: ignore[arg-type]
             usage_coordinator=coord,
-            usage_policy=RoutingPolicy(
-                mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE
-            ),
+            usage_policy=RoutingPolicy(mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE),
             usage_candidates=[cand],
             usage_provider_by_binding={cand.binding_id: provider},  # type: ignore[dict-item]
             usage_request=UsageRoutingRequest(
@@ -1051,9 +1016,7 @@ def test_provider_metadata_updates_only_exact_scope() -> None:
     other = _scope("meta-other", VOICE_TTS_USAGE_OPERATION)
     _configure_tts_limits(coord, scope, requests=5)
     _configure_tts_limits(coord, other, requests=5)
-    cand = _candidate(
-        provider_key="meta", scope=scope, operation=VOICE_TTS_USAGE_OPERATION
-    )
+    cand = _candidate(provider_key="meta", scope=scope, operation=VOICE_TTS_USAGE_OPERATION)
     provider = _CountingTTS("meta")
 
     # Observation claims a different scope — must be ignored (exact-scope only).
@@ -1089,9 +1052,7 @@ def test_receipt_never_contains_transcript_synthesis_or_audio() -> None:
     coord = _coord(clock)
     scope = _scope("receipt", VOICE_TTS_USAGE_OPERATION)
     _configure_tts_limits(coord, scope, requests=5)
-    cand = _candidate(
-        provider_key="receipt", scope=scope, operation=VOICE_TTS_USAGE_OPERATION
-    )
+    cand = _candidate(provider_key="receipt", scope=scope, operation=VOICE_TTS_USAGE_OPERATION)
     secret_text = "super_secret_synthesis_text_xyz"
     provider = _CountingTTS(
         "receipt",

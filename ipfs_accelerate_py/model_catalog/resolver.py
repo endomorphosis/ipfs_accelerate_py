@@ -124,27 +124,20 @@ class ResolutionRequest:
         for name in ("model", "provider", "deployment", "device", "locality"):
             object.__setattr__(self, name, _selector(getattr(self, name), name))
         object.__setattr__(self, "policy", _policy(self.policy))
-        if (
-            self.context is not None
-            and (
-                isinstance(self.context, bool)
-                or not isinstance(self.context, int)
-                or not 1 <= self.context <= 100_000_000
-            )
+        if self.context is not None and (
+            isinstance(self.context, bool)
+            or not isinstance(self.context, int)
+            or not 1 <= self.context <= 100_000_000
         ):
             raise ResolutionError("context must be between 1 and 100000000")
         for name in ("health", "configured", "authorized", "reachable", "routable"):
-            object.__setattr__(
-                self, name, _optional_bool(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _optional_bool(getattr(self, name), name))
         if (
             isinstance(self.limit, bool)
             or not isinstance(self.limit, int)
             or not 1 <= self.limit <= MAX_RESOLUTION_CANDIDATES
         ):
-            raise ResolutionError(
-                "limit must be between 1 and %d" % MAX_RESOLUTION_CANDIDATES
-            )
+            raise ResolutionError("limit must be between 1 and %d" % MAX_RESOLUTION_CANDIDATES)
 
     @property
     def context_tokens(self) -> Optional[int]:
@@ -176,11 +169,7 @@ class ResolutionRequest:
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "ResolutionRequest":
         fields = tuple(cls.__dataclass_fields__)  # type: ignore[attr-defined]
-        if (
-            not isinstance(data, Mapping)
-            or set(data) - set(fields)
-            or "operation" not in data
-        ):
+        if not isinstance(data, Mapping) or set(data) - set(fields) or "operation" not in data:
             raise ResolutionError("ResolutionRequest has missing or unknown fields")
         return cls(**dict(data))
 
@@ -203,21 +192,15 @@ class ResolutionCandidate:
             raise ResolutionError("candidate provider is invalid")
         if self.model is not None and not isinstance(self.model, ModelDescriptor):
             raise ResolutionError("candidate model is invalid")
-        if self.deployment is not None and not isinstance(
-            self.deployment, DeploymentDescriptor
-        ):
+        if self.deployment is not None and not isinstance(self.deployment, DeploymentDescriptor):
             raise ResolutionError("candidate deployment is invalid")
         if not isinstance(self.binding, RouterBinding):
             raise ResolutionError("candidate binding is invalid")
         if isinstance(self.score, bool) or not isinstance(self.score, int):
             raise ResolutionError("candidate score must be an integer")
         reasons = tuple(self.reasons)
-        if (
-            len(reasons) > 64
-            or any(
-                not isinstance(item, str) or len(item.encode("utf-8")) > 512
-                for item in reasons
-            )
+        if len(reasons) > 64 or any(
+            not isinstance(item, str) or len(item.encode("utf-8")) > 512 for item in reasons
         ):
             raise ResolutionError("candidate reasons are invalid or excessive")
         object.__setattr__(self, "reasons", reasons)
@@ -242,9 +225,7 @@ class ResolutionCandidate:
         return {
             "provider": self.provider.to_dict(),
             "model": None if self.model is None else self.model.to_dict(),
-            "deployment": (
-                None if self.deployment is None else self.deployment.to_dict()
-            ),
+            "deployment": (None if self.deployment is None else self.deployment.to_dict()),
             "binding": self.binding.to_dict(),
             "score": self.score,
             "reasons": list(self.reasons),
@@ -257,11 +238,7 @@ class ResolutionCandidate:
             raise ResolutionError("ResolutionCandidate has missing or unknown fields")
         return cls(
             provider=ProviderDescriptor.from_dict(data["provider"]),
-            model=(
-                None
-                if data["model"] is None
-                else ModelDescriptor.from_dict(data["model"])
-            ),
+            model=(None if data["model"] is None else ModelDescriptor.from_dict(data["model"])),
             deployment=(
                 None
                 if data["deployment"] is None
@@ -292,8 +269,7 @@ class ResolutionResult:
         object.__setattr__(self, "candidates", candidates)
         reasons = tuple(self.reasons)
         if len(reasons) > MAX_RESOLUTION_REASONS or any(
-            not isinstance(item, str) or len(item.encode("utf-8")) > 512
-            for item in reasons
+            not isinstance(item, str) or len(item.encode("utf-8")) > 512 for item in reasons
         ):
             raise ResolutionError("result reasons are invalid or excessive")
         object.__setattr__(self, "reasons", reasons)
@@ -324,9 +300,7 @@ class ResolutionResult:
             raise ResolutionError("ResolutionResult has missing or unknown fields")
         return cls(
             request=ResolutionRequest.from_dict(data["request"]),
-            candidates=tuple(
-                ResolutionCandidate.from_dict(item) for item in data["candidates"]
-            ),
+            candidates=tuple(ResolutionCandidate.from_dict(item) for item in data["candidates"]),
             reasons=tuple(data["reasons"]),
             snapshot_revision=data["snapshot_revision"],
             total_candidates=data["total_candidates"],
@@ -358,12 +332,8 @@ def _select_one(
         "model": "model_id",
         "deployment": "deployment_id",
     }[label]
-    exact = tuple(
-        record for record in records if getattr(record, identity_field) == selector
-    )
-    matches = exact or tuple(
-        record for record in records if _record_matches(record, selector)
-    )
+    exact = tuple(record for record in records if getattr(record, identity_field) == selector)
+    matches = exact or tuple(record for record in records if _record_matches(record, selector))
     if not matches:
         return None, "%s constraint did not match any canonical record" % label
     ids = {
@@ -412,11 +382,7 @@ def _candidate_state(
     values = {}
     for name in OperationalState.__dataclass_fields__:  # type: ignore[attr-defined]
         values[name] = next(
-            (
-                getattr(state, name)
-                for state in levels
-                if getattr(state, name) is not None
-            ),
+            (getattr(state, name) for state in levels if getattr(state, name) is not None),
             None,
         )
     return OperationalState(**values)
@@ -440,10 +406,7 @@ def _context_limit(
     # Capabilities are ordered most-specific first.  Use the first level that
     # makes a context assertion for the requested operation.
     for capability in capabilities:
-        if (
-            operation in capability.operations
-            and capability.max_context_tokens is not None
-        ):
+        if operation in capability.operations and capability.max_context_tokens is not None:
             return capability.max_context_tokens
     return None
 
@@ -455,10 +418,7 @@ def _modality_matches(
 ) -> bool:
     return any(
         operation in capability.operations
-        and (
-            modality in capability.input_modalities
-            or modality in capability.output_modalities
-        )
+        and (modality in capability.input_modalities or modality in capability.output_modalities)
         for capability in capabilities
     )
 
@@ -483,7 +443,7 @@ class CatalogResolver:
         self,
         snapshot: CatalogSnapshot,
         request: Optional[ResolutionRequest] = None,
-        **constraints: Any
+        **constraints: Any,
     ) -> ResolutionResult:
         if not isinstance(snapshot, CatalogSnapshot):
             raise TypeError("snapshot must be a CatalogSnapshot")
@@ -509,19 +469,14 @@ class CatalogResolver:
         providers = {item.provider_id: item for item in snapshot.providers}
         models = {item.model_id: item for item in snapshot.models}
         deployments = {item.deployment_id: item for item in snapshot.deployments}
-        selected_provider, error = _select_one(
-            snapshot.providers, request.provider, "provider"
-        )
+        selected_provider, error = _select_one(snapshot.providers, request.provider, "provider")
         if error:
             return self._empty(snapshot, request, error)
 
-        model_scope = (
-            tuple(
-                item
-                for item in snapshot.models
-                if selected_provider is None
-                or item.provider_id == selected_provider.provider_id
-            )
+        model_scope = tuple(
+            item
+            for item in snapshot.models
+            if selected_provider is None or item.provider_id == selected_provider.provider_id
         )
         selected_model, error = _select_one(model_scope, request.model, "model")
         if error:
@@ -530,18 +485,10 @@ class CatalogResolver:
         deployment_scope = tuple(
             item
             for item in snapshot.deployments
-            if (
-                selected_provider is None
-                or item.provider_id == selected_provider.provider_id
-            )
-            and (
-                selected_model is None
-                or item.model_id == selected_model.model_id
-            )
+            if (selected_provider is None or item.provider_id == selected_provider.provider_id)
+            and (selected_model is None or item.model_id == selected_model.model_id)
         )
-        selected_deployment, error = _select_one(
-            deployment_scope, request.deployment, "deployment"
-        )
+        selected_deployment, error = _select_one(deployment_scope, request.deployment, "deployment")
         if error:
             return self._empty(snapshot, request, error)
 
@@ -550,13 +497,9 @@ class CatalogResolver:
         for binding in snapshot.bindings:
             provider = providers.get(binding.provider_id)
             deployment = (
-                None
-                if binding.deployment_id is None
-                else deployments.get(binding.deployment_id)
+                None if binding.deployment_id is None else deployments.get(binding.deployment_id)
             )
-            model_id = binding.model_id or (
-                None if deployment is None else deployment.model_id
-            )
+            model_id = binding.model_id or (None if deployment is None else deployment.model_id)
             model = None if model_id is None else models.get(model_id)
             reason_prefix = binding.binding_id
             if provider is None:
@@ -590,18 +533,13 @@ class CatalogResolver:
             ):
                 rejected.append("%s: provider mismatch" % reason_prefix)
                 continue
-            if (
-                selected_model is not None
-                and (model is None or model.model_id != selected_model.model_id)
+            if selected_model is not None and (
+                model is None or model.model_id != selected_model.model_id
             ):
                 rejected.append("%s: model mismatch" % reason_prefix)
                 continue
-            if (
-                selected_deployment is not None
-                and (
-                    deployment is None
-                    or deployment.deployment_id != selected_deployment.deployment_id
-                )
+            if selected_deployment is not None and (
+                deployment is None or deployment.deployment_id != selected_deployment.deployment_id
             ):
                 rejected.append("%s: deployment mismatch" % reason_prefix)
                 continue
@@ -659,8 +597,7 @@ class CatalogResolver:
             )
             if failed_state is not None:
                 rejected.append(
-                    "%s: %s state constraint failed or is unknown"
-                    % (reason_prefix, failed_state)
+                    "%s: %s state constraint failed or is unknown" % (reason_prefix, failed_state)
                 )
                 continue
 
@@ -683,13 +620,9 @@ class CatalogResolver:
                 "supports %s through %s" % (request.operation.value, binding.router),
                 "binding priority %d" % binding.priority,
             ]
-            positive_states = [
-                name for name in state_weights if getattr(state, name) is True
-            ]
+            positive_states = [name for name in state_weights if getattr(state, name) is True]
             if positive_states:
-                candidate_reasons.append(
-                    "positive state: %s" % ", ".join(positive_states)
-                )
+                candidate_reasons.append("positive state: %s" % ", ".join(positive_states))
             if context_limit is not None:
                 candidate_reasons.append("context limit %d" % context_limit)
             if request.policy:
@@ -749,9 +682,7 @@ class CatalogResolver:
 
 
 def resolve(
-    snapshot: CatalogSnapshot,
-    request: Optional[ResolutionRequest] = None,
-    **constraints: Any
+    snapshot: CatalogSnapshot, request: Optional[ResolutionRequest] = None, **constraints: Any
 ) -> ResolutionResult:
     """Convenience wrapper around :class:`CatalogResolver`."""
 

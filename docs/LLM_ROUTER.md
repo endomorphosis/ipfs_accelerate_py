@@ -114,9 +114,11 @@ the source module for the exact current alias set.
 ```python
 from ipfs_accelerate_py import generate_text, register_llm_provider
 
+
 class ExampleProvider:
     def generate(self, prompt, *, model_name=None, **kwargs):
         return f"response for {prompt}"
+
 
 register_llm_provider("example", lambda: ExampleProvider())
 print(generate_text("hello", provider="example"))

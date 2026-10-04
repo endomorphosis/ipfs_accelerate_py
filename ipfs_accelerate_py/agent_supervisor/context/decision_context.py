@@ -28,9 +28,7 @@ from .context_contracts import ContextReference, ContextTier
 from ..proof.formal_verification_contracts import CanonicalContract, canonical_json_bytes
 
 
-DECISION_CONTEXT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/decision-context@1"
-)
+DECISION_CONTEXT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/decision-context@1"
 DECISION_CONTEXT_REFERENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/decision-context-reference@1"
 )
@@ -141,9 +139,7 @@ def _text(value: Any, name: str, *, required: bool = True) -> str:
     if not isinstance(value, str):
         raise DecisionContextError(f"{name} must be a string")
     if value != value.strip() or "\x00" in value:
-        raise DecisionContextError(
-            f"{name} must not contain surrounding whitespace or NUL"
-        )
+        raise DecisionContextError(f"{name} must not contain surrounding whitespace or NUL")
     if required and not value:
         raise DecisionContextError(f"{name} is required")
     if len(value.encode("utf-8")) > 65_536:
@@ -153,11 +149,7 @@ def _text(value: Any, name: str, *, required: bool = True) -> str:
 
 def _positive(value: Any, name: str, *, allow_zero: bool = False) -> int:
     minimum = 0 if allow_zero else 1
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, int)
-        or value < minimum
-    ):
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
         qualifier = "non-negative" if allow_zero else "positive"
         raise DecisionContextError(f"{name} must be a {qualifier} integer")
     return value
@@ -171,26 +163,17 @@ def _plain(value: Any, *, depth: int = 0) -> Any:
     if value is None or isinstance(value, (str, bool, int)):
         return value
     if isinstance(value, float):
-        raise DecisionContextError(
-            "floating-point values are not canonical decision context"
-        )
+        raise DecisionContextError("floating-point values are not canonical decision context")
     if isinstance(value, Mapping):
         if not all(isinstance(key, str) for key in value):
             raise DecisionContextError("decision context keys must be strings")
-        return {
-            key: _plain(value[key], depth=depth + 1)
-            for key in sorted(value)
-        }
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+        return {key: _plain(value[key], depth=depth + 1) for key in sorted(value)}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return [_plain(item, depth=depth + 1) for item in value]
     to_dict = getattr(value, "to_dict", None)
     if callable(to_dict):
         return _plain(to_dict(), depth=depth + 1)
-    raise DecisionContextError(
-        f"unsupported decision-context value: {type(value).__name__}"
-    )
+    raise DecisionContextError(f"unsupported decision-context value: {type(value).__name__}")
 
 
 def _mapping(value: Any, name: str) -> Mapping[str, Any]:
@@ -202,9 +185,7 @@ def _mapping(value: Any, name: str) -> Mapping[str, Any]:
 
     def freeze(item: Any) -> Any:
         if isinstance(item, dict):
-            return MappingProxyType(
-                {key: freeze(member) for key, member in item.items()}
-            )
+            return MappingProxyType({key: freeze(member) for key, member in item.items()})
         if isinstance(item, list):
             return tuple(freeze(member) for member in item)
         return item
@@ -280,9 +261,7 @@ class DecisionContextReference(CanonicalContract):
 
     def __post_init__(self) -> None:
         for name in ("reference_id", "node_id", "node_kind", "node_content_id"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name))
         try:
             representation = (
                 self.representation
@@ -290,9 +269,7 @@ class DecisionContextReference(CanonicalContract):
                 else DecisionContextRepresentation(str(self.representation))
             )
         except ValueError as exc:
-            raise DecisionContextError(
-                "unsupported decision-context representation"
-            ) from exc
+            raise DecisionContextError("unsupported decision-context representation") from exc
         object.__setattr__(self, "representation", representation)
         summary = _mapping(self.summary, "reference summary")
         body = _mapping(self.body, "reference body")
@@ -308,9 +285,7 @@ class DecisionContextReference(CanonicalContract):
             object.__setattr__(self, "expansion_handle", handle)
         if representation is DecisionContextRepresentation.INLINE:
             if not body or handle is not None:
-                raise DecisionContextError(
-                    "inline references require a body and prohibit a handle"
-                )
+                raise DecisionContextError("inline references require a body and prohibit a handle")
             # SemanticNode's ID is over a payload without content_id and
             # authoritative.  A compiler-provided body therefore also carries
             # its authoritative node ID explicitly; validate the direct claim
@@ -342,14 +317,11 @@ class DecisionContextReference(CanonicalContract):
                     "expansion references require a handle and prohibit a body"
                 )
             if handle.tier is not ContextTier.EXPANSION:
-                raise DecisionContextError(
-                    "decision-context expansion handle has the wrong tier"
-                )
+                raise DecisionContextError("decision-context expansion handle has the wrong tier")
             if (
                 handle.reference_id != self.reference_id
                 or handle.metadata.get("mandatory_node_id") != self.node_id
-                or handle.metadata.get("node_content_id")
-                != self.node_content_id
+                or handle.metadata.get("node_content_id") != self.node_content_id
             ):
                 raise DecisionContextBindingError(
                     "expansion handle does not bind its mandatory node"
@@ -372,16 +344,12 @@ class DecisionContextReference(CanonicalContract):
             "summary": self.summary,
             "body": self.body,
             "expansion_handle": (
-                self.expansion_handle.to_dict()
-                if self.expansion_handle is not None
-                else None
+                self.expansion_handle.to_dict() if self.expansion_handle is not None else None
             ),
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "DecisionContextReference":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "DecisionContextReference":
         _contract_payload(
             payload,
             schema=cls.SCHEMA,
@@ -412,9 +380,7 @@ class DecisionContextReference(CanonicalContract):
         )
         claimed = payload.get("content_id")
         if claimed not in (None, "", result.content_id):
-            raise DecisionContextBindingError(
-                "decision-context reference identity mismatch"
-            )
+            raise DecisionContextBindingError("decision-context reference identity mismatch")
         return result
 
     @classmethod
@@ -445,15 +411,11 @@ class ContextCompletenessEntry(CanonicalContract):
             "reference_id",
             "reference_content_id",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name))
         path = _strings(self.path, "dependency path")
         edges = _strings(self.path_edge_ids, "dependency path edges")
         if not path or path[-1] != self.node_id or len(edges) != len(path) - 1:
-            raise DecisionContextError(
-                "completeness entry has an invalid dependency path"
-            )
+            raise DecisionContextError("completeness entry has an invalid dependency path")
         object.__setattr__(self, "path", path)
         object.__setattr__(self, "path_edge_ids", edges)
         try:
@@ -463,9 +425,7 @@ class ContextCompletenessEntry(CanonicalContract):
                 else DecisionContextRepresentation(str(self.representation))
             )
         except ValueError as exc:
-            raise DecisionContextError(
-                "completeness entry representation is invalid"
-            ) from exc
+            raise DecisionContextError("completeness entry representation is invalid") from exc
         object.__setattr__(self, "representation", representation)
 
     def _payload(self) -> dict[str, Any]:
@@ -513,9 +473,7 @@ class ContextCompletenessEntry(CanonicalContract):
         )
         claimed = payload.get("content_id")
         if claimed not in (None, "", result.content_id):
-            raise DecisionContextBindingError(
-                "completeness-entry identity mismatch"
-            )
+            raise DecisionContextBindingError("completeness-entry identity mismatch")
         return result
 
     @classmethod
@@ -553,9 +511,7 @@ class ContextCompletenessWitness(CanonicalContract):
             "closure_id",
             "roots_digest",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name))
         nodes = tuple(sorted(_strings(self.mandatory_node_ids, "mandatory nodes")))
         edges = tuple(sorted(_strings(self.mandatory_edge_ids, "mandatory edges")))
         object.__setattr__(self, "mandatory_node_ids", nodes)
@@ -567,12 +523,8 @@ class ContextCompletenessWitness(CanonicalContract):
             for item in self.entries
         )
         if len(normalized_entries) > MAX_WITNESS_ENTRIES:
-            raise DecisionContextOverflowError(
-                "completeness witness exceeds its entry bound"
-            )
-        normalized_entries = tuple(
-            sorted(normalized_entries, key=lambda item: item.node_id)
-        )
+            raise DecisionContextOverflowError("completeness witness exceeds its entry bound")
+        normalized_entries = tuple(sorted(normalized_entries, key=lambda item: item.node_id))
         object.__setattr__(self, "entries", normalized_entries)
         entry_nodes = tuple(item.node_id for item in normalized_entries)
         if entry_nodes != nodes:
@@ -580,9 +532,7 @@ class ContextCompletenessWitness(CanonicalContract):
                 "completeness witness must map every mandatory node exactly once"
             )
         represented_edges = {
-            edge_id
-            for item in normalized_entries
-            for edge_id in item.path_edge_ids
+            edge_id for item in normalized_entries for edge_id in item.path_edge_ids
         }
         if not represented_edges.issubset(set(edges)):
             raise DecisionContextError(
@@ -590,29 +540,15 @@ class ContextCompletenessWitness(CanonicalContract):
             )
         path_roots = {item.path[0] for item in normalized_entries}
         if len(path_roots) != 1:
-            raise DecisionContextError(
-                "completeness paths must share one decision root"
-            )
+            raise DecisionContextError("completeness paths must share one decision root")
         fields = _strings(self.required_core_fields, "required core fields")
         if fields != REQUIRED_CORE_FIELDS:
-            raise DecisionContextError(
-                "completeness witness omits a required core field"
-            )
+            raise DecisionContextError("completeness witness omits a required core field")
         object.__setattr__(self, "required_core_fields", fields)
-        inline = tuple(
-            sorted(_strings(self.inline_reference_ids, "inline references"))
-        )
-        expansions = tuple(
-            sorted(
-                _strings(
-                    self.expansion_reference_ids, "expansion references"
-                )
-            )
-        )
+        inline = tuple(sorted(_strings(self.inline_reference_ids, "inline references")))
+        expansions = tuple(sorted(_strings(self.expansion_reference_ids, "expansion references")))
         if set(inline).intersection(expansions):
-            raise DecisionContextError(
-                "a completeness reference cannot be inline and expandable"
-            )
+            raise DecisionContextError("a completeness reference cannot be inline and expandable")
         entry_inline = {
             item.reference_id
             for item in normalized_entries
@@ -624,27 +560,19 @@ class ContextCompletenessWitness(CanonicalContract):
             if item.representation is DecisionContextRepresentation.EXPANSION
         }
         if set(inline) != entry_inline or set(expansions) != entry_expansions:
-            raise DecisionContextError(
-                "witness representation indexes do not match its entries"
-            )
+            raise DecisionContextError("witness representation indexes do not match its entries")
         object.__setattr__(self, "inline_reference_ids", inline)
         object.__setattr__(self, "expansion_reference_ids", expansions)
         if not self.complete or self.truncated:
-            raise DecisionContextError(
-                "a completeness witness cannot be partial or truncated"
-            )
+            raise DecisionContextError("a completeness witness cannot be partial or truncated")
 
     @property
     def dependency_paths(self) -> Mapping[str, tuple[str, ...]]:
-        return MappingProxyType(
-            {item.node_id: item.path for item in self.entries}
-        )
+        return MappingProxyType({item.node_id: item.path for item in self.entries})
 
     @property
     def dependency_references(self) -> Mapping[str, str]:
-        return MappingProxyType(
-            {item.node_id: item.reference_id for item in self.entries}
-        )
+        return MappingProxyType({item.node_id: item.reference_id for item in self.entries})
 
     @property
     def dependency_map(self) -> Mapping[str, Mapping[str, Any]]:
@@ -722,9 +650,7 @@ class ContextCompletenessWitness(CanonicalContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ContextCompletenessWitness":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ContextCompletenessWitness":
         _contract_payload(
             payload,
             schema=cls.SCHEMA,
@@ -758,34 +684,23 @@ class ContextCompletenessWitness(CanonicalContract):
             mandatory_node_ids=tuple(payload.get("mandatory_node_ids") or ()),
             mandatory_edge_ids=tuple(payload.get("mandatory_edge_ids") or ()),
             entries=tuple(
-                ContextCompletenessEntry.from_dict(item)
-                for item in payload.get("entries") or ()
+                ContextCompletenessEntry.from_dict(item) for item in payload.get("entries") or ()
             ),
-            required_core_fields=tuple(
-                payload.get("required_core_fields") or ()
-            ),
-            inline_reference_ids=tuple(
-                payload.get("inline_reference_ids") or ()
-            ),
-            expansion_reference_ids=tuple(
-                payload.get("expansion_reference_ids") or ()
-            ),
+            required_core_fields=tuple(payload.get("required_core_fields") or ()),
+            inline_reference_ids=tuple(payload.get("inline_reference_ids") or ()),
+            expansion_reference_ids=tuple(payload.get("expansion_reference_ids") or ()),
             roots_digest=payload.get("roots_digest", ""),
             complete=payload.get("complete", False),
             truncated=payload.get("truncated", True),
         )
         claimed = payload.get("content_id")
         if claimed not in (None, "", result.content_id):
-            raise DecisionContextBindingError(
-                "context-completeness witness identity mismatch"
-            )
+            raise DecisionContextBindingError("context-completeness witness identity mismatch")
         return result
 
     @classmethod
     def from_json(cls, payload: str) -> "ContextCompletenessWitness":
-        return cls.from_dict(
-            _json_object(payload, "context-completeness witness")
-        )
+        return cls.from_dict(_json_object(payload, "context-completeness witness"))
 
 
 @dataclass(frozen=True)
@@ -822,9 +737,7 @@ class DecisionContext(CanonicalContract):
         )
         references = tuple(sorted(references, key=lambda item: item.node_id))
         if len({item.node_id for item in references}) != len(references):
-            raise DecisionContextError(
-                "decision context contains duplicate mandatory nodes"
-            )
+            raise DecisionContextError("decision context contains duplicate mandatory nodes")
         object.__setattr__(self, "references", references)
         entries = tuple(
             item
@@ -833,12 +746,8 @@ class DecisionContext(CanonicalContract):
             for item in self.witness_entries
         )
         entries = tuple(sorted(entries, key=lambda item: item.node_id))
-        if {item.node_id for item in entries} != {
-            item.node_id for item in references
-        }:
-            raise DecisionContextError(
-                "segment witness entries must cover its references exactly"
-            )
+        if {item.node_id for item in entries} != {item.node_id for item in references}:
+            raise DecisionContextError("segment witness entries must cover its references exactly")
         object.__setattr__(self, "witness_entries", entries)
         object.__setattr__(
             self,
@@ -865,9 +774,7 @@ class DecisionContext(CanonicalContract):
             or not isinstance(self.segment_index, int)
             or self.segment_index < 0
         ):
-            raise DecisionContextError(
-                "segment_index must be a non-negative integer"
-            )
+            raise DecisionContextError("segment_index must be a non-negative integer")
         count = _positive(self.segment_count, "segment_count")
         if self.segment_index >= count:
             raise DecisionContextError("segment_index exceeds segment_count")
@@ -916,9 +823,7 @@ class DecisionContext(CanonicalContract):
             "required_core": _plain(self.required_core),
             "references": [item.to_record() for item in self.references],
             "completeness_witness_id": self.completeness_witness_id,
-            "witness_entries": [
-                item.to_record() for item in self.witness_entries
-            ],
+            "witness_entries": [item.to_record() for item in self.witness_entries],
             "index_metadata": _plain(self.index_metadata),
             "segment": {
                 "index": self.segment_index,
@@ -963,12 +868,9 @@ class DecisionContext(CanonicalContract):
         result = cls(
             required_core=payload.get("required_core") or {},
             references=tuple(
-                DecisionContextReference.from_dict(item)
-                for item in payload.get("references") or ()
+                DecisionContextReference.from_dict(item) for item in payload.get("references") or ()
             ),
-            completeness_witness_id=payload.get(
-                "completeness_witness_id", ""
-            ),
+            completeness_witness_id=payload.get("completeness_witness_id", ""),
             witness_entries=tuple(
                 ContextCompletenessEntry.from_dict(item)
                 for item in payload.get("witness_entries") or ()
@@ -976,12 +878,8 @@ class DecisionContext(CanonicalContract):
             index_metadata=payload.get("index_metadata") or {},
             provider_input_tokens=payload.get("provider_input_tokens", 0),
             effective_input_limit=payload.get("effective_input_limit", 0),
-            segment_index=segment.get(
-                "index", payload.get("segment_index", 0)
-            ),
-            segment_count=segment.get(
-                "count", payload.get("segment_count", 1)
-            ),
+            segment_index=segment.get("index", payload.get("segment_index", 0)),
+            segment_count=segment.get("count", payload.get("segment_count", 1)),
             expansion_request=segment.get(
                 "expansion_request",
                 payload.get("expansion_request", ""),
@@ -989,9 +887,7 @@ class DecisionContext(CanonicalContract):
         )
         claimed = payload.get("content_id")
         if claimed not in (None, "", result.content_id):
-            raise DecisionContextBindingError(
-                "decision-context identity mismatch"
-            )
+            raise DecisionContextBindingError("decision-context identity mismatch")
         return result
 
     @classmethod
@@ -1015,17 +911,11 @@ class DecisionContextCompilation(CanonicalContract):
 
     def __post_init__(self) -> None:
         contexts = tuple(self.contexts)
-        if not contexts or not all(
-            isinstance(item, DecisionContext) for item in contexts
-        ):
-            raise DecisionContextError(
-                "compilation requires decision-context segments"
-            )
+        if not contexts or not all(isinstance(item, DecisionContext) for item in contexts):
+            raise DecisionContextError("compilation requires decision-context segments")
         object.__setattr__(self, "contexts", contexts)
         if not isinstance(self.witness, ContextCompletenessWitness):
-            raise DecisionContextError(
-                "compilation requires a ContextCompletenessWitness"
-            )
+            raise DecisionContextError("compilation requires a ContextCompletenessWitness")
         for index, context in enumerate(contexts):
             if (
                 context.segment_index != index
@@ -1035,26 +925,14 @@ class DecisionContextCompilation(CanonicalContract):
                 raise DecisionContextBindingError(
                     "decision-context segments do not bind their complete witness"
                 )
-        covered = {
-            reference.node_id
-            for context in contexts
-            for reference in context.references
-        }
+        covered = {reference.node_id for context in contexts for reference in context.references}
         if covered != set(self.witness.mandatory_node_ids):
-            raise DecisionContextError(
-                "compiled segments do not cover every mandatory dependency"
-            )
-        duplicate_count = sum(
-            len(context.references) for context in contexts
-        )
+            raise DecisionContextError("compiled segments do not cover every mandatory dependency")
+        duplicate_count = sum(len(context.references) for context in contexts)
         if duplicate_count != len(covered):
-            raise DecisionContextError(
-                "a mandatory dependency appears in more than one split"
-            )
+            raise DecisionContextError("a mandatory dependency appears in more than one split")
         reference_by_node = {
-            reference.node_id: reference
-            for context in contexts
-            for reference in context.references
+            reference.node_id: reference for context in contexts for reference in context.references
         }
         for entry in self.witness.entries:
             reference = reference_by_node[entry.node_id]
@@ -1062,13 +940,11 @@ class DecisionContextCompilation(CanonicalContract):
                 entry.node_kind != reference.node_kind
                 or entry.node_content_id != reference.node_content_id
                 or entry.reference_id != reference.reference_id
-                or entry.reference_content_id
-                != reference.resolvable_content_id
+                or entry.reference_content_id != reference.resolvable_content_id
                 or entry.representation is not reference.representation
             ):
                 raise DecisionContextBindingError(
-                    "completeness witness does not bind its dependency "
-                    "representation"
+                    "completeness witness does not bind its dependency representation"
                 )
         total = _positive(
             self.complete_input_tokens,
@@ -1076,9 +952,7 @@ class DecisionContextCompilation(CanonicalContract):
             allow_zero=True,
         )
         if total != sum(item.provider_input_tokens for item in contexts):
-            raise DecisionContextError(
-                "complete input token accounting is not reproducible"
-            )
+            raise DecisionContextError("complete input token accounting is not reproducible")
         object.__setattr__(
             self,
             "provider_tokenizer",
@@ -1087,18 +961,14 @@ class DecisionContextCompilation(CanonicalContract):
         try:
             behavior = (
                 self.overflow_behavior
-                if isinstance(
-                    self.overflow_behavior, DecisionContextOverflowBehavior
-                )
+                if isinstance(self.overflow_behavior, DecisionContextOverflowBehavior)
                 else DecisionContextOverflowBehavior(str(self.overflow_behavior))
             )
         except ValueError as exc:
             raise DecisionContextError("unsupported overflow behavior") from exc
         object.__setattr__(self, "overflow_behavior", behavior)
         if self.required_nodes_participated_in_value_selection:
-            raise DecisionContextError(
-                "required nodes must never participate in value selection"
-            )
+            raise DecisionContextError("required nodes must never participate in value selection")
 
     @property
     def context(self) -> DecisionContext:
@@ -1110,11 +980,7 @@ class DecisionContextCompilation(CanonicalContract):
 
     @property
     def expansion_requests(self) -> tuple[str, ...]:
-        return tuple(
-            item.expansion_request
-            for item in self.contexts
-            if item.expansion_request
-        )
+        return tuple(item.expansion_request for item in self.contexts if item.expansion_request)
 
     @property
     def required_core(self) -> Mapping[str, Any]:
@@ -1155,9 +1021,7 @@ class DecisionContextCompilation(CanonicalContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "DecisionContextCompilation":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "DecisionContextCompilation":
         _contract_payload(
             payload,
             schema=cls.SCHEMA,
@@ -1176,12 +1040,9 @@ class DecisionContextCompilation(CanonicalContract):
         )
         result = cls(
             contexts=tuple(
-                DecisionContext.from_dict(item)
-                for item in payload.get("contexts") or ()
+                DecisionContext.from_dict(item) for item in payload.get("contexts") or ()
             ),
-            witness=ContextCompletenessWitness.from_dict(
-                payload.get("witness") or {}
-            ),
+            witness=ContextCompletenessWitness.from_dict(payload.get("witness") or {}),
             complete_input_tokens=payload.get("complete_input_tokens", 0),
             provider_tokenizer=payload.get("provider_tokenizer", ""),
             overflow_behavior=payload.get("overflow_behavior", ""),
@@ -1191,16 +1052,12 @@ class DecisionContextCompilation(CanonicalContract):
         )
         claimed = payload.get("content_id")
         if claimed not in (None, "", result.content_id):
-            raise DecisionContextBindingError(
-                "decision-context compilation identity mismatch"
-            )
+            raise DecisionContextBindingError("decision-context compilation identity mismatch")
         return result
 
     @classmethod
     def from_json(cls, payload: str) -> "DecisionContextCompilation":
-        return cls.from_dict(
-            _json_object(payload, "decision-context compilation")
-        )
+        return cls.from_dict(_json_object(payload, "decision-context compilation"))
 
 
 @dataclass(frozen=True)
@@ -1214,9 +1071,7 @@ class DecisionContextExpansionBudget(CanonicalContract):
 
     def __post_init__(self) -> None:
         for name in ("max_expansions", "max_tokens", "max_bytes", "max_latency_ms"):
-            object.__setattr__(
-                self, name, _positive(getattr(self, name), name, allow_zero=True)
-            )
+            object.__setattr__(self, name, _positive(getattr(self, name), name, allow_zero=True))
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -1238,8 +1093,13 @@ class DecisionContextExpansionBudget(CanonicalContract):
             payload,
             schema=cls.SCHEMA,
             allowed={
-                "schema", "contract_version", "content_id", "max_expansions",
-                "max_tokens", "max_bytes", "max_latency_ms",
+                "schema",
+                "contract_version",
+                "content_id",
+                "max_expansions",
+                "max_tokens",
+                "max_bytes",
+                "max_latency_ms",
             },
             noun="decision-context expansion budget",
         )
@@ -1297,9 +1157,7 @@ class DecisionContextExpansionRequest(CanonicalContract):
         if not isinstance(handle, ContextReference):
             handle = ContextReference.from_dict(handle)
         if handle.tier is not ContextTier.EXPANSION:
-            raise DecisionContextExpansionError(
-                "expansion handle must use the expansion tier"
-            )
+            raise DecisionContextExpansionError("expansion handle must use the expansion tier")
         object.__setattr__(self, "expansion_handle", handle)
         budget = self.budget
         if not isinstance(budget, DecisionContextExpansionBudget):
@@ -1358,21 +1216,28 @@ class DecisionContextExpansionRequest(CanonicalContract):
             payload,
             schema=cls.SCHEMA,
             allowed={
-                "schema", "contract_version", "content_id",
-                "parent_decision_request_id", "parent_context_id",
-                "parent_completeness_witness_id", "unresolved_question",
-                "expansion_handle", "budget", "prior_request_ids",
-                "authority_id", "semantic_graph_root_id", "expansion_index",
-                "elapsed_latency_ms", "equivalent_request_id",
+                "schema",
+                "contract_version",
+                "content_id",
+                "parent_decision_request_id",
+                "parent_context_id",
+                "parent_completeness_witness_id",
+                "unresolved_question",
+                "expansion_handle",
+                "budget",
+                "prior_request_ids",
+                "authority_id",
+                "semantic_graph_root_id",
+                "expansion_index",
+                "elapsed_latency_ms",
+                "equivalent_request_id",
             },
             noun="decision-context expansion request",
         )
         result = cls(
             parent_decision_request_id=payload.get("parent_decision_request_id", ""),
             parent_context_id=payload.get("parent_context_id", ""),
-            parent_completeness_witness_id=payload.get(
-                "parent_completeness_witness_id", ""
-            ),
+            parent_completeness_witness_id=payload.get("parent_completeness_witness_id", ""),
             unresolved_question=payload.get("unresolved_question", ""),
             expansion_handle=payload.get("expansion_handle") or {},
             budget=payload.get("budget") or {},
@@ -1384,12 +1249,8 @@ class DecisionContextExpansionRequest(CanonicalContract):
         )
         if payload.get("content_id") not in (None, "", result.content_id):
             raise DecisionContextBindingError("expansion request identity mismatch")
-        if payload.get("equivalent_request_id") not in (
-            None, "", result.equivalent_request_id
-        ):
-            raise DecisionContextBindingError(
-                "equivalent expansion request identity mismatch"
-            )
+        if payload.get("equivalent_request_id") not in (None, "", result.equivalent_request_id):
+            raise DecisionContextBindingError("equivalent expansion request identity mismatch")
         return result
 
     @classmethod
@@ -1441,9 +1302,15 @@ class DecisionContextChangedDependency(CanonicalContract):
             payload,
             schema=cls.SCHEMA,
             allowed={
-                "schema", "contract_version", "content_id", "kind",
-                "dependency_id", "previous_content_id", "current_content_id",
-                "payload", "omission_reason",
+                "schema",
+                "contract_version",
+                "content_id",
+                "kind",
+                "dependency_id",
+                "previous_content_id",
+                "current_content_id",
+                "payload",
+                "omission_reason",
             },
             noun="changed decision dependency",
         )
@@ -1456,9 +1323,7 @@ class DecisionContextChangedDependency(CanonicalContract):
             omission_reason=payload.get("omission_reason", ""),
         )
         if payload.get("content_id") not in (None, "", result.content_id):
-            raise DecisionContextBindingError(
-                "changed dependency identity mismatch"
-            )
+            raise DecisionContextBindingError("changed dependency identity mismatch")
         return result
 
     @classmethod
@@ -1509,9 +1374,7 @@ class DecisionContextRetryCapsule(CanonicalContract):
             for item in self.changed_dependencies
         )
         if not changes or len({(x.kind, x.dependency_id) for x in changes}) != len(changes):
-            raise DecisionContextRetryError(
-                "retry requires unique changed dependencies"
-            )
+            raise DecisionContextRetryError("retry requires unique changed dependencies")
         object.__setattr__(self, "changed_dependencies", changes)
         expanded = tuple(
             item
@@ -1599,14 +1462,26 @@ class DecisionContextRetryCapsule(CanonicalContract):
             payload,
             schema=cls.SCHEMA,
             allowed={
-                "schema", "contract_version", "content_id", "requirement_id",
-                "parent_decision_request_id", "parent_context_id",
-                "parent_completeness_witness_id", "parent_stable_core_id",
-                "parent_closure_id", "repository_id", "dirty_worktree_root_id",
-                "semantic_graph_root_id", "semantic_roots_digest", "authority_id",
-                "changed_dependencies", "expanded_evidence", "omission_reasons",
+                "schema",
+                "contract_version",
+                "content_id",
+                "requirement_id",
+                "parent_decision_request_id",
+                "parent_context_id",
+                "parent_completeness_witness_id",
+                "parent_stable_core_id",
+                "parent_closure_id",
+                "repository_id",
+                "dirty_worktree_root_id",
+                "semantic_graph_root_id",
+                "semantic_roots_digest",
+                "authority_id",
+                "changed_dependencies",
+                "expanded_evidence",
+                "omission_reasons",
                 "reconstructed_context_tokens",
-                "delta_input_tokens", "full_replay_input_tokens",
+                "delta_input_tokens",
+                "full_replay_input_tokens",
                 "evidence_claim_references",
             },
             noun="decision-context retry capsule",
@@ -1615,18 +1490,22 @@ class DecisionContextRetryCapsule(CanonicalContract):
             **{
                 name: payload.get(name, "")
                 for name in (
-                    "parent_decision_request_id", "parent_context_id",
-                    "parent_completeness_witness_id", "parent_stable_core_id",
-                    "parent_closure_id", "repository_id", "dirty_worktree_root_id",
-                    "semantic_graph_root_id", "semantic_roots_digest", "authority_id",
+                    "parent_decision_request_id",
+                    "parent_context_id",
+                    "parent_completeness_witness_id",
+                    "parent_stable_core_id",
+                    "parent_closure_id",
+                    "repository_id",
+                    "dirty_worktree_root_id",
+                    "semantic_graph_root_id",
+                    "semantic_roots_digest",
+                    "authority_id",
                 )
             },
             changed_dependencies=tuple(payload.get("changed_dependencies") or ()),
             expanded_evidence=tuple(payload.get("expanded_evidence") or ()),
             omission_reasons=payload.get("omission_reasons") or {},
-            reconstructed_context_tokens=tuple(
-                payload.get("reconstructed_context_tokens") or ()
-            ),
+            reconstructed_context_tokens=tuple(payload.get("reconstructed_context_tokens") or ()),
             delta_input_tokens=payload.get("delta_input_tokens", 0),
             full_replay_input_tokens=payload.get("full_replay_input_tokens", 0),
             requirement_id=payload.get("requirement_id", DEPENDENCY_DELTA_REQUIREMENT_ID),
@@ -1634,7 +1513,9 @@ class DecisionContextRetryCapsule(CanonicalContract):
         if payload.get("content_id") not in (None, "", result.content_id):
             raise DecisionContextBindingError("retry capsule identity mismatch")
         if payload.get("evidence_claim_references") not in (
-            None, list(result.evidence_claim_references), result.evidence_claim_references
+            None,
+            list(result.evidence_claim_references),
+            result.evidence_claim_references,
         ):
             raise DecisionContextRetryError("retry evidence claim is forged")
         return result
@@ -1652,11 +1533,7 @@ def decision_context_bindings(parent: DecisionContextCompilation) -> dict[str, s
     decision = parent.required_core["decision"]
     roots = tuple(decision["semantic_roots"])
     dirty = next(
-        (
-            str(root["artifact"]["cid_v1"])
-            for root in roots
-            if root["kind"] == "dirty_worktree"
-        ),
+        (str(root["artifact"]["cid_v1"]) for root in roots if root["kind"] == "dirty_worktree"),
         "",
     )
     return {

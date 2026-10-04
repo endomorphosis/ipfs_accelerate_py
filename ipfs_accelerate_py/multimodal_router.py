@@ -208,9 +208,8 @@ def _cache_enabled() -> bool:
 
 
 def _response_cache_enabled() -> bool:
-    value = (
-        os.environ.get("IPFS_ACCELERATE_PY_ROUTER_RESPONSE_CACHE")
-        or os.environ.get("IPFS_DATASETS_PY_ROUTER_RESPONSE_CACHE")
+    value = os.environ.get("IPFS_ACCELERATE_PY_ROUTER_RESPONSE_CACHE") or os.environ.get(
+        "IPFS_DATASETS_PY_ROUTER_RESPONSE_CACHE"
     )
     if value is None:
         return True
@@ -326,12 +325,8 @@ def _coalesce_env(*names: str) -> str:
     return ""
 
 
-_MULTIMODAL_CATALOG_PROVENANCE = (
-    Provenance(source="multimodal_router.static"),
-)
-_MULTIMODAL_REGISTRY_PROVENANCE = (
-    Provenance(source="multimodal_router.registry"),
-)
+_MULTIMODAL_CATALOG_PROVENANCE = (Provenance(source="multimodal_router.static"),)
+_MULTIMODAL_REGISTRY_PROVENANCE = (Provenance(source="multimodal_router.registry"),)
 _MULTIMODAL_MEDIA_TYPES = ("image/*", "text/plain")
 _MULTIMODAL_OPERATIONS = (
     Operation.TEXT_GENERATE,
@@ -423,13 +418,9 @@ def _registered_provider_descriptor(
         values.setdefault("name", name)
         resolved = ProviderDescriptor(**values)
     else:
-        raise TypeError(
-            "descriptor must be a ProviderDescriptor, mapping, or None"
-        )
+        raise TypeError("descriptor must be a ProviderDescriptor, mapping, or None")
     if resolved.name != name:
-        raise ValueError(
-            "Provider descriptor name must match the registered name"
-        )
+        raise ValueError("Provider descriptor name must match the registered name")
     return resolved
 
 
@@ -448,20 +439,14 @@ def _registered_model_descriptors(
             values.setdefault("provider_id", provider.provider_id)
             resolved = ModelDescriptor(**values)
         else:
-            raise TypeError(
-                "models must contain ModelDescriptor records or mappings"
-            )
+            raise TypeError("models must contain ModelDescriptor records or mappings")
         if resolved.provider_id != provider.provider_id:
-            raise ValueError(
-                "Model descriptor provider_id does not match provider"
-            )
+            raise ValueError("Model descriptor provider_id does not match provider")
         output.append(resolved)
     identities = [model.model_id for model in output]
     if len(identities) != len(set(identities)):
         raise ValueError("models contain duplicate identities")
-    return tuple(
-        sorted(output, key=lambda model: (model.name, model.model_id or ""))
-    )
+    return tuple(sorted(output, key=lambda model: (model.name, model.model_id or "")))
 
 
 @dataclass(frozen=True)
@@ -555,13 +540,9 @@ _BUILTIN_PROVIDER_SPECS: Tuple[_MultimodalProviderSpec, ...] = (
         model_env=("IPFS_ACCELERATE_PY_MULTIMODAL_MODEL",),
     ),
 )
-_BUILTIN_PROVIDER_SPEC_BY_NAME = {
-    spec.name: spec for spec in _BUILTIN_PROVIDER_SPECS
-}
+_BUILTIN_PROVIDER_SPEC_BY_NAME = {spec.name: spec for spec in _BUILTIN_PROVIDER_SPECS}
 _BUILTIN_PROVIDER_ALIAS_TO_NAME = {
-    alias: spec.name
-    for spec in _BUILTIN_PROVIDER_SPECS
-    for alias in spec.aliases
+    alias: spec.name for spec in _BUILTIN_PROVIDER_SPECS for alias in spec.aliases
 }
 
 
@@ -630,11 +611,7 @@ def _builtin_provider_state(
     authorized = _remote_provider_authorized(spec.name)
     if authorized is not None:
         return (
-            (
-                LifecycleState.CONFIGURED
-                if authorized
-                else LifecycleState.DECLARED
-            ),
+            (LifecycleState.CONFIGURED if authorized else LifecycleState.DECLARED),
             OperationalState(
                 known=True,
                 configured=authorized,
@@ -657,13 +634,9 @@ def _builtin_provider_state(
             ),
         )
     if spec.name == "backend_manager":
-        enabled = _truthy(
-            os.getenv("IPFS_ACCELERATE_PY_ENABLE_BACKEND_MANAGER")
-        )
+        enabled = _truthy(os.getenv("IPFS_ACCELERATE_PY_ENABLE_BACKEND_MANAGER"))
         return (
-            LifecycleState.CONFIGURED
-            if enabled
-            else LifecycleState.DECLARED,
+            LifecycleState.CONFIGURED if enabled else LifecycleState.DECLARED,
             OperationalState(
                 known=True,
                 configured=enabled,
@@ -696,9 +669,7 @@ def _builtin_provider_descriptor(
         name=spec.name,
         aliases=spec.aliases,
         description=spec.description,
-        capabilities=(
-            _multimodal_capability(max_context_tokens=context_tokens),
-        ),
+        capabilities=(_multimodal_capability(max_context_tokens=context_tokens),),
         lifecycle=lifecycle,
         state=state,
         provenance=_MULTIMODAL_CATALOG_PROVENANCE,
@@ -712,17 +683,13 @@ def _builtin_provider_descriptor(
 
 def _provider_descriptors_by_name() -> Dict[str, ProviderDescriptor]:
     descriptors = {
-        spec.name: _builtin_provider_descriptor(spec)
-        for spec in _BUILTIN_PROVIDER_SPECS
+        spec.name: _builtin_provider_descriptor(spec) for spec in _BUILTIN_PROVIDER_SPECS
     }
     with _PROVIDER_REGISTRY_LOCK:
         registered = tuple(_PROVIDER_REGISTRY.values())
     for info in registered:
         # Dynamic registration has the same precedence as invocation.
-        descriptors[info.name] = (
-            info.descriptor
-            or _registered_provider_descriptor(info.name, None)
-        )
+        descriptors[info.name] = info.descriptor or _registered_provider_descriptor(info.name, None)
     return descriptors
 
 
@@ -740,17 +707,12 @@ def _canonical_provider_name(name: str) -> str:
     if builtin_name is not None and builtin_name in descriptors:
         return builtin_name
     matches = sorted(
-        descriptor.name
-        for descriptor in descriptors.values()
-        if requested in descriptor.aliases
+        descriptor.name for descriptor in descriptors.values() if requested in descriptor.aliases
     )
     if len(matches) == 1:
         return matches[0]
     if len(matches) > 1:
-        raise ValueError(
-            f"Ambiguous multimodal provider alias {name!r}: "
-            f"{', '.join(matches)}"
-        )
+        raise ValueError(f"Ambiguous multimodal provider alias {name!r}: {', '.join(matches)}")
     raise ValueError(f"Unknown multimodal provider: {name}")
 
 
@@ -765,9 +727,7 @@ def _descriptor_operations(
     descriptor: ProviderDescriptor | ModelDescriptor,
 ) -> frozenset[Operation]:
     return frozenset(
-        operation
-        for capability in descriptor.capabilities
-        for operation in capability.operations
+        operation for capability in descriptor.capabilities for operation in capability.operations
     )
 
 
@@ -781,9 +741,7 @@ def _canonical_operation(
     try:
         return Operation(str(operation).strip().casefold())
     except ValueError as exc:
-        raise ValueError(
-            f"Unknown multimodal operation: {operation!r}"
-        ) from exc
+        raise ValueError(f"Unknown multimodal operation: {operation!r}") from exc
 
 
 def _canonical_modality(
@@ -798,9 +756,7 @@ def _canonical_modality(
     try:
         return Modality(str(modality).strip().casefold())
     except ValueError as exc:
-        raise ValueError(
-            f"Unknown {field_name}: {modality!r}"
-        ) from exc
+        raise ValueError(f"Unknown {field_name}: {modality!r}") from exc
 
 
 def _media_type_matches(
@@ -859,20 +815,16 @@ def _matches_catalog_constraints(
         )
     )
     if input_modality is not None and not any(
-        input_modality in capability.input_modalities
-        for capability in capabilities
+        input_modality in capability.input_modalities for capability in capabilities
     ):
         return False
     if output_modality is not None and not any(
-        output_modality in capability.output_modalities
-        for capability in capabilities
+        output_modality in capability.output_modalities for capability in capabilities
     ):
         return False
     if media_type is not None:
         declared_media = tuple(
-            item
-            for capability in capabilities
-            for item in capability.media_types
+            item for capability in capabilities for item in capability.media_types
         )
         if declared_media and not _media_type_matches(
             media_type,
@@ -884,36 +836,22 @@ def _matches_catalog_constraints(
     if image_input_mode is not None:
         requested_mode = str(image_input_mode).strip().casefold()
         if requested_mode not in {"inline", "uri"}:
-            raise ValueError(
-                "image_input_mode must be 'inline' or 'uri'"
-            )
+            raise ValueError("image_input_mode must be 'inline' or 'uri'")
         known_modes = {
             item.strip().casefold()
             for item in labels.get("image_input_modes", "").split(",")
             if item.strip()
         }
-        if (
-            known_modes
-            and "unknown" not in known_modes
-            and requested_mode not in known_modes
-        ):
+        if known_modes and "unknown" not in known_modes and requested_mode not in known_modes:
             return False
     if image_count is not None:
-        if (
-            isinstance(image_count, bool)
-            or not isinstance(image_count, int)
-            or image_count < 0
-        ):
+        if isinstance(image_count, bool) or not isinstance(image_count, int) or image_count < 0:
             raise ValueError("image_count must be a non-negative integer")
         maximum = labels.get("max_images")
         if maximum and maximum.isdigit() and image_count > int(maximum):
             return False
     if size_bytes is not None:
-        if (
-            isinstance(size_bytes, bool)
-            or not isinstance(size_bytes, int)
-            or size_bytes < 0
-        ):
+        if isinstance(size_bytes, bool) or not isinstance(size_bytes, int) or size_bytes < 0:
             raise ValueError("size_bytes must be a non-negative integer")
         known_limits = [
             capability.max_input_bytes
@@ -929,9 +867,7 @@ def _matches_catalog_constraints(
             return False
     if device is not None:
         actual_devices = {
-            item.strip().casefold()
-            for item in labels.get("device", "").split(",")
-            if item.strip()
+            item.strip().casefold() for item in labels.get("device", "").split(",") if item.strip()
         }
         requested = str(device).strip().casefold()
         open_devices = {
@@ -979,10 +915,7 @@ def list_providers(
         output_modality,
         field_name="output modality",
     )
-    descriptors = [
-        descriptor
-        for _, descriptor in sorted(_provider_descriptors_by_name().items())
-    ]
+    descriptors = [descriptor for _, descriptor in sorted(_provider_descriptors_by_name().items())]
     return [
         descriptor
         for descriptor in descriptors
@@ -1016,9 +949,7 @@ def _model_descriptor(
         capabilities = provider.capabilities or (_multimodal_capability(),)
         provenance = _MULTIMODAL_REGISTRY_PROVENANCE
     else:
-        capabilities = (
-            _multimodal_capability(max_context_tokens=context_tokens),
-        )
+        capabilities = (_multimodal_capability(max_context_tokens=context_tokens),)
         provenance = _MULTIMODAL_CATALOG_PROVENANCE
     return ModelDescriptor(
         provider_id=provider.provider_id,
@@ -1176,8 +1107,7 @@ def _select_discovery_provider(
     if _module_available("transformers"):
         return "huggingface"
     raise RuntimeError(
-        "No multimodal provider is statically resolvable for the requested "
-        "constraints"
+        "No multimodal provider is statically resolvable for the requested constraints"
     )
 
 
@@ -1212,14 +1142,8 @@ def resolve_model(
         Operation.TEXT_GENERATE,
         Operation.VISION_GENERATE,
     }:
-        value = (
-            selected_operation.value
-            if selected_operation is not None
-            else None
-        )
-        raise ValueError(
-            f"Multimodal router does not support operation {value!r}"
-        )
+        value = selected_operation.value if selected_operation is not None else None
+        raise ValueError(f"Multimodal router does not support operation {value!r}")
     selected_input = _canonical_modality(
         input_modality,
         field_name="input modality",
@@ -1247,8 +1171,7 @@ def resolve_model(
         ready=ready,
     ):
         raise ValueError(
-            f"Multimodal provider {provider_name!r} is incompatible with "
-            "the requested constraints"
+            f"Multimodal provider {provider_name!r} is incompatible with the requested constraints"
         )
 
     known_models = _models_for_provider(provider_name)
@@ -1371,8 +1294,13 @@ def _encode_image_for_api(image: Union[str, bytes]) -> tuple[str, str]:
         except Exception:
             return stripped, "url"
         ext = os.path.splitext(stripped)[-1].lower().lstrip(".")
-        mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
-                "gif": "image/gif", "webp": "image/webp"}.get(ext, "image/jpeg")
+        mime = {
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "png": "image/png",
+            "gif": "image/gif",
+            "webp": "image/webp",
+        }.get(ext, "image/jpeg")
         b64 = base64.b64encode(raw).decode("ascii")
         return f"data:{mime};base64,{b64}", "base64"
 
@@ -1387,7 +1315,9 @@ def _get_openrouter_provider() -> Optional[MultimodalProvider]:
     if not api_key:
         return None
 
-    base_url = os.getenv("IPFS_ACCELERATE_PY_OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
+    base_url = os.getenv(
+        "IPFS_ACCELERATE_PY_OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
+    ).rstrip("/")
     referer = os.getenv("OPENROUTER_HTTP_REFERER")
     app_title = os.getenv("OPENROUTER_APP_TITLE")
 
@@ -1473,7 +1403,9 @@ def _get_openai_provider() -> Optional[MultimodalProvider]:
     if not api_key:
         return None
 
-    base_url = os.getenv("IPFS_ACCELERATE_PY_OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+    base_url = os.getenv("IPFS_ACCELERATE_PY_OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip(
+        "/"
+    )
 
     class _OpenAIMultimodalProvider:
         def generate(
@@ -1724,6 +1656,7 @@ def _get_huggingface_provider() -> Optional[MultimodalProvider]:
             stripped = str(image).strip()
             if stripped.startswith(("http://", "https://")):
                 import urllib.request as _ur
+
                 with _ur.urlopen(stripped, timeout=30) as resp:
                     data = resp.read()
                 return PILImage.open(io.BytesIO(data)).convert("RGB")
@@ -1963,7 +1896,9 @@ def get_multimodal_provider(
         cached = resolved_deps.get_cached(deps_key)
         if cached is not None:
             return cached
-        return resolved_deps.set_cached(deps_key, _resolve_provider_uncached(provider, deps=resolved_deps))
+        return resolved_deps.set_cached(
+            deps_key, _resolve_provider_uncached(provider, deps=resolved_deps)
+        )
 
     return _resolve_provider_cached(provider, _provider_cache_key())
 
@@ -2082,11 +2017,7 @@ def inspect_media_reference(
             pixels = None
 
     if isinstance(image, bytes):
-        media_bytes = (
-            int(declared_media_bytes)
-            if declared_media_bytes is not None
-            else len(image)
-        )
+        media_bytes = int(declared_media_bytes) if declared_media_bytes is not None else len(image)
         return MediaReferenceFacts(
             image_count=1,
             media_bytes=max(0, media_bytes),
@@ -2189,25 +2120,17 @@ def validate_multimodal_media_input(
         # SSRF-shaped schemes fail before any reservation or provider call.
         for scheme in _SSRF_BLOCKED_SCHEMES:
             if lower.startswith(f"{scheme}:"):
-                raise MultimodalRouterError(
-                    f"media URI scheme {scheme!r} is not permitted"
-                )
+                raise MultimodalRouterError(f"media URI scheme {scheme!r} is not permitted")
         if lower.startswith(("http://", "https://")):
             if not allow_remote_uri:
-                raise MultimodalRouterError(
-                    "remote media URIs are not permitted by current policy"
-                )
+                raise MultimodalRouterError("remote media URIs are not permitted by current policy")
             parsed = urllib.parse.urlparse(stripped)
             host = parsed.hostname or ""
             if not host or _host_is_blocked(host):
-                raise MultimodalRouterError(
-                    "media URI host is blocked by SSRF policy"
-                )
+                raise MultimodalRouterError("media URI host is blocked by SSRF policy")
             # Reject userinfo (credential-shaped) and non-http(s) after normalize.
             if parsed.username or parsed.password:
-                raise MultimodalRouterError(
-                    "media URI must not embed credentials"
-                )
+                raise MultimodalRouterError("media URI must not embed credentials")
         elif lower.startswith("data:"):
             mime = (mime_type or _parse_data_uri_mime(stripped) or "").casefold()
             if mime and not any(
@@ -2216,9 +2139,7 @@ def validate_multimodal_media_input(
             ):
                 # image/* is allowed via prefix match on "image/"
                 if not mime.startswith("image/"):
-                    raise MultimodalRouterError(
-                        f"media MIME type {mime!r} is not permitted"
-                    )
+                    raise MultimodalRouterError(f"media MIME type {mime!r} is not permitted")
 
     facts = inspect_media_reference(
         image,
@@ -2230,14 +2151,11 @@ def validate_multimodal_media_input(
     if facts.mime_type and facts.mime_type not in {"image/*", "application/octet-stream"}:
         mime = facts.mime_type
         if not any(
-            mime == prefix.casefold()
-            or mime.startswith(prefix.rstrip("*").casefold())
+            mime == prefix.casefold() or mime.startswith(prefix.rstrip("*").casefold())
             for prefix in allowed_mime_prefixes
         ):
             if not mime.startswith("image/"):
-                raise MultimodalRouterError(
-                    f"media MIME type {mime!r} is not permitted"
-                )
+                raise MultimodalRouterError(f"media MIME type {mime!r} is not permitted")
 
     ceiling = max_media_bytes
     if ceiling is None:
@@ -2496,9 +2414,7 @@ def _multimodal_compatibility_labels(
                 labels[key] = str(value)
     if media_facts.mime_type:
         labels["mime_family"] = (
-            "image/*"
-            if media_facts.mime_type.startswith("image/")
-            else media_facts.mime_type
+            "image/*" if media_facts.mime_type.startswith("image/") else media_facts.mime_type
         )
         labels["input_mime"] = media_facts.mime_type
     labels["image_count"] = str(media_facts.image_count)
@@ -2650,12 +2566,8 @@ def _build_multimodal_static_candidate(
         kwargs=kwargs,
     )
     provider_id = stable_id("provider", "multimodal", provider_name)
-    model_id = stable_id(
-        "model", "multimodal", provider_name, model_name or "default"
-    )
-    deployment_id = stable_id(
-        "deployment", "multimodal", provider_name, device or "default"
-    )
+    model_id = stable_id("model", "multimodal", provider_name, model_name or "default")
+    deployment_id = stable_id("deployment", "multimodal", provider_name, device or "default")
     binding_id = stable_id(
         "binding", "multimodal", provider_name, model_name or "default", scope_id
     )
@@ -2701,22 +2613,12 @@ def _admission_result_to_trace(result: object) -> Dict[str, object]:
         "reason_codes": list(getattr(result, "reason_codes", ()) or ()),
         "next_eligible_at": getattr(result, "next_eligible_at", None),
         "attempt_count": len(getattr(result, "attempts", ()) or ()),
-        "selected_binding_id": getattr(selected, "binding_id", None)
-        if selected
-        else None,
-        "selected_scope_id": getattr(selected, "scope_id", None)
-        if selected
-        else None,
-        "reservation_id": getattr(selected, "reservation_id", None)
-        if selected
-        else None,
+        "selected_binding_id": getattr(selected, "binding_id", None) if selected else None,
+        "selected_scope_id": getattr(selected, "scope_id", None) if selected else None,
+        "reservation_id": getattr(selected, "reservation_id", None) if selected else None,
         "receipt_id": getattr(receipt, "receipt_id", None) if receipt else None,
-        "usage_revision": getattr(selected, "usage_revision", None)
-        if selected
-        else None,
-        "catalog_revision": getattr(selected, "catalog_revision", None)
-        if selected
-        else None,
+        "usage_revision": getattr(selected, "usage_revision", None) if selected else None,
+        "catalog_revision": getattr(selected, "catalog_revision", None) if selected else None,
         "requirement_id": USAGE_ROUTING_REQUIREMENT_ID,
     }
     if receipt is not None:
@@ -2756,10 +2658,7 @@ def _parse_provider_observation(
     try:
         from .endpoint_usage.adapters import parse_provider_observation
 
-        if any(
-            key in observation
-            for key in ("headers", "body", "family", "http_status", "usage")
-        ):
+        if any(key in observation for key in ("headers", "body", "family", "http_status", "usage")):
             payload = dict(observation)
             payload.setdefault("scope_id", scope_id)
             payload.setdefault("request_id", request_id)
@@ -2883,14 +2782,8 @@ def _record_usage_observe_shadow(
             payload["usage_revision"] = getattr(snap, "usage_revision", None)
             payload["scope_id"] = usage_scope_id
         except Exception:
-            payload["reason_codes"] = list(payload["reason_codes"]) + [
-                "snapshot_unavailable"
-            ]
-        if (
-            success
-            and remote_charged
-            and str(getattr(mode, "value", mode)) == "shadow"
-        ):
+            payload["reason_codes"] = list(payload["reason_codes"]) + ["snapshot_unavailable"]
+        if success and remote_charged and str(getattr(mode, "value", mode)) == "shadow":
             try:
                 from .endpoint_usage.schema import UsageVector as _UsageVector
 
@@ -2898,8 +2791,7 @@ def _record_usage_observe_shadow(
                     usage_scope_id,
                     kind=UsageEventKind.OBSERVATION_SUCCESS,
                     units=_UsageVector(),
-                    request_id=usage_request_id
-                    or stable_id("mreq", "shadow", usage_scope_id),
+                    request_id=usage_request_id or stable_id("mreq", "shadow", usage_scope_id),
                     reason_codes=("shadow_observe",),
                 )
             except Exception:
@@ -2995,9 +2887,7 @@ def _generate_multimodal_with_usage_admission(
     if resolved_for_cache is None and provider:
         try:
             resolved_for_cache = get_multimodal_provider(provider, deps=deps)
-            cache_provider_name = _provider_name(
-                resolved_for_cache, requested=provider
-            )
+            cache_provider_name = _provider_name(resolved_for_cache, requested=provider)
         except Exception:
             resolved_for_cache = None
 
@@ -3012,11 +2902,7 @@ def _generate_multimodal_with_usage_admission(
         )
         try:
             getter = getattr(deps, "get_cached_or_remote", None)
-            cached = (
-                getter(cache_key)
-                if callable(getter)
-                else deps.get_cached(cache_key)
-            )
+            cached = getter(cache_key) if callable(getter) else deps.get_cached(cache_key)
             if isinstance(cached, str):
                 _set_last_usage_admission(
                     {
@@ -3057,9 +2943,7 @@ def _generate_multimodal_with_usage_admission(
         media_facts=media_facts,
         max_output_tokens=int(max_output_tokens)
         if isinstance(max_output_tokens, int)
-        or (
-            isinstance(max_output_tokens, str) and str(max_output_tokens).isdigit()
-        )
+        or (isinstance(max_output_tokens, str) and str(max_output_tokens).isdigit())
         else None,
         cost_micros=usage_cost_micros,
         cost_currency=usage_cost_currency,
@@ -3087,9 +2971,7 @@ def _generate_multimodal_with_usage_admission(
     else:
         backend = provider_instance or get_multimodal_provider(provider, deps=deps)
         provider_used = _provider_name(backend, requested=provider)
-        scope_id = stable_id(
-            "scope", "multimodal", provider_used, model_name or "default"
-        )
+        scope_id = stable_id("scope", "multimodal", provider_used, model_name or "default")
         ureq_probe = usage_request
         if isinstance(ureq_probe, Mapping):
             preferred_scope = ureq_probe.get("preferred_scope_id")
@@ -3122,18 +3004,16 @@ def _generate_multimodal_with_usage_admission(
     origin_labels = dict(getattr(first, "labels", None) or {})
     origin_labels.update(
         _multimodal_compatibility_labels(
-            provider_name=str(
-                origin_labels.get("router_provider") or provider or ""
-            ),
+            provider_name=str(origin_labels.get("router_provider") or provider or ""),
             model_name=model_name,
             device=device,
             media_facts=media_facts,
             kwargs=kwargs,
         )
     )
-    candidates = _filter_compatible_candidates(
-        candidates, origin_labels=origin_labels
-    ) or list(candidates[:1])
+    candidates = _filter_compatible_candidates(candidates, origin_labels=origin_labels) or list(
+        candidates[:1]
+    )
 
     meta_by_binding = {
         cand.binding_id: meta_from_static(cand)  # type: ignore[attr-defined]
@@ -3181,9 +3061,7 @@ def _generate_multimodal_with_usage_admission(
         reason_codes=ureq.reason_codes,
     )
 
-    provider_map: Dict[str, MultimodalProvider] = dict(
-        usage_provider_by_binding or {}
-    )
+    provider_map: Dict[str, MultimodalProvider] = dict(usage_provider_by_binding or {})
     result_holder: Dict[str, object] = {}
     fallback_used = False
     used_model_name = model_name
@@ -3259,10 +3137,7 @@ def _generate_multimodal_with_usage_admission(
                 reason_codes=(type(exc).__name__,),
             )
             message = str(exc).casefold()
-            if any(
-                token in message
-                for token in ("rate limit", "429", "quota", "capacity", "503")
-            ):
+            if any(token in message for token in ("rate limit", "429", "quota", "capacity", "503")):
                 error_class = ErrorSafetyClass.CAPACITY
             return InvokeOutcome(
                 success=False,
@@ -3306,9 +3181,7 @@ def _generate_multimodal_with_usage_admission(
         jitter_max_ms=0,
     )
     effective_policy = policy
-    if getattr(pin, "is_exact", False) and not getattr(
-        pin, "allow_fallback_with_pin", False
-    ):
+    if getattr(pin, "is_exact", False) and not getattr(pin, "allow_fallback_with_pin", False):
         if policy.fallback is not FallbackClass.NONE:
             effective_policy = RoutingPolicy(
                 mode=policy.mode,
@@ -3390,19 +3263,13 @@ def _generate_multimodal_with_usage_admission(
         device=str(device or ""),
         cache_hit=False,
         fallback_used=fallback_used
-        or bool(
-            result.selected
-            and result.attempts
-            and len(result.attempts) > 1
-        ),
+        or bool(result.selected and result.attempts and len(result.attempts) > 1),
         usage_mode=str(getattr(policy.mode, "value", policy.mode)),
         remote_charged=True,
         reservation_id=getattr(result.selected, "reservation_id", None)
         if result.selected
         else None,
-        receipt_id=getattr(result.receipt, "receipt_id", None)
-        if result.receipt
-        else None,
+        receipt_id=getattr(result.receipt, "receipt_id", None) if result.receipt else None,
         image_count=media_facts.image_count,
         elapsed_ms=round((time.perf_counter() - started) * 1000, 3),
     )
@@ -3512,11 +3379,7 @@ def generate_multimodal(
         )
         try:
             getter = getattr(resolved_deps, "get_cached_or_remote", None)
-            cached = (
-                getter(cache_key)
-                if callable(getter)
-                else resolved_deps.get_cached(cache_key)
-            )
+            cached = getter(cache_key) if callable(getter) else resolved_deps.get_cached(cache_key)
             if isinstance(cached, str):
                 if usage_coordinator is not None and _usage_mode_observes_only(policy):
                     facts = inspect_media_reference(
@@ -3540,9 +3403,7 @@ def generate_multimodal(
                         provider_used=str(provider or ""),
                         max_output_tokens=None,
                     )
-                elif usage_coordinator is None or _usage_mode_is_off(
-                    policy, usage_coordinator
-                ):
+                elif usage_coordinator is None or _usage_mode_is_off(policy, usage_coordinator):
                     _set_last_usage_admission(
                         {
                             "success": True,
@@ -3568,9 +3429,7 @@ def generate_multimodal(
         except Exception:
             pass
 
-    backend = provider_instance or get_multimodal_provider(
-        provider, deps=resolved_deps
-    )
+    backend = provider_instance or get_multimodal_provider(provider, deps=resolved_deps)
     provider_used = _provider_name(backend, requested=provider)
     fallback_used = False
     try:
@@ -3632,9 +3491,7 @@ def generate_multimodal(
                 if isinstance(kwargs.get("max_tokens"), int)
                 else None,
             )
-        elif usage_coordinator is None or _usage_mode_is_off(
-            policy, usage_coordinator
-        ):
+        elif usage_coordinator is None or _usage_mode_is_off(policy, usage_coordinator):
             _set_last_usage_admission(
                 {
                     "success": True,
@@ -3673,9 +3530,7 @@ def generate_multimodal(
                     fallback_used=fallback_used,
                     elapsed_ms=round((time.perf_counter() - started) * 1000, 3),
                 )
-                if usage_coordinator is not None and _usage_mode_observes_only(
-                    policy
-                ):
+                if usage_coordinator is not None and _usage_mode_observes_only(policy):
                     facts = inspect_media_reference(image)
                     _record_usage_observe_shadow(
                         prompt=prompt,
@@ -3691,9 +3546,7 @@ def generate_multimodal(
                         provider_used=provider_used,
                         max_output_tokens=None,
                     )
-                elif usage_coordinator is None or _usage_mode_is_off(
-                    policy, usage_coordinator
-                ):
+                elif usage_coordinator is None or _usage_mode_is_off(policy, usage_coordinator):
                     _set_last_usage_admission(
                         {
                             "success": True,
@@ -3819,9 +3672,7 @@ def _flatten_messages_to_prompt(messages: Sequence[dict[str, Any]]) -> str:
         role = str(message.get("role") or "user").strip()
         content = message.get("content")
         if isinstance(content, list):
-            rendered = "\n".join(
-                filter(None, (_flatten_content_part(part) for part in content))
-            )
+            rendered = "\n".join(filter(None, (_flatten_content_part(part) for part in content)))
         else:
             rendered = str(content or "").strip()
         lines.append(f"{role}: {rendered}")
@@ -3845,9 +3696,7 @@ def generate_multimodal_text(
 ) -> str:
     """Generate from one or more images through the canonical LLM router."""
 
-    normalized_image_paths = [
-        str(Path(path).expanduser()) for path in image_paths or ()
-    ]
+    normalized_image_paths = [str(Path(path).expanduser()) for path in image_paths or ()]
     normalized_image_urls = [str(url) for url in image_urls or ()]
     resolved_messages = (
         list(messages)
@@ -3881,9 +3730,7 @@ def generate_multimodal_text(
             image_paths=normalized_image_paths,
             image_urls=normalized_image_urls,
             system_prompt=system_prompt,
-            additional_text_blocks=[
-                str(block) for block in additional_text_blocks or ()
-            ],
+            additional_text_blocks=[str(block) for block in additional_text_blocks or ()],
             messages=resolved_messages,
             **kwargs,
         )

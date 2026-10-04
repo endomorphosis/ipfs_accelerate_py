@@ -73,16 +73,12 @@ FINDING_TASK_SOURCE_VERSION: Final[int] = 1
 LEDGER_VERSION: Final[str] = "finding-task-source@1"
 # VFS-G101 objective evidence identity for the finding repair taskboard.
 FINDING_TASKBOARD_EVIDENCE: Final[str] = "vfs/finding-taskboard@1"
-FINDING_TASKBOARD_G101_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
-    FINDING_TASKBOARD_EVIDENCE,
-)
+FINDING_TASKBOARD_G101_EVIDENCE_TERMS: Final[tuple[str, ...]] = (FINDING_TASKBOARD_EVIDENCE,)
 # Parent VFS-G100 ledger evidence (admitted findings only feed this board).
 # String literals are intentional so discovery scanners observe both
 # taskboard and ledger coverage on this surface.
 PARENT_FINDING_LEDGER_EVIDENCE: Final[str] = "vfs/finding-ledger@1"
-PARENT_VULNERABILITY_EVIDENCE_POLICY: Final[str] = (
-    "vfs/vulnerability-evidence-policy@1"
-)
+PARENT_VULNERABILITY_EVIDENCE_POLICY: Final[str] = "vfs/vulnerability-evidence-policy@1"
 PARENT_FINDING_LEDGER_G100_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
     "vfs/finding-ledger@1",
     "vfs/vulnerability-evidence-policy@1",
@@ -129,12 +125,8 @@ BOARD_SNAPSHOT_SCHEMA: Final[str] = (
 MATERIALIZATION_RECEIPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/finding-task/materialization-receipt@1"
 )
-POLICY_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/finding-task/policy@1"
-)
-PROJECTION_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/finding-task/projection@1"
-)
+POLICY_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/finding-task/policy@1"
+PROJECTION_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/finding-task/projection@1"
 
 # Diagnostic projections never authorize repair or completion.
 PROJECTION_AUTHORIZES_REPAIR: Final[bool] = False
@@ -230,9 +222,7 @@ def _text(
         raise FindingTaskSourceError(f"{field_name} is required")
     encoded = text.encode("utf-8")
     if len(encoded) > maximum:
-        raise FindingTaskBoundsError(
-            f"{field_name} exceeds {maximum} bytes"
-        )
+        raise FindingTaskBoundsError(f"{field_name} exceeds {maximum} bytes")
     return text
 
 
@@ -253,9 +243,7 @@ def _strings(
         items: list[str] = []
     elif isinstance(value, str):
         items = [value]
-    elif isinstance(value, Sequence) and not isinstance(
-        value, (bytes, bytearray)
-    ):
+    elif isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray)):
         items = [str(item) for item in value if item not in (None, "")]
     else:
         raise FindingTaskSourceError(f"{field_name} must be a sequence")
@@ -274,9 +262,7 @@ def _strings(
     if sort:
         cleaned = sorted(cleaned)
     if len(cleaned) > maximum:
-        raise FindingTaskBoundsError(
-            f"{field_name} exceeds {maximum} items"
-        )
+        raise FindingTaskBoundsError(f"{field_name} exceeds {maximum} items")
     return tuple(cleaned)
 
 
@@ -290,13 +276,9 @@ def _integer(
     if isinstance(value, bool) or not isinstance(value, int):
         raise FindingTaskSourceError(f"{field_name} must be an int")
     if value < minimum:
-        raise FindingTaskSourceError(
-            f"{field_name} must be >= {minimum}"
-        )
+        raise FindingTaskSourceError(f"{field_name} must be >= {minimum}")
     if maximum is not None and value > maximum:
-        raise FindingTaskBoundsError(
-            f"{field_name} must be <= {maximum}"
-        )
+        raise FindingTaskBoundsError(f"{field_name} must be <= {maximum}")
     return value
 
 
@@ -306,9 +288,7 @@ def _enum(value: Any, enum_type: type[Enum], *, field_name: str) -> Enum:
     try:
         return enum_type(str(value).strip())
     except (TypeError, ValueError) as exc:
-        raise FindingTaskSourceError(
-            f"{field_name} is not a valid {enum_type.__name__}"
-        ) from exc
+        raise FindingTaskSourceError(f"{field_name} is not a valid {enum_type.__name__}") from exc
 
 
 def _normalize_path(value: Any) -> str:
@@ -368,9 +348,7 @@ def _finding_as_record(value: Any) -> ContractFindingRecord:
         if "schema" in value and "claim_level" in value:
             return ContractFindingRecord.from_dict(value)
         return build_contract_finding(**dict(value))
-    raise FindingTaskSourceError(
-        "finding must be a ContractFindingRecord or mapping"
-    )
+    raise FindingTaskSourceError("finding must be a ContractFindingRecord or mapping")
 
 
 def _provenance_cids(record: ContractFindingRecord) -> tuple[str, ...]:
@@ -405,10 +383,7 @@ def _output_paths_from_finding(record: ContractFindingRecord) -> tuple[str, ...]
     paths: list[str] = []
     for item in record.remediation_scope:
         path = _normalize_path(item)
-        if path and (
-            "/" in path
-            or path.endswith((".py", ".ts", ".js", ".tsx", ".json", ".md"))
-        ):
+        if path and ("/" in path or path.endswith((".py", ".ts", ".js", ".tsx", ".json", ".md"))):
             paths.append(path)
     for step in record.call_slice.steps:
         path = _normalize_path(step.path)
@@ -430,9 +405,7 @@ def _symbols_from_finding(record: ContractFindingRecord) -> tuple[str, ...]:
     if record.symbols:
         symbols = list(record.symbols)
     else:
-        symbols = [
-            step.symbol for step in record.call_slice.steps if step.symbol
-        ]
+        symbols = [step.symbol for step in record.call_slice.steps if step.symbol]
     return _strings(
         symbols,
         field_name="symbols",
@@ -476,12 +449,8 @@ def _default_validation_plan(
         return (f"python -m pytest {joined} -q",)
     # Fall back to a deterministic module-level contract re-check command.
     if symbols:
-        return (
-            "python -m pytest test/api/test_agent_supervisor_contract_findings.py -q",
-        )
-    return (
-        "python -m pytest test/api/test_agent_supervisor_finding_task_source.py -q",
-    )
+        return ("python -m pytest test/api/test_agent_supervisor_contract_findings.py -q",)
+    return ("python -m pytest test/api/test_agent_supervisor_finding_task_source.py -q",)
 
 
 def _default_proof_plan(record: ContractFindingRecord) -> tuple[str, ...]:
@@ -538,9 +507,7 @@ def _semantic_task_key(
         "merge_fate": normalize_identity_text(merge_fate),
         "outputs": sorted(_normalize_path(p) for p in outputs if p),
         "symbols": sorted(normalize_identity_text(s) for s in symbols if s),
-        "validation_plan": sorted(
-            normalize_identity_text(v) for v in validation_plan if v
-        ),
+        "validation_plan": sorted(normalize_identity_text(v) for v in validation_plan if v),
         "goal_id": normalize_identity_text(goal_id),
     }
     return content_identity(material)
@@ -575,9 +542,7 @@ def _normalize_goal_lineage(
         raise FindingTaskSourceError("goal_lineage must not be empty")
     goal = _text(goal_id, field_name="goal_id")
     if normalize_identity_text(normalized[-1]) != normalize_identity_text(goal):
-        raise FindingTaskSourceError(
-            "goal_lineage must end with the task goal_id"
-        )
+        raise FindingTaskSourceError("goal_lineage must end with the task goal_id")
     return normalized
 
 
@@ -611,9 +576,7 @@ class FindingTaskSourcePolicy:
             "board_namespace",
             _text(self.board_namespace, field_name="board_namespace"),
         )
-        object.__setattr__(
-            self, "goal_id", _text(self.goal_id, field_name="goal_id")
-        )
+        object.__setattr__(self, "goal_id", _text(self.goal_id, field_name="goal_id"))
         object.__setattr__(
             self,
             "parent_goal_id",
@@ -630,20 +593,14 @@ class FindingTaskSourcePolicy:
         )
         # Keep parent_goal_id aligned with lineage when present.
         if len(self.goal_lineage) >= 2 and not self.parent_goal_id:
-            object.__setattr__(
-                self, "parent_goal_id", self.goal_lineage[-2]
-            )
+            object.__setattr__(self, "parent_goal_id", self.goal_lineage[-2])
         resource = _text(self.resource_class, field_name="resource_class").casefold()
         if resource not in RESOURCE_CLASSES:
-            raise FindingTaskSourceError(
-                f"unsupported resource_class {resource!r}"
-            )
+            raise FindingTaskSourceError(f"unsupported resource_class {resource!r}")
         object.__setattr__(self, "resource_class", resource)
         token = _text(self.token_class, field_name="token_class").casefold()
         if token not in TOKEN_CLASSES:
-            raise FindingTaskSourceError(
-                f"unsupported token_class {token!r}"
-            )
+            raise FindingTaskSourceError(f"unsupported token_class {token!r}")
         object.__setattr__(self, "token_class", token)
         object.__setattr__(
             self,
@@ -771,15 +728,9 @@ class RepairTaskRecord:
     disposition: TaskDisposition = TaskDisposition.EXECUTABLE
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "task_id", _text(self.task_id, field_name="task_id")
-        )
-        object.__setattr__(
-            self, "title", _text(self.title, field_name="title")
-        )
-        object.__setattr__(
-            self, "goal_id", _text(self.goal_id, field_name="goal_id")
-        )
+        object.__setattr__(self, "task_id", _text(self.task_id, field_name="task_id"))
+        object.__setattr__(self, "title", _text(self.title, field_name="title"))
+        object.__setattr__(self, "goal_id", _text(self.goal_id, field_name="goal_id"))
         object.__setattr__(
             self,
             "parent_goal_id",
@@ -795,9 +746,7 @@ class RepairTaskRecord:
             ),
         )
         if len(self.goal_lineage) >= 2 and not self.parent_goal_id:
-            object.__setattr__(
-                self, "parent_goal_id", self.goal_lineage[-2]
-            )
+            object.__setattr__(self, "parent_goal_id", self.goal_lineage[-2])
         object.__setattr__(
             self,
             "root_cause_family",
@@ -808,12 +757,8 @@ class RepairTaskRecord:
             "outputs",
             _strings(self.outputs, field_name="outputs", paths=True),
         )
-        object.__setattr__(
-            self, "symbols", _strings(self.symbols, field_name="symbols")
-        )
-        object.__setattr__(
-            self, "effects", _strings(self.effects, field_name="effects")
-        )
+        object.__setattr__(self, "symbols", _strings(self.symbols, field_name="symbols"))
+        object.__setattr__(self, "effects", _strings(self.effects, field_name="effects"))
         object.__setattr__(
             self,
             "dependencies",
@@ -858,19 +803,13 @@ class RepairTaskRecord:
                 maximum=1_000_000,
             ),
         )
-        resource = _text(
-            self.resource_class, field_name="resource_class"
-        ).casefold()
+        resource = _text(self.resource_class, field_name="resource_class").casefold()
         if resource not in RESOURCE_CLASSES:
-            raise FindingTaskSourceError(
-                f"unsupported resource_class {resource!r}"
-            )
+            raise FindingTaskSourceError(f"unsupported resource_class {resource!r}")
         object.__setattr__(self, "resource_class", resource)
         token = _text(self.token_class, field_name="token_class").casefold()
         if token not in TOKEN_CLASSES:
-            raise FindingTaskSourceError(
-                f"unsupported token_class {token!r}"
-            )
+            raise FindingTaskSourceError(f"unsupported token_class {token!r}")
         object.__setattr__(self, "token_class", token)
         object.__setattr__(
             self,
@@ -932,9 +871,7 @@ class RepairTaskRecord:
         object.__setattr__(
             self,
             "supersedes_task_ids",
-            _strings(
-                self.supersedes_task_ids, field_name="supersedes_task_ids"
-            ),
+            _strings(self.supersedes_task_ids, field_name="supersedes_task_ids"),
         )
         object.__setattr__(self, "executable", bool(self.executable))
         object.__setattr__(
@@ -943,29 +880,17 @@ class RepairTaskRecord:
             _enum(self.disposition, TaskDisposition, field_name="disposition"),
         )
         if not self.executable:
-            raise FindingTaskSourceError(
-                "RepairTaskRecord must be executable; use ReviewRecord"
-            )
+            raise FindingTaskSourceError("RepairTaskRecord must be executable; use ReviewRecord")
         if not self.outputs:
-            raise FindingTaskSourceError(
-                "executable repair tasks require exact output paths"
-            )
+            raise FindingTaskSourceError("executable repair tasks require exact output paths")
         if not self.symbols:
-            raise FindingTaskSourceError(
-                "executable repair tasks require exact symbols"
-            )
+            raise FindingTaskSourceError("executable repair tasks require exact symbols")
         if not self.finding_cids:
-            raise FindingTaskSourceError(
-                "executable repair tasks require finding CIDs"
-            )
+            raise FindingTaskSourceError("executable repair tasks require finding CIDs")
         if not self.validation_plan:
-            raise FindingTaskSourceError(
-                "executable repair tasks require a validation plan"
-            )
+            raise FindingTaskSourceError("executable repair tasks require a validation plan")
         if not self.proof_plan:
-            raise FindingTaskSourceError(
-                "executable repair tasks require a proof plan"
-            )
+            raise FindingTaskSourceError("executable repair tasks require a proof plan")
 
     @property
     def task_cid(self) -> str:
@@ -1079,9 +1004,7 @@ class RepairTaskRecord:
         if not isinstance(payload, Mapping):
             raise FindingTaskSourceError("repair task payload must be a mapping")
         goal_id = str(payload.get("goal_id") or DEFAULT_GOAL_ID)
-        parent_goal_id = str(
-            payload.get("parent_goal_id") or DEFAULT_PARENT_GOAL_ID
-        )
+        parent_goal_id = str(payload.get("parent_goal_id") or DEFAULT_PARENT_GOAL_ID)
         raw_lineage = payload.get("goal_lineage")
         if raw_lineage is None:
             # Back-compat: older board snapshots only carried goal_id.
@@ -1110,32 +1033,24 @@ class RepairTaskRecord:
             resource_class=payload.get("resource_class", DEFAULT_RESOURCE_CLASS),
             token_class=payload.get("token_class", DEFAULT_TOKEN_CLASS),
             context_ceiling_bytes=int(
-                payload.get("context_ceiling_bytes")
-                or DEFAULT_CONTEXT_CEILING_BYTES
+                payload.get("context_ceiling_bytes") or DEFAULT_CONTEXT_CEILING_BYTES
             ),
             context_ceiling_tokens=int(
-                payload.get("context_ceiling_tokens")
-                or DEFAULT_CONTEXT_CEILING_TOKENS
+                payload.get("context_ceiling_tokens") or DEFAULT_CONTEXT_CEILING_TOKENS
             ),
             merge_fate=payload.get("merge_fate", ""),
             semantic_key=payload.get("semantic_key", ""),
             track=payload.get("track", "finding-generation"),
             interfaces=tuple(payload.get("interfaces") or ()),
             acceptance=tuple(payload.get("acceptance") or ()),
-            board_namespace=payload.get(
-                "board_namespace", DEFAULT_BOARD_NAMESPACE
-            ),
+            board_namespace=payload.get("board_namespace", DEFAULT_BOARD_NAMESPACE),
             tree_id=payload.get("tree_id", ""),
             policy_revision=payload.get("policy_revision", ""),
             parent_goal_id=parent_goal_id,
             goal_lineage=goal_lineage,
-            supersedes_task_ids=tuple(
-                payload.get("supersedes_task_ids") or ()
-            ),
+            supersedes_task_ids=tuple(payload.get("supersedes_task_ids") or ()),
             executable=bool(payload.get("executable", True)),
-            disposition=payload.get(
-                "disposition", TaskDisposition.EXECUTABLE
-            ),
+            disposition=payload.get("disposition", TaskDisposition.EXECUTABLE),
         )
         if "task_cid" in payload and payload["task_cid"] != result.task_cid:
             # Older board snapshots predate goal_lineage / evidence bindings.
@@ -1144,9 +1059,7 @@ class RepairTaskRecord:
             claimed_lineage = raw_lineage is not None
             claimed_evidence = "evidence" in payload
             if claimed_lineage or claimed_evidence:
-                raise FindingTaskIntegrityError(
-                    "forged task_cid does not match derived identity"
-                )
+                raise FindingTaskIntegrityError("forged task_cid does not match derived identity")
         return result
 
 
@@ -1170,35 +1083,25 @@ class ReviewRecord:
     provenance_cids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "review_id", _text(self.review_id, field_name="review_id")
-        )
+        object.__setattr__(self, "review_id", _text(self.review_id, field_name="review_id"))
         object.__setattr__(
             self,
             "finding_cids",
             _strings(self.finding_cids, field_name="finding_cids"),
         )
-        object.__setattr__(
-            self, "reasons", _strings(self.reasons, field_name="reasons")
-        )
-        object.__setattr__(
-            self, "summary", _text(self.summary, field_name="summary")
-        )
+        object.__setattr__(self, "reasons", _strings(self.reasons, field_name="reasons"))
+        object.__setattr__(self, "summary", _text(self.summary, field_name="summary"))
         object.__setattr__(
             self,
             "root_cause_family",
-            _optional_text(
-                self.root_cause_family, field_name="root_cause_family"
-            ),
+            _optional_text(self.root_cause_family, field_name="root_cause_family"),
         )
         object.__setattr__(
             self,
             "outputs",
             _strings(self.outputs, field_name="outputs", paths=True),
         )
-        object.__setattr__(
-            self, "symbols", _strings(self.symbols, field_name="symbols")
-        )
+        object.__setattr__(self, "symbols", _strings(self.symbols, field_name="symbols"))
         object.__setattr__(
             self,
             "goal_id",
@@ -1210,9 +1113,7 @@ class ReviewRecord:
             "disposition",
             TaskDisposition.REVIEW,
         )
-        object.__setattr__(
-            self, "tree_id", _optional_text(self.tree_id, field_name="tree_id")
-        )
+        object.__setattr__(self, "tree_id", _optional_text(self.tree_id, field_name="tree_id"))
         object.__setattr__(
             self,
             "provenance_cids",
@@ -1251,9 +1152,7 @@ class ReviewRecord:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ReviewRecord":
         if bool(payload.get("executable", False)):
-            raise FindingTaskAuthorityError(
-                "review records cannot claim executable authority"
-            )
+            raise FindingTaskAuthorityError("review records cannot claim executable authority")
         return cls(
             review_id=payload.get("review_id", ""),
             finding_cids=tuple(payload.get("finding_cids") or ()),
@@ -1303,9 +1202,7 @@ class BoardSnapshot:
             "policy_id",
             _optional_text(self.policy_id, field_name="policy_id"),
         )
-        object.__setattr__(
-            self, "tree_id", _optional_text(self.tree_id, field_name="tree_id")
-        )
+        object.__setattr__(self, "tree_id", _optional_text(self.tree_id, field_name="tree_id"))
         object.__setattr__(
             self,
             "revision",
@@ -1314,8 +1211,7 @@ class BoardSnapshot:
         object.__setattr__(
             self,
             "goal_id",
-            _optional_text(self.goal_id, field_name="goal_id")
-            or DEFAULT_GOAL_ID,
+            _optional_text(self.goal_id, field_name="goal_id") or DEFAULT_GOAL_ID,
         )
         object.__setattr__(
             self,
@@ -1332,9 +1228,7 @@ class BoardSnapshot:
             )
         object.__setattr__(self, "evidence", evidence)
         if len(self.tasks) + len(self.reviews) > MAX_BOARD_TASKS:
-            raise FindingTaskBoundsError(
-                f"board exceeds {MAX_BOARD_TASKS} entries"
-            )
+            raise FindingTaskBoundsError(f"board exceeds {MAX_BOARD_TASKS} entries")
 
     @property
     def board_cid(self) -> str:
@@ -1366,13 +1260,9 @@ class BoardSnapshot:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "BoardSnapshot":
         if payload.get("authorizes_repair") is True:
-            raise FindingTaskAuthorityError(
-                "board snapshot cannot authorize repair"
-            )
+            raise FindingTaskAuthorityError("board snapshot cannot authorize repair")
         if payload.get("is_completion_evidence") is True:
-            raise FindingTaskAuthorityError(
-                "board snapshot cannot be completion evidence"
-            )
+            raise FindingTaskAuthorityError("board snapshot cannot be completion evidence")
         evidence = payload.get("evidence", FINDING_TASKBOARD_EVIDENCE)
         if evidence and evidence != FINDING_TASKBOARD_EVIDENCE:
             raise FindingTaskIntegrityError(
@@ -1381,23 +1271,13 @@ class BoardSnapshot:
         goal_id = str(payload.get("goal_id") or DEFAULT_GOAL_ID)
         raw_lineage = payload.get("goal_lineage")
         if raw_lineage is None:
-            goal_lineage = DEFAULT_GOAL_LINEAGE if goal_id == DEFAULT_GOAL_ID else (
-                goal_id,
-            )
+            goal_lineage = DEFAULT_GOAL_LINEAGE if goal_id == DEFAULT_GOAL_ID else (goal_id,)
         else:
             goal_lineage = tuple(raw_lineage or ())
         return cls(
-            tasks=tuple(
-                RepairTaskRecord.from_dict(item)
-                for item in (payload.get("tasks") or ())
-            ),
-            reviews=tuple(
-                ReviewRecord.from_dict(item)
-                for item in (payload.get("reviews") or ())
-            ),
-            board_namespace=payload.get(
-                "board_namespace", DEFAULT_BOARD_NAMESPACE
-            ),
+            tasks=tuple(RepairTaskRecord.from_dict(item) for item in (payload.get("tasks") or ())),
+            reviews=tuple(ReviewRecord.from_dict(item) for item in (payload.get("reviews") or ())),
+            board_namespace=payload.get("board_namespace", DEFAULT_BOARD_NAMESPACE),
             policy_id=payload.get("policy_id", ""),
             tree_id=payload.get("tree_id", ""),
             revision=int(payload.get("revision") or 0),
@@ -1444,20 +1324,14 @@ class MaterializationReceipt:
         object.__setattr__(
             self,
             "superseded_task_ids",
-            _strings(
-                self.superseded_task_ids, field_name="superseded_task_ids"
-            ),
+            _strings(self.superseded_task_ids, field_name="superseded_task_ids"),
         )
         object.__setattr__(
             self,
             "no_op_finding_cids",
-            _strings(
-                self.no_op_finding_cids, field_name="no_op_finding_cids"
-            ),
+            _strings(self.no_op_finding_cids, field_name="no_op_finding_cids"),
         )
-        object.__setattr__(
-            self, "review_ids", _strings(self.review_ids, field_name="review_ids")
-        )
+        object.__setattr__(self, "review_ids", _strings(self.review_ids, field_name="review_ids"))
         object.__setattr__(
             self,
             "board_cid",
@@ -1468,9 +1342,7 @@ class MaterializationReceipt:
             "revision",
             _integer(self.revision, field_name="revision", minimum=0),
         )
-        object.__setattr__(
-            self, "reasons", _strings(self.reasons, field_name="reasons")
-        )
+        object.__setattr__(self, "reasons", _strings(self.reasons, field_name="reasons"))
         evidence = _text(self.evidence, field_name="evidence")
         if evidence != FINDING_TASKBOARD_EVIDENCE:
             raise FindingTaskIntegrityError(
@@ -1480,8 +1352,7 @@ class MaterializationReceipt:
         object.__setattr__(
             self,
             "goal_id",
-            _optional_text(self.goal_id, field_name="goal_id")
-            or DEFAULT_GOAL_ID,
+            _optional_text(self.goal_id, field_name="goal_id") or DEFAULT_GOAL_ID,
         )
         object.__setattr__(
             self,
@@ -1570,18 +1441,11 @@ def classify_finding_for_task(
     if not outputs or not symbols:
         return TaskDisposition.REVIEW, (ReviewReason.MISSING_SCOPE.value,)
 
-    out_of_root = [
-        path
-        for path in outputs
-        if not _path_within_roots(path, selected.write_roots)
-    ]
+    out_of_root = [path for path in outputs if not _path_within_roots(path, selected.write_roots)]
     if out_of_root:
         return TaskDisposition.REVIEW, (ReviewReason.OUT_OF_ROOT.value,)
 
-    if (
-        len(outputs) > selected.max_output_paths
-        or len(symbols) > selected.max_symbols
-    ):
+    if len(outputs) > selected.max_output_paths or len(symbols) > selected.max_symbols:
         return TaskDisposition.REVIEW, (ReviewReason.BROAD.value,)
 
     # Probe breadth through the shared task-quality policy.
@@ -1606,13 +1470,9 @@ def classify_finding_for_task(
         resource_class=selected.resource_class,
         token_class=selected.token_class,
         merge_fate=record.merge_fate or record.root_cause_family,
-        estimated_context_tokens=min(
-            selected.context_ceiling_tokens, estimated_tokens
-        ),
+        estimated_context_tokens=min(selected.context_ceiling_tokens, estimated_tokens),
         estimated_tokens=estimated_tokens,
-        estimated_merge_risk_millionths=_severity_risk_millionths(
-            record.severity
-        ),
+        estimated_merge_risk_millionths=_severity_risk_millionths(record.severity),
     )
     if is_over_broad(candidate, selected.quality):
         return TaskDisposition.REVIEW, (ReviewReason.BROAD.value,)
@@ -1663,13 +1523,10 @@ def build_repair_task(
 
     selected = policy or FindingTaskSourcePolicy()
     record = _finding_as_record(finding)
-    disposition, reasons = classify_finding_for_task(
-        record, policy=selected, admitted=True
-    )
+    disposition, reasons = classify_finding_for_task(record, policy=selected, admitted=True)
     if disposition is not TaskDisposition.EXECUTABLE:
         raise FindingTaskSourceError(
-            "cannot build repair task for non-executable finding: "
-            + ",".join(reasons)
+            "cannot build repair task for non-executable finding: " + ",".join(reasons)
         )
 
     outputs = _output_paths_from_finding(record)
@@ -1754,17 +1611,13 @@ def _can_coalesce_repair_tasks(
         return False
     if not is_tiny(left_c, policy.quality) or not is_tiny(right_c, policy.quality):
         return False
-    if normalize_identity_text(left.merge_fate) != normalize_identity_text(
-        right.merge_fate
-    ):
+    if normalize_identity_text(left.merge_fate) != normalize_identity_text(right.merge_fate):
         return False
-    if normalize_identity_text(left.goal_id) != normalize_identity_text(
-        right.goal_id
-    ):
+    if normalize_identity_text(left.goal_id) != normalize_identity_text(right.goal_id):
         return False
-    if tuple(
-        normalize_identity_text(item) for item in left.goal_lineage
-    ) != tuple(normalize_identity_text(item) for item in right.goal_lineage):
+    if tuple(normalize_identity_text(item) for item in left.goal_lineage) != tuple(
+        normalize_identity_text(item) for item in right.goal_lineage
+    ):
         return False
     if normalize_identity_text(left.root_cause_family) != normalize_identity_text(
         right.root_cause_family
@@ -1781,22 +1634,13 @@ def _can_coalesce_repair_tasks(
     if left.token_class != right.token_class:
         return False
     quality = policy.quality
-    if (
-        len(set(left.acceptance) | set(right.acceptance))
-        > quality.max_acceptance_criteria
-    ):
+    if len(set(left.acceptance) | set(right.acceptance)) > quality.max_acceptance_criteria:
         return False
     if len(set(left.effects) | set(right.effects)) > quality.max_effects:
         return False
-    if (
-        len(set(left.symbols) | set(right.symbols))
-        > quality.max_predicted_symbols
-    ):
+    if len(set(left.symbols) | set(right.symbols)) > quality.max_predicted_symbols:
         return False
-    if (
-        left_c.estimated_tokens + right_c.estimated_tokens
-        > quality.max_estimated_tokens
-    ):
+    if left_c.estimated_tokens + right_c.estimated_tokens > quality.max_estimated_tokens:
         return False
     if max(left.risk_millionths, right.risk_millionths) > quality.max_merge_risk_millionths:
         return False
@@ -1841,10 +1685,7 @@ def coalesce_repair_tasks(
             result.append(group[0])
             continue
         anchor = group[0]
-        if any(
-            not _can_coalesce_repair_tasks(anchor, item, policy=selected)
-            for item in group[1:]
-        ):
+        if any(not _can_coalesce_repair_tasks(anchor, item, policy=selected) for item in group[1:]):
             result.extend(group)
             continue
 
@@ -1957,13 +1798,9 @@ def project_board_json(snapshot: BoardSnapshot) -> dict[str, Any]:
     payload["evidence_terms"] = list(FINDING_TASKBOARD_G101_EVIDENCE_TERMS)
     payload["authorizes_repair"] = PROJECTION_AUTHORIZES_REPAIR
     payload["is_completion_evidence"] = PROJECTION_IS_COMPLETION_EVIDENCE
-    raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
-        "utf-8"
-    )
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     if len(raw) > MAX_JSON_BYTES:
-        raise FindingTaskBoundsError(
-            f"JSON projection exceeds {MAX_JSON_BYTES} bytes"
-        )
+        raise FindingTaskBoundsError(f"JSON projection exceeds {MAX_JSON_BYTES} bytes")
     return payload
 
 
@@ -2039,9 +1876,7 @@ def project_board_markdown(
         )
     text = "\n".join(lines).rstrip() + "\n"
     if len(text.encode("utf-8")) > max_bytes:
-        raise FindingTaskBoundsError(
-            f"Markdown projection exceeds {max_bytes} bytes"
-        )
+        raise FindingTaskBoundsError(f"Markdown projection exceeds {max_bytes} bytes")
     return text
 
 
@@ -2061,30 +1896,18 @@ def project_board_duckdb_rows(
                 "record_cid": task.task_cid,
                 "goal_id": task.goal_id,
                 "parent_goal_id": task.parent_goal_id,
-                "goal_lineage_json": json.dumps(
-                    list(task.goal_lineage), sort_keys=True
-                ),
+                "goal_lineage_json": json.dumps(list(task.goal_lineage), sort_keys=True),
                 "root_cause_family": task.root_cause_family,
                 "merge_fate": task.merge_fate,
                 "conflict_domain": task.conflict_domain,
                 "outputs_json": json.dumps(list(task.outputs), sort_keys=True),
                 "symbols_json": json.dumps(list(task.symbols), sort_keys=True),
                 "effects_json": json.dumps(list(task.effects), sort_keys=True),
-                "dependencies_json": json.dumps(
-                    list(task.dependencies), sort_keys=True
-                ),
-                "validation_plan_json": json.dumps(
-                    list(task.validation_plan), sort_keys=True
-                ),
-                "proof_plan_json": json.dumps(
-                    list(task.proof_plan), sort_keys=True
-                ),
-                "finding_cids_json": json.dumps(
-                    list(task.finding_cids), sort_keys=True
-                ),
-                "provenance_cids_json": json.dumps(
-                    list(task.provenance_cids), sort_keys=True
-                ),
+                "dependencies_json": json.dumps(list(task.dependencies), sort_keys=True),
+                "validation_plan_json": json.dumps(list(task.validation_plan), sort_keys=True),
+                "proof_plan_json": json.dumps(list(task.proof_plan), sort_keys=True),
+                "finding_cids_json": json.dumps(list(task.finding_cids), sort_keys=True),
+                "provenance_cids_json": json.dumps(list(task.provenance_cids), sort_keys=True),
                 "risk_millionths": task.risk_millionths,
                 "resource_class": task.resource_class,
                 "token_class": task.token_class,
@@ -2117,12 +1940,8 @@ def project_board_duckdb_rows(
                 "dependencies_json": "[]",
                 "validation_plan_json": "[]",
                 "proof_plan_json": "[]",
-                "finding_cids_json": json.dumps(
-                    list(review.finding_cids), sort_keys=True
-                ),
-                "provenance_cids_json": json.dumps(
-                    list(review.provenance_cids), sort_keys=True
-                ),
+                "finding_cids_json": json.dumps(list(review.finding_cids), sort_keys=True),
+                "provenance_cids_json": json.dumps(list(review.provenance_cids), sort_keys=True),
                 "risk_millionths": 0,
                 "resource_class": "",
                 "token_class": "",
@@ -2140,9 +1959,7 @@ def project_board_duckdb_rows(
             }
         )
     if len(rows) > max_rows:
-        raise FindingTaskBoundsError(
-            f"DuckDB projection exceeds {max_rows} rows"
-        )
+        raise FindingTaskBoundsError(f"DuckDB projection exceeds {max_rows} rows")
     rows.sort(key=lambda row: (row["kind"], row["record_id"]))
     return tuple(rows)
 
@@ -2225,9 +2042,7 @@ class FindingTaskSource:
         state.json          finding_cid → task/review identity map
     """
 
-    policy: FindingTaskSourcePolicy = field(
-        default_factory=FindingTaskSourcePolicy
-    )
+    policy: FindingTaskSourcePolicy = field(default_factory=FindingTaskSourcePolicy)
     root: Path | None = None
 
     def __post_init__(self) -> None:
@@ -2267,20 +2082,16 @@ class FindingTaskSource:
             payload = json.loads(board_path.read_text(encoding="utf-8"))
             snapshot = BoardSnapshot.from_dict(payload)
             self._tasks = {task.task_id: task for task in snapshot.tasks}
-            self._reviews = {
-                review.review_id: review for review in snapshot.reviews
-            }
+            self._reviews = {review.review_id: review for review in snapshot.reviews}
             self._revision = snapshot.revision
             self._tree_id = snapshot.tree_id
         if state_path.exists():
             state = json.loads(state_path.read_text(encoding="utf-8"))
             self._finding_index = {
-                str(k): str(v)
-                for k, v in (state.get("finding_index") or {}).items()
+                str(k): str(v) for k, v in (state.get("finding_index") or {}).items()
             }
             self._semantic_index = {
-                str(k): str(v)
-                for k, v in (state.get("semantic_index") or {}).items()
+                str(k): str(v) for k, v in (state.get("semantic_index") or {}).items()
             }
 
     def _persist(self, snapshot: BoardSnapshot) -> None:
@@ -2312,12 +2123,8 @@ class FindingTaskSource:
 
     def snapshot(self) -> BoardSnapshot:
         with self._lock:
-            tasks = tuple(
-                sorted(self._tasks.values(), key=lambda t: t.task_id)
-            )
-            reviews = tuple(
-                sorted(self._reviews.values(), key=lambda r: r.review_id)
-            )
+            tasks = tuple(sorted(self._tasks.values(), key=lambda t: t.task_id))
+            reviews = tuple(sorted(self._reviews.values(), key=lambda r: r.review_id))
             return BoardSnapshot(
                 tasks=tasks,
                 reviews=reviews,
@@ -2365,9 +2172,7 @@ class FindingTaskSource:
         records: list[tuple[ContractFindingRecord, bool]] = []
         if ledger is not None:
             projection = ledger.projection()
-            admitted_cids = {
-                entry.finding_cid for entry in projection.admitted
-            }
+            admitted_cids = {entry.finding_cid for entry in projection.admitted}
             if admitted_only:
                 for record in ledger.current_findings(admitted_only=True):
                     records.append((record, True))
@@ -2376,18 +2181,14 @@ class FindingTaskSource:
                     record = ledger.get(entry.finding_cid)
                     if record is None:
                         continue
-                    records.append(
-                        (record, entry.finding_cid in admitted_cids)
-                    )
+                    records.append((record, entry.finding_cid in admitted_cids))
         if findings is not None:
             for item in findings:
                 record = _finding_as_record(item)
                 records.append((record, True if admitted_only else record.actionable))
 
         if not records and findings is None and ledger is None:
-            raise FindingTaskSourceError(
-                "materialize requires findings or a ledger"
-            )
+            raise FindingTaskSourceError("materialize requires findings or a ledger")
 
         # Deterministic order by finding CID.
         records.sort(key=lambda pair: pair[0].finding_cid)
@@ -2418,17 +2219,15 @@ class FindingTaskSource:
                     continue
             if existing_id and existing_id in self._reviews:
                 existing_review = self._reviews[existing_id]
-                if (
-                    record.finding_cid in existing_review.finding_cids
-                    and set(existing_review.reasons)
+                if record.finding_cid in existing_review.finding_cids and set(
+                    existing_review.reasons
                 ):
                     # Re-classify; if still review with same reasons, no-op.
                     disposition, review_reasons = classify_finding_for_task(
                         record, policy=self.policy, admitted=is_admitted
                     )
-                    if (
-                        disposition is TaskDisposition.REVIEW
-                        and set(review_reasons) == set(existing_review.reasons)
+                    if disposition is TaskDisposition.REVIEW and set(review_reasons) == set(
+                        existing_review.reasons
                     ):
                         no_ops.append(record.finding_cid)
                         continue
@@ -2488,11 +2287,7 @@ class FindingTaskSource:
             # Also supersede any prior task that listed this finding under a
             # different semantic key (evidence rewrite of the same CID).
             prior_binding = self._finding_index.get(record.finding_cid)
-            if (
-                prior_binding
-                and prior_binding in self._tasks
-                and prior_binding not in supersedes
-            ):
+            if prior_binding and prior_binding in self._tasks and prior_binding not in supersedes:
                 prior = self._tasks[prior_binding]
                 supersedes.append(prior_binding)
                 for prior_cid in prior.finding_cids:
@@ -2514,9 +2309,7 @@ class FindingTaskSource:
 
         # Coalesce only tiny related tasks with shared validation/merge fate.
         if pending_tasks:
-            coalesced = coalesce_repair_tasks(
-                pending_tasks, policy=self.policy
-            )
+            coalesced = coalesce_repair_tasks(pending_tasks, policy=self.policy)
             # Re-index after coalescing.
             for task in coalesced:
                 # Drop any intermediate pending ids that were coalesced away.

@@ -69,9 +69,7 @@ def test_adversarial_e2e_gate_covers_every_required_case_and_passes_cleanly():
     assert report.passed
     assert report.to_dict()["schema"] == ADVERSARIAL_E2E_GATE_SCHEMA
     assert not report.automatic_mutation_enabled
-    assert {item.gate_id for item in report.observations} == set(
-        REQUIRED_ADVERSARIAL_GATES
-    )
+    assert {item.gate_id for item in report.observations} == set(REQUIRED_ADVERSARIAL_GATES)
     assert len(report.observations) == len(REQUIRED_ADVERSARIAL_GATES)
     assert all(item.status is GateStatus.PASSED for item in report.observations)
     assert all(not item.authoritative for item in report.observations)
@@ -87,9 +85,7 @@ def test_adversarial_e2e_gate_covers_every_required_case_and_passes_cleanly():
     assert not decision.automatic_mutation_enabled
     assert not decision.authoritative
     assert not decision.completion_authoritative
-    assert verify_vfs_symbolic_rollout(
-        decision, report, binding=binding, policy=policy
-    )
+    assert verify_vfs_symbolic_rollout(decision, report, binding=binding, policy=policy)
 
 
 def test_complete_inventory_and_exclusions_are_policy_bound():
@@ -148,9 +144,7 @@ def test_each_adversarial_injection_fails_exactly_the_targeted_gate(flag, gate_i
     failed = {item.gate_id for item in report.observations if not item.passed}
     assert gate_id in failed
     # Targeted failure should not silently pass the automatic-mutation gate.
-    assert report.observation(
-        AdversarialGateId.AUTOMATIC_MUTATION_DISABLED
-    ).passed
+    assert report.observation(AdversarialGateId.AUTOMATIC_MUTATION_DISABLED).passed
 
 
 def test_simulated_forged_and_tampered_zk_cannot_become_authoritative():
@@ -199,9 +193,7 @@ def test_assist_promotes_only_when_all_gates_pass_and_automatic_stays_shadow():
 
     # Even with automatic approved in policy, mutation stays disabled and
     # effective mode cannot become automatic.
-    auto_policy = build_default_vfs_policy(
-        approve_assist=True, approve_automatic=True
-    )
+    auto_policy = build_default_vfs_policy(approve_assist=True, approve_automatic=True)
     still_shadow = evaluate_vfs_symbolic_rollout(
         report,
         binding=binding,
@@ -213,9 +205,7 @@ def test_assist_promotes_only_when_all_gates_pass_and_automatic_stays_shadow():
 
 
 def test_regression_returns_effective_rollout_to_shadow():
-    fixture, clean, binding, policy = _population(
-        observed_at="2026-07-29T00:00:00Z"
-    )
+    fixture, clean, binding, policy = _population(observed_at="2026-07-29T00:00:00Z")
     prior = evaluate_vfs_symbolic_rollout(
         clean,
         binding=binding,
@@ -239,9 +229,7 @@ def test_regression_returns_effective_rollout_to_shadow():
     assert decision.effective_mode is VfsRolloutMode.SHADOW
     assert decision.rollback_applied
     assert "assurance-regression" in decision.reason_codes
-    assert any(
-        code.startswith("gate-failed:wrong_proof") for code in decision.reason_codes
-    )
+    assert any(code.startswith("gate-failed:wrong_proof") for code in decision.reason_codes)
 
 
 def test_stale_binding_or_policy_mismatch_returns_to_shadow():
@@ -276,17 +264,13 @@ def test_python_cli_and_mcp_publish_equivalent_bounded_status_findings_receipts(
     request = VfsControlRequest(action="assist")
     results = []
     for adapter in ("python", "cli", "mcp"):
-        api = VfsSymbolicPublicAPI(
-            report, binding=binding, policy=policy, initial_mode="shadow"
-        )
+        api = VfsSymbolicPublicAPI(report, binding=binding, policy=policy, initial_mode="shadow")
         result = getattr(api, adapter)(request.to_dict())
         results.append(result.to_dict())
 
     assert results[0] == results[1] == results[2]
     assert results[0]["decision"]["effective_mode"] == "assist"
-    assert results[0]["decision"]["requirement_id"] == (
-        VFS_SYMBOLIC_ROLLOUT_REQUIREMENT_ID
-    )
+    assert results[0]["decision"]["requirement_id"] == (VFS_SYMBOLIC_ROLLOUT_REQUIREMENT_ID)
     assert results[0]["status"]["schema"].endswith("bounded-status@1")
     assert results[0]["findings"]["schema"].endswith("bounded-findings@1")
     assert results[0]["receipts"]["schema"].endswith("bounded-receipts@1")
@@ -324,9 +308,7 @@ def test_public_discovery_is_lazy_and_provider_free():
     assert discovery["processes_started"] is False
     assert ADVERSARIAL_E2E_GATE_SCHEMA in discovery["evidence_schemas"]
     assert SHADOW_ROLLOUT_REPORT_SCHEMA in discovery["evidence_schemas"]
-    assert set(discovery["required_gates"]) == {
-        item.value for item in REQUIRED_ADVERSARIAL_GATES
-    }
+    assert set(discovery["required_gates"]) == {item.value for item in REQUIRED_ADVERSARIAL_GATES}
 
     script = """
 import json, sys
@@ -378,17 +360,14 @@ def test_control_status_findings_receipts_and_rollback_paths():
     assert findings.findings["finding_count"] == 0
     receipts = api.receipts()
     assert any(
-        item["receipt_kind"] == "adversarial-e2e-gate"
-        for item in receipts.receipts["receipts"]
+        item["receipt_kind"] == "adversarial-e2e-gate" for item in receipts.receipts["receipts"]
     )
     explanation = api.explanation()
     assert VFS_SYMBOLIC_BEHAVIOR_ID in explanation.explanation
 
     rolled_back = api.rollback()
     assert rolled_back.decision.effective_mode is VfsRolloutMode.SHADOW
-    assert rolled_back.decision.affected_behavior_ids == (
-        VFS_SYMBOLIC_BEHAVIOR_ID,
-    )
+    assert rolled_back.decision.affected_behavior_ids == (VFS_SYMBOLIC_BEHAVIOR_ID,)
 
     # Live re-evaluation on status after binding drift.
     api.execute("assist")
@@ -446,9 +425,7 @@ def test_custom_multi_repo_fixture_freezes_and_excludes_correctly():
     )
     assert fixture.fixture_id == "fixture:custom-e2e@1"
     assert len(fixture.repositories) == 2
-    alpha = next(
-        item for item in fixture.repositories if item.repository_id == "repository:alpha"
-    )
+    alpha = next(item for item in fixture.repositories if item.repository_id == "repository:alpha")
     assert "src/main.py" in alpha.included_paths
     assert "node_modules/x/index.js" in alpha.excluded_paths
     # Self-replay still yields CID parity for custom fixtures.

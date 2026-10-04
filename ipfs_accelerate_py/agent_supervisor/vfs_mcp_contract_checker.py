@@ -95,9 +95,7 @@ VFS_MCP_PARITY_WITNESS_SCHEMA: Final[str] = (
 VFS_MCP_SURFACE_VIEW_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/vfs-mcp-surface-view@1"
 )
-VFS_MCP_TOOL_PARITY_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/vfs-mcp-tool-parity@1"
-)
+VFS_MCP_TOOL_PARITY_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/vfs-mcp-tool-parity@1"
 
 EVIDENCE_VFS_MCP_PARITY: Final[str] = "vfs/mcp-manifest-sdk-parity@1"
 EVIDENCE_VFS_MCP_CALL_PATH: Final[str] = "vfs/mcplusplus-call-path@1"
@@ -435,28 +433,18 @@ class SurfaceView:
     notes: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "surface", _enum(self.surface, ParitySurface, "surface")
-        )
+        object.__setattr__(self, "surface", _enum(self.surface, ParitySurface, "surface"))
         if not isinstance(self.present, bool):
             raise VfsMcpCheckerError("present must be a boolean")
-        object.__setattr__(
-            self, "tool_name", _text(self.tool_name, "tool_name", required=False)
-        )
+        object.__setattr__(self, "tool_name", _text(self.tool_name, "tool_name", required=False))
         object.__setattr__(
             self,
             "qualified_name",
             _text(self.qualified_name, "qualified_name", required=False),
         )
-        object.__setattr__(
-            self, "language", _text(self.language, "language", required=False)
-        )
-        object.__setattr__(
-            self, "package", _text(self.package, "package", required=False)
-        )
-        object.__setattr__(
-            self, "version", _text(self.version, "version", required=False)
-        )
+        object.__setattr__(self, "language", _text(self.language, "language", required=False))
+        object.__setattr__(self, "package", _text(self.package, "package", required=False))
+        object.__setattr__(self, "version", _text(self.version, "version", required=False))
         object.__setattr__(
             self,
             "input_schema_fingerprint",
@@ -475,18 +463,14 @@ class SurfaceView:
                 required=False,
             ),
         )
-        object.__setattr__(
-            self, "error_codes", _sorted_unique(self.error_codes or ())
-        )
+        object.__setattr__(self, "error_codes", _sorted_unique(self.error_codes or ()))
         object.__setattr__(
             self,
             "transport",
             _enum(self.transport, TransportKind, "transport"),
         )
         object.__setattr__(self, "profiles", _sorted_unique(self.profiles or ()))
-        object.__setattr__(
-            self, "alias_of", _text(self.alias_of, "alias_of", required=False)
-        )
+        object.__setattr__(self, "alias_of", _text(self.alias_of, "alias_of", required=False))
         object.__setattr__(
             self,
             "implementation_target",
@@ -506,9 +490,7 @@ class SurfaceView:
             "degradation_claims",
             _sorted_unique(self.degradation_claims or ()),
         )
-        object.__setattr__(
-            self, "artifact_ids", _sorted_unique(self.artifact_ids or ())
-        )
+        object.__setattr__(self, "artifact_ids", _sorted_unique(self.artifact_ids or ()))
         for flag_name in (
             "has_call_edge",
             "is_generated",
@@ -566,19 +548,13 @@ class SurfaceView:
             language=str(payload.get("language") or ""),
             package=str(payload.get("package") or ""),
             version=str(payload.get("version") or ""),
-            input_schema_fingerprint=str(
-                payload.get("input_schema_fingerprint") or ""
-            ),
-            output_schema_fingerprint=str(
-                payload.get("output_schema_fingerprint") or ""
-            ),
+            input_schema_fingerprint=str(payload.get("input_schema_fingerprint") or ""),
+            output_schema_fingerprint=str(payload.get("output_schema_fingerprint") or ""),
             error_codes=tuple(payload.get("error_codes") or ()),
             transport=payload.get("transport", TransportKind.UNKNOWN.value),
             profiles=tuple(payload.get("profiles") or ()),
             alias_of=str(payload.get("alias_of") or ""),
-            implementation_target=str(
-                payload.get("implementation_target") or ""
-            ),
+            implementation_target=str(payload.get("implementation_target") or ""),
             capability_claims=tuple(payload.get("capability_claims") or ()),
             degradation_claims=tuple(payload.get("degradation_claims") or ()),
             artifact_ids=tuple(payload.get("artifact_ids") or ()),
@@ -612,12 +588,8 @@ class ParityWitness:
     notes: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "kind", _enum(self.kind, ParityFindingKind, "kind")
-        )
-        object.__setattr__(
-            self, "tool_name", _text(self.tool_name, "tool_name", required=False)
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, ParityFindingKind, "kind"))
+        object.__setattr__(self, "tool_name", _text(self.tool_name, "tool_name", required=False))
         object.__setattr__(
             self,
             "left_surface",
@@ -628,31 +600,21 @@ class ParityWitness:
             "right_surface",
             _enum(self.right_surface, ParitySurface, "right_surface"),
         )
-        object.__setattr__(
-            self, "left_value", _text(self.left_value, "left_value", required=False)
-        )
+        object.__setattr__(self, "left_value", _text(self.left_value, "left_value", required=False))
         object.__setattr__(
             self,
             "right_value",
             _text(self.right_value, "right_value", required=False),
         )
-        object.__setattr__(
-            self, "left_ref", _text(self.left_ref, "left_ref", required=False)
-        )
-        object.__setattr__(
-            self, "right_ref", _text(self.right_ref, "right_ref", required=False)
-        )
-        object.__setattr__(
-            self, "path_id", _text(self.path_id, "path_id", required=False)
-        )
+        object.__setattr__(self, "left_ref", _text(self.left_ref, "left_ref", required=False))
+        object.__setattr__(self, "right_ref", _text(self.right_ref, "right_ref", required=False))
+        object.__setattr__(self, "path_id", _text(self.path_id, "path_id", required=False))
         object.__setattr__(
             self,
             "path_verdict",
             _text(self.path_verdict, "path_verdict", required=False),
         )
-        object.__setattr__(
-            self, "evidence_refs", _sorted_unique(self.evidence_refs or ())
-        )
+        object.__setattr__(self, "evidence_refs", _sorted_unique(self.evidence_refs or ()))
         object.__setattr__(self, "notes", _mapping(self.notes, "witness.notes"))
 
     @property
@@ -684,16 +646,10 @@ class ParityWitness:
         if not isinstance(payload, Mapping):
             raise VfsMcpCheckerError("witness payload must be a mapping")
         return cls(
-            kind=payload.get(
-                "kind", ParityFindingKind.MISSING_RESOLVED_CALL_PATH.value
-            ),
+            kind=payload.get("kind", ParityFindingKind.MISSING_RESOLVED_CALL_PATH.value),
             tool_name=str(payload.get("tool_name") or ""),
-            left_surface=payload.get(
-                "left_surface", ParitySurface.REGISTRATION.value
-            ),
-            right_surface=payload.get(
-                "right_surface", ParitySurface.TOOLS_LIST.value
-            ),
+            left_surface=payload.get("left_surface", ParitySurface.REGISTRATION.value),
+            right_surface=payload.get("right_surface", ParitySurface.TOOLS_LIST.value),
             left_value=str(payload.get("left_value") or ""),
             right_value=str(payload.get("right_value") or ""),
             left_ref=str(payload.get("left_ref") or ""),
@@ -720,15 +676,9 @@ class ParityFinding:
     notes: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "kind", _enum(self.kind, ParityFindingKind, "kind")
-        )
-        object.__setattr__(
-            self, "tool_name", _text(self.tool_name, "tool_name", required=False)
-        )
-        object.__setattr__(
-            self, "severity", _enum(self.severity, ParitySeverity, "severity")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, ParityFindingKind, "kind"))
+        object.__setattr__(self, "tool_name", _text(self.tool_name, "tool_name", required=False))
+        object.__setattr__(self, "severity", _enum(self.severity, ParitySeverity, "severity"))
         object.__setattr__(self, "summary", _text(self.summary, "summary"))
         witnesses = tuple(
             item if isinstance(item, ParityWitness) else ParityWitness.from_dict(item)
@@ -739,9 +689,7 @@ class ParityFinding:
         if len(witnesses) > DEFAULT_MAX_WITNESSES:
             raise VfsMcpCheckerBoundsError("too many witnesses on one finding")
         object.__setattr__(self, "witnesses", witnesses)
-        surfaces = tuple(
-            _enum(item, ParitySurface, "surface") for item in (self.surfaces or ())
-        )
+        surfaces = tuple(_enum(item, ParitySurface, "surface") for item in (self.surfaces or ()))
         object.__setattr__(
             self,
             "surfaces",
@@ -783,9 +731,7 @@ class ParityFinding:
         if not isinstance(payload, Mapping):
             raise VfsMcpCheckerError("finding payload must be a mapping")
         return cls(
-            kind=payload.get(
-                "kind", ParityFindingKind.MISSING_RESOLVED_CALL_PATH.value
-            ),
+            kind=payload.get("kind", ParityFindingKind.MISSING_RESOLVED_CALL_PATH.value),
             tool_name=str(payload.get("tool_name") or ""),
             severity=payload.get("severity", ParitySeverity.ERROR.value),
             summary=str(payload.get("summary") or ""),
@@ -812,12 +758,8 @@ class ToolParityResult:
     notes: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "tool_name", _text(self.tool_name, "tool_name")
-        )
-        object.__setattr__(
-            self, "verdict", _enum(self.verdict, ToolParityVerdict, "verdict")
-        )
+        object.__setattr__(self, "tool_name", _text(self.tool_name, "tool_name"))
+        object.__setattr__(self, "verdict", _enum(self.verdict, ToolParityVerdict, "verdict"))
         if not isinstance(self.surfaces, Mapping):
             raise VfsMcpCheckerError("surfaces must be a mapping")
         normalized: dict[str, SurfaceView] = {}
@@ -836,18 +778,13 @@ class ToolParityResult:
         )
         object.__setattr__(self, "findings", findings)
         object.__setattr__(self, "path_ids", _sorted_unique(self.path_ids or ()))
-        object.__setattr__(
-            self, "path_verdicts", _sorted_unique(self.path_verdicts or ())
-        )
+        object.__setattr__(self, "path_verdicts", _sorted_unique(self.path_verdicts or ()))
         if not isinstance(self.proved_call_path, bool):
             raise VfsMcpCheckerError("proved_call_path must be a boolean")
         if not isinstance(self.text_names_agree, bool):
             raise VfsMcpCheckerError("text_names_agree must be a boolean")
         # Fail closed: text agreement without a proved path is never proved_parity.
-        if (
-            self.verdict is ToolParityVerdict.PROVED_PARITY
-            and not self.proved_call_path
-        ):
+        if self.verdict is ToolParityVerdict.PROVED_PARITY and not self.proved_call_path:
             raise VfsMcpCheckerError(
                 "proved_parity requires a resolved call path; "
                 "same text without a path is insufficient"
@@ -863,9 +800,7 @@ class ToolParityResult:
             "schema": VFS_MCP_TOOL_PARITY_SCHEMA,
             "tool_name": self.tool_name,
             "verdict": self.verdict.value,
-            "surfaces": {
-                key: view.to_dict() for key, view in sorted(self.surfaces.items())
-            },
+            "surfaces": {key: view.to_dict() for key, view in sorted(self.surfaces.items())},
             "findings": [item.to_dict() for item in self.findings],
             "path_ids": list(self.path_ids),
             "path_verdicts": list(self.path_verdicts),
@@ -916,9 +851,7 @@ class VfsMcpParityReport:
     notes: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "forest_id", _text(self.forest_id, "forest_id")
-        )
+        object.__setattr__(self, "forest_id", _text(self.forest_id, "forest_id"))
         object.__setattr__(
             self,
             "inventory_id",
@@ -943,9 +876,7 @@ class VfsMcpParityReport:
         if len(findings) > DEFAULT_MAX_FINDINGS:
             raise VfsMcpCheckerBoundsError("too many findings in report")
         object.__setattr__(self, "findings", findings)
-        object.__setattr__(
-            self, "verdict", _enum(self.verdict, ReportVerdict, "verdict")
-        )
+        object.__setattr__(self, "verdict", _enum(self.verdict, ReportVerdict, "verdict"))
         object.__setattr__(
             self,
             "checker_version",
@@ -1123,23 +1054,11 @@ def _view_from_artifacts(
         ),
     )
     primary = ordered[0]
-    input_fps = {
-        schema_fingerprint(item.input_schema)
-        for item in ordered
-        if item.input_schema
-    }
-    output_fps = {
-        schema_fingerprint(item.output_schema)
-        for item in ordered
-        if item.output_schema
-    }
+    input_fps = {schema_fingerprint(item.input_schema) for item in ordered if item.input_schema}
+    output_fps = {schema_fingerprint(item.output_schema) for item in ordered if item.output_schema}
     errors: set[str] = set()
     profiles: set[str] = set()
-    transports = {
-        item.transport
-        for item in ordered
-        if item.transport is not TransportKind.UNKNOWN
-    }
+    transports = {item.transport for item in ordered if item.transport is not TransportKind.UNKNOWN}
     for item in ordered:
         errors.update(item.error_codes)
         profiles.update(item.profiles)
@@ -1164,9 +1083,7 @@ def _view_from_artifacts(
             )
         )
         target = str(
-            item.record.get("implementation")
-            or item.record.get("implementation_target")
-            or ""
+            item.record.get("implementation") or item.record.get("implementation_target") or ""
         ).strip()
         if not target and item.role is ArtifactRole.IMPLEMENTATION:
             target = item.qualified_name
@@ -1182,25 +1099,21 @@ def _view_from_artifacts(
         language=primary.language,
         package=primary.package,
         version=primary.version,
-        input_schema_fingerprint=sorted(input_fps)[0] if len(input_fps) == 1 else (
-            "multi:" + ",".join(sorted(input_fps)) if input_fps else ""
-        ),
+        input_schema_fingerprint=sorted(input_fps)[0]
+        if len(input_fps) == 1
+        else ("multi:" + ",".join(sorted(input_fps)) if input_fps else ""),
         output_schema_fingerprint=(
             sorted(output_fps)[0]
             if len(output_fps) == 1
             else ("multi:" + ",".join(sorted(output_fps)) if output_fps else "")
         ),
         error_codes=tuple(sorted(errors)),
-        transport=(
-            next(iter(transports))
-            if len(transports) == 1
-            else TransportKind.UNKNOWN
-        ),
+        transport=(next(iter(transports)) if len(transports) == 1 else TransportKind.UNKNOWN),
         profiles=tuple(sorted(profiles)),
         alias_of=primary.alias_of,
-        implementation_target=impl_targets[0] if len(set(impl_targets)) == 1 else (
-            "multi:" + ",".join(sorted(set(impl_targets))) if impl_targets else ""
-        ),
+        implementation_target=impl_targets[0]
+        if len(set(impl_targets)) == 1
+        else ("multi:" + ",".join(sorted(set(impl_targets))) if impl_targets else ""),
         capability_claims=tuple(sorted(set(capability))),
         degradation_claims=tuple(sorted(set(degradation))),
         artifact_ids=tuple(item.artifact_id for item in ordered),
@@ -1296,22 +1209,16 @@ def build_surface_views(
 ) -> dict[str, SurfaceView]:
     """Build the closed surface views for one tool from inventory evidence."""
 
-    py_impl = _match_tool(
-        inventory, tool_name, role=ArtifactRole.IMPLEMENTATION, language="python"
-    )
+    py_impl = _match_tool(inventory, tool_name, role=ArtifactRole.IMPLEMENTATION, language="python")
     if not py_impl:
         py_impl = tuple(
             item
             for item in _match_tool(inventory, tool_name, role=ArtifactRole.IMPLEMENTATION)
             if not item.language or item.language == "python"
         )
-    py_sig = _match_tool(
-        inventory, tool_name, role=ArtifactRole.JSON_SCHEMA, language="python"
-    )
+    py_sig = _match_tool(inventory, tool_name, role=ArtifactRole.JSON_SCHEMA, language="python")
     # Python signature prefers implementation + python registration signatures.
-    py_regs = _match_tool(
-        inventory, tool_name, role=ArtifactRole.REGISTRATION, language="python"
-    )
+    py_regs = _match_tool(inventory, tool_name, role=ArtifactRole.REGISTRATION, language="python")
     python_artifacts = py_impl or py_regs or py_sig
 
     registrations = _match_tool(inventory, tool_name, role=ArtifactRole.REGISTRATION)
@@ -1475,12 +1382,8 @@ def build_surface_views(
             profiles=cap_view.profiles,
             alias_of=cap_view.alias_of,
             implementation_target=cap_view.implementation_target,
-            capability_claims=_sorted_unique(
-                list(cap_view.capability_claims) + pack_caps
-            ),
-            degradation_claims=_sorted_unique(
-                list(cap_view.degradation_claims) + pack_deg
-            ),
+            capability_claims=_sorted_unique(list(cap_view.capability_claims) + pack_caps),
+            degradation_claims=_sorted_unique(list(cap_view.degradation_claims) + pack_deg),
             artifact_ids=cap_view.artifact_ids,
             has_call_edge=cap_view.has_call_edge,
             is_generated=cap_view.is_generated,
@@ -1546,9 +1449,7 @@ def _tool_name_to_vfs_operation(tool_name: str) -> VfsOperation | None:
     candidate = aliases.get(tail, tail)
     # Also try full normalized forms like path.resolve
     for op in VfsOperation:
-        if op.value == candidate or op.value == normalized or op.value.endswith(
-            "." + candidate
-        ):
+        if op.value == candidate or op.value == normalized or op.value.endswith("." + candidate):
             return op
         if op.value.split(".")[-1] == candidate:
             return op
@@ -1584,9 +1485,7 @@ def _receipt_covers_tool(receipt: RuntimeWitnessReceipt, tool_name: str) -> bool
         discovery = getattr(witness, "discovery", None)
         if request is not None and _name_hits(getattr(request, "tool_name", None)):
             return True
-        if observation is not None and _name_hits(
-            getattr(observation, "tool_name", None)
-        ):
+        if observation is not None and _name_hits(getattr(observation, "tool_name", None)):
             return True
         if discovery is not None:
             for name in getattr(discovery, "tool_names", ()) or ():
@@ -1641,20 +1540,14 @@ def _surface_from_runtime_receipt(
         mock = True
     if discovery is not None and tool_name:
         mock_tools = {
-            normalize_tool_name(str(n))
-            for n in (getattr(discovery, "mock_tools", ()) or ())
+            normalize_tool_name(str(n)) for n in (getattr(discovery, "mock_tools", ()) or ())
         }
         if key in mock_tools or normalize_tool_name(tool_name) in mock_tools:
             mock = True
 
     outcome = getattr(observation, "outcome", None) if observation else None
-    outcome_value = (
-        outcome.value if isinstance(outcome, Enum) else str(outcome or "")
-    )
-    target = str(
-        (getattr(observation, "implementation_target", "") if observation else "")
-        or ""
-    )
+    outcome_value = outcome.value if isinstance(outcome, Enum) else str(outcome or "")
+    target = str((getattr(observation, "implementation_target", "") if observation else "") or "")
     profiles: list[str] = []
     if negotiation is not None:
         profiles.extend(getattr(negotiation, "admitted_profiles", ()) or ())
@@ -1711,9 +1604,7 @@ def _surface_from_runtime_receipt(
         is_mock_or_fallback=mock,
         notes={
             "outcome": outcome_value,
-            "implementation_kind": (
-                kind.value if isinstance(kind, Enum) else str(kind or "")
-            ),
+            "implementation_kind": (kind.value if isinstance(kind, Enum) else str(kind or "")),
             "authoritative": bool(grants_authority and not mock),
             "fixture_id": str(getattr(receipt, "fixture_id", "") or ""),
         },
@@ -1772,9 +1663,7 @@ def _pair_witness(
         right_ref=right.qualified_name or right.tool_name or right.view_id,
         path_id=path_id,
         path_verdict=path_verdict,
-        evidence_refs=_sorted_unique(
-            list(left.artifact_ids) + list(right.artifact_ids)
-        ),
+        evidence_refs=_sorted_unique(list(left.artifact_ids) + list(right.artifact_ids)),
         notes=notes or {},
     )
 
@@ -1814,7 +1703,9 @@ def call_path_is_proved(path: MCPlusPlusCallPath) -> bool:
 
     if path.verdict is not PathVerdict.PROVED:
         return False
-    stage_values = {hop.stage.value if hasattr(hop.stage, "value") else str(hop.stage) for hop in path.hops}
+    stage_values = {
+        hop.stage.value if hasattr(hop.stage, "value") else str(hop.stage) for hop in path.hops
+    }
     # All required stages must be present and resolved.
     for stage in REQUIRED_PROVED_STAGES:
         if stage not in stage_values:
@@ -1838,9 +1729,7 @@ def _paths_for_tool(
     aliases = set(tool_name_aliases(tool_name))
     aliases.add(key)
     matched = [
-        path
-        for path in paths
-        if _tool_key(path.tool_name) in aliases or path.tool_name in aliases
+        path for path in paths if _tool_key(path.tool_name) in aliases or path.tool_name in aliases
     ]
     return tuple(sorted(matched, key=lambda p: getattr(p, "path_name", "") or p.tool_name))
 
@@ -1857,10 +1746,7 @@ def compare_tool_surfaces(
     findings: list[ParityFinding] = []
     tool_paths = _paths_for_tool(paths, tool_name)
     path_ids = tuple(
-        getattr(p, "path_id", "")
-        or getattr(p, "content_id", "")
-        or p.path_name
-        for p in tool_paths
+        getattr(p, "path_id", "") or getattr(p, "content_id", "") or p.path_name for p in tool_paths
     )
     path_verdicts = tuple(p.verdict.value for p in tool_paths)
     proved = any(call_path_is_proved(p) for p in tool_paths)
@@ -1878,27 +1764,27 @@ def compare_tool_surfaces(
     sdk = views.get(ParitySurface.TYPESCRIPT_SDK.value) or SurfaceView.absent(
         ParitySurface.TYPESCRIPT_SDK, tool_name=tool_name
     )
-    connector = views.get(
-        ParitySurface.SWISSKNIFE_CONNECTOR.value
-    ) or SurfaceView.absent(ParitySurface.SWISSKNIFE_CONNECTOR, tool_name=tool_name)
-    transport = views.get(
-        ParitySurface.TRANSPORT_PROFILE.value
-    ) or SurfaceView.absent(ParitySurface.TRANSPORT_PROFILE, tool_name=tool_name)
-    result_err = views.get(
-        ParitySurface.RESULT_ERROR_MAP.value
-    ) or SurfaceView.absent(ParitySurface.RESULT_ERROR_MAP, tool_name=tool_name)
-    py_sig = views.get(
-        ParitySurface.PYTHON_SIGNATURE.value
-    ) or SurfaceView.absent(ParitySurface.PYTHON_SIGNATURE, tool_name=tool_name)
-    impl = views.get(
-        ParitySurface.IMPLEMENTATION_TARGET.value
-    ) or SurfaceView.absent(ParitySurface.IMPLEMENTATION_TARGET, tool_name=tool_name)
-    cap = views.get(
-        ParitySurface.CAPABILITY_DEGRADATION.value
-    ) or SurfaceView.absent(ParitySurface.CAPABILITY_DEGRADATION, tool_name=tool_name)
-    runtime = views.get(
-        ParitySurface.RUNTIME_WITNESS.value
-    ) or SurfaceView.absent(ParitySurface.RUNTIME_WITNESS, tool_name=tool_name)
+    connector = views.get(ParitySurface.SWISSKNIFE_CONNECTOR.value) or SurfaceView.absent(
+        ParitySurface.SWISSKNIFE_CONNECTOR, tool_name=tool_name
+    )
+    transport = views.get(ParitySurface.TRANSPORT_PROFILE.value) or SurfaceView.absent(
+        ParitySurface.TRANSPORT_PROFILE, tool_name=tool_name
+    )
+    result_err = views.get(ParitySurface.RESULT_ERROR_MAP.value) or SurfaceView.absent(
+        ParitySurface.RESULT_ERROR_MAP, tool_name=tool_name
+    )
+    py_sig = views.get(ParitySurface.PYTHON_SIGNATURE.value) or SurfaceView.absent(
+        ParitySurface.PYTHON_SIGNATURE, tool_name=tool_name
+    )
+    impl = views.get(ParitySurface.IMPLEMENTATION_TARGET.value) or SurfaceView.absent(
+        ParitySurface.IMPLEMENTATION_TARGET, tool_name=tool_name
+    )
+    cap = views.get(ParitySurface.CAPABILITY_DEGRADATION.value) or SurfaceView.absent(
+        ParitySurface.CAPABILITY_DEGRADATION, tool_name=tool_name
+    )
+    runtime = views.get(ParitySurface.RUNTIME_WITNESS.value) or SurfaceView.absent(
+        ParitySurface.RUNTIME_WITNESS, tool_name=tool_name
+    )
 
     primary_path_id = path_ids[0] if path_ids else ""
     primary_path_verdict = path_verdicts[0] if path_verdicts else ""
@@ -2058,8 +1944,10 @@ def compare_tool_surfaces(
                 )
             )
     if listed.present and reg.present:
-        if listed.error_codes and reg.error_codes and set(listed.error_codes) != set(
-            reg.error_codes
+        if (
+            listed.error_codes
+            and reg.error_codes
+            and set(listed.error_codes) != set(reg.error_codes)
         ):
             findings.append(
                 _make_finding(
@@ -2219,8 +2107,7 @@ def compare_tool_surfaces(
     if py_sig.present and reg.present:
         if py_sig.tool_name and reg.tool_name:
             if not (
-                set(tool_name_aliases(py_sig.tool_name))
-                & set(tool_name_aliases(reg.tool_name))
+                set(tool_name_aliases(py_sig.tool_name)) & set(tool_name_aliases(reg.tool_name))
             ):
                 findings.append(
                     _make_finding(
@@ -2307,9 +2194,7 @@ def compare_tool_surfaces(
 
     # --- Implementation target consistency ---
     if impl.present and reg.present:
-        reg_target = str(
-            (reg.implementation_target or reg.notes.get("implementation") or "")
-        )
+        reg_target = str((reg.implementation_target or reg.notes.get("implementation") or ""))
         # Prefer record-backed target from notes already folded into view.
         if (
             impl.implementation_target
@@ -2345,9 +2230,7 @@ def compare_tool_surfaces(
         del reg_target  # unused; kept for clarity in reviews
 
     # --- Direct local bypass ---
-    if impl.is_local_bypass or any(
-        v.is_local_bypass for v in views.values() if v.present
-    ):
+    if impl.is_local_bypass or any(v.is_local_bypass for v in views.values() if v.present):
         findings.append(
             _make_finding(
                 ParityFindingKind.DIRECT_LOCAL_BYPASS,
@@ -2543,17 +2426,13 @@ def compare_tool_surfaces(
             # Non-invocation already covered by mock/bypass when markers present;
             # still record ambiguous-style rejected path if no other finding.
             reasons = {
-                hop.reason_code
-                for hop in path.hops
-                if hop.reason_code in _NON_INVOCATION_REASONS
+                hop.reason_code for hop in path.hops if hop.reason_code in _NON_INVOCATION_REASONS
             }
             if reasons & {
                 ReasonCode.MOCK_IMPLEMENTATION,
                 ReasonCode.LEGACY_FALLBACK,
                 ReasonCode.TEST_SERVER,
-            } and not any(
-                f.kind is ParityFindingKind.MOCK_FALLBACK_DISPATCH for f in findings
-            ):
+            } and not any(f.kind is ParityFindingKind.MOCK_FALLBACK_DISPATCH for f in findings):
                 findings.append(
                     _make_finding(
                         ParityFindingKind.MOCK_FALLBACK_DISPATCH,
@@ -2662,9 +2541,7 @@ def compare_tool_surfaces(
                         path_id=primary_path_id,
                         path_verdict=primary_path_verdict,
                         evidence_refs=tuple(
-                            getattr(ev, "evidence_id", "")
-                            or getattr(ev, "content_id", "")
-                            or ""
+                            getattr(ev, "evidence_id", "") or getattr(ev, "content_id", "") or ""
                             for ev in drift.evidence
                         ),
                         notes={"drift_kind": drift.drift_kind.value},
@@ -2715,9 +2592,7 @@ def compare_tool_surfaces(
     unique: dict[str, ParityFinding] = {}
     for item in findings:
         unique[item.finding_id] = item
-    findings_t = tuple(
-        sorted(unique.values(), key=lambda f: (f.kind.value, f.finding_id))
-    )
+    findings_t = tuple(sorted(unique.values(), key=lambda f: (f.kind.value, f.finding_id)))
 
     # Verdict aggregation (fail-closed).
     kinds = {f.kind for f in findings_t}
@@ -2789,9 +2664,7 @@ def compare_tool_surfaces(
                             left_value=reg.tool_name or tool_name,
                             right_value=impl.tool_name or "",
                             path_verdict="none",
-                            notes={
-                                "rule": "same_text_without_resolved_call_path_insufficient"
-                            },
+                            notes={"rule": "same_text_without_resolved_call_path_insufficient"},
                         ),
                     ),
                     surfaces=(
@@ -2902,25 +2775,19 @@ class VfsMcpContractChecker:
 
         if resolution is not None:
             if not isinstance(resolution, MCPlusPlusResolutionResult):
-                raise VfsMcpCheckerError(
-                    "resolution must be MCPlusPlusResolutionResult"
-                )
+                raise VfsMcpCheckerError("resolution must be MCPlusPlusResolutionResult")
             paths = resolution.paths
             drift = resolution.drift_witnesses
             inventory_id = resolution.inventory_id or inventory_id
         elif claims is not None:
-            resolver = MCPlusPlusContractResolver(
-                self._inventory, max_paths=self._max_tools
-            )
+            resolver = MCPlusPlusContractResolver(self._inventory, max_paths=self._max_tools)
             resolution = resolver.resolve(claims)
             paths = resolution.paths
             drift = resolution.drift_witnesses
             inventory_id = resolution.inventory_id or inventory_id
         else:
             # Still run global manifest comparison from the resolver.
-            resolver = MCPlusPlusContractResolver(
-                self._inventory, max_paths=self._max_tools
-            )
+            resolver = MCPlusPlusContractResolver(self._inventory, max_paths=self._max_tools)
             drift = resolver.compare_manifests(server_name=server_name)
 
         if tool_names is None:
@@ -2937,9 +2804,7 @@ class VfsMcpContractChecker:
                     names.append(path.tool_name)
             names = sorted(set(names), key=lambda n: (_tool_key(n), n))
         else:
-            names = [
-                _text(name, "tool_name") for name in tool_names if str(name or "").strip()
-            ]
+            names = [_text(name, "tool_name") for name in tool_names if str(name or "").strip()]
 
         truncated = False
         truncation_reason = ""
@@ -2997,9 +2862,7 @@ class VfsMcpContractChecker:
                 key=lambda f: (f.kind.value, f.tool_name, f.finding_id),
             )
         )
-        tools_t = tuple(
-            sorted(tool_results, key=lambda t: (_tool_key(t.tool_name), t.tool_name))
-        )
+        tools_t = tuple(sorted(tool_results, key=lambda t: (_tool_key(t.tool_name), t.tool_name)))
 
         pack_id = ""
         if self._contract_pack is not None:
@@ -3078,9 +2941,7 @@ class VfsMcpContractChecker:
                                 left_surface=ParitySurface.CONTRACT_PACK,
                                 right_surface=ParitySurface.REGISTRATION,
                                 left_value=surface.value,
-                                right_value=",".join(
-                                    op.value for op in unresolved[:16]
-                                ),
+                                right_value=",".join(op.value for op in unresolved[:16]),
                                 notes={"unresolved_count": len(unresolved)},
                             ),
                         ),
@@ -3174,9 +3035,7 @@ def report_content_identity(report: VfsMcpParityReport | Mapping[str, Any]) -> s
 
     if isinstance(report, VfsMcpParityReport):
         return report.report_id
-    return "vfsprpt-" + content_identity(
-        VfsMcpParityReport.from_dict(report)._identity_payload()
-    )
+    return "vfsprpt-" + content_identity(VfsMcpParityReport.from_dict(report)._identity_payload())
 
 
 def finding_kinds() -> tuple[str, ...]:

@@ -34,8 +34,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # Setup logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - [%(name)s] - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - [%(name)s] - %(message)s"
 )
 logger = logging.getLogger("dashboard_server")
 
@@ -47,6 +46,7 @@ if parent_dir not in sys.path:
 # Try to import optional dependencies
 try:
     import requests
+
     REQUESTS_AVAILABLE = True
 except ImportError:
     logger.warning("requests not available. Using urllib for HTTP requests.")
@@ -56,6 +56,7 @@ except ImportError:
 
 try:
     import websocket
+
     WEBSOCKET_AVAILABLE = True
 except ImportError:
     logger.warning("websocket-client not available. WebSocket monitoring disabled.")
@@ -926,65 +927,71 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </html>
 """
 
+
 class DashboardHTTPHandler(BaseHTTPRequestHandler):
     """HTTP request handler for the dashboard."""
-    
+
     # Get coordinator URL from the server instance
     def __init__(self, *args, **kwargs):
         self.server_state = None
         super().__init__(*args, **kwargs)
-        
+
     def do_GET(self):
         """Handle GET requests."""
         try:
             # Main dashboard page
-            if self.path == '/' or self.path == '/index.html':
+            if self.path == "/" or self.path == "/index.html":
                 self.send_response(200)
-                self.send_header('Content-type', 'text/html')
+                self.send_header("Content-type", "text/html")
                 self.end_headers()
                 self.wfile.write(HTML_TEMPLATE.encode())
                 return
-                
+
             # API for dashboard data
-            elif self.path == '/api/dashboard':
+            elif self.path == "/api/dashboard":
                 # Get dashboard data
                 dashboard_data = self.server.dashboard_server.get_dashboard_data()
-                
+
                 self.send_response(200)
-                self.send_header('Content-type', 'application/json')
+                self.send_header("Content-type", "application/json")
                 self.end_headers()
                 self.wfile.write(json.dumps(dashboard_data).encode())
                 return
-                
+
             # Favicon or other static assets
-            elif self.path == '/favicon.ico':
+            elif self.path == "/favicon.ico":
                 self.send_response(204)  # No content
                 self.end_headers()
                 return
-                
+
             # Not found
             else:
                 self.send_response(404)
-                self.send_header('Content-type', 'text/html')
+                self.send_header("Content-type", "text/html")
                 self.end_headers()
-                self.wfile.write(b'404 Not Found')
+                self.wfile.write(b"404 Not Found")
                 return
-                
+
         except Exception as e:
             logger.error(f"Error handling request: {e}")
             self.send_response(500)
-            self.send_header('Content-type', 'text/html')
+            self.send_header("Content-type", "text/html")
             self.end_headers()
             self.wfile.write(f"Internal Server Error: {str(e)}".encode())
 
 
 class DashboardServer:
     """Dashboard server for the distributed testing framework."""
-    
-    def __init__(self, host: str = "localhost", port: int = 8081,
-                coordinator_url: str = None, auto_open: bool = False):
+
+    def __init__(
+        self,
+        host: str = "localhost",
+        port: int = 8081,
+        coordinator_url: str = None,
+        auto_open: bool = False,
+    ):
         """Initialize the dashboard server.
-        
+
         Args:
             host: Host to bind the server to
             port: Port to bind the server to
@@ -998,7 +1005,7 @@ class DashboardServer:
         self.server = None
         self.server_thread = None
         self.running = False
-        
+
         # Data cache
         self.dashboard_data = {
             "workers": {
@@ -1007,15 +1014,9 @@ class DashboardServer:
                 "healthy": 0,
                 "warning": 0,
                 "critical": 0,
-                "disconnected": 0
+                "disconnected": 0,
             },
-            "tasks": {
-                "queued": 0,
-                "running": 0,
-                "completed": 0,
-                "failed": 0,
-                "avg_duration": 0
-            },
+            "tasks": {"queued": 0, "running": 0, "completed": 0, "failed": 0, "avg_duration": 0},
             "worker_details": {},
             "recent_tasks": [],
             "queued_tasks": [],
@@ -1023,87 +1024,81 @@ class DashboardServer:
             "completed_tasks": [],
             "alerts": [],
             "worker_performance": {},
-            "task_type_performance": {}
+            "task_type_performance": {},
         }
-        
+
         # Data update thread
         self.update_thread = None
         self.update_stop_event = threading.Event()
         self.update_interval = 5  # seconds
-        
+
         # WebSocket client for real-time updates
         self.ws_client = None
         self.ws_thread = None
         self.ws_connected = False
-        
+
         logger.info(f"Dashboard server initialized at {host}:{port}")
-    
+
     def start(self):
         """Start the dashboard server."""
         # Create HTTPServer
         try:
             self.server = HTTPServer((self.host, self.port), DashboardHTTPHandler)
             self.server.dashboard_server = self  # Store reference to this instance
-            
+
             # Create and start server thread
-            self.server_thread = threading.Thread(
-                target=self.server.serve_forever,
-                daemon=True
-            )
+            self.server_thread = threading.Thread(target=self.server.serve_forever, daemon=True)
             self.server_thread.start()
             self.running = True
-            
+
             logger.info(f"Dashboard server started at http://{self.host}:{self.port}")
-            
+
             # Start data update thread
             self.start_data_updates()
-            
+
             # Try to connect to coordinator via WebSocket for real-time updates
             if self.coordinator_url and WEBSOCKET_AVAILABLE:
                 self.connect_websocket()
-                
+
             # Open dashboard in browser if requested
             if self.auto_open:
                 self.open_in_browser()
-                
+
             return True
         except Exception as e:
             logger.error(f"Error starting dashboard server: {e}")
             return False
-    
+
     def stop(self):
         """Stop the dashboard server."""
         # Stop data update thread
         self.update_stop_event.set()
         if self.update_thread and self.update_thread.is_alive():
             self.update_thread.join(timeout=5.0)
-            
+
         # Close WebSocket connection
         if self.ws_client:
             self.ws_client.close()
-            
+
         # Stop HTTP server
         if self.server:
             self.server.shutdown()
             self.server.server_close()
-            
+
         self.running = False
         logger.info("Dashboard server stopped")
-    
+
     def start_data_updates(self):
         """Start the data update thread."""
         if self.update_thread is not None and self.update_thread.is_alive():
             logger.warning("Data update thread already running")
             return
-            
+
         self.update_stop_event.clear()
-        self.update_thread = threading.Thread(
-            target=self._update_loop,
-            daemon=True
-        )
+        self.update_thread = threading.Thread(target=self._update_loop, daemon=True)
         self.update_thread.start()
         logger.info("Data update thread started")
-    
+
     def _update_loop(self):
         """Data update thread function."""
         while not self.update_stop_event.is_set():
@@ -1112,24 +1107,24 @@ class DashboardServer:
                 self._fetch_data_from_coordinator()
             except Exception as e:
                 logger.error(f"Error updating dashboard data: {e}")
-                
+
             # Wait for next update
             self.update_stop_event.wait(self.update_interval)
-    
+
     def _fetch_data_from_coordinator(self):
         """Fetch dashboard data from the coordinator."""
         if not self.coordinator_url:
             logger.warning("No coordinator URL provided, cannot fetch data")
             return
-            
+
         # Only fetch if not connected via WebSocket
         if self.ws_connected:
             return
-            
+
         try:
             # Make HTTP request to coordinator API
             api_url = f"{self.coordinator_url.rstrip('/')}/api/dashboard"
-            
+
             if REQUESTS_AVAILABLE:
                 response = requests.get(api_url, timeout=5)
                 if response.status_code == 200:
@@ -1138,43 +1133,42 @@ class DashboardServer:
                 # Fallback to urllib
                 with urllib.request.urlopen(api_url, timeout=5) as response:
                     self.dashboard_data = json.loads(response.read().decode())
-                    
+
             logger.debug("Updated dashboard data from coordinator")
         except Exception as e:
             logger.error(f"Error fetching data from coordinator: {e}")
-    
+
     def connect_websocket(self):
         """Connect to coordinator via WebSocket for real-time updates."""
         if not WEBSOCKET_AVAILABLE:
             logger.warning("websocket-client not available, cannot connect via WebSocket")
             return
-            
+
         if not self.coordinator_url:
             logger.warning("No coordinator URL provided, cannot connect via WebSocket")
             return
-            
+
         # Convert HTTP URL to WebSocket URL
-        ws_url = self.coordinator_url.replace('http://', 'ws://').replace('https://', 'wss://')
+        ws_url = self.coordinator_url.replace("http://", "ws://").replace("https://", "wss://")
         ws_url = f"{ws_url.rstrip('/')}/ws/dashboard"
-        
+
         try:
             # Create WebSocket connection in a separate thread
             self.ws_thread = threading.Thread(
-                target=self._websocket_thread,
-                args=(ws_url,),
-                daemon=True
+                target=self._websocket_thread, args=(ws_url,), daemon=True
             )
             self.ws_thread.start()
             logger.info(f"Started WebSocket connection thread to {ws_url}")
         except Exception as e:
             logger.error(f"Error creating WebSocket thread: {e}")
-    
+
     def _websocket_thread(self, ws_url: str):
         """WebSocket client thread function.
-        
+
         Args:
             ws_url: WebSocket URL to connect to
         """
+
         def on_message(ws, message):
             try:
                 data = json.loads(message)
@@ -1183,57 +1177,53 @@ class DashboardServer:
                     logger.debug("Received dashboard update via WebSocket")
             except Exception as e:
                 logger.error(f"Error processing WebSocket message: {e}")
-                
+
         def on_error(ws, error):
             logger.error(f"WebSocket error: {error}")
             self.ws_connected = False
-            
+
         def on_close(ws, close_status_code, close_msg):
             logger.info(f"WebSocket connection closed: {close_msg}")
             self.ws_connected = False
-            
+
             # Try to reconnect after delay
             time.sleep(5)
             if not self.update_stop_event.is_set():
                 self.connect_websocket()
-                
+
         def on_open(ws):
             logger.info("WebSocket connection established")
             self.ws_connected = True
-        
+
         # Create and connect WebSocket client
         try:
             ws = websocket.WebSocketApp(
-                ws_url,
-                on_message=on_message,
-                on_error=on_error,
-                on_close=on_close,
-                on_open=on_open
+                ws_url, on_message=on_message, on_error=on_error, on_close=on_close, on_open=on_open
             )
-            
+
             self.ws_client = ws
             ws.run_forever()
         except Exception as e:
             logger.error(f"WebSocket thread error: {e}")
             self.ws_connected = False
-    
+
     def get_dashboard_data(self) -> Dict[str, Any]:
         """Get current dashboard data.
-        
+
         Returns:
             Dict containing dashboard data
         """
         return self.dashboard_data
-    
+
     def open_in_browser(self):
         """Open the dashboard in a web browser."""
         dashboard_url = f"http://{self.host}:{self.port}"
-        
+
         try:
             # Check if host is 0.0.0.0, use localhost instead for browser
             if self.host == "0.0.0.0":
                 dashboard_url = f"http://localhost:{self.port}"
-                
+
             logger.info(f"Opening dashboard in browser: {dashboard_url}")
             webbrowser.open(dashboard_url)
         except Exception as e:
@@ -1243,31 +1233,29 @@ class DashboardServer:
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Distributed Testing Framework Dashboard Server")
-    
-    parser.add_argument("--host", default="localhost",
-                      help="Host to bind the server to")
-    parser.add_argument("--port", type=int, default=8081,
-                      help="Port to bind the server to")
-    parser.add_argument("--coordinator-url", required=True,
-                      help="URL of the coordinator server")
-    parser.add_argument("--auto-open", action="store_true",
-                      help="Automatically open dashboard in web browser")
-    
+
+    parser.add_argument("--host", default="localhost", help="Host to bind the server to")
+    parser.add_argument("--port", type=int, default=8081, help="Port to bind the server to")
+    parser.add_argument("--coordinator-url", required=True, help="URL of the coordinator server")
+    parser.add_argument(
+        "--auto-open", action="store_true", help="Automatically open dashboard in web browser"
+    )
+
     args = parser.parse_args()
-    
+
     # Create dashboard server
     dashboard_server = DashboardServer(
         host=args.host,
         port=args.port,
         coordinator_url=args.coordinator_url,
-        auto_open=args.auto_open
+        auto_open=args.auto_open,
     )
-    
+
     # Start server
     try:
         logger.info("Starting dashboard server...")
         dashboard_server.start()
-        
+
         # Keep main thread alive
         while True:
             time.sleep(1)

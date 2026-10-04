@@ -41,16 +41,10 @@ from .prover_matrix_registry import ProverMatrixEntry, ProverMatrixSnapshot
 
 
 MULTI_PROVER_ROUTER_VERSION = 1
-PROPERTY_OBLIGATION_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/property-obligation@1"
-)
+PROPERTY_OBLIGATION_SCHEMA = "ipfs_accelerate_py/agent-supervisor/property-obligation@1"
 PORTFOLIO_PLAN_SCHEMA = "ipfs_accelerate_py/agent-supervisor/prover-portfolio-plan@1"
-PORTFOLIO_ATTEMPT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/prover-portfolio-attempt@1"
-)
-PORTFOLIO_RESULT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/prover-portfolio-result@1"
-)
+PORTFOLIO_ATTEMPT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/prover-portfolio-attempt@1"
+PORTFOLIO_RESULT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/prover-portfolio-result@1"
 DEFAULT_PORTFOLIO_TIMEOUT_SECONDS = 60.0
 DEFAULT_MAX_PARALLEL_PROVERS = 8
 DEFAULT_MAX_EVIDENCE_BYTES = 256 * 1024
@@ -139,9 +133,7 @@ def _strings(values: Iterable[Any] | None, name: str) -> tuple[str, ...]:
         return ()
     if isinstance(values, (str, bytes, bytearray)):
         raise ContractValidationError(f"{name} must be a sequence")
-    return tuple(
-        sorted({_text(value, name) for value in values})
-    )
+    return tuple(sorted({_text(value, name) for value in values}))
 
 
 def _mapping(value: Mapping[str, Any] | None, name: str) -> dict[str, Any]:
@@ -158,14 +150,10 @@ def _mapping(value: Mapping[str, Any] | None, name: str) -> dict[str, Any]:
 def _schema(payload: Mapping[str, Any], expected: str) -> None:
     supplied = payload.get("schema")
     if supplied not in (None, "", expected):
-        raise ContractValidationError(
-            f"unsupported schema {supplied!r}; expected {expected}"
-        )
+        raise ContractValidationError(f"unsupported schema {supplied!r}; expected {expected}")
 
 
-def _claimed_identity(
-    payload: Mapping[str, Any], actual: str, noun: str
-) -> None:
+def _claimed_identity(payload: Mapping[str, Any], actual: str, noun: str) -> None:
     claimed = payload.get("content_id")
     if claimed and claimed != actual:
         raise ContractValidationError(f"{noun} content identity does not match")
@@ -173,13 +161,11 @@ def _claimed_identity(
 
 def _strict_json_size(value: Mapping[str, Any], limit: int) -> dict[str, Any]:
     result = _mapping(value, "evidence")
-    encoded = json.dumps(
-        result, sort_keys=True, separators=(",", ":"), allow_nan=False
-    ).encode("utf-8")
+    encoded = json.dumps(result, sort_keys=True, separators=(",", ":"), allow_nan=False).encode(
+        "utf-8"
+    )
     if len(encoded) > limit:
-        raise ContractValidationError(
-            f"evidence exceeds maximum of {limit} bytes"
-        )
+        raise ContractValidationError(f"evidence exceeds maximum of {limit} bytes")
     return result
 
 
@@ -198,7 +184,9 @@ class PropertyObligation(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "obligation_id", _text(self.obligation_id, "obligation_id"))
-        object.__setattr__(self, "property_kind", _enum(self.property_kind, PropertyKind, "property_kind"))
+        object.__setattr__(
+            self, "property_kind", _enum(self.property_kind, PropertyKind, "property_kind")
+        )
         object.__setattr__(self, "statement", _text(self.statement, "statement"))
         object.__setattr__(self, "premise_ids", _strings(self.premise_ids, "premise_ids"))
         object.__setattr__(
@@ -256,9 +244,7 @@ class PropertyObligation(CanonicalContract):
             property_kind=payload.get("property_kind", ""),
             statement=payload.get("statement", ""),
             premise_ids=tuple(payload.get("premise_ids") or ()),
-            required_assurance=payload.get(
-                "required_assurance", AssuranceLevel.SOLVER_CHECKED
-            ),
+            required_assurance=payload.get("required_assurance", AssuranceLevel.SOLVER_CHECKED),
             metadata=payload.get("metadata") or {},
         )
         _claimed_identity(payload, result.content_id, "obligation")
@@ -351,12 +337,9 @@ class ProverLane:
                 "only model-checker and kernel lanes may declare authority"
             )
         if self.prover_id.casefold().startswith("leanstral") and (
-            self.role is not ProverRole.MODEL_ASSISTANT
-            or self.authority_capability
+            self.role is not ProverRole.MODEL_ASSISTANT or self.authority_capability
         ):
-            raise ContractValidationError(
-                "Leanstral lanes must be model-assistant candidates"
-            )
+            raise ContractValidationError("Leanstral lanes must be model-assistant candidates")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -408,8 +391,7 @@ class PropertyPolicy:
         if len(ids) != len(set(ids)):
             raise ContractValidationError("a policy cannot route a prover twice")
         if any(
-            lane.role is ProverRole.MODEL_ASSISTANT and lane.requires_candidate
-            for lane in lanes
+            lane.role is ProverRole.MODEL_ASSISTANT and lane.requires_candidate for lane in lanes
         ):
             raise ContractValidationError(
                 "model assistants produce candidates and cannot require one"
@@ -468,16 +450,25 @@ def _authority(
 
 _KERNEL_LANES = (
     _authority(
-        "lean", "lean_kernel_check", role=ProverRole.KERNEL,
-        stage=3, requires_candidate=True,
+        "lean",
+        "lean_kernel_check",
+        role=ProverRole.KERNEL,
+        stage=3,
+        requires_candidate=True,
     ),
     _authority(
-        "coq", "coq_kernel_check", role=ProverRole.KERNEL,
-        stage=3, requires_candidate=True,
+        "coq",
+        "coq_kernel_check",
+        role=ProverRole.KERNEL,
+        stage=3,
+        requires_candidate=True,
     ),
     _authority(
-        "isabelle", "isabelle_kernel_check", role=ProverRole.KERNEL,
-        stage=3, requires_candidate=True,
+        "isabelle",
+        "isabelle_kernel_check",
+        role=ProverRole.KERNEL,
+        stage=3,
+        requires_candidate=True,
     ),
 )
 
@@ -510,11 +501,7 @@ DEFAULT_PROPERTY_POLICIES: Mapping[PropertyKind, PropertyPolicy] = {
     ),
     PropertyKind.HYPERPROPERTY: PropertyPolicy(
         PropertyKind.HYPERPROPERTY,
-        (
-            _authority(
-                "hyperltl_autohyper_mchyper", "hyperproperty_model_check"
-            ),
-        ),
+        (_authority("hyperltl_autohyper_mchyper", "hyperproperty_model_check"),),
     ),
     PropertyKind.RUNTIME_TRACE: PropertyPolicy(
         PropertyKind.RUNTIME_TRACE,
@@ -524,7 +511,10 @@ DEFAULT_PROPERTY_POLICIES: Mapping[PropertyKind, PropertyPolicy] = {
         PropertyKind.KERNEL_CHECK,
         tuple(
             ProverLane(
-                lane.prover_id, lane.role, 0, lane.authority_capability,
+                lane.prover_id,
+                lane.role,
+                0,
+                lane.authority_capability,
                 requires_candidate=False,
             )
             for lane in _KERNEL_LANES
@@ -562,7 +552,10 @@ DEFAULT_PROPERTY_POLICIES: Mapping[PropertyKind, PropertyPolicy] = {
             ProverLane("z3", ProverRole.CANDIDATE, 1),
             *tuple(
                 ProverLane(
-                    lane.prover_id, lane.role, 2, lane.authority_capability,
+                    lane.prover_id,
+                    lane.role,
+                    2,
+                    lane.authority_capability,
                     requires_candidate=True,
                 )
                 for lane in _KERNEL_LANES
@@ -584,9 +577,7 @@ class PortfolioPlan(CanonicalContract):
         if not isinstance(self.obligation, PropertyObligation):
             raise ContractValidationError("obligation must be a PropertyObligation")
         object.__setattr__(self, "policy_id", _text(self.policy_id, "policy_id"))
-        if not self.lanes or any(
-            not isinstance(lane, ProverLane) for lane in self.lanes
-        ):
+        if not self.lanes or any(not isinstance(lane, ProverLane) for lane in self.lanes):
             raise ContractValidationError("portfolio plan must contain lanes")
 
     @property
@@ -614,9 +605,7 @@ class PortfolioPlan(CanonicalContract):
         if not isinstance(obligation, Mapping):
             raise ContractValidationError("portfolio plan obligation must be an object")
         lanes = payload.get("lanes") or ()
-        if isinstance(lanes, (str, bytes, bytearray)) or not isinstance(
-            lanes, Sequence
-        ):
+        if isinstance(lanes, (str, bytes, bytearray)) or not isinstance(lanes, Sequence):
             raise ContractValidationError("portfolio plan lanes must be a sequence")
         result = cls(
             obligation=PropertyObligation.from_dict(obligation),
@@ -656,18 +645,12 @@ class ProverOutput:
         if not isinstance(self.conclusive, bool):
             raise ContractValidationError("conclusive must be boolean")
         if self.conclusive and self.outcome is not AttemptOutcome.COUNTEREXAMPLE:
-            raise ContractValidationError(
-                "only counterexample output may be conclusive"
-            )
+            raise ContractValidationError("only counterexample output may be conclusive")
         if self.conclusive and not self.evidence:
-            raise ContractValidationError(
-                "a conclusive counterexample requires bounded evidence"
-            )
+            raise ContractValidationError("a conclusive counterexample requires bounded evidence")
 
     @classmethod
-    def from_value(
-        cls, value: Any, *, maximum_evidence_bytes: int
-    ) -> "ProverOutput":
+    def from_value(cls, value: Any, *, maximum_evidence_bytes: int) -> "ProverOutput":
         if isinstance(value, cls):
             evidence = _strict_json_size(value.evidence, maximum_evidence_bytes)
             return cls(value.outcome, value.detail, evidence, value.conclusive)
@@ -682,9 +665,7 @@ class ProverOutput:
         raw_outcome = value.get("outcome", value.get("status"))
         if raw_outcome is None:
             raise ContractValidationError("prover output requires outcome")
-        evidence = _strict_json_size(
-            value.get("evidence") or {}, maximum_evidence_bytes
-        )
+        evidence = _strict_json_size(value.get("evidence") or {}, maximum_evidence_bytes)
         return cls(
             raw_outcome,
             value.get("detail", ""),
@@ -696,8 +677,7 @@ class ProverOutput:
 class PortfolioRunner(Protocol):
     def __call__(
         self, request: AttemptRequest, cancellation: threading.Event
-    ) -> ProverOutput | Mapping[str, Any]:
-        ...
+    ) -> ProverOutput | Mapping[str, Any]: ...
 
 
 @dataclass(frozen=True)
@@ -722,11 +702,13 @@ class PortfolioAttempt(CanonicalContract):
         object.__setattr__(self, "prover_id", _text(self.prover_id, "prover_id"))
         object.__setattr__(self, "role", _enum(self.role, ProverRole, "role"))
         object.__setattr__(
-            self, "reported_outcome",
+            self,
+            "reported_outcome",
             _enum(self.reported_outcome, AttemptOutcome, "reported_outcome"),
         )
         object.__setattr__(
-            self, "effective_outcome",
+            self,
+            "effective_outcome",
             _enum(self.effective_outcome, AttemptOutcome, "effective_outcome"),
         )
         object.__setattr__(self, "detail", _text(self.detail, "detail", required=False))
@@ -814,32 +796,30 @@ class PortfolioResult(CanonicalContract):
         object.__setattr__(self, "verdict", _enum(self.verdict, PortfolioVerdict, "verdict"))
         object.__setattr__(self, "assurance", _enum(self.assurance, AssuranceLevel, "assurance"))
         if any(not isinstance(item, PortfolioAttempt) for item in self.attempts):
-            raise ContractValidationError(
-                "attempts must contain PortfolioAttempt values"
-            )
+            raise ContractValidationError("attempts must contain PortfolioAttempt values")
         if len(self.attempts) != len(self.plan.lanes):
             raise ContractValidationError("result must retain every planned attempt")
         if tuple(item.prover_id for item in self.attempts) != self.plan.prover_ids:
             raise ContractValidationError("attempt order must match plan order")
         object.__setattr__(self, "reason", _text(self.reason, "reason"))
         object.__setattr__(
-            self, "authority_attempt_ids",
+            self,
+            "authority_attempt_ids",
             _strings(self.authority_attempt_ids, "authority_attempt_ids"),
         )
         if self.counterexample_attempt_id:
             object.__setattr__(
-                self, "counterexample_attempt_id",
+                self,
+                "counterexample_attempt_id",
                 _text(self.counterexample_attempt_id, "counterexample_attempt_id"),
             )
         authoritative_attempt_ids = {
             item.attempt_id
             for item in self.attempts
-            if item.authoritative
-            and item.effective_outcome is AttemptOutcome.VERIFIED
+            if item.authoritative and item.effective_outcome is AttemptOutcome.VERIFIED
         }
         if any(
-            attempt_id not in authoritative_attempt_ids
-            for attempt_id in self.authority_attempt_ids
+            attempt_id not in authoritative_attempt_ids for attempt_id in self.authority_attempt_ids
         ):
             raise ContractValidationError(
                 "authority_attempt_ids must reference verified authority attempts"
@@ -847,8 +827,7 @@ class PortfolioResult(CanonicalContract):
         counterexample_attempt_ids = {
             item.attempt_id
             for item in self.attempts
-            if item.conclusive
-            and item.effective_outcome is AttemptOutcome.COUNTEREXAMPLE
+            if item.conclusive and item.effective_outcome is AttemptOutcome.COUNTEREXAMPLE
         }
         if (
             self.counterexample_attempt_id
@@ -857,9 +836,7 @@ class PortfolioResult(CanonicalContract):
             raise ContractValidationError(
                 "counterexample_attempt_id must reference conclusive evidence"
             )
-        expected_disagreement = bool(
-            authoritative_attempt_ids and counterexample_attempt_ids
-        )
+        expected_disagreement = bool(authoritative_attempt_ids and counterexample_attempt_ids)
         if self.disagreement != expected_disagreement:
             raise ContractValidationError(
                 "disagreement must be derived from retained authority attempts"
@@ -876,14 +853,12 @@ class PortfolioResult(CanonicalContract):
             raise ContractValidationError(
                 "proved result does not meet the obligation's required assurance"
             )
+        if self.verdict is PortfolioVerdict.DISPROVED and not self.counterexample_attempt_id:
+            raise ContractValidationError("disproved result requires a conclusive counterexample")
         if (
-            self.verdict is PortfolioVerdict.DISPROVED
-            and not self.counterexample_attempt_id
+            self.verdict is not PortfolioVerdict.PROVED
+            and self.assurance is not AssuranceLevel.UNVERIFIED
         ):
-            raise ContractValidationError(
-                "disproved result requires a conclusive counterexample"
-            )
-        if self.verdict is not PortfolioVerdict.PROVED and self.assurance is not AssuranceLevel.UNVERIFIED:
             raise ContractValidationError("non-proved result must be unverified")
         if (
             isinstance(self.duration_ms, bool)
@@ -929,9 +904,7 @@ class PortfolioResult(CanonicalContract):
         attempts = payload.get("attempts") or ()
         if not isinstance(plan, Mapping):
             raise ContractValidationError("portfolio result plan must be an object")
-        if isinstance(attempts, (str, bytes, bytearray)) or not isinstance(
-            attempts, Sequence
-        ):
+        if isinstance(attempts, (str, bytes, bytearray)) or not isinstance(attempts, Sequence):
             raise ContractValidationError("portfolio result attempts must be a sequence")
         result = cls(
             plan=PortfolioPlan.from_dict(plan),
@@ -1016,9 +989,7 @@ class MultiProverRouter:
         try:
             return self._policies[kind]
         except KeyError as exc:
-            raise ContractValidationError(
-                f"no portfolio policy for {kind.value}"
-            ) from exc
+            raise ContractValidationError(f"no portfolio policy for {kind.value}") from exc
 
     def _obligation(
         self,
@@ -1029,14 +1000,10 @@ class MultiProverRouter:
             if property_kind is not None and obligation.property_kind is not _enum(
                 property_kind, PropertyKind, "property_kind"
             ):
-                raise ContractValidationError(
-                    "explicit property_kind conflicts with obligation"
-                )
+                raise ContractValidationError("explicit property_kind conflicts with obligation")
             return obligation
         if isinstance(obligation, CodeProofObligation):
-            return PropertyObligation.from_code_obligation(
-                obligation, property_kind=property_kind
-            )
+            return PropertyObligation.from_code_obligation(obligation, property_kind=property_kind)
         if isinstance(obligation, Mapping):
             value = PropertyObligation.from_dict(obligation)
             return self._obligation(value, property_kind)
@@ -1051,9 +1018,8 @@ class MultiProverRouter:
         normalized = self._obligation(obligation, property_kind)
         policy = self.policy_for(normalized.property_kind)
         lanes = policy.lanes
-        if (
-            normalized.required_assurance.satisfies(AssuranceLevel.KERNEL_VERIFIED)
-            and not any(lane.role is ProverRole.KERNEL for lane in lanes)
+        if normalized.required_assurance.satisfies(AssuranceLevel.KERNEL_VERIFIED) and not any(
+            lane.role is ProverRole.KERNEL for lane in lanes
         ):
             stage = max(lane.stage for lane in lanes) + 1
             lanes = (
@@ -1080,24 +1046,32 @@ class MultiProverRouter:
         if self._matrix is not None or policy.require_capability_evidence:
             if entry is None:
                 return _LaneGate(
-                    False, False, AttemptOutcome.UNAVAILABLE,
+                    False,
+                    False,
+                    AttemptOutcome.UNAVAILABLE,
                     "prover is absent from the executable capability matrix",
                 )
             if not entry.discovered or not entry.smoke_tested:
                 return _LaneGate(
-                    False, False, AttemptOutcome.UNAVAILABLE,
+                    False,
+                    False,
+                    AttemptOutcome.UNAVAILABLE,
                     f"prover capability is not smoke-tested: {entry.reason}",
                     entry.receipt.receipt_id if entry.receipt else "",
                 )
             if not entry.translation_conformant:
                 return _LaneGate(
-                    False, False, AttemptOutcome.UNSUPPORTED,
+                    False,
+                    False,
+                    AttemptOutcome.UNSUPPORTED,
                     "prover translation is not conformant",
                     entry.receipt.receipt_id if entry.receipt else "",
                 )
             if lane.role is ProverRole.KERNEL and not entry.reconstruction_capable:
                 return _LaneGate(
-                    False, False, AttemptOutcome.UNSUPPORTED,
+                    False,
+                    False,
+                    AttemptOutcome.UNSUPPORTED,
                     "kernel is not reconstruction-capable",
                     entry.receipt.receipt_id if entry.receipt else "",
                 )
@@ -1110,13 +1084,14 @@ class MultiProverRouter:
             gate = gate_prover_path(
                 path_id,
                 report,
-                authoritative_for=(lane.authority_capability,)
-                if lane.authority_capability else (),
+                authoritative_for=(lane.authority_capability,) if lane.authority_capability else (),
                 registry=self._quarantine,
             )
             if not gate.promotion_allowed:
                 return _LaneGate(
-                    False, False, AttemptOutcome.UNSUPPORTED,
+                    False,
+                    False,
+                    AttemptOutcome.UNSUPPORTED,
                     "translation path is quarantined or not conformant",
                     entry.receipt.receipt_id if entry and entry.receipt else "",
                     gate,
@@ -1129,12 +1104,8 @@ class MultiProverRouter:
         if lane.role is ProverRole.MODEL_ASSISTANT:
             authoritative = False
         if authoritative and entry is not None:
-            authoritative = (
-                lane.authority_capability in entry.authoritative_for
-                and (
-                    lane.role is not ProverRole.KERNEL
-                    or entry.reconstruction_capable
-                )
+            authoritative = lane.authority_capability in entry.authoritative_for and (
+                lane.role is not ProverRole.KERNEL or entry.reconstruction_capable
             )
         return _LaneGate(
             True,
@@ -1225,9 +1196,7 @@ class MultiProverRouter:
             evidence=output.evidence,
             duration_ms=duration_ms,
             capability_receipt_id=gate.receipt_id,
-            conformance_gate_id=(
-                gate.conformance_gate.content_id if gate.conformance_gate else ""
-            ),
+            conformance_gate_id=(gate.conformance_gate.content_id if gate.conformance_gate else ""),
             cancellation_requested=cancellation_requested,
         )
 
@@ -1264,8 +1233,7 @@ class MultiProverRouter:
                     break
                 previous = list(records.values())
                 has_candidate = any(
-                    item.effective_outcome
-                    in (AttemptOutcome.CANDIDATE, AttemptOutcome.VERIFIED)
+                    item.effective_outcome in (AttemptOutcome.CANDIDATE, AttemptOutcome.VERIFIED)
                     for item in previous
                 )
                 futures: dict[Future[tuple[ProverOutput, int]], ProverLane] = {}
@@ -1291,7 +1259,8 @@ class MultiProverRouter:
                     remaining = deadline - self._monotonic()
                     if remaining <= 0:
                         records[lane.prover_id] = self._attempt_from_output(
-                            lane, gate,
+                            lane,
+                            gate,
                             ProverOutput(AttemptOutcome.TIMEOUT, "portfolio deadline expired"),
                             0,
                         )
@@ -1316,9 +1285,7 @@ class MultiProverRouter:
                     remaining = deadline - self._monotonic()
                     if remaining <= 0:
                         break
-                    done, pending = wait(
-                        pending, timeout=remaining, return_when=FIRST_COMPLETED
-                    )
+                    done, pending = wait(pending, timeout=remaining, return_when=FIRST_COMPLETED)
                     if not done:
                         break
                     found_counterexample = False
@@ -1407,14 +1374,12 @@ class MultiProverRouter:
         positives = tuple(
             item
             for item in attempts
-            if item.authoritative
-            and item.effective_outcome is AttemptOutcome.VERIFIED
+            if item.authoritative and item.effective_outcome is AttemptOutcome.VERIFIED
         )
         counterexamples = tuple(
             item
             for item in attempts
-            if item.conclusive
-            and item.effective_outcome is AttemptOutcome.COUNTEREXAMPLE
+            if item.conclusive and item.effective_outcome is AttemptOutcome.COUNTEREXAMPLE
         )
         disagreement = bool(positives and counterexamples)
         blockers = tuple(
@@ -1422,9 +1387,7 @@ class MultiProverRouter:
         )
         authority_ids = tuple(item.attempt_id for item in positives)
         counterexample_id = (
-            counterexamples[0].attempt_id
-            if counterexamples
-            else stopped_counterexample_id
+            counterexamples[0].attempt_id if counterexamples else stopped_counterexample_id
         )
 
         if disagreement and policy.fail_on_disagreement:
@@ -1439,8 +1402,7 @@ class MultiProverRouter:
             verdict = (
                 PortfolioVerdict.ERROR
                 if any(
-                    item.effective_outcome
-                    in (AttemptOutcome.MALFORMED, AttemptOutcome.ERROR)
+                    item.effective_outcome in (AttemptOutcome.MALFORMED, AttemptOutcome.ERROR)
                     for item in blockers
                 )
                 else PortfolioVerdict.INCONCLUSIVE
@@ -1462,25 +1424,20 @@ class MultiProverRouter:
                 assurance = AssuranceLevel.UNVERIFIED
                 authority_ids = ()
                 reason = (
-                    "an authority accepted the obligation but did not meet "
-                    "its required assurance"
+                    "an authority accepted the obligation but did not meet its required assurance"
                 )
-        elif (
-            any(
-                item.effective_outcome
-                in (AttemptOutcome.UNSUPPORTED, AttemptOutcome.UNAVAILABLE)
-                for item in attempts
+        elif any(
+            item.effective_outcome in (AttemptOutcome.UNSUPPORTED, AttemptOutcome.UNAVAILABLE)
+            for item in attempts
+        ) and all(
+            item.effective_outcome
+            in (
+                AttemptOutcome.UNSUPPORTED,
+                AttemptOutcome.UNAVAILABLE,
+                AttemptOutcome.BLOCKED,
+                AttemptOutcome.CANCELLED,
             )
-            and all(
-                item.effective_outcome
-                in (
-                    AttemptOutcome.UNSUPPORTED,
-                    AttemptOutcome.UNAVAILABLE,
-                    AttemptOutcome.BLOCKED,
-                    AttemptOutcome.CANCELLED,
-                )
-                for item in attempts
-            )
+            for item in attempts
         ):
             verdict = PortfolioVerdict.UNSUPPORTED
             assurance = AssuranceLevel.UNVERIFIED
@@ -1488,10 +1445,7 @@ class MultiProverRouter:
         else:
             verdict = PortfolioVerdict.INCONCLUSIVE
             assurance = AssuranceLevel.UNVERIFIED
-            if any(
-                item.effective_outcome is AttemptOutcome.CANDIDATE
-                for item in attempts
-            ):
+            if any(item.effective_outcome is AttemptOutcome.CANDIDATE for item in attempts):
                 reason = (
                     "solver candidates were retained but no configured "
                     "reconstruction or model-checking authority accepted them"
@@ -1523,9 +1477,7 @@ def route_obligation(
 ) -> PortfolioPlan:
     """Convenience read-only route selection entry point."""
 
-    return (router or MultiProverRouter()).plan(
-        obligation, property_kind=property_kind
-    )
+    return (router or MultiProverRouter()).plan(obligation, property_kind=property_kind)
 
 
 def execute_portfolio(
@@ -1537,9 +1489,7 @@ def execute_portfolio(
 ) -> PortfolioResult:
     """Convenience bounded execution entry point."""
 
-    return (router or MultiProverRouter()).execute(
-        obligation, runner, property_kind=property_kind
-    )
+    return (router or MultiProverRouter()).execute(obligation, runner, property_kind=property_kind)
 
 
 __all__ = [

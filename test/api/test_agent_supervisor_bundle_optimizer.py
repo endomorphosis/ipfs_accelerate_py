@@ -85,11 +85,7 @@ def _task(task_id: str, **overrides: object) -> dict[str, object]:
 
 
 def _bundled_task_cids(result: object) -> set[str]:
-    return {
-        task_cid
-        for bundle in result.bundles
-        for task_cid in bundle.task_cids
-    }
+    return {task_cid for bundle in result.bundles for task_cid in bundle.task_cids}
 
 
 def test_optimizer_requires_admission_to_supply_canonical_identity():
@@ -134,28 +130,20 @@ def test_optimizer_groups_shared_context_and_reuses_validation_without_losing_id
         unrelated["canonical_task_cid"],
     }
     shared_bundle = next(
-        bundle
-        for bundle in result.bundles
-        if first["canonical_task_cid"] in bundle.task_cids
+        bundle for bundle in result.bundles if first["canonical_task_cid"] in bundle.task_cids
     )
     assert set(shared_bundle.task_cids) == {
         first["canonical_task_cid"],
         second["canonical_task_cid"],
     }
-    assert shared_bundle.validation_commands == (
-        "python -m pytest test/shared.py -q",
-    )
+    assert shared_bundle.validation_commands == ("python -m pytest test/shared.py -q",)
     assert set(shared_bundle.canonical_task_keys) == {
         first["canonical_task_key"],
         second["canonical_task_key"],
     }
 
     projection = result.to_dict()
-    projected = {
-        task_cid
-        for bundle in projection["bundles"]
-        for task_cid in bundle["task_cids"]
-    }
+    projected = {task_cid for bundle in projection["bundles"] for task_cid in bundle["task_cids"]}
     assert projected == _bundled_task_cids(result)
 
 
@@ -222,9 +210,7 @@ def test_dependency_waves_preserve_independent_critical_path_width():
         (child_b, root_a, child_a, root_b),
         policy=BundleOptimizationPolicy(max_tasks_per_bundle=1),
     )
-    wave_by_task = {
-        bundle.task_cids[0]: bundle.execution_wave for bundle in result.bundles
-    }
+    wave_by_task = {bundle.task_cids[0]: bundle.execution_wave for bundle in result.bundles}
 
     assert wave_by_task[root_a["canonical_task_cid"]] == 0
     assert wave_by_task[root_b["canonical_task_cid"]] == 0
@@ -274,18 +260,16 @@ def test_conflicting_tasks_are_serialized_even_when_context_reuse_is_high():
             allow_internal_conflicts=False,
         ),
     )
-    containing = {
-        task_cid: bundle
-        for bundle in result.bundles
-        for task_cid in bundle.task_cids
-    }
+    containing = {task_cid: bundle for bundle in result.bundles for task_cid in bundle.task_cids}
 
-    assert containing[first["canonical_task_cid"]].bundle_cid != containing[
-        second["canonical_task_cid"]
-    ].bundle_cid
-    assert containing[first["canonical_task_cid"]].execution_wave != containing[
-        second["canonical_task_cid"]
-    ].execution_wave
+    assert (
+        containing[first["canonical_task_cid"]].bundle_cid
+        != containing[second["canonical_task_cid"]].bundle_cid
+    )
+    assert (
+        containing[first["canonical_task_cid"]].execution_wave
+        != containing[second["canonical_task_cid"]].execution_wave
+    )
     assert (
         containing[first["canonical_task_cid"]].conflict_weight > 0
         or containing[second["canonical_task_cid"]].conflict_weight > 0
@@ -370,9 +354,7 @@ def test_packet_completion_propagates_only_to_explicit_canonical_bindings():
     assert completion.propagated_task_cids == (bound["canonical_task_cid"],)
     assert unbound["canonical_task_cid"] not in completion.completed_task_cids
     assert same_family_only["canonical_task_cid"] not in completion.completed_task_cids
-    assert completion.evidence.proved_requirement_ids == (
-        PACKET_COMPLETION_BINDING_REQUIREMENT_ID,
-    )
+    assert completion.evidence.proved_requirement_ids == (PACKET_COMPLETION_BINDING_REQUIREMENT_ID,)
 
 
 def test_packet_completion_evidence_fails_closed_for_unbound_or_tampered_projection():
@@ -413,9 +395,7 @@ def test_packet_completion_evidence_fails_closed_for_unbound_or_tampered_project
     )
 
     assert valid.verify_integrity()
-    assert valid.proved_requirement_ids == (
-        PACKET_COMPLETION_BINDING_REQUIREMENT_ID,
-    )
+    assert valid.proved_requirement_ids == (PACKET_COMPLETION_BINDING_REQUIREMENT_ID,)
     assert invalid.verify_integrity()
     assert invalid.proved_requirement_ids == ()
 
@@ -495,25 +475,23 @@ def test_vector_execution_packet_projects_exact_canonical_completion_binding():
         "cid-unbound",
     }
     assert packet["primary_task_cid"] == "cid-packet"
-    assert packet["completion_binding"]["bound_sibling_task_cids"] == [
-        "cid-bound"
-    ]
+    assert packet["completion_binding"]["bound_sibling_task_cids"] == ["cid-bound"]
     assert packet["completion_binding"]["bound_sibling_task_ids"] == ["BOUND"]
     assert packet["completion_binding"]["canonical_task_keys"] == {
         "cid-packet": "task/v1/packet",
         "cid-bound": "task/v1/bound",
     }
-    assert "cid-unbound" not in packet["completion_binding"][
-        "bound_sibling_task_cids"
-    ]
+    assert "cid-unbound" not in packet["completion_binding"]["bound_sibling_task_cids"]
     assert len(packet["task_work_contracts"]) == 3
     assert len(set(packet["task_work_contract_ids"])) == 3
-    assert {
-        contract["canonical_task_cid"]
-        for contract in packet["task_work_contracts"]
-    } == {"cid-packet", "cid-bound", "cid-unbound"}
+    assert {contract["canonical_task_cid"] for contract in packet["task_work_contracts"]} == {
+        "cid-packet",
+        "cid-bound",
+        "cid-unbound",
+    }
     assert all(
-        contract["work_contract"]["acceptance_effect_subset"] == {
+        contract["work_contract"]["acceptance_effect_subset"]
+        == {
             "acceptance": ["packet projection remains coherent"],
             "effects": ["packet work is executed"],
             "evidence_subset": [],
@@ -581,9 +559,7 @@ def test_optimizer_uses_evidence_provider_and_resource_compatibility():
         (other_resource, compatible, other_provider, shared_evidence),
         policy=BundleOptimizationPolicy(max_tasks_per_bundle=4),
     )
-    containing = {
-        cid: bundle for bundle in result.bundles for cid in bundle.task_cids
-    }
+    containing = {cid: bundle for bundle in result.bundles for cid in bundle.task_cids}
 
     shared_bundle = containing[shared_evidence["canonical_task_cid"]]
     assert set(shared_bundle.task_cids) == {
@@ -626,23 +602,14 @@ def test_conflict_coloring_preserves_independent_width_for_path_graph():
         (right, left, middle),
         policy=BundleOptimizationPolicy(max_tasks_per_bundle=1),
     )
-    wave_by_cid = {
-        bundle.task_cids[0]: bundle.execution_wave for bundle in result.bundles
-    }
+    wave_by_cid = {bundle.task_cids[0]: bundle.execution_wave for bundle in result.bundles}
 
     assert result.metrics["critical_path_wave_count"] == 2
-    assert wave_by_cid[left["canonical_task_cid"]] == wave_by_cid[
-        right["canonical_task_cid"]
-    ]
-    assert wave_by_cid[middle["canonical_task_cid"]] != wave_by_cid[
-        left["canonical_task_cid"]
-    ]
+    assert wave_by_cid[left["canonical_task_cid"]] == wave_by_cid[right["canonical_task_cid"]]
+    assert wave_by_cid[middle["canonical_task_cid"]] != wave_by_cid[left["canonical_task_cid"]]
     assert max(result.execution_width_by_wave.values()) == 2
     assert result.metrics["merge_conflict_rate_millionths"] == 0
-    assert (
-        result.comparison.current_metrics["merge_conflict_rate_millionths"]
-        == 1_000_000
-    )
+    assert result.comparison.current_metrics["merge_conflict_rate_millionths"] == 1_000_000
 
 
 def test_critical_path_width_evidence_proves_independent_path_endpoints():
@@ -685,19 +652,18 @@ def test_critical_path_width_evidence_proves_independent_path_endpoints():
 
     assert evidence.verify_integrity()
     assert evidence.evidence_id == repeated.evidence_id
-    assert evidence.proved_requirement_ids == (
-        CRITICAL_PATH_WIDTH_REQUIREMENT_ID,
-    )
+    assert evidence.proved_requirement_ids == (CRITICAL_PATH_WIDTH_REQUIREMENT_ID,)
     assert evidence.independent_width_by_dependency_wave == {"0": 2}
-    assert evidence.effective_task_waves[left["canonical_task_cid"]] == (
-        evidence.effective_task_waves[right["canonical_task_cid"]]
-    )
-    assert evidence.effective_task_waves[middle["canonical_task_cid"]] != (
+    assert (
         evidence.effective_task_waves[left["canonical_task_cid"]]
+        == (evidence.effective_task_waves[right["canonical_task_cid"]])
+    )
+    assert (
+        evidence.effective_task_waves[middle["canonical_task_cid"]]
+        != (evidence.effective_task_waves[left["canonical_task_cid"]])
     )
     assert all(
-        evidence.effective_task_waves[left_cid]
-        != evidence.effective_task_waves[right_cid]
+        evidence.effective_task_waves[left_cid] != evidence.effective_task_waves[right_cid]
         for left_cid, right_cid in evidence.blocking_conflict_pairs
     )
 
@@ -831,9 +797,7 @@ def test_critical_path_width_proof_binds_closed_dag_and_exact_conflict_edges():
         repository_tree="git-tree-asi-035",
     )
 
-    assert evidence.proved_requirement_ids == (
-        CRITICAL_PATH_WIDTH_REQUIREMENT_ID,
-    )
+    assert evidence.proved_requirement_ids == (CRITICAL_PATH_WIDTH_REQUIREMENT_ID,)
     original_edges = {
         (parent, child)
         for child, parents in evidence.dependency_task_cids.items()
@@ -847,16 +811,12 @@ def test_critical_path_width_proof_binds_closed_dag_and_exact_conflict_edges():
     conflict_edges = serialized_edges - original_edges
     assert len(conflict_edges) == len(evidence.blocking_conflict_pairs) == 2
     assert original_edges.issubset(serialized_edges)
-    assert evidence.effective_task_waves[left["canonical_task_cid"]] == (
-        evidence.effective_task_waves[right["canonical_task_cid"]]
+    assert (
+        evidence.effective_task_waves[left["canonical_task_cid"]]
+        == (evidence.effective_task_waves[right["canonical_task_cid"]])
     )
-    assert {
-        cid
-        for bundle in evidence.bundle_population
-        for cid in bundle["task_cids"]
-    } == {
-        task["canonical_task_cid"]
-        for task in (left, middle, right, left_child, right_child)
+    assert {cid for bundle in evidence.bundle_population for cid in bundle["task_cids"]} == {
+        task["canonical_task_cid"] for task in (left, middle, right, left_child, right_child)
     }
 
 
@@ -1001,17 +961,11 @@ def test_optimizer_models_packet_aggregate_and_exact_covered_siblings():
     projection = result.packet_aggregates[0]
     assert projection.aggregate_task_cid == aggregate["canonical_task_cid"]
     assert projection.covered_sibling_task_cids == ("cid-covered",)
-    assert same_packet_unbound["canonical_task_cid"] not in (
-        projection.covered_sibling_task_cids
-    )
+    assert same_packet_unbound["canonical_task_cid"] not in (projection.covered_sibling_task_cids)
     aggregate_bundle = next(
-        bundle
-        for bundle in result.bundles
-        if aggregate["canonical_task_cid"] in bundle.task_cids
+        bundle for bundle in result.bundles if aggregate["canonical_task_cid"] in bundle.task_cids
     )
-    assert aggregate_bundle.packet_aggregate_task_cids == (
-        aggregate["canonical_task_cid"],
-    )
+    assert aggregate_bundle.packet_aggregate_task_cids == (aggregate["canonical_task_cid"],)
     assert aggregate_bundle.covered_sibling_task_cids == ("cid-covered",)
 
 
@@ -1046,9 +1000,7 @@ def test_vector_packet_keeps_exact_binding_outside_bounded_active_slice():
         semantic_identity="semantic-large-packet",
         goal_packet_role="packet_aggregate",
         candidate_kind="goal_packet_aggregate",
-        completion_task_bindings=[
-            sibling.semantic_identity for sibling in siblings
-        ],
+        completion_task_bindings=[sibling.semantic_identity for sibling in siblings],
         **common,
     )
 
@@ -1063,9 +1015,7 @@ def test_vector_packet_keeps_exact_binding_outside_bounded_active_slice():
     assert set(packet["completion_binding"]["bound_sibling_task_cids"]) == {
         sibling.task_cid for sibling in siblings
     }
-    assert "cid-member-6" in packet["completion_binding"][
-        "bound_sibling_task_cids"
-    ]
+    assert "cid-member-6" in packet["completion_binding"]["bound_sibling_task_cids"]
 
 
 def test_vector_packet_marks_conflicting_editors_for_serial_execution():
@@ -1151,14 +1101,16 @@ def test_vector_packet_uses_canonical_dag_waves_and_routes_width_producer():
     assert packet["independent_width_by_dependency_wave"] == {"0": 1, "1": 1}
     expected_binding = {
         CRITICAL_PATH_WIDTH_REQUIREMENT_ID: (
-            "bundle_optimizer.prove_critical_path_width:"
-            "CriticalPathWidthEvidence"
+            "bundle_optimizer.prove_critical_path_width:CriticalPathWidthEvidence"
         )
     }
     assert packet["evidence_producer_bindings"] == expected_binding
-    assert task_generation_evidence_producer_bindings(
-        [CRITICAL_PATH_WIDTH_REQUIREMENT_ID, "not-registered"]
-    ) == expected_binding
+    assert (
+        task_generation_evidence_producer_bindings(
+            [CRITICAL_PATH_WIDTH_REQUIREMENT_ID, "not-registered"]
+        )
+        == expected_binding
+    )
 
 
 def test_vector_packet_withholds_unresolved_tasks_from_width_projection():
@@ -1200,9 +1152,7 @@ def test_vector_packet_withholds_unresolved_tasks_from_width_projection():
         independent.task_cid: 0,
     }
     assert packet["dependency_projection_diagnostics"] == {
-        unresolved.task_cid: [
-            "unresolved_dependency:cid-not-in-packet-population"
-        ]
+        unresolved.task_cid: ["unresolved_dependency:cid-not-in-packet-population"]
     }
     projected_cids = {
         cid
@@ -1239,9 +1189,7 @@ def test_bundle_supervisor_projects_optimizer_slices_and_comparison():
         second["canonical_task_cid"],
     }
     assert optimization["metrics"]["model_call_count"] == 1
-    assert (
-        optimization["comparison"]["current_planner"]["model_call_count"] == 1
-    )
+    assert optimization["comparison"]["current_planner"]["model_call_count"] == 1
 
 
 def test_bundle_supervisor_rebuilds_contract_for_derived_planning_projection():
@@ -1272,12 +1220,9 @@ def test_bundle_supervisor_rebuilds_contract_for_derived_planning_projection():
     assert optimized["bundle_optimization"]["applied"] is True
     assert rehydrated["dependency_task_cids"] == []
     assert (
-        build_task_work_contract(rehydrated).task_work_contract_id
-        == contract.task_work_contract_id
+        build_task_work_contract(rehydrated).task_work_contract_id == contract.task_work_contract_id
     )
-    assert optimized["execution_slice_task_cids"] == [
-        source["canonical_task_cid"]
-    ]
+    assert optimized["execution_slice_task_cids"] == [source["canonical_task_cid"]]
     assert projected["work_contract_id"] == contract.work_contract_id
 
 
@@ -1322,17 +1267,10 @@ def test_bundle_optimizer_preserves_width_for_disjoint_managed_submodule_tasks()
         allow_disjoint_submodule_concurrency=True,
     )
 
-    assert sorted(
-        payload["optimizer_execution_wave"] for payload in conservative
-    ) == [0, 1]
-    assert sorted(
-        payload["optimizer_execution_wave"] for payload in concurrent
-    ) == [0, 0]
+    assert sorted(payload["optimizer_execution_wave"] for payload in conservative) == [0, 1]
+    assert sorted(payload["optimizer_execution_wave"] for payload in concurrent) == [0, 0]
     assert all(
-        payload["bundle_optimization"]["metrics"][
-            "blocking_conflict_count"
-        ]
-        == 0
+        payload["bundle_optimization"]["metrics"]["blocking_conflict_count"] == 0
         for payload in concurrent
     )
 
@@ -1411,15 +1349,10 @@ def test_split_optimizer_slices_receive_distinct_execution_identities():
     assert all("profile_g" not in payload for payload in payloads)
     assert all(payload["source_profile_g_ref"] for payload in payloads)
     assert all(
-        adapt_goal_bundle(payload, created_at_ms=1_783_872_000_000)[
-            "task_cid"
-        ]
+        adapt_goal_bundle(payload, created_at_ms=1_783_872_000_000)["task_cid"]
         for payload in payloads
     )
-    identities = {
-        canonical_bundle_identity(payload).canonical_task_cid
-        for payload in payloads
-    }
+    identities = {canonical_bundle_identity(payload).canonical_task_cid for payload in payloads}
     assert len(identities) == 2
 
 
@@ -1435,9 +1368,7 @@ def _g050_binding() -> dict[str, str]:
         "objective_id": TASK_GENERATION_OBJECTIVE_ID,
         "objective_revision": TASK_GENERATION_OBJECTIVE_REVISION,
         "analyzer_version": TASK_GENERATION_COMPLETION_ANALYZER_VERSION,
-        "configuration_revision": (
-            TASK_GENERATION_COMPLETION_CONFIGURATION_REVISION
-        ),
+        "configuration_revision": (TASK_GENERATION_COMPLETION_CONFIGURATION_REVISION),
     }
 
 
@@ -1480,16 +1411,10 @@ def _g050_completion_packet() -> dict[str, object]:
                 "verified": True,
                 "implementation": (
                     "ipfs_accelerate_py/agent_supervisor/"
-                    + (
-                        "task_quality.py"
-                        if index < 4
-                        else "bundle_optimizer.py"
-                    )
+                    + ("task_quality.py" if index < 4 else "bundle_optimizer.py")
                 ),
                 "validation": validation_command,
-                "validation_receipt_ids": [
-                    f"validation:asi-084:{index}"
-                ],
+                "validation_receipt_ids": [f"validation:asi-084:{index}"],
             }
             for index, criterion in enumerate(
                 TASK_GENERATION_ACCEPTANCE_CRITERIA,
@@ -1507,9 +1432,7 @@ def _g050_completion_packet() -> dict[str, object]:
                 "evaluated_evidence": {
                     "repository_id": G050_REPOSITORY_ID,
                     "repository_tree": G050_REPOSITORY_TREE,
-                    "evaluated_at": (
-                        G050_NOW - timedelta(minutes=3)
-                    ).isoformat(),
+                    "evaluated_at": (G050_NOW - timedelta(minutes=3)).isoformat(),
                     "validation_evidence": [
                         {
                             "valid": True,
@@ -1619,9 +1542,7 @@ def test_g050_parent_completion_requires_closed_current_tree_proof_packet():
     assert provisional.state is GoalState.PROVISIONALLY_COMPLETE
     assert provisional.verified is False
     assert "provisional_transition_required" in provisional.reason_codes
-    assert provisional.acceptance_criteria == (
-        TASK_GENERATION_ACCEPTANCE_CRITERIA
-    )
+    assert provisional.acceptance_criteria == (TASK_GENERATION_ACCEPTANCE_CRITERIA)
     assert provisional.gate is not None and provisional.gate.passed
 
     verified = evaluate_task_generation_completion(
@@ -1634,12 +1555,10 @@ def test_g050_parent_completion_requires_closed_current_tree_proof_packet():
     evaluated = verified.gate.evaluated_evidence
     assert evaluated["repository_id"] == G050_REPOSITORY_ID
     assert evaluated["repository_tree"] == G050_REPOSITORY_TREE
-    assert evaluated["acceptance_criteria"] == list(
-        TASK_GENERATION_ACCEPTANCE_CRITERIA
+    assert evaluated["acceptance_criteria"] == list(TASK_GENERATION_ACCEPTANCE_CRITERIA)
+    assert {child["goal_id"] for child in evaluated["child_goals"]} == set(
+        TASK_GENERATION_CHILD_GOAL_IDS
     )
-    assert {
-        child["goal_id"] for child in evaluated["child_goals"]
-    } == set(TASK_GENERATION_CHILD_GOAL_IDS)
 
     invalidated = copy.deepcopy(packet)
     stale_evidence = list(invalidated["evidence"])
@@ -1826,9 +1745,7 @@ def test_g050_parent_rejects_nonindependent_or_unhealthy_exhaustive_quorum(
     elif quorum_failure == "non_exhaustive":
         members[1]["scan_mode"] = "partial"
     elif quorum_failure == "stale":
-        members[1]["finished_at"] = (
-            G050_NOW - timedelta(hours=2)
-        ).isoformat()
+        members[1]["finished_at"] = (G050_NOW - timedelta(hours=2)).isoformat()
     elif quorum_failure == "foreign":
         quorum["binding"]["tree_id"] = "tree:sha256:foreign"
     else:
@@ -1859,9 +1776,9 @@ def test_g050_parent_rejects_unverified_stale_or_wrong_child_population(
     elif child_failure == "stale":
         children[0]["proof_requirements"][0]["freshness"] = "stale"
     else:
-        children[0]["completion_gate"]["evaluated_evidence"][
-            "repository_tree"
-        ] = "tree:sha256:foreign"
+        children[0]["completion_gate"]["evaluated_evidence"]["repository_tree"] = (
+            "tree:sha256:foreign"
+        )
     packet["child_goals"] = children
 
     _assert_g050_rejected(packet)
@@ -1915,11 +1832,7 @@ def test_optimizer_preserves_admitted_task_candidate_contract_without_drift():
     planning_contract = bundle.task_work_contracts[0]
 
     assert bundle.work_contract_ids == (candidate.work_contract_id,)
-    assert planning_contract["canonical_task_cid"] == (
-        candidate.canonical_task_cid
-    )
-    assert planning_contract["canonical_task_key"] == (
-        candidate.canonical_task_key
-    )
+    assert planning_contract["canonical_task_cid"] == (candidate.canonical_task_cid)
+    assert planning_contract["canonical_task_key"] == (candidate.canonical_task_key)
     assert planning_contract["work_contract"] == candidate.work_contract
     assert planning_contract["work_contract_id"] == candidate.work_contract_id

@@ -106,9 +106,7 @@ class StaleSnapshot(LedgerError):
 def _to_rfc3339(value: datetime) -> str:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("timestamp must be timezone-aware")
-    return value.astimezone(timezone.utc).isoformat(timespec="microseconds").replace(
-        "+00:00", "Z"
-    )
+    return value.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def dimension_key(dimension: UsageDimension | str, currency: Optional[str] = None) -> str:
@@ -284,7 +282,9 @@ def sample_in_window(
     return True
 
 
-def effective_ceiling(limit: UsageLimit, *, partition_scale: Optional[Tuple[int, int]] = None) -> Optional[int]:
+def effective_ceiling(
+    limit: UsageLimit, *, partition_scale: Optional[Tuple[int, int]] = None
+) -> Optional[int]:
     """Return finite effective ceiling after safety reserve, or None if unknown/unlimited."""
 
     ceiling = limit.ceiling
@@ -370,7 +370,9 @@ class UsageLedger:
         scope_id: str,
         budget: UsageVector | Mapping[str, Any],
     ) -> None:
-        amounts = vector_to_amounts(budget if isinstance(budget, UsageVector) else UsageVector.from_dict(budget))
+        amounts = vector_to_amounts(
+            budget if isinstance(budget, UsageVector) else UsageVector.from_dict(budget)
+        )
         self._doc.setdefault("caller_budgets", {})[scope_id] = amounts
 
     def get_caller_budget(self, scope_id: str) -> Dict[str, int]:
@@ -442,9 +444,7 @@ class UsageLedger:
         reservation_id = record.get("reservation_id")
         if not reservation_id:
             raise LedgerError("reservation record requires reservation_id")
-        self._doc.setdefault("reservations", {})[str(reservation_id)] = copy.deepcopy(
-            dict(record)
-        )
+        self._doc.setdefault("reservations", {})[str(reservation_id)] = copy.deepcopy(dict(record))
 
     def get_reservation_record(self, reservation_id: str) -> Optional[Dict[str, Any]]:
         raw = (self._doc.get("reservations") or {}).get(reservation_id)
@@ -496,18 +496,10 @@ class UsageLedger:
         samples: List[WindowSample] = []
         for record in self.iter_reservation_records(scope_id):
             state = record.get("state")
-            created_ms = (
-                rfc3339_to_ms(record["created_at"]) if record.get("created_at") else 0
-            )
-            reserved = {
-                str(k): int(v) for k, v in (record.get("reserved_amounts") or {}).items()
-            }
-            committed = {
-                str(k): int(v) for k, v in (record.get("committed_amounts") or {}).items()
-            }
-            charged = {
-                str(k): int(v) for k, v in (record.get("charged_amounts") or {}).items()
-            }
+            created_ms = rfc3339_to_ms(record["created_at"]) if record.get("created_at") else 0
+            reserved = {str(k): int(v) for k, v in (record.get("reserved_amounts") or {}).items()}
+            committed = {str(k): int(v) for k, v in (record.get("committed_amounts") or {}).items()}
+            charged = {str(k): int(v) for k, v in (record.get("charged_amounts") or {}).items()}
             rid = str(record.get("reservation_id"))
             if state in _active_reservation_states():
                 settled = self.stream_settled(rid)
@@ -637,9 +629,11 @@ class UsageLedger:
         # beyond what elapsed time from earliest sample allows.
         if not samples:
             return 0
-        earliest = min(s.occurred_ms for s in samples if s.dimension_key == dim_key) if any(
-            s.dimension_key == dim_key for s in samples
-        ) else now_ms
+        earliest = (
+            min(s.occurred_ms for s in samples if s.dimension_key == dim_key)
+            if any(s.dimension_key == dim_key for s in samples)
+            else now_ms
+        )
         elapsed_s = max(0, (now_ms - earliest) // 1000)
         refilled = elapsed_s * int(refill)
         # available = min(burst, burst - consumed + refilled) clamped
@@ -680,7 +674,10 @@ class UsageLedger:
         state = AvailabilityState.AVAILABLE
         if available == 0:
             state = AvailabilityState.EXHAUSTED
-        elif ceiling_value > 0 and (available * 1_000_000) // ceiling_value <= NEAR_LIMIT_RATIO_MICROS:
+        elif (
+            ceiling_value > 0
+            and (available * 1_000_000) // ceiling_value <= NEAR_LIMIT_RATIO_MICROS
+        ):
             state = AvailabilityState.NEAR_LIMIT
         cooldown = (self._doc.get("cooldown_until") or {}).get(scope_id)
         next_eligible = None
@@ -825,9 +822,7 @@ class UsageLedger:
     ) -> UsageSnapshot:
         limits = self.get_limits(scope_id)
         headroom = tuple(
-            self.headroom_for_limit(
-                scope_id, limit, now, partition_scale=partition_scale
-            )
+            self.headroom_for_limit(scope_id, limit, now, partition_scale=partition_scale)
             for limit in limits
         )
         active = []
@@ -952,9 +947,7 @@ class UsageLedger:
                 reservation["state"] = ReservationState.RELEASED.value
                 record["reservation"] = reservation
                 self.put_reservation_record(record)
-                self._doc.setdefault("stream_settled", {}).pop(
-                    record["reservation_id"], None
-                )
+                self._doc.setdefault("stream_settled", {}).pop(record["reservation_id"], None)
         # Zero charged history for terminal records of this scope (forward-looking
         # occupancy): mark charged_amounts empty so windows start fresh.
         for record in self.iter_reservation_records(scope_id):
@@ -1000,10 +993,7 @@ def apply_partition_to_limits(
             out.append(limit)
             continue
         scaled = (int(limit.ceiling.value) * numerator) // denominator
-        if (
-            limit.remaining.kind is QuantityKind.FINITE
-            and limit.remaining.value is not None
-        ):
+        if limit.remaining.kind is QuantityKind.FINITE and limit.remaining.value is not None:
             remaining = Quantity.finite(min(scaled, int(limit.remaining.value)))
         else:
             remaining = limit.remaining

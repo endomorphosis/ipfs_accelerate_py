@@ -301,9 +301,7 @@ def test_seeded_true_positive_path_traversal_vulnerability() -> None:
         edges=edges,
         properties=[prop],
         default_evidence=make_evidence("artifact:cex:path"),
-        config=SecurityAnalysisConfig(
-            tree_id="tree:1", policy_revision="policy:v1"
-        ),
+        config=SecurityAnalysisConfig(tree_id="tree:1", policy_revision="policy:v1"),
         families=[SecurityRuleFamily.PATH_TRAVERSAL_SCOPE_LOSS],
     )
     assert report.verdict is AnalysisVerdict.FINDINGS
@@ -340,10 +338,7 @@ def test_seeded_false_positive_sanitized_path() -> None:
     assert report.vulnerabilities == ()
     fp = [f for f in report.findings if f.seed_label == "false_positive"]
     assert fp
-    assert all(
-        f.classification is FindingClassification.CORRECTNESS_DRIFT
-        for f in fp
-    )
+    assert all(f.classification is FindingClassification.CORRECTNESS_DRIFT for f in fp)
     assert "sanitized_path" in fp[0].missing_requirements
 
 
@@ -358,10 +353,7 @@ def test_seeded_false_positive_without_declared_property() -> None:
     )
     assert report.vulnerabilities == ()
     assert report.findings
-    assert all(
-        f.classification is FindingClassification.CORRECTNESS_DRIFT
-        for f in report.findings
-    )
+    assert all(f.classification is FindingClassification.CORRECTNESS_DRIFT for f in report.findings)
     assert all(f.seed_label == "false_positive" for f in report.findings)
 
 
@@ -381,10 +373,7 @@ def test_seeded_false_positive_missing_evidence_is_suspicion() -> None:
         families=[SecurityRuleFamily.PATH_TRAVERSAL_SCOPE_LOSS],
     )
     assert report.vulnerabilities == ()
-    assert any(
-        f.classification is FindingClassification.SUSPICION
-        for f in report.findings
-    )
+    assert any(f.classification is FindingClassification.SUSPICION for f in report.findings)
 
 
 def test_seeded_unknown_dynamic_path() -> None:
@@ -397,11 +386,7 @@ def test_seeded_unknown_dynamic_path() -> None:
         families=[SecurityRuleFamily.PATH_TRAVERSAL_SCOPE_LOSS],
     )
     assert report.vulnerabilities == ()
-    dyn = [
-        f
-        for f in report.findings
-        if f.classification is FindingClassification.UNKNOWN_DYNAMIC
-    ]
+    dyn = [f for f in report.findings if f.classification is FindingClassification.UNKNOWN_DYNAMIC]
     assert dyn
     assert dyn[0].seed_label == "unknown_dynamic"
     assert dyn[0].threat_path is not None
@@ -602,10 +587,7 @@ def test_declared_threat_path_can_justify_vulnerability() -> None:
         families=[SecurityRuleFamily.SECRET_FLOW],
     )
     assert len(report.vulnerabilities) == 1
-    assert (
-        report.vulnerabilities[0].threat_path.origin
-        is ThreatPathOrigin.DECLARED
-    )
+    assert report.vulnerabilities[0].threat_path.origin is ThreatPathOrigin.DECLARED
 
 
 def test_max_findings_truncation() -> None:
@@ -692,9 +674,7 @@ def test_finding_content_id_stable() -> None:
         evidence=make_evidence("c:1"),
     )
     assert finding.finding_id == finding.content_id
-    assert SecurityFinding.from_dict(finding.to_record()).finding_id == (
-        finding.finding_id
-    )
+    assert SecurityFinding.from_dict(finding.to_record()).finding_id == (finding.finding_id)
 
 
 def test_duplicate_node_id_rejected() -> None:
@@ -708,14 +688,10 @@ def test_duplicate_node_id_rejected() -> None:
 
 def test_interprocedural_multi_hop_path() -> None:
     nodes = [
-        make_flow_node(
-            "s", "entry", role=FlowRole.SOURCE, tags=("untrusted_bytes",)
-        ),
+        make_flow_node("s", "entry", role=FlowRole.SOURCE, tags=("untrusted_bytes",)),
         make_flow_node("m1", "decode", role=FlowRole.PASSTHROUGH),
         make_flow_node("m2", "handoff", role=FlowRole.PASSTHROUGH),
-        make_flow_node(
-            "k", "exec", role=FlowRole.SINK, tags=("subprocess_shell",)
-        ),
+        make_flow_node("k", "exec", role=FlowRole.SINK, tags=("subprocess_shell",)),
     ]
     edges = [
         make_flow_edge("e1", "s", "m1"),

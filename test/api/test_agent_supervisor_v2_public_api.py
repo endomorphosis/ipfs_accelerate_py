@@ -31,11 +31,7 @@ V2_COLD_LAZY_MODULES = frozenset(
 
 
 def _qualified_owner(owner: str) -> str:
-    return (
-        owner
-        if owner == PACKAGE or owner.startswith(f"{PACKAGE}.")
-        else f"{PACKAGE}.{owner}"
-    )
+    return owner if owner == PACKAGE or owner.startswith(f"{PACKAGE}.") else f"{PACKAGE}.{owner}"
 
 
 def test_v2_stable_manifest_is_exact_immutable_and_canonical() -> None:
@@ -52,9 +48,7 @@ def test_v2_stable_manifest_is_exact_immutable_and_canonical() -> None:
     assert isinstance(export_modules, MappingProxyType)
     assert tuple(export_modules) == stable_exports
     assert set(export_modules) == set(stable_exports)
-    assert {_qualified_owner(owner) for owner in export_modules.values()} == (
-        V2_OWNER_MODULES
-    )
+    assert {_qualified_owner(owner) for owner in export_modules.values()} == (V2_OWNER_MODULES)
     assert all(name in api.__all__ for name in stable_exports)
     assert {
         "AGENT_SUPERVISOR_V2_PUBLIC_API_VERSION",
@@ -74,8 +68,7 @@ def test_v2_stable_manifest_is_exact_immutable_and_canonical() -> None:
         raise AssertionError("the v2 export owner manifest is mutable")
 
     owner_modules = {
-        module_name: importlib.import_module(module_name)
-        for module_name in V2_OWNER_MODULES
+        module_name: importlib.import_module(module_name) for module_name in V2_OWNER_MODULES
     }
     for name in stable_exports:
         owner_name = _qualified_owner(export_modules[name])
@@ -92,8 +85,7 @@ def test_v1_rollout_surface_remains_compatible_after_v2_resolution() -> None:
     assert len(api.PAIRED_ROLLOUT_STABLE_EXPORTS) == len(v1_owner.__all__)
     assert set(api.PAIRED_ROLLOUT_STABLE_EXPORTS) == set(v1_owner.__all__)
     assert all(
-        getattr(api, name) is getattr(v1_owner, name)
-        for name in api.PAIRED_ROLLOUT_STABLE_EXPORTS
+        getattr(api, name) is getattr(v1_owner, name) for name in api.PAIRED_ROLLOUT_STABLE_EXPORTS
     )
     assert not set(api.AGENT_SUPERVISOR_V2_STABLE_EXPORTS).intersection(
         api.PAIRED_ROLLOUT_STABLE_EXPORTS
@@ -106,16 +98,13 @@ def test_python_cli_and_mcp_v2_aliases_preserve_catalog_identities() -> None:
     control_plane = importlib.import_module(f"{PACKAGE}.control_plane")
     contracts = importlib.import_module(f"{PACKAGE}.control_contracts")
     native_tools = importlib.import_module(
-        "ipfs_accelerate_py.mcp_server.tools.agent_supervisor_tools."
-        "native_agent_supervisor_tools"
+        "ipfs_accelerate_py.mcp_server.tools.agent_supervisor_tools.native_agent_supervisor_tools"
     )
 
     assert api.agent_supervisor_v2_control_surface_publication is (
         control_plane.control_service_publication
     )
-    assert control_cli.agent_cli_v2_discovery_manifest is (
-        control_cli.agent_cli_discovery_manifest
-    )
+    assert control_cli.agent_cli_v2_discovery_manifest is (control_cli.agent_cli_discovery_manifest)
     assert control_cli.v2_cli_control_surface_publication is (
         control_cli.cli_control_surface_publication
     )
@@ -137,12 +126,8 @@ def test_python_cli_and_mcp_v2_aliases_preserve_catalog_identities() -> None:
         native_tools.mcp_v2_control_surface_publication(),
     )
 
-    assert {manifest.surface for manifest in manifests} == set(
-        contracts.ControlSurface
-    )
-    assert {publication.surface for publication in publications} == set(
-        contracts.ControlSurface
-    )
+    assert {manifest.surface for manifest in manifests} == set(contracts.ControlSurface)
+    assert {publication.surface for publication in publications} == set(contracts.ControlSurface)
     assert len({manifest.schema_population_id for manifest in manifests}) == 1
     assert len({publication.catalog_id for publication in publications}) == 1
 
@@ -152,9 +137,7 @@ def test_python_cli_and_mcp_v2_aliases_preserve_catalog_identities() -> None:
         assert len(manifest.operations) == len(canonical_operations)
         assert all(
             discovered is canonical
-            for discovered, canonical in zip(
-                manifest.operations, canonical_operations, strict=True
-            )
+            for discovered, canonical in zip(manifest.operations, canonical_operations, strict=True)
         )
         assert manifest.request_schema_ids == manifests[0].request_schema_ids
         assert manifest.result_schema_ids == manifests[0].result_schema_ids
@@ -171,15 +154,10 @@ def test_python_cli_and_mcp_v2_aliases_preserve_catalog_identities() -> None:
             for operation in publication.operations
         )
 
-    assert set(control_cli.COMMAND_OPERATIONS.values()) == set(
-        canonical_operations
-    )
-    assert set(native_tools.AGENT_SUPERVISOR_OPERATION_TOOLS) == set(
-        canonical_operations
-    )
+    assert set(control_cli.COMMAND_OPERATIONS.values()) == set(canonical_operations)
+    assert set(native_tools.AGENT_SUPERVISOR_OPERATION_TOOLS) == set(canonical_operations)
     assert all(
-        operation is contracts.Operation(operation.value)
-        for operation in canonical_operations
+        operation is contracts.Operation(operation.value) for operation in canonical_operations
     )
 
 
@@ -334,7 +312,5 @@ print(json.dumps({{
         "catalog_count": 1,
         "operation_identity": True,
         "canonical_exports": True,
-        "resolved_owner_modules": sorted(
-            V2_OWNER_MODULES.union(V2_COLD_LAZY_MODULES)
-        ),
+        "resolved_owner_modules": sorted(V2_OWNER_MODULES.union(V2_COLD_LAZY_MODULES)),
     }

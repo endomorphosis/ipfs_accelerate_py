@@ -17,6 +17,7 @@ try:
         get_model_stats_tool,
     )
 except Exception:
+
     def search_models_tool(  # type: ignore[misc]
         query: str,
         task_filter: Optional[str] = None,

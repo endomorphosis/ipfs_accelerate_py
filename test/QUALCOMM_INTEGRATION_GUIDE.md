@@ -62,9 +62,9 @@ The Qualcomm support is implemented through several components:
    ```python
    # Check for Qualcomm SDK
    HAS_QUALCOMM = (
-       importlib.util.find_spec("qnn_wrapper") is not None or
-       importlib.util.find_spec("qti") is not None or
-       "QUALCOMM_SDK" in os.environ
+       importlib.util.find_spec("qnn_wrapper") is not None
+       or importlib.util.find_spec("qti") is not None
+       or "QUALCOMM_SDK" in os.environ
    )
    ```
 
@@ -75,10 +75,11 @@ The Qualcomm support is implemented through several components:
        try:
            # Try to import Qualcomm-specific libraries
            import importlib.util
+
            has_qnn = importlib.util.find_spec("qnn_wrapper") is not None
            has_qti = importlib.util.find_spec("qti") is not None
            has_qualcomm_env = "QUALCOMM_SDK" in os.environ
-           
+
            if has_qnn or has_qti or has_qualcomm_env:
                self.platform = "QUALCOMM"
                self.device = "qualcomm"
@@ -90,7 +91,7 @@ The Qualcomm support is implemented through several components:
            print(f"Error initializing Qualcomm platform: {e}")
            self.platform = "CPU"
            self.device = "cpu"
-           
+
        return self.load_tokenizer()
    ```
 
@@ -102,28 +103,29 @@ The Qualcomm support is implemented through several components:
            model_path = self.get_model_path_or_name()
            if self.tokenizer is None:
                self.load_tokenizer()
-               
+
            # Check if Qualcomm QNN SDK is available
            import importlib.util
+
            has_qnn = importlib.util.find_spec("qnn_wrapper") is not None
-           
+
            if has_qnn:
                # QNN implementation would look something like this:
                # 1. Convert model to QNN format
                # 2. Load the model on the Hexagon DSP
                # 3. Set up the inference handler
                # ...
-               
+
                # For now, using a mock handler
                return MockHandler(self.model_path, "qualcomm")
            else:
                # Check for QTI AI Engine
                has_qti = importlib.util.find_spec("qti") is not None
-               
+
                if has_qti:
                    # QTI implementation
                    # ...
-                   
+
                    # For now, using a mock handler
                    return MockHandler(self.model_path, "qualcomm")
                else:
@@ -263,9 +265,9 @@ You can define custom power profiles for specific model architectures:
 CUSTOM_POWER_PROFILES = {
     "my-custom-model": {
         "base_power": 480.0,  # Base power in mW
-        "peak_factor": 1.3,   # Peak power multiplier
-        "idle_factor": 0.4,   # Idle power factor
-        "thermal_factor": 2.0  # Thermal generation factor
+        "peak_factor": 1.3,  # Peak power multiplier
+        "idle_factor": 0.4,  # Idle power factor
+        "thermal_factor": 2.0,  # Thermal generation factor
     }
 }
 

@@ -18,22 +18,15 @@ def test_every_required_adversarial_fixture_is_non_compensable():
     assert report.passed
 
     target = next(
-        receipt
-        for receipt in benchmark.receipts
-        if receipt.adversarial_fixture is not None
+        receipt for receipt in benchmark.receipts if receipt.adversarial_fixture is not None
     )
     changed = tuple(
-        replace(receipt, escape_count=1)
-        if receipt.receipt_id == target.receipt_id
-        else receipt
+        replace(receipt, escape_count=1) if receipt.receipt_id == target.receipt_id else receipt
         for receipt in benchmark.receipts
     )
     failed = recompute_proof_dependency_scaling(DecisionRuntimeBenchmark(changed))
     assert not failed.passed
-    assert (
-        f"adversarial-escape:{target.adversarial_fixture.value}"
-        in failed.failure_codes
-    )
+    assert f"adversarial-escape:{target.adversarial_fixture.value}" in failed.failure_codes
 
 
 def test_missing_fixture_and_imprecise_invalidation_cannot_be_averaged_away():
@@ -42,19 +35,14 @@ def test_missing_fixture_and_imprecise_invalidation_cannot_be_averaged_away():
         tuple(
             receipt
             for receipt in benchmark.receipts
-            if receipt.adversarial_fixture
-            is not REQUIRED_ADVERSARIAL_FIXTURES[0]
+            if receipt.adversarial_fixture is not REQUIRED_ADVERSARIAL_FIXTURES[0]
         )
     )
     report = recompute_proof_dependency_scaling(omitted)
     assert not report.passed
     assert any(code.startswith("missing-adversarial-fixture:") for code in report.failure_codes)
 
-    target = next(
-        receipt
-        for receipt in benchmark.receipts
-        if receipt.adversarial_fixture is None
-    )
+    target = next(receipt for receipt in benchmark.receipts if receipt.adversarial_fixture is None)
     metrics = replace(target.metrics, invalidation_actual=2)
     imprecise = DecisionRuntimeBenchmark(
         tuple(
@@ -67,4 +55,3 @@ def test_missing_fixture_and_imprecise_invalidation_cannot_be_averaged_away():
     report = recompute_proof_dependency_scaling(imprecise)
     assert not report.invalidation_precision_passed
     assert "imprecise-invalidation" in report.failure_codes
-

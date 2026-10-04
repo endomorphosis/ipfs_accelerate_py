@@ -104,7 +104,12 @@ from ipfs_accelerate_py.mcplusplus_module.p2p.libp2p_runtime import (
 )
 from .mcp_p2p_client import MCPP2PClient
 from .mcp_p2p_protocol import PROTOCOL_MCP_P2P_V1
-from .protocol import PROTOCOL_V1, TASK_QUEUE_MCP_RPC_TOOL, get_shared_token, task_p2p_protocol_order
+from .protocol import (
+    PROTOCOL_V1,
+    TASK_QUEUE_MCP_RPC_TOOL,
+    get_shared_token,
+    task_p2p_protocol_order,
+)
 
 
 def _truthy(text: str | None, *, default: bool = False) -> bool:
@@ -655,8 +660,10 @@ def _prune_remote_state_locked(now: float) -> None:
 
     stale_cutoff = float(now) - float(stale_s)
     stale_keys = [
-        k for (k, ts) in _P2P_REMOTE_COOLDOWN_LAST_TOUCH_TS.items()
-        if float(ts) < stale_cutoff and float(_P2P_REMOTE_COOLDOWN_UNTIL_TS.get(k, 0.0) or 0.0) <= float(now)
+        k
+        for (k, ts) in _P2P_REMOTE_COOLDOWN_LAST_TOUCH_TS.items()
+        if float(ts) < stale_cutoff
+        and float(_P2P_REMOTE_COOLDOWN_UNTIL_TS.get(k, 0.0) or 0.0) <= float(now)
     ]
     if stale_keys:
         for key in stale_keys:
@@ -670,7 +677,9 @@ def _prune_remote_state_locked(now: float) -> None:
         return
 
     overflow = n - int(max_keys)
-    oldest = sorted(_P2P_REMOTE_COOLDOWN_LAST_TOUCH_TS.items(), key=lambda kv: float(kv[1]))[:overflow]
+    oldest = sorted(_P2P_REMOTE_COOLDOWN_LAST_TOUCH_TS.items(), key=lambda kv: float(kv[1]))[
+        :overflow
+    ]
     if oldest:
         for key, _ in oldest:
             _P2P_REMOTE_COOLDOWN_LAST_TOUCH_TS.pop(key, None)
@@ -691,7 +700,8 @@ def _prune_explicit_addr_state_locked(now: float) -> None:
     stale_keys = [
         k
         for (k, ts) in _P2P_EXPLICIT_ADDR_COOLDOWN_LAST_TOUCH_TS.items()
-        if float(ts) < stale_cutoff and float(_P2P_EXPLICIT_ADDR_COOLDOWN_UNTIL_TS.get(k, 0.0) or 0.0) <= float(now)
+        if float(ts) < stale_cutoff
+        and float(_P2P_EXPLICIT_ADDR_COOLDOWN_UNTIL_TS.get(k, 0.0) or 0.0) <= float(now)
     ]
     if stale_keys:
         for key in stale_keys:
@@ -705,7 +715,9 @@ def _prune_explicit_addr_state_locked(now: float) -> None:
         return
 
     overflow = n - int(max_keys)
-    oldest = sorted(_P2P_EXPLICIT_ADDR_COOLDOWN_LAST_TOUCH_TS.items(), key=lambda kv: float(kv[1]))[:overflow]
+    oldest = sorted(_P2P_EXPLICIT_ADDR_COOLDOWN_LAST_TOUCH_TS.items(), key=lambda kv: float(kv[1]))[
+        :overflow
+    ]
     if oldest:
         for key, _ in oldest:
             _P2P_EXPLICIT_ADDR_COOLDOWN_LAST_TOUCH_TS.pop(key, None)
@@ -742,9 +754,9 @@ def _explicit_addr_cooldown_mark_failure(peer_multiaddr: str) -> None:
         _P2P_EXPLICIT_ADDR_COOLDOWN_UNTIL_TS[key] = float(now) + ((delay_ms + jitter_ms) / 1000.0)
         _P2P_EXPLICIT_ADDR_COOLDOWN_LAST_TOUCH_TS[key] = float(now)
         _P2P_EXPLICIT_ADDR_COOLDOWN_MUTATIONS = int(_P2P_EXPLICIT_ADDR_COOLDOWN_MUTATIONS) + 1
-        if (
-            len(_P2P_EXPLICIT_ADDR_COOLDOWN_LAST_TOUCH_TS) > _remote_state_max_keys()
-        ) or (_P2P_EXPLICIT_ADDR_COOLDOWN_MUTATIONS % 64 == 0):
+        if (len(_P2P_EXPLICIT_ADDR_COOLDOWN_LAST_TOUCH_TS) > _remote_state_max_keys()) or (
+            _P2P_EXPLICIT_ADDR_COOLDOWN_MUTATIONS % 64 == 0
+        ):
             _prune_explicit_addr_state_locked(float(now))
 
 
@@ -772,7 +784,9 @@ def _remote_cooldown_mark_failure(remote: Any) -> None:
         _P2P_REMOTE_COOLDOWN_UNTIL_TS[key] = float(now) + ((delay_ms + jitter_ms) / 1000.0)
         _P2P_REMOTE_COOLDOWN_LAST_TOUCH_TS[key] = float(now)
         _P2P_REMOTE_COOLDOWN_MUTATIONS = int(_P2P_REMOTE_COOLDOWN_MUTATIONS) + 1
-        if (len(_P2P_REMOTE_COOLDOWN_LAST_TOUCH_TS) > _remote_state_max_keys()) or (_P2P_REMOTE_COOLDOWN_MUTATIONS % 64 == 0):
+        if (len(_P2P_REMOTE_COOLDOWN_LAST_TOUCH_TS) > _remote_state_max_keys()) or (
+            _P2P_REMOTE_COOLDOWN_MUTATIONS % 64 == 0
+        ):
             _prune_remote_state_locked(float(now))
 
 
@@ -844,10 +858,14 @@ async def _dial_and_request_with_retries(
 
     max_retries = max(0, int(retries))
     for attempt in range(max_retries + 1):
-        attempt_dial_timeout_s = _dial_timeout_for_attempt(base_timeout_s=float(dial_timeout_s), attempt=attempt)
+        attempt_dial_timeout_s = _dial_timeout_for_attempt(
+            base_timeout_s=float(dial_timeout_s), attempt=attempt
+        )
         if min_attempt_dial_timeout_s is not None:
             try:
-                attempt_dial_timeout_s = max(float(attempt_dial_timeout_s), float(min_attempt_dial_timeout_s))
+                attempt_dial_timeout_s = max(
+                    float(attempt_dial_timeout_s), float(min_attempt_dial_timeout_s)
+                )
             except Exception:
                 pass
         broad_discovery_override: bool | None = None
@@ -864,18 +882,28 @@ async def _dial_and_request_with_retries(
         # under sustained request rates, then allow broad discovery on the last
         # attempt as a recovery path.
         prefer_lightweight_first = _prefer_lightweight_first_enabled()
-        if not bool(force_lightweight_discovery) and prefer_lightweight_first and attempt < max_retries:
+        if (
+            not bool(force_lightweight_discovery)
+            and prefer_lightweight_first
+            and attempt < max_retries
+        ):
             broad_discovery_override = False
             if attempt == 0:
                 _retry_metric_inc(f"{op_label}.lightweight_first")
             else:
                 _retry_metric_inc(f"{op_label}.retry_lightweight_discovery")
-        elif (not bool(force_lightweight_discovery)) and attempt > 0 and _retry_lightweight_discovery_enabled():
+        elif (
+            (not bool(force_lightweight_discovery))
+            and attempt > 0
+            and _retry_lightweight_discovery_enabled()
+        ):
             broad_discovery_override = False
             _retry_metric_inc(f"{op_label}.retry_lightweight_discovery")
         cooldown_wait_s = _remote_cooldown_wait_s(remote)
         if cooldown_wait_s > 0:
-            failfast_threshold_s = _cooldown_failfast_threshold_s() if _cooldown_failfast_enabled() else 0
+            failfast_threshold_s = (
+                _cooldown_failfast_threshold_s() if _cooldown_failfast_enabled() else 0
+            )
             if (
                 _cooldown_failfast_enabled()
                 and cooldown_wait_s >= failfast_threshold_s
@@ -989,7 +1017,9 @@ def _cache_prune_locked(now: float) -> None:
         return
 
     stale_cutoff = float(now) - float(stale_s)
-    stale_keys = [k for (k, ts) in _DISCOVERED_MULTIADDR_TOUCH_TS.items() if float(ts) < stale_cutoff]
+    stale_keys = [
+        k for (k, ts) in _DISCOVERED_MULTIADDR_TOUCH_TS.items() if float(ts) < stale_cutoff
+    ]
     if stale_keys:
         for key in stale_keys:
             _DISCOVERED_MULTIADDR_TOUCH_TS.pop(key, None)
@@ -1041,7 +1071,9 @@ def _cache_set_multiaddr(peer_id: str, multiaddr: str) -> None:
         _DISCOVERED_MULTIADDR_CACHE[pid] = ma
         _DISCOVERED_MULTIADDR_TOUCH_TS[pid] = float(now)
         _DISCOVERED_MULTIADDR_MUTATIONS = int(_DISCOVERED_MULTIADDR_MUTATIONS) + 1
-        if (len(_DISCOVERED_MULTIADDR_TOUCH_TS) > _cache_state_max_keys()) or (_DISCOVERED_MULTIADDR_MUTATIONS % 64 == 0):
+        if (len(_DISCOVERED_MULTIADDR_TOUCH_TS) > _cache_state_max_keys()) or (
+            _DISCOVERED_MULTIADDR_MUTATIONS % 64 == 0
+        ):
             _cache_prune_locked(float(now))
 
 
@@ -1072,7 +1104,9 @@ def _addr_to_peer_multiaddr_text(addr: object, peer_id: str) -> str:
     # Avoid loopback / link-local addresses as they are not dialable from
     # other hosts (common in mDNS TXT records). Allow opt-in for single-host
     # test setups that expect to dial 127.0.0.1.
-    if not _mdns_allow_loopback() and (text.startswith("/ip4/127.") or text.startswith("/ip6/::1/")):
+    if not _mdns_allow_loopback() and (
+        text.startswith("/ip4/127.") or text.startswith("/ip6/::1/")
+    ):
         return ""
     if text.startswith("/ip4/169.254.") or text.startswith("/ip6/fe80:"):
         return ""
@@ -1242,7 +1276,9 @@ def _best_effort_peerinfo_multiaddrs(peer_info: Any) -> list[str]:
     return addrs
 
 
-async def _try_peer_info(*, host, peer_info: Any, message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+async def _try_peer_info(
+    *, host, peer_info: Any, message: Dict[str, Any]
+) -> Optional[Dict[str, Any]]:
     try:
         await host.connect(peer_info)
         try:
@@ -1263,9 +1299,8 @@ async def _try_peer_info(*, host, peer_info: Any, message: Dict[str, Any]) -> Op
 
 
 def _parse_bootstrap_peers() -> list[str]:
-    raw = (
-        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS")
-        or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_BOOTSTRAP_PEERS")
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS") or os.environ.get(
+        "IPFS_DATASETS_PY_TASK_P2P_BOOTSTRAP_PEERS"
     )
     if raw is not None and str(raw).strip().lower() in {"0", "false", "no", "off"}:
         return []
@@ -1287,9 +1322,8 @@ def _parse_bootstrap_peers() -> list[str]:
 
 
 def _dnsaddr_resolution_enabled() -> bool:
-    raw = (
-        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_DNSADDR_RESOLVE")
-        or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_DNSADDR_RESOLVE")
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_DNSADDR_RESOLVE") or os.environ.get(
+        "IPFS_DATASETS_PY_TASK_P2P_DNSADDR_RESOLVE"
     )
     if raw is None:
         return True
@@ -1397,9 +1431,8 @@ def _expand_dnsaddr_peers(peers: list[str]) -> list[str]:
 
 
 def _bootstrap_peers_explicitly_configured() -> bool:
-    raw = (
-        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS")
-        or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_BOOTSTRAP_PEERS")
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS") or os.environ.get(
+        "IPFS_DATASETS_PY_TASK_P2P_BOOTSTRAP_PEERS"
     )
     if raw is None:
         return False
@@ -1548,9 +1581,8 @@ def _repo_local_announce_files() -> list[str]:
 def _read_announce_peer_id_hint() -> str:
     # Used to avoid "discovering" and dialing the local node's own TaskQueue
     # service when using mDNS/DHT/rendezvous for LAN/public discovery.
-    raw = (
-        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE")
-        or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE")
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE") or os.environ.get(
+        "IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE"
     )
     if raw is not None and str(raw).strip().lower() in {"0", "false", "no", "off"}:
         raw = None
@@ -1599,9 +1631,8 @@ def _read_announce_peer_id_hint() -> str:
 
 
 def _read_announce_multiaddr() -> str:
-    raw = (
-        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE")
-        or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE")
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE") or os.environ.get(
+        "IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE"
     )
     if raw is not None and str(raw).strip().lower() in {"0", "false", "no", "off"}:
         return ""
@@ -1754,19 +1785,23 @@ async def _request_over_selected_protocols(
     raise RuntimeError("no TaskQueue p2p protocols configured")
 
 
-async def _try_peer_multiaddr(*, host, peer_multiaddr: str, message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+async def _try_peer_multiaddr(
+    *, host, peer_multiaddr: str, message: Dict[str, Any]
+) -> Optional[Dict[str, Any]]:
     peer_multiaddr = _normalize_peer_multiaddr_port(peer_multiaddr)
     peer_info = peerinfo_from_multiaddr(peer_multiaddr)
     peer_text = ""
     try:
-        peer_text = peer_info.peer_id.pretty() if hasattr(peer_info.peer_id, "pretty") else str(peer_info.peer_id)
+        peer_text = (
+            peer_info.peer_id.pretty()
+            if hasattr(peer_info.peer_id, "pretty")
+            else str(peer_info.peer_id)
+        )
     except Exception:
         peer_text = str(getattr(peer_info, "peer_id", "") or "")
 
     op = str(message.get("op") or "").strip()
-    _dial_debug(
-        f"connect begin peer={peer_text} multiaddr={peer_multiaddr} op={op or 'unknown'}"
-    )
+    _dial_debug(f"connect begin peer={peer_text} multiaddr={peer_multiaddr} op={op or 'unknown'}")
     try:
         await host.connect(peer_info)
     except Exception as exc:
@@ -1796,7 +1831,9 @@ async def _dial_via_bootstrap(*, host, message: Dict[str, Any]) -> Optional[Dict
     peers = list(_parse_bootstrap_peers())
     preferred_peer_id = _get_last_success_peer(max_age_s=300.0)
     if preferred_peer_id:
-        peers = sorted(peers, key=lambda ma: 0 if _multiaddr_peer_id(ma) == preferred_peer_id else 1)
+        peers = sorted(
+            peers, key=lambda ma: 0 if _multiaddr_peer_id(ma) == preferred_peer_id else 1
+        )
 
     max_attempts = _bootstrap_max_attempts()
     attempts = 0
@@ -1863,7 +1900,9 @@ async def _dial_via_announce_file(
         return None
 
 
-async def _dial_via_mdns(*, host, message: Dict[str, Any], require_peer_id: str = "") -> Dict[str, Any]:
+async def _dial_via_mdns(
+    *, host, message: Dict[str, Any], require_peer_id: str = ""
+) -> Dict[str, Any]:
     import anyio
 
     if not _env_bool(
@@ -1903,9 +1942,14 @@ async def _dial_via_mdns(*, host, message: Dict[str, Any], require_peer_id: str 
             if preferred_peer_id:
                 discovered_peer_ids = sorted(
                     discovered_peer_ids,
-                    key=lambda pid: 0
-                    if ((pid.pretty() if hasattr(pid, "pretty") else str(pid)) == preferred_peer_id)
-                    else 1,
+                    key=lambda pid: (
+                        0
+                        if (
+                            (pid.pretty() if hasattr(pid, "pretty") else str(pid))
+                            == preferred_peer_id
+                        )
+                        else 1
+                    ),
                 )
 
             attempts_this_poll = 0
@@ -1947,12 +1991,18 @@ async def _dial_via_mdns(*, host, message: Dict[str, Any], require_peer_id: str 
                     continue
                 attempts_this_poll += 1
                 try:
-                    resp = await _try_peer_multiaddr(host=host, peer_multiaddr=dial_ma, message=message)
+                    resp = await _try_peer_multiaddr(
+                        host=host, peer_multiaddr=dial_ma, message=message
+                    )
                     _remote_cooldown_mark_success(remote_ref)
                     _mark_last_success_peer(pid_text)
                     if dial_ma:
                         _cache_set_multiaddr(pid_text, dial_ma)
-                    return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}
+                    return (
+                        resp
+                        if isinstance(resp, dict)
+                        else {"ok": False, "error": "invalid_response"}
+                    )
                 except Exception:
                     _remote_cooldown_mark_failure(remote_ref)
                     continue
@@ -1971,7 +2021,9 @@ async def _dial_via_mdns(*, host, message: Dict[str, Any], require_peer_id: str 
             pass
 
 
-async def _dial_via_rendezvous(*, host, message: Dict[str, Any], require_peer_id: str = "") -> Optional[Dict[str, Any]]:
+async def _dial_via_rendezvous(
+    *, host, message: Dict[str, Any], require_peer_id: str = ""
+) -> Optional[Dict[str, Any]]:
     if not _env_bool(
         primary="IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS",
         compat="IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS",
@@ -1987,7 +2039,9 @@ async def _dial_via_rendezvous(*, host, message: Dict[str, Any], require_peer_id
 
     exclude_peer_id = "" if require_peer_id else _read_announce_peer_id_hint()
 
-    for cli in [candidate for candidate in (make_rendezvous_client(host),) if candidate is not None]:
+    for cli in [
+        candidate for candidate in (make_rendezvous_client(host),) if candidate is not None
+    ]:
         try:
             discover = getattr(cli, "discover", None)
             if not callable(discover):
@@ -2006,16 +2060,18 @@ async def _dial_via_rendezvous(*, host, message: Dict[str, Any], require_peer_id
             if preferred_peer_id:
                 peers = sorted(
                     list(peers or []),
-                    key=lambda p: 0
-                    if (
-                        (
-                            getattr(p, "peer_id", None).pretty()
-                            if hasattr(getattr(p, "peer_id", None), "pretty")
-                            else str(getattr(p, "peer_id", None) or "")
+                    key=lambda p: (
+                        0
+                        if (
+                            (
+                                getattr(p, "peer_id", None).pretty()
+                                if hasattr(getattr(p, "peer_id", None), "pretty")
+                                else str(getattr(p, "peer_id", None) or "")
+                            )
+                            == preferred_peer_id
                         )
-                        == preferred_peer_id
-                    )
-                    else 1,
+                        else 1
+                    ),
                 )
 
             max_attempts = _rendezvous_max_attempts()
@@ -2062,7 +2118,9 @@ async def _dial_via_rendezvous(*, host, message: Dict[str, Any], require_peer_id
     return None
 
 
-async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str = "") -> Optional[Dict[str, Any]]:
+async def _dial_via_dht(
+    *, host, message: Dict[str, Any], require_peer_id: str = ""
+) -> Optional[Dict[str, Any]]:
     if not _env_bool(
         primary="IPFS_ACCELERATE_PY_TASK_P2P_DHT",
         compat="IPFS_DATASETS_PY_TASK_P2P_DHT",
@@ -2080,7 +2138,9 @@ async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str =
 
     exclude_peer_id = "" if require_peer_id else _read_announce_peer_id_hint()
 
-    for dht in [candidate for candidate in (make_kad_dht(host, mode="client"),) if candidate is not None]:
+    for dht in [
+        candidate for candidate in (make_kad_dht(host, mode="client"),) if candidate is not None
+    ]:
         try:
             background_trio_service = get_background_trio_service()
 
@@ -2132,7 +2192,9 @@ async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str =
                                 ma = str(data.get("multiaddr") or "").strip()
                                 if ma:
                                     try:
-                                        resp = await _try_peer_multiaddr(host=host, peer_multiaddr=ma, message=message)
+                                        resp = await _try_peer_multiaddr(
+                                            host=host, peer_multiaddr=ma, message=message
+                                        )
                                         if isinstance(resp, dict):
                                             return resp
                                     except Exception:
@@ -2149,7 +2211,9 @@ async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str =
                     if not peer_info:
                         continue
                     try:
-                        remote_ref = RemoteQueue(peer_id=str(require_peer_id or "").strip(), multiaddr="")
+                        remote_ref = RemoteQueue(
+                            peer_id=str(require_peer_id or "").strip(), multiaddr=""
+                        )
                         remote_wait_s = _remote_cooldown_wait_s(remote_ref)
                         if remote_wait_s > 0:
                             _retry_metric_inc("dial.dht_find_peer_cooldown_skip")
@@ -2175,20 +2239,24 @@ async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str =
                         except Exception:
                             continue
 
-                preferred_peer_id = "" if require_peer_id else _get_last_success_peer(max_age_s=300.0)
+                preferred_peer_id = (
+                    "" if require_peer_id else _get_last_success_peer(max_age_s=300.0)
+                )
                 if preferred_peer_id:
                     providers = sorted(
                         list(providers or []),
-                        key=lambda p: 0
-                        if (
-                            (
-                                getattr(p, "peer_id", None).pretty()
-                                if hasattr(getattr(p, "peer_id", None), "pretty")
-                                else str(getattr(p, "peer_id", None) or "")
+                        key=lambda p: (
+                            0
+                            if (
+                                (
+                                    getattr(p, "peer_id", None).pretty()
+                                    if hasattr(getattr(p, "peer_id", None), "pretty")
+                                    else str(getattr(p, "peer_id", None) or "")
+                                )
+                                == preferred_peer_id
                             )
-                            == preferred_peer_id
-                        )
-                        else 1,
+                            else 1
+                        ),
                     )
 
                 max_provider_attempts = _dht_max_provider_attempts()
@@ -2227,7 +2295,9 @@ async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str =
                             return resp
                     except Exception:
                         try:
-                            _remote_cooldown_mark_failure(RemoteQueue(peer_id=pid_text, multiaddr=""))
+                            _remote_cooldown_mark_failure(
+                                RemoteQueue(peer_id=pid_text, multiaddr="")
+                            )
                         except Exception:
                             pass
                         continue
@@ -2305,7 +2375,9 @@ async def _dial_and_request(
                                 _retry_metric_inc("dial.cache_multiaddr_cooldown_skip")
                             else:
                                 try:
-                                    resp = await _try_peer_multiaddr(host=host, peer_multiaddr=cached_ma, message=message)
+                                    resp = await _try_peer_multiaddr(
+                                        host=host, peer_multiaddr=cached_ma, message=message
+                                    )
                                     if isinstance(resp, dict):
                                         _explicit_addr_cooldown_mark_success(cached_ma)
                                         return resp
@@ -2316,7 +2388,9 @@ async def _dial_and_request(
 
                     # Zero-config: if a local service is running, it writes an
                     # announce file in XDG cache; dial it first.
-                    ann = await _dial_via_announce_file(host=host, message=message, require_peer_id=require_peer_id)
+                    ann = await _dial_via_announce_file(
+                        host=host, message=message, require_peer_id=require_peer_id
+                    )
                     if isinstance(ann, dict):
                         resp = ann
                     else:
@@ -2332,7 +2406,9 @@ async def _dial_and_request(
                                 default=False,
                             )
                         if allow_broad_discovery_override is not None:
-                            allow_broad_discovery = bool(allow_broad_discovery) and bool(allow_broad_discovery_override)
+                            allow_broad_discovery = bool(allow_broad_discovery) and bool(
+                                allow_broad_discovery_override
+                            )
 
                         if allow_broad_discovery:
                             # Then try cross-subnet mechanisms, and finally LAN mDNS.
@@ -2340,15 +2416,23 @@ async def _dial_and_request(
                             if isinstance(boot, dict):
                                 resp = boot
                             else:
-                                rv = await _dial_via_rendezvous(host=host, message=message, require_peer_id=require_peer_id)
+                                rv = await _dial_via_rendezvous(
+                                    host=host, message=message, require_peer_id=require_peer_id
+                                )
                                 if isinstance(rv, dict):
                                     resp = rv
                                 else:
-                                    dht = await _dial_via_dht(host=host, message=message, require_peer_id=require_peer_id)
+                                    dht = await _dial_via_dht(
+                                        host=host, message=message, require_peer_id=require_peer_id
+                                    )
                                     if isinstance(dht, dict):
                                         resp = dht
                                     else:
-                                        resp = await _dial_via_mdns(host=host, message=message, require_peer_id=require_peer_id)
+                                        resp = await _dial_via_mdns(
+                                            host=host,
+                                            message=message,
+                                            require_peer_id=require_peer_id,
+                                        )
                         else:
                             _retry_metric_inc("dial.broad_discovery_skipped")
                             if explicit_multiaddr:
@@ -2357,7 +2441,9 @@ async def _dial_and_request(
         # Under high concurrency, background_trio_service teardown can raise
         # grouped transport errors after a successful request/response cycle.
         if isinstance(resp, dict):
-            _dial_debug(f"background service teardown raised {type(exc).__name__}; preserving successful response")
+            _dial_debug(
+                f"background service teardown raised {type(exc).__name__}; preserving successful response"
+            )
         else:
             raise
 
@@ -2401,7 +2487,11 @@ async def discover_status(
 
     require_libp2p_runtime()
 
-    message: Dict[str, Any] = {"op": "status", "timeout_s": float(timeout_s), "detail": bool(detail)}
+    message: Dict[str, Any] = {
+        "op": "status",
+        "timeout_s": float(timeout_s),
+        "detail": bool(detail),
+    }
     require_peer_id = (remote.peer_id or "").strip()
     attempts: list[Dict[str, Any]] = []
 
@@ -2446,7 +2536,9 @@ async def discover_status(
                 return None
             pid = _multiaddr_peer_id(ma)
             if require_peer_id and pid and pid != require_peer_id:
-                await _record(method=method, ok=False, peer_id=pid, multiaddr=ma, error="peer_id_mismatch")
+                await _record(
+                    method=method, ok=False, peer_id=pid, multiaddr=ma, error="peer_id_mismatch"
+                )
                 return None
             try:
                 resp = await _try_peer_multiaddr(host=host, peer_multiaddr=ma, message=message)
@@ -2487,7 +2579,12 @@ async def discover_status(
         if ann_ma:
             resp = await _try_multiaddr("announce-file", ann_ma)
             if resp is not None:
-                return {"ok": True, "result": resp, "nat": _nat_from_resp(resp), "attempts": attempts}
+                return {
+                    "ok": True,
+                    "result": resp,
+                    "nat": _nat_from_resp(resp),
+                    "attempts": attempts,
+                }
         else:
             await _record(method="announce-file", ok=False, error="no_announce_multiaddr")
 
@@ -2496,7 +2593,9 @@ async def discover_status(
             peers = list(_parse_bootstrap_peers())
             preferred_peer_id = _get_last_success_peer(max_age_s=300.0)
             if preferred_peer_id:
-                peers = sorted(peers, key=lambda ma: 0 if _multiaddr_peer_id(ma) == preferred_peer_id else 1)
+                peers = sorted(
+                    peers, key=lambda ma: 0 if _multiaddr_peer_id(ma) == preferred_peer_id else 1
+                )
 
             max_attempts = _bootstrap_max_attempts()
             attempts_bootstrap = 0
@@ -2528,7 +2627,12 @@ async def discover_status(
                     pid = _multiaddr_peer_id(ma)
                     if pid:
                         _mark_last_success_peer(pid)
-                    return {"ok": True, "result": resp, "nat": _nat_from_resp(resp), "attempts": attempts}
+                    return {
+                        "ok": True,
+                        "result": resp,
+                        "nat": _nat_from_resp(resp),
+                        "attempts": attempts,
+                    }
                 _explicit_addr_cooldown_mark_failure(ma)
         elif _bootstrap_peers_explicitly_configured() and not _bootstrap_dial_enabled():
             await _record(method="bootstrap", ok=False, error="disabled")
@@ -2547,7 +2651,9 @@ async def discover_status(
                 default="ipfs-accelerate-task-queue",
             )
             rendezvous_attempted = False
-            for cli in [candidate for candidate in (make_rendezvous_client(host),) if candidate is not None]:
+            for cli in [
+                candidate for candidate in (make_rendezvous_client(host),) if candidate is not None
+            ]:
                 try:
                     discover = getattr(cli, "discover", None)
                     if not callable(discover):
@@ -2561,20 +2667,24 @@ async def discover_status(
                         found = discover(ns)
                         peers = list(found or [])
 
-                    preferred_peer_id = "" if require_peer_id else _get_last_success_peer(max_age_s=300.0)
+                    preferred_peer_id = (
+                        "" if require_peer_id else _get_last_success_peer(max_age_s=300.0)
+                    )
                     if preferred_peer_id:
                         peers = sorted(
                             list(peers or []),
-                            key=lambda p: 0
-                            if (
-                                (
-                                    getattr(p, "peer_id", None).pretty()
-                                    if hasattr(getattr(p, "peer_id", None), "pretty")
-                                    else str(getattr(p, "peer_id", None) or "")
+                            key=lambda p: (
+                                0
+                                if (
+                                    (
+                                        getattr(p, "peer_id", None).pretty()
+                                        if hasattr(getattr(p, "peer_id", None), "pretty")
+                                        else str(getattr(p, "peer_id", None) or "")
+                                    )
+                                    == preferred_peer_id
                                 )
-                                == preferred_peer_id
-                            )
-                            else 1,
+                                else 1
+                            ),
                         )
 
                     max_attempts = _rendezvous_max_attempts()
@@ -2595,7 +2705,12 @@ async def discover_status(
                         except Exception:
                             pid_text = ""
                         if require_peer_id and pid_text and pid_text != require_peer_id:
-                            await _record(method="rendezvous", ok=False, peer_id=pid_text, error="peer_id_mismatch")
+                            await _record(
+                                method="rendezvous",
+                                ok=False,
+                                peer_id=pid_text,
+                                error="peer_id_mismatch",
+                            )
                             continue
 
                         dial_ma = ""
@@ -2633,7 +2748,12 @@ async def discover_status(
                                 multiaddr=ma,
                                 response=resp,
                             )
-                            return {"ok": True, "result": resp, "nat": _nat_from_resp(resp), "attempts": attempts}
+                            return {
+                                "ok": True,
+                                "result": resp,
+                                "nat": _nat_from_resp(resp),
+                                "attempts": attempts,
+                            }
                         _remote_cooldown_mark_failure(remote_ref)
                         await _record(
                             method="rendezvous",
@@ -2665,11 +2785,16 @@ async def discover_status(
             ns_key = _dht_key_for_namespace(ns)
 
             dht_attempted = False
-            for dht in [candidate for candidate in (make_kad_dht(host, mode="client"),) if candidate is not None]:
+            for dht in [
+                candidate
+                for candidate in (make_kad_dht(host, mode="client"),)
+                if candidate is not None
+            ]:
                 try:
                     dht_attempted = True
 
                     import trio
+
                     bg_trio = get_background_trio_service()
 
                     async def _run_dht_service() -> None:
@@ -2679,7 +2804,9 @@ async def discover_status(
                     async with anyio.create_task_group() as tg:
                         tg.start_soon(_run_dht_service)
                         try:
-                            await _best_effort_connect_multiaddrs(host=host, addrs=_parse_bootstrap_peers())
+                            await _best_effort_connect_multiaddrs(
+                                host=host, addrs=_parse_bootstrap_peers()
+                            )
                         except Exception:
                             pass
 
@@ -2716,7 +2843,9 @@ async def discover_status(
                                         error="peer_not_found",
                                     )
                                 else:
-                                    remote_ref = RemoteQueue(peer_id=str(require_peer_id or "").strip(), multiaddr="")
+                                    remote_ref = RemoteQueue(
+                                        peer_id=str(require_peer_id or "").strip(), multiaddr=""
+                                    )
                                     remote_wait_s = _remote_cooldown_wait_s(remote_ref)
                                     if remote_wait_s > 0:
                                         _retry_metric_inc("dial.dht_find_peer_cooldown_skip")
@@ -2728,12 +2857,16 @@ async def discover_status(
                                         )
                                         continue
 
-                                    resp = await _try_peer_info(host=host, peer_info=peer_info, message=message)
+                                    resp = await _try_peer_info(
+                                        host=host, peer_info=peer_info, message=message
+                                    )
                                     addrs = _best_effort_peerinfo_multiaddrs(peer_info)
                                     ma = addrs[0] if addrs else ""
                                     if isinstance(resp, dict) and resp.get("ok"):
                                         _remote_cooldown_mark_success(remote_ref)
-                                        _mark_last_success_peer(str(resp.get("peer_id") or require_peer_id))
+                                        _mark_last_success_peer(
+                                            str(resp.get("peer_id") or require_peer_id)
+                                        )
                                         await _record(
                                             method="dht",
                                             ok=True,
@@ -2742,7 +2875,12 @@ async def discover_status(
                                             response=resp,
                                         )
                                         tg.cancel_scope.cancel()
-                                        return {"ok": True, "result": resp, "nat": _nat_from_resp(resp), "attempts": attempts}
+                                        return {
+                                            "ok": True,
+                                            "result": resp,
+                                            "nat": _nat_from_resp(resp),
+                                            "attempts": attempts,
+                                        }
                                     _remote_cooldown_mark_failure(remote_ref)
                                     await _record(
                                         method="dht",
@@ -2755,7 +2893,9 @@ async def discover_status(
                         else:
                             find_providers = getattr(dht, "find_providers", None)
                             if not callable(find_providers):
-                                await _record(method="dht", ok=False, error="find_providers_unavailable")
+                                await _record(
+                                    method="dht", ok=False, error="find_providers_unavailable"
+                                )
                             else:
                                 get_value = getattr(dht, "get_value", None)
 
@@ -2777,44 +2917,63 @@ async def discover_status(
                                         if preferred_peer_id:
                                             providers = sorted(
                                                 list(providers or []),
-                                                key=lambda p: 0
-                                                if (
-                                                    (
-                                                        getattr(p, "peer_id", None).pretty()
-                                                        if hasattr(getattr(p, "peer_id", None), "pretty")
-                                                        else str(getattr(p, "peer_id", None) or "")
+                                                key=lambda p: (
+                                                    0
+                                                    if (
+                                                        (
+                                                            getattr(p, "peer_id", None).pretty()
+                                                            if hasattr(
+                                                                getattr(p, "peer_id", None),
+                                                                "pretty",
+                                                            )
+                                                            else str(
+                                                                getattr(p, "peer_id", None) or ""
+                                                            )
+                                                        )
+                                                        == preferred_peer_id
                                                     )
-                                                    == preferred_peer_id
-                                                )
-                                                else 1,
+                                                    else 1
+                                                ),
                                             )
 
                                         max_provider_attempts = _dht_max_provider_attempts()
                                         provider_attempts = 0
                                         for peer_info in list(providers or []):
                                             if time.time() > deadline:
-                                                await _record(method="dht", ok=False, error="timeout")
+                                                await _record(
+                                                    method="dht", ok=False, error="timeout"
+                                                )
                                                 break
 
                                             if provider_attempts >= max_provider_attempts:
                                                 _retry_metric_inc("dial.dht_provider_attempt_limit")
-                                                await _record(method="dht", ok=False, error="attempt_limit")
+                                                await _record(
+                                                    method="dht", ok=False, error="attempt_limit"
+                                                )
                                                 break
 
                                             pid_text = ""
                                             try:
                                                 pid = getattr(peer_info, "peer_id", None)
-                                                pid_text = pid.pretty() if hasattr(pid, "pretty") else str(pid or "")
+                                                pid_text = (
+                                                    pid.pretty()
+                                                    if hasattr(pid, "pretty")
+                                                    else str(pid or "")
+                                                )
                                             except Exception:
                                                 pid_text = ""
 
                                             dial_ma = ""
                                             try:
                                                 addrs = getattr(peer_info, "addrs", None)
-                                                dial_ma = _pick_best_peer_multiaddr_text(addrs, pid_text)
+                                                dial_ma = _pick_best_peer_multiaddr_text(
+                                                    addrs, pid_text
+                                                )
                                             except Exception:
                                                 dial_ma = ""
-                                            remote_ref = RemoteQueue(peer_id=pid_text, multiaddr=dial_ma)
+                                            remote_ref = RemoteQueue(
+                                                peer_id=pid_text, multiaddr=dial_ma
+                                            )
                                             remote_wait_s = _remote_cooldown_wait_s(remote_ref)
                                             if remote_wait_s > 0:
                                                 _retry_metric_inc("dial.dht_provider_cooldown_skip")
@@ -2828,12 +2987,16 @@ async def discover_status(
                                                 continue
 
                                             provider_attempts += 1
-                                            resp = await _try_peer_info(host=host, peer_info=peer_info, message=message)
+                                            resp = await _try_peer_info(
+                                                host=host, peer_info=peer_info, message=message
+                                            )
                                             addrs = _best_effort_peerinfo_multiaddrs(peer_info)
                                             ma = addrs[0] if addrs else ""
                                             if isinstance(resp, dict) and resp.get("ok"):
                                                 _remote_cooldown_mark_success(remote_ref)
-                                                _mark_last_success_peer(str(resp.get("peer_id") or pid_text))
+                                                _mark_last_success_peer(
+                                                    str(resp.get("peer_id") or pid_text)
+                                                )
                                                 await _record(
                                                     method="dht",
                                                     ok=True,
@@ -2852,9 +3015,13 @@ async def discover_status(
                                             await _record(
                                                 method="dht",
                                                 ok=False,
-                                                peer_id=str((resp or {}).get("peer_id") or pid_text),
+                                                peer_id=str(
+                                                    (resp or {}).get("peer_id") or pid_text
+                                                ),
                                                 multiaddr=ma,
-                                                error=str((resp or {}).get("error") or "request_failed"),
+                                                error=str(
+                                                    (resp or {}).get("error") or "request_failed"
+                                                ),
                                                 response=resp if isinstance(resp, dict) else None,
                                             )
 
@@ -2871,7 +3038,9 @@ async def discover_status(
                                         value_text = ""
                                         try:
                                             if isinstance(raw, (bytes, bytearray)):
-                                                value_text = bytes(raw).decode("utf-8", errors="ignore")
+                                                value_text = bytes(raw).decode(
+                                                    "utf-8", errors="ignore"
+                                                )
                                             elif isinstance(raw, str):
                                                 value_text = raw
                                         except Exception:
@@ -2923,7 +3092,9 @@ async def discover_status(
         # 6) LAN mDNS
         if time.time() <= deadline:
             try:
-                mdns_resp = await _dial_via_mdns(host=host, message=message, require_peer_id=require_peer_id)
+                mdns_resp = await _dial_via_mdns(
+                    host=host, message=message, require_peer_id=require_peer_id
+                )
                 if isinstance(mdns_resp, dict) and mdns_resp.get("ok"):
                     await _record(
                         method="mdns",
@@ -2931,7 +3102,12 @@ async def discover_status(
                         peer_id=str(mdns_resp.get("peer_id") or ""),
                         response=mdns_resp,
                     )
-                    return {"ok": True, "result": mdns_resp, "nat": _nat_from_resp(mdns_resp), "attempts": attempts}
+                    return {
+                        "ok": True,
+                        "result": mdns_resp,
+                        "nat": _nat_from_resp(mdns_resp),
+                        "attempts": attempts,
+                    }
                 await _record(
                     method="mdns",
                     ok=False,
@@ -3035,7 +3211,9 @@ def discover_multiaddr_via_mdns_sync(*, peer_id: str, timeout_s: float = 10.0) -
     return str(result or "")
 
 
-async def discover_peers_via_mdns(*, timeout_s: float = 10.0, limit: int = 10, exclude_self: bool = True) -> list[RemoteQueue]:
+async def discover_peers_via_mdns(
+    *, timeout_s: float = 10.0, limit: int = 10, exclude_self: bool = True
+) -> list[RemoteQueue]:
     """Discover peers on the LAN via mDNS and return dialable RemoteQueue targets.
 
     Notes:
@@ -3275,7 +3453,9 @@ async def discover_peers_via_dht(
 
         deadline = anyio.current_time() + max(0.1, float(timeout_s))
 
-        for dht in [candidate for candidate in (make_kad_dht(host, mode="client"),) if candidate is not None]:
+        for dht in [
+            candidate for candidate in (make_kad_dht(host, mode="client"),) if candidate is not None
+        ]:
             if anyio.current_time() >= deadline or len(found) >= limit:
                 break
             try:
@@ -3285,7 +3465,9 @@ async def discover_peers_via_dht(
                     try:
                         remaining = max(0.1, float(deadline - anyio.current_time()))
                         with anyio.fail_after(remaining):
-                            await _best_effort_connect_multiaddrs(host=host, addrs=_parse_bootstrap_peers())
+                            await _best_effort_connect_multiaddrs(
+                                host=host, addrs=_parse_bootstrap_peers()
+                            )
                     except Exception:
                         pass
 
@@ -3328,7 +3510,9 @@ async def discover_peers_via_dht(
 
                             dial_ma = ""
                             for a_text in _best_effort_peerinfo_multiaddrs(peer_info):
-                                if a_text.startswith("/ip4/0.0.0.0/") or a_text.startswith("/ip6/::/"):
+                                if a_text.startswith("/ip4/0.0.0.0/") or a_text.startswith(
+                                    "/ip6/::/"
+                                ):
                                     continue
                                 dial_ma = str(a_text).strip()
                                 if dial_ma:
@@ -3377,20 +3561,26 @@ def discover_peers_via_dht_sync(
     return list(result or [])
 
 
-def discover_peers_via_mdns_sync(*, timeout_s: float = 10.0, limit: int = 10, exclude_self: bool = True) -> list[RemoteQueue]:
+def discover_peers_via_mdns_sync(
+    *, timeout_s: float = 10.0, limit: int = 10, exclude_self: bool = True
+) -> list[RemoteQueue]:
     import trio
 
     result: list[RemoteQueue] = []
 
     async def _main() -> None:
         nonlocal result
-        result = await discover_peers_via_mdns(timeout_s=float(timeout_s), limit=int(limit), exclude_self=bool(exclude_self))
+        result = await discover_peers_via_mdns(
+            timeout_s=float(timeout_s), limit=int(limit), exclude_self=bool(exclude_self)
+        )
 
     trio.run(_main)
     return list(result or [])
 
 
-def discover_status_sync(*, remote: RemoteQueue, timeout_s: float = 10.0, detail: bool = False) -> Dict[str, Any]:
+def discover_status_sync(
+    *, remote: RemoteQueue, timeout_s: float = 10.0, detail: bool = False
+) -> Dict[str, Any]:
     import trio
 
     result: Dict[str, Any] = {}
@@ -3403,10 +3593,17 @@ def discover_status_sync(*, remote: RemoteQueue, timeout_s: float = 10.0, detail
     return result
 
 
-async def submit_task(*, remote: RemoteQueue, task_type: str, model_name: str, payload: Dict[str, Any]) -> str:
+async def submit_task(
+    *, remote: RemoteQueue, task_type: str, model_name: str, payload: Dict[str, Any]
+) -> str:
     resp = await _dial_and_request_with_retries(
         remote=remote,
-        message={"op": "submit", "task_type": task_type, "model_name": model_name, "payload": payload},
+        message={
+            "op": "submit",
+            "task_type": task_type,
+            "model_name": model_name,
+            "payload": payload,
+        },
         retries=_submit_retry_attempts(),
         retry_base_ms=_submit_retry_base_ms(),
         dial_timeout_s=_submit_dial_timeout_s(),
@@ -3483,7 +3680,9 @@ async def submit_docker_hub_task(
             continue
         payload[str(k)] = v
 
-    return await submit_task(remote=remote, task_type=str(task_type), model_name=str(model_name), payload=payload)
+    return await submit_task(
+        remote=remote, task_type=str(task_type), model_name=str(model_name), payload=payload
+    )
 
 
 def submit_docker_hub_task_sync(
@@ -3553,7 +3752,9 @@ async def submit_docker_github_task(
             continue
         payload[str(k)] = v
 
-    return await submit_task(remote=remote, task_type=str(task_type), model_name=str(model_name), payload=payload)
+    return await submit_task(
+        remote=remote, task_type=str(task_type), model_name=str(model_name), payload=payload
+    )
 
 
 def submit_docker_github_task_sync(
@@ -3592,11 +3793,15 @@ def submit_docker_github_task_sync(
     return anyio.run(_do, backend="trio")
 
 
-def submit_task_sync(*, remote: RemoteQueue, task_type: str, model_name: str, payload: Dict[str, Any]) -> str:
+def submit_task_sync(
+    *, remote: RemoteQueue, task_type: str, model_name: str, payload: Dict[str, Any]
+) -> str:
     import anyio
 
     async def _do() -> str:
-        return await submit_task(remote=remote, task_type=task_type, model_name=model_name, payload=payload)
+        return await submit_task(
+            remote=remote, task_type=task_type, model_name=model_name, payload=payload
+        )
 
     return anyio.run(_do, backend="trio")
 
@@ -3610,7 +3815,12 @@ async def submit_task_with_info(
 ) -> Dict[str, str]:
     resp = await _dial_and_request_with_retries(
         remote=remote,
-        message={"op": "submit", "task_type": task_type, "model_name": model_name, "payload": payload},
+        message={
+            "op": "submit",
+            "task_type": task_type,
+            "model_name": model_name,
+            "payload": payload,
+        },
         retries=_submit_retry_attempts(),
         retry_base_ms=_submit_retry_base_ms(),
         dial_timeout_s=_submit_dial_timeout_s(),
@@ -3632,7 +3842,9 @@ def submit_task_with_info_sync(
     import anyio
 
     async def _do() -> Dict[str, str]:
-        return await submit_task_with_info(remote=remote, task_type=task_type, model_name=model_name, payload=payload)
+        return await submit_task_with_info(
+            remote=remote, task_type=task_type, model_name=model_name, payload=payload
+        )
 
     return anyio.run(_do, backend="trio")
 
@@ -3753,7 +3965,9 @@ def claim_many_sync(
     return anyio.run(_do, backend="trio")
 
 
-async def heartbeat(*, remote: RemoteQueue, peer_id: str, clock: Dict[str, Any] | None = None) -> Dict[str, Any]:
+async def heartbeat(
+    *, remote: RemoteQueue, peer_id: str, clock: Dict[str, Any] | None = None
+) -> Dict[str, Any]:
     resp = await _dial_and_request_with_retries(
         remote=remote,
         message={"op": "peer.heartbeat", "peer_id": str(peer_id), "clock": clock},
@@ -3767,7 +3981,9 @@ async def heartbeat(*, remote: RemoteQueue, peer_id: str, clock: Dict[str, Any] 
     return resp
 
 
-def heartbeat_sync(*, remote: RemoteQueue, peer_id: str, clock: Dict[str, Any] | None = None) -> Dict[str, Any]:
+def heartbeat_sync(
+    *, remote: RemoteQueue, peer_id: str, clock: Dict[str, Any] | None = None
+) -> Dict[str, Any]:
     import anyio
 
     async def _do() -> Dict[str, Any]:
@@ -3785,7 +4001,12 @@ async def list_tasks(
 ) -> Dict[str, Any]:
     resp = await _dial_and_request_with_retries(
         remote=remote,
-        message={"op": "list", "status": status, "limit": int(limit), "task_types": list(task_types or [])},
+        message={
+            "op": "list",
+            "status": status,
+            "limit": int(limit),
+            "task_types": list(task_types or []),
+        },
         retries=_rpc_retry_attempts(),
         retry_base_ms=_rpc_retry_base_ms(),
         dial_timeout_s=_rpc_dial_timeout_s(),
@@ -3873,7 +4094,9 @@ def release_task_sync(
     import anyio
 
     async def _do() -> Dict[str, Any]:
-        return await release_task(remote=remote, task_id=task_id, worker_id=worker_id, reason=reason)
+        return await release_task(
+            remote=remote, task_id=task_id, worker_id=worker_id, reason=reason
+        )
 
     return anyio.run(_do, backend="trio")
 
@@ -3889,7 +4112,9 @@ def complete_task_sync(
     import anyio
 
     async def _do() -> Dict[str, Any]:
-        return await complete_task(remote=remote, task_id=task_id, status=status, result=result, error=error)
+        return await complete_task(
+            remote=remote, task_id=task_id, status=status, result=result, error=error
+        )
 
     return anyio.run(_do, backend="trio")
 
@@ -3910,7 +4135,9 @@ async def get_task(*, remote: RemoteQueue, task_id: str) -> Optional[Dict[str, A
     return task if isinstance(task, dict) else None
 
 
-async def wait_task(*, remote: RemoteQueue, task_id: str, timeout_s: float = 60.0) -> Optional[Dict[str, Any]]:
+async def wait_task(
+    *, remote: RemoteQueue, task_id: str, timeout_s: float = 60.0
+) -> Optional[Dict[str, Any]]:
     import anyio
 
     retries = _wait_retry_attempts()
@@ -3959,7 +4186,9 @@ async def wait_task(*, remote: RemoteQueue, task_id: str, timeout_s: float = 60.
                     await anyio.sleep(quick_delay_s)
                 continue
             _retry_metric_inc("wait.cooldown_wait")
-            _dial_debug(f"wait cooldown wait before attempt={attempt + 1}/{retries + 1} wait_s={cooldown_wait_s:.3f}")
+            _dial_debug(
+                f"wait cooldown wait before attempt={attempt + 1}/{retries + 1} wait_s={cooldown_wait_s:.3f}"
+            )
             await anyio.sleep(cooldown_wait_s)
         try:
             release_slot = await _acquire_dial_slot(op_label="wait")
@@ -4030,7 +4259,9 @@ async def wait_task(*, remote: RemoteQueue, task_id: str, timeout_s: float = 60.
                 raise
             delay_s = _retry_delay_s(attempt=attempt, base_ms=base_ms)
             _retry_metric_inc("wait.retry")
-            _dial_debug(f"wait retry after BaseExceptionGroup attempt={attempt + 1}/{retries + 1} delay_s={delay_s:.3f}")
+            _dial_debug(
+                f"wait retry after BaseExceptionGroup attempt={attempt + 1}/{retries + 1} delay_s={delay_s:.3f}"
+            )
             await anyio.sleep(delay_s)
         except Exception as exc:
             retryable = _is_retryable_transport_error(exc)
@@ -4042,12 +4273,16 @@ async def wait_task(*, remote: RemoteQueue, task_id: str, timeout_s: float = 60.
                 raise
             delay_s = _retry_delay_s(attempt=attempt, base_ms=base_ms)
             _retry_metric_inc("wait.retry")
-            _dial_debug(f"wait retry after {type(exc).__name__} attempt={attempt + 1}/{retries + 1} delay_s={delay_s:.3f}")
+            _dial_debug(
+                f"wait retry after {type(exc).__name__} attempt={attempt + 1}/{retries + 1} delay_s={delay_s:.3f}"
+            )
             await anyio.sleep(delay_s)
     return None
 
 
-async def get_capabilities(*, remote: RemoteQueue, timeout_s: float = 10.0, detail: bool = False) -> Dict[str, Any]:
+async def get_capabilities(
+    *, remote: RemoteQueue, timeout_s: float = 10.0, detail: bool = False
+) -> Dict[str, Any]:
     resp = await request_status(remote=remote, timeout_s=timeout_s, detail=detail)
     if not resp.get("ok"):
         raise RuntimeError(f"status failed: {resp}")
@@ -4085,10 +4320,14 @@ def _normalize_status_detail_response(*, resp: Dict[str, Any], detail: bool) -> 
     return normalized
 
 
-async def request_status(*, remote: RemoteQueue, timeout_s: float = 10.0, detail: bool = False) -> Dict[str, Any]:
+async def request_status(
+    *, remote: RemoteQueue, timeout_s: float = 10.0, detail: bool = False
+) -> Dict[str, Any]:
     # Short status probes are often used as health checks in tight loops.
     # Prefer cache/announce dialing there to avoid broad-discovery fanout.
-    lightweight_probe = (not bool(detail)) and (float(timeout_s) <= _status_probe_lightweight_timeout_s())
+    lightweight_probe = (not bool(detail)) and (
+        float(timeout_s) <= _status_probe_lightweight_timeout_s()
+    )
     resp = await _dial_and_request_with_retries(
         remote=remote,
         message={"op": "status", "timeout_s": float(timeout_s), "detail": bool(detail)},
@@ -4125,7 +4364,10 @@ def _should_retry_submit_response(resp: Dict[str, Any]) -> bool:
     )
     return any(marker in text for marker in transient_markers)
 
-async def cancel_task(*, remote: RemoteQueue, task_id: str, reason: str | None = None) -> Dict[str, Any]:
+
+async def cancel_task(
+    *, remote: RemoteQueue, task_id: str, reason: str | None = None
+) -> Dict[str, Any]:
     message: Dict[str, Any] = {"op": "cancel", "task_id": str(task_id)}
     if isinstance(reason, str) and reason.strip():
         message["reason"] = reason.strip()
@@ -4140,7 +4382,9 @@ async def cancel_task(*, remote: RemoteQueue, task_id: str, reason: str | None =
     return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}
 
 
-def cancel_task_sync(*, remote: RemoteQueue, task_id: str, reason: str | None = None) -> Dict[str, Any]:
+def cancel_task_sync(
+    *, remote: RemoteQueue, task_id: str, reason: str | None = None
+) -> Dict[str, Any]:
     import anyio
 
     async def _do() -> Dict[str, Any]:
@@ -4149,7 +4393,9 @@ def cancel_task_sync(*, remote: RemoteQueue, task_id: str, reason: str | None = 
     return anyio.run(_do, backend="trio")
 
 
-def request_status_sync(*, remote: RemoteQueue, timeout_s: float = 10.0, detail: bool = False) -> Dict[str, Any]:
+def request_status_sync(
+    *, remote: RemoteQueue, timeout_s: float = 10.0, detail: bool = False
+) -> Dict[str, Any]:
     import trio
 
     result: Dict[str, Any] = {}
@@ -4162,7 +4408,9 @@ def request_status_sync(*, remote: RemoteQueue, timeout_s: float = 10.0, detail:
     return result
 
 
-def get_capabilities_sync(*, remote: RemoteQueue, timeout_s: float = 10.0, detail: bool = False) -> Dict[str, Any]:
+def get_capabilities_sync(
+    *, remote: RemoteQueue, timeout_s: float = 10.0, detail: bool = False
+) -> Dict[str, Any]:
     """Synchronous wrapper around `get_capabilities`.
 
     Note: libp2p uses Trio internally; this wrapper runs a Trio event loop.

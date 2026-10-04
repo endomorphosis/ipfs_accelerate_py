@@ -83,9 +83,7 @@ SCHEMA_PATH_ALT = {
 
 
 def _span(line: int = 1) -> SourceSpan:
-    return SourceSpan(
-        line_start=line, column_start=0, line_end=line, column_end=8
-    )
+    return SourceSpan(line_start=line, column_start=0, line_end=line, column_end=8)
 
 
 def _art(
@@ -470,9 +468,7 @@ def test_resolver_resolution_receipt_is_consumed() -> None:
     resolution = MCPlusPlusContractResolver(inventory).resolve((_claim(),))
     assert any(call_path_is_proved(p) for p in resolution.paths)
 
-    checker = VfsMcpContractChecker(
-        inventory, contract_pack=canonical_vfs_contract_pack()
-    )
+    checker = VfsMcpContractChecker(inventory, contract_pack=canonical_vfs_contract_pack())
     report = checker.check(
         tool_names=("vfs.read",),
         resolution=resolution,
@@ -502,11 +498,7 @@ def test_same_text_without_resolved_call_path_is_insufficient() -> None:
     assert tool.verdict is ToolParityVerdict.INSUFFICIENT_PATH
     assert report.verdict is ReportVerdict.HAS_INSUFFICIENT_PATH
 
-    missing = [
-        f
-        for f in tool.findings
-        if f.kind is ParityFindingKind.MISSING_RESOLVED_CALL_PATH
-    ]
+    missing = [f for f in tool.findings if f.kind is ParityFindingKind.MISSING_RESOLVED_CALL_PATH]
     assert missing, "must report missing_resolved_call_path"
     assert missing[0].witnesses
     note = missing[0].witnesses[0].notes
@@ -550,9 +542,7 @@ def test_stale_generated_manifest_and_sdk_version() -> None:
     # Stale generated manifest/SDK versions.
     refreshed = []
     for item in artifacts:
-        if item.artifact_id.startswith("manifest:") or item.artifact_id.startswith(
-            "sdk:"
-        ):
+        if item.artifact_id.startswith("manifest:") or item.artifact_id.startswith("sdk:"):
             refreshed.append(
                 _art(
                     item.artifact_id,

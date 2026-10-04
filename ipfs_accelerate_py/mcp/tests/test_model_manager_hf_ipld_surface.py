@@ -31,11 +31,15 @@ def _install_fake_model_manager(monkeypatch):
             doc["generated_at"] = "2026-03-02T00:00:00+00:00"
         return doc
 
-    def get_hf_inference_ipld_cid(*, model_kind=None, base="base32", codec="raw", mh_type="sha2-256"):
+    def get_hf_inference_ipld_cid(
+        *, model_kind=None, base="base32", codec="raw", mh_type="sha2-256"
+    ):
         _ = (model_kind, base, codec, mh_type)
         return "bafkreifakecid"
 
-    def publish_hf_inference_ipld_to_ipfs(*, model_kind=None, pin=True, backend=None, backend_instance=None):
+    def publish_hf_inference_ipld_to_ipfs(
+        *, model_kind=None, pin=True, backend=None, backend_instance=None
+    ):
         _ = backend_instance
         return {
             "status": "success",
@@ -69,7 +73,9 @@ def _install_fake_model_manager(monkeypatch):
 
     monkeypatch.setitem(__import__("sys").modules, "ipfs_datasets_py", root_mod)
     monkeypatch.setitem(__import__("sys").modules, "ipfs_datasets_py.utils", utils_mod)
-    monkeypatch.setitem(__import__("sys").modules, "ipfs_datasets_py.utils.model_manager", manager_mod)
+    monkeypatch.setitem(
+        __import__("sys").modules, "ipfs_datasets_py.utils.model_manager", manager_mod
+    )
 
 
 def test_cli_models_ipld_commands_smoke(monkeypatch):
@@ -92,7 +98,9 @@ def test_cli_models_ipld_commands_smoke(monkeypatch):
     assert captured.payload["document"]["kind"] == "ipfs_datasets_py.hf_inference_model_registry"
 
     rc = cli.run_models_ipld_cid(
-        SimpleNamespace(kind="llm", base="base32", codec="raw", mh_type="sha2-256", output_json=False)
+        SimpleNamespace(
+            kind="llm", base="base32", codec="raw", mh_type="sha2-256", output_json=False
+        )
     )
     assert rc == 0
     assert captured.payload["status"] == "success"
@@ -105,9 +113,7 @@ def test_cli_models_ipld_commands_smoke(monkeypatch):
     assert captured.payload["status"] == "success"
     assert captured.payload["ipfs_cid"] == "bafkreiipfs"
 
-    rc = cli.run_models_ipld_load(
-        SimpleNamespace(cid="bafyok", backend="helia", output_json=False)
-    )
+    rc = cli.run_models_ipld_load(SimpleNamespace(cid="bafyok", backend="helia", output_json=False))
     assert rc == 0
     assert captured.payload["status"] == "success"
     assert captured.payload["document"]["kind"] == "ipfs_datasets_py.hf_inference_model_registry"
@@ -124,9 +130,7 @@ def test_cli_models_ipld_load_error_path(monkeypatch):
     captured = _CapturedOutput()
     monkeypatch.setattr(cli, "_print_output", captured.emit)
 
-    rc = cli.run_models_ipld_load(
-        SimpleNamespace(cid="bad", backend=None, output_json=True)
-    )
+    rc = cli.run_models_ipld_load(SimpleNamespace(cid="bad", backend=None, output_json=True))
     assert rc == 1
     assert captured.payload["status"] == "error"
     assert captured.payload["cid"] == "bad"
@@ -137,7 +141,9 @@ def test_mcp_tools_hf_ipld_functions_and_registration(monkeypatch):
 
     from ipfs_accelerate_py.mcp.tools import models as model_tools
 
-    doc = model_tools.build_hf_inference_ipld_document_tool(model_kind="embedding", include_generated_at=False)
+    doc = model_tools.build_hf_inference_ipld_document_tool(
+        model_kind="embedding", include_generated_at=False
+    )
     assert doc["status"] == "success"
     assert doc["document"]["kind"] == "ipfs_datasets_py.hf_inference_model_registry"
 
@@ -145,7 +151,9 @@ def test_mcp_tools_hf_ipld_functions_and_registration(monkeypatch):
     assert cid["status"] == "success"
     assert cid["cid"] == "bafkreifakecid"
 
-    pub = model_tools.publish_hf_inference_ipld_to_ipfs_tool(model_kind="embedding", pin=True, backend="helia")
+    pub = model_tools.publish_hf_inference_ipld_to_ipfs_tool(
+        model_kind="embedding", pin=True, backend="helia"
+    )
     assert pub["status"] == "success"
     assert pub["ipfs_cid"] == "bafkreiipfs"
 

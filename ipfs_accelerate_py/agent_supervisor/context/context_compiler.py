@@ -40,9 +40,7 @@ from .context_contracts import (
 from ..proof.formal_verification_contracts import CanonicalContract
 
 
-REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID: Final = (
-    "208290439421789408250562066350459701853"
-)
+REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID: Final = "208290439421789408250562066350459701853"
 REQUIRED_CONTEXT_OBJECTIVE_ID: Final = "ASI-G091"
 REQUIRED_CONTEXT_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
     (
@@ -53,10 +51,7 @@ REQUIRED_CONTEXT_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
         "counts the complete canonical provider input and never trusts a "
         "caller-declared reference token hint below the canonical descriptor cost"
     ),
-    (
-        "preserves the complete invariant core and every required reference "
-        "or rejects compilation"
-    ),
+    ("preserves the complete invariant core and every required reference or rejects compilation"),
     "refuses to defer required evidence as an expansion handle",
     (
         "orders optional material deterministically with explicit "
@@ -73,15 +68,9 @@ REQUIRED_CONTEXT_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
         "set while the paired 35 percent gate passes."
     ),
 )
-DELTA_RETRY_EVIDENCE_ID: Final = (
-    "306437607356117177048620815571362227127"
-)
-PREFIX_REUSE_REQUIREMENT_ID: Final = (
-    "267664298677617945522201159534035798321"
-)
-VALUE_OF_INFORMATION_REQUIREMENT_ID: Final = (
-    "224169380537603827401044344943410282193"
-)
+DELTA_RETRY_EVIDENCE_ID: Final = "306437607356117177048620815571362227127"
+PREFIX_REUSE_REQUIREMENT_ID: Final = "267664298677617945522201159534035798321"
+VALUE_OF_INFORMATION_REQUIREMENT_ID: Final = "224169380537603827401044344943410282193"
 VALUE_OF_INFORMATION_OBJECTIVE_ID: Final = "ASI-G210"
 VALUE_OF_INFORMATION_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
     (
@@ -167,28 +156,19 @@ CONTEXT_EVIDENCE_PRODUCERS: Final = {
 CONTEXT_COMPILATION_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/context-compilation-receipt@2"
 )
-CONTEXT_DELTA_RECEIPT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/context-delta-receipt@1"
-)
-RETRY_CONTEXT_CAPSULE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/retry-context-capsule@1"
-)
+CONTEXT_DELTA_RECEIPT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/context-delta-receipt@1"
+RETRY_CONTEXT_CAPSULE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/retry-context-capsule@1"
 REQUIRED_CONTEXT_BUDGET_EVIDENCE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "required-context-budget-evidence@2"
+    "ipfs_accelerate_py/agent-supervisor/required-context-budget-evidence@2"
 )
 DELTA_RETRY_CONTEXT_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/delta-retry-context-evidence@1"
 )
-PREFIX_CACHE_IDENTITY_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/prefix-cache-identity@1"
-)
+PREFIX_CACHE_IDENTITY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/prefix-cache-identity@1"
 PREFIX_STABLE_CONTEXT_CAPSULE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/prefix-stable-context-capsule@1"
 )
-PREFIX_REUSE_RECEIPT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/prefix-reuse-receipt@1"
-)
+PREFIX_REUSE_RECEIPT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/prefix-reuse-receipt@1"
 VALUE_OF_INFORMATION_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/value-of-information-evidence@1"
 )
@@ -301,9 +281,7 @@ def _text(value: Any, name: str, *, required: bool = True) -> str:
 
 def _integer(value: Any, name: str, *, minimum: int = 0) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
-        raise ContextCompilationError(
-            f"{name} must be an integer of at least {minimum}"
-        )
+        raise ContextCompilationError(f"{name} must be an integer of at least {minimum}")
     return value
 
 
@@ -318,9 +296,7 @@ def _basis_points(value: Any, name: str, *, default: int = 0) -> int:
         result = value
     elif isinstance(value, float):
         if value < 0.0 or value > 1.0:
-            raise ContextCompilationError(
-                f"{name} fractions must be between zero and one"
-            )
+            raise ContextCompilationError(f"{name} fractions must be between zero and one")
         result = round(value * MAX_VALUE_BPS)
     else:
         raise ContextCompilationError(f"{name} must be numeric")
@@ -391,9 +367,7 @@ def _canonical_digest(value: Any) -> str:
     return "sha256:" + hashlib.sha256(canonical_context_json_bytes(value)).hexdigest()
 
 
-def _reject_unknown(
-    payload: Mapping[str, Any], allowed: set[str], noun: str
-) -> None:
+def _reject_unknown(payload: Mapping[str, Any], allowed: set[str], noun: str) -> None:
     if not isinstance(payload, Mapping):
         raise ContextCompilationError(f"{noun} must be an object")
     if set(payload).difference(allowed):
@@ -405,19 +379,13 @@ def _reject_unknown(
 def _schema(payload: Mapping[str, Any], expected: str, noun: str) -> None:
     supplied = payload.get("schema")
     if supplied not in (None, "", expected):
-        raise ContextCompilationError(
-            f"unsupported {noun} schema; rebuild the canonical payload"
-        )
+        raise ContextCompilationError(f"unsupported {noun} schema; rebuild the canonical payload")
     version = payload.get("contract_version")
     if version not in (None, CONTEXT_COMPILER_VERSION):
-        raise ContextCompilationError(
-            f"unsupported {noun} contract version"
-        )
+        raise ContextCompilationError(f"unsupported {noun} contract version")
 
 
-def _check_identity(
-    payload: Mapping[str, Any], actual: str, noun: str
-) -> None:
+def _check_identity(payload: Mapping[str, Any], actual: str, noun: str) -> None:
     claimed = payload.get("content_id") or payload.get("receipt_id")
     if claimed not in (None, "", actual):
         raise ContextCompilationError(f"{noun} identity does not match payload")
@@ -429,9 +397,7 @@ def _coerce_references(
     result: dict[str, ContextReference] = {}
     for index, raw in enumerate(value):
         if index >= MAX_DECISIONS:
-            raise ContextCompilationError(
-                "evidence exceeds its reference-count limit"
-            )
+            raise ContextCompilationError("evidence exceeds its reference-count limit")
         item = (
             raw
             if isinstance(raw, ContextReference)
@@ -442,14 +408,10 @@ def _coerce_references(
         if item is None:
             raise ContextCompilationError("evidence contains an invalid reference")
         if item.tier is ContextTier.EXPANSION:
-            raise ContextCompilationError(
-                "candidate evidence cannot use the expansion tier"
-            )
+            raise ContextCompilationError("candidate evidence cannot use the expansion tier")
         previous = result.get(item.reference_id)
         if previous is not None and previous != item:
-            raise ContextCompilationError(
-                "evidence contains conflicting duplicate reference IDs"
-            )
+            raise ContextCompilationError("evidence contains conflicting duplicate reference IDs")
         result[item.reference_id] = item
     return tuple(result[key] for key in sorted(result))
 
@@ -514,9 +476,7 @@ def _cancelled(value: Any) -> bool:
     checker = getattr(value, "is_set", None)
     if callable(checker):
         return bool(checker())
-    raise ContextExpansionError(
-        "cancelled must be a boolean, predicate, event, or None"
-    )
+    raise ContextExpansionError("cancelled must be a boolean, predicate, event, or None")
 
 
 def _utf8_chunks(value: str, *, max_bytes: int) -> tuple[str, ...]:
@@ -540,9 +500,7 @@ def _utf8_chunks(value: str, *, max_bytes: int) -> tuple[str, ...]:
     remaining = text
     while len(remaining.encode("utf-8")) > limit:
         if len(remaining[0].encode("utf-8")) > limit:
-            raise ContextCompilationError(
-                "max_bytes is smaller than one UTF-8 code point"
-            )
+            raise ContextCompilationError("max_bytes is smaller than one UTF-8 code point")
         low = 1
         high = len(remaining)
         while low < high:
@@ -594,27 +552,19 @@ def build_text_context_references(
     if isinstance(priority, bool) or not isinstance(priority, int):
         raise ContextCompilationError("priority must be an integer")
     try:
-        selected_tier = (
-            tier if isinstance(tier, ContextTier) else ContextTier(str(tier))
-        )
+        selected_tier = tier if isinstance(tier, ContextTier) else ContextTier(str(tier))
     except ValueError as exc:
         raise ContextCompilationError("tier is not a supported context tier") from exc
     if required:
         selected_tier = ContextTier.INVARIANT
     chunks = _utf8_chunks(text, max_bytes=chunk_bytes)
     if len(chunks) > MAX_DECISIONS:
-        raise ContextCompilationError(
-            "text artifact exceeds its context reference-count limit"
-        )
+        raise ContextCompilationError("text artifact exceeds its context reference-count limit")
     artifact_content_id = _canonical_digest({"text": text})
-    normalized_coverage = _strings(
-        coverage_ids, "coverage_ids", maximum=MAX_DECISIONS
-    )
+    normalized_coverage = _strings(coverage_ids, "coverage_ids", maximum=MAX_DECISIONS)
     result: list[ContextReference] = []
     for index, chunk in enumerate(chunks):
-        chunk_content_id = "sha256:" + hashlib.sha256(
-            chunk.encode("utf-8")
-        ).hexdigest()
+        chunk_content_id = "sha256:" + hashlib.sha256(chunk.encode("utf-8")).hexdigest()
         result.append(
             ContextReference(
                 reference_id=f"{prefix}:{index + 1:04d}",
@@ -676,12 +626,8 @@ class ContentAddressedContextStore:
         max_artifact_bytes: int = 1_048_576,
         max_artifacts: int = MAX_DECISIONS,
     ) -> None:
-        self.max_artifact_bytes = _integer(
-            max_artifact_bytes, "max_artifact_bytes", minimum=1
-        )
-        self.max_artifacts = _integer(
-            max_artifacts, "max_artifacts", minimum=1
-        )
+        self.max_artifact_bytes = _integer(max_artifact_bytes, "max_artifact_bytes", minimum=1)
+        self.max_artifacts = _integer(max_artifacts, "max_artifacts", minimum=1)
         self._objects: dict[str, bytes] = {}
 
     @staticmethod
@@ -760,9 +706,7 @@ class ContentAddressedContextStore:
             byte_count=len(content.encode("utf-8")),
             metadata={
                 "priority": priority,
-                "coverage_ids": _strings(
-                    coverage_ids, "coverage_ids", maximum=MAX_DECISIONS
-                ),
+                "coverage_ids": _strings(coverage_ids, "coverage_ids", maximum=MAX_DECISIONS),
                 "unresolved_questions": questions,
                 "question_bound_expansion": bool(questions),
             },
@@ -787,9 +731,7 @@ class ContentAddressedContextStore:
         if isinstance(allowed_questions, str):
             allowed_questions = (allowed_questions,)
         if not isinstance(allowed_questions, (tuple, list)):
-            raise ContextExpansionError(
-                "expansion handle unresolved questions are malformed"
-            )
+            raise ContextExpansionError("expansion handle unresolved questions are malformed")
         normalized_question = _text(
             unresolved_question,
             "unresolved_question",
@@ -808,13 +750,9 @@ class ContentAddressedContextStore:
         try:
             text = raw.decode("utf-8")
         except UnicodeDecodeError as exc:
-            raise ContextExpansionError(
-                "model-facing context artifact is not UTF-8 text"
-            ) from exc
+            raise ContextExpansionError("model-facing context artifact is not UTF-8 text") from exc
         if handle.byte_count not in (0, len(raw)):
-            raise ContextExpansionError(
-                "expansion handle byte count does not match its artifact"
-            )
+            raise ContextExpansionError("expansion handle byte count does not match its artifact")
         if _cancelled(cancelled):
             raise ContextExpansionCancelled("context expansion was cancelled")
         metadata = dict(handle.metadata)
@@ -857,26 +795,18 @@ class ContentAddressedContextStore:
             raise ContextExpansionError("parent must be a ContextCapsule")
         if _cancelled(cancelled):
             raise ContextExpansionCancelled("context expansion was cancelled")
-        current_repository = _text(
-            repository_id or parent.repository_id, "repository_id"
-        )
+        current_repository = _text(repository_id or parent.repository_id, "repository_id")
         current_tree = _text(tree_id or parent.tree_id, "tree_id")
         if current_repository != parent.repository_id:
-            raise ChangedTreeContextError(
-                "parent repository identity is no longer current"
-            )
+            raise ChangedTreeContextError("parent repository identity is no longer current")
         if current_tree != parent.tree_id:
             raise ChangedTreeContextError(
                 "parent repository tree changed; compile a new base context"
             )
         requested = _strings(reference_ids, "reference_ids")
         if not requested:
-            raise MissingContextReferenceError(
-                "at least one expansion reference ID is required"
-            )
-        handles = {
-            item.reference_id: item for item in parent.expansion_references
-        }
+            raise MissingContextReferenceError("at least one expansion reference ID is required")
+        handles = {item.reference_id: item for item in parent.expansion_references}
         missing = set(requested).difference(handles)
         if missing:
             raise MissingContextReferenceError(
@@ -892,13 +822,8 @@ class ContentAddressedContextStore:
                 unresolved_question=unresolved_question,
                 cancelled=cancelled,
             )
-            if (
-                item.referenced_content_id
-                != handles[reference_id].referenced_content_id
-            ):
-                raise ContextExpansionError(
-                    "resolved context does not match its expansion handle"
-                )
+            if item.referenced_content_id != handles[reference_id].referenced_content_id:
+                raise ContextExpansionError("resolved context does not match its expansion handle")
             resolved.append(item)
         if _cancelled(cancelled):
             raise ContextExpansionCancelled("context expansion was cancelled")
@@ -946,9 +871,7 @@ class RetryContextCapsule(CanonicalContract):
         if isinstance(delta, Mapping):
             delta = ContextDeltaCapsule.from_dict(delta)
         if not isinstance(delta, ContextDeltaCapsule):
-            raise ContextDeltaError(
-                "retry delta_capsule must be a ContextDeltaCapsule"
-            )
+            raise ContextDeltaError("retry delta_capsule must be a ContextDeltaCapsule")
         object.__setattr__(self, "delta_capsule", delta)
         for name in (
             "failure_evidence_ids",
@@ -963,18 +886,12 @@ class RetryContextCapsule(CanonicalContract):
                 _strings(getattr(self, name), name, maximum=MAX_DECISIONS),
             )
         if not self.failure_evidence_ids and not self.counterexample_evidence_ids:
-            raise ContextDeltaError(
-                "retry context requires new failure or counterexample evidence"
-            )
+            raise ContextDeltaError("retry context requires new failure or counterexample evidence")
         for path in self.changed_files:
             if path.startswith("/") or ".." in path.split("/"):
-                raise ContextDeltaError(
-                    "changed_files must contain repository-relative paths"
-                )
+                raise ContextDeltaError("changed_files must contain repository-relative paths")
         repair_round = _integer(self.repair_round, "repair_round", minimum=1)
-        maximum = _integer(
-            self.max_repair_rounds, "max_repair_rounds", minimum=1
-        )
+        maximum = _integer(self.max_repair_rounds, "max_repair_rounds", minimum=1)
         if repair_round > maximum:
             raise ContextDeltaError("retry repair round exceeds its bound")
         object.__setattr__(self, "repair_round", repair_round)
@@ -1036,19 +953,13 @@ class RetryContextCapsule(CanonicalContract):
             repository_id=payload.get("repository_id", ""),
             tree_id=payload.get("tree_id", ""),
             delta_capsule=(
-                ContextDeltaCapsule.from_dict(delta)
-                if isinstance(delta, Mapping)
-                else delta
+                ContextDeltaCapsule.from_dict(delta) if isinstance(delta, Mapping) else delta
             ),
             failure_evidence_ids=tuple(payload.get("failure_evidence_ids", ())),
-            counterexample_evidence_ids=tuple(
-                payload.get("counterexample_evidence_ids", ())
-            ),
+            counterexample_evidence_ids=tuple(payload.get("counterexample_evidence_ids", ())),
             changed_files=tuple(payload.get("changed_files", ())),
             changed_symbols=tuple(payload.get("changed_symbols", ())),
-            unresolved_requirement_ids=tuple(
-                payload.get("unresolved_requirement_ids", ())
-            ),
+            unresolved_requirement_ids=tuple(payload.get("unresolved_requirement_ids", ())),
             repair_round=payload.get("repair_round", 1),
             max_repair_rounds=payload.get("max_repair_rounds", 3),
         )
@@ -1075,9 +986,7 @@ class RetryContextResult:
             self.capsule.repository_id != parent.repository_id
             or self.capsule.tree_id != parent.tree_id
         ):
-            raise ChangedTreeContextError(
-                "retry capsule repository tree does not match its parent"
-            )
+            raise ChangedTreeContextError("retry capsule repository tree does not match its parent")
 
     @property
     def reconstructed_capsule(self) -> ContextCapsule:
@@ -1146,10 +1055,7 @@ class EvidenceValueEstimate:
     def total_cost(self) -> int:
         return max(
             1,
-            self.token_cost
-            + self.latency_cost
-            + self.invalidation_cost
-            + self.expansion_cost,
+            self.token_cost + self.latency_cost + self.invalidation_cost + self.expansion_cost,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -1224,9 +1130,7 @@ class EvidenceValuePolicy:
         selected_diversity_count: int = 0,
     ) -> EvidenceValueEstimate:
         if not isinstance(reference, ContextReference):
-            raise ContextCompilationError(
-                "value estimation requires a ContextReference"
-            )
+            raise ContextCompilationError("value estimation requires a ContextReference")
         tokens = _integer(token_cost, "token_cost", minimum=1)
         count = _integer(
             selected_diversity_count,
@@ -1245,9 +1149,7 @@ class EvidenceValuePolicy:
         # Existing priority becomes a deterministic prior for legacy callers,
         # but still pays the complete measured and declared cost denominator.
         default_change = (
-            0
-            if explicit
-            else max(1, min(MAX_VALUE_BPS, 5_000 + reference.priority * 100))
+            0 if explicit else max(1, min(MAX_VALUE_BPS, 5_000 + reference.priority * 100))
         )
         expected_change = _metadata_basis_points(
             metadata,
@@ -1266,9 +1168,7 @@ class EvidenceValuePolicy:
             "uncertainty_reduction",
         )
         if uncertainty and uncertainty_reduction > uncertainty:
-            raise ContextCompilationError(
-                "uncertainty reduction cannot exceed current uncertainty"
-            )
+            raise ContextCompilationError("uncertainty reduction cannot exceed current uncertainty")
         latency = _metadata_integer(
             metadata,
             ("latency_cost", "latency_cost_units"),
@@ -1282,18 +1182,10 @@ class EvidenceValuePolicy:
             ("expansion_cost", "expansion_cost_units"),
         )
         total_cost = max(1, tokens + latency + invalidation + expansion)
-        raw_score = (
-            (expected_change + uncertainty_reduction) * 1_000_000
-        ) // total_cost
+        raw_score = ((expected_change + uncertainty_reduction) * 1_000_000) // total_cost
         diversity_key = self._diversity_key(reference)
-        penalty = (
-            min(MAX_VALUE_BPS, self.diversity_penalty_bps * count)
-            if diversity_key
-            else 0
-        )
-        adjusted_score = (
-            raw_score * MAX_VALUE_BPS // (MAX_VALUE_BPS + penalty)
-        )
+        penalty = min(MAX_VALUE_BPS, self.diversity_penalty_bps * count) if diversity_key else 0
+        adjusted_score = raw_score * MAX_VALUE_BPS // (MAX_VALUE_BPS + penalty)
         return EvidenceValueEstimate(
             expected_decision_change_bps=expected_change,
             uncertainty_bps=uncertainty,
@@ -1331,9 +1223,7 @@ class EvidenceSelectionDecision:
     unresolved_question: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "reference_id", _text(self.reference_id, "reference_id")
-        )
+        object.__setattr__(self, "reference_id", _text(self.reference_id, "reference_id"))
         if not isinstance(self.included, bool):
             raise ContextCompilationError("included must be a boolean")
         enum_type = InclusionReason if self.included else ExclusionReason
@@ -1348,9 +1238,7 @@ class EvidenceSelectionDecision:
                 "selection reason does not match inclusion state"
             ) from exc
         object.__setattr__(self, "reason", reason)
-        object.__setattr__(
-            self, "token_count", _integer(self.token_count, "token_count")
-        )
+        object.__setattr__(self, "token_count", _integer(self.token_count, "token_count"))
         if isinstance(self.priority, bool) or not isinstance(self.priority, int):
             raise ContextCompilationError("priority must be an integer")
         for name in (
@@ -1364,21 +1252,15 @@ class EvidenceSelectionDecision:
                 name,
                 _basis_points(getattr(self, name), name),
             )
-        if self.uncertainty_bps and (
-            self.uncertainty_reduction_bps > self.uncertainty_bps
-        ):
-            raise ContextCompilationError(
-                "uncertainty reduction cannot exceed current uncertainty"
-            )
+        if self.uncertainty_bps and (self.uncertainty_reduction_bps > self.uncertainty_bps):
+            raise ContextCompilationError("uncertainty reduction cannot exceed current uncertainty")
         for name in (
             "latency_cost",
             "invalidation_cost",
             "expansion_cost",
             "value_score",
         ):
-            object.__setattr__(
-                self, name, _integer(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _integer(getattr(self, name), name))
         object.__setattr__(
             self,
             "diversity_key",
@@ -1414,9 +1296,7 @@ class EvidenceSelectionDecision:
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "EvidenceSelectionDecision":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "EvidenceSelectionDecision":
         fields = {
             "reference_id",
             "included",
@@ -1441,13 +1321,9 @@ class EvidenceSelectionDecision:
             reason=payload.get("reason", ""),
             token_count=payload.get("token_count", 0),
             priority=payload.get("priority", 0),
-            expected_decision_change_bps=payload.get(
-                "expected_decision_change_bps", 0
-            ),
+            expected_decision_change_bps=payload.get("expected_decision_change_bps", 0),
             uncertainty_bps=payload.get("uncertainty_bps", 0),
-            uncertainty_reduction_bps=payload.get(
-                "uncertainty_reduction_bps", 0
-            ),
+            uncertainty_reduction_bps=payload.get("uncertainty_reduction_bps", 0),
             latency_cost=payload.get("latency_cost", 0),
             invalidation_cost=payload.get("invalidation_cost", 0),
             expansion_cost=payload.get("expansion_cost", 0),
@@ -1468,9 +1344,7 @@ class CalibratedTokenEstimator:
         chars_per_token: int = 4,
     ) -> None:
         self._tokenizer = tokenizer
-        self._chars_per_token = _integer(
-            chars_per_token, "chars_per_token", minimum=1
-        )
+        self._chars_per_token = _integer(chars_per_token, "chars_per_token", minimum=1)
         self._samples: list[tuple[int, int]] = []
 
     @property
@@ -1494,9 +1368,7 @@ class CalibratedTokenEstimator:
         total_actual = sum(actual for _, actual in self._samples)
         if total_actual == 0:
             return 0
-        absolute_error = sum(
-            abs(estimated - actual) for estimated, actual in self._samples
-        )
+        absolute_error = sum(abs(estimated - actual) for estimated, actual in self._samples)
         return min(MAX_ERROR_BPS, absolute_error * 10_000 // total_actual)
 
     def _provider_count(self, text: str) -> int:
@@ -1506,9 +1378,7 @@ class CalibratedTokenEstimator:
         elif hasattr(tokenizer, "encode"):
             result = tokenizer.encode(text)
         else:
-            raise ContextCompilationError(
-                "tokenizer must be callable or expose encode()"
-            )
+            raise ContextCompilationError("tokenizer must be callable or expose encode()")
         if isinstance(result, bool):
             raise ContextCompilationError("provider tokenizer returned a boolean")
         if isinstance(result, int):
@@ -1551,16 +1421,12 @@ class CalibratedTokenEstimator:
             byte_count = len(value.encode("utf-8"))
         else:
             byte_count = len(canonical_context_json_bytes(value))
-        estimated = max(
-            1, (byte_count + self._chars_per_token - 1) // self._chars_per_token
-        )
+        estimated = max(1, (byte_count + self._chars_per_token - 1) // self._chars_per_token)
         self._samples.append((estimated, actual))
         del self._samples[:-MAX_CALIBRATION_SAMPLES]
 
 
-def _reference_tokens(
-    estimator: CalibratedTokenEstimator, reference: ContextReference
-) -> int:
+def _reference_tokens(estimator: CalibratedTokenEstimator, reference: ContextReference) -> int:
     # A producer-supplied token count is a useful conservative hint, never an
     # authority boundary.  Always tokenize the canonical descriptor as well
     # so a large reference cannot claim ``token_count=1`` and escape the
@@ -1663,18 +1529,12 @@ def _stable_prefix_bytes(capsule: ContextCapsule) -> bytes:
     return _prefix_segment_bytes(
         "stable_policy_objective_prefix",
         _stable_policy_objective_prefix(capsule),
-    ) + _prefix_segment_bytes(
-        "stable_task_core", _stable_task_core(capsule)
-    )
+    ) + _prefix_segment_bytes("stable_task_core", _stable_task_core(capsule))
 
 
 def _volatile_evidence_bytes(capsule: ContextCapsule) -> bytes:
     return canonical_context_json_bytes(
-        {
-            "volatile_evidence_delta": tuple(
-                item.to_record() for item in capsule.evidence
-            )
-        }
+        {"volatile_evidence_delta": tuple(item.to_record() for item in capsule.evidence)}
     )
 
 
@@ -1683,12 +1543,9 @@ def _prefix_provider_input_tokens(
     capsule: ContextCapsule,
 ) -> int:
     stable = _stable_prefix_bytes(capsule)
-    canonical_count = estimator.estimate(
-        stable + _volatile_evidence_bytes(capsule)
-    )
+    canonical_count = estimator.estimate(stable + _volatile_evidence_bytes(capsule))
     empty_delta_count = estimator.estimate(
-        stable
-        + canonical_context_json_bytes({"volatile_evidence_delta": ()})
+        stable + canonical_context_json_bytes({"volatile_evidence_delta": ()})
     )
     component_count = empty_delta_count + sum(
         _reference_tokens(estimator, item) for item in capsule.evidence
@@ -1755,13 +1612,9 @@ class PrefixCacheIdentity(CanonicalContract):
             required=False,
         )
         if kind is PrefixCacheKind.DERIVED and provider_cache_id:
-            raise PrefixContextError(
-                "a derived prefix key cannot claim a provider cache identity"
-            )
+            raise PrefixContextError("a derived prefix key cannot claim a provider cache identity")
         if kind is not PrefixCacheKind.DERIVED and not provider_cache_id:
-            raise PrefixContextError(
-                "provider cache identities require provider_cache_id"
-            )
+            raise PrefixContextError("provider cache identities require provider_cache_id")
         object.__setattr__(self, "cache_kind", kind)
         object.__setattr__(self, "provider_cache_id", provider_cache_id)
 
@@ -1819,9 +1672,7 @@ class PrefixCacheIdentity(CanonicalContract):
         for name in ("cache_identity_id", "cache_key"):
             claimed = payload.get(name)
             if claimed not in (None, "", result.content_id):
-                raise PrefixContextError(
-                    "prefix cache identity does not match its canonical key"
-                )
+                raise PrefixContextError("prefix cache identity does not match its canonical key")
         return result
 
 
@@ -1843,16 +1694,10 @@ class PrefixStableContextCapsule(CanonicalContract):
         if isinstance(capsule, Mapping):
             capsule = ContextCapsule.from_dict(capsule)
         if not isinstance(capsule, ContextCapsule):
-            raise PrefixContextError(
-                "context_capsule must be a ContextCapsule"
-            )
+            raise PrefixContextError("context_capsule must be a ContextCapsule")
         object.__setattr__(self, "context_capsule", capsule)
-        object.__setattr__(
-            self, "provider_id", _text(self.provider_id, "provider_id")
-        )
-        object.__setattr__(
-            self, "model_id", _text(self.model_id, "model_id")
-        )
+        object.__setattr__(self, "provider_id", _text(self.provider_id, "provider_id"))
+        object.__setattr__(self, "model_id", _text(self.model_id, "model_id"))
         stable_tokens = _integer(
             self.stable_prefix_tokens,
             "stable_prefix_tokens",
@@ -1869,17 +1714,11 @@ class PrefixStableContextCapsule(CanonicalContract):
             minimum=1,
         )
         if stable_tokens > input_tokens:
-            raise PrefixContextError(
-                "stable prefix tokens cannot exceed provider input tokens"
-            )
+            raise PrefixContextError("stable prefix tokens cannot exceed provider input tokens")
         if effective_limit < capsule.budget.max_input_tokens:
-            raise PrefixContextError(
-                "prefix effective limit cannot weaken its base capsule limit"
-            )
+            raise PrefixContextError("prefix effective limit cannot weaken its base capsule limit")
         if input_tokens > effective_limit:
-            raise PrefixContextError(
-                "prefix-stable input exceeds the effective provider budget"
-            )
+            raise PrefixContextError("prefix-stable input exceeds the effective provider budget")
         object.__setattr__(self, "stable_prefix_tokens", stable_tokens)
         object.__setattr__(self, "provider_input_tokens", input_tokens)
         object.__setattr__(self, "effective_input_limit", effective_limit)
@@ -1913,9 +1752,7 @@ class PrefixStableContextCapsule(CanonicalContract):
 
     @property
     def stable_task_core_bytes(self) -> bytes:
-        return _prefix_segment_bytes(
-            "stable_task_core", self.stable_task_core
-        )
+        return _prefix_segment_bytes("stable_task_core", self.stable_task_core)
 
     @property
     def stable_prefix_bytes(self) -> bytes:
@@ -1945,9 +1782,7 @@ class PrefixStableContextCapsule(CanonicalContract):
     def semantic_prefix_id(self) -> str:
         return _canonical_digest(
             {
-                "stable_policy_objective_prefix": (
-                    self.stable_policy_objective_prefix
-                ),
+                "stable_policy_objective_prefix": (self.stable_policy_objective_prefix),
                 "stable_task_core": self.stable_task_core,
             }
         )
@@ -1984,9 +1819,7 @@ class PrefixStableContextCapsule(CanonicalContract):
 
     @property
     def evidence_digest(self) -> str:
-        return _canonical_digest(
-            tuple(item.to_record() for item in self.volatile_evidence_delta)
-        )
+        return _canonical_digest(tuple(item.to_record() for item in self.volatile_evidence_delta))
 
     @property
     def required_field_names(self) -> tuple[str, ...]:
@@ -2018,9 +1851,7 @@ class PrefixStableContextCapsule(CanonicalContract):
             "context_capsule": self.context_capsule.to_record(),
             "provider_id": self.provider_id,
             "model_id": self.model_id,
-            "stable_policy_objective_prefix": (
-                self.stable_policy_objective_prefix
-            ),
+            "stable_policy_objective_prefix": (self.stable_policy_objective_prefix),
             "stable_task_core": self.stable_task_core,
             "volatile_evidence_delta": tuple(
                 item.to_record() for item in self.volatile_evidence_delta
@@ -2035,9 +1866,7 @@ class PrefixStableContextCapsule(CanonicalContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "PrefixStableContextCapsule":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "PrefixStableContextCapsule":
         _schema(payload, cls.SCHEMA, "prefix-stable context capsule")
         _reject_unknown(
             payload,
@@ -2082,9 +1911,7 @@ class PrefixStableContextCapsule(CanonicalContract):
             effective_input_limit=payload.get("effective_input_limit", 0),
         )
         projections = {
-            "stable_policy_objective_prefix": (
-                result.stable_policy_objective_prefix
-            ),
+            "stable_policy_objective_prefix": (result.stable_policy_objective_prefix),
             "stable_task_core": result.stable_task_core,
             "volatile_evidence_delta": tuple(
                 item.to_record() for item in result.volatile_evidence_delta
@@ -2097,22 +1924,16 @@ class PrefixStableContextCapsule(CanonicalContract):
         }
         for name, actual in projections.items():
             claimed = payload.get(name)
-            if (
-                claimed not in (None, "")
-                and canonical_context_json_bytes(claimed)
-                != canonical_context_json_bytes(actual)
-            ):
+            if claimed not in (None, "") and canonical_context_json_bytes(
+                claimed
+            ) != canonical_context_json_bytes(actual):
                 raise PrefixContextError(
                     "prefix-stable projection does not match its context capsule"
                 )
-        _check_identity(
-            payload, result.content_id, "prefix-stable context capsule"
-        )
+        _check_identity(payload, result.content_id, "prefix-stable context capsule")
         claimed = payload.get("capsule_id")
         if claimed not in (None, "", result.content_id):
-            raise PrefixContextError(
-                "prefix-stable capsule identity does not match payload"
-            )
+            raise PrefixContextError("prefix-stable capsule identity does not match payload")
         return result
 
 
@@ -2173,9 +1994,7 @@ class PrefixReuseReceipt(CanonicalContract):
         if isinstance(identity, Mapping):
             identity = PrefixCacheIdentity.from_dict(identity)
         if not isinstance(identity, PrefixCacheIdentity):
-            raise PrefixContextError(
-                "cache_identity must be a PrefixCacheIdentity"
-            )
+            raise PrefixContextError("cache_identity must be a PrefixCacheIdentity")
         object.__setattr__(self, "cache_identity", identity)
         try:
             source = (
@@ -2199,79 +2018,42 @@ class PrefixReuseReceipt(CanonicalContract):
             "reused_prefix_tokens",
             "provider_input_tokens",
         ):
-            object.__setattr__(
-                self, name, _integer(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _integer(getattr(self, name), name))
         if self.eligible_stable_prefix_tokens < 1:
-            raise PrefixContextError(
-                "eligible stable prefix tokens must be positive"
-            )
+            raise PrefixContextError("eligible stable prefix tokens must be positive")
         if self.reused_prefix_tokens > self.eligible_stable_prefix_tokens:
-            raise PrefixContextError(
-                "reused prefix tokens exceed the eligible stable prefix"
-            )
+            raise PrefixContextError("reused prefix tokens exceed the eligible stable prefix")
         if self.eligible_stable_prefix_tokens > self.provider_input_tokens:
-            raise PrefixContextError(
-                "eligible prefix tokens exceed provider input tokens"
-            )
+            raise PrefixContextError("eligible prefix tokens exceed provider input tokens")
         provider_reused = self.provider_reused_tokens
         if provider_reused is not None:
-            provider_reused = _integer(
-                provider_reused, "provider_reused_tokens"
-            )
+            provider_reused = _integer(provider_reused, "provider_reused_tokens")
             if provider_reused > self.provider_input_tokens:
-                raise PrefixContextError(
-                    "provider reused tokens exceed provider input tokens"
-                )
-        object.__setattr__(
-            self, "provider_reused_tokens", provider_reused
-        )
-        invalidated = _strings(
-            self.invalidated_dependencies, "invalidated_dependencies"
-        )
-        evidence_ids = _strings(
-            self.evidence_reference_ids, "evidence_reference_ids"
-        )
-        object.__setattr__(
-            self, "invalidated_dependencies", invalidated
-        )
+                raise PrefixContextError("provider reused tokens exceed provider input tokens")
+        object.__setattr__(self, "provider_reused_tokens", provider_reused)
+        invalidated = _strings(self.invalidated_dependencies, "invalidated_dependencies")
+        evidence_ids = _strings(self.evidence_reference_ids, "evidence_reference_ids")
+        object.__setattr__(self, "invalidated_dependencies", invalidated)
         object.__setattr__(self, "evidence_reference_ids", evidence_ids)
-        if bool(self.previous_capsule_id) != bool(
-            self.previous_semantic_prefix_id
-        ):
-            raise PrefixContextError(
-                "warm predecessor identities must be supplied together"
-            )
+        if bool(self.previous_capsule_id) != bool(self.previous_semantic_prefix_id):
+            raise PrefixContextError("warm predecessor identities must be supplied together")
         native_source = source in {
             PrefixReuseSource.PROVIDER_PROMPT_CACHE,
             PrefixReuseSource.PROVIDER_KV_CACHE,
         }
         if native_source != (provider_reused is not None):
-            raise PrefixContextError(
-                "provider-native reuse requires an actual reused-token count"
-            )
+            raise PrefixContextError("provider-native reuse requires an actual reused-token count")
         expected_kind = {
-            PrefixReuseSource.PROVIDER_PROMPT_CACHE: (
-                PrefixCacheKind.PROMPT_CACHE
-            ),
+            PrefixReuseSource.PROVIDER_PROMPT_CACHE: (PrefixCacheKind.PROMPT_CACHE),
             PrefixReuseSource.PROVIDER_KV_CACHE: PrefixCacheKind.KV_CACHE,
         }.get(source)
-        if (
-            expected_kind is not None
-            and identity.cache_kind is not expected_kind
-        ):
-            raise PrefixContextError(
-                "reuse source does not match the cache identity kind"
-            )
+        if expected_kind is not None and identity.cache_kind is not expected_kind:
+            raise PrefixContextError("reuse source does not match the cache identity kind")
         if decision is PrefixCacheDecision.COLD:
             if self.previous_capsule_id or self.reused_prefix_tokens:
-                raise PrefixContextError(
-                    "cold cache decisions cannot claim warm reuse"
-                )
+                raise PrefixContextError("cold cache decisions cannot claim warm reuse")
         elif not self.previous_capsule_id:
-            raise PrefixContextError(
-                "non-cold cache decisions require a warm predecessor"
-            )
+            raise PrefixContextError("non-cold cache decisions require a warm predecessor")
         if decision is PrefixCacheDecision.INVALIDATED:
             if not invalidated or self.reused_prefix_tokens:
                 raise PrefixContextError(
@@ -2299,11 +2081,7 @@ class PrefixReuseReceipt(CanonicalContract):
 
     @property
     def reuse_bps(self) -> int:
-        return (
-            self.reused_prefix_tokens
-            * 10_000
-            // self.eligible_stable_prefix_tokens
-        )
+        return self.reused_prefix_tokens * 10_000 // self.eligible_stable_prefix_tokens
 
     @property
     def reuse_ratio_bps(self) -> int:
@@ -2338,14 +2116,10 @@ class PrefixReuseReceipt(CanonicalContract):
             "stage": self.stage,
             "cache_identity": self.cache_identity.to_record(),
             "previous_capsule_id": self.previous_capsule_id,
-            "previous_semantic_prefix_id": (
-                self.previous_semantic_prefix_id
-            ),
+            "previous_semantic_prefix_id": (self.previous_semantic_prefix_id),
             "reuse_source": self.reuse_source.value,
             "cache_decision": self.cache_decision.value,
-            "eligible_stable_prefix_tokens": (
-                self.eligible_stable_prefix_tokens
-            ),
+            "eligible_stable_prefix_tokens": (self.eligible_stable_prefix_tokens),
             "reused_prefix_tokens": self.reused_prefix_tokens,
             "provider_input_tokens": self.provider_input_tokens,
             "provider_reused_tokens": self.provider_reused_tokens,
@@ -2413,39 +2187,30 @@ class PrefixReuseReceipt(CanonicalContract):
                 else PrefixCacheIdentity.from_dict(identity)
             ),
             previous_capsule_id=payload.get("previous_capsule_id", ""),
-            previous_semantic_prefix_id=payload.get(
-                "previous_semantic_prefix_id", ""
-            ),
+            previous_semantic_prefix_id=payload.get("previous_semantic_prefix_id", ""),
             reuse_source=payload.get("reuse_source", ""),
             cache_decision=payload.get("cache_decision", ""),
-            eligible_stable_prefix_tokens=payload.get(
-                "eligible_stable_prefix_tokens", 0
-            ),
+            eligible_stable_prefix_tokens=payload.get("eligible_stable_prefix_tokens", 0),
             reused_prefix_tokens=payload.get("reused_prefix_tokens", 0),
             provider_input_tokens=payload.get("provider_input_tokens", 0),
             provider_reused_tokens=payload.get("provider_reused_tokens"),
-            invalidated_dependencies=tuple(
-                payload.get("invalidated_dependencies", ())
-            ),
-            evidence_reference_ids=tuple(
-                payload.get("evidence_reference_ids", ())
-            ),
+            invalidated_dependencies=tuple(payload.get("invalidated_dependencies", ())),
+            evidence_reference_ids=tuple(payload.get("evidence_reference_ids", ())),
             evidence_digest=payload.get("evidence_digest", ""),
         )
         claimed_bps = payload.get("reuse_bps")
         if claimed_bps not in (None, result.reuse_bps):
             raise PrefixContextError("prefix reuse ratio is forged")
         claims = payload.get("evidence_claim_references")
-        if claims is not None and _strings(
-            claims, "evidence_claim_references"
-        ) != result.evidence_claim_references:
+        if (
+            claims is not None
+            and _strings(claims, "evidence_claim_references") != result.evidence_claim_references
+        ):
             raise PrefixContextError("prefix reuse evidence claim is forged")
         _check_identity(payload, result.content_id, "prefix reuse receipt")
         claimed_id = payload.get("receipt_id")
         if claimed_id not in (None, "", result.content_id):
-            raise PrefixContextError(
-                "prefix reuse receipt identity does not match payload"
-            )
+            raise PrefixContextError("prefix reuse receipt identity does not match payload")
         return result
 
 
@@ -2472,22 +2237,14 @@ class PrefixContextResult:
 
     def __post_init__(self) -> None:
         if not isinstance(self.context_result, ContextCompileResult):
-            raise PrefixContextError(
-                "context_result must be a ContextCompileResult"
-            )
+            raise PrefixContextError("context_result must be a ContextCompileResult")
         if not isinstance(self.capsule, PrefixStableContextCapsule):
-            raise PrefixContextError(
-                "capsule must be a PrefixStableContextCapsule"
-            )
+            raise PrefixContextError("capsule must be a PrefixStableContextCapsule")
         if not isinstance(self.receipt, PrefixReuseReceipt):
-            raise PrefixContextError(
-                "receipt must be a PrefixReuseReceipt"
-            )
+            raise PrefixContextError("receipt must be a PrefixReuseReceipt")
         base = self.context_result.capsule
         if self.capsule.context_capsule != base:
-            raise PrefixContextError(
-                "prefix capsule is detached from its compiled context"
-            )
+            raise PrefixContextError("prefix capsule is detached from its compiled context")
         expected = {
             "capsule_id": self.capsule.capsule_id,
             "context_capsule_id": base.capsule_id,
@@ -2499,40 +2256,23 @@ class PrefixContextResult:
             "policy_revision": base.policy_revision,
             "caller": base.caller,
             "stage": base.stage,
-            "eligible_stable_prefix_tokens": (
-                self.capsule.stable_prefix_tokens
-            ),
+            "eligible_stable_prefix_tokens": (self.capsule.stable_prefix_tokens),
             "provider_input_tokens": self.capsule.provider_input_tokens,
             "evidence_digest": self.capsule.evidence_digest,
         }
-        if any(
-            getattr(self.receipt, name) != value
-            for name, value in expected.items()
-        ):
-            raise PrefixContextError(
-                "prefix reuse receipt is detached from its capsule"
-            )
+        if any(getattr(self.receipt, name) != value for name, value in expected.items()):
+            raise PrefixContextError("prefix reuse receipt is detached from its capsule")
         if self.receipt.cache_identity != self.capsule.cache_identity(
             cache_kind=self.receipt.cache_identity.cache_kind,
-            provider_cache_id=(
-                self.receipt.cache_identity.provider_cache_id
-            ),
+            provider_cache_id=(self.receipt.cache_identity.provider_cache_id),
         ):
-            raise PrefixContextError(
-                "cache identity is not bound to the exact stable prefix"
-            )
-        reference_ids = tuple(
-            sorted(item.reference_id for item in base.evidence)
-        )
+            raise PrefixContextError("cache identity is not bound to the exact stable prefix")
+        reference_ids = tuple(sorted(item.reference_id for item in base.evidence))
         if self.receipt.evidence_reference_ids != reference_ids:
-            raise PrefixContextError(
-                "prefix receipt does not bind current evidence"
-            )
+            raise PrefixContextError("prefix receipt does not bind current evidence")
         if self.verifier is not None:
             if not isinstance(self.verifier, ContextCompiler):
-                raise PrefixContextError(
-                    "prefix result verifier must be its ContextCompiler"
-                )
+                raise PrefixContextError("prefix result verifier must be its ContextCompiler")
             self.verifier.verify_prefix_result(self)
 
 
@@ -2540,9 +2280,7 @@ def render_prefix_context(capsule: PrefixStableContextCapsule) -> str:
     """Render stable policy/task segments before the volatile evidence delta."""
 
     if not isinstance(capsule, PrefixStableContextCapsule):
-        raise PrefixContextError(
-            "capsule must be a PrefixStableContextCapsule"
-        )
+        raise PrefixContextError("capsule must be a PrefixStableContextCapsule")
     return capsule.provider_input
 
 
@@ -2593,17 +2331,13 @@ class RequiredContextBudgetEvidence(CanonicalContract):
         if isinstance(resolution, Mapping):
             resolution = ContextBudgetResolution.from_dict(resolution)
         if not isinstance(resolution, ContextBudgetResolution):
-            raise ContextCompilationError(
-                "budget_resolution must be a ContextBudgetResolution"
-            )
+            raise ContextCompilationError("budget_resolution must be a ContextBudgetResolution")
         if resolution.effective_input_limit != self.effective_input_limit:
             raise ContextCompilationError(
                 "budget resolution does not derive the effective input limit"
             )
         object.__setattr__(self, "budget_resolution", resolution)
-        object.__setattr__(
-            self, "input_tokens", _integer(self.input_tokens, "input_tokens")
-        )
+        object.__setattr__(self, "input_tokens", _integer(self.input_tokens, "input_tokens"))
         if self.input_tokens > self.effective_input_limit:
             raise ContextCompilationError("evidence exceeds effective input limit")
         fields = _strings(self.required_fields, "required_fields")
@@ -2612,12 +2346,8 @@ class RequiredContextBudgetEvidence(CanonicalContract):
                 "required fields must bind goal, authority, scope, and acceptance"
             )
         object.__setattr__(self, "required_fields", fields)
-        required = _strings(
-            self.required_reference_ids, "required_reference_ids"
-        )
-        selected = _strings(
-            self.selected_reference_ids, "selected_reference_ids"
-        )
+        required = _strings(self.required_reference_ids, "required_reference_ids")
+        selected = _strings(self.selected_reference_ids, "selected_reference_ids")
         if not set(required).issubset(selected):
             raise ContextCompilationError(
                 "required references must be selected by qualifying evidence"
@@ -2648,9 +2378,7 @@ class RequiredContextBudgetEvidence(CanonicalContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "RequiredContextBudgetEvidence":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "RequiredContextBudgetEvidence":
         _schema(payload, cls.SCHEMA, "required-context evidence")
         _reject_unknown(
             payload,
@@ -2686,12 +2414,8 @@ class RequiredContextBudgetEvidence(CanonicalContract):
             effective_input_limit=payload.get("effective_input_limit", 0),
             input_tokens=payload.get("input_tokens", 0),
             required_fields=tuple(payload.get("required_fields", ())),
-            required_reference_ids=tuple(
-                payload.get("required_reference_ids", ())
-            ),
-            selected_reference_ids=tuple(
-                payload.get("selected_reference_ids", ())
-            ),
+            required_reference_ids=tuple(payload.get("required_reference_ids", ())),
+            selected_reference_ids=tuple(payload.get("selected_reference_ids", ())),
             artifact_digest=payload.get("artifact_digest", ""),
             result=payload.get("result", ""),
         )
@@ -2717,17 +2441,13 @@ class EvidenceValuePairedFixture(CanonicalContract):
     selected_safety_passed: bool = True
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "fixture_id", _text(self.fixture_id, "fixture_id")
-        )
+        object.__setattr__(self, "fixture_id", _text(self.fixture_id, "fixture_id"))
         criteria = _strings(
             self.accepted_criterion_ids,
             "accepted_criterion_ids",
         )
         if not criteria:
-            raise ContextCompilationError(
-                "paired fixture requires accepted criterion IDs"
-            )
+            raise ContextCompilationError("paired fixture requires accepted criterion IDs")
         object.__setattr__(self, "accepted_criterion_ids", criteria)
         for name, minimum in (
             ("baseline_input_tokens", 1),
@@ -2749,24 +2469,16 @@ class EvidenceValuePairedFixture(CanonicalContract):
             "selected_required_coverage_ids",
         )
         if baseline_coverage != selected_coverage:
-            raise ContextCompilationError(
-                "paired evidence selection changes required coverage"
-            )
-        object.__setattr__(
-            self, "baseline_required_coverage_ids", baseline_coverage
-        )
-        object.__setattr__(
-            self, "selected_required_coverage_ids", selected_coverage
-        )
+            raise ContextCompilationError("paired evidence selection changes required coverage")
+        object.__setattr__(self, "baseline_required_coverage_ids", baseline_coverage)
+        object.__setattr__(self, "selected_required_coverage_ids", selected_coverage)
         if (
             not isinstance(self.baseline_safety_passed, bool)
             or not isinstance(self.selected_safety_passed, bool)
             or not self.baseline_safety_passed
             or not self.selected_safety_passed
         ):
-            raise ContextCompilationError(
-                "paired evidence selection must preserve passing safety"
-            )
+            raise ContextCompilationError("paired evidence selection must preserve passing safety")
 
     @property
     def accepted_criterion_count(self) -> int:
@@ -2809,20 +2521,14 @@ class EvidenceValuePairedFixture(CanonicalContract):
             "selected_input_tokens": self.selected_input_tokens,
             "baseline_retry_input_tokens": self.baseline_retry_input_tokens,
             "selected_retry_input_tokens": self.selected_retry_input_tokens,
-            "baseline_required_coverage_ids": (
-                self.baseline_required_coverage_ids
-            ),
-            "selected_required_coverage_ids": (
-                self.selected_required_coverage_ids
-            ),
+            "baseline_required_coverage_ids": (self.baseline_required_coverage_ids),
+            "selected_required_coverage_ids": (self.selected_required_coverage_ids),
             "baseline_safety_passed": self.baseline_safety_passed,
             "selected_safety_passed": self.selected_safety_passed,
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "EvidenceValuePairedFixture":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "EvidenceValuePairedFixture":
         _schema(payload, cls.SCHEMA, "evidence-value paired fixture")
         allowed = {
             "schema",
@@ -2842,29 +2548,15 @@ class EvidenceValuePairedFixture(CanonicalContract):
         _reject_unknown(payload, allowed, "evidence-value paired fixture")
         result = cls(
             fixture_id=payload.get("fixture_id", ""),
-            accepted_criterion_ids=tuple(
-                payload.get("accepted_criterion_ids", ())
-            ),
+            accepted_criterion_ids=tuple(payload.get("accepted_criterion_ids", ())),
             baseline_input_tokens=payload.get("baseline_input_tokens", 0),
             selected_input_tokens=payload.get("selected_input_tokens", 0),
-            baseline_retry_input_tokens=payload.get(
-                "baseline_retry_input_tokens", 0
-            ),
-            selected_retry_input_tokens=payload.get(
-                "selected_retry_input_tokens", 0
-            ),
-            baseline_required_coverage_ids=tuple(
-                payload.get("baseline_required_coverage_ids", ())
-            ),
-            selected_required_coverage_ids=tuple(
-                payload.get("selected_required_coverage_ids", ())
-            ),
-            baseline_safety_passed=payload.get(
-                "baseline_safety_passed", False
-            ),
-            selected_safety_passed=payload.get(
-                "selected_safety_passed", False
-            ),
+            baseline_retry_input_tokens=payload.get("baseline_retry_input_tokens", 0),
+            selected_retry_input_tokens=payload.get("selected_retry_input_tokens", 0),
+            baseline_required_coverage_ids=tuple(payload.get("baseline_required_coverage_ids", ())),
+            selected_required_coverage_ids=tuple(payload.get("selected_required_coverage_ids", ())),
+            baseline_safety_passed=payload.get("baseline_safety_passed", False),
+            selected_safety_passed=payload.get("selected_safety_passed", False),
         )
         _check_identity(payload, result.content_id, "evidence-value paired fixture")
         return result
@@ -2873,9 +2565,7 @@ class EvidenceValuePairedFixture(CanonicalContract):
 def _median_fraction(values: Iterable[Fraction]) -> Fraction:
     ordered = sorted(values)
     if not ordered:
-        raise ContextCompilationError(
-            "value-of-information evidence requires paired fixtures"
-        )
+        raise ContextCompilationError("value-of-information evidence requires paired fixtures")
     midpoint = len(ordered) // 2
     if len(ordered) % 2:
         return ordered[midpoint]
@@ -2884,9 +2574,7 @@ def _median_fraction(values: Iterable[Fraction]) -> Fraction:
 
 def _reduction_bps(baseline: Fraction, selected: Fraction) -> int:
     if baseline <= 0:
-        raise ContextCompilationError(
-            "paired baseline token denominator must be positive"
-        )
+        raise ContextCompilationError("paired baseline token denominator must be positive")
     reduction = (baseline - selected) * MAX_VALUE_BPS / baseline
     return reduction.numerator // reduction.denominator
 
@@ -2916,17 +2604,11 @@ class ValueOfInformationEvidence(CanonicalContract):
             "provider_id",
             "model_id",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name))
         if self.requirement_id != VALUE_OF_INFORMATION_REQUIREMENT_ID:
-            raise ContextCompilationError(
-                "unexpected value-of-information requirement ID"
-            )
+            raise ContextCompilationError("unexpected value-of-information requirement ID")
         if self.result != "passed":
-            raise ContextCompilationError(
-                "value-of-information evidence must pass"
-            )
+            raise ContextCompilationError("value-of-information evidence must pass")
         fixtures: list[EvidenceValuePairedFixture] = []
         for raw in self.fixtures:
             fixtures.append(
@@ -2940,19 +2622,13 @@ class ValueOfInformationEvidence(CanonicalContract):
                 "value-of-information fixtures must be non-empty and bounded"
             )
         if len({item.fixture_id for item in fixtures}) != len(fixtures):
-            raise ContextCompilationError(
-                "value-of-information fixture IDs must be unique"
-            )
+            raise ContextCompilationError("value-of-information fixture IDs must be unique")
         object.__setattr__(self, "fixtures", tuple(fixtures))
         if self.input_token_reduction_bps < MIN_INPUT_TOKEN_REDUCTION_BPS:
             raise ContextCompilationError(
-                "median input tokens per accepted criterion improve by less "
-                "than 40 percent"
+                "median input tokens per accepted criterion improve by less than 40 percent"
             )
-        if (
-            self.retry_input_token_reduction_bps
-            < MIN_RETRY_INPUT_TOKEN_REDUCTION_BPS
-        ):
+        if self.retry_input_token_reduction_bps < MIN_RETRY_INPUT_TOKEN_REDUCTION_BPS:
             raise ContextCompilationError(
                 "median retry-input tokens improve by less than 60 percent"
             )
@@ -2960,36 +2636,22 @@ class ValueOfInformationEvidence(CanonicalContract):
     @property
     def input_token_reduction_bps(self) -> int:
         return _reduction_bps(
-            _median_fraction(
-                item.baseline_tokens_per_criterion for item in self.fixtures
-            ),
-            _median_fraction(
-                item.selected_tokens_per_criterion for item in self.fixtures
-            ),
+            _median_fraction(item.baseline_tokens_per_criterion for item in self.fixtures),
+            _median_fraction(item.selected_tokens_per_criterion for item in self.fixtures),
         )
 
     @property
     def retry_input_token_reduction_bps(self) -> int:
         return _reduction_bps(
-            _median_fraction(
-                item.baseline_retry_tokens_per_criterion
-                for item in self.fixtures
-            ),
-            _median_fraction(
-                item.selected_retry_tokens_per_criterion
-                for item in self.fixtures
-            ),
+            _median_fraction(item.baseline_retry_tokens_per_criterion for item in self.fixtures),
+            _median_fraction(item.selected_retry_tokens_per_criterion for item in self.fixtures),
         )
 
     @property
     def accepted_criterion_ids(self) -> tuple[str, ...]:
         return tuple(
             sorted(
-                {
-                    criterion
-                    for item in self.fixtures
-                    for criterion in item.accepted_criterion_ids
-                }
+                {criterion for item in self.fixtures for criterion in item.accepted_criterion_ids}
             )
         )
 
@@ -3019,18 +2681,14 @@ class ValueOfInformationEvidence(CanonicalContract):
             "accepted_criterion_ids": self.accepted_criterion_ids,
             "required_coverage_ids": self.required_coverage_ids,
             "input_token_reduction_bps": self.input_token_reduction_bps,
-            "retry_input_token_reduction_bps": (
-                self.retry_input_token_reduction_bps
-            ),
+            "retry_input_token_reduction_bps": (self.retry_input_token_reduction_bps),
             "required_coverage_preserved": True,
             "safety_preserved": True,
             "result": self.result,
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "ValueOfInformationEvidence":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ValueOfInformationEvidence":
         _schema(payload, cls.SCHEMA, "value-of-information evidence")
         allowed = {
             "schema",
@@ -3062,8 +2720,7 @@ class ValueOfInformationEvidence(CanonicalContract):
             provider_id=payload.get("provider_id", ""),
             model_id=payload.get("model_id", ""),
             fixtures=tuple(
-                EvidenceValuePairedFixture.from_dict(item)
-                for item in payload.get("fixtures", ())
+                EvidenceValuePairedFixture.from_dict(item) for item in payload.get("fixtures", ())
             ),
             result=payload.get("result", ""),
         )
@@ -3072,9 +2729,7 @@ class ValueOfInformationEvidence(CanonicalContract):
             claimed = payload.get(name)
             canonical = expected[name]
             if claimed is not None and _strings(claimed, name) != canonical:
-                raise ContextCompilationError(
-                    f"value-of-information {name} is forged"
-                )
+                raise ContextCompilationError(f"value-of-information {name} is forged")
         for name in (
             "input_token_reduction_bps",
             "retry_input_token_reduction_bps",
@@ -3084,9 +2739,7 @@ class ValueOfInformationEvidence(CanonicalContract):
             claimed = payload.get(name)
             canonical = expected[name]
             if claimed not in (None, canonical):
-                raise ContextCompilationError(
-                    f"value-of-information {name} is forged"
-                )
+                raise ContextCompilationError(f"value-of-information {name} is forged")
         _check_identity(payload, result.content_id, "value-of-information evidence")
         return result
 
@@ -3164,9 +2817,7 @@ class ContextCompilationReceipt(CanonicalContract):
         if isinstance(resolution, Mapping):
             resolution = ContextBudgetResolution.from_dict(resolution)
         if not isinstance(resolution, ContextBudgetResolution):
-            raise ContextCompilationError(
-                "budget_resolution must be a ContextBudgetResolution"
-            )
+            raise ContextCompilationError("budget_resolution must be a ContextBudgetResolution")
         if resolution.effective_input_limit != self.effective_input_limit:
             raise ContextCompilationError(
                 "receipt budget resolution does not derive its effective limit"
@@ -3180,12 +2831,10 @@ class ContextCompilationReceipt(CanonicalContract):
                 else EvidenceSelectionDecision.from_dict(raw)
             )
         decisions.sort(key=lambda item: item.reference_id)
-        if len(decisions) > MAX_DECISIONS or len(
-            {item.reference_id for item in decisions}
-        ) != len(decisions):
-            raise ContextCompilationError(
-                "selection decisions must be bounded and unique"
-            )
+        if len(decisions) > MAX_DECISIONS or len({item.reference_id for item in decisions}) != len(
+            decisions
+        ):
+            raise ContextCompilationError("selection decisions must be bounded and unique")
         object.__setattr__(self, "decisions", tuple(decisions))
         if self.evidence is not None:
             evidence = (
@@ -3214,11 +2863,7 @@ class ContextCompilationReceipt(CanonicalContract):
 
     @property
     def evidence_claim_references(self) -> tuple[str, ...]:
-        return (
-            (REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID,)
-            if self.evidence is not None
-            else ()
-        )
+        return (REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID,) if self.evidence is not None else ()
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -3283,8 +2928,7 @@ class ContextCompilationReceipt(CanonicalContract):
             estimator_name=payload.get("estimator_name", ""),
             estimator_error_bps=payload.get("estimator_error_bps", 0),
             decisions=tuple(
-                EvidenceSelectionDecision.from_dict(item)
-                for item in payload.get("decisions", ())
+                EvidenceSelectionDecision.from_dict(item) for item in payload.get("decisions", ())
             ),
             evidence=(
                 RequiredContextBudgetEvidence.from_dict(evidence)
@@ -3293,9 +2937,10 @@ class ContextCompilationReceipt(CanonicalContract):
             ),
         )
         claims = payload.get("evidence_claim_references")
-        if claims is not None and _strings(
-            claims, "evidence_claim_references"
-        ) != result.evidence_claim_references:
+        if (
+            claims is not None
+            and _strings(claims, "evidence_claim_references") != result.evidence_claim_references
+        ):
             raise ContextCompilationError("context evidence claim is forged")
         _check_identity(payload, result.content_id, "context compilation receipt")
         return result
@@ -3342,50 +2987,30 @@ class DeltaRetryContextEvidence(CanonicalContract):
         if self.result != "passed":
             raise ContextDeltaError("delta-retry evidence must pass")
         for name in ("full_replay_tokens", "delta_tokens"):
-            object.__setattr__(
-                self, name, _integer(getattr(self, name), name, minimum=1)
-            )
+            object.__setattr__(self, name, _integer(getattr(self, name), name, minimum=1))
         if self.delta_tokens >= self.full_replay_tokens:
             raise ContextDeltaError("qualifying delta must use fewer tokens")
-        required = _strings(
-            self.required_coverage_ids, "required_coverage_ids"
-        )
-        reconstructed = _strings(
-            self.reconstructed_coverage_ids, "reconstructed_coverage_ids"
-        )
+        required = _strings(self.required_coverage_ids, "required_coverage_ids")
+        reconstructed = _strings(self.reconstructed_coverage_ids, "reconstructed_coverage_ids")
         if not set(required).issubset(reconstructed):
             raise ContextDeltaError("qualifying delta loses required coverage")
         object.__setattr__(self, "required_coverage_ids", required)
         object.__setattr__(self, "reconstructed_coverage_ids", reconstructed)
-        changed = _strings(
-            self.changed_reference_ids, "changed_reference_ids"
-        )
+        changed = _strings(self.changed_reference_ids, "changed_reference_ids")
         object.__setattr__(self, "changed_reference_ids", changed)
-        requested = _strings(
-            self.requested_reference_ids, "requested_reference_ids"
-        )
+        requested = _strings(self.requested_reference_ids, "requested_reference_ids")
         if set(changed).intersection(requested):
-            raise ContextDeltaError(
-                "changed and requested-only references must be disjoint"
-            )
+            raise ContextDeltaError("changed and requested-only references must be disjoint")
         if not changed and not requested:
-            raise ContextDeltaError(
-                "qualifying delta must carry changed or requested evidence"
-            )
+            raise ContextDeltaError("qualifying delta must carry changed or requested evidence")
         object.__setattr__(self, "requested_reference_ids", requested)
-        retained = _strings(
-            self.retained_reference_ids, "retained_reference_ids"
-        )
+        retained = _strings(self.retained_reference_ids, "retained_reference_ids")
         if set(changed).union(requested).intersection(retained):
-            raise ContextDeltaError(
-                "transmitted and retained delta references must be disjoint"
-            )
+            raise ContextDeltaError("transmitted and retained delta references must be disjoint")
         object.__setattr__(self, "retained_reference_ids", retained)
         fields = _strings(self.required_fields, "required_fields")
         if fields != ("acceptance", "authority", "goal", "scope"):
-            raise ContextDeltaError(
-                "delta evidence must preserve every invariant context field"
-            )
+            raise ContextDeltaError("delta evidence must preserve every invariant context field")
         object.__setattr__(self, "required_fields", fields)
         object.__setattr__(
             self, "artifact_digest", _digest(self.artifact_digest, "artifact_digest")
@@ -3415,9 +3040,7 @@ class DeltaRetryContextEvidence(CanonicalContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "DeltaRetryContextEvidence":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "DeltaRetryContextEvidence":
         _schema(payload, cls.SCHEMA, "delta-retry evidence")
         _reject_unknown(
             payload,
@@ -3454,26 +3077,14 @@ class DeltaRetryContextEvidence(CanonicalContract):
             policy_revision=payload.get("policy_revision", ""),
             parent_capsule_id=payload.get("parent_capsule_id", ""),
             delta_capsule_id=payload.get("delta_capsule_id", ""),
-            reconstructed_capsule_id=payload.get(
-                "reconstructed_capsule_id", ""
-            ),
+            reconstructed_capsule_id=payload.get("reconstructed_capsule_id", ""),
             full_replay_tokens=payload.get("full_replay_tokens", 0),
             delta_tokens=payload.get("delta_tokens", 0),
-            required_coverage_ids=tuple(
-                payload.get("required_coverage_ids", ())
-            ),
-            reconstructed_coverage_ids=tuple(
-                payload.get("reconstructed_coverage_ids", ())
-            ),
-            changed_reference_ids=tuple(
-                payload.get("changed_reference_ids", ())
-            ),
-            requested_reference_ids=tuple(
-                payload.get("requested_reference_ids", ())
-            ),
-            retained_reference_ids=tuple(
-                payload.get("retained_reference_ids", ())
-            ),
+            required_coverage_ids=tuple(payload.get("required_coverage_ids", ())),
+            reconstructed_coverage_ids=tuple(payload.get("reconstructed_coverage_ids", ())),
+            changed_reference_ids=tuple(payload.get("changed_reference_ids", ())),
+            requested_reference_ids=tuple(payload.get("requested_reference_ids", ())),
+            retained_reference_ids=tuple(payload.get("retained_reference_ids", ())),
             required_fields=tuple(payload.get("required_fields", ())),
             artifact_digest=payload.get("artifact_digest", ""),
             result=payload.get("result", ""),
@@ -3514,9 +3125,7 @@ class ContextDeltaReceipt(CanonicalContract):
         ):
             object.__setattr__(self, name, _text(getattr(self, name), name))
         for name in ("full_replay_tokens", "delta_tokens"):
-            object.__setattr__(
-                self, name, _integer(getattr(self, name), name, minimum=1)
-            )
+            object.__setattr__(self, name, _integer(getattr(self, name), name, minimum=1))
         decisions = tuple(
             sorted(
                 (
@@ -3528,9 +3137,9 @@ class ContextDeltaReceipt(CanonicalContract):
                 key=lambda item: item.reference_id,
             )
         )
-        if len(decisions) > MAX_DECISIONS or len(
-            {item.reference_id for item in decisions}
-        ) != len(decisions):
+        if len(decisions) > MAX_DECISIONS or len({item.reference_id for item in decisions}) != len(
+            decisions
+        ):
             raise ContextDeltaError("delta decisions must be bounded and unique")
         object.__setattr__(self, "decisions", decisions)
         if self.evidence is not None:
@@ -3547,21 +3156,14 @@ class ContextDeltaReceipt(CanonicalContract):
                     evidence.policy_revision != self.policy_revision,
                     evidence.parent_capsule_id != self.parent_capsule_id,
                     evidence.delta_capsule_id != self.delta_capsule_id,
-                    evidence.reconstructed_capsule_id
-                    != self.reconstructed_capsule_id,
+                    evidence.reconstructed_capsule_id != self.reconstructed_capsule_id,
                     evidence.full_replay_tokens != self.full_replay_tokens,
                     evidence.delta_tokens != self.delta_tokens,
                 )
             ):
                 raise ContextDeltaError("delta evidence is not bound to its receipt")
-            included = {
-                item.reference_id
-                for item in decisions
-                if item.included
-            }
-            witnessed = set(evidence.changed_reference_ids).union(
-                evidence.requested_reference_ids
-            )
+            included = {item.reference_id for item in decisions if item.included}
+            witnessed = set(evidence.changed_reference_ids).union(evidence.requested_reference_ids)
             if included != witnessed:
                 raise ContextDeltaError(
                     "delta decisions do not match witnessed transmitted references"
@@ -3629,14 +3231,11 @@ class ContextDeltaReceipt(CanonicalContract):
             policy_revision=payload.get("policy_revision", ""),
             parent_capsule_id=payload.get("parent_capsule_id", ""),
             delta_capsule_id=payload.get("delta_capsule_id", ""),
-            reconstructed_capsule_id=payload.get(
-                "reconstructed_capsule_id", ""
-            ),
+            reconstructed_capsule_id=payload.get("reconstructed_capsule_id", ""),
             full_replay_tokens=payload.get("full_replay_tokens", 0),
             delta_tokens=payload.get("delta_tokens", 0),
             decisions=tuple(
-                EvidenceSelectionDecision.from_dict(item)
-                for item in payload.get("decisions", ())
+                EvidenceSelectionDecision.from_dict(item) for item in payload.get("decisions", ())
             ),
             evidence=(
                 DeltaRetryContextEvidence.from_dict(evidence)
@@ -3645,9 +3244,10 @@ class ContextDeltaReceipt(CanonicalContract):
             ),
         )
         claims = payload.get("evidence_claim_references")
-        if claims is not None and _strings(
-            claims, "evidence_claim_references"
-        ) != result.evidence_claim_references:
+        if (
+            claims is not None
+            and _strings(claims, "evidence_claim_references") != result.evidence_claim_references
+        ):
             raise ContextDeltaError("delta evidence claim is forged")
         _check_identity(payload, result.content_id, "context delta receipt")
         return result
@@ -3667,8 +3267,7 @@ class ContextCompileResult:
         evidence = self.receipt.evidence
         return bool(
             evidence is not None
-            and evidence.required_fields
-            == tuple(sorted(self.capsule.required_field_names))
+            and evidence.required_fields == tuple(sorted(self.capsule.required_field_names))
             and not set(self.capsule.required_field_names).intersection(
                 self.capsule.omitted_reference_ids
             )
@@ -3678,9 +3277,7 @@ class ContextCompileResult:
         if not isinstance(self.capsule, ContextCapsule):
             raise ContextCompilationError("capsule must be a ContextCapsule")
         if not isinstance(self.receipt, ContextCompilationReceipt):
-            raise ContextCompilationError(
-                "receipt must be a ContextCompilationReceipt"
-            )
+            raise ContextCompilationError("receipt must be a ContextCompilationReceipt")
         receipt_bindings = {
             "repository_id": self.capsule.repository_id,
             "tree_id": self.capsule.tree_id,
@@ -3693,12 +3290,9 @@ class ContextCompileResult:
             "input_tokens": self.capsule.input_tokens,
         }
         if any(
-            getattr(self.receipt, name) != expected
-            for name, expected in receipt_bindings.items()
+            getattr(self.receipt, name) != expected for name, expected in receipt_bindings.items()
         ):
-            raise ContextCompilationError(
-                "receipt does not bind the complete compiled capsule"
-            )
+            raise ContextCompilationError("receipt does not bind the complete compiled capsule")
         if self.decisions != self.receipt.decisions:
             raise ContextCompilationError("result decisions do not match receipt")
         evidence = self.receipt.evidence
@@ -3706,29 +3300,18 @@ class ContextCompileResult:
             raise ContextCompilationError(
                 "compiled result requires qualifying required-context evidence"
             )
-        selected_by_id = {
-            item.reference_id: item for item in self.capsule.evidence
-        }
-        expansion_by_id = {
-            item.reference_id: item
-            for item in self.capsule.expansion_references
-        }
+        selected_by_id = {item.reference_id: item for item in self.capsule.evidence}
+        expansion_by_id = {item.reference_id: item for item in self.capsule.expansion_references}
         omission_by_id = {
             omission.rpartition(":")[0]: omission.rpartition(":")[2]
             for omission in self.capsule.omissions
         }
-        decision_by_id = {
-            item.reference_id: item for item in self.decisions
-        }
+        decision_by_id = {item.reference_id: item for item in self.decisions}
         if set(decision_by_id) != set(selected_by_id) | set(expansion_by_id):
             raise ContextCompilationError(
                 "selection decisions do not cover the complete candidate set"
             )
-        required_ids = {
-            item.reference_id
-            for item in self.capsule.evidence
-            if item.required
-        }
+        required_ids = {item.reference_id for item in self.capsule.evidence if item.required}
         if set(evidence.required_reference_ids) != required_ids:
             raise ContextCompilationError(
                 "required-context evidence does not bind required references"
@@ -3737,22 +3320,16 @@ class ContextCompileResult:
             raise ContextCompilationError(
                 "required-context evidence does not bind selected references"
             )
-        if evidence.required_fields != tuple(
-            sorted(self.capsule.required_field_names)
-        ):
+        if evidence.required_fields != tuple(sorted(self.capsule.required_field_names)):
             raise ContextCompilationError(
                 "required-context evidence does not bind invariant fields"
             )
         if not self.required_context_preserved:
-            raise ContextCompilationError(
-                "compiled result does not preserve its invariant context"
-            )
+            raise ContextCompilationError("compiled result does not preserve its invariant context")
         for reference_id, reference in selected_by_id.items():
             decision = decision_by_id[reference_id]
             expected_reason = (
-                InclusionReason.REQUIRED
-                if reference.required
-                else InclusionReason.RANKED_FIT
+                InclusionReason.REQUIRED if reference.required else InclusionReason.RANKED_FIT
             )
             if (
                 not decision.included
@@ -3777,40 +3354,28 @@ class ContextCompileResult:
                 raise ContextCompilationError(
                     "selection decision does not match deferred reference"
                 )
-            recorded_reason = reference.metadata.get(
-                "selection_exclusion_reason", ""
-            )
+            recorded_reason = reference.metadata.get("selection_exclusion_reason", "")
             if recorded_reason and recorded_reason != decision.reason.value:
                 raise ContextCompilationError(
                     "deferred reference exclusion reason does not match decision"
                 )
-            if omission_by_id.get(reference_id) != _capsule_omission_reason(
-                decision.reason
-            ).value:
+            if omission_by_id.get(reference_id) != _capsule_omission_reason(decision.reason).value:
                 raise ContextCompilationError(
                     "capsule omission reason does not match selection decision"
                 )
-        if evidence.artifact_digest != _canonical_digest(
-            self.capsule.to_record()
-        ):
+        if evidence.artifact_digest != _canonical_digest(self.capsule.to_record()):
             raise ContextCompilationError(
                 "required-context evidence artifact digest does not match capsule"
             )
         resolution = self.receipt.budget_resolution
         if (
-            self.capsule.budget.reserved_output_tokens
-            != resolution.reserved_output_tokens
-            or self.capsule.budget.reserved_tool_tokens
-            != resolution.reserved_tool_tokens
+            self.capsule.budget.reserved_output_tokens != resolution.reserved_output_tokens
+            or self.capsule.budget.reserved_tool_tokens != resolution.reserved_tool_tokens
         ):
-            raise ContextCompilationError(
-                "capsule reserves do not match its budget resolution"
-            )
+            raise ContextCompilationError("capsule reserves do not match its budget resolution")
         if self.verifier is not None:
             if not isinstance(self.verifier, ContextCompiler):
-                raise ContextCompilationError(
-                    "context result verifier must be its ContextCompiler"
-                )
+                raise ContextCompilationError("context result verifier must be its ContextCompiler")
             self.verifier.verify_compile_result(self)
 
 
@@ -3832,40 +3397,26 @@ class ContextDeltaResult:
         """Whether retry reconstruction retained the exact parent core."""
 
         return bool(
-            self.parent_capsule.invariant_core_id
-            == self.reconstructed_capsule.invariant_core_id
-            and self.parent_capsule.invariant_core
-            == self.reconstructed_capsule.invariant_core
+            self.parent_capsule.invariant_core_id == self.reconstructed_capsule.invariant_core_id
+            and self.parent_capsule.invariant_core == self.reconstructed_capsule.invariant_core
         )
 
     def __post_init__(self) -> None:
         if not isinstance(self.parent_capsule, ContextCapsule):
             raise ContextDeltaError("delta result parent must be a ContextCapsule")
         if not isinstance(self.delta_capsule, ContextDeltaCapsule):
-            raise ContextDeltaError(
-                "delta result capsule must be a ContextDeltaCapsule"
-            )
+            raise ContextDeltaError("delta result capsule must be a ContextDeltaCapsule")
         if not isinstance(self.reconstructed_capsule, ContextCapsule):
-            raise ContextDeltaError(
-                "delta result reconstruction must be a ContextCapsule"
-            )
+            raise ContextDeltaError("delta result reconstruction must be a ContextCapsule")
         if not isinstance(self.receipt, ContextDeltaReceipt):
-            raise ContextDeltaError(
-                "delta result receipt must be a ContextDeltaReceipt"
-            )
+            raise ContextDeltaError("delta result receipt must be a ContextDeltaReceipt")
         if self.decisions != self.receipt.decisions:
             raise ContextDeltaError("delta result is not receipt-bound")
-        reconstructed = reconstruct_context(
-            self.parent_capsule, self.delta_capsule
-        )
+        reconstructed = reconstruct_context(self.parent_capsule, self.delta_capsule)
         if reconstructed != self.reconstructed_capsule:
-            raise ContextDeltaError(
-                "delta result is not an exact reconstruction of its parent"
-            )
+            raise ContextDeltaError("delta result is not an exact reconstruction of its parent")
         if not self.invariant_core_preserved:
-            raise ContextDeltaError(
-                "delta result changed the non-truncatable invariant context"
-            )
+            raise ContextDeltaError("delta result changed the non-truncatable invariant context")
         receipt_bindings = {
             "repository_id": self.parent_capsule.repository_id,
             "tree_id": self.parent_capsule.tree_id,
@@ -3878,63 +3429,35 @@ class ContextDeltaResult:
             "full_replay_tokens": self.reconstructed_capsule.input_tokens,
         }
         if any(
-            getattr(self.receipt, name) != expected
-            for name, expected in receipt_bindings.items()
+            getattr(self.receipt, name) != expected for name, expected in receipt_bindings.items()
         ):
             raise ContextDeltaError(
                 "delta receipt does not bind the complete parent reconstruction"
             )
-        if (
-            self.delta_capsule.reconstructed_input_tokens
-            != self.reconstructed_capsule.input_tokens
-        ):
-            raise ContextDeltaError(
-                "delta reconstruction token accounting is inconsistent"
-            )
+        if self.delta_capsule.reconstructed_input_tokens != self.reconstructed_capsule.input_tokens:
+            raise ContextDeltaError("delta reconstruction token accounting is inconsistent")
         evidence = self.receipt.evidence
         if evidence is None:
-            raise ContextDeltaError(
-                "delta result requires qualifying delta-retry evidence"
-            )
-        parent_by_id = {
-            item.reference_id: item for item in self.parent_capsule.evidence
-        }
-        transmitted_by_id = {
-            item.reference_id: item for item in self.delta_capsule.evidence
-        }
+            raise ContextDeltaError("delta result requires qualifying delta-retry evidence")
+        parent_by_id = {item.reference_id: item for item in self.parent_capsule.evidence}
+        transmitted_by_id = {item.reference_id: item for item in self.delta_capsule.evidence}
         transmitted_ids = set(transmitted_by_id)
-        witnessed_ids = set(evidence.changed_reference_ids).union(
-            evidence.requested_reference_ids
-        )
+        witnessed_ids = set(evidence.changed_reference_ids).union(evidence.requested_reference_ids)
         if transmitted_ids != witnessed_ids:
-            raise ContextDeltaError(
-                "delta witness does not describe the transmitted references"
-            )
-        if (
-            self.delta_capsule.requested_reference_ids
-            != evidence.requested_reference_ids
-        ):
-            raise ContextDeltaError(
-                "delta witness does not bind explicitly requested references"
-            )
-        decisions_by_id = {
-            item.reference_id: item for item in self.decisions
-        }
-        included_ids = {
-            item.reference_id for item in self.decisions if item.included
-        }
+            raise ContextDeltaError("delta witness does not describe the transmitted references")
+        if self.delta_capsule.requested_reference_ids != evidence.requested_reference_ids:
+            raise ContextDeltaError("delta witness does not bind explicitly requested references")
+        decisions_by_id = {item.reference_id: item for item in self.decisions}
+        included_ids = {item.reference_id for item in self.decisions if item.included}
         if included_ids != transmitted_ids:
-            raise ContextDeltaError(
-                "delta decisions do not bind every transmitted reference"
-            )
+            raise ContextDeltaError("delta decisions do not bind every transmitted reference")
         for reference_id, decision in decisions_by_id.items():
             transmitted = transmitted_by_id.get(reference_id)
             previous = parent_by_id.get(reference_id)
             if transmitted is not None:
                 expected_reason = (
                     InclusionReason.REQUESTED
-                    if reference_id
-                    in self.delta_capsule.requested_reference_ids
+                    if reference_id in self.delta_capsule.requested_reference_ids
                     else InclusionReason.CHANGED
                 )
                 if (
@@ -3944,15 +3467,9 @@ class ContextDeltaResult:
                     or decision.unresolved_question
                     != str(transmitted.metadata.get("expansion_question", ""))
                 ):
-                    raise ContextDeltaError(
-                        "delta decision does not match transmitted evidence"
-                    )
-                if (
-                    expected_reason is InclusionReason.REQUESTED
-                    and previous != transmitted
-                ) or (
-                    expected_reason is InclusionReason.CHANGED
-                    and previous == transmitted
+                    raise ContextDeltaError("delta decision does not match transmitted evidence")
+                if (expected_reason is InclusionReason.REQUESTED and previous != transmitted) or (
+                    expected_reason is InclusionReason.CHANGED and previous == transmitted
                 ):
                     raise ContextDeltaError(
                         "delta decision misclassifies changed or requested evidence"
@@ -3964,25 +3481,19 @@ class ContextDeltaResult:
                 or decision.priority != previous.priority
                 or decision.token_count < previous.token_count
             ):
-                raise ContextDeltaError(
-                    "delta decision does not match retained evidence"
-                )
+                raise ContextDeltaError("delta decision does not match retained evidence")
         actual_changed_ids = {
             reference_id
             for reference_id, item in transmitted_by_id.items()
             if parent_by_id.get(reference_id) != item
         }
         if set(evidence.changed_reference_ids) != actual_changed_ids:
-            raise ContextDeltaError(
-                "delta witness does not bind the actual changed references"
-            )
+            raise ContextDeltaError("delta witness does not bind the actual changed references")
         retained_ids = {
             item.reference_id for item in self.reconstructed_capsule.evidence
         }.difference(transmitted_ids)
         if set(evidence.retained_reference_ids) != retained_ids:
-            raise ContextDeltaError(
-                "delta witness does not bind retained references"
-            )
+            raise ContextDeltaError("delta witness does not bind retained references")
         required_coverage = {
             coverage
             for item in self.reconstructed_capsule.evidence
@@ -3990,18 +3501,13 @@ class ContextDeltaResult:
             for coverage in item.coverage_ids
         }
         if set(evidence.required_coverage_ids) != required_coverage:
-            raise ContextDeltaError(
-                "delta witness does not bind reconstructed required coverage"
-            )
+            raise ContextDeltaError("delta witness does not bind reconstructed required coverage")
         if (
-            evidence.reconstructed_coverage_ids
-            != self.reconstructed_capsule.evidence_coverage_ids
+            evidence.reconstructed_coverage_ids != self.reconstructed_capsule.evidence_coverage_ids
             or evidence.required_fields
             != tuple(sorted(self.reconstructed_capsule.required_field_names))
         ):
-            raise ContextDeltaError(
-                "delta witness does not bind reconstructed context coverage"
-            )
+            raise ContextDeltaError("delta witness does not bind reconstructed context coverage")
         expected_digest = _canonical_digest(
             {
                 "parent_capsule_id": self.delta_capsule.parent_capsule_id,
@@ -4010,14 +3516,10 @@ class ContextDeltaResult:
             }
         )
         if evidence.artifact_digest != expected_digest:
-            raise ContextDeltaError(
-                "delta witness artifact digest does not match its capsules"
-            )
+            raise ContextDeltaError("delta witness artifact digest does not match its capsules")
         if self.verifier is not None:
             if not isinstance(self.verifier, ContextCompiler):
-                raise ContextDeltaError(
-                    "delta result verifier must be its ContextCompiler"
-                )
+                raise ContextDeltaError("delta result verifier must be its ContextCompiler")
             self.verifier.verify_delta_result(self)
 
 
@@ -4042,9 +3544,7 @@ class ContextCompiler:
                 raise ContextCompilationError("budget must be a ContextBudget")
             budget = ContextBudget.from_dict(budget)
         if estimator is not None and tokenizer is not None:
-            raise ContextCompilationError(
-                "provide tokenizer or estimator, not both"
-            )
+            raise ContextCompilationError("provide tokenizer or estimator, not both")
         self.budget = budget
         self.estimator = estimator or CalibratedTokenEstimator(tokenizer)
         if value_policy is None:
@@ -4055,13 +3555,9 @@ class ContextCompiler:
             try:
                 selected_value_policy = EvidenceValuePolicy(**dict(value_policy))
             except TypeError as exc:
-                raise ContextCompilationError(
-                    "value_policy contains unsupported fields"
-                ) from exc
+                raise ContextCompilationError("value_policy contains unsupported fields") from exc
         else:
-            raise ContextCompilationError(
-                "value_policy must be an EvidenceValuePolicy or mapping"
-            )
+            raise ContextCompilationError("value_policy must be an EvidenceValuePolicy or mapping")
         self.value_policy = selected_value_policy
         self.provider_max_input_bytes = (
             None
@@ -4078,18 +3574,12 @@ class ContextCompiler:
             reserved_output_tokens=reserved_output_tokens,
             reserved_tool_tokens=reserved_tool_tokens,
         )
-        self.effective_input_limit = (
-            self.budget_resolution.effective_input_limit
-        )
+        self.effective_input_limit = self.budget_resolution.effective_input_limit
         if self.effective_input_limit < 1:
-            raise RequiredContextOverflowError(
-                "provider reserves leave no usable input budget"
-            )
+            raise RequiredContextOverflowError("provider reserves leave no usable input budget")
         self.effective_budget = budget.for_effective_input_limit(
             self.effective_input_limit,
-            reserved_output_tokens=(
-                self.budget_resolution.reserved_output_tokens
-            ),
+            reserved_output_tokens=(self.budget_resolution.reserved_output_tokens),
             reserved_tool_tokens=self.budget_resolution.reserved_tool_tokens,
         )
 
@@ -4217,18 +3707,14 @@ class ContextCompiler:
         """Remeasure one base context against its original provider policy."""
 
         if not isinstance(result, ContextCompileResult):
-            raise ContextCompilationError(
-                "result must be a ContextCompileResult"
-            )
+            raise ContextCompilationError("result must be a ContextCompileResult")
         if result.receipt.budget_resolution != self.budget_resolution:
             raise ContextCompilationError(
                 "context result budget resolution does not match its verifier"
             )
         actual = self.estimate_capsule_input(result.capsule)
         if actual != result.capsule.input_tokens:
-            raise ContextCompilationError(
-                "context provider token accounting is not reproducible"
-            )
+            raise ContextCompilationError("context provider token accounting is not reproducible")
         if actual > self.effective_input_limit:
             raise ContextCompilationError(
                 "context result exceeds its verified effective input limit"
@@ -4270,9 +3756,7 @@ class ContextCompiler:
                 else decision.token_count
             )
             if tokens < reference.token_count:
-                raise ContextCompilationError(
-                    "selection decision understates reference tokens"
-                )
+                raise ContextCompilationError("selection decision understates reference tokens")
             unpenalized = self.value_policy.estimate(
                 reference,
                 token_cost=tokens,
@@ -4284,42 +3768,28 @@ class ContextCompiler:
             )
             expected_fields = {
                 "token_count": tokens,
-                "expected_decision_change_bps": (
-                    unpenalized.expected_decision_change_bps
-                ),
+                "expected_decision_change_bps": (unpenalized.expected_decision_change_bps),
                 "uncertainty_bps": unpenalized.uncertainty_bps,
-                "uncertainty_reduction_bps": (
-                    unpenalized.uncertainty_reduction_bps
-                ),
+                "uncertainty_reduction_bps": (unpenalized.uncertainty_reduction_bps),
                 "latency_cost": unpenalized.latency_cost,
                 "invalidation_cost": unpenalized.invalidation_cost,
                 "expansion_cost": unpenalized.expansion_cost,
                 "diversity_key": unpenalized.diversity_key,
                 "value_score": expected_score,
             }
-            if any(
-                getattr(decision, name) != value
-                for name, value in expected_fields.items()
-            ):
-                raise ContextCompilationError(
-                    "value-of-information decision is not reproducible"
-                )
+            if any(getattr(decision, name) != value for name, value in expected_fields.items()):
+                raise ContextCompilationError("value-of-information decision is not reproducible")
             if decision.diversity_penalty_bps and (
                 not decision.diversity_key
                 or not self.value_policy.diversity_penalty_bps
-                or decision.diversity_penalty_bps
-                % self.value_policy.diversity_penalty_bps
+                or decision.diversity_penalty_bps % self.value_policy.diversity_penalty_bps
                 or decision.diversity_penalty_bps > MAX_VALUE_BPS
             ):
-                raise ContextCompilationError(
-                    "diversity penalty is not reproducible"
-                )
+                raise ContextCompilationError("diversity penalty is not reproducible")
             if decision.reason is ExclusionReason.LOW_VALUE and (
                 decision.value_score >= self.value_policy.minimum_value_score
             ):
-                raise ContextCompilationError(
-                    "low-value exclusion is not reproducible"
-                )
+                raise ContextCompilationError("low-value exclusion is not reproducible")
             if (
                 decision.included
                 and decision.reason is not InclusionReason.REQUIRED
@@ -4330,9 +3800,7 @@ class ContextCompiler:
                 )
         return result
 
-    def verify_delta_result(
-        self, result: ContextDeltaResult
-    ) -> ContextDeltaResult:
+    def verify_delta_result(self, result: ContextDeltaResult) -> ContextDeltaResult:
         """Remeasure and return one exact-parent delta proof.
 
         ``ContextDeltaResult`` independently verifies all structural,
@@ -4344,50 +3812,30 @@ class ContextCompiler:
 
         if not isinstance(result, ContextDeltaResult):
             raise ContextDeltaError("result must be a ContextDeltaResult")
-        reconstructed_tokens = self.estimate_capsule_input(
-            result.reconstructed_capsule
-        )
+        reconstructed_tokens = self.estimate_capsule_input(result.reconstructed_capsule)
         if (
-            reconstructed_tokens
-            != result.reconstructed_capsule.input_tokens
+            reconstructed_tokens != result.reconstructed_capsule.input_tokens
             or result.receipt.full_replay_tokens != reconstructed_tokens
         ):
-            raise ContextDeltaError(
-                "delta full-replay token accounting is not reproducible"
-            )
-        delta_tokens = self.estimator.estimate(
-            result.delta_capsule.to_record()
-        )
+            raise ContextDeltaError("delta full-replay token accounting is not reproducible")
+        delta_tokens = self.estimator.estimate(result.delta_capsule.to_record())
         if delta_tokens != result.receipt.delta_tokens:
-            raise ContextDeltaError(
-                "delta transmitted token accounting is not reproducible"
-            )
-        if (
-            delta_tokens >= reconstructed_tokens
-            or delta_tokens > self.effective_input_limit
-        ):
-            raise ContextDeltaError(
-                "delta no longer qualifies against the effective token budget"
-            )
+            raise ContextDeltaError("delta transmitted token accounting is not reproducible")
+        if delta_tokens >= reconstructed_tokens or delta_tokens > self.effective_input_limit:
+            raise ContextDeltaError("delta no longer qualifies against the effective token budget")
         return result
 
-    def verify_prefix_result(
-        self, result: PrefixContextResult
-    ) -> PrefixContextResult:
+    def verify_prefix_result(self, result: PrefixContextResult) -> PrefixContextResult:
         """Remeasure the segmented input and its current evidence binding."""
 
         if not isinstance(result, PrefixContextResult):
-            raise PrefixContextError(
-                "result must be a PrefixContextResult"
-            )
+            raise PrefixContextError("result must be a PrefixContextResult")
         base_verifier = result.context_result.verifier
         if isinstance(base_verifier, ContextCompiler):
             base_verifier.verify_compile_result(result.context_result)
         else:
             self.verify_compile_result(result.context_result)
-        stable_tokens = self.estimator.estimate(
-            result.capsule.stable_prefix_bytes
-        )
+        stable_tokens = self.estimator.estimate(result.capsule.stable_prefix_bytes)
         input_tokens = _prefix_provider_input_tokens(
             self.estimator,
             result.capsule.context_capsule,
@@ -4396,24 +3844,13 @@ class ContextCompiler:
             stable_tokens != result.capsule.stable_prefix_tokens
             or input_tokens != result.capsule.provider_input_tokens
         ):
-            raise PrefixContextError(
-                "prefix-stable provider token accounting is not reproducible"
-            )
-        if (
-            result.capsule.effective_input_limit
-            != self.effective_input_limit
-        ):
-            raise PrefixContextError(
-                "prefix result effective limit does not match its verifier"
-            )
+            raise PrefixContextError("prefix-stable provider token accounting is not reproducible")
+        if result.capsule.effective_input_limit != self.effective_input_limit:
+            raise PrefixContextError("prefix result effective limit does not match its verifier")
         if input_tokens > self.effective_input_limit:
-            raise PrefixContextError(
-                "prefix-stable provider input exceeds its verified budget"
-            )
+            raise PrefixContextError("prefix-stable provider input exceeds its verified budget")
         if result.receipt.reused_prefix_tokens > stable_tokens:
-            raise PrefixContextError(
-                "prefix reuse exceeds the remeasured stable prefix"
-            )
+            raise PrefixContextError("prefix reuse exceeds the remeasured stable prefix")
         return result
 
     def compile_prefix_context(
@@ -4421,9 +3858,7 @@ class ContextCompiler:
         *,
         provider_id: str,
         model_id: str,
-        previous: (
-            PrefixContextResult | PrefixStableContextCapsule | None
-        ) = None,
+        previous: (PrefixContextResult | PrefixStableContextCapsule | None) = None,
         provider_cache_id: str = "",
         provider_cache_kind: PrefixCacheKind | str | None = None,
         provider_reused_tokens: int | None = None,
@@ -4440,50 +3875,28 @@ class ContextCompiler:
         provider_id = _text(provider_id, "provider_id")
         model_id = _text(model_id, "model_id")
         if provider_reused_tokens is not None:
-            provider_reused_tokens = _integer(
-                provider_reused_tokens, "provider_reused_tokens"
-            )
-        cache_id = _text(
-            provider_cache_id, "provider_cache_id", required=False
-        )
+            provider_reused_tokens = _integer(provider_reused_tokens, "provider_reused_tokens")
+        cache_id = _text(provider_cache_id, "provider_cache_id", required=False)
         raw_kind = provider_cache_kind
         if raw_kind is None:
-            cache_kind = (
-                PrefixCacheKind.PROMPT_CACHE
-                if cache_id
-                else PrefixCacheKind.DERIVED
-            )
+            cache_kind = PrefixCacheKind.PROMPT_CACHE if cache_id else PrefixCacheKind.DERIVED
         else:
             kind_value = str(getattr(raw_kind, "value", raw_kind))
             aliases = {
-                PrefixReuseSource.PROVIDER_PROMPT_CACHE.value: (
-                    PrefixCacheKind.PROMPT_CACHE.value
-                ),
-                PrefixReuseSource.PROVIDER_KV_CACHE.value: (
-                    PrefixCacheKind.KV_CACHE.value
-                ),
+                PrefixReuseSource.PROVIDER_PROMPT_CACHE.value: (PrefixCacheKind.PROMPT_CACHE.value),
+                PrefixReuseSource.PROVIDER_KV_CACHE.value: (PrefixCacheKind.KV_CACHE.value),
             }
             try:
-                cache_kind = PrefixCacheKind(
-                    aliases.get(kind_value, kind_value)
-                )
+                cache_kind = PrefixCacheKind(aliases.get(kind_value, kind_value))
             except ValueError as exc:
-                raise PrefixContextError(
-                    "provider_cache_kind is not supported"
-                ) from exc
+                raise PrefixContextError("provider_cache_kind is not supported") from exc
         if cache_kind is PrefixCacheKind.DERIVED:
             if cache_id:
-                raise PrefixContextError(
-                    "provider_cache_id requires a provider cache kind"
-                )
+                raise PrefixContextError("provider_cache_id requires a provider cache kind")
             if provider_reused_tokens is not None:
-                raise PrefixContextError(
-                    "provider reused tokens require a provider cache identity"
-                )
+                raise PrefixContextError("provider reused tokens require a provider cache identity")
         elif not cache_id:
-            raise PrefixContextError(
-                "provider cache reuse requires provider_cache_id"
-            )
+            raise PrefixContextError("provider cache reuse requires provider_cache_id")
 
         context_result = self.compile(**kwargs)
         prefix_input_tokens = _prefix_provider_input_tokens(
@@ -4492,11 +3905,7 @@ class ContextCompiler:
         )
         while prefix_input_tokens > self.effective_input_limit:
             overflow = prefix_input_tokens - self.effective_input_limit
-            reduced_limit = (
-                context_result.capsule.budget.max_input_tokens
-                - overflow
-                - 1
-            )
+            reduced_limit = context_result.capsule.budget.max_input_tokens - overflow - 1
             if reduced_limit < 1:
                 raise RequiredContextOverflowError(
                     "required prefix-stable policy/objective and task core "
@@ -4504,12 +3913,8 @@ class ContextCompiler:
                 )
             reduced_budget = self.effective_budget.for_effective_input_limit(
                 reduced_limit,
-                reserved_output_tokens=(
-                    self.budget_resolution.reserved_output_tokens
-                ),
-                reserved_tool_tokens=(
-                    self.budget_resolution.reserved_tool_tokens
-                ),
+                reserved_output_tokens=(self.budget_resolution.reserved_output_tokens),
+                reserved_tool_tokens=(self.budget_resolution.reserved_tool_tokens),
             )
             selection_compiler = ContextCompiler(
                 reduced_budget,
@@ -4539,8 +3944,7 @@ class ContextCompiler:
             previous_capsule = previous
         else:
             raise PrefixContextError(
-                "previous must be a PrefixContextResult or "
-                "PrefixStableContextCapsule"
+                "previous must be a PrefixContextResult or PrefixStableContextCapsule"
             )
 
         invalidated: tuple[str, ...] = ()
@@ -4556,31 +3960,15 @@ class ContextCompiler:
                     name
                     for name, value in current_values.items()
                     if canonical_context_json_bytes(value)
-                    != canonical_context_json_bytes(
-                        previous_values.get(name)
-                    )
+                    != canonical_context_json_bytes(previous_values.get(name))
                 )
             )
-            semantic_change = (
-                previous_capsule.semantic_prefix_id
-                != capsule.semantic_prefix_id
-            )
-            provider_change = any(
-                name in invalidated
-                for name in ("provider_id", "model_id")
-            )
-            if semantic_change != bool(
-                set(invalidated).difference(
-                    {"provider_id", "model_id"}
-                )
-            ):
-                raise PrefixContextError(
-                    "semantic prefix invalidation is inconsistent"
-                )
+            semantic_change = previous_capsule.semantic_prefix_id != capsule.semantic_prefix_id
+            provider_change = any(name in invalidated for name in ("provider_id", "model_id"))
+            if semantic_change != bool(set(invalidated).difference({"provider_id", "model_id"})):
+                raise PrefixContextError("semantic prefix invalidation is inconsistent")
             if provider_change and not invalidated:
-                raise PrefixContextError(
-                    "provider boundary invalidation is inconsistent"
-                )
+                raise PrefixContextError("provider boundary invalidation is inconsistent")
 
         if previous_capsule is None:
             if provider_reused_tokens:
@@ -4617,14 +4005,8 @@ class ContextCompiler:
                 else PrefixReuseSource.COLD
             )
         elif provider_reused_tokens is not None:
-            reused_tokens = min(
-                provider_reused_tokens, capsule.stable_prefix_tokens
-            )
-            decision = (
-                PrefixCacheDecision.HIT
-                if reused_tokens
-                else PrefixCacheDecision.MISS
-            )
+            reused_tokens = min(provider_reused_tokens, capsule.stable_prefix_tokens)
+            decision = PrefixCacheDecision.HIT if reused_tokens else PrefixCacheDecision.MISS
             source = (
                 PrefixReuseSource.PROVIDER_PROMPT_CACHE
                 if cache_kind is PrefixCacheKind.PROMPT_CACHE
@@ -4633,13 +4015,9 @@ class ContextCompiler:
         else:
             reused_tokens = max(
                 1,
-                capsule.stable_prefix_tokens
-                * CONSERVATIVE_PREFIX_REUSE_BPS
-                // 10_000,
+                capsule.stable_prefix_tokens * CONSERVATIVE_PREFIX_REUSE_BPS // 10_000,
             )
-            reused_tokens = min(
-                reused_tokens, capsule.stable_prefix_tokens
-            )
+            reused_tokens = min(reused_tokens, capsule.stable_prefix_tokens)
             decision = PrefixCacheDecision.HIT
             source = PrefixReuseSource.CONSERVATIVE_ESTIMATE
 
@@ -4669,9 +4047,7 @@ class ContextCompiler:
             provider_input_tokens=capsule.provider_input_tokens,
             provider_reused_tokens=provider_reused_tokens,
             invalidated_dependencies=invalidated,
-            evidence_reference_ids=tuple(
-                item.reference_id for item in base.evidence
-            ),
+            evidence_reference_ids=tuple(item.reference_id for item in base.evidence),
             evidence_digest=capsule.evidence_digest,
         )
         return PrefixContextResult(
@@ -4749,13 +4125,9 @@ class ContextCompiler:
                 "invariant goal/authority/scope/acceptance exceeds "
                 "the effective provider input budget"
             )
-        if (
-            self.provider_max_input_bytes is not None
-            and base_bytes > self.provider_max_input_bytes
-        ):
+        if self.provider_max_input_bytes is not None and base_bytes > self.provider_max_input_bytes:
             raise RequiredContextOverflowError(
-                "invariant goal/authority/scope/acceptance exceeds "
-                "the provider input-byte budget"
+                "invariant goal/authority/scope/acceptance exceeds the provider input-byte budget"
             )
         for item in sorted(required, key=lambda member: member.reference_id):
             tokens = _reference_tokens(self.estimator, item)
@@ -4792,13 +4164,9 @@ class ContextCompiler:
                 InclusionReason.REQUIRED,
                 tokens,
                 item.priority,
-                expected_decision_change_bps=(
-                    estimate.expected_decision_change_bps
-                ),
+                expected_decision_change_bps=(estimate.expected_decision_change_bps),
                 uncertainty_bps=estimate.uncertainty_bps,
-                uncertainty_reduction_bps=(
-                    estimate.uncertainty_reduction_bps
-                ),
+                uncertainty_reduction_bps=(estimate.uncertainty_reduction_bps),
                 latency_cost=estimate.latency_cost,
                 invalidation_cost=estimate.invalidation_cost,
                 expansion_cost=estimate.expansion_cost,
@@ -4810,18 +4178,14 @@ class ContextCompiler:
         optional_selected = 0
         remaining = {item.reference_id: item for item in optional}
         while remaining:
-            ranked: list[
-                tuple[ContextReference, int, EvidenceValueEstimate]
-            ] = []
+            ranked: list[tuple[ContextReference, int, EvidenceValueEstimate]] = []
             for item in remaining.values():
                 tokens = _reference_tokens(self.estimator, item)
                 diversity_key = self.value_policy._diversity_key(item)
                 estimate = self.value_policy.estimate(
                     item,
                     token_cost=tokens,
-                    selected_diversity_count=diversity_counts.get(
-                        diversity_key, 0
-                    ),
+                    selected_diversity_count=diversity_counts.get(diversity_key, 0),
                 )
                 ranked.append((item, tokens, estimate))
             item, tokens, estimate = min(
@@ -4854,12 +4218,9 @@ class ContextCompiler:
                 reason = ExclusionReason.ITEM_LIMIT
             elif len(selected) >= self.effective_budget.max_items:
                 reason = ExclusionReason.ITEM_LIMIT
-            elif (
-                proposed > self.effective_input_limit
-                or (
-                    self.provider_max_input_bytes is not None
-                    and proposed_bytes > self.provider_max_input_bytes
-                )
+            elif proposed > self.effective_input_limit or (
+                self.provider_max_input_bytes is not None
+                and proposed_bytes > self.provider_max_input_bytes
             ):
                 reason = ExclusionReason.TOKEN_BUDGET
             else:
@@ -4876,13 +4237,9 @@ class ContextCompiler:
                     InclusionReason.RANKED_FIT,
                     tokens,
                     item.priority,
-                    expected_decision_change_bps=(
-                        estimate.expected_decision_change_bps
-                    ),
+                    expected_decision_change_bps=(estimate.expected_decision_change_bps),
                     uncertainty_bps=estimate.uncertainty_bps,
-                    uncertainty_reduction_bps=(
-                        estimate.uncertainty_reduction_bps
-                    ),
+                    uncertainty_reduction_bps=(estimate.uncertainty_reduction_bps),
                     latency_cost=estimate.latency_cost,
                     invalidation_cost=estimate.invalidation_cost,
                     expansion_cost=estimate.expansion_cost,
@@ -4898,13 +4255,9 @@ class ContextCompiler:
                 reason,
                 tokens,
                 item.priority,
-                expected_decision_change_bps=(
-                    estimate.expected_decision_change_bps
-                ),
+                expected_decision_change_bps=(estimate.expected_decision_change_bps),
                 uncertainty_bps=estimate.uncertainty_bps,
-                uncertainty_reduction_bps=(
-                    estimate.uncertainty_reduction_bps
-                ),
+                uncertainty_reduction_bps=(estimate.uncertainty_reduction_bps),
                 latency_cost=estimate.latency_cost,
                 invalidation_cost=estimate.invalidation_cost,
                 expansion_cost=estimate.expansion_cost,
@@ -4912,9 +4265,7 @@ class ContextCompiler:
                 diversity_key=estimate.diversity_key,
                 diversity_penalty_bps=estimate.diversity_penalty_bps,
             )
-        ordered_decisions = tuple(
-            decisions[key] for key in sorted(decisions)
-        )
+        ordered_decisions = tuple(decisions[key] for key in sorted(decisions))
         capsule = ContextCapsule(
             repository_id=repository_id,
             tree_id=tree_id,
@@ -4999,39 +4350,25 @@ class ContextCompiler:
         if not isinstance(parent, ContextCapsule):
             raise ContextDeltaError("parent must be a ContextCapsule")
         if parent.is_delta:
-            raise ContextDeltaError(
-                "delta chaining requires reconstruction of the prior delta"
-            )
+            raise ContextDeltaError("delta chaining requires reconstruction of the prior delta")
         candidates = _coerce_references(evidence)
         candidate_by_id = {item.reference_id: item for item in candidates}
         parent_by_id = {item.reference_id: item for item in parent.evidence}
-        requested = set(
-            _strings(requested_reference_ids, "requested_reference_ids")
-        )
+        requested = set(_strings(requested_reference_ids, "requested_reference_ids"))
         unknown_requests = requested.difference(candidate_by_id)
         if unknown_requests:
-            raise ContextDeltaError(
-                "requested retry evidence is not present in the candidate set"
-            )
-        required_ids = {
-            item.reference_id
-            for item in parent.evidence
-            if item.required
-        }
+            raise ContextDeltaError("requested retry evidence is not present in the candidate set")
+        required_ids = {item.reference_id for item in parent.evidence if item.required}
         missing_required = required_ids.difference(candidate_by_id)
         if missing_required:
-            raise ContextDeltaError(
-                "retry candidate drops required evidence references"
-            )
+            raise ContextDeltaError("retry candidate drops required evidence references")
         downgraded_required = {
             reference_id
             for reference_id in required_ids
             if not candidate_by_id[reference_id].required
         }
         if downgraded_required:
-            raise ContextDeltaError(
-                "retry candidate downgrades parent-required evidence"
-            )
+            raise ContextDeltaError("retry candidate downgrades parent-required evidence")
         transmitted: list[ContextReference] = []
         genuinely_changed: list[str] = []
         requested_only: list[str] = []
@@ -5054,16 +4391,10 @@ class ContextCompiler:
                     EvidenceSelectionDecision(
                         item.reference_id,
                         True,
-                        (
-                            InclusionReason.CHANGED
-                            if is_changed
-                            else InclusionReason.REQUESTED
-                        ),
+                        (InclusionReason.CHANGED if is_changed else InclusionReason.REQUESTED),
                         tokens,
                         item.priority,
-                        unresolved_question=str(
-                            item.metadata.get("expansion_question", "")
-                        ),
+                        unresolved_question=str(item.metadata.get("expansion_question", "")),
                     )
                 )
             else:
@@ -5098,13 +4429,9 @@ class ContextCompiler:
             acceptance=parent.acceptance,
             evidence=combined,
         )
-        reconstructed_limit = min(
-            parent.budget.max_input_tokens, self.effective_input_limit
-        )
+        reconstructed_limit = min(parent.budget.max_input_tokens, self.effective_input_limit)
         if reconstructed_input_tokens > reconstructed_limit:
-            raise ContextDeltaError(
-                "reconstructed full context exceeds the effective input budget"
-            )
+            raise ContextDeltaError("reconstructed full context exceeds the effective input budget")
         delta_capsule = ContextDeltaCapsule(
             parent_capsule_id=parent.capsule_id,
             stage=stage or parent.stage,
@@ -5112,12 +4439,8 @@ class ContextCompiler:
             reconstructed_input_tokens=reconstructed_input_tokens,
             requested_reference_ids=tuple(requested_only),
         )
-        if len(delta_capsule.canonical_bytes()) > (
-            self.effective_budget.max_serialized_bytes
-        ):
-            raise ContextDeltaError(
-                "retry delta exceeds the serialized-byte budget"
-            )
+        if len(delta_capsule.canonical_bytes()) > (self.effective_budget.max_serialized_bytes):
+            raise ContextDeltaError("retry delta exceeds the serialized-byte budget")
         reconstructed = reconstruct_context(parent, delta_capsule)
         # The delta is its compact provider wire record.  Full replay is the
         # canonical provider input, conservatively floored by the same
@@ -5129,16 +4452,11 @@ class ContextCompiler:
             self.estimator.estimate(reconstructed.provider_input_payload),
         )
         if delta_tokens >= full_replay_tokens:
-            raise ContextDeltaError(
-                "retry delta does not use fewer tokens than full replay"
-            )
+            raise ContextDeltaError("retry delta does not use fewer tokens than full replay")
         if delta_tokens > self.effective_input_limit:
             raise ContextDeltaError("retry delta exceeds effective input budget")
         parent_required_coverage = {
-            coverage
-            for item in parent.evidence
-            if item.required
-            for coverage in item.coverage_ids
+            coverage for item in parent.evidence if item.required for coverage in item.coverage_ids
         }
         required_coverage = {
             coverage
@@ -5147,14 +4465,11 @@ class ContextCompiler:
             for coverage in item.coverage_ids
         }
         reconstructed_coverage = set(reconstructed.evidence_coverage_ids)
-        if (
-            not parent_required_coverage.issubset(required_coverage)
-            or not required_coverage.issubset(reconstructed_coverage)
-        ):
+        if not parent_required_coverage.issubset(
+            required_coverage
+        ) or not required_coverage.issubset(reconstructed_coverage):
             raise ContextDeltaError("retry reconstruction loses required coverage")
-        ordered_decisions = tuple(
-            sorted(decisions, key=lambda item: item.reference_id)
-        )
+        ordered_decisions = tuple(sorted(decisions, key=lambda item: item.reference_id))
         witness = DeltaRetryContextEvidence(
             repository_id=parent.repository_id,
             tree_id=parent.tree_id,
@@ -5172,8 +4487,7 @@ class ContextCompiler:
             retained_reference_ids=tuple(
                 item.reference_id
                 for item in reconstructed.evidence
-                if item.reference_id
-                not in {member.reference_id for member in transmitted}
+                if item.reference_id not in {member.reference_id for member in transmitted}
             ),
             required_fields=reconstructed.required_field_names,
             artifact_digest=_canonical_digest(
@@ -5231,69 +4545,38 @@ class ContextCompiler:
         )
 
 
-def reconstruct_context(
-    parent: ContextCapsule, delta: ContextDeltaCapsule
-) -> ContextCapsule:
+def reconstruct_context(parent: ContextCapsule, delta: ContextDeltaCapsule) -> ContextCapsule:
     """Apply a parent-bound delta and return the deterministic full context."""
 
-    if not isinstance(parent, ContextCapsule) or not isinstance(
-        delta, ContextDeltaCapsule
-    ):
-        raise ContextDeltaError(
-            "parent must be a ContextCapsule and delta a ContextDeltaCapsule"
-        )
+    if not isinstance(parent, ContextCapsule) or not isinstance(delta, ContextDeltaCapsule):
+        raise ContextDeltaError("parent must be a ContextCapsule and delta a ContextDeltaCapsule")
     if delta.parent_capsule_id != parent.capsule_id:
         raise ContextDeltaError("delta is not bound to the supplied parent")
-    parent_by_id = {
-        item.reference_id: item for item in parent.evidence
-    }
+    parent_by_id = {item.reference_id: item for item in parent.evidence}
     requested_ids = set(delta.requested_reference_ids)
     for item in delta.evidence:
         if item.repository_id and item.repository_id != parent.repository_id:
-            raise ContextDeltaError(
-                "delta evidence changes immutable repository identity"
-            )
+            raise ContextDeltaError("delta evidence changes immutable repository identity")
         if item.tree_id and item.tree_id != parent.tree_id:
-            raise ContextDeltaError(
-                "delta evidence changes immutable tree identity"
-            )
-        if (
-            parent_by_id.get(item.reference_id) == item
-            and item.reference_id not in requested_ids
-        ):
-            raise ContextDeltaError(
-                "delta replays unchanged evidence without an explicit request"
-            )
+            raise ContextDeltaError("delta evidence changes immutable tree identity")
+        if parent_by_id.get(item.reference_id) == item and item.reference_id not in requested_ids:
+            raise ContextDeltaError("delta replays unchanged evidence without an explicit request")
     combined = dict(parent_by_id)
     combined.update({item.reference_id: item for item in delta.evidence})
-    required_ids = {
-        item.reference_id for item in parent.evidence if item.required
-    }
+    required_ids = {item.reference_id for item in parent.evidence if item.required}
     if not required_ids.issubset(combined) or any(
         not combined[reference_id].required for reference_id in required_ids
     ):
-        raise ContextDeltaError(
-            "reconstructed context loses or downgrades required evidence"
-        )
+        raise ContextDeltaError("reconstructed context loses or downgrades required evidence")
     evidence = tuple(combined[key] for key in sorted(combined))
     reconstructed_tokens = delta.reconstructed_input_tokens
     if reconstructed_tokens > parent.budget.max_input_tokens:
-        raise ContextDeltaError(
-            "reconstructed context exceeds the parent input budget"
-        )
-    parent_declared_reference_tokens = sum(
-        item.token_count for item in parent.evidence
-    )
-    inherited_core_floor = max(
-        0, parent.input_tokens - parent_declared_reference_tokens
-    )
-    reconstructed_floor = inherited_core_floor + sum(
-        item.token_count for item in evidence
-    )
+        raise ContextDeltaError("reconstructed context exceeds the parent input budget")
+    parent_declared_reference_tokens = sum(item.token_count for item in parent.evidence)
+    inherited_core_floor = max(0, parent.input_tokens - parent_declared_reference_tokens)
+    reconstructed_floor = inherited_core_floor + sum(item.token_count for item in evidence)
     if reconstructed_floor > reconstructed_tokens:
-        raise ContextDeltaError(
-            "reconstructed token count omits inherited core or evidence tokens"
-        )
+        raise ContextDeltaError("reconstructed token count omits inherited core or evidence tokens")
     selected_ids = set(combined)
     expansions = {
         item.reference_id: item
@@ -5301,13 +4584,9 @@ def reconstruct_context(
         if item.reference_id not in selected_ids
     }
     retained_omissions = {
-        omission
-        for omission in parent.omissions
-        if omission.rpartition(":")[0] in expansions
+        omission for omission in parent.omissions if omission.rpartition(":")[0] in expansions
     }
-    recorded_expansion_ids = {
-        omission.rpartition(":")[0] for omission in retained_omissions
-    }
+    recorded_expansion_ids = {omission.rpartition(":")[0] for omission in retained_omissions}
     retained_omissions.update(
         f"{reference_id}:{ExclusionReason.TOKEN_BUDGET.value}"
         for reference_id in expansions
@@ -5328,9 +4607,7 @@ def reconstruct_context(
         scope=parent.scope,
         acceptance=parent.acceptance,
         evidence=evidence,
-        expansion_references=tuple(
-            expansions[key] for key in sorted(expansions)
-        ),
+        expansion_references=tuple(expansions[key] for key in sorted(expansions)),
         input_tokens=reconstructed_tokens,
         truncated=bool(expansions),
         omissions=tuple(sorted(retained_omissions)),
@@ -5346,30 +4623,39 @@ def _decision_retry_wire(capsule: Any) -> dict[str, Any]:
         "parent_completeness_witness_id": capsule.parent_completeness_witness_id,
         "parent_stable_core_id": capsule.parent_stable_core_id,
         "parent_closure_id": capsule.parent_closure_id,
-        "changed_dependencies": tuple(
-            item.to_record() for item in capsule.changed_dependencies
-        ),
-        "expanded_evidence": tuple(
-            item.to_record() for item in capsule.expanded_evidence
-        ),
+        "changed_dependencies": tuple(item.to_record() for item in capsule.changed_dependencies),
+        "expanded_evidence": tuple(item.to_record() for item in capsule.expanded_evidence),
         "omission_reasons": dict(capsule.omission_reasons),
     }
 
 
 def _unsafe_decision_delta(value: Any) -> bool:
     forbidden = {
-        "authority", "authority_id", "authorization",
-        "authorization_state", "requested_authority", "principal_id",
-        "capabilities", "capability_ids", "lease_id", "fencing_epoch",
-        "repository_id", "dirty_worktree_root", "dirty_worktree_root_id",
-        "semantic_root", "semantic_roots", "semantic_roots_digest",
-        "semantic_graph_root_id", "root_id", "corpus_query",
-        "corpus_browse", "retrieval_query",
+        "authority",
+        "authority_id",
+        "authorization",
+        "authorization_state",
+        "requested_authority",
+        "principal_id",
+        "capabilities",
+        "capability_ids",
+        "lease_id",
+        "fencing_epoch",
+        "repository_id",
+        "dirty_worktree_root",
+        "dirty_worktree_root_id",
+        "semantic_root",
+        "semantic_roots",
+        "semantic_roots_digest",
+        "semantic_graph_root_id",
+        "root_id",
+        "corpus_query",
+        "corpus_browse",
+        "retrieval_query",
     }
     if isinstance(value, Mapping):
         return any(
-            str(key) in forbidden or _unsafe_decision_delta(member)
-            for key, member in value.items()
+            str(key) in forbidden or _unsafe_decision_delta(member) for key, member in value.items()
         )
     if isinstance(value, (tuple, list)):
         return any(_unsafe_decision_delta(item) for item in value)
@@ -5428,9 +4714,7 @@ class DecisionContextRetryResult:
         return self.retry_capsule.full_replay_input_tokens
 
 
-def reconstruct_decision_context(
-    parent: Any, capsule: Any, target: Any | None = None
-) -> Any:
+def reconstruct_decision_context(parent: Any, capsule: Any, target: Any | None = None) -> Any:
     from .decision_context import (
         DecisionContextChangeKind,
         DecisionContextCompilation,
@@ -5461,8 +4745,7 @@ def reconstruct_decision_context(
         rebuilt = DecisionContextCompilation.from_dict(parent.to_record())
     if (
         rebuilt.stable_core_id != parent.stable_core_id
-        or rebuilt.witness.semantic_graph_root_id
-        != parent.witness.semantic_graph_root_id
+        or rebuilt.witness.semantic_graph_root_id != parent.witness.semantic_graph_root_id
         or rebuilt.witness.roots_digest != parent.witness.roots_digest
         or rebuilt.witness.mandatory_node_ids != parent.witness.mandatory_node_ids
         or rebuilt.witness.mandatory_edge_ids != parent.witness.mandatory_edge_ids
@@ -5501,9 +4784,7 @@ def reconstruct_decision_context(
                 "structural dependency identities do not match retry delta"
             )
     if actual_changes != declared_changes:
-        raise DecisionContextRetryError(
-            "retry target contains undeclared structural changes"
-        )
+        raise DecisionContextRetryError("retry target contains undeclared structural changes")
     return rebuilt
 
 
@@ -5540,15 +4821,11 @@ class DecisionContextCompiler:
             reserved_tool_tokens=reserved_tool_tokens,
         )
         self.estimator = self.context_compiler.estimator
-        self.effective_input_limit = (
-            self.context_compiler.effective_input_limit
-        )
+        self.effective_input_limit = self.context_compiler.effective_input_limit
         self.effective_budget = self.context_compiler.effective_budget
         self.require_provider_tokenizer = bool(require_provider_tokenizer)
         selected_inline_bytes = (
-            max_inline_node_bytes
-            if max_inline_bytes is None
-            else max_inline_bytes
+            max_inline_node_bytes if max_inline_bytes is None else max_inline_bytes
         )
         self.max_inline_node_bytes = _integer(
             selected_inline_bytes,
@@ -5562,22 +4839,16 @@ class DecisionContextCompiler:
         self._decision_expansion_usage: dict[str, dict[str, Any]] = {}
 
     @classmethod
-    def from_context_compiler(
-        cls, compiler: ContextCompiler
-    ) -> "DecisionContextCompiler":
+    def from_context_compiler(cls, compiler: ContextCompiler) -> "DecisionContextCompiler":
         if not isinstance(compiler, ContextCompiler):
-            raise ContextCompilationError(
-                "compiler must be a ContextCompiler"
-            )
+            raise ContextCompilationError("compiler must be a ContextCompiler")
         result = object.__new__(cls)
         result.context_compiler = compiler
         result.estimator = compiler.estimator
         result.effective_input_limit = compiler.effective_input_limit
         result.effective_budget = compiler.effective_budget
         result.require_provider_tokenizer = True
-        result.max_inline_node_bytes = min(
-            4_096, compiler.effective_budget.max_item_bytes
-        )
+        result.max_inline_node_bytes = min(4_096, compiler.effective_budget.max_item_bytes)
         result._decision_expansion_usage = {}
         return result
 
@@ -5591,10 +4862,7 @@ class DecisionContextCompiler:
                 for key, member in value.items()
             )
         if isinstance(value, (tuple, list)):
-            return any(
-                DecisionContextCompiler._has_unknown(member)
-                for member in value
-            )
+            return any(DecisionContextCompiler._has_unknown(member) for member in value)
         if isinstance(value, str):
             lowered = value.lower()
             return "unknown" in lowered or "unresolved" in lowered
@@ -5605,11 +4873,7 @@ class DecisionContextCompiler:
         nodes: Iterable[Any],
         predicate: Callable[[Any], bool],
     ) -> tuple[str, ...]:
-        return tuple(
-            f"mandatory:{node.node_id}"
-            for node in nodes
-            if predicate(node)
-        )
+        return tuple(f"mandatory:{node.node_id}" for node in nodes if predicate(node))
 
     @staticmethod
     def _path_edge_ids(
@@ -5725,9 +4989,7 @@ class DecisionContextCompiler:
         )
 
     @staticmethod
-    def _bounded_index_metadata(
-        graph: Any, receipt: Any
-    ) -> Mapping[str, Any]:
+    def _bounded_index_metadata(graph: Any, receipt: Any) -> Mapping[str, Any]:
         maximum = 1_000_000
 
         def bounded(value: Any) -> int:
@@ -5740,15 +5002,9 @@ class DecisionContextCompiler:
             "graph_node_count": bounded(len(graph.nodes)),
             "graph_edge_count": bounded(len(graph.edges)),
             "candidate_audit_count": bounded(len(receipt.candidates)),
-            "optional_included_count": bounded(
-                len(receipt.optional_node_ids)
-            ),
-            "optional_omitted_count": bounded(
-                len(receipt.omitted_node_ids)
-            ),
-            "candidate_truncation_count": bounded(
-                truncation.get("candidate_truncation_count", 0)
-            ),
+            "optional_included_count": bounded(len(receipt.optional_node_ids)),
+            "optional_omitted_count": bounded(len(receipt.omitted_node_ids)),
+            "candidate_truncation_count": bounded(truncation.get("candidate_truncation_count", 0)),
             "counts_saturated": any(
                 value >= maximum
                 for value in (
@@ -5787,95 +5043,97 @@ class DecisionContextCompiler:
         )
         assumptions = self._reference_ids(
             closure_nodes,
-            lambda node: node.kind
-            in {
-                kinds.ASSUMPTION,
-                kinds.PREMISE,
-                kinds.INTENT_ASSUMPTION,
-                kinds.LEGAL_ASSUMPTION,
-                kinds.SECURITY_THREAT_ASSUMPTION,
-            },
+            lambda node: (
+                node.kind
+                in {
+                    kinds.ASSUMPTION,
+                    kinds.PREMISE,
+                    kinds.INTENT_ASSUMPTION,
+                    kinds.LEGAL_ASSUMPTION,
+                    kinds.SECURITY_THREAT_ASSUMPTION,
+                }
+            ),
         )
         obligations = self._reference_ids(
             closure_nodes,
-            lambda node: node.kind
-            in {
-                kinds.OBLIGATION,
-                kinds.INTENT_OBLIGATION,
-                kinds.LEGAL_OBLIGATION,
-                kinds.LEGAL_PROOF_OBLIGATION,
-                kinds.SECURITY_OBLIGATION,
-            },
+            lambda node: (
+                node.kind
+                in {
+                    kinds.OBLIGATION,
+                    kinds.INTENT_OBLIGATION,
+                    kinds.LEGAL_OBLIGATION,
+                    kinds.LEGAL_PROOF_OBLIGATION,
+                    kinds.SECURITY_OBLIGATION,
+                }
+            ),
         )
-        proof_ids = self._reference_ids(
-            closure_nodes, lambda node: node.kind is kinds.PROOF
-        )
-        monitor_ids = self._reference_ids(
-            closure_nodes, lambda node: node.kind is kinds.MONITOR
-        )
+        proof_ids = self._reference_ids(closure_nodes, lambda node: node.kind is kinds.PROOF)
+        monitor_ids = self._reference_ids(closure_nodes, lambda node: node.kind is kinds.MONITOR)
         validation_ids = self._reference_ids(
             closure_nodes,
-            lambda node: node.kind
-            in {kinds.VALIDATION, kinds.INTENT_VERIFICATION},
+            lambda node: node.kind in {kinds.VALIDATION, kinds.INTENT_VERIFICATION},
         )
         intent_ids = self._reference_ids(
             closure_nodes,
-            lambda node: node.kind.value.startswith("intent_")
-            or node.kind is kinds.ACTION,
+            lambda node: node.kind.value.startswith("intent_") or node.kind is kinds.ACTION,
         )
         program_ids = self._reference_ids(
             closure_nodes,
-            lambda node: node.kind
-            in {
-                kinds.WORKTREE,
-                kinds.REPOSITORY_TREE,
-                kinds.FILE,
-                kinds.AST,
-                kinds.SYMBOL,
-                kinds.INTERFACE,
-                kinds.CALL,
-                kinds.DATA_FLOW,
-                kinds.PROGRAM,
-                kinds.ENVIRONMENT,
-                kinds.TOOLCHAIN,
-                kinds.TOOL,
-                kinds.RESOURCE,
-            },
+            lambda node: (
+                node.kind
+                in {
+                    kinds.WORKTREE,
+                    kinds.REPOSITORY_TREE,
+                    kinds.FILE,
+                    kinds.AST,
+                    kinds.SYMBOL,
+                    kinds.INTERFACE,
+                    kinds.CALL,
+                    kinds.DATA_FLOW,
+                    kinds.PROGRAM,
+                    kinds.ENVIRONMENT,
+                    kinds.TOOLCHAIN,
+                    kinds.TOOL,
+                    kinds.RESOURCE,
+                }
+            ),
         )
         effect_ids = self._reference_ids(
             closure_nodes,
-            lambda node: node.kind
-            in {kinds.EFFECT, kinds.INTENT_EFFECT, kinds.INTENT_POSTCONDITION},
+            lambda node: (
+                node.kind in {kinds.EFFECT, kinds.INTENT_EFFECT, kinds.INTENT_POSTCONDITION}
+            ),
         )
         authorization_ids = self._reference_ids(
             closure_nodes,
-            lambda node: node.kind
-            in {
-                kinds.AUTHORIZATION,
-                kinds.INTENT_RESULT_AUTHORITY,
-                kinds.LEGAL_RESULT_AUTHORITY,
-                kinds.SECURITY_RESULT_AUTHORITY,
-            },
+            lambda node: (
+                node.kind
+                in {
+                    kinds.AUTHORIZATION,
+                    kinds.INTENT_RESULT_AUTHORITY,
+                    kinds.LEGAL_RESULT_AUTHORITY,
+                    kinds.SECURITY_RESULT_AUTHORITY,
+                }
+            ),
         )
         failure_ids = self._reference_ids(
             closure_nodes,
-            lambda node: node.kind
-            in {kinds.INTENT_FAILURE, kinds.INTENT_RETRY},
+            lambda node: node.kind in {kinds.INTENT_FAILURE, kinds.INTENT_RETRY},
         )
         legal_unknowns = self._reference_ids(
             closure_nodes,
-            lambda node: node.kind.value.startswith("legal_")
-            and (
-                node.kind is kinds.LEGAL_ASSUMPTION
-                or self._has_unknown(node.record)
+            lambda node: (
+                node.kind.value.startswith("legal_")
+                and (node.kind is kinds.LEGAL_ASSUMPTION or self._has_unknown(node.record))
             ),
         )
         security_unknowns = self._reference_ids(
             closure_nodes,
-            lambda node: node.kind.value.startswith("security_")
-            and (
-                node.kind is kinds.SECURITY_THREAT_ASSUMPTION
-                or self._has_unknown(node.record)
+            lambda node: (
+                node.kind.value.startswith("security_")
+                and (
+                    node.kind is kinds.SECURITY_THREAT_ASSUMPTION or self._has_unknown(node.record)
+                )
             ),
         )
         closure_node_ids = {node.node_id for node in closure_nodes}
@@ -5908,9 +5166,7 @@ class DecisionContextCompiler:
             "roots": roots,
             "intent_action_contract": {
                 "selected_action": request.action.to_record(),
-                "capabilities": tuple(
-                    item.to_record() for item in request.capabilities
-                ),
+                "capabilities": tuple(item.to_record() for item in request.capabilities),
                 "mandatory_reference_ids": intent_ids,
             },
             "legal_constraints": {
@@ -5927,9 +5183,7 @@ class DecisionContextCompiler:
             },
             "security_constraints": {
                 "principal_id": request.authority.principal_id,
-                "requested_authority": (
-                    request.authority.requested_authority.value
-                ),
+                "requested_authority": (request.authority.requested_authority.value),
                 "capability_ids": request.authority.capability_ids,
                 "mandatory_reference_ids": security,
             },
@@ -5945,15 +5199,11 @@ class DecisionContextCompiler:
             "program_scope": {
                 "repository_id": request.repository_id,
                 "repository_path": request.repository_path,
-                "targets": tuple(
-                    item.to_record() for item in request.action.targets
-                ),
+                "targets": tuple(item.to_record() for item in request.action.targets),
                 "mandatory_reference_ids": program_ids,
             },
             "effect_scope": {
-                "expected_effects": tuple(
-                    item.to_record() for item in request.expected_effects
-                ),
+                "expected_effects": tuple(item.to_record() for item in request.expected_effects),
                 "mandatory_reference_ids": effect_ids,
             },
             "assumptions": {"mandatory_reference_ids": assumptions},
@@ -5999,9 +5249,7 @@ class DecisionContextCompiler:
                 ),
             },
             "acceptance": (
-                acceptance
-                if acceptance is not None
-                else {"acceptance_id": request.acceptance_id}
+                acceptance if acceptance is not None else {"acceptance_id": request.acceptance_id}
             ),
             "failure_behavior": {
                 "mode": "fail_closed",
@@ -6047,9 +5295,7 @@ class DecisionContextCompiler:
                 "expansion_request": expansion_request,
             },
         }
-        return self.estimator.estimate(
-            canonical_context_json_bytes(payload).decode("utf-8")
-        )
+        return self.estimator.estimate(canonical_context_json_bytes(payload).decode("utf-8"))
 
     def verify(self, result: Any) -> Any:
         from .decision_context import (
@@ -6059,29 +5305,21 @@ class DecisionContextCompiler:
         )
 
         if not isinstance(result, DecisionContextCompilation):
-            raise DecisionContextBindingError(
-                "result must be a DecisionContextCompilation"
-            )
+            raise DecisionContextBindingError("result must be a DecisionContextCompilation")
         total = 0
         for context in result.contexts:
             measured = self.estimator.estimate(
-                canonical_context_json_bytes(
-                    context.provider_payload()
-                ).decode("utf-8")
+                canonical_context_json_bytes(context.provider_payload()).decode("utf-8")
             )
             if measured != context.provider_input_tokens:
-                raise DecisionContextBindingError(
-                    "provider token accounting is not reproducible"
-                )
+                raise DecisionContextBindingError("provider token accounting is not reproducible")
             if measured > context.effective_input_limit:
                 raise DecisionContextOverflowError(
                     "remeasured context exceeds its provider input limit"
                 )
             total += measured
         if total != result.complete_input_tokens:
-            raise DecisionContextBindingError(
-                "complete provider input token accounting is forged"
-            )
+            raise DecisionContextBindingError("complete provider input token accounting is forged")
         return result
 
     verify_compilation = verify
@@ -6212,9 +5450,7 @@ class DecisionContextCompiler:
             }
         )
         if structural and target_compilation is None:
-            raise DecisionContextRetryError(
-                "structural retry requires a current verified closure"
-            )
+            raise DecisionContextRetryError("structural retry requires a current verified closure")
         target = target_compilation or parent
         if expanded:
             if target_compilation not in (None, parent):
@@ -6225,16 +5461,13 @@ class DecisionContextCompiler:
         if (
             target.stable_core_id != parent.stable_core_id
             or target.required_core != parent.required_core
-            or target.witness.semantic_graph_root_id
-            != parent.witness.semantic_graph_root_id
+            or target.witness.semantic_graph_root_id != parent.witness.semantic_graph_root_id
             or target.witness.roots_digest != parent.witness.roots_digest
             or target.witness.mandatory_node_ids != parent.witness.mandatory_node_ids
             or target.witness.mandatory_edge_ids != parent.witness.mandatory_edge_ids
             or target.witness.dependency_paths != parent.witness.dependency_paths
         ):
-            raise DecisionContextRetryError(
-                "retry target changed stable core or closure topology"
-            )
+            raise DecisionContextRetryError("retry target changed stable core or closure topology")
         previous, current = _decision_references(parent), _decision_references(target)
         admitted = set(previous) | {item.reference_id for item in previous.values()}
         declared_nodes: set[str] = set()
@@ -6255,18 +5488,14 @@ class DecisionContextCompiler:
                 previous[node].node_content_id != change.previous_content_id
                 or current[node].node_content_id != change.current_content_id
             ):
-                raise DecisionContextRetryError(
-                    "changed dependency does not match current closure"
-                )
+                raise DecisionContextRetryError("changed dependency does not match current closure")
         actual_nodes = {
             node_id
             for node_id in previous
             if previous[node_id].to_record() != current[node_id].to_record()
         }
         if actual_nodes != declared_nodes:
-            raise DecisionContextRetryError(
-                "retry target contains undeclared structural changes"
-            )
+            raise DecisionContextRetryError("retry target contains undeclared structural changes")
         expansion_changes = {
             item.dependency_id: item
             for item in changes
@@ -6288,25 +5517,20 @@ class DecisionContextCompiler:
                 or item.node_id != prior.node_id
                 or item.node_content_id != prior.node_content_id
                 or change is None
-                or change.previous_content_id
-                != prior.expansion_handle.referenced_content_id
+                or change.previous_content_id != prior.expansion_handle.referenced_content_id
                 or change.current_content_id != item.node_content_id
             ):
                 raise DecisionContextRetryError(
                     "expanded evidence is outside the admitted parent closure"
                 )
         if set(expansion_changes) != {item.reference_id for item in expanded}:
-            raise DecisionContextRetryError(
-                "expanded evidence and dependency changes differ"
-            )
+            raise DecisionContextRetryError("expanded evidence and dependency changes differ")
         omissions = dict(omission_reasons or {})
         for change in changes:
             if change.omission_reason:
                 existing = omissions.get(change.dependency_id)
                 if existing not in (None, change.omission_reason):
-                    raise DecisionContextRetryError(
-                        "retry changes a dependency omission reason"
-                    )
+                    raise DecisionContextRetryError("retry changes a dependency omission reason")
                 omissions[change.dependency_id] = change.omission_reason
         for context in parent.contexts:
             for reference in context.references:
@@ -6351,9 +5575,7 @@ class DecisionContextCompiler:
             raise DecisionContextRetryError(
                 "retry delta does not use fewer tokens than full replay"
             )
-        capsule = DecisionContextRetryCapsule(
-            **capsule_args, delta_input_tokens=delta_tokens
-        )
+        capsule = DecisionContextRetryCapsule(**capsule_args, delta_input_tokens=delta_tokens)
         result = DecisionContextRetryResult(parent, capsule, target, self)
         return self.verify_retry(result)
 
@@ -6395,9 +5617,7 @@ class DecisionContextCompiler:
             or request.authority_id != bindings["authority_id"]
             or request.semantic_graph_root_id != bindings["semantic_graph_root_id"]
         ):
-            raise DecisionContextBindingError(
-                "expansion request does not bind its exact parent"
-            )
+            raise DecisionContextBindingError("expansion request does not bind its exact parent")
         self._retry_bindings(
             parent,
             repository_id=current.get("current_repository_id"),
@@ -6479,9 +5699,7 @@ class DecisionContextCompiler:
                 "repeated equivalent expansion or expansion count budget exceeded"
             )
         if not usage["ids"].issubset(set(request.prior_request_ids)):
-            raise DecisionContextExpansionError(
-                "expansion request omits prior lineage identities"
-            )
+            raise DecisionContextExpansionError("expansion request omits prior lineage identities")
         if elapsed < usage["latency"] or elapsed > min(
             request.budget.max_latency_ms, parent_budget["max_latency_ms"]
         ):
@@ -6579,16 +5797,10 @@ class DecisionContextCompiler:
         )
 
         if not isinstance(request, DecisionRequest):
-            raise DecisionContextBindingError(
-                "request must be a DecisionRequest"
-            )
+            raise DecisionContextBindingError("request must be a DecisionRequest")
         if not isinstance(graph, SemanticDependencyGraph):
-            raise DecisionContextBindingError(
-                "graph must be a SemanticDependencyGraph"
-            )
-        if not isinstance(
-            retrieval_receipt, ProofDirectedRetrievalReceipt
-        ):
+            raise DecisionContextBindingError("graph must be a SemanticDependencyGraph")
+        if not isinstance(retrieval_receipt, ProofDirectedRetrievalReceipt):
             raise DecisionContextBindingError(
                 "retrieval_receipt must be a ProofDirectedRetrievalReceipt"
             )
@@ -6598,26 +5810,18 @@ class DecisionContextCompiler:
             )
         except ValueError as exc:
             raise DecisionContextOverflowError(
-                "overflow_behavior must be split, request_expansion, or "
-                "fail_closed"
+                "overflow_behavior must be split, request_expansion, or fail_closed"
             ) from exc
         if self.require_provider_tokenizer and not self.estimator.provider_aware:
             raise DecisionContextOverflowError(
-                "decision context requires a provider tokenizer for complete "
-                "input remeasurement"
+                "decision context requires a provider tokenizer for complete input remeasurement"
             )
-        effective_limit = min(
-            self.effective_input_limit, request.budget.max_input_tokens
-        )
+        effective_limit = min(self.effective_input_limit, request.budget.max_input_tokens)
         if retrieval_receipt.decision_request_id != request.content_id:
-            raise DecisionContextBindingError(
-                "retrieval receipt belongs to a different decision"
-            )
+            raise DecisionContextBindingError("retrieval receipt belongs to a different decision")
         if (
-            retrieval_receipt.roots.get("decision_request_id")
-            != request.content_id
-            or retrieval_receipt.roots.get("repository_id")
-            != request.repository_id
+            retrieval_receipt.roots.get("decision_request_id") != request.content_id
+            or retrieval_receipt.roots.get("repository_id") != request.repository_id
         ):
             raise DecisionContextBindingError(
                 "retrieval receipt decision roots do not match the request"
@@ -6625,10 +5829,8 @@ class DecisionContextCompiler:
         if (
             retrieval_receipt.snapshot.graph_id != graph.graph_id
             or retrieval_receipt.snapshot.graph_root_id != graph.root_id
-            or retrieval_receipt.roots.get("semantic_graph_id")
-            != graph.graph_id
-            or retrieval_receipt.roots.get("semantic_graph_root_id")
-            != graph.root_id
+            or retrieval_receipt.roots.get("semantic_graph_id") != graph.graph_id
+            or retrieval_receipt.roots.get("semantic_graph_root_id") != graph.root_id
         ):
             raise DecisionContextBindingError(
                 "retrieval receipt belongs to a different semantic graph"
@@ -6665,9 +5867,7 @@ class DecisionContextCompiler:
                 "retrieval receipt does not bind the current mandatory closure"
             )
         node_by_id = {node.node_id: node for node in graph.nodes}
-        closure_nodes = tuple(
-            node_by_id[node_id] for node_id in closure.node_ids
-        )
+        closure_nodes = tuple(node_by_id[node_id] for node_id in closure.node_ids)
         references = tuple(
             self._build_reference(
                 request=request,
@@ -6677,31 +5877,21 @@ class DecisionContextCompiler:
             )
             for node in closure_nodes
         )
-        reference_by_node = {
-            reference.node_id: reference for reference in references
-        }
+        reference_by_node = {reference.node_id: reference for reference in references}
         entries = tuple(
             ContextCompletenessEntry(
                 node_id=node.node_id,
                 node_kind=node.kind.value,
                 node_content_id=node.content_id,
                 path=closure.paths[node.node_id],
-                path_edge_ids=self._path_edge_ids(
-                    graph, closure.paths[node.node_id]
-                ),
+                path_edge_ids=self._path_edge_ids(graph, closure.paths[node.node_id]),
                 reference_id=reference_by_node[node.node_id].reference_id,
-                reference_content_id=(
-                    reference_by_node[node.node_id].resolvable_content_id
-                ),
-                representation=(
-                    reference_by_node[node.node_id].representation
-                ),
+                reference_content_id=(reference_by_node[node.node_id].resolvable_content_id),
+                representation=(reference_by_node[node.node_id].representation),
             )
             for node in closure_nodes
         )
-        roots_digest = _canonical_digest(
-            tuple(root.to_record() for root in request.semantic_roots)
-        )
+        roots_digest = _canonical_digest(tuple(root.to_record() for root in request.semantic_roots))
         witness = ContextCompletenessWitness(
             decision_request_id=request.content_id,
             semantic_graph_root_id=graph.root_id,
@@ -6714,14 +5904,12 @@ class DecisionContextCompiler:
             inline_reference_ids=tuple(
                 item.reference_id
                 for item in references
-                if item.representation
-                is DecisionContextRepresentation.INLINE
+                if item.representation is DecisionContextRepresentation.INLINE
             ),
             expansion_reference_ids=tuple(
                 item.reference_id
                 for item in references
-                if item.representation
-                is DecisionContextRepresentation.EXPANSION
+                if item.representation is DecisionContextRepresentation.EXPANSION
             ),
             roots_digest=roots_digest,
         )
@@ -6753,9 +5941,7 @@ class DecisionContextCompiler:
                 canonical_context_json_bytes(
                     {
                         "core": core,
-                        "references": [
-                            item.to_record() for item in references
-                        ],
+                        "references": [item.to_record() for item in references],
                         "entries": [item.to_record() for item in entries],
                     }
                 )
@@ -6773,13 +5959,8 @@ class DecisionContextCompiler:
             conservative_count = max(1, len(references))
             for reference in references:
                 candidate = tuple((*current, reference))
-                candidate_entries = tuple(
-                    entry_by_node[item.node_id] for item in candidate
-                )
-                name = (
-                    "expand mandatory decision context segment "
-                    f"{len(groups) + 1}"
-                )
+                candidate_entries = tuple(entry_by_node[item.node_id] for item in candidate)
+                name = f"expand mandatory decision context segment {len(groups) + 1}"
                 tokens = self._measure_payload(
                     core=core,
                     references=candidate,
@@ -6794,20 +5975,12 @@ class DecisionContextCompiler:
                     canonical_context_json_bytes(
                         {
                             "core": core,
-                            "references": [
-                                item.to_record() for item in candidate
-                            ],
-                            "entries": [
-                                item.to_record()
-                                for item in candidate_entries
-                            ],
+                            "references": [item.to_record() for item in candidate],
+                            "entries": [item.to_record() for item in candidate_entries],
                         }
                     )
                 )
-                if (
-                    tokens <= effective_limit
-                    and byte_count <= request.budget.max_serialized_bytes
-                ):
+                if tokens <= effective_limit and byte_count <= request.budget.max_serialized_bytes:
                     current.append(reference)
                     continue
                 if not current:
@@ -6828,8 +6001,7 @@ class DecisionContextCompiler:
                     segment_index=len(groups),
                     segment_count=conservative_count,
                     expansion_request=(
-                        "expand mandatory decision context segment "
-                        f"{len(groups) + 1}"
+                        f"expand mandatory decision context segment {len(groups) + 1}"
                     ),
                 )
                 if tokens > effective_limit:
@@ -6842,22 +6014,16 @@ class DecisionContextCompiler:
                 groups.append(tuple(current))
             if len(groups) - 1 > request.budget.max_expansions:
                 raise DecisionContextOverflowError(
-                    "deterministic mandatory-context split exceeds the "
-                    "decision expansion budget"
+                    "deterministic mandatory-context split exceeds the decision expansion budget"
                 )
 
         contexts: list[Any] = []
         for index, group in enumerate(groups):
-            group_entries = tuple(
-                entry_by_node[item.node_id] for item in group
-            )
+            group_entries = tuple(entry_by_node[item.node_id] for item in group)
             expansion_name = (
                 ""
                 if len(groups) == 1
-                else (
-                    "expand mandatory decision context segment "
-                    f"{index + 1} of {len(groups)}"
-                )
+                else (f"expand mandatory decision context segment {index + 1} of {len(groups)}")
             )
             tokens = self._measure_payload(
                 core=core,
@@ -6887,11 +6053,7 @@ class DecisionContextCompiler:
                     expansion_request=expansion_name,
                 )
             )
-            serialized_bytes = len(
-                canonical_context_json_bytes(
-                    contexts[-1].provider_payload()
-                )
-            )
+            serialized_bytes = len(canonical_context_json_bytes(contexts[-1].provider_payload()))
             serialized_limit = min(
                 request.budget.max_serialized_bytes,
                 self.effective_budget.max_serialized_bytes,
@@ -6903,9 +6065,7 @@ class DecisionContextCompiler:
         result = DecisionContextCompilation(
             contexts=tuple(contexts),
             witness=witness,
-            complete_input_tokens=sum(
-                item.provider_input_tokens for item in contexts
-            ),
+            complete_input_tokens=sum(item.provider_input_tokens for item in contexts),
             provider_tokenizer=self.estimator.name,
             overflow_behavior=behavior,
             required_nodes_participated_in_value_selection=False,
@@ -6939,9 +6099,9 @@ def compile_decision_context(
             "max_inline_bytes",
         }
     }
-    return DecisionContextCompiler(
-        budget, **compiler_options
-    ).compile(request, graph, retrieval_receipt, **kwargs)
+    return DecisionContextCompiler(budget, **compiler_options).compile(
+        request, graph, retrieval_receipt, **kwargs
+    )
 
 
 def compile_decision_context_retry(
@@ -6968,8 +6128,6 @@ def expand_decision_context(
     return compiler.expand_decision_context(parent, request, resolver, **kwargs)
 
 
-
-
 def compile_code_proof_context_capsule(*args: Any, **kwargs: Any) -> Any:
     """CBP-060: obligation-first context capsule for code-proof agents.
 
@@ -6983,7 +6141,6 @@ def compile_code_proof_context_capsule(*args: Any, **kwargs: Any) -> Any:
     )
 
     return _compile_code_proof_context_capsule(*args, **kwargs)
-
 
 
 def compile_code_proof_context_delta(*args: Any, **kwargs: Any) -> Any:
@@ -7039,9 +6196,7 @@ def compile_prefix_context(
             "value_policy",
         }
     }
-    return ContextCompiler(
-        budget, **compiler_options
-    ).compile_prefix_context(**kwargs)
+    return ContextCompiler(budget, **compiler_options).compile_prefix_context(**kwargs)
 
 
 compile_prefix_context_capsule = compile_prefix_context
@@ -7068,9 +6223,7 @@ def compile_context_delta(
             "value_policy",
         }
     }
-    return ContextCompiler(budget, **compiler_options).compile_delta(
-        parent, **kwargs
-    )
+    return ContextCompiler(budget, **compiler_options).compile_delta(parent, **kwargs)
 
 
 def expand_context(
@@ -7081,21 +6234,15 @@ def expand_context(
     """Request selected expansion handles as a lossless retry delta."""
 
     selected = _coerce_references(references)
-    handles = {
-        item.reference_id: item for item in parent.expansion_references
-    }
-    missing = {
-        item.reference_id for item in selected
-    }.difference(handles)
+    handles = {item.reference_id: item for item in parent.expansion_references}
+    missing = {item.reference_id for item in selected}.difference(handles)
     if missing:
         raise MissingContextReferenceError(
             "requested context handle is not present in the parent capsule: "
             + ", ".join(sorted(missing))
         )
     if any(
-        handles[item.reference_id].metadata.get(
-            "question_bound_expansion", False
-        )
+        handles[item.reference_id].metadata.get("question_bound_expansion", False)
         for item in selected
     ):
         raise ContextExpansionError(
@@ -7123,9 +6270,7 @@ def expand_context_references(
     """Resolve parent handles by content identity and compile their delta."""
 
     if not isinstance(resolver, ContentAddressedContextStore):
-        raise ContextExpansionError(
-            "resolver must be a ContentAddressedContextStore"
-        )
+        raise ContextExpansionError("resolver must be a ContentAddressedContextStore")
     return resolver.expand(
         compiler,
         parent,
@@ -7150,9 +6295,7 @@ def expand_context_for_question(
     """Strict question-bound expansion through parent content-addressed handles."""
 
     if not isinstance(request, EvidenceExpansionRequest):
-        raise ContextExpansionError(
-            "request must be an EvidenceExpansionRequest"
-        )
+        raise ContextExpansionError("request must be an EvidenceExpansionRequest")
     return expand_context_references(
         compiler,
         parent,
@@ -7191,33 +6334,21 @@ def compile_retry_context(
         raise ContextDeltaError("parent must be a ContextCapsule")
     if _cancelled(cancelled):
         raise ContextExpansionCancelled("retry context compilation was cancelled")
-    current_repository = _text(
-        repository_id or parent.repository_id, "repository_id"
-    )
+    current_repository = _text(repository_id or parent.repository_id, "repository_id")
     current_tree = _text(tree_id or parent.tree_id, "tree_id")
     if current_repository != parent.repository_id or current_tree != parent.tree_id:
-        raise ChangedTreeContextError(
-            "retry parent was invalidated by a changed repository tree"
-        )
+        raise ChangedTreeContextError("retry parent was invalidated by a changed repository tree")
     references = _coerce_references(evidence)
     failure_ids = _strings(failure_evidence_ids, "failure_evidence_ids")
-    counterexample_ids = _strings(
-        counterexample_evidence_ids, "counterexample_evidence_ids"
-    )
+    counterexample_ids = _strings(counterexample_evidence_ids, "counterexample_evidence_ids")
     semantic_ids = set(failure_ids) | set(counterexample_ids)
     candidate_ids = {item.reference_id for item in references}
     if not semantic_ids.issubset(candidate_ids):
-        raise ContextDeltaError(
-            "retry failure/counterexample IDs must name supplied evidence"
-        )
+        raise ContextDeltaError("retry failure/counterexample IDs must name supplied evidence")
     delta_result = compiler.compile_delta(parent, evidence=references)
-    transmitted_ids = {
-        item.reference_id for item in delta_result.delta_capsule.evidence
-    }
+    transmitted_ids = {item.reference_id for item in delta_result.delta_capsule.evidence}
     if not semantic_ids.issubset(transmitted_ids):
-        raise ContextDeltaError(
-            "retry failure/counterexample evidence must be new or changed"
-        )
+        raise ContextDeltaError("retry failure/counterexample evidence must be new or changed")
     if _cancelled(cancelled):
         raise ContextExpansionCancelled("retry context compilation was cancelled")
     capsule = RetryContextCapsule(

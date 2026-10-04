@@ -99,9 +99,7 @@ def _evidence() -> list[CompletionEvidence]:
 def _coverage(
     evidence: list[CompletionEvidence],
 ) -> dict[str, object]:
-    receipt_by_criterion = {
-        item.acceptance_criterion: item.provenance_cid for item in evidence
-    }
+    receipt_by_criterion = {item.acceptance_criterion: item.provenance_cid for item in evidence}
     return {
         "verified": True,
         "repository_tree": REPOSITORY_TREE,
@@ -134,9 +132,7 @@ def _quorum() -> dict[str, object]:
     binding = _binding()
     return {
         "satisfied": True,
-        "required_members": (
-            SELF_IMPROVEMENT_ROOT_REQUIRED_EXHAUSTIVE_RECEIPTS
-        ),
+        "required_members": (SELF_IMPROVEMENT_ROOT_REQUIRED_EXHAUSTIVE_RECEIPTS),
         "member_count": 2,
         "binding": binding,
         "members": [
@@ -194,9 +190,7 @@ def _children() -> list[dict[str, object]]:
                 "evaluated_evidence": {
                     "repository_id": REPOSITORY_ID,
                     "repository_tree": REPOSITORY_TREE,
-                    "evaluated_at": (
-                        NOW - timedelta(minutes=6)
-                    ).isoformat(),
+                    "evaluated_at": (NOW - timedelta(minutes=6)).isoformat(),
                     "validation_evidence": [
                         {
                             "valid": True,
@@ -356,8 +350,7 @@ def test_root_requires_exact_implementation_and_validation_coverage(
 
     assert not decision.verified
     assert any(
-        code in decision.reason_codes
-        for code in ("coverage_missing", "coverage_unverified")
+        code in decision.reason_codes for code in ("coverage_missing", "coverage_unverified")
     )
 
 
@@ -398,20 +391,14 @@ def test_root_requires_explicit_fully_bound_completion_safe_analyzer(
             quorum["members"].pop(),
             quorum.update(member_count=1),
         ),
-        lambda quorum: quorum["members"][1].update(
-            receipt_cid=quorum["members"][0]["receipt_cid"]
-        ),
+        lambda quorum: quorum["members"][1].update(receipt_cid=quorum["members"][0]["receipt_cid"]),
         lambda quorum: quorum["members"][1].update(healthy=False),
-        lambda quorum: quorum["members"][1].update(
-            safe_for_completion_reasoning=False
-        ),
+        lambda quorum: quorum["members"][1].update(safe_for_completion_reasoning=False),
         lambda quorum: quorum["members"][1].update(scan_mode="incremental"),
         lambda quorum: quorum["members"][1].update(
             finished_at=(NOW - timedelta(hours=2)).isoformat()
         ),
-        lambda quorum: quorum["members"][1]["binding"].update(
-            tree_id="sha256:foreign"
-        ),
+        lambda quorum: quorum["members"][1]["binding"].update(tree_id="sha256:foreign"),
     ],
     ids=[
         "insufficient",
@@ -437,10 +424,7 @@ def test_root_requires_independent_fresh_healthy_exhaustive_receipts(
     )
 
     assert not decision.verified
-    assert any(
-        code.startswith("exhaustion_quorum_")
-        for code in decision.reason_codes
-    )
+    assert any(code.startswith("exhaustion_quorum_") for code in decision.reason_codes)
 
 
 @pytest.mark.parametrize(
@@ -450,15 +434,15 @@ def test_root_requires_independent_fresh_healthy_exhaustive_receipts(
         lambda children: children.append(deepcopy(children[0])),
         lambda children: children[0].update(state="reopened", verified=False),
         lambda children: children[0].pop("completion_gate"),
-        lambda children: children[0]["completion_gate"][
-            "evaluated_evidence"
-        ].update(repository_tree="sha256:old"),
-        lambda children: children[0]["completion_gate"][
-            "evaluated_evidence"
-        ].update(evaluated_at=(NOW - timedelta(hours=2)).isoformat()),
-        lambda children: children[0]["completion_gate"][
-            "evaluated_evidence"
-        ]["validation_evidence"][0].update(valid=False),
+        lambda children: children[0]["completion_gate"]["evaluated_evidence"].update(
+            repository_tree="sha256:old"
+        ),
+        lambda children: children[0]["completion_gate"]["evaluated_evidence"].update(
+            evaluated_at=(NOW - timedelta(hours=2)).isoformat()
+        ),
+        lambda children: children[0]["completion_gate"]["evaluated_evidence"][
+            "validation_evidence"
+        ][0].update(valid=False),
     ],
     ids=[
         "missing",
@@ -527,9 +511,7 @@ def test_root_revalidates_every_descendant_proof_requirement(
     "mutation",
     [
         lambda evidence: evidence.pop(),
-        lambda evidence: evidence.__setitem__(
-            0, replace(evidence[0], validation_passed=False)
-        ),
+        lambda evidence: evidence.__setitem__(0, replace(evidence[0], validation_passed=False)),
         lambda evidence: evidence.__setitem__(
             0,
             replace(
@@ -587,12 +569,10 @@ def test_every_submitted_validation_must_be_fresh_passing_and_covered(
 def test_checked_in_root_remains_actionable_until_live_proof_exists() -> None:
     repo_root = Path(__file__).resolve().parents[2]
     objective_text = (
-        repo_root
-        / "docs/architecture/agent_supervisor_self_improvement.objectives.md"
+        repo_root / "docs/architecture/agent_supervisor_self_improvement.objectives.md"
     ).read_text(encoding="utf-8")
     todo_text = (
-        repo_root
-        / "docs/architecture/agent_supervisor_self_improvement.todo.md"
+        repo_root / "docs/architecture/agent_supervisor_self_improvement.todo.md"
     ).read_text(encoding="utf-8")
     root_block = objective_text.split(
         "## ASI-G000 Efficient and trustworthy supervisor control loop",
@@ -621,22 +601,18 @@ def test_checked_in_root_remains_actionable_until_live_proof_exists() -> None:
 def test_checked_in_rollout_gap_routes_to_canonical_heap_child() -> None:
     repo_root = Path(__file__).resolve().parents[2]
     objective_text = (
-        repo_root
-        / "docs/architecture/agent_supervisor_self_improvement.objectives.md"
+        repo_root / "docs/architecture/agent_supervisor_self_improvement.objectives.md"
     ).read_text(encoding="utf-8")
     efficiency_block = objective_text.split(
-        "## ASI-G113 Prove "
-        "146189916032404266364029134505159070240",
+        "## ASI-G113 Prove 146189916032404266364029134505159070240",
         1,
     )[1].split("\n## ", 1)[0]
     lazy_export_block = objective_text.split(
-        "## ASI-G114 Prove "
-        "300500866741873729474343907613893393545",
+        "## ASI-G114 Prove 300500866741873729474343907613893393545",
         1,
     )[1].split("\n## ", 1)[0]
     strict_validation_block = objective_text.split(
-        "## ASI-G100 Prove "
-        "314133036252270790078901745919131980427",
+        "## ASI-G100 Prove 314133036252270790078901745919131980427",
         1,
     )[1].split("\n## ", 1)[0]
     planning_block = objective_text.split("## ASI-G115 ", 1)[1].split(
@@ -646,36 +622,20 @@ def test_checked_in_rollout_gap_routes_to_canonical_heap_child() -> None:
 
     assert "## ASI-G116 " not in objective_text
     assert "- Parent: ASI-G090" in efficiency_block
-    assert (
-        "- Evidence: 146189916032404266364029134505159070240"
-        in efficiency_block
-    )
+    assert "- Evidence: 146189916032404266364029134505159070240" in efficiency_block
     assert "`PAIRED_EFFICIENCY_REQUIREMENT_ID`" in efficiency_block
     assert "`PairedRolloutRequirementEvidence`" in efficiency_block
     assert "ASI-041 resolves discovery fingerprint" in efficiency_block
     assert "scan's ASI-G116 allocation is stale" in efficiency_block
     assert "- Parent: ASI-G090" in lazy_export_block
-    assert (
-        "- Evidence: 300500866741873729474343907613893393545"
-        in lazy_export_block
-    )
-    assert (
-        "`PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID`"
-        in lazy_export_block
-    )
+    assert "- Evidence: 300500866741873729474343907613893393545" in lazy_export_block
+    assert "`PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID`" in lazy_export_block
     assert "`PAIRED_ROLLOUT_STABLE_EXPORTS`" in lazy_export_block
-    assert (
-        "test_stable_rollout_exports_remain_lazy_without_optional_providers"
-        in lazy_export_block
-    )
+    assert "test_stable_rollout_exports_remain_lazy_without_optional_providers" in lazy_export_block
     assert "ASI-053 resolves discovery fingerprint" in lazy_export_block
     assert "scan's ASI-G100 allocation is stale" in lazy_export_block
-    assert "314133036252270790078901745919131980427" in (
-        strict_validation_block
-    )
-    assert "300500866741873729474343907613893393545" not in (
-        strict_validation_block
-    )
+    assert "314133036252270790078901745919131980427" in (strict_validation_block)
+    assert "300500866741873729474343907613893393545" not in (strict_validation_block)
     assert "312819945606360295782005228058369235550" in planning_block
     assert "146189916032404266364029134505159070240" not in planning_block
 
@@ -746,18 +706,12 @@ def _rollout_measurement(
         detected_defects=seeded,
         escaped_defects=0,
         false_rejections=0,
-        merge_conflicts=(
-            1 if kind is PairedFixtureKind.CONFLICTING_PARALLEL else 0
-        ),
+        merge_conflicts=(1 if kind is PairedFixtureKind.CONFLICTING_PARALLEL else 0),
         duplicate_executions=0,
         unauthorized_mutations=0,
         terminal_outcome=outcome,
-        state_digest_before=(
-            state if kind is PairedFixtureKind.RESTART else ""
-        ),
-        state_digest_after=(
-            state if kind is PairedFixtureKind.RESTART else ""
-        ),
+        state_digest_before=(state if kind is PairedFixtureKind.RESTART else ""),
+        state_digest_after=(state if kind is PairedFixtureKind.RESTART else ""),
     )
 
 
@@ -806,18 +760,10 @@ def test_paired_rollout_gate_survives_process_restart_without_state_drift(
     assert recovered["metrics"]["candidate_false_completions"] == 0
     assert recovered["metrics"]["candidate_authority_violations"] == 0
     assert recovered["metrics"]["candidate_stale_authoritative_hits"] == 0
-    fixtures = {
-        item["fixture_kind"]: item for item in recovered["fixtures"]
-    }
-    assert fixtures["malformed_output"]["candidate"][
-        "terminal_outcome"
-    ] == "rejected"
-    assert fixtures["provider_unavailable"]["candidate"][
-        "terminal_outcome"
-    ] == "degraded"
-    assert fixtures["drained_refill"]["candidate"][
-        "duplicate_executions"
-    ] == 0
+    fixtures = {item["fixture_kind"]: item for item in recovered["fixtures"]}
+    assert fixtures["malformed_output"]["candidate"]["terminal_outcome"] == "rejected"
+    assert fixtures["provider_unavailable"]["candidate"]["terminal_outcome"] == "degraded"
+    assert fixtures["drained_refill"]["candidate"]["duplicate_executions"] == 0
 
 
 def test_any_end_to_end_authority_failure_keeps_candidate_in_shadow() -> None:
@@ -853,17 +799,11 @@ def test_rollout_requirement_evidence_is_typed_bound_and_content_addressed() -> 
         evaluated_at=NOW,
     )
 
-    safety = _rollout_evidence(
-        report, SHADOW_FALSE_COMPLETION_REQUIREMENT_ID
-    )
+    safety = _rollout_evidence(report, SHADOW_FALSE_COMPLETION_REQUIREMENT_ID)
     efficiency = _rollout_evidence(report, PAIRED_EFFICIENCY_REQUIREMENT_ID)
 
-    assert SHADOW_FALSE_COMPLETION_REQUIREMENT_ID == (
-        "109590900757783560279417463762322084165"
-    )
-    assert PAIRED_EFFICIENCY_REQUIREMENT_ID == (
-        "146189916032404266364029134505159070240"
-    )
+    assert SHADOW_FALSE_COMPLETION_REQUIREMENT_ID == ("109590900757783560279417463762322084165")
+    assert PAIRED_EFFICIENCY_REQUIREMENT_ID == ("146189916032404266364029134505159070240")
     assert safety.requirement_id == SHADOW_FALSE_COMPLETION_REQUIREMENT_ID
     assert efficiency.requirement_id == PAIRED_EFFICIENCY_REQUIREMENT_ID
     assert safety.goal_id == "ASI-G112"
@@ -898,9 +838,7 @@ def test_seeded_false_completion_proves_shadow_blocking_only_for_closed_populati
         evaluated_at=NOW,
     )
 
-    evidence = _rollout_evidence(
-        blocked, SHADOW_FALSE_COMPLETION_REQUIREMENT_ID
-    )
+    evidence = _rollout_evidence(blocked, SHADOW_FALSE_COMPLETION_REQUIREMENT_ID)
     assert blocked.effective_mode is SelfImprovementRolloutMode.SHADOW
     assert "candidate_false_completion" in blocked.reason_codes
     assert evidence.requirement_satisfied
@@ -917,9 +855,7 @@ def test_seeded_false_completion_proves_shadow_blocking_only_for_closed_populati
     )
     assert incomplete.effective_mode is SelfImprovementRolloutMode.SHADOW
     assert not incomplete_evidence.requirement_satisfied
-    assert "required_fixture_missing:drained_refill" in (
-        incomplete_evidence.reason_codes
-    )
+    assert "required_fixture_missing:drained_refill" in (incomplete_evidence.reason_codes)
 
 
 def test_rollout_requirement_evidence_restoration_rejects_tampering() -> None:
@@ -930,10 +866,13 @@ def test_rollout_requirement_evidence_restoration_rejects_tampering() -> None:
     )
     evidence = _rollout_evidence(report, PAIRED_EFFICIENCY_REQUIREMENT_ID)
 
-    assert PairedRolloutRequirementEvidence.from_dict(
-        evidence.to_dict(),
-        report=report,
-    ) == evidence
+    assert (
+        PairedRolloutRequirementEvidence.from_dict(
+            evidence.to_dict(),
+            report=report,
+        )
+        == evidence
+    )
 
     tampered = evidence.to_dict()
     tampered["requirement_satisfied"] = False
@@ -965,9 +904,7 @@ def _g090_binding() -> dict[str, str]:
         "objective_id": PAIRED_ROLLOUT_OBJECTIVE_ID,
         "objective_revision": PAIRED_ROLLOUT_OBJECTIVE_REVISION,
         "analyzer_version": PAIRED_ROLLOUT_COMPLETION_ANALYZER_VERSION,
-        "configuration_revision": (
-            PAIRED_ROLLOUT_COMPLETION_CONFIGURATION_REVISION
-        ),
+        "configuration_revision": (PAIRED_ROLLOUT_COMPLETION_CONFIGURATION_REVISION),
     }
 
 
@@ -1001,9 +938,7 @@ def _g090_completion_evidence() -> list[CompletionEvidence]:
 def _g090_coverage(
     evidence: list[CompletionEvidence],
 ) -> dict[str, object]:
-    receipts = {
-        item.acceptance_criterion: item.provenance_cid for item in evidence
-    }
+    receipts = {item.acceptance_criterion: item.provenance_cid for item in evidence}
     return {
         "verified": True,
         "repository_tree": ROLLOUT_EVIDENCE_TREE,
@@ -1013,8 +948,7 @@ def _g090_coverage(
                 "criterion": criterion,
                 "status": "verified",
                 "implementation": [
-                    "ipfs_accelerate_py/agent_supervisor/"
-                    "self_improvement_rollout.py",
+                    "ipfs_accelerate_py/agent_supervisor/self_improvement_rollout.py",
                     "ipfs_accelerate_py/agent_supervisor/__init__.py",
                     "docs/guides/AGENT_SUPERVISOR_GUIDE.md",
                 ],
@@ -1053,9 +987,7 @@ def _g090_children() -> list[dict[str, object]]:
                 "evaluated_evidence": {
                     "repository_id": REPOSITORY_ID,
                     "repository_tree": ROLLOUT_EVIDENCE_TREE,
-                    "evaluated_at": (
-                        NOW - timedelta(minutes=6)
-                    ).isoformat(),
+                    "evaluated_at": (NOW - timedelta(minutes=6)).isoformat(),
                     "validation_evidence": [
                         {
                             "valid": True,
@@ -1063,9 +995,7 @@ def _g090_children() -> list[dict[str, object]]:
                             "evidence": {
                                 "repository_id": REPOSITORY_ID,
                                 "repository_tree": ROLLOUT_EVIDENCE_TREE,
-                                "provenance_cid": (
-                                    f"bafy-g090-child-{goal_id}"
-                                ),
+                                "provenance_cid": (f"bafy-g090-child-{goal_id}"),
                             },
                         }
                     ],
@@ -1114,9 +1044,7 @@ def _g090_inputs(report: PairedRolloutReport) -> dict[str, object]:
         "repository_id": REPOSITORY_ID,
         "repository_tree": ROLLOUT_EVIDENCE_TREE,
         "requirement_evidence": [
-            _rollout_evidence(
-                report, SHADOW_FALSE_COMPLETION_REQUIREMENT_ID
-            ),
+            _rollout_evidence(report, SHADOW_FALSE_COMPLETION_REQUIREMENT_ID),
             _rollout_evidence(report, PAIRED_EFFICIENCY_REQUIREMENT_ID),
         ],
         "producing_tasks": [
@@ -1155,10 +1083,7 @@ def test_g090_completion_requires_closed_current_tree_packet_and_two_phases() ->
     )
     assert len(PAIRED_ROLLOUT_ACCEPTANCE_CRITERIA) == 5
     assert PAIRED_ROLLOUT_REQUIRED_EXHAUSTIVE_RECEIPTS == 2
-    assert (
-        supervisor_api.evaluate_paired_rollout_completion
-        is evaluate_paired_rollout_completion
-    )
+    assert supervisor_api.evaluate_paired_rollout_completion is evaluate_paired_rollout_completion
 
     provisional = report.evaluate_objective_completion(**values)
     assert provisional.gate.passed
@@ -1185,9 +1110,7 @@ def test_g090_completion_requires_closed_current_tree_packet_and_two_phases() ->
         ),
         (
             "child",
-            lambda values: values["child_goals"][0].update(
-                state="active"
-            ),
+            lambda values: values["child_goals"][0].update(state="active"),
         ),
         (
             "criterion",
@@ -1231,9 +1154,7 @@ def test_g090_completion_requires_closed_current_tree_packet_and_two_phases() ->
         ),
         (
             "analyzer",
-            lambda values: values["analyzer_health"].update(
-                safe_for_completion_reasoning=False
-            ),
+            lambda values: values["analyzer_health"].update(safe_for_completion_reasoning=False),
         ),
         (
             "analyzer binding",
@@ -1255,9 +1176,7 @@ def test_g090_completion_requires_closed_current_tree_packet_and_two_phases() ->
         ),
         (
             "non-exhaustive quorum receipt",
-            lambda values: values["exhaustion_quorum"]["members"][1].update(
-                scan_mode="sampled"
-            ),
+            lambda values: values["exhaustion_quorum"]["members"][1].update(scan_mode="sampled"),
         ),
         (
             "requirement",
@@ -1303,9 +1222,7 @@ def test_g090_rejects_failed_or_stale_rollout_and_lowered_quorum() -> None:
     )
     stale_values = _g090_inputs(report)
     stale_values["requirement_evidence"] = [
-        _rollout_evidence(
-            report, SHADOW_FALSE_COMPLETION_REQUIREMENT_ID
-        ),
+        _rollout_evidence(report, SHADOW_FALSE_COMPLETION_REQUIREMENT_ID),
         _rollout_evidence(report, PAIRED_EFFICIENCY_REQUIREMENT_ID),
     ]
     stale_decision = report.evaluate_objective_completion(
@@ -1327,20 +1244,15 @@ def test_g090_rejects_failed_or_stale_rollout_and_lowered_quorum() -> None:
 
 def test_operator_profiles_document_the_g090_completion_contract() -> None:
     repo_root = Path(__file__).resolve().parents[2]
-    guide = (
-        repo_root / "docs/guides/AGENT_SUPERVISOR_GUIDE.md"
-    ).read_text(encoding="utf-8")
-    architecture = (
-        repo_root / "docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md"
-    ).read_text(encoding="utf-8")
-    plan = (
-        repo_root
-        / "docs/architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md"
-    ).read_text(encoding="utf-8")
+    guide = (repo_root / "docs/guides/AGENT_SUPERVISOR_GUIDE.md").read_text(encoding="utf-8")
+    architecture = (repo_root / "docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md").read_text(
+        encoding="utf-8"
+    )
+    plan = (repo_root / "docs/architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md").read_text(
+        encoding="utf-8"
+    )
     discovery = (
-        repo_root
-        / "data/agent_supervisor/discovery/"
-        "2026-07-25-asi-090-completion-gate-evidence.md"
+        repo_root / "data/agent_supervisor/discovery/2026-07-25-asi-090-completion-gate-evidence.md"
     ).read_text(encoding="utf-8")
 
     assert "### Requesting ASI-G090 completion" in guide
@@ -1354,10 +1266,7 @@ def test_operator_profiles_document_the_g090_completion_contract() -> None:
     assert "### ASI-G090 parent completion gate" in plan
     assert "- Producing tasks: ASI-023, ASI-024" in discovery
     assert "- Child goals: ASI-G112, ASI-G113, ASI-G114" in discovery
-    assert (
-        "This file is an audit and provenance index, not a completion receipt."
-        in discovery
-    )
+    assert "This file is an audit and provenance index, not a completion receipt." in discovery
 
 
 def test_stable_rollout_exports_remain_lazy_without_optional_providers() -> None:
@@ -1439,9 +1348,7 @@ print(json.dumps({{"before": before, "after": after}}, sort_keys=True))
         "goal_in_all": True,
         "manifest_in_all": True,
         "optional_loaded": [],
-        "requirement_id": (
-            "300500866741873729474343907613893393545"
-        ),
+        "requirement_id": ("300500866741873729474343907613893393545"),
         "requirement_in_all": True,
         "rollout_loaded": False,
     }
@@ -1454,15 +1361,9 @@ print(json.dumps({{"before": before, "after": after}}, sort_keys=True))
         supervisor_api.PAIRED_ROLLOUT_LAZY_EXPORT_REQUIREMENT_ID
     )
     assert supervisor_api.PAIRED_ROLLOUT_LAZY_EXPORT_GOAL_ID == "ASI-G114"
-    assert result["after"]["goal_id"] == (
-        supervisor_api.PAIRED_ROLLOUT_LAZY_EXPORT_GOAL_ID
-    )
-    assert result["after"]["safety_id"] == (
-        SHADOW_FALSE_COMPLETION_REQUIREMENT_ID
-    )
-    assert result["after"]["efficiency_id"] == (
-        PAIRED_EFFICIENCY_REQUIREMENT_ID
-    )
+    assert result["after"]["goal_id"] == (supervisor_api.PAIRED_ROLLOUT_LAZY_EXPORT_GOAL_ID)
+    assert result["after"]["safety_id"] == (SHADOW_FALSE_COMPLETION_REQUIREMENT_ID)
+    assert result["after"]["efficiency_id"] == (PAIRED_EFFICIENCY_REQUIREMENT_ID)
     assert result["after"]["report_version"] == 2
     assert result["after"]["evidence_version"] == 1
     assert result["after"]["identical"] is True

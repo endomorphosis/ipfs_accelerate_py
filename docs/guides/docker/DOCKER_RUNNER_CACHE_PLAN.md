@@ -291,16 +291,17 @@ networks:
 # ipfs_accelerate_py/github_cli/ipfs_cache.py
 import ipfshttpclient
 
+
 class IPFSGitHubCache:
     def __init__(self):
-        self.client = ipfshttpclient.connect('/ip4/127.0.0.1/tcp/5001')
-    
+        self.client = ipfshttpclient.connect("/ip4/127.0.0.1/tcp/5001")
+
     def put(self, key: str, data: Any, ttl: int = 300):
         """Store data in IPFS."""
         json_data = json.dumps({"key": key, "data": data, "ttl": ttl})
         result = self.client.add_json(json_data)
         return result  # Returns CID
-    
+
     def get(self, cid: str) -> Optional[Any]:
         """Retrieve data from IPFS."""
         try:
@@ -327,19 +328,21 @@ class IPFSGitHubCache:
 # ipfs_accelerate_py/github_cli/storacha_cache.py
 from web3.storage import Client
 
+
 class StorachaGitHubCache:
     def __init__(self, api_token: str):
         self.client = Client(api_token)
-    
+
     def put(self, key: str, data: Any, ttl: int = 300):
         """Store data in Storacha."""
         import tempfile
-        with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
             json.dump({"key": key, "data": data, "ttl": ttl}, f)
             f.flush()
             cid = self.client.put_file(f.name)
         return cid
-    
+
     def get(self, cid: str) -> Optional[Any]:
         """Retrieve data from Storacha."""
         try:
@@ -403,20 +406,30 @@ class StorachaGitHubCache:
 ```python
 class CacheBackend(ABC):
     @abstractmethod
-    def get(self, key: str) -> Optional[Any]: pass
-    
+    def get(self, key: str) -> Optional[Any]:
+        pass
+
     @abstractmethod
-    def put(self, key: str, data: Any, ttl: int): pass
+    def put(self, key: str, data: Any, ttl: int):
+        pass
+
 
 class P2PCache(CacheBackend): ...
+
+
 class IPFSCache(CacheBackend): ...
+
+
 class StorachaCache(CacheBackend): ...
+
+
 class S3Cache(CacheBackend): ...
+
 
 class MultiBackendCache:
     def __init__(self, backends: List[CacheBackend]):
         self.backends = backends
-    
+
     def get(self, key: str) -> Optional[Any]:
         for backend in self.backends:
             try:

@@ -344,9 +344,7 @@ def _canonical_backend(
                 "has_more": False,
             }
         elif descriptor.pagination.kind is PaginationKind.EVENT_CURSOR:
-            cursor = EventCursor.from_token(
-                str(request.parameters["event_cursor"])
-            )
+            cursor = EventCursor.from_token(str(request.parameters["event_cursor"]))
             next_cursor = cursor.advance(position=1, event_id="event:1")
             data["pagination"] = {
                 "events": [{"sequence": 1, "event_id": "event:1"}],
@@ -358,11 +356,8 @@ def _canonical_backend(
             data=data,
             changed=bool(request.expected_effects),
             applied_effect_ids=(
-                tuple(
-                    effect.effect_id for effect in request.expected_effects
-                )
-                if request.operation in MUTATION_OPERATIONS
-                and not request.dry_run
+                tuple(effect.effect_id for effect in request.expected_effects)
+                if request.operation in MUTATION_OPERATIONS and not request.dry_run
                 else ()
             ),
             checks=("catalog_operation", "target", "pagination"),
@@ -382,10 +377,7 @@ def _service(
     service = SupervisorControlService(
         repository_allowlist=(repo_root,),
         state_allowlist=(state_root,),
-        handlers={
-            operation: selected_handler
-            for operation in Operation
-        },
+        handlers={operation: selected_handler for operation in Operation},
         lease_validator=lambda _request: True,
         state_store=InMemoryControlStateStore(),
         clock_ms=lambda: 1_500,
@@ -395,9 +387,7 @@ def _service(
 
 def _cli_command(operation: Operation) -> str:
     return next(
-        command
-        for command, candidate in COMMAND_OPERATIONS.items()
-        if candidate is operation
+        command for command, candidate in COMMAND_OPERATIONS.items() if candidate is operation
     )
 
 
@@ -422,15 +412,9 @@ def _invoke_cli(
 
 
 def test_catalog_schemas_and_static_surface_populations_are_exact() -> None:
-    catalog_operations = tuple(
-        sorted(Operation, key=lambda item: item.value)
-    )
-    command_operations = tuple(
-        sorted(COMMAND_OPERATIONS.values(), key=lambda item: item.value)
-    )
-    tool_operations = tuple(
-        sorted(AGENT_SUPERVISOR_OPERATION_TOOLS, key=lambda item: item.value)
-    )
+    catalog_operations = tuple(sorted(Operation, key=lambda item: item.value))
+    command_operations = tuple(sorted(COMMAND_OPERATIONS.values(), key=lambda item: item.value))
+    tool_operations = tuple(sorted(AGENT_SUPERVISOR_OPERATION_TOOLS, key=lambda item: item.value))
     manifests = (
         ControlDiscoveryManifest(surface=ControlSurface.PYTHON),
         agent_cli_discovery_manifest(),
@@ -442,19 +426,14 @@ def test_catalog_schemas_and_static_surface_populations_are_exact() -> None:
     assert tool_operations == catalog_operations
     assert len(COMMAND_OPERATIONS) == len(Operation)
     assert len(AGENT_SUPERVISOR_OPERATION_TOOLS) == len(Operation)
-    assert {
-        manifest.schema_population_id for manifest in manifests
-    } == {manifests[0].schema_population_id}
+    assert {manifest.schema_population_id for manifest in manifests} == {
+        manifests[0].schema_population_id
+    }
 
     manager = _RecordingToolManager()
     register_native_agent_supervisor_tools(manager)
-    definitions = {
-        Operation(definition["name"]): definition
-        for definition in manager.definitions
-    }
-    assert tuple(
-        sorted(definitions, key=lambda item: item.value)
-    ) == catalog_operations
+    definitions = {Operation(definition["name"]): definition for definition in manager.definitions}
+    assert tuple(sorted(definitions, key=lambda item: item.value)) == catalog_operations
 
     for descriptor in OPERATION_CATALOG_V2:
         operation = descriptor.operation
@@ -464,20 +443,14 @@ def test_catalog_schemas_and_static_surface_populations_are_exact() -> None:
         assert descriptor.result_schema_id == content_identity(
             operation_result_json_schema(operation)
         )
-        assert descriptor.request_schema_id == (
-            manifests[0].request_schema_ids[operation.value]
-        )
-        assert descriptor.result_schema_id == (
-            manifests[0].result_schema_ids[operation.value]
-        )
+        assert descriptor.request_schema_id == (manifests[0].request_schema_ids[operation.value])
+        assert descriptor.result_schema_id == (manifests[0].result_schema_ids[operation.value])
         definition = definitions[operation]
         tool_schema = definition["input_schema"]
-        assert content_identity(
-            tool_schema["properties"]["request"]
-        ) == descriptor.request_schema_id
-        assert content_identity(
-            tool_schema["x-output-schema"]
-        ) == descriptor.result_schema_id
+        assert (
+            content_identity(tool_schema["properties"]["request"]) == descriptor.request_schema_id
+        )
+        assert content_identity(tool_schema["x-output-schema"]) == descriptor.result_schema_id
         contract = tool_schema["x-agent-supervisor-contract"]
         assert contract["request_schema_id"] == descriptor.request_schema_id
         assert contract["result_schema_id"] == descriptor.result_schema_id
@@ -511,9 +484,7 @@ async def test_every_catalog_operation_has_exact_python_cli_and_mcp_behavior(
         assert OperationRequest.from_json(generated_command[4]) == request
         assert generated_command[-1] == "--output-json"
         descriptor = OPERATION_CATALOG_V2.operation(operation)
-        assert set(
-            descriptor.target_descriptor.required_selectors
-        ).issubset(request.parameters)
+        assert set(descriptor.target_descriptor.required_selectors).issubset(request.parameters)
 
         python_service, python_calls = _service(repo_root, state_root)
         entry_point = getattr(python_service, operation.value)
@@ -530,9 +501,7 @@ async def test_every_catalog_operation_has_exact_python_cli_and_mcp_behavior(
 
         mcp_service, mcp_calls = _service(repo_root, state_root)
         configure_agent_supervisor_control(service=mcp_service)
-        mcp_record = await AGENT_SUPERVISOR_OPERATION_TOOLS[operation](
-            request=request.to_record()
-        )
+        mcp_record = await AGENT_SUPERVISOR_OPERATION_TOOLS[operation](request=request.to_record())
 
         assert exit_status == 0, operation.value
         assert cli_record == python_record, operation.value
@@ -568,10 +537,7 @@ async def test_every_catalog_operation_has_exact_python_cli_and_mcp_behavior(
             assert EventCursor.from_token(token).position == 1
 
         expected_calls = (
-            []
-            if operation
-            in {Operation.CAPABILITIES, Operation.RECEIPTS}
-            else [operation]
+            [] if operation in {Operation.CAPABILITIES, Operation.RECEIPTS} else [operation]
         )
         assert python_calls == expected_calls
         assert cli_calls == expected_calls
@@ -579,9 +545,7 @@ async def test_every_catalog_operation_has_exact_python_cli_and_mcp_behavior(
         if operation in MUTATION_OPERATIONS:
             assert python_result.idempotency_key == request.idempotency_key
             assert python_result.audit_receipt_id
-            assert {
-                effect.effect_id for effect in python_result.effects
-            } == {
+            assert {effect.effect_id for effect in python_result.effects} == {
                 effect.effect_id for effect in request.expected_effects
             }
             assert all(effect.applied for effect in python_result.effects)
@@ -607,8 +571,7 @@ async def test_every_catalog_operation_has_exact_python_cli_and_mcp_behavior(
     assert len(cases) == expected_operation_count
     assert len({case.operation for case in cases}) == expected_operation_count
     assert all(
-        ControlOperationConformanceCase.from_dict(case.to_record()) == case
-        for case in cases
+        ControlOperationConformanceCase.from_dict(case.to_record()) == case for case in cases
     )
 
     service, _ = _service(repo_root, state_root)
@@ -624,38 +587,29 @@ async def test_every_catalog_operation_has_exact_python_cli_and_mcp_behavior(
     )
 
     assert isinstance(evidence, ControlCatalogConformanceEvidence)
-    assert CONTROL_CONFORMANCE_V2_REQUIREMENT_ID == (
-        "107787885166558411314422313513714746721"
-    )
-    assert evidence.proved_requirement_ids == (
-        CONTROL_CONFORMANCE_V2_REQUIREMENT_ID,
-    )
+    assert CONTROL_CONFORMANCE_V2_REQUIREMENT_ID == ("107787885166558411314422313513714746721")
+    assert evidence.proved_requirement_ids == (CONTROL_CONFORMANCE_V2_REQUIREMENT_ID,)
     assert evidence.completion_authoritative is False
     assert len(evidence.cases) == len(Operation)
     assert {case.operation for case in evidence.cases} == set(Operation)
-    assert {
-        manifest.surface for manifest in evidence.manifests
-    } == set(ControlSurface)
+    assert {manifest.surface for manifest in evidence.manifests} == set(ControlSurface)
     assert len(evidence.manifests) == len(ControlSurface) == 3
     assert all(
-        case.to_record()["schema"]
-        == CONTROL_OPERATION_CONFORMANCE_CASE_SCHEMA
+        case.to_record()["schema"] == CONTROL_OPERATION_CONFORMANCE_CASE_SCHEMA
         for case in evidence.cases
     )
-    assert (
-        evidence.to_record()["schema"]
-        == CONTROL_CATALOG_CONFORMANCE_EVIDENCE_SCHEMA
-    )
-    restored = ControlCatalogConformanceEvidence.from_dict(
-        evidence.to_record()
-    )
+    assert evidence.to_record()["schema"] == CONTROL_CATALOG_CONFORMANCE_EVIDENCE_SCHEMA
+    restored = ControlCatalogConformanceEvidence.from_dict(evidence.to_record())
     assert restored == evidence
     assert restored.canonical_bytes() == evidence.canonical_bytes()
-    assert publish_control_catalog(
-        OPERATION_CATALOG_V2,
-        manifests,
-        cases,
-    ) == evidence
+    assert (
+        publish_control_catalog(
+            OPERATION_CATALOG_V2,
+            manifests,
+            cases,
+        )
+        == evidence
+    )
 
 
 def _direct_conformance_case(
@@ -709,9 +663,7 @@ def test_typed_catalog_evidence_rejects_population_result_effect_and_exit_drift(
             cases + (cases[0],),
         )
 
-    status_case = next(
-        case for case in cases if case.operation is Operation.STATUS
-    )
+    status_case = next(case for case in cases if case.operation is Operation.STATUS)
     status_record = status_case.python_result.to_record()
     inconsistent_result = dict(status_record)
     inconsistent_result["data"] = {"transport": "cli-only-drift"}
@@ -726,9 +678,7 @@ def test_typed_catalog_evidence_rejects_population_result_effect_and_exit_drift(
             cli_exit_status=0,
         )
 
-    mutation_case = next(
-        case for case in cases if case.operation is Operation.START
-    )
+    mutation_case = next(case for case in cases if case.operation is Operation.START)
     mutation_record = mutation_case.python_result.to_record()
     inconsistent_effects = dict(mutation_record)
     inconsistent_effects["effects"] = []
@@ -898,8 +848,7 @@ def test_capability_degradation_is_closed_and_transport_neutral() -> None:
     }
     assert set(records) == expected_degraded
     assert all(
-        record["backend_capability"]
-        == OPERATION_CATALOG_V2.operation(operation).backend_capability
+        record["backend_capability"] == OPERATION_CATALOG_V2.operation(operation).backend_capability
         for operation, record in records.items()
     )
 
@@ -933,9 +882,7 @@ async def test_mcp_dispatch_never_uses_cli_or_a_child_process(
     monkeypatch.setattr(subprocess, "check_output", forbidden)
     monkeypatch.setattr(os, "system", forbidden)
 
-    record = await AGENT_SUPERVISOR_OPERATION_TOOLS[Operation.STATUS](
-        request=request.to_record()
-    )
+    record = await AGENT_SUPERVISOR_OPERATION_TOOLS[Operation.STATUS](request=request.to_record())
 
     assert record == service.execute(request).to_record()
 
@@ -1101,9 +1048,7 @@ def test_python_cli_and_mcp_publish_one_validated_catalog() -> None:
         native_tools.mcp_control_surface_publication(),
     )
 
-    assert {
-        publication.surface for publication in publications
-    } == set(ControlSurface)
+    assert {publication.surface for publication in publications} == set(ControlSurface)
     expected_schema_ids = {
         descriptor.operation.value: descriptor.request_schema_id
         for descriptor in OPERATION_CATALOG_V2
@@ -1123,15 +1068,11 @@ def test_python_cli_and_mcp_publish_one_validated_catalog() -> None:
         assert dict(publication.request_schema_ids) == expected_schema_ids
         assert dict(publication.result_schema_ids) == expected_result_ids
         assert dict(publication.behavior_ids) == expected_behavior_ids
-        assert set(publication.dispatcher_ids.values()) == {
-            DIRECT_CONTROL_SERVICE_DISPATCHER_ID
-        }
+        assert set(publication.dispatcher_ids.values()) == {DIRECT_CONTROL_SERVICE_DISPATCHER_ID}
         assert publication.dispatch_mode == "direct_service"
         assert publication.provider_free
         assert publication.process_free
-        assert ControlSurfacePublication.from_dict(
-            publication.to_record()
-        ) == publication
+        assert ControlSurfacePublication.from_dict(publication.to_record()) == publication
 
 
 def test_catalog_publication_fails_closed_on_population_and_semantic_drift() -> None:
@@ -1187,9 +1128,7 @@ def test_catalog_publication_fails_closed_on_population_and_semantic_drift() -> 
         ControlCatalogConformanceError,
         match="behavior_ids drift",
     ):
-        validate_control_surface_publication(
-            replace(canonical, behavior_ids=behavior_ids)
-        )
+        validate_control_surface_publication(replace(canonical, behavior_ids=behavior_ids))
 
     dispatcher_ids = dict(canonical.dispatcher_ids)
     dispatcher_ids[Operation.STATUS.value] = (
@@ -1199,24 +1138,18 @@ def test_catalog_publication_fails_closed_on_population_and_semantic_drift() -> 
         ControlCatalogConformanceError,
         match="dispatch directly",
     ):
-        validate_control_surface_publication(
-            replace(canonical, dispatcher_ids=dispatcher_ids)
-        )
+        validate_control_surface_publication(replace(canonical, dispatcher_ids=dispatcher_ids))
 
     with pytest.raises(
         ControlCatalogConformanceError,
         match="direct_service",
     ):
-        validate_control_surface_publication(
-            replace(canonical, dispatch_mode="cli_string")
-        )
+        validate_control_surface_publication(replace(canonical, dispatch_mode="cli_string"))
     with pytest.raises(
         ControlCatalogConformanceError,
         match="provider-free and process-free",
     ):
-        validate_control_surface_publication(
-            replace(canonical, provider_free=False)
-        )
+        validate_control_surface_publication(replace(canonical, provider_free=False))
 
     missing_contract = canonical.to_record()
     missing_contract.pop("content_id")
@@ -1253,9 +1186,7 @@ def test_publication_rejects_catalog_schema_drift(
     drifted_status = replace(status, **{schema_name: schema})
     drifted_catalog = OperationCatalog(
         tuple(
-            drifted_status
-            if descriptor.operation is Operation.STATUS
-            else descriptor
+            drifted_status if descriptor.operation is Operation.STATUS else descriptor
             for descriptor in OPERATION_CATALOG_V2
         )
     )
@@ -1280,9 +1211,7 @@ def test_publication_rejects_catalog_behavior_drift() -> None:
     drifted_status = replace(status, family="behaviorally-drifted-status")
     drifted_catalog = OperationCatalog(
         tuple(
-            drifted_status
-            if descriptor.operation is Operation.STATUS
-            else descriptor
+            drifted_status if descriptor.operation is Operation.STATUS else descriptor
             for descriptor in OPERATION_CATALOG_V2
         )
     )

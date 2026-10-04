@@ -52,21 +52,11 @@ EXPECTED_CONTRACT_SCHEMA = (
 OBSERVED_CONTRACT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/program-assurance/observed-contract@1"
 )
-COUNTEREXAMPLE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-assurance/counterexample@1"
-)
-ASSURANCE_CLAIM_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-assurance/claim@1"
-)
-FINDING_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-assurance/finding@1"
-)
-ASSURANCE_LIMITS_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-assurance/limits@1"
-)
-STAGE_RECEIPT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-assurance/stage-receipt@1"
-)
+COUNTEREXAMPLE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-assurance/counterexample@1"
+ASSURANCE_CLAIM_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-assurance/claim@1"
+FINDING_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-assurance/finding@1"
+ASSURANCE_LIMITS_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-assurance/limits@1"
+STAGE_RECEIPT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-assurance/stage-receipt@1"
 
 
 class ProgramAssuranceContractError(ContractValidationError):
@@ -217,9 +207,7 @@ def _text(
     if "\x00" in result:
         raise ProgramAssuranceContractError(f"{field_name} must not contain NUL")
     if len(result.encode("utf-8")) > maximum:
-        raise ContractBoundsError(
-            f"{field_name} exceeds {maximum} UTF-8 bytes"
-        )
+        raise ContractBoundsError(f"{field_name} exceeds {maximum} UTF-8 bytes")
     return result
 
 
@@ -240,9 +228,7 @@ def _integer(
         raise ProgramAssuranceContractError(f"{field_name} must be an integer")
     if value < minimum or (maximum is not None and value > maximum):
         suffix = f" and at most {maximum}" if maximum is not None else ""
-        raise ContractBoundsError(
-            f"{field_name} must be at least {minimum}{suffix}"
-        )
+        raise ContractBoundsError(f"{field_name} must be at least {minimum}{suffix}")
     return value
 
 
@@ -254,9 +240,7 @@ def _enum(value: Any, enum_type: type[T], *, field_name: str) -> T:
         return enum_type(raw)
     except (TypeError, ValueError) as exc:
         allowed = ", ".join(item.value for item in enum_type)
-        raise ProgramAssuranceContractError(
-            f"{field_name} must be one of: {allowed}"
-        ) from exc
+        raise ProgramAssuranceContractError(f"{field_name} must be one of: {allowed}") from exc
 
 
 def _strings(
@@ -280,9 +264,7 @@ def _strings(
             maximum=item_bytes,
         )
         if item in result:
-            raise ProgramAssuranceContractError(
-                f"{field_name} must not contain duplicates"
-            )
+            raise ProgramAssuranceContractError(f"{field_name} must not contain duplicates")
         result.append(item)
     if required and not result:
         raise ProgramAssuranceContractError(f"{field_name} must not be empty")
@@ -323,13 +305,9 @@ def _timestamp(value: Any, *, field_name: str) -> str:
                 f"{field_name} must be an ISO-8601 timestamp"
             ) from exc
     else:
-        raise ProgramAssuranceContractError(
-            f"{field_name} must be a datetime or ISO-8601 string"
-        )
+        raise ProgramAssuranceContractError(f"{field_name} must be a datetime or ISO-8601 string")
     if parsed.tzinfo is None or parsed.utcoffset() is None:
-        raise ProgramAssuranceContractError(
-            f"{field_name} must be timezone-aware"
-        )
+        raise ProgramAssuranceContractError(f"{field_name} must be timezone-aware")
     return parsed.astimezone(timezone.utc).isoformat()
 
 
@@ -343,9 +321,7 @@ def _sha256(value: Any, *, field_name: str, required: bool = False) -> str:
         return ""
     digest = result.removeprefix("sha256:")
     if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
-        raise ProgramAssuranceContractError(
-            f"{field_name} must be a SHA-256 digest"
-        )
+        raise ProgramAssuranceContractError(f"{field_name} must be a SHA-256 digest")
     return f"sha256:{digest}"
 
 
@@ -353,14 +329,10 @@ def _check_header(payload: Mapping[str, Any], expected_schema: str) -> None:
     if not isinstance(payload, Mapping):
         raise ProgramAssuranceContractError("contract payload must be an object")
     if payload.get("schema") not in (None, "", expected_schema):
-        raise ProgramAssuranceContractError(
-            f"unsupported schema; expected {expected_schema}"
-        )
+        raise ProgramAssuranceContractError(f"unsupported schema; expected {expected_schema}")
     version = payload.get("contract_version", payload.get("schema_version"))
     if version not in (None, PROGRAM_ASSURANCE_CONTRACT_VERSION):
-        raise ProgramAssuranceContractError(
-            "unsupported program-assurance contract version"
-        )
+        raise ProgramAssuranceContractError("unsupported program-assurance contract version")
 
 
 def _reject_unknown(
@@ -370,9 +342,7 @@ def _reject_unknown(
     artifact_name: str,
 ) -> None:
     if set(payload).difference(allowed):
-        raise ProgramAssuranceContractError(
-            f"{artifact_name} contains unsupported fields"
-        )
+        raise ProgramAssuranceContractError(f"{artifact_name} contains unsupported fields")
 
 
 def _check_identity(
@@ -385,9 +355,7 @@ def _check_identity(
     for name in names:
         claimed = payload.get(name)
         if claimed not in (None, "") and claimed != actual:
-            raise ForgedIdentityError(
-                f"{artifact_name} content identity does not match payload"
-            )
+            raise ForgedIdentityError(f"{artifact_name} content identity does not match payload")
 
 
 def _bounded(
@@ -397,9 +365,7 @@ def _bounded(
     artifact_name: str,
 ) -> None:
     if len(value.canonical_bytes()) > maximum:
-        raise ContractBoundsError(
-            f"{artifact_name} exceeds {maximum} canonical bytes"
-        )
+        raise ContractBoundsError(f"{artifact_name} exceeds {maximum} canonical bytes")
 
 
 def _record(
@@ -415,9 +381,7 @@ def _record(
         return value
     if isinstance(value, Mapping):
         return record_type.from_dict(value)
-    raise ProgramAssuranceContractError(
-        f"{field_name} must be a {record_type.__name__} record"
-    )
+    raise ProgramAssuranceContractError(f"{field_name} must be a {record_type.__name__} record")
 
 
 def _records(
@@ -427,20 +391,14 @@ def _records(
     field_name: str,
     maximum: int = MAX_COLLECTION_ITEMS,
 ) -> tuple[T, ...]:
-    if isinstance(values, (str, bytes, bytearray)) or not isinstance(
-        values, Sequence
-    ):
+    if isinstance(values, (str, bytes, bytearray)) or not isinstance(values, Sequence):
         raise ProgramAssuranceContractError(f"{field_name} must be a sequence")
     if len(values) > maximum:
         raise ContractBoundsError(f"{field_name} exceeds {maximum} items")
-    normalized = tuple(
-        _record(item, record_type, field_name=field_name) for item in values
-    )
+    normalized = tuple(_record(item, record_type, field_name=field_name) for item in values)
     identities = tuple(item.content_id for item in normalized)
     if len(identities) != len(set(identities)):
-        raise ProgramAssuranceContractError(
-            f"{field_name} contains duplicate identities"
-        )
+        raise ProgramAssuranceContractError(f"{field_name} contains duplicate identities")
     return tuple(sorted(normalized, key=lambda item: item.content_id))
 
 
@@ -450,8 +408,7 @@ def _same_scope(*values: Any) -> bool:
     fields = ("repository_id", "tree_id", "symbol", "interface", "policy_revision")
     first = values[0]
     return all(
-        all(getattr(value, name) == getattr(first, name) for name in fields)
-        for value in values[1:]
+        all(getattr(value, name) == getattr(first, name) for name in fields) for value in values[1:]
     )
 
 
@@ -462,9 +419,7 @@ def _verify_projection(
     actual: bool,
     stale: bool = False,
 ) -> None:
-    if name in payload and (
-        not isinstance(payload[name], bool) or payload[name] is not actual
-    ):
+    if name in payload and (not isinstance(payload[name], bool) or payload[name] is not actual):
         if stale and bool(payload[name]):
             raise StaleAuthorityError("stale evidence cannot carry authority")
         raise ForgedIdentityError(f"{name} does not match derived state")
@@ -505,18 +460,14 @@ class ArtifactReference(_AssuranceContract):
                 name,
                 _text(getattr(self, name), field_name=name, required=required),
             )
-        object.__setattr__(
-            self, "sha256", _sha256(self.sha256, field_name="sha256")
-        )
+        object.__setattr__(self, "sha256", _sha256(self.sha256, field_name="sha256"))
         object.__setattr__(
             self,
             "byte_count",
             _integer(self.byte_count, field_name="byte_count"),
         )
         if not (self.content_cid or self.sha256):
-            raise ProgramAssuranceContractError(
-                "artifact references require content_cid or sha256"
-            )
+            raise ProgramAssuranceContractError("artifact references require content_cid or sha256")
         _bounded(self, artifact_name="artifact reference")
 
     @property
@@ -631,9 +582,7 @@ class RepositoryObservation(_AssuranceContract):
         object.__setattr__(
             self,
             "authority_expires_at",
-            _timestamp(
-                self.authority_expires_at, field_name="authority_expires_at"
-            ),
+            _timestamp(self.authority_expires_at, field_name="authority_expires_at"),
         )
         if _datetime(self.authority_expires_at) <= _datetime(self.observed_at):
             raise ProgramAssuranceContractError(
@@ -650,9 +599,7 @@ class RepositoryObservation(_AssuranceContract):
             ),
         )
         if not self.dirty and self.dirty_diff_digest:
-            raise ProgramAssuranceContractError(
-                "clean observations cannot carry dirty_diff_digest"
-            )
+            raise ProgramAssuranceContractError("clean observations cannot carry dirty_diff_digest")
         object.__setattr__(
             self,
             "gitlink_tree_ids",
@@ -673,9 +620,7 @@ class RepositoryObservation(_AssuranceContract):
         evaluated = _datetime(_timestamp(evaluated_at, field_name="evaluated_at"))
         return (
             EvidenceFreshness.CURRENT
-            if _datetime(self.observed_at)
-            <= evaluated
-            < _datetime(self.authority_expires_at)
+            if _datetime(self.observed_at) <= evaluated < _datetime(self.authority_expires_at)
             else EvidenceFreshness.STALE
         )
 
@@ -776,9 +721,7 @@ class ExpectedContract(_AssuranceContract):
             "policy_revision",
             "summary",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
         object.__setattr__(
             self,
             "precedence",
@@ -900,9 +843,7 @@ class ObservedContract(_AssuranceContract):
             "repository_observation_id",
             "summary",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
         object.__setattr__(
             self,
             "clauses",
@@ -979,9 +920,7 @@ class ObservedContract(_AssuranceContract):
             symbol=payload.get("symbol", ""),
             interface=payload.get("interface", ""),
             policy_revision=payload.get("policy_revision", ""),
-            repository_observation_id=payload.get(
-                "repository_observation_id", ""
-            ),
+            repository_observation_id=payload.get("repository_observation_id", ""),
             summary=payload.get("summary", ""),
             clauses=tuple(payload.get("clauses") or ()),
             source_artifact_ids=tuple(payload.get("source_artifact_ids") or ()),
@@ -1026,9 +965,7 @@ class Counterexample(_AssuranceContract):
             "observed_contract_id",
             "summary",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
         object.__setattr__(
             self,
             "witness_steps",
@@ -1056,17 +993,11 @@ class Counterexample(_AssuranceContract):
         object.__setattr__(
             self,
             "authority_expires_at",
-            _timestamp(
-                self.authority_expires_at, field_name="authority_expires_at"
-            ),
+            _timestamp(self.authority_expires_at, field_name="authority_expires_at"),
         )
-        object.__setattr__(
-            self, "conclusive", _boolean(self.conclusive, field_name="conclusive")
-        )
+        object.__setattr__(self, "conclusive", _boolean(self.conclusive, field_name="conclusive"))
         if self.conclusive and self.freshness is EvidenceFreshness.STALE:
-            raise StaleAuthorityError(
-                "a conclusive counterexample cannot have stale authority"
-            )
+            raise StaleAuthorityError("a conclusive counterexample cannot have stale authority")
         _bounded(self, artifact_name="counterexample")
 
     @property
@@ -1155,9 +1086,11 @@ class Counterexample(_AssuranceContract):
             authority_expires_at=payload.get("authority_expires_at", ""),
             conclusive=payload.get("conclusive", True),
         )
-        if "freshness" in payload and _enum(
-            payload["freshness"], EvidenceFreshness, field_name="freshness"
-        ) is not result.freshness:
+        if (
+            "freshness" in payload
+            and _enum(payload["freshness"], EvidenceFreshness, field_name="freshness")
+            is not result.freshness
+        ):
             raise ForgedIdentityError("counterexample freshness does not match timestamps")
         _verify_projection(
             payload,
@@ -1184,9 +1117,7 @@ _LEVEL_AUTHORITY: Final[dict[ClaimLevel, AuthorityKind]] = {
 }
 
 
-def validate_claim_promotion(
-    source: ClaimLevel | str, target: ClaimLevel | str
-) -> None:
+def validate_claim_promotion(source: ClaimLevel | str, target: ClaimLevel | str) -> None:
     """Reject treating one claim class as authority for a different class."""
 
     _enum(source, ClaimLevel, field_name="source").require(
@@ -1277,9 +1208,7 @@ class AssuranceClaim(_AssuranceContract):
         object.__setattr__(
             self,
             "authority_expires_at",
-            _timestamp(
-                self.authority_expires_at, field_name="authority_expires_at"
-            ),
+            _timestamp(self.authority_expires_at, field_name="authority_expires_at"),
         )
         object.__setattr__(
             self,
@@ -1317,10 +1246,7 @@ class AssuranceClaim(_AssuranceContract):
             "semantic_proof",
             _boolean(self.semantic_proof, field_name="semantic_proof"),
         )
-        if (
-            self.claim_level is ClaimLevel.ZK_TRACE_ATTESTED
-            and self.semantic_proof
-        ):
+        if self.claim_level is ClaimLevel.ZK_TRACE_ATTESTED and self.semantic_proof:
             raise SemanticAuthorityError(
                 "a ZK trace attestation cannot be presented as semantic proof"
             )
@@ -1333,22 +1259,15 @@ class AssuranceClaim(_AssuranceContract):
                 f"{self.claim_level.value} cannot be presented as semantic proof"
             )
         if self.verdict.conclusive != self.inconclusive_state.conclusive:
-            raise ProgramAssuranceContractError(
-                "verdict and inconclusive_state disagree"
-            )
+            raise ProgramAssuranceContractError("verdict and inconclusive_state disagree")
         if self.freshness is EvidenceFreshness.STALE:
             if self.verdict.conclusive or self.inconclusive_state is not InconclusiveState.STALE:
                 raise StaleAuthorityError(
                     "stale claims must be explicitly inconclusive with state stale"
                 )
         if self.claim_level is ClaimLevel.MODEL_PROVED:
-            if (
-                self.verdict is not ClaimVerdict.SATISFIED
-                or not self.semantic_proof
-            ):
-                raise SemanticAuthorityError(
-                    "model_proved requires a satisfied semantic proof"
-                )
+            if self.verdict is not ClaimVerdict.SATISFIED or not self.semantic_proof:
+                raise SemanticAuthorityError("model_proved requires a satisfied semantic proof")
         if self.claim_level is ClaimLevel.MODEL_DISPROVED:
             if (
                 self.verdict is not ClaimVerdict.VIOLATED
@@ -1378,8 +1297,10 @@ class AssuranceClaim(_AssuranceContract):
 
     @property
     def semantic_authority(self) -> bool:
-        return self.authoritative and self.semantic_proof and (
-            self.claim_level is not ClaimLevel.ZK_TRACE_ATTESTED
+        return (
+            self.authoritative
+            and self.semantic_proof
+            and (self.claim_level is not ClaimLevel.ZK_TRACE_ATTESTED)
         )
 
     @property
@@ -1470,9 +1391,7 @@ class AssuranceClaim(_AssuranceContract):
             symbol=payload.get("symbol", ""),
             interface=payload.get("interface", ""),
             policy_revision=payload.get("policy_revision", ""),
-            repository_observation_id=payload.get(
-                "repository_observation_id", ""
-            ),
+            repository_observation_id=payload.get("repository_observation_id", ""),
             claim_level=payload.get("claim_level", ""),
             verdict=payload.get("verdict", ""),
             inconclusive_state=payload.get("inconclusive_state", ""),
@@ -1490,9 +1409,11 @@ class AssuranceClaim(_AssuranceContract):
             source_claim_level=payload.get("source_claim_level"),
             semantic_proof=payload.get("semantic_proof", False),
         )
-        if "freshness" in payload and _enum(
-            payload["freshness"], EvidenceFreshness, field_name="freshness"
-        ) is not result.freshness:
+        if (
+            "freshness" in payload
+            and _enum(payload["freshness"], EvidenceFreshness, field_name="freshness")
+            is not result.freshness
+        ):
             raise ForgedIdentityError("claim freshness does not match timestamps")
         _verify_projection(
             payload,
@@ -1532,17 +1453,13 @@ class Finding(_AssuranceContract):
     artifacts: tuple[ArtifactReference, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "status", _enum(self.status, FindingStatus, field_name="status")
-        )
+        object.__setattr__(self, "status", _enum(self.status, FindingStatus, field_name="status"))
         object.__setattr__(
             self,
             "severity",
             _enum(self.severity, FindingSeverity, field_name="severity"),
         )
-        object.__setattr__(
-            self, "summary", _text(self.summary, field_name="summary")
-        )
+        object.__setattr__(self, "summary", _text(self.summary, field_name="summary"))
         claim = _record(self.claim, AssuranceClaim, field_name="claim")
         expected = _record(
             self.expected_contract,
@@ -1608,8 +1525,7 @@ class Finding(_AssuranceContract):
                 )
             if (
                 claim.evaluated_at != counterexample.evaluated_at
-                or claim.authority_expires_at
-                != counterexample.authority_expires_at
+                or claim.authority_expires_at != counterexample.authority_expires_at
             ):
                 raise SemanticAuthorityError(
                     "contract_broken claim and counterexample must share one freshness binding"
@@ -1630,21 +1546,15 @@ class Finding(_AssuranceContract):
         if self.status is FindingStatus.AMBIGUOUS and (
             claim.inconclusive_state is not InconclusiveState.AMBIGUOUS
         ):
-            raise ProgramAssuranceContractError(
-                "ambiguous findings require an ambiguous claim"
-            )
+            raise ProgramAssuranceContractError("ambiguous findings require an ambiguous claim")
         if self.status is FindingStatus.UNSUPPORTED and (
             claim.inconclusive_state is not InconclusiveState.UNSUPPORTED
         ):
-            raise ProgramAssuranceContractError(
-                "unsupported findings require an unsupported claim"
-            )
+            raise ProgramAssuranceContractError("unsupported findings require an unsupported claim")
         if self.status is FindingStatus.STALE and (
             claim.inconclusive_state is not InconclusiveState.STALE
         ):
-            raise ProgramAssuranceContractError(
-                "stale findings require an explicitly stale claim"
-            )
+            raise ProgramAssuranceContractError("stale findings require an explicitly stale claim")
         _bounded(self, artifact_name="finding")
 
     @property
@@ -1695,19 +1605,13 @@ class Finding(_AssuranceContract):
             "summary": self.summary,
             "claim": self.claim.to_record(),
             "expected_contract": (
-                self.expected_contract.to_record()
-                if self.expected_contract is not None
-                else None
+                self.expected_contract.to_record() if self.expected_contract is not None else None
             ),
             "observed_contract": (
-                self.observed_contract.to_record()
-                if self.observed_contract is not None
-                else None
+                self.observed_contract.to_record() if self.observed_contract is not None else None
             ),
             "counterexample": (
-                self.counterexample.to_record()
-                if self.counterexample is not None
-                else None
+                self.counterexample.to_record() if self.counterexample is not None else None
             ),
             "affected_paths": self.affected_paths,
             "remediation_scope": self.remediation_scope,
@@ -1774,9 +1678,7 @@ class Finding(_AssuranceContract):
             remediation_scope=tuple(payload.get("remediation_scope") or ()),
             artifacts=tuple(payload.get("artifacts") or ()),
         )
-        _verify_projection(
-            payload, name="actionable", actual=result.actionable
-        )
+        _verify_projection(payload, name="actionable", actual=result.actionable)
         for name in (
             "repository_id",
             "tree_id",
@@ -1785,28 +1687,24 @@ class Finding(_AssuranceContract):
             "policy_revision",
         ):
             if name in payload and payload[name] != getattr(result, name):
-                raise ForgedIdentityError(
-                    f"finding {name} does not match its claim"
-                )
-        if "claim_level" in payload and _enum(
-            payload["claim_level"], ClaimLevel, field_name="claim_level"
-        ) is not result.claim_level:
-            raise ForgedIdentityError(
-                "finding claim_level does not match its claim"
-            )
+                raise ForgedIdentityError(f"finding {name} does not match its claim")
+        if (
+            "claim_level" in payload
+            and _enum(payload["claim_level"], ClaimLevel, field_name="claim_level")
+            is not result.claim_level
+        ):
+            raise ForgedIdentityError("finding claim_level does not match its claim")
         if (
             "confidence_millionths" in payload
             and payload["confidence_millionths"] != result.confidence_millionths
         ):
-            raise ForgedIdentityError(
-                "finding confidence does not match its claim"
-            )
-        if "freshness" in payload and _enum(
-            payload["freshness"], EvidenceFreshness, field_name="freshness"
-        ) is not result.freshness:
-            raise ForgedIdentityError(
-                "finding freshness does not match its claim"
-            )
+            raise ForgedIdentityError("finding confidence does not match its claim")
+        if (
+            "freshness" in payload
+            and _enum(payload["freshness"], EvidenceFreshness, field_name="freshness")
+            is not result.freshness
+        ):
+            raise ForgedIdentityError("finding freshness does not match its claim")
         _check_identity(
             payload,
             result.finding_id,
@@ -1847,9 +1745,7 @@ class AssuranceLimits(_AssuranceContract):
                 ),
             )
         if self.max_record_bytes > self.max_receipt_bytes:
-            raise ContractBoundsError(
-                "max_record_bytes cannot exceed max_receipt_bytes"
-            )
+            raise ContractBoundsError("max_record_bytes cannot exceed max_receipt_bytes")
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -1883,9 +1779,7 @@ class AssuranceLimits(_AssuranceContract):
             artifact_name="assurance limits",
         )
         defaults = cls()
-        result = cls(
-            **{name: payload.get(name, getattr(defaults, name)) for name in fields}
-        )
+        result = cls(**{name: payload.get(name, getattr(defaults, name)) for name in fields})
         _check_identity(
             payload,
             result.content_id,
@@ -1935,9 +1829,7 @@ class StageReceipt(_AssuranceContract):
             "policy_revision",
             "configuration_digest",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
         for name in (
             "query_digest",
             "capability_snapshot_id",
@@ -1962,9 +1854,7 @@ class StageReceipt(_AssuranceContract):
                     maximum=128,
                 ),
             )
-        object.__setattr__(
-            self, "status", _enum(self.status, StageStatus, field_name="status")
-        )
+        object.__setattr__(self, "status", _enum(self.status, StageStatus, field_name="status"))
         object.__setattr__(
             self,
             "claim_level",
@@ -1991,23 +1881,17 @@ class StageReceipt(_AssuranceContract):
         object.__setattr__(
             self,
             "authority_expires_at",
-            _timestamp(
-                self.authority_expires_at, field_name="authority_expires_at"
-            ),
+            _timestamp(self.authority_expires_at, field_name="authority_expires_at"),
         )
         object.__setattr__(
             self,
             "coverage_complete",
             _boolean(self.coverage_complete, field_name="coverage_complete"),
         )
-        object.__setattr__(
-            self, "truncated", _boolean(self.truncated, field_name="truncated")
-        )
+        object.__setattr__(self, "truncated", _boolean(self.truncated, field_name="truncated"))
         claims = _records(self.claims, AssuranceClaim, field_name="claims")
         findings = _records(self.findings, Finding, field_name="findings")
-        artifacts = _records(
-            self.artifacts, ArtifactReference, field_name="artifacts"
-        )
+        artifacts = _records(self.artifacts, ArtifactReference, field_name="artifacts")
         limits = _record(self.limits, AssuranceLimits, field_name="limits")
         object.__setattr__(self, "claims", claims)
         object.__setattr__(self, "findings", findings)
@@ -2019,18 +1903,14 @@ class StageReceipt(_AssuranceContract):
             )
         for claim in claims:
             if claim.claim_level is not self.claim_level:
-                raise ClaimPromotionError(
-                    "stage receipt cannot combine or promote claim levels"
-                )
+                raise ClaimPromotionError("stage receipt cannot combine or promote claim levels")
             if (
                 claim.repository_id != observation.repository_id
                 or claim.tree_id != observation.tree_id
                 or claim.repository_observation_id != observation.observation_id
                 or claim.policy_revision != self.policy_revision
             ):
-                raise SemanticAuthorityError(
-                    "claim is detached from the stage observation"
-                )
+                raise SemanticAuthorityError("claim is detached from the stage observation")
             if (
                 claim.evaluated_at != self.evaluated_at
                 or claim.authority_expires_at != self.authority_expires_at
@@ -2040,9 +1920,7 @@ class StageReceipt(_AssuranceContract):
                 )
         for finding in findings:
             if finding.claim.claim_id not in {item.claim_id for item in claims}:
-                raise SemanticAuthorityError(
-                    "finding claim is not embedded in the stage receipt"
-                )
+                raise SemanticAuthorityError("finding claim is not embedded in the stage receipt")
         if self.status.successful and self.inconclusive_state.conclusive:
             if not claims:
                 raise ProgramAssuranceContractError(
@@ -2056,9 +1934,7 @@ class StageReceipt(_AssuranceContract):
         if self.freshness is EvidenceFreshness.STALE and (
             self.status.successful or self.inconclusive_state is not InconclusiveState.STALE
         ):
-            raise StaleAuthorityError(
-                "stale stage receipts must be explicitly inconclusive"
-            )
+            raise StaleAuthorityError("stale stage receipts must be explicitly inconclusive")
         if len(claims) > limits.max_claims:
             raise ContractBoundsError("claims exceed the configured stage limit")
         if len(findings) > limits.max_findings:
@@ -2078,9 +1954,7 @@ class StageReceipt(_AssuranceContract):
             raise ContractBoundsError("artifacts exceed the configured stage limit")
         for record in (*claims, *findings, *artifacts):
             if len(record.canonical_bytes()) > limits.max_record_bytes:
-                raise ContractBoundsError(
-                    f"{type(record).__name__} exceeds max_record_bytes"
-                )
+                raise ContractBoundsError(f"{type(record).__name__} exceeds max_record_bytes")
         _bounded(
             self,
             maximum=limits.max_receipt_bytes,
@@ -2092,8 +1966,7 @@ class StageReceipt(_AssuranceContract):
         evaluated = _datetime(self.evaluated_at)
         current = (
             evaluated < _datetime(self.authority_expires_at)
-            and self.observation.freshness_at(self.evaluated_at)
-            is EvidenceFreshness.CURRENT
+            and self.observation.freshness_at(self.evaluated_at) is EvidenceFreshness.CURRENT
         )
         return EvidenceFreshness.CURRENT if current else EvidenceFreshness.STALE
 
@@ -2213,9 +2086,7 @@ class StageReceipt(_AssuranceContract):
             configuration_digest=payload.get("configuration_digest", ""),
             query_digest=payload.get("query_digest", ""),
             capability_snapshot_id=payload.get("capability_snapshot_id", ""),
-            redaction_policy_revision=payload.get(
-                "redaction_policy_revision", ""
-            ),
+            redaction_policy_revision=payload.get("redaction_policy_revision", ""),
             dependency_ids=tuple(payload.get("dependency_ids") or ()),
             toolchain_ids=tuple(payload.get("toolchain_ids") or ()),
             assumptions=tuple(payload.get("assumptions") or ()),
@@ -2228,9 +2099,11 @@ class StageReceipt(_AssuranceContract):
             artifacts=tuple(payload.get("artifacts") or ()),
             limits=payload.get("limits") or {},
         )
-        if "freshness" in payload and _enum(
-            payload["freshness"], EvidenceFreshness, field_name="freshness"
-        ) is not result.freshness:
+        if (
+            "freshness" in payload
+            and _enum(payload["freshness"], EvidenceFreshness, field_name="freshness")
+            is not result.freshness
+        ):
             raise ForgedIdentityError("stage freshness does not match timestamps")
         _verify_projection(
             payload,

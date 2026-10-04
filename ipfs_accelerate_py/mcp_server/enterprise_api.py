@@ -29,6 +29,7 @@ if _EXPORTS:
     globals().update(_EXPORTS)
     __all__ = sorted(_EXPORTS.keys())
 else:
+
     class EnterpriseAPIUnavailable(RuntimeError):
         """Raised when enterprise API surface is unavailable in this environment."""
 

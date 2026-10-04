@@ -41,22 +41,14 @@ from ..proof.prover_matrix_registry import (
 
 AUTHORIZATION_LOGIC_VERSION: Final = 2
 PRINCIPAL_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/principal@1"
-AUTHORIZATION_GRANT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/authorization-grant@1"
-)
+AUTHORIZATION_GRANT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/authorization-grant@1"
 REVOCATION_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/revocation@1"
-AUTHORIZATION_POLICY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/authorization-policy@1"
-)
-AUTHORIZATION_REQUEST_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/authorization-request@1"
-)
+AUTHORIZATION_POLICY_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/authorization-policy@1"
+AUTHORIZATION_REQUEST_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/authorization-request@1"
 AUTHORIZATION_DECISION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/authorization-decision@1"
 )
-AUTHORIZATION_REPORT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/authorization-report@1"
-)
+AUTHORIZATION_REPORT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/authorization-report@1"
 AUTHORIZATION_ENGINE_RECEIPT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/authorization-engine-receipt@1"
 )
@@ -66,9 +58,7 @@ AUTHORIZATION_ENGINE_CAPABILITY_SCHEMA: Final = (
 AUTHORIZATION_LANE_RESULT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/authorization-lane-result@1"
 )
-AUTHORIZATION_FIXTURE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/authorization-fixture@1"
-)
+AUTHORIZATION_FIXTURE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/authorization-fixture@1"
 
 DEFAULT_ENGINE_TIMEOUT_SECONDS: Final = 10.0
 DEFAULT_MAX_ENGINE_OUTPUT_BYTES: Final = 64 * 1024
@@ -187,9 +177,7 @@ def _strings(
         items: Iterable[Any] = ()
     elif isinstance(values, str):
         items = (values,)
-    elif isinstance(values, Iterable) and not isinstance(
-        values, (bytes, bytearray, Mapping)
-    ):
+    elif isinstance(values, Iterable) and not isinstance(values, (bytes, bytearray, Mapping)):
         items = values
     else:
         raise AuthorizationValidationError(f"{name} must be a sequence of strings")
@@ -209,9 +197,7 @@ def _ordered_strings(
         items: Iterable[Any] = ()
     elif isinstance(values, str):
         items = (values,)
-    elif isinstance(values, Iterable) and not isinstance(
-        values, (bytes, bytearray, Mapping)
-    ):
+    elif isinstance(values, Iterable) and not isinstance(values, (bytes, bytearray, Mapping)):
         items = values
     else:
         raise AuthorizationValidationError(f"{name} must be a sequence of strings")
@@ -246,9 +232,7 @@ def _enum(value: Any, kind: type[Enum], name: str) -> Any:
 def _schema(payload: Mapping[str, Any], expected: str) -> None:
     supplied = payload.get("schema")
     if supplied not in (None, "", expected):
-        raise AuthorizationValidationError(
-            f"unsupported schema {supplied!r}; expected {expected}"
-        )
+        raise AuthorizationValidationError(f"unsupported schema {supplied!r}; expected {expected}")
 
 
 def _identity(payload: Mapping[str, Any], actual: str, noun: str) -> None:
@@ -281,12 +265,7 @@ def _normalize_scopes(
         raise AuthorizationValidationError(f"{name} wildcard must stand alone")
     if paths:
         normalized = tuple(
-            sorted(
-                {
-                    WILDCARD if item == WILDCARD else _normalized_path(item)
-                    for item in result
-                }
-            )
+            sorted({WILDCARD if item == WILDCARD else _normalized_path(item) for item in result})
         )
         if any(not item for item in normalized):
             raise AuthorizationValidationError(f"{name} must not contain an empty path")
@@ -318,13 +297,8 @@ def _item_covered(child: str, parent: str, *, paths: bool) -> bool:
     return child == parent
 
 
-def _scope_subset(
-    child: Sequence[str], parent: Sequence[str], *, paths: bool = False
-) -> bool:
-    return all(
-        any(_item_covered(item, outer, paths=paths) for outer in parent)
-        for item in child
-    )
+def _scope_subset(child: Sequence[str], parent: Sequence[str], *, paths: bool = False) -> bool:
+    return all(any(_item_covered(item, outer, paths=paths) for outer in parent) for item in child)
 
 
 @dataclass(frozen=True)
@@ -337,9 +311,7 @@ class Principal(CanonicalContract):
     kind: str = "agent"
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "principal_id", _text(self.principal_id, "principal_id")
-        )
+        object.__setattr__(self, "principal_id", _text(self.principal_id, "principal_id"))
         object.__setattr__(self, "kind", _text(self.kind, "kind"))
 
     def _payload(self) -> dict[str, Any]:
@@ -394,14 +366,10 @@ class AuthorizationGrant(CanonicalContract):
     expires_at_ms: int | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "statement_id", _text(self.statement_id, "statement_id")
-        )
+        object.__setattr__(self, "statement_id", _text(self.statement_id, "statement_id"))
         object.__setattr__(self, "issuer", _principal_id(self.issuer, "issuer"))
         object.__setattr__(self, "subject", _principal_id(self.subject, "subject"))
-        object.__setattr__(
-            self, "capability", _enum(self.capability, Capability, "capability")
-        )
+        object.__setattr__(self, "capability", _enum(self.capability, Capability, "capability"))
         object.__setattr__(
             self,
             "task_scope",
@@ -409,9 +377,7 @@ class AuthorizationGrant(CanonicalContract):
         )
         depth = _nonnegative(self.delegation_depth, "delegation_depth")
         if depth > MAX_DELEGATION_DEPTH:
-            raise AuthorizationValidationError(
-                f"delegation_depth exceeds {MAX_DELEGATION_DEPTH}"
-            )
+            raise AuthorizationValidationError(f"delegation_depth exceeds {MAX_DELEGATION_DEPTH}")
         object.__setattr__(self, "delegation_depth", depth)
         parent = self.parent_statement_id
         object.__setattr__(
@@ -452,9 +418,7 @@ class AuthorizationGrant(CanonicalContract):
         not_before = _nonnegative(self.not_before_ms, "not_before_ms")
         expires = _optional_nonnegative(self.expires_at_ms, "expires_at_ms")
         if expires is not None and expires <= not_before:
-            raise AuthorizationValidationError(
-                "expires_at_ms must be greater than not_before_ms"
-            )
+            raise AuthorizationValidationError("expires_at_ms must be greater than not_before_ms")
         object.__setattr__(self, "not_before_ms", not_before)
         object.__setattr__(self, "expires_at_ms", expires)
 
@@ -525,9 +489,7 @@ class Revocation(CanonicalContract):
     reason: str
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "revocation_id", _text(self.revocation_id, "revocation_id")
-        )
+        object.__setattr__(self, "revocation_id", _text(self.revocation_id, "revocation_id"))
         object.__setattr__(self, "issuer", _principal_id(self.issuer, "issuer"))
         object.__setattr__(
             self,
@@ -588,39 +550,27 @@ class AuthorizationPolicy(CanonicalContract):
         object.__setattr__(self, "trusted_roots", roots)
         grants = tuple(self.grants)
         if any(not isinstance(item, AuthorizationGrant) for item in grants):
-            raise AuthorizationValidationError(
-                "grants must contain AuthorizationGrant values"
-            )
+            raise AuthorizationValidationError("grants must contain AuthorizationGrant values")
         grants = tuple(sorted(grants, key=lambda item: item.statement_id))
         grant_ids = [item.statement_id for item in grants]
         if len(grant_ids) != len(set(grant_ids)):
-            raise AuthorizationValidationError(
-                "grant statement_id values must be unique"
-            )
+            raise AuthorizationValidationError("grant statement_id values must be unique")
         object.__setattr__(self, "grants", grants)
         revocations = tuple(self.revocations)
         if any(not isinstance(item, Revocation) for item in revocations):
-            raise AuthorizationValidationError(
-                "revocations must contain Revocation values"
-            )
+            raise AuthorizationValidationError("revocations must contain Revocation values")
         revocations = tuple(sorted(revocations, key=lambda item: item.revocation_id))
         revocation_ids = [item.revocation_id for item in revocations]
         if len(revocation_ids) != len(set(revocation_ids)):
             raise AuthorizationValidationError("revocation_id values must be unique")
-        unknown_targets = {item.target_statement_id for item in revocations} - set(
-            grant_ids
-        )
+        unknown_targets = {item.target_statement_id for item in revocations} - set(grant_ids)
         if unknown_targets:
-            raise AuthorizationValidationError(
-                "revocation targets unknown grant statements"
-            )
+            raise AuthorizationValidationError("revocation targets unknown grant statements")
         object.__setattr__(self, "revocations", revocations)
 
         epochs: dict[str, int] = {}
         if not isinstance(self.current_fencing_epochs, Mapping):
-            raise AuthorizationValidationError(
-                "current_fencing_epochs must be an object"
-            )
+            raise AuthorizationValidationError("current_fencing_epochs must be an object")
         for raw_task, raw_epoch in self.current_fencing_epochs.items():
             task = _text(raw_task, "current_fencing_epochs key")
             epochs[task] = _nonnegative(raw_epoch, "current_fencing_epochs value")
@@ -701,9 +651,7 @@ class AuthorizationRequest(CanonicalContract):
     override_scope: str | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "principal", _principal_id(self.principal, "principal")
-        )
+        object.__setattr__(self, "principal", _principal_id(self.principal, "principal"))
         capability = _enum(self.capability, Capability, "capability")
         object.__setattr__(self, "capability", capability)
         object.__setattr__(self, "task_id", _text(self.task_id, "task_id"))
@@ -714,9 +662,7 @@ class AuthorizationRequest(CanonicalContract):
         )
         for name in ("lease_id", "worktree_id", "proof_authority"):
             value = getattr(self, name)
-            object.__setattr__(
-                self, name, None if value in (None, "") else _text(value, name)
-            )
+            object.__setattr__(self, name, None if value in (None, "") else _text(value, name))
         object.__setattr__(
             self,
             "path",
@@ -759,9 +705,7 @@ class AuthorizationRequest(CanonicalContract):
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "AuthorizationRequest":
         if not isinstance(payload, Mapping):
-            raise AuthorizationValidationError(
-                "authorization request must be an object"
-            )
+            raise AuthorizationValidationError("authorization request must be an object")
         _schema(payload, cls.SCHEMA)
         result = cls(
             principal=payload.get("principal", payload.get("actor", "")),
@@ -809,14 +753,10 @@ class AuthorizationDecision(CanonicalContract):
                     "permit decision requires an allowed reason and authority chain"
                 )
         elif reason is DenialReason.ALLOWED or chain:
-            raise AuthorizationValidationError(
-                "deny decision cannot carry an allowed chain"
-            )
+            raise AuthorizationValidationError("deny decision cannot carry an allowed chain")
         object.__setattr__(self, "verdict", verdict)
         object.__setattr__(self, "reason", reason)
-        object.__setattr__(
-            self, "policy_identity", _text(self.policy_identity, "policy_identity")
-        )
+        object.__setattr__(self, "policy_identity", _text(self.policy_identity, "policy_identity"))
         object.__setattr__(
             self, "request_identity", _text(self.request_identity, "request_identity")
         )
@@ -862,9 +802,7 @@ class AuthorizationDecision(CanonicalContract):
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "AuthorizationDecision":
         if not isinstance(payload, Mapping):
-            raise AuthorizationValidationError(
-                "authorization decision must be an object"
-            )
+            raise AuthorizationValidationError("authorization decision must be an object")
         _schema(payload, cls.SCHEMA)
         if payload.get("establishes_generated_code_correctness") not in (None, False):
             raise AuthorizationValidationError(
@@ -889,9 +827,7 @@ class AuthorizationDecision(CanonicalContract):
         )
         claimed_permit = payload.get("permits_action")
         if claimed_permit is not None and claimed_permit is not result.permitted:
-            raise AuthorizationValidationError(
-                "permit projection does not match verdict"
-            )
+            raise AuthorizationValidationError("permit projection does not match verdict")
         _identity(payload, result.content_id, "authorization decision")
         return result
 
@@ -929,15 +865,12 @@ class ReferenceAuthorizationEvaluator:
         if not isinstance(policy, AuthorizationPolicy):
             raise AuthorizationValidationError("policy must be an AuthorizationPolicy")
         if not isinstance(request, AuthorizationRequest):
-            raise AuthorizationValidationError(
-                "request must be an AuthorizationRequest"
-            )
+            raise AuthorizationValidationError("request must be an AuthorizationRequest")
 
         candidates = tuple(
             grant
             for grant in policy.grants
-            if grant.subject == request.principal
-            and grant.capability is request.capability
+            if grant.subject == request.principal and grant.capability is request.capability
         )
         failures: list[DenialReason] = []
         for leaf in candidates:
@@ -1002,16 +935,11 @@ class ReferenceAuthorizationEvaluator:
             grant.worktree_scope, request.worktree_id
         ):
             return DenialReason.WORKTREE_SCOPE_MISMATCH
-        if request.path is not None and not _path_contains(
-            grant.path_scope, request.path
-        ):
+        if request.path is not None and not _path_contains(grant.path_scope, request.path):
             return DenialReason.PATH_SCOPE_MISMATCH
         if request.evaluated_at_ms < grant.not_before_ms:
             return DenialReason.NOT_YET_VALID
-        if (
-            grant.expires_at_ms is not None
-            and request.evaluated_at_ms >= grant.expires_at_ms
-        ):
+        if grant.expires_at_ms is not None and request.evaluated_at_ms >= grant.expires_at_ms:
             return DenialReason.EXPIRED
 
         if request.capability in LEASE_BOUND_CAPABILITIES:
@@ -1067,10 +995,7 @@ class ReferenceAuthorizationEvaluator:
             if revocation.effective_at_ms > now_ms:
                 continue
             target = index[revocation.target_statement_id]
-            if (
-                revocation.issuer in policy.trusted_roots
-                or revocation.issuer == target.issuer
-            ):
+            if revocation.issuer in policy.trusted_roots or revocation.issuer == target.issuer:
                 result.add(target.statement_id)
         return frozenset(result)
 
@@ -1086,10 +1011,7 @@ class ReferenceAuthorizationEvaluator:
         seen: set[str] = set()
         current = leaf
         while True:
-            if (
-                current.statement_id in seen
-                or len(reverse_chain) > MAX_DELEGATION_DEPTH
-            ):
+            if current.statement_id in seen or len(reverse_chain) > MAX_DELEGATION_DEPTH:
                 return (), DenialReason.MALFORMED_DELEGATION
             seen.add(current.statement_id)
             reverse_chain.append(current)
@@ -1116,14 +1038,9 @@ class ReferenceAuthorizationEvaluator:
             parent = index.get(parent_id)
             if parent is None:
                 return (), DenialReason.MALFORMED_DELEGATION
-            if (
-                parent.subject != current.issuer
-                or parent.capability is not current.capability
-            ):
+            if parent.subject != current.issuer or parent.capability is not current.capability:
                 return (), DenialReason.MALFORMED_DELEGATION
-            if parent.delegation_depth < 1 or (
-                current.delegation_depth >= parent.delegation_depth
-            ):
+            if parent.delegation_depth < 1 or (current.delegation_depth >= parent.delegation_depth):
                 return (), DenialReason.DELEGATION_DEPTH_EXCEEDED
             if not self._narrows(current, parent):
                 return (), DenialReason.MALFORMED_DELEGATION
@@ -1138,17 +1055,11 @@ class ReferenceAuthorizationEvaluator:
             and _scope_subset(child.path_scope, parent.path_scope, paths=True)
             and _scope_subset(child.proof_authorities, parent.proof_authorities)
             and _scope_subset(child.override_scopes, parent.override_scopes, paths=True)
-            and (
-                parent.fencing_epoch is None
-                or child.fencing_epoch == parent.fencing_epoch
-            )
+            and (parent.fencing_epoch is None or child.fencing_epoch == parent.fencing_epoch)
             and child.not_before_ms >= parent.not_before_ms
             and (
                 parent.expires_at_ms is None
-                or (
-                    child.expires_at_ms is not None
-                    and child.expires_at_ms <= parent.expires_at_ms
-                )
+                or (child.expires_at_ms is not None and child.expires_at_ms <= parent.expires_at_ms)
             )
         )
 
@@ -1172,9 +1083,7 @@ def _logic_atom(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def render_datalog_policy(
-    policy: AuthorizationPolicy, request: AuthorizationRequest
-) -> str:
+def render_datalog_policy(policy: AuthorizationPolicy, request: AuthorizationRequest) -> str:
     """Render a deterministic finite Soufflé program for the same query.
 
     Scope matching and narrowing are finite translator facts; authority
@@ -1245,9 +1154,7 @@ def render_datalog_policy(
 render_datalog = render_datalog_policy
 
 
-def render_secpal_policy(
-    policy: AuthorizationPolicy, request: AuthorizationRequest
-) -> str:
+def render_secpal_policy(policy: AuthorizationPolicy, request: AuthorizationRequest) -> str:
     """Render a canonical, human-auditable SecPAL-style assertion document."""
 
     lines = [
@@ -1258,9 +1165,7 @@ def render_secpal_policy(
     for root in policy.trusted_roots:
         lines.append(f'trust "{root}".')
     for grant in policy.grants:
-        parent = (
-            f' under "{grant.parent_statement_id}"' if grant.parent_statement_id else ""
-        )
+        parent = f' under "{grant.parent_statement_id}"' if grant.parent_statement_id else ""
         lines.append(
             f'"{grant.issuer}" says "{grant.subject}" can '
             f'"{grant.capability.value}" on {list(grant.task_scope)!r}'
@@ -1306,13 +1211,9 @@ class AuthorizationFixture(CanonicalContract):
         object.__setattr__(self, "fixture_id", _text(self.fixture_id, "fixture_id"))
         object.__setattr__(self, "category", _text(self.category, "category"))
         if not isinstance(self.policy, AuthorizationPolicy):
-            raise AuthorizationValidationError(
-                "fixture policy must be an AuthorizationPolicy"
-            )
+            raise AuthorizationValidationError("fixture policy must be an AuthorizationPolicy")
         if not isinstance(self.request, AuthorizationRequest):
-            raise AuthorizationValidationError(
-                "fixture request must be an AuthorizationRequest"
-            )
+            raise AuthorizationValidationError("fixture request must be an AuthorizationRequest")
         object.__setattr__(
             self,
             "expected_verdict",
@@ -1336,9 +1237,7 @@ class AuthorizationFixture(CanonicalContract):
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "AuthorizationFixture":
         if not isinstance(payload, Mapping):
-            raise AuthorizationValidationError(
-                "authorization fixture must be an object"
-            )
+            raise AuthorizationValidationError("authorization fixture must be an object")
         _schema(payload, cls.SCHEMA)
         raw_policy = payload.get("policy")
         raw_request = payload.get("request")
@@ -1449,9 +1348,7 @@ def default_authorization_fixtures() -> tuple[AuthorizationFixture, ...]:
             "negative@1",
             "negative",
             _fixture_policy(),
-            AuthorizationRequest(
-                **{**base, "task_id": "REF-other"}, evaluated_at_ms=1_000
-            ),
+            AuthorizationRequest(**{**base, "task_id": "REF-other"}, evaluated_at_ms=1_000),
             AuthorizationVerdict.DENY,
         ),
         AuthorizationFixture(
@@ -1465,9 +1362,7 @@ def default_authorization_fixtures() -> tuple[AuthorizationFixture, ...]:
             "confused-deputy@1",
             "confused_deputy",
             _fixture_policy(),
-            AuthorizationRequest(
-                **{**base, "principal": "deputy"}, evaluated_at_ms=1_000
-            ),
+            AuthorizationRequest(**{**base, "principal": "deputy"}, evaluated_at_ms=1_000),
             AuthorizationVerdict.DENY,
         ),
         AuthorizationFixture(
@@ -1500,12 +1395,8 @@ class EngineConformanceReceipt(CanonicalContract):
     reason: str
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "engine", _enum(self.engine, AuthorizationEngine, "engine")
-        )
-        object.__setattr__(
-            self, "status", _enum(self.status, ConformanceStatus, "status")
-        )
+        object.__setattr__(self, "engine", _enum(self.engine, AuthorizationEngine, "engine"))
+        object.__setattr__(self, "status", _enum(self.status, ConformanceStatus, "status"))
         for name in (
             "fixture_set_identity",
             "executable_path",
@@ -1519,12 +1410,8 @@ class EngineConformanceReceipt(CanonicalContract):
             "checked_fixture_ids",
             _strings(self.checked_fixture_ids, "checked_fixture_ids"),
         )
-        object.__setattr__(
-            self, "disagreements", _strings(self.disagreements, "disagreements")
-        )
-        object.__setattr__(
-            self, "duration_ms", _nonnegative(self.duration_ms, "duration_ms")
-        )
+        object.__setattr__(self, "disagreements", _strings(self.disagreements, "disagreements"))
+        object.__setattr__(self, "duration_ms", _nonnegative(self.duration_ms, "duration_ms"))
         if self.status is ConformanceStatus.PASSED and (
             self.disagreements
             or set(self.checked_fixture_ids)
@@ -1557,9 +1444,7 @@ class EngineConformanceReceipt(CanonicalContract):
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "EngineConformanceReceipt":
         if not isinstance(payload, Mapping):
-            raise AuthorizationValidationError(
-                "engine conformance receipt must be an object"
-            )
+            raise AuthorizationValidationError("engine conformance receipt must be an object")
         _schema(payload, cls.SCHEMA)
         result = cls(
             engine=payload.get("engine", ""),
@@ -1589,9 +1474,7 @@ class EngineCapability(CanonicalContract):
     conformance_receipt: EngineConformanceReceipt | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "engine", _enum(self.engine, AuthorizationEngine, "engine")
-        )
+        object.__setattr__(self, "engine", _enum(self.engine, AuthorizationEngine, "engine"))
         object.__setattr__(
             self,
             "status",
@@ -1604,8 +1487,7 @@ class EngineCapability(CanonicalContract):
                 or not self.conformance_receipt.passed
                 or self.conformance_receipt.engine is not self.engine
                 or self.conformance_receipt.executable_path != self.executable_path
-                or self.conformance_receipt.executable_version
-                != self.executable_version
+                or self.conformance_receipt.executable_version != self.executable_version
                 or not self.executable_path
                 or not self.executable_version
             ):
@@ -1644,9 +1526,7 @@ class EngineCapability(CanonicalContract):
             raise AuthorizationValidationError("engine capability must be an object")
         _schema(payload, cls.SCHEMA)
         if payload.get("discovery_is_support") not in (None, False):
-            raise AuthorizationValidationError(
-                "engine discovery cannot be represented as support"
-            )
+            raise AuthorizationValidationError("engine discovery cannot be represented as support")
         raw_receipt = payload.get("conformance_receipt")
         result = cls(
             engine=payload.get("engine", ""),
@@ -1731,9 +1611,7 @@ class AuthorizationEngineAdapter:
         self.command_runner = command_runner or _bounded_command_runner
         self.timeout_seconds = timeout_seconds
         self.max_output_bytes = _nonnegative(max_output_bytes, "max_output_bytes")
-        self.max_executable_bytes = _nonnegative(
-            max_executable_bytes, "max_executable_bytes"
-        )
+        self.max_executable_bytes = _nonnegative(max_executable_bytes, "max_executable_bytes")
         if self.max_output_bytes == 0 or self.max_executable_bytes == 0:
             raise AuthorizationValidationError("engine byte bounds must be positive")
         self.monotonic = monotonic or time.monotonic
@@ -1807,9 +1685,7 @@ class AuthorizationEngineAdapter:
             )
             self._capability = capability
             return capability
-        executable_id = _executable_identity(
-            Path(executable), self.max_executable_bytes
-        )
+        executable_id = _executable_identity(Path(executable), self.max_executable_bytes)
         if executable_id is None:
             capability = EngineCapability(
                 self.engine,
@@ -1873,7 +1749,9 @@ class AuthorizationEngineAdapter:
             status = (
                 ConformanceStatus.TIMED_OUT
                 if timed_out
-                else ConformanceStatus.ERROR if errored else ConformanceStatus.FAILED
+                else ConformanceStatus.ERROR
+                if errored
+                else ConformanceStatus.FAILED
             )
             reason = "external engine did not agree on every authorization fixture"
         else:
@@ -1893,11 +1771,7 @@ class AuthorizationEngineAdapter:
         )
         capability = EngineCapability(
             self.engine,
-            (
-                EngineSupportStatus.CONFORMANT
-                if receipt.passed
-                else EngineSupportStatus.UNSUPPORTED
-            ),
+            (EngineSupportStatus.CONFORMANT if receipt.passed else EngineSupportStatus.UNSUPPORTED),
             reason,
             executable_path=executable,
             executable_version=version,
@@ -1943,9 +1817,7 @@ DEFAULT_AUTHORIZATION_ADAPTER_TYPES = (
 
 def _fixture_set_identity() -> str:
     digest = hashlib.sha256(
-        canonical_json_bytes(
-            [item.to_dict() for item in DEFAULT_AUTHORIZATION_FIXTURES]
-        )
+        canonical_json_bytes([item.to_dict() for item in DEFAULT_AUTHORIZATION_FIXTURES])
     ).hexdigest()
     return "sha256:" + digest
 
@@ -1962,9 +1834,7 @@ def probe_authorization_engines(
     )
     engines = [item.engine for item in selected]
     if len(engines) != len(set(engines)):
-        raise AuthorizationValidationError(
-            "authorization engine adapters must be unique"
-        )
+        raise AuthorizationValidationError("authorization engine adapters must be unique")
     return tuple(item.probe(run_conformance=run_conformance) for item in selected)
 
 
@@ -1980,12 +1850,8 @@ class AuthorizationLaneResult(CanonicalContract):
     reason: str
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "engine", _enum(self.engine, AuthorizationEngine, "engine")
-        )
-        object.__setattr__(
-            self, "status", _enum(self.status, LaneStatus, "lane status")
-        )
+        object.__setattr__(self, "engine", _enum(self.engine, AuthorizationEngine, "engine"))
+        object.__setattr__(self, "status", _enum(self.status, LaneStatus, "lane status"))
         object.__setattr__(
             self,
             "reference_verdict",
@@ -2027,9 +1893,7 @@ class AuthorizationLaneResult(CanonicalContract):
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "AuthorizationLaneResult":
         if not isinstance(payload, Mapping):
-            raise AuthorizationValidationError(
-                "authorization lane result must be an object"
-            )
+            raise AuthorizationValidationError("authorization lane result must be an object")
         _schema(payload, cls.SCHEMA)
         if payload.get("shadow_only") not in (None, True):
             raise AuthorizationValidationError(
@@ -2058,9 +1922,7 @@ class AuthorizationReport(CanonicalContract):
 
     def __post_init__(self) -> None:
         if not isinstance(self.decision, AuthorizationDecision):
-            raise AuthorizationValidationError(
-                "decision must be an AuthorizationDecision"
-            )
+            raise AuthorizationValidationError("decision must be an AuthorizationDecision")
         results = tuple(self.shadow_results)
         if any(not isinstance(item, AuthorizationLaneResult) for item in results):
             raise AuthorizationValidationError(
@@ -2124,9 +1986,7 @@ class AuthorizationReport(CanonicalContract):
         if isinstance(raw_results, (str, bytes, bytearray, Mapping)) or not isinstance(
             raw_results, Iterable
         ):
-            raise AuthorizationValidationError(
-                "report shadow_results must be a sequence"
-            )
+            raise AuthorizationValidationError("report shadow_results must be a sequence")
         result = cls(
             decision=(
                 raw_decision
@@ -2200,9 +2060,7 @@ class ControlMutationPolicy:
                     "control permit policy binding does not match its snapshot"
                 )
             if decision.decision_id in decision_ids:
-                raise AuthorizationValidationError(
-                    "control mutation permits must be unique"
-                )
+                raise AuthorizationValidationError("control mutation permits must be unique")
             decision_ids.add(decision.decision_id)
             normalized.append(decision)
         if not normalized:
@@ -2228,17 +2086,11 @@ class ControlMutationPolicy:
             ),
         )
         if not isinstance(self.active_lease_fences, Mapping):
-            raise AuthorizationValidationError(
-                "active_lease_fences must be a mapping"
-            )
+            raise AuthorizationValidationError("active_lease_fences must be a mapping")
         fences: dict[str, int] = {}
         for raw_lease, raw_epoch in self.active_lease_fences.items():
             lease = _text(raw_lease, "active lease id")
-            if (
-                isinstance(raw_epoch, bool)
-                or not isinstance(raw_epoch, int)
-                or raw_epoch < 0
-            ):
+            if isinstance(raw_epoch, bool) or not isinstance(raw_epoch, int) or raw_epoch < 0:
                 raise AuthorizationValidationError(
                     "active lease fencing epochs must be non-negative integers"
                 )
@@ -2269,8 +2121,7 @@ class ControlMutationAuthorizer:
 
     def __init__(
         self,
-        policy: ControlMutationPolicy
-        | Callable[[Any], ControlMutationPolicy],
+        policy: ControlMutationPolicy | Callable[[Any], ControlMutationPolicy],
         *,
         clock_ms: Callable[[], int] | None = None,
     ) -> None:
@@ -2283,28 +2134,18 @@ class ControlMutationAuthorizer:
         from .control_contracts import MUTATION_OPERATIONS, OperationRequest
 
         if not isinstance(request, OperationRequest):
-            raise AuthorizationValidationError(
-                "control authorization requires an OperationRequest"
-            )
+            raise AuthorizationValidationError("control authorization requires an OperationRequest")
         if request.operation not in MUTATION_OPERATIONS or request.dry_run:
             return True
-        policy = (
-            self._policy(request)
-            if callable(self._policy)
-            else self._policy
-        )
+        policy = self._policy(request) if callable(self._policy) else self._policy
         if not isinstance(policy, ControlMutationPolicy):
             raise AuthorizationValidationError(
                 "control policy resolver returned an invalid snapshot"
             )
         decision = request.authorization
         if decision is None:
-            raise AuthorizationValidationError(
-                "real mutation has no permit decision"
-            )
-        registered = {
-            item.decision_id: item for item in policy.permits
-        }.get(decision.decision_id)
+            raise AuthorizationValidationError("real mutation has no permit decision")
+        registered = {item.decision_id: item for item in policy.permits}.get(decision.decision_id)
         if registered is None or registered != decision:
             raise AuthorizationValidationError(
                 "permit decision was not issued by the current policy"
@@ -2313,32 +2154,21 @@ class ControlMutationAuthorizer:
             request.policy_id != policy.policy_id
             or request.policy_revision != policy.policy_revision
         ):
-            raise AuthorizationValidationError(
-                "request policy revision is stale"
-            )
+            raise AuthorizationValidationError("request policy revision is stale")
         if policy.current_tree_ids.get(request.repository_id) != request.tree_id:
-            raise AuthorizationValidationError(
-                "request repository tree is stale"
-            )
+            raise AuthorizationValidationError("request repository tree is stale")
         if (
             policy.current_objective_revisions.get(request.objective_id)
             != request.objective_revision
         ):
-            raise AuthorizationValidationError(
-                "request objective revision is stale"
-            )
-        if (
-            policy.active_lease_fences.get(request.lease_id)
-            != request.fencing_epoch
-        ):
+            raise AuthorizationValidationError("request objective revision is stale")
+        if policy.active_lease_fences.get(request.lease_id) != request.fencing_epoch:
             raise AuthorizationValidationError(
                 "request lease is inactive or fencing epoch is stale"
             )
         now = self._clock_ms()
         if decision.evaluated_at_ms > now:
-            raise AuthorizationValidationError(
-                "permit decision is not yet valid"
-            )
+            raise AuthorizationValidationError("permit decision is not yet valid")
         if decision.expires_at_ms is not None and now >= decision.expires_at_ms:
             raise AuthorizationValidationError("permit decision has expired")
         return True

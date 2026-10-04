@@ -265,8 +265,7 @@ def parse_track_spec(spec: str, *, stamp: str = "") -> SupervisorTrack:
     parts = rendered.split("|")
     if len(parts) not in {5, 6} or not parts[0].strip():
         raise ValueError(
-            "track specs must have NAME|SCRIPT|LOG|SUPERVISOR_PID|DAEMON_PID"
-            "[|SUPERVISOR_STATUS]"
+            "track specs must have NAME|SCRIPT|LOG|SUPERVISOR_PID|DAEMON_PID[|SUPERVISOR_STATUS]"
         )
     name, script, log, supervisor_pid, daemon_pid = (part.strip() for part in parts[:5])
     supervisor_status = parts[5].strip() if len(parts) == 6 else ""
@@ -321,7 +320,9 @@ def implementation_supervisor_compact_track_spec(
 
 
 def implementation_supervisor_compact_track_specs(
-    track_configs: Sequence[ImplementationSupervisorTrackConfig | tuple[str, Path | str, Path | str, str]],
+    track_configs: Sequence[
+        ImplementationSupervisorTrackConfig | tuple[str, Path | str, Path | str, str]
+    ],
 ) -> tuple[str, ...]:
     """Return compact implementation-track specs from structured track configs."""
 
@@ -374,7 +375,9 @@ def parse_implementation_track_spec(spec: str, *, stamp: str = "") -> Supervisor
     )
 
 
-def expand_implementation_track_lanes(spec: str, *, stamp: str = "", lanes_per_track: int = 1) -> list[SupervisorTrack]:
+def expand_implementation_track_lanes(
+    spec: str, *, stamp: str = "", lanes_per_track: int = 1
+) -> list[SupervisorTrack]:
     """Return one or more deterministic shard lanes for an implementation-track spec."""
 
     lanes = max(1, int(lanes_per_track))
@@ -461,12 +464,18 @@ def dynamic_bundle_scheduler_track(
         daemon_pid_path=root / "bundle_scheduler_worker.pid",
         module_name="ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor",
         extra_args=(
-            "--repo-root", str(repo_root),
-            "--bundle-index-path", str(bundle_index_path),
-            "--state-root", str(state_root),
-            "--max-lanes", str(max_lanes),
-            "--poll-interval", str(poll_interval),
-            "--claimant-did", str(claimant_did),
+            "--repo-root",
+            str(repo_root),
+            "--bundle-index-path",
+            str(bundle_index_path),
+            "--state-root",
+            str(state_root),
+            "--max-lanes",
+            str(max_lanes),
+            "--poll-interval",
+            str(poll_interval),
+            "--claimant-did",
+            str(claimant_did),
             "--start",
             "--implement" if implement else "--no-implement",
         ),
@@ -937,7 +946,9 @@ def supervisor_status_health_fields(
 
     child_state_path = _relative_or_absolute_path(
         repo_root,
-        payload.get("current_status_path") or payload.get("progress_path") or payload.get("state_path"),
+        payload.get("current_status_path")
+        or payload.get("progress_path")
+        or payload.get("state_path"),
     )
     child_state = _read_json_dict(child_state_path)
     active_task_id = str(child_state.get("active_task_id") or "").strip()
@@ -994,11 +1005,12 @@ def start_track(
         if resolved.module_name
         else [python_executable, str(resolved.script_path), *common_args, *resolved.extra_args]
     )
-    configuration_root = "sha256:" + hashlib.sha256(
-        json.dumps(
-            command, separators=(",", ":"), ensure_ascii=False
-        ).encode("utf-8")
-    ).hexdigest()
+    configuration_root = (
+        "sha256:"
+        + hashlib.sha256(
+            json.dumps(command, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
+    )
     state_root = resolved.supervisor_pid_path.parent.resolve(strict=False)
     run_root = state_root / "lifecycle-runs" / resolved.name
     status_path = _inferred_supervisor_status_path(resolved)
@@ -1006,9 +1018,7 @@ def start_track(
         target_id=f"supervisor-track:{resolved.name}",
         run_id=(
             "multi-supervisor:"
-            + hashlib.sha256(
-                f"{repo_root.resolve()}:{resolved.name}".encode("utf-8")
-            ).hexdigest()
+            + hashlib.sha256(f"{repo_root.resolve()}:{resolved.name}".encode("utf-8")).hexdigest()
         ),
         configuration_root=configuration_root,
         repository_root=str(repo_root.resolve()),
@@ -1074,13 +1084,9 @@ def _terminate_managed_process(
     if not tree.members:
         return True, ()
     root_ids = {item.pid for item in tree.roots}
-    process_member = next(
-        (item for item in tree.members if item.pid == process.pid), None
-    )
+    process_member = next((item for item in tree.members if item.pid == process.pid), None)
     if process_member is not None and process.pid not in root_ids:
-        raise ProcessIdentityMismatch(
-            "managed Popen does not identify the marker-bound tree root"
-        )
+        raise ProcessIdentityMismatch("managed Popen does not identify the marker-bound tree root")
     member_pids = tuple(item.pid for item in tree.members)
     adapter.terminate(
         tree,
@@ -1240,7 +1246,9 @@ def run_supervisor_tracks(
                         )
                     continue
                 old_pid = None if process is None else process.pid
-                _emit(output, f"restarting exited {track.name} supervisor old_pid={old_pid or 'none'}")
+                _emit(
+                    output, f"restarting exited {track.name} supervisor old_pid={old_pid or 'none'}"
+                )
                 if process is not None:
                     fenced, _member_pids = _terminate_managed_process(
                         process,
@@ -1280,7 +1288,9 @@ def run_supervisor_tracks(
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run multiple implementation supervisors for a fixed window")
+    parser = argparse.ArgumentParser(
+        description="Run multiple implementation supervisors for a fixed window"
+    )
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
     parser.add_argument("--duration-seconds", type=float, default=28800.0)
     parser.add_argument("--heartbeat-interval-seconds", type=float, default=60.0)
@@ -1322,7 +1332,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=int,
         default=_env_int("OBJECTIVE_SCAN_MAX_FINDINGS", 12),
     )
-    parser.add_argument("--implementation-supervisor-objective-scan-cooldown-seconds", type=int, default=900)
+    parser.add_argument(
+        "--implementation-supervisor-objective-scan-cooldown-seconds", type=int, default=900
+    )
     parser.add_argument(
         "--implementation-supervisor-objective-refill-timeout-seconds",
         type=int,
@@ -1338,14 +1350,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=int,
         default=_env_int("OBJECTIVE_SURPLUS_MIN_TERMS_PER_TODO", 4),
     )
-    parser.add_argument("--implementation-supervisor-codebase-scan-cooldown-seconds", type=int, default=900)
+    parser.add_argument(
+        "--implementation-supervisor-codebase-scan-cooldown-seconds", type=int, default=900
+    )
     parser.add_argument(
         "--implementation-supervisor-codebase-refill-timeout-seconds",
         type=int,
         default=_env_int("CODEBASE_REFILL_TIMEOUT_SECONDS", 600),
     )
     parser.add_argument("--implementation-supervisor-llm-merge-resolver-command", default="")
-    parser.add_argument("--implementation-supervisor-llm-merge-resolver-timeout-seconds", type=int, default=1800)
+    parser.add_argument(
+        "--implementation-supervisor-llm-merge-resolver-timeout-seconds", type=int, default=1800
+    )
     parser.add_argument(
         "--implementation-supervisor-lanes-per-track",
         type=int,
@@ -1362,7 +1378,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def _master_paths(args: argparse.Namespace) -> tuple[Path, Path]:
     repo_root = args.repo_root.resolve()
     master_dir = _resolve_path(repo_root, args.master_dir)
-    master_log = _resolve_path(repo_root, args.master_log) if args.master_log else master_dir / f"8h_run_{args.stamp}.log"
+    master_log = (
+        _resolve_path(repo_root, args.master_log)
+        if args.master_log
+        else master_dir / f"8h_run_{args.stamp}.log"
+    )
     master_pid = (
         _resolve_path(repo_root, args.master_pid_path)
         if args.master_pid_path
@@ -1424,7 +1444,8 @@ def common_args_from_parsed_args(args: argparse.Namespace) -> list[str]:
         common_args.extend(
             implementation_supervisor_common_args(
                 implementation_command=command,
-                llm_merge_resolver_command=args.implementation_supervisor_llm_merge_resolver_command or command,
+                llm_merge_resolver_command=args.implementation_supervisor_llm_merge_resolver_command
+                or command,
                 stale_seconds=args.implementation_supervisor_stale_seconds,
                 check_interval=args.implementation_supervisor_check_interval,
                 daemon_interval=args.implementation_supervisor_daemon_interval,
@@ -1477,6 +1498,7 @@ def main(argv: list[str] | None = None) -> int:
     tracks = tracks_from_parsed_args(args)
     master_log.parent.mkdir(parents=True, exist_ok=True)
     with master_log.open("ab") as log_handle:
+
         def output(message: str) -> None:
             print(message, flush=True)
             log_handle.write((message + "\n").encode("utf-8"))

@@ -35,6 +35,7 @@ from ipfs_accelerate_py.voice_router import (
     register_voice_provider,
 )
 
+
 def _fixture_wav() -> bytes:
     output = io.BytesIO()
     with wave.open(output, "wb") as audio:
@@ -86,16 +87,12 @@ class FakePublicusSpaceClient:
     def get_config(self) -> Mapping[str, object]:
         return {"dependencies": "fake"}
 
-    def resolve_fn_index(
-        self, api_name: str, config: Mapping[str, object]
-    ) -> int:
+    def resolve_fn_index(self, api_name: str, config: Mapping[str, object]) -> int:
         assert config == {"dependencies": "fake"}
         self.resolved_api_names.append(api_name)
         return 7 if api_name == "/gen_batch" else 6
 
-    def lookup_dependency_input_count(
-        self, fn_index: int, config: Mapping[str, object]
-    ) -> int:
+    def lookup_dependency_input_count(self, fn_index: int, config: Mapping[str, object]) -> int:
         assert fn_index in {6, 7}
         assert config == {"dependencies": "fake"}
         return 25
@@ -131,11 +128,7 @@ class FakePublicusSpaceClient:
 
     def fetch_file(self, reference: object) -> Tuple[bytes, str]:
         self.fetches.append(reference)
-        path = (
-            str(reference.get("path", ""))
-            if isinstance(reference, Mapping)
-            else str(reference)
-        )
+        path = str(reference.get("path", "")) if isinstance(reference, Mapping) else str(reference)
         marker = path.rsplit("/", 1)[-1].encode("ascii")
         return WAV_AUDIO + marker, "audio/wav"
 
@@ -242,9 +235,7 @@ def test_publicus_group_billing_can_be_explicitly_disabled() -> None:
         bill_to="",
     )
 
-    assert provider._authorization_headers() == {
-        "Authorization": "Bearer private-token"
-    }
+    assert provider._authorization_headers() == {"Authorization": "Bearer private-token"}
 
 
 def test_explicit_hf_token_avoids_cached_token_lookup(
@@ -424,14 +415,10 @@ def test_publicus_failure_falls_back_to_compatible_generic_http_endpoint() -> No
 
     assert provider.synthesize("fallback response") == WAV_AUDIO
     assert len(clients) == 1
-    assert generic_transport.calls[0][0].url == (
-        "https://tts.example.test/generate"
-    )
+    assert generic_transport.calls[0][0].url == ("https://tts.example.test/generate")
     assert provider.last_receipt is not None
     assert provider.last_receipt.status == "degraded"
-    assert provider.last_receipt.selected_endpoint == (
-        "https://tts.example.test/generate"
-    )
+    assert provider.last_receipt.selected_endpoint == ("https://tts.example.test/generate")
     assert "fallback-token" not in json.dumps(provider.last_receipt.to_dict())
 
 
@@ -478,9 +465,7 @@ def test_indextts_adapter_normalizes_wire_request_and_base64_response() -> None:
 
 
 def test_indextts_accepts_direct_audio_and_same_origin_download() -> None:
-    direct = RecordingTransport(
-        [HTTPResponse(200, WAV_AUDIO, {"Content-Type": "audio/wav"})]
-    )
+    direct = RecordingTransport([HTTPResponse(200, WAV_AUDIO, {"Content-Type": "audio/wav"})])
     provider = IndexTTSHTTPProvider(
         ["https://tts.example.test/generate"],
         policy=AbbyResiliencePolicy(max_retries=0),
@@ -503,9 +488,7 @@ def test_indextts_accepts_direct_audio_and_same_origin_download() -> None:
     assert [call[0].method for call in download.calls] == ["POST", "GET"]
     assert download.calls[1][0].url == "https://tts.example.test/files/answer.wav"
 
-    unsafe = RecordingTransport(
-        [json_response({"audio_url": "http://metadata.internal/secret"})]
-    )
+    unsafe = RecordingTransport([json_response({"audio_url": "http://metadata.internal/secret"})])
     provider = IndexTTSHTTPProvider(
         ["https://tts.example.test/generate"],
         policy=AbbyResiliencePolicy(max_retries=0),
@@ -561,9 +544,7 @@ def test_whisper_adapter_normalizes_bytes_model_headers_and_nested_text() -> Non
 
     assert transcript == "food help"
     request, timeout = transport.calls[0]
-    assert request.url == (
-        "https://router.example.test/models/openai/whisper%20large"
-    )
+    assert request.url == ("https://router.example.test/models/openai/whisper%20large")
     assert request.body == WAV_AUDIO
     assert request.headers["Content-Type"] == "audio/x-wav"
     assert request.headers["Authorization"] == "Bearer whisper-secret"
@@ -598,9 +579,7 @@ def test_retry_backoff_endpoint_order_and_degraded_receipt() -> None:
     sleeps: List[float] = []
     transport = RecordingTransport(
         [
-            TimeoutError(
-                "Authorization: Bearer super-secret timed out for safe prompt"
-            ),
+            TimeoutError("Authorization: Bearer super-secret timed out for safe prompt"),
             HTTPResponse(503, b"busy"),
             json_response({"audioBase64": base64.b64encode(WAV_AUDIO).decode()}),
         ]
@@ -637,14 +616,10 @@ def test_retry_backoff_endpoint_order_and_degraded_receipt() -> None:
 
 @pytest.mark.parametrize("status", [408, 425, 429, 500, 503])
 def test_transient_http_statuses_are_retried(status: int) -> None:
-    transport = RecordingTransport(
-        [HTTPResponse(status, b"failed"), json_response({"text": "ok"})]
-    )
+    transport = RecordingTransport([HTTPResponse(status, b"failed"), json_response({"text": "ok"})])
     provider = HuggingFaceWhisperHTTPProvider(
         ["https://whisper.example.test"],
-        policy=AbbyResiliencePolicy(
-            max_retries=1, backoff_seconds=0, circuit_failure_threshold=2
-        ),
+        policy=AbbyResiliencePolicy(max_retries=1, backoff_seconds=0, circuit_failure_threshold=2),
         transport=transport,
     )
     assert provider.transcribe(WAV_AUDIO) == "ok"
@@ -658,9 +633,7 @@ def test_terminal_http_statuses_are_not_retried_or_counted_for_circuit(
     transport = RecordingTransport([HTTPResponse(status, b"no")])
     provider = HuggingFaceWhisperHTTPProvider(
         ["https://whisper.example.test"],
-        policy=AbbyResiliencePolicy(
-            max_retries=3, circuit_failure_threshold=1
-        ),
+        policy=AbbyResiliencePolicy(max_retries=3, circuit_failure_threshold=1),
         transport=transport,
     )
     with pytest.raises(AbbyProviderError) as caught:
@@ -707,9 +680,7 @@ def test_circuit_opens_fast_fails_and_recovers_with_half_open_probe() -> None:
 
 def test_circuit_half_open_failure_reopens() -> None:
     clock = FakeClock()
-    transport = RecordingTransport(
-        [TimeoutError("open"), TimeoutError("probe")]
-    )
+    transport = RecordingTransport([TimeoutError("open"), TimeoutError("probe")])
     provider = IndexTTSHTTPProvider(
         ["https://tts.example.test"],
         policy=AbbyResiliencePolicy(
@@ -734,15 +705,9 @@ def test_circuit_half_open_failure_reopens() -> None:
 
 def test_provider_cache_identity_isolated_by_endpoint_and_token() -> None:
     policy = AbbyResiliencePolicy(max_retries=0)
-    first = IndexTTSHTTPProvider(
-        ["https://one.example.test"], token="one", policy=policy
-    )
-    second = IndexTTSHTTPProvider(
-        ["https://two.example.test"], token="one", policy=policy
-    )
-    third = IndexTTSHTTPProvider(
-        ["https://one.example.test"], token="two", policy=policy
-    )
+    first = IndexTTSHTTPProvider(["https://one.example.test"], token="one", policy=policy)
+    second = IndexTTSHTTPProvider(["https://two.example.test"], token="one", policy=policy)
+    third = IndexTTSHTTPProvider(["https://one.example.test"], token="two", policy=policy)
     assert len({first.cache_identity, second.cache_identity, third.cache_identity}) == 3
     assert "one" not in first.cache_identity
 
@@ -813,9 +778,7 @@ def test_router_uses_remote_then_local_stt_in_exact_order() -> None:
     assert result.transcript == "successful transcript"
     assert result.provenance.stt_provider == "abby-test-local-stt"
     assert "stt_provider_fallback" in result.fallback_reasons
-    transcription = [
-        trace for trace in result.traces if trace.stage == "transcription"
-    ]
+    transcription = [trace for trace in result.traces if trace.stage == "transcription"]
     assert [(trace.provider, trace.status) for trace in transcription] == [
         ("abby_whisper", "failed"),
         ("abby-test-local-stt", "succeeded"),
@@ -898,17 +861,13 @@ def test_synchronous_router_closes_unexpected_coroutine_and_falls_back() -> None
     assert result.audio == WAV_AUDIO
     assert result.provenance.tts_provider == "abby-test-sync-fallback"
     failed = [
-        trace
-        for trace in result.traces
-        if trace.stage == "synthesis" and trace.status == "failed"
+        trace for trace in result.traces if trace.stage == "synthesis" and trace.status == "failed"
     ]
     assert "non-empty audio bytes" in str(failed[0].error)
 
 
 def test_async_transport_is_rejected_and_coroutine_closed() -> None:
-    async def async_transport(
-        request: HTTPRequest, timeout: float
-    ) -> HTTPResponse:
+    async def async_transport(request: HTTPRequest, timeout: float) -> HTTPResponse:
         return json_response({"text": "not accepted"})
 
     provider = HuggingFaceWhisperHTTPProvider(

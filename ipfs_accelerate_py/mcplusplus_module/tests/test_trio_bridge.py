@@ -44,6 +44,7 @@ class TestTrioBridge:
     @pytest.mark.trio
     async def test_run_in_trio_already_in_trio(self):
         """Test run_in_trio when already in Trio context."""
+
         async def trio_func(x):
             assert is_trio_context()
             return x * 2
@@ -54,6 +55,7 @@ class TestTrioBridge:
     @pytest.mark.trio
     async def test_run_in_trio_sync_function(self):
         """Test run_in_trio with a synchronous function."""
+
         def sync_func(x, y):
             return x + y
 

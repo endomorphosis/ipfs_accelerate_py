@@ -166,9 +166,7 @@ def repo_root_from(start: Path | None = None) -> Path:
     for candidate in candidates:
         if (candidate / DEFAULT_LOCK_RELATIVE).is_file():
             return candidate
-        if (candidate / "pyproject.toml").is_file() and (
-            candidate / "config"
-        ).is_dir():
+        if (candidate / "pyproject.toml").is_file() and (candidate / "config").is_dir():
             return candidate
     return Path.cwd().resolve()
 
@@ -251,9 +249,7 @@ def detect_lean_shim_toolchain_mismatch(
 
     if not selected_toolchain or not str(selected_toolchain).strip():
         return False
-    installed = {
-        item.strip() for item in installed_toolchains if item and str(item).strip()
-    }
+    installed = {item.strip() for item in installed_toolchains if item and str(item).strip()}
     return selected_toolchain.strip() not in installed
 
 
@@ -557,17 +553,13 @@ def probe_tool_identity(
         # PATH presence without a successful identity probe is not installed.
         return result
 
-    banner = first_nonempty_line(completed.stdout) or first_nonempty_line(
-        completed.stderr
-    )
+    banner = first_nonempty_line(completed.stdout) or first_nonempty_line(completed.stderr)
     # Some tools (java) write version to stderr with non-zero on --version.
     if not banner and tool_id == "java":
         # Retry with -version which java accepts.
         completed = bounded_run([executable, "-version"], timeout=timeout, env=env)
         if completed is not None:
-            banner = first_nonempty_line(completed.stdout) or first_nonempty_line(
-                completed.stderr
-            )
+            banner = first_nonempty_line(completed.stdout) or first_nonempty_line(completed.stderr)
 
     if not banner:
         result["probe_error"] = "empty_version_banner"
@@ -581,15 +573,9 @@ def probe_tool_identity(
         installed = list_elan_installed_toolchains()
         result["installed_toolchains"] = installed
         match = re.search(r"version\s+(\d+\.\d+\.\d+)", banner, re.IGNORECASE)
-        selected = (
-            f"leanprover/lean4:v{match.group(1)}"
-            if match
-            else probe.get("locked_toolchain")
-        )
+        selected = f"leanprover/lean4:v{match.group(1)}" if match else probe.get("locked_toolchain")
         result["selected_toolchain"] = selected
-        result["shim_toolchain_mismatch"] = detect_lean_shim_toolchain_mismatch(
-            selected, installed
-        )
+        result["shim_toolchain_mismatch"] = detect_lean_shim_toolchain_mismatch(selected, installed)
 
     return result
 
@@ -879,9 +865,7 @@ def certify_tool(
         cert.unavailable = True
         cert.promotion_blocked = True
         cert.evidence_class = "path_shim"
-        cert.notes = (
-            "Executable on PATH but identity probe failed; PATH shims are not usability."
-        )
+        cert.notes = "Executable on PATH but identity probe failed; PATH shims are not usability."
         cert.checks = [
             CheckResult(
                 check_id=f"{tool_id}.{kind}",
@@ -922,9 +906,7 @@ def certify_tool(
         cert.usable = False
         cert.promotion_blocked = True
         cert.evidence_class = "shim_mismatch"
-        cert.notes = (
-            "Selected toolchain not offline-installed; fail closed without download."
-        )
+        cert.notes = "Selected toolchain not offline-installed; fail closed without download."
     elif cert.locked_version_mismatch:
         cert.block_reasons.append("locked_version_mismatch")
         cert.usable = False
@@ -951,9 +933,7 @@ def certify_tool(
 
     required_kinds = {"positive", "replay"}
     required_passed = all(
-        check.status == "passed"
-        for check in cert.checks
-        if check.kind in required_kinds
+        check.status == "passed" for check in cert.checks if check.kind in required_kinds
     )
     # For SMT, all four checks must pass for production certification.
     if check_kind == "smtlib":
@@ -982,9 +962,7 @@ def certify_tool(
         cert.promotion_blocked = False
         cert.block_reasons = []
         cert.evidence_class = "production_certified"
-        cert.notes = (
-            "Hermetic offline certification passed with exact identity and live checks."
-        )
+        cert.notes = "Hermetic offline certification passed with exact identity and live checks."
     elif cert.usable and not cert.production_certified:
         cert.promotion_blocked = True
 
@@ -1122,25 +1100,15 @@ def build_certificate(
         lane_id = str(lane["lane_id"])
         tool_ids = list(lane["tool_ids"])
         certified = [
-            tid
-            for tid in tool_ids
-            if tool_certs.get(tid) and tool_certs[tid].production_certified
+            tid for tid in tool_ids if tool_certs.get(tid) and tool_certs[tid].production_certified
         ]
         unavailable = [
-            tid
-            for tid in tool_ids
-            if tool_certs.get(tid) and tool_certs[tid].unavailable
+            tid for tid in tool_ids if tool_certs.get(tid) and tool_certs[tid].unavailable
         ]
         blocked = [
-            tid
-            for tid in tool_ids
-            if tool_certs.get(tid) and tool_certs[tid].promotion_blocked
+            tid for tid in tool_ids if tool_certs.get(tid) and tool_certs[tid].promotion_blocked
         ]
-        q_ids = [
-            item.quarantine_id
-            for item in disagreements
-            if item.lane_id == lane_id
-        ]
+        q_ids = [item.quarantine_id for item in disagreements if item.lane_id == lane_id]
         # Lane is promotion-ready when at least one tool is certified and no
         # unresolved quarantine remains for the lane. Optional absent tools do
         # not fail the lane.
@@ -1156,24 +1124,16 @@ def build_certificate(
                 blocked_tool_ids=blocked,
                 disagreement_quarantine_ids=q_ids,
                 promotion_ready=promotion_ready,
-                notes=(
-                    "Absent tools block only their own promotion."
-                    if unavailable
-                    else ""
-                ),
+                notes=("Absent tools block only their own promotion." if unavailable else ""),
             )
         )
 
     production_certified_ids = sorted(
         tid for tid, cert in tool_certs.items() if cert.production_certified
     )
-    unavailable_ids = sorted(
-        tid for tid, cert in tool_certs.items() if cert.unavailable
-    )
+    unavailable_ids = sorted(tid for tid, cert in tool_certs.items() if cert.unavailable)
     blocked_map = {
-        tid: list(cert.block_reasons)
-        for tid, cert in tool_certs.items()
-        if cert.promotion_blocked
+        tid: list(cert.block_reasons) for tid, cert in tool_certs.items() if cert.promotion_blocked
     }
 
     offline_policy = dict(lock.get("offline_verification_policy") or {})
@@ -1191,8 +1151,7 @@ def build_certificate(
             "certification performs no download/network/install and quarantines "
             "disagreement."
         ),
-        "observed_at": observed_at
-        or datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "observed_at": observed_at or datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "binding_mode": "offline_pinned_live_lanes",
         "lock": {
             "path": str(DEFAULT_LOCK_RELATIVE).replace("\\", "/"),
@@ -1274,16 +1233,12 @@ def build_certificate(
             "production_certified_tool_ids": production_certified_ids,
             "unavailable_tool_ids": unavailable_ids,
             "blocked_tool_ids": blocked_map,
-            "lane_promotion_ready": {
-                lane.lane_id: lane.promotion_ready for lane in lanes
-            },
+            "lane_promotion_ready": {lane.lane_id: lane.promotion_ready for lane in lanes},
         },
         "check_kinds_required": ["positive", "negative", "mutation", "replay"],
         "evidence": {
             "certifier": "tools/logic/certify_formal_verification_toolchains.py",
-            "integration_test": (
-                "test/integration/test_formal_verification_real_tool_matrix.py"
-            ),
+            "integration_test": ("test/integration/test_formal_verification_real_tool_matrix.py"),
             "lock": str(DEFAULT_LOCK_RELATIVE).replace("\\", "/"),
         },
         "certificate_digest_sha256": "",  # filled below
@@ -1368,11 +1323,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         json.dump(certificate, sys.stdout, indent=2)
         sys.stdout.write("\n")
     else:
-        output = (
-            args.output.resolve()
-            if args.output
-            else (root / DEFAULT_CERTIFICATE_RELATIVE)
-        )
+        output = args.output.resolve() if args.output else (root / DEFAULT_CERTIFICATE_RELATIVE)
         write_certificate(certificate, output)
         if not args.quiet:
             print(f"wrote {output}", file=sys.stderr)
@@ -1380,8 +1331,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not args.quiet:
         promotion = certificate["promotion"]
         print(
-            "production_certified="
-            f"{promotion['production_certified_tool_ids']}",
+            f"production_certified={promotion['production_certified_tool_ids']}",
             file=sys.stderr,
         )
         print(

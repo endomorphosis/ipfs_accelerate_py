@@ -59,9 +59,7 @@ class _CompletionRuntime:
             return None
         self.completion_routes.append(dict(payload))
         return SimpleNamespace(
-            receipt=SimpleNamespace(
-                receipt_id=f"completion-{len(self.completion_routes)}"
-            )
+            receipt=SimpleNamespace(receipt_id=f"completion-{len(self.completion_routes)}")
         )
 
 
@@ -144,11 +142,7 @@ def _completion_intent(
     repo: Path,
     task_id: str,
 ) -> dict[str, object]:
-    task = next(
-        candidate
-        for candidate in daemon._load_tasks()
-        if candidate.task_id == task_id
-    )
+    task = next(candidate for candidate in daemon._load_tasks() if candidate.task_id == task_id)
     return daemon._completion_publication_intent(
         task,
         merged_tree_id=_git(repo, "rev-parse", "HEAD"),
@@ -209,9 +203,7 @@ def test_restart_reuses_durable_publication_after_lease_journal_cas_failure(
         task_cid: str,
     ) -> None:
         assert queue._path is not None
-        queue_successes.append(
-            (queue._path.resolve(strict=False), task_cid)
-        )
+        queue_successes.append((queue._path.resolve(strict=False), task_cid))
         original_record_success(queue, task_cid)
 
     monkeypatch.setattr(
@@ -224,10 +216,7 @@ def test_restart_reuses_durable_publication_after_lease_journal_cas_failure(
 
     def fail_first_publication_journal(lease, metadata, **kwargs):
         nonlocal failed_publication_journal
-        if (
-            not failed_publication_journal
-            and "completion_publication" in metadata
-        ):
+        if not failed_publication_journal and "completion_publication" in metadata:
             failed_publication_journal = True
             return None
         return original_update(lease, metadata, **kwargs)
@@ -255,13 +244,9 @@ def test_restart_reuses_durable_publication_after_lease_journal_cas_failure(
         sink,
         str(intent["intent_id"]),
     )
-    publication_record = json.loads(
-        publication_path.read_text(encoding="utf-8")
-    )
+    publication_record = json.loads(publication_path.read_text(encoding="utf-8"))
     assert publication_record["publication"]["published"] is True
-    assert publication_record["publication"]["decision_receipt_id"] == (
-        "completion-1"
-    )
+    assert publication_record["publication"]["decision_receipt_id"] == ("completion-1")
     assert publication_record["queue_recorded"] is True
 
     _make_retained_lease_owner_dead(daemon)
@@ -329,9 +314,7 @@ def test_partial_protected_bundle_survives_commit_before_marker_restart(
         nonlocal cas_calls
         cas_calls += 1
         if cas_calls == 2:
-            raise TaskSourceIntegrityError(
-                "injected second-member failure"
-            )
+            raise TaskSourceIntegrityError("injected second-member failure")
         return original_cas(*args, **kwargs)
 
     monkeypatch.setattr(
@@ -371,10 +354,7 @@ def test_partial_protected_bundle_survives_commit_before_marker_restart(
 
     def fail_first_callback_marker(lease, metadata, **kwargs):
         nonlocal failed_callback_marker
-        if (
-            not failed_callback_marker
-            and "protected_callback_success" in metadata
-        ):
+        if not failed_callback_marker and "protected_callback_success" in metadata:
             failed_callback_marker = True
             return None
         return original_update(lease, metadata, **kwargs)
@@ -389,9 +369,7 @@ def test_partial_protected_bundle_survives_commit_before_marker_restart(
 
     assert replayed["updated_task_ids"] == ["FIX-002"]
     assert replayed["already_completed_task_ids"] == ["FIX-001"]
-    assert replayed["reason"] == (
-        "protected_recovery_callback_marker_pending"
-    )
+    assert replayed["reason"] == ("protected_recovery_callback_marker_pending")
     assert replayed["checkout_mutation_lease_retained"] is True
     assert replay_runtime.completion_routes == []
     assert _git(repo, "status", "--porcelain", "--", "todo.md") == ""
@@ -440,9 +418,7 @@ def test_partial_protected_bundle_survives_commit_before_marker_restart(
         "FIX-001",
         "FIX-002",
     ]
-    assert released_metadata[-1]["completion_publication"]["published"] is (
-        True
-    )
+    assert released_metadata[-1]["completion_publication"]["published"] is (True)
     assert not checkout_mutation_lock_path(repo).exists()
 
 
@@ -479,9 +455,7 @@ def test_external_partial_bundle_is_non_durable_until_recovery_retry(
         nonlocal cas_calls
         cas_calls += 1
         if cas_calls == 2:
-            raise TaskSourceIntegrityError(
-                "injected external second-member failure"
-            )
+            raise TaskSourceIntegrityError("injected external second-member failure")
         return original_cas(*args, **kwargs)
 
     monkeypatch.setattr(
@@ -514,9 +488,7 @@ def test_external_partial_bundle_is_non_durable_until_recovery_retry(
         sink,
         str(intent["intent_id"]),
     )
-    assert json.loads(
-        callback_path.read_text(encoding="utf-8")
-    )["phase"] == "pending"
+    assert json.loads(callback_path.read_text(encoding="utf-8"))["phase"] == "pending"
 
     restarted_runtime = _CompletionRuntime()
     restarted = PortalImplementationDaemon(
@@ -540,9 +512,7 @@ def test_external_partial_bundle_is_non_durable_until_recovery_retry(
     assert restarted.task_source.get("FIX-002").status == "completed"
     assert len(restarted_runtime.completion_routes) == 1
     assert publication_path.exists()
-    completed_callback = json.loads(
-        callback_path.read_text(encoding="utf-8")
-    )
+    completed_callback = json.loads(callback_path.read_text(encoding="utf-8"))
     assert completed_callback["phase"] == "completed"
     assert completed_callback["completion_publication"]["published"] is True
 
@@ -627,10 +597,7 @@ def test_cross_state_recovery_uses_only_journal_bound_queue(
         str(intent["queue_task_cid"]),
     )
     adopter_queue = PersistentTaskQueue.load(adopter_queue_path)
-    assert (
-        adopter_queue.resolve_key(str(intent["queue_task_cid"]))
-        not in adopter_queue.entries
-    )
+    assert adopter_queue.resolve_key(str(intent["queue_task_cid"])) not in adopter_queue.entries
     assert not checkout_mutation_lock_path(repo).exists()
 
 
@@ -663,9 +630,7 @@ def test_dual_task_source_is_classified_as_protected_markdown_writer(
     )
 
     assert daemon._task_source_writes_markdown_checkout() is True
-    assert daemon._task_source_markdown_checkout_paths() == (
-        markdown_path,
-    )
+    assert daemon._task_source_markdown_checkout_paths() == (markdown_path,)
     assert daemon._todo_board_is_implementation_protected() is True
     assert daemon._todo_mutation_requires_checkout_lease() is True
     assert daemon._protected_paths_for_checkout_mutation(

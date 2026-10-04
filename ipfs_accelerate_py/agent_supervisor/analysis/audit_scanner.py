@@ -110,7 +110,9 @@ class AstCoverageReport:
             return 0.0
         return max(
             0.0,
-            min(1.0, (self.scanned_file_count - len(self.parse_failures)) / self.expected_file_count),
+            min(
+                1.0, (self.scanned_file_count - len(self.parse_failures)) / self.expected_file_count
+            ),
         )
 
     @property
@@ -142,9 +144,7 @@ class AstCoverageReport:
     def to_dict(self, *, include_records: bool = False) -> dict[str, Any]:
         payload = self.summary_dict()
         payload["objective_terms"] = list(self.objective_terms)
-        payload["term_evidence"] = {
-            key: list(value) for key, value in self.term_evidence.items()
-        }
+        payload["term_evidence"] = {key: list(value) for key, value in self.term_evidence.items()}
         payload["parse_failures"] = [dict(item) for item in self.parse_failures]
         if include_records:
             payload["records"] = [dict(item) for item in self.records]
@@ -203,9 +203,7 @@ def run_exhaustive_ast_coverage(
         retained_bytes += row_bytes
     retained_paths = {str(row.get("root_relative_path") or "") for row in retained}
     expected_relative = {
-        repo_relative_path(root, path)
-        for path in expected_paths
-        if path.is_file()
+        repo_relative_path(root, path) for path in expected_paths if path.is_file()
     }
     complete = not limit_reason and retained_paths == expected_relative
     failures = tuple(
@@ -252,9 +250,7 @@ def _finding_mapping(value: CodebaseFinding | Mapping[str, Any]) -> dict[str, An
     if isinstance(raw_goal_ids, (str, bytes, bytearray)):
         raw_goal_ids = (raw_goal_ids,) if str(raw_goal_ids).strip() else ()
     payload["objective_goal_ids"] = tuple(
-        str(goal_id).strip()
-        for goal_id in raw_goal_ids
-        if str(goal_id).strip()
+        str(goal_id).strip() for goal_id in raw_goal_ids if str(goal_id).strip()
     )
     for name in fields:
         if name not in {"line_number", "objective_goal_ids"}:
@@ -307,7 +303,11 @@ class AuditFindingRecord:
     prior_content_revision: str = ""
 
     def __post_init__(self) -> None:
-        status = self.status if isinstance(self.status, AuditFindingStatus) else AuditFindingStatus(str(self.status))
+        status = (
+            self.status
+            if isinstance(self.status, AuditFindingStatus)
+            else AuditFindingStatus(str(self.status))
+        )
         object.__setattr__(self, "status", status)
         if self.current is not None and not isinstance(self.current, CodebaseFinding):
             object.__setattr__(self, "current", _finding(self.current))
@@ -319,9 +319,13 @@ class AuditFindingRecord:
                 raise ValueError("audit record requires current or prior finding")
             object.__setattr__(self, "audit_key", audit_finding_key(basis))
         if self.current is not None and not self.current_content_revision:
-            object.__setattr__(self, "current_content_revision", audit_finding_content_revision(self.current))
+            object.__setattr__(
+                self, "current_content_revision", audit_finding_content_revision(self.current)
+            )
         if self.prior is not None and not self.prior_content_revision:
-            object.__setattr__(self, "prior_content_revision", audit_finding_content_revision(self.prior))
+            object.__setattr__(
+                self, "prior_content_revision", audit_finding_content_revision(self.prior)
+            )
 
     @property
     def finding(self) -> CodebaseFinding:
@@ -356,8 +360,22 @@ def classify_audit_findings(
 
     current = [_finding(item) for item in current_findings]
     prior = [_finding(item) for item in baseline_findings]
-    current.sort(key=lambda item: (item.root_relative_path, item.line_number, item.kind, audit_finding_content_revision(item)))
-    prior.sort(key=lambda item: (item.root_relative_path, item.line_number, item.kind, audit_finding_content_revision(item)))
+    current.sort(
+        key=lambda item: (
+            item.root_relative_path,
+            item.line_number,
+            item.kind,
+            audit_finding_content_revision(item),
+        )
+    )
+    prior.sort(
+        key=lambda item: (
+            item.root_relative_path,
+            item.line_number,
+            item.kind,
+            audit_finding_content_revision(item),
+        )
+    )
     current_by_key: dict[str, list[CodebaseFinding]] = {}
     prior_by_key: dict[str, list[CodebaseFinding]] = {}
     for finding in current:
@@ -375,7 +393,11 @@ def classify_audit_findings(
             current_item = current_group.pop(0)
             current_revision = audit_finding_content_revision(current_item)
             exact_index = next(
-                (index for index, item in enumerate(prior_group) if audit_finding_content_revision(item) == current_revision),
+                (
+                    index
+                    for index, item in enumerate(prior_group)
+                    if audit_finding_content_revision(item) == current_revision
+                ),
                 None,
             )
             if exact_index is not None:
@@ -417,11 +439,17 @@ def classify_audit_findings(
             )
     for item in unmatched_current:
         if id(item) not in consumed_current:
-            records.append(AuditFindingRecord(AuditFindingStatus.NOVEL, audit_finding_key(item), item, None))
+            records.append(
+                AuditFindingRecord(AuditFindingStatus.NOVEL, audit_finding_key(item), item, None)
+            )
     for item in unmatched_prior:
         if id(item) not in consumed_prior:
-            records.append(AuditFindingRecord(AuditFindingStatus.STALE, audit_finding_key(item), None, item))
-    return tuple(sorted(records, key=lambda item: (item.status.value, item.audit_key, item.fingerprint)))
+            records.append(
+                AuditFindingRecord(AuditFindingStatus.STALE, audit_finding_key(item), None, item)
+            )
+    return tuple(
+        sorted(records, key=lambda item: (item.status.value, item.audit_key, item.fingerprint))
+    )
 
 
 @dataclass(frozen=True)
@@ -451,7 +479,10 @@ class AuditScanResult:
 
     @property
     def counts(self) -> dict[str, int]:
-        return {status.value: sum(item.status is status for item in self.records) for status in AuditFindingStatus}
+        return {
+            status.value: sum(item.status is status for item in self.records)
+            for status in AuditFindingStatus
+        }
 
     known_count = property(lambda self: len(self.known))
     stale_count = property(lambda self: len(self.stale))
@@ -474,7 +505,9 @@ class AuditScanResult:
             "novel": [item.to_dict() for item in self.novel],
             "inventory": self.inventory.details_dict(),
             "quorum": self.quorum.to_dict(),
-            "snapshot_artifact": self.snapshot_artifact.to_dict() if self.snapshot_artifact else None,
+            "snapshot_artifact": self.snapshot_artifact.to_dict()
+            if self.snapshot_artifact
+            else None,
         }
 
     def completion_gate_evidence(
@@ -540,9 +573,7 @@ class AuditScanResult:
                 continue
             member_finished = utc(member.get("finished_at"))
             member_age = (
-                (instant - member_finished).total_seconds()
-                if member_finished is not None
-                else None
+                (instant - member_finished).total_seconds() if member_finished is not None else None
             )
             if member_age is None or member_age < -1.0 or member_age > float(max_age_seconds):
                 stale_member_ids.append(str(member.get("member_id") or "[missing-member-id]"))
@@ -554,7 +585,9 @@ class AuditScanResult:
         if self.receipt.safe_for_completion_reasoning is not True:
             reason_codes.append("analysis_not_completion_safe")
         if health_status != AnalyzerHealthStatus.HEALTHY.value:
-            reason_codes.append("analyzer_health_missing" if not health_status else "analyzer_unhealthy")
+            reason_codes.append(
+                "analyzer_health_missing" if not health_status else "analyzer_unhealthy"
+            )
         if not coverage_complete:
             reason_codes.append("coverage_incomplete")
         if not exhaustive:
@@ -580,9 +613,7 @@ class AuditScanResult:
         # The health safety flag describes this exact health observation in
         # context; it is not a replacement for the receipt or quorum verdict.
         health["safe_for_completion_reasoning"] = bool(
-            health_status == AnalyzerHealthStatus.HEALTHY.value
-            and coverage_complete
-            and exhaustive
+            health_status == AnalyzerHealthStatus.HEALTHY.value and coverage_complete and exhaustive
         )
         freshness = {
             "evaluated_at": instant.isoformat(),
@@ -649,7 +680,9 @@ _AUDIT_GATE_REASON_MESSAGES: Mapping[str, str] = {
 
 def _audit_gate_reason(code: str) -> str:
     if code.startswith("analysis_") and code not in _AUDIT_GATE_REASON_MESSAGES:
-        return f"The audit terminal state {code.removeprefix('analysis_')!r} cannot prove completion."
+        return (
+            f"The audit terminal state {code.removeprefix('analysis_')!r} cannot prove completion."
+        )
     return _AUDIT_GATE_REASON_MESSAGES.get(code, "The audit evidence cannot prove completion.")
 
 
@@ -742,7 +775,9 @@ def _analysis_candidate_dict(value: Any) -> dict[str, Any]:
     return {"candidate": str(value)}
 
 
-def _stage_values(value: Any) -> tuple[list[Any], bool, float, dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
+def _stage_values(
+    value: Any,
+) -> tuple[list[Any], bool, float, dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
     """Normalize injectable scanner results used by the policy and tests."""
 
     if isinstance(value, Mapping):
@@ -753,8 +788,7 @@ def _stage_values(value: Any) -> tuple[list[Any], bool, float, dict[str, Any], d
         scope = dict(value.get("scope") or {})
         cost = dict(value.get("cost") or {})
         rejected = [
-            _analysis_candidate_dict(item)
-            for item in (value.get("rejected_candidates") or ())
+            _analysis_candidate_dict(item) for item in (value.get("rejected_candidates") or ())
         ]
         return candidates, healthy, confidence, scope, cost, rejected
     if isinstance(value, CodebaseScanInventory):
@@ -767,15 +801,20 @@ def _stage_values(value: Any) -> tuple[list[Any], bool, float, dict[str, Any], d
             {"reason": "scan_limit", "count": value.rejected_candidate_count},
         ]
         rejected = [item for item in rejected if item["count"]]
-        confidence = 1.0 if health.status is AnalyzerHealthStatus.HEALTHY else (
-            0.5 if health.status is AnalyzerHealthStatus.PARTIAL else 0.0
+        confidence = (
+            1.0
+            if health.status is AnalyzerHealthStatus.HEALTHY
+            else (0.5 if health.status is AnalyzerHealthStatus.PARTIAL else 0.0)
         )
         return (
             list(value.findings),
             health.status is not AnalyzerHealthStatus.UNHEALTHY,
             confidence,
             value.coverage_dict(),
-            {"files_parsed": value.parsed_file_count, "candidates_examined": value.raw_candidate_count},
+            {
+                "files_parsed": value.parsed_file_count,
+                "candidates_examined": value.raw_candidate_count,
+            },
             rejected,
         )
     if isinstance(value, AstCoverageReport):
@@ -792,7 +831,14 @@ def _stage_values(value: Any) -> tuple[list[Any], bool, float, dict[str, Any], d
             [dict(item) for item in value.parse_failures],
         )
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
-        return list(value), True, 1.0, {"candidate_count": len(value)}, {"candidate_count": len(value)}, []
+        return (
+            list(value),
+            True,
+            1.0,
+            {"candidate_count": len(value)},
+            {"candidate_count": len(value)},
+            [],
+        )
     raise TypeError("analysis scanner must return a sequence, mapping, or coverage inventory")
 
 
@@ -879,7 +925,9 @@ def run_low_backlog_analysis(
                 rejected_candidates=tuple(rejected[: limits.max_rejected_candidates]),
                 objective_terms=effective_terms,
                 accepted_candidates=tuple(accepted_payloads),
-                reason="" if healthy else "incremental scan was partial; escalating to AST coverage",
+                reason=""
+                if healthy
+                else "incremental scan was partial; escalating to AST coverage",
             )
         )
     except Exception as exc:
@@ -933,7 +981,9 @@ def run_low_backlog_analysis(
         records.append(
             AnalysisEscalationRecord(
                 AnalysisEscalationStage.EXHAUSTIVE_AST,
-                AnalysisEscalationStatus.COMPLETED if ast_healthy else AnalysisEscalationStatus.LIMITED,
+                AnalysisEscalationStatus.COMPLETED
+                if ast_healthy
+                else AnalysisEscalationStatus.LIMITED,
                 cost=cost,
                 scope=scope,
                 novelty=len(accepted_payloads) / max(1, len(candidates) + len(rejected)),
@@ -985,9 +1035,7 @@ def run_low_backlog_analysis(
                                 build_python_ast_blob_record(
                                     source,
                                     blob_identity=str(
-                                        row.get("blob_hash")
-                                        or row.get("source_sha1")
-                                        or ""
+                                        row.get("blob_hash") or row.get("source_sha1") or ""
                                     ),
                                 ),
                             )
@@ -1002,13 +1050,9 @@ def run_low_backlog_analysis(
                             ),
                             "records": [
                                 {
-                                    "path": str(
-                                        row.get("root_relative_path") or ""
-                                    ),
+                                    "path": str(row.get("root_relative_path") or ""),
                                     "blob": str(
-                                        row.get("blob_hash")
-                                        or row.get("source_sha1")
-                                        or ""
+                                        row.get("blob_hash") or row.get("source_sha1") or ""
                                     ),
                                 }
                                 for row in (
@@ -1037,13 +1081,9 @@ def run_low_backlog_analysis(
                     ast_records=tuple(ast_records),
                     retrieval_inputs={"records": tuple(retrieval_records)},
                 )
-            pipeline_value = analysis_pipeline.analyze(
-                analysis_pipeline_request
-            )
+            pipeline_value = analysis_pipeline.analyze(analysis_pipeline_request)
             converter = getattr(pipeline_value, "to_dict", None)
-            pipeline_projection = (
-                converter() if callable(converter) else pipeline_value
-            )
+            pipeline_projection = converter() if callable(converter) else pipeline_value
             if not isinstance(pipeline_projection, Mapping):
                 raise TypeError("analysis pipeline returned no result mapping")
             # Pipeline output is ranked proposal context only.  Even a
@@ -1052,25 +1092,17 @@ def run_low_backlog_analysis(
             pipeline_payload = {
                 "result_id": pipeline_projection.get("result_id", ""),
                 "cache_status": pipeline_projection.get("cache_status", ""),
-                "cache_lookup_status": pipeline_projection.get(
-                    "cache_lookup_status", ""
-                ),
-                "cache_reason_codes": list(
-                    pipeline_projection.get("cache_reason_codes") or ()
-                ),
+                "cache_lookup_status": pipeline_projection.get("cache_lookup_status", ""),
+                "cache_reason_codes": list(pipeline_projection.get("cache_reason_codes") or ()),
                 "ast_index_id": pipeline_projection.get("ast_index_id", ""),
-                "retrieval_response_id": pipeline_projection.get(
-                    "retrieval_response_id", ""
-                ),
+                "retrieval_response_id": pipeline_projection.get("retrieval_response_id", ""),
                 "ranked_evidence_references": list(
                     pipeline_projection.get("ranked_evidence_references") or ()
                 ),
                 "retrieval_backend_health": dict(
                     pipeline_projection.get("retrieval_backend_health") or {}
                 ),
-                "retrieval_truncation": dict(
-                    pipeline_projection.get("retrieval_truncation") or {}
-                ),
+                "retrieval_truncation": dict(pipeline_projection.get("retrieval_truncation") or {}),
                 "safe_for_completion_reasoning": False,
                 "nomination_only": True,
             }
@@ -1173,7 +1205,9 @@ def run_low_backlog_analysis(
                     reason="fallback work is not exhaustion evidence",
                 )
             )
-        inconclusive = bool(routed.analysis_inconclusive or projected < limits.backlog_target or not ast_healthy)
+        inconclusive = bool(
+            routed.analysis_inconclusive or projected < limits.backlog_target or not ast_healthy
+        )
         return AnalysisEscalationResult(
             (
                 AnalysisEscalationStatus.ANALYSIS_INCONCLUSIVE
@@ -1254,18 +1288,15 @@ def run_audit_scan(
     started_at = datetime.now(timezone.utc)
     root = Path(repo_root).resolve()
     generic_identity = scan_identity(root)
-    store = dataset_store or (ObjectiveDatasetStore(dataset_dir) if dataset_dir is not None else None)
+    store = dataset_store or (
+        ObjectiveDatasetStore(dataset_dir) if dataset_dir is not None else None
+    )
     objective_source = objective
     if objective_path is not None:
         objective_source = (
-            objective_path.read_text(encoding="utf-8")
-            if objective_path.is_file()
-            else ""
+            objective_path.read_text(encoding="utf-8") if objective_path.is_file() else ""
         )
-    objective_id = (
-        objective_revision
-        or canonical_objective_revision(objective_source)
-    )
+    objective_id = objective_revision or canonical_objective_revision(objective_source)
     scope_id = _audit_scope_id(generic_identity.repository_id, objective_id)
     if baseline_findings is not None and known_findings is not None:
         raise ValueError("provide baseline_findings or known_findings, not both")
@@ -1311,10 +1342,19 @@ def run_audit_scan(
             objective_id,
         )
         receipt = build_scan_result(
-            ScanTerminalReason.TIMED_OUT, ScanMode.AUDIT, analyzer_version, root, started_at,
-            error=str(exc) or type(exc).__name__, identity=generic_identity,
+            ScanTerminalReason.TIMED_OUT,
+            ScanMode.AUDIT,
+            analyzer_version,
+            root,
+            started_at,
+            error=str(exc) or type(exc).__name__,
+            identity=generic_identity,
         )
-        quorum = evaluate_exhaustion_quorum([*prior_receipts, receipt], binding=binding, required_members=quorum_size or required_quorum)
+        quorum = evaluate_exhaustion_quorum(
+            [*prior_receipts, receipt],
+            binding=binding,
+            required_members=quorum_size or required_quorum,
+        )
         return AuditScanResult(receipt, (), empty, binding, quorum)
     except Exception as exc:
         empty = CodebaseScanInventory(complete=False)
@@ -1326,14 +1366,26 @@ def run_audit_scan(
             objective_id,
         )
         receipt = build_scan_result(
-            ScanTerminalReason.FAILED, ScanMode.AUDIT, analyzer_version, root, started_at,
-            error=f"{type(exc).__name__}: {exc}", identity=generic_identity,
+            ScanTerminalReason.FAILED,
+            ScanMode.AUDIT,
+            analyzer_version,
+            root,
+            started_at,
+            error=f"{type(exc).__name__}: {exc}",
+            identity=generic_identity,
         )
-        quorum = evaluate_exhaustion_quorum([*prior_receipts, receipt], binding=binding, required_members=quorum_size or required_quorum)
+        quorum = evaluate_exhaustion_quorum(
+            [*prior_receipts, receipt],
+            binding=binding,
+            required_members=quorum_size or required_quorum,
+        )
         return AuditScanResult(receipt, (), empty, binding, quorum)
 
     records = classify_audit_findings(admission.findings, baseline_rows)
-    counts = {status.value: sum(item.status is status for item in records) for status in AuditFindingStatus}
+    counts = {
+        status.value: sum(item.status is status for item in records)
+        for status in AuditFindingStatus
+    }
     health_inventory = inventory.health_inventory_dict(appended_tasks=0)
     # Audited observations are intentionally not materialized. Account for
     # every raw unique finding as policy-rejected for health-funnel purposes.
@@ -1388,7 +1440,11 @@ def run_audit_scan(
     escalation_eligible = bool(
         escalation_payload and escalation_payload.get("exhaustion_eligible", False)
     )
-    if terminal_reason is ScanTerminalReason.EXHAUSTED and escalation_payload is not None and not escalation_eligible:
+    if (
+        terminal_reason is ScanTerminalReason.EXHAUSTED
+        and escalation_payload is not None
+        and not escalation_eligible
+    ):
         terminal_reason = ScanTerminalReason.PARTIAL
 
     metadata = {
@@ -1438,8 +1494,10 @@ def run_audit_scan(
     evidence = [*previous_members, *prior_receipts, receipt]
     required = quorum_size or required_quorum
     quorum = evaluate_exhaustion_quorum(evidence, binding=binding, required_members=required)
-    if terminal_reason is ScanTerminalReason.EXHAUSTED and quorum.satisfied and (
-        escalation_payload is None or escalation_eligible
+    if (
+        terminal_reason is ScanTerminalReason.EXHAUSTED
+        and quorum.satisfied
+        and (escalation_payload is None or escalation_eligible)
     ):
         metadata = {**metadata, "exhaustion_quorum": quorum.to_dict()}
         receipt = build_scan_result(

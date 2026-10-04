@@ -46,15 +46,9 @@ from .repository_corpus_index import (
     RepositoryCorpusIndex,
 )
 
-PROGRAM_AST_ADAPTER_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-ast-adapter-result@1"
-)
-PROGRAM_EVIDENCE_FACT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-evidence-fact@1"
-)
-PROGRAM_EVIDENCE_INDEX_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/program-evidence-index@1"
-)
+PROGRAM_AST_ADAPTER_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-ast-adapter-result@1"
+PROGRAM_EVIDENCE_FACT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-evidence-fact@1"
+PROGRAM_EVIDENCE_INDEX_SCHEMA = "ipfs_accelerate_py/agent-supervisor/program-evidence-index@1"
 INVENTORY_PROGRAM_EVIDENCE_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/inventory-program-evidence-receipt@1"
 )
@@ -80,12 +74,8 @@ OBJECTIVE_PARENT_GOAL_ID: Final[str] = "VFS-G020"
 OBJECTIVE_TASK_ID: Final[str] = "VFS-063"
 # Repair task that owns the synthetic objective validation repair obligation.
 OBJECTIVE_VALIDATION_REPAIR_TASK_ID: Final[str] = "VFS-064"
-GOAL_PACKET_ID: Final[str] = (
-    "goal_packet/corpus_index/ipfs_accelerate_py/26d54d2206f9"
-)
-OBJECTIVE_DOMAIN_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
-    INCREMENTAL_AST_INDEX_EVIDENCE,
-)
+GOAL_PACKET_ID: Final[str] = "goal_packet/corpus_index/ipfs_accelerate_py/26d54d2206f9"
+OBJECTIVE_DOMAIN_EVIDENCE_TERMS: Final[tuple[str, ...]] = (INCREMENTAL_AST_INDEX_EVIDENCE,)
 # Parent VFS-G020 / packet aggregate evidence surface (inventory + AST index).
 # Domain packet keys only — objective validation repair is appended by
 # :func:`objective_validation_repair_evidence_terms` / full discovery helpers.
@@ -168,9 +158,7 @@ _JSON_STRING_RE = re.compile(r'"(?:\\.|[^"\\])*"')
 
 
 def _source_sha256(source: str) -> str:
-    return "sha256:" + hashlib.sha256(
-        source.encode("utf-8", errors="surrogatepass")
-    ).hexdigest()
+    return "sha256:" + hashlib.sha256(source.encode("utf-8", errors="surrogatepass")).hexdigest()
 
 
 def _canonical_json(value: Any) -> str:
@@ -184,9 +172,7 @@ def _canonical_json(value: Any) -> str:
 
 
 def _semantic_hash(value: Any) -> str:
-    return "sha256:" + hashlib.sha256(
-        _canonical_json(value).encode("utf-8")
-    ).hexdigest()
+    return "sha256:" + hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
 
 
 def _positive_limit(value: Any, name: str) -> int:
@@ -206,9 +192,7 @@ def _normalize_details(value: Mapping[str, Any] | None) -> Mapping[str, Any]:
         elif isinstance(item, Mapping):
             normalized[name] = {
                 str(child_key): child_value
-                for child_key, child_value in sorted(
-                    item.items(), key=lambda pair: str(pair[0])
-                )
+                for child_key, child_value in sorted(item.items(), key=lambda pair: str(pair[0]))
             }
         elif isinstance(item, (list, tuple, set, frozenset)):
             normalized[name] = tuple(item)
@@ -227,12 +211,15 @@ class SourceSpan:
     column_end: int = 0
 
     def __post_init__(self) -> None:
-        values = tuple(max(0, int(item)) for item in (
-            self.line_start,
-            self.column_start,
-            self.line_end,
-            self.column_end,
-        ))
+        values = tuple(
+            max(0, int(item))
+            for item in (
+                self.line_start,
+                self.column_start,
+                self.line_end,
+                self.column_end,
+            )
+        )
         object.__setattr__(self, "line_start", values[0])
         object.__setattr__(self, "column_start", values[1])
         object.__setattr__(self, "line_end", values[2])
@@ -291,9 +278,7 @@ class ProgramEvidenceFact:
 
     def __post_init__(self) -> None:
         for field_name in ("kind", "name", "owner", "target", "relationship"):
-            object.__setattr__(
-                self, field_name, str(getattr(self, field_name) or "").strip()
-            )
+            object.__setattr__(self, field_name, str(getattr(self, field_name) or "").strip())
         object.__setattr__(self, "normative", bool(self.normative))
         object.__setattr__(self, "ambiguous", bool(self.ambiguous))
         object.__setattr__(self, "generated", bool(self.generated))
@@ -417,9 +402,7 @@ class ProgramASTAdapterResult:
             "source_sha256": self.source_sha256,
             "blob_identity": self.blob_identity,
             "parser": self.parser,
-            "ast_record": (
-                self.ast_record.to_dict() if self.ast_record is not None else None
-            ),
+            "ast_record": (self.ast_record.to_dict() if self.ast_record is not None else None),
             "facts": [fact.to_dict() for fact in self.facts],
             "diagnostics": [item.to_dict() for item in self.diagnostics],
             "generated": self.generated,
@@ -481,10 +464,7 @@ class ProgramEvidenceIndex:
         """True when any result hit a fact or source byte bound."""
 
         return any(
-            any(
-                diagnostic.code in _TRUNCATION_DIAGNOSTIC_CODES
-                for diagnostic in item.diagnostics
-            )
+            any(diagnostic.code in _TRUNCATION_DIAGNOSTIC_CODES for diagnostic in item.diagnostics)
             for item in self.results
         )
 
@@ -561,16 +541,12 @@ def _mapping_field(value: Any, name: str) -> Mapping[str, Any]:
 
 
 def _sequence_field(value: Any, name: str) -> Sequence[Any]:
-    if not isinstance(value, Sequence) or isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
         raise ValueError(f"{name} must be an array")
     return value
 
 
-def _boolean_field(
-    value: Mapping[str, Any], name: str, *, default: bool = False
-) -> bool:
+def _boolean_field(value: Mapping[str, Any], name: str, *, default: bool = False) -> bool:
     result = value.get(name, default)
     if not isinstance(result, bool):
         raise TypeError(f"{name} must be a boolean")
@@ -631,9 +607,7 @@ def _program_result_from_dict(value: Any) -> ProgramASTAdapterResult:
     if raw_record is None:
         record = None
     else:
-        record = ASTBlobRecord.from_dict(
-            _mapping_field(raw_record, "program adapter AST record")
-        )
+        record = ASTBlobRecord.from_dict(_mapping_field(raw_record, "program adapter AST record"))
     return ProgramASTAdapterResult(
         path=str(payload.get("path") or ""),
         language=str(payload.get("language") or "unknown"),
@@ -648,9 +622,7 @@ def _program_result_from_dict(value: Any) -> ProgramASTAdapterResult:
         ),
         diagnostics=tuple(
             _diagnostic_from_dict(item)
-            for item in _sequence_field(
-                payload.get("diagnostics") or (), "program diagnostics"
-            )
+            for item in _sequence_field(payload.get("diagnostics") or (), "program diagnostics")
         ),
         generated=_boolean_field(payload, "generated"),
         reused=_boolean_field(payload, "reused"),
@@ -663,16 +635,12 @@ def _program_index_from_dict(value: Any) -> ProgramEvidenceIndex:
     schema = str(payload.get("schema") or PROGRAM_EVIDENCE_INDEX_SCHEMA)
     if schema != PROGRAM_EVIDENCE_INDEX_SCHEMA:
         raise ValueError(f"unsupported program evidence index schema: {schema}")
-    analysis_payload = _mapping_field(
-        payload.get("analysis_index"), "program analysis index"
-    )
+    analysis_payload = _mapping_field(payload.get("analysis_index"), "program analysis index")
     return ProgramEvidenceIndex(
         analysis_index=AnalysisASTIndex.from_dict(analysis_payload),
         results=tuple(
             _program_result_from_dict(item)
-            for item in _sequence_field(
-                payload.get("results") or (), "program adapter results"
-            )
+            for item in _sequence_field(payload.get("results") or (), "program adapter results")
         ),
         schema=schema,
     )
@@ -724,21 +692,13 @@ class InventoryProgramEvidenceReceipt:
 
     def __post_init__(self) -> None:
         if self.schema != INVENTORY_PROGRAM_EVIDENCE_RECEIPT_SCHEMA:
-            raise ValueError(
-                f"unsupported inventory program evidence schema: {self.schema}"
-            )
+            raise ValueError(f"unsupported inventory program evidence schema: {self.schema}")
         if not isinstance(self.program_index, ProgramEvidenceIndex):
-            raise TypeError(
-                "inventory program evidence requires a ProgramEvidenceIndex"
-            )
+            raise TypeError("inventory program evidence requires a ProgramEvidenceIndex")
         if self.program_index.schema != PROGRAM_EVIDENCE_INDEX_SCHEMA:
-            raise ValueError(
-                "inventory program evidence requires the current program index schema"
-            )
+            raise ValueError("inventory program evidence requires the current program index schema")
         if not isinstance(self.program_index.analysis_index, AnalysisASTIndex):
-            raise TypeError(
-                "inventory program evidence requires an AnalysisASTIndex"
-            )
+            raise TypeError("inventory program evidence requires an AnalysisASTIndex")
         inventory_cid = validate_cid(self.inventory_cid, codecs=("dag-json",))
         if not isinstance(self.inventory_exhaustive, bool):
             raise TypeError("inventory_exhaustive must be a boolean")
@@ -755,28 +715,18 @@ class InventoryProgramEvidenceReceipt:
             raise ValueError("missing program paths must belong to expected paths")
 
         if not all(
-            isinstance(item, ProgramASTAdapterResult)
-            for item in self.program_index.results
+            isinstance(item, ProgramASTAdapterResult) for item in self.program_index.results
         ):
-            raise TypeError(
-                "program evidence index results must be ProgramASTAdapterResult values"
-            )
-        if any(
-            item.schema != PROGRAM_AST_ADAPTER_SCHEMA
-            for item in self.program_index.results
-        ):
-            raise ValueError(
-                "program evidence index contains an unsupported result schema"
-            )
+            raise TypeError("program evidence index results must be ProgramASTAdapterResult values")
+        if any(item.schema != PROGRAM_AST_ADAPTER_SCHEMA for item in self.program_index.results):
+            raise ValueError("program evidence index contains an unsupported result schema")
         result_paths = tuple(item.path for item in self.program_index.results)
         if len(result_paths) != len(set(result_paths)):
             raise ValueError("program evidence index contains duplicate result paths")
         if set(result_paths).intersection(missing):
             raise ValueError("program paths cannot be both adapted and missing")
         if set(result_paths).union(missing) != set(expected):
-            raise ValueError(
-                "expected program paths require one result or missing-path receipt"
-            )
+            raise ValueError("expected program paths require one result or missing-path receipt")
 
         supported_without_ast = tuple(
             item.path
@@ -784,29 +734,22 @@ class InventoryProgramEvidenceReceipt:
             if item.supported and item.ast_record is None
         )
         if supported_without_ast:
-            raise ValueError(
-                "supported inventory program results require canonical AST records"
-            )
+            raise ValueError("supported inventory program results require canonical AST records")
         result_records = {
             item.path: item.ast_record
             for item in self.program_index.results
             if item.ast_record is not None
         }
         indexed_records = {
-            item.path: item.ast_record
-            for item in self.program_index.analysis_index.path_records
+            item.path: item.ast_record for item in self.program_index.analysis_index.path_records
         }
         if set(result_records) != set(indexed_records):
-            raise ValueError(
-                "program result and analysis index AST paths do not match"
-            )
+            raise ValueError("program result and analysis index AST paths do not match")
         if any(
             result_records[path].record_id != indexed_records[path].record_id
             for path in result_records
         ):
-            raise ValueError(
-                "program result and analysis index AST records do not match"
-            )
+            raise ValueError("program result and analysis index AST records do not match")
 
         object.__setattr__(self, "inventory_cid", inventory_cid)
         object.__setattr__(self, "expected_paths", expected)
@@ -867,23 +810,17 @@ class InventoryProgramEvidenceReceipt:
             )
         expected = tuple(
             sorted(
-                item.canonical_path
-                for item in inventory.included_entries
-                if item.parser_eligible
+                item.canonical_path for item in inventory.included_entries if item.parser_eligible
             )
         )
         if self.inventory_cid != inventory.inventory_cid:
-            raise ValueError(
-                "previous inventory program receipt does not match inventory CID"
-            )
+            raise ValueError("previous inventory program receipt does not match inventory CID")
         if self.inventory_exhaustive != inventory.exhaustive:
             raise ValueError(
                 "previous inventory program receipt exhaustive flag does not match inventory"
             )
         if self.expected_paths != expected:
-            raise ValueError(
-                "previous inventory program receipt paths do not match inventory"
-            )
+            raise ValueError("previous inventory program receipt paths do not match inventory")
         return True
 
     def to_dict(self) -> dict[str, Any]:
@@ -893,39 +830,35 @@ class InventoryProgramEvidenceReceipt:
             statuses[item.status] = statuses.get(item.status, 0) + 1
             languages[item.language] = languages.get(item.language, 0) + 1
         payload = self.to_portable_dict()
-        payload.update({
-            "evidence": INCREMENTAL_AST_INDEX_EVIDENCE,
-            "evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
-            "packet_evidence_terms": list(CORPUS_INDEX_G020_EVIDENCE_TERMS),
-            "exhaustive": self.exhaustive,
-            "reason_codes": list(self.reason_codes),
-            "coverage": {
-                "expected_path_count": len(self.expected_paths),
-                "adapted_path_count": len(self.results),
-                "indexed_path_count": len(self.analysis_index.path_records),
-                "reused_result_count": self.reused_result_count,
-                "missing_paths": list(self.missing_paths),
-                "status_counts": dict(sorted(statuses.items())),
-                "language_counts": dict(sorted(languages.items())),
-            },
-            "program_index": self.program_index.to_dict(),
-            "authoritative": False,
-            "completion_authoritative": False,
-        })
+        payload.update(
+            {
+                "evidence": INCREMENTAL_AST_INDEX_EVIDENCE,
+                "evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
+                "packet_evidence_terms": list(CORPUS_INDEX_G020_EVIDENCE_TERMS),
+                "exhaustive": self.exhaustive,
+                "reason_codes": list(self.reason_codes),
+                "coverage": {
+                    "expected_path_count": len(self.expected_paths),
+                    "adapted_path_count": len(self.results),
+                    "indexed_path_count": len(self.analysis_index.path_records),
+                    "reused_result_count": self.reused_result_count,
+                    "missing_paths": list(self.missing_paths),
+                    "status_counts": dict(sorted(statuses.items())),
+                    "language_counts": dict(sorted(languages.items())),
+                },
+                "program_index": self.program_index.to_dict(),
+                "authoritative": False,
+                "completion_authoritative": False,
+            }
+        )
         return payload
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "InventoryProgramEvidenceReceipt":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "InventoryProgramEvidenceReceipt":
         value = _mapping_field(payload, "inventory program evidence receipt")
-        schema = str(
-            value.get("schema") or INVENTORY_PROGRAM_EVIDENCE_RECEIPT_SCHEMA
-        )
+        schema = str(value.get("schema") or INVENTORY_PROGRAM_EVIDENCE_RECEIPT_SCHEMA)
         if schema != INVENTORY_PROGRAM_EVIDENCE_RECEIPT_SCHEMA:
-            raise ValueError(
-                f"unsupported inventory program evidence schema: {schema}"
-            )
+            raise ValueError(f"unsupported inventory program evidence schema: {schema}")
         claimed = validate_cid(value.get("receipt_cid"), codecs=("dag-json",))
         result = cls(
             program_index=_program_index_from_dict(value.get("program_index")),
@@ -946,19 +879,13 @@ class InventoryProgramEvidenceReceipt:
             schema=schema,
         )
         if claimed != result.receipt_cid:
-            raise ValueError(
-                "inventory program evidence receipt CID does not match payload"
-            )
+            raise ValueError("inventory program evidence receipt CID does not match payload")
         if "exhaustive" in value and value["exhaustive"] is not result.exhaustive:
-            raise ValueError(
-                "inventory program evidence exhaustive verdict does not match payload"
-            )
+            raise ValueError("inventory program evidence exhaustive verdict does not match payload")
         if "reason_codes" in value and tuple(sorted(value["reason_codes"])) != (
             result.reason_codes
         ):
-            raise ValueError(
-                "inventory program evidence reason codes do not match payload"
-            )
+            raise ValueError("inventory program evidence reason codes do not match payload")
         return result
 
 
@@ -1011,9 +938,7 @@ def _python_facts(tree: ast.AST) -> tuple[ProgramEvidenceFact, ...]:
         def owner(self) -> str:
             return ".".join(scope) or "<module>"
 
-        def definition(
-            self, node: ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef
-        ) -> None:
+        def definition(self, node: ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef) -> None:
             owner = self.owner()
             qualified = ".".join((*scope, node.name))
             if isinstance(node, ast.ClassDef):
@@ -1022,8 +947,7 @@ def _python_facts(tree: ast.AST) -> tuple[ProgramEvidenceFact, ...]:
                 details: dict[str, Any] = {
                     "bases": tuple(_render_ast(item) for item in node.bases),
                     "keywords": tuple(
-                        f"{item.arg or '**'}={_render_ast(item.value)}"
-                        for item in node.keywords
+                        f"{item.arg or '**'}={_render_ast(item.value)}" for item in node.keywords
                     ),
                 }
             else:
@@ -1155,9 +1079,7 @@ def _python_facts(tree: ast.AST) -> tuple[ProgramEvidenceFact, ...]:
             root = expression.split(".", 1)[0] if expression else ""
             details: dict[str, Any] = {
                 "argument_count": len(node.args),
-                "keyword_names": tuple(
-                    keyword.arg or "**" for keyword in node.keywords
-                ),
+                "keyword_names": tuple(keyword.arg or "**" for keyword in node.keywords),
             }
             ambiguous = not isinstance(node.func, ast.Name)
             if root in import_aliases:
@@ -1234,9 +1156,7 @@ def _python_facts(tree: ast.AST) -> tuple[ProgramEvidenceFact, ...]:
             for item in node.items:
                 facts.append(
                     ProgramEvidenceFact(
-                        kind="async_context_manager"
-                        if asynchronous
-                        else "context_manager",
+                        kind="async_context_manager" if asynchronous else "context_manager",
                         name=_render_ast(item.context_expr),
                         owner=self.owner(),
                         target=_expression_name(item.context_expr),
@@ -1364,9 +1284,7 @@ def adapt_python_source(
         line = int(getattr(exc, "lineno", 0) or 0)
         column = max(0, int(getattr(exc, "offset", 0) or 0) - 1)
         diagnostic = AdapterDiagnostic(
-            code="python_syntax_error"
-            if isinstance(exc, SyntaxError)
-            else "python_parse_error",
+            code="python_syntax_error" if isinstance(exc, SyntaxError) else "python_parse_error",
             message=str(exc),
             span=SourceSpan(line, column, line, column),
         )
@@ -1573,11 +1491,7 @@ def _ecmascript_lex(
         )
         if number:
             end = index + len(number.group(0))
-            tokens.append(
-                _ECMAScriptToken(
-                    "number", number.group(0), index, end, span(index, end)
-                )
-            )
+            tokens.append(_ECMAScriptToken("number", number.group(0), index, end, span(index, end)))
             index = end
             continue
         punctuator = next(
@@ -1589,9 +1503,7 @@ def _ecmascript_lex(
             char,
         )
         end = index + len(punctuator)
-        tokens.append(
-            _ECMAScriptToken("punctuator", punctuator, index, end, span(index, end))
-        )
+        tokens.append(_ECMAScriptToken("punctuator", punctuator, index, end, span(index, end)))
         index = end
     return tuple(tokens), tuple(diagnostics)
 
@@ -1688,14 +1600,8 @@ def _ecmascript_matches(
     return matching, tuple(diagnostics)
 
 
-def _ecmascript_owner(
-    offset: int, definitions: Sequence[tuple[int, int, str]]
-) -> str:
-    containing = [
-        (end - start, name)
-        for start, end, name in definitions
-        if start <= offset <= end
-    ]
+def _ecmascript_owner(offset: int, definitions: Sequence[tuple[int, int, str]]) -> str:
+    containing = [(end - start, name) for start, end, name in definitions if start <= offset <= end]
     return min(containing)[1] if containing else "<module>"
 
 
@@ -1742,9 +1648,7 @@ def _ecmascript_record(
         if fact.kind in {"import", "dynamic_import"}
     )
     calls = tuple(
-        f"{fact.owner} -> {fact.name}"
-        for fact in facts
-        if fact.kind in {"call", "new_expression"}
+        f"{fact.owner} -> {fact.name}" for fact in facts if fact.kind in {"call", "new_expression"}
     )
     interfaces = tuple(
         f"{fact.kind}:{fact.owner}:{fact.name}:{fact.target}"
@@ -1796,9 +1700,7 @@ def _ecmascript_facts(
     tokens, lexical_diagnostics = _ecmascript_lex(source)
     matching, delimiter_diagnostics = _ecmascript_matches(tokens)
     code_source = _mask_ecmascript_noncode(source, mask_strings=True)
-    comment_masked_source = _mask_ecmascript_noncode(
-        source, mask_strings=False
-    )
+    comment_masked_source = _mask_ecmascript_noncode(source, mask_strings=False)
     token_starts = {(token.start, token.value) for token in tokens}
     diagnostics = list((*lexical_diagnostics, *delimiter_diagnostics))
     facts: list[ProgramEvidenceFact] = []
@@ -1832,18 +1734,12 @@ def _ecmascript_facts(
         if kind == "type":
             statement_start = code_source.rfind(";", 0, match.start()) + 1
             statement_prefix = code_source[statement_start : match.start()]
-            if re.match(
-                r"\s*(?:import|export)\b", statement_prefix, re.DOTALL
-            ):
+            if re.match(r"\s*(?:import|export)\b", statement_prefix, re.DOTALL):
                 continue
         name = match.group("name")
         end = match.end()
         token_index = next(
-            (
-                index
-                for index, token in enumerate(tokens)
-                if token.start >= match.end()
-            ),
+            (index for index, token in enumerate(tokens) if token.start >= match.end()),
             len(tokens),
         )
         body_open = next(
@@ -1905,9 +1801,7 @@ def _ecmascript_facts(
             facts.append(
                 ProgramEvidenceFact(
                     kind="export",
-                    name="default"
-                    if "default" in match.group("prefix").split()
-                    else name,
+                    name="default" if "default" in match.group("prefix").split() else name,
                     owner="<module>",
                     target=name,
                     relationship="exports",
@@ -1915,8 +1809,7 @@ def _ecmascript_facts(
                     generated=generated,
                     details={
                         "declaration": True,
-                        "default": "default"
-                        in match.group("prefix").split(),
+                        "default": "default" in match.group("prefix").split(),
                     },
                 )
             )
@@ -1933,19 +1826,14 @@ def _ecmascript_facts(
             (
                 index
                 for index, token in enumerate(tokens)
-                if token.value == "("
-                and match.start("name") < token.start < match.end()
+                if token.value == "(" and match.start("name") < token.start < match.end()
             ),
             None,
         )
         if opening_paren is None or opening_paren not in matching:
             continue
         containing_class = next(
-            (
-                item
-                for item in class_scopes
-                if item[0] < tokens[opening_paren].start < item[1]
-            ),
+            (item for item in class_scopes if item[0] < tokens[opening_paren].start < item[1]),
             None,
         )
         if containing_class is None:
@@ -1963,16 +1851,10 @@ def _ecmascript_facts(
         close_paren = matching[opening_paren]
         method_end = tokens[close_paren].end
         body_open = None
-        for index in range(
-            close_paren + 1, min(len(tokens), close_paren + 80)
-        ):
+        for index in range(close_paren + 1, min(len(tokens), close_paren + 80)):
             if tokens[index].value == "{":
                 body_open = index
-                method_end = (
-                    tokens[matching[index]].end
-                    if index in matching
-                    else tokens[index].end
-                )
+                method_end = tokens[matching[index]].end if index in matching else tokens[index].end
                 break
             if tokens[index].value == ";":
                 method_end = tokens[index].end
@@ -1980,8 +1862,7 @@ def _ecmascript_facts(
             if tokens[index].value == "=>":
                 break
         if body_open is None and (
-            close_paren + 1 >= len(tokens)
-            or tokens[close_paren + 1].value not in {":", ";"}
+            close_paren + 1 >= len(tokens) or tokens[close_paren + 1].value not in {":", ";"}
         ):
             continue
         name = match.group("name")
@@ -1994,9 +1875,7 @@ def _ecmascript_facts(
                 span=span(match.start(), method_end),
                 generated=generated,
                 details={
-                    "async": bool(
-                        re.search(r"\basync\b", match.group(0))
-                    ),
+                    "async": bool(re.search(r"\basync\b", match.group(0))),
                     "constructor": name == "constructor",
                 },
             )
@@ -2020,11 +1899,7 @@ def _ecmascript_facts(
         if statement_end < 0:
             statement_end = len(source)
         statement = code_source[match.start() : statement_end]
-        fact_kind = (
-            "arrow_function_definition"
-            if "=>" in statement
-            else "variable_definition"
-        )
+        fact_kind = "arrow_function_definition" if "=>" in statement else "variable_definition"
         owner = _ecmascript_owner(match.start(), definitions)
         fact = ProgramEvidenceFact(
             kind=fact_kind,
@@ -2047,9 +1922,7 @@ def _ecmascript_facts(
             facts.append(
                 ProgramEvidenceFact(
                     kind="export",
-                    name="default"
-                    if "default" in match.group("prefix").split()
-                    else name,
+                    name="default" if "default" in match.group("prefix").split() else name,
                     owner="<module>",
                     target=name,
                     relationship="exports",
@@ -2057,8 +1930,7 @@ def _ecmascript_facts(
                     generated=generated,
                     details={
                         "declaration": True,
-                        "default": "default"
-                        in match.group("prefix").split(),
+                        "default": "default" in match.group("prefix").split(),
                     },
                 )
             )
@@ -2084,10 +1956,7 @@ def _ecmascript_facts(
     if collisions:
         facts = [
             replace(fact, ambiguous=True)
-            if (
-                fact.kind.endswith("_definition")
-                and f"{fact.owner}:{fact.name}" in collisions
-            )
+            if (fact.kind.endswith("_definition") and f"{fact.owner}:{fact.name}" in collisions)
             else fact
             for fact in facts
         ]
@@ -2114,9 +1983,7 @@ def _ecmascript_facts(
         r"(?m)^[ \t]*import[ \t]+(?P<module>['\"][^'\"]+['\"])[ \t]*;?"
     )
     for match in static_import_re.finditer(comment_masked_source):
-        keyword_start = comment_masked_source.find(
-            "import", match.start(), match.end()
-        )
+        keyword_start = comment_masked_source.find("import", match.start(), match.end())
         if (keyword_start, "import") not in token_starts:
             continue
         module = _strip_ecmascript_string(match.group("module"))
@@ -2166,9 +2033,7 @@ def _ecmascript_facts(
                 )
             )
     for match in side_effect_import_re.finditer(comment_masked_source):
-        keyword_start = comment_masked_source.find(
-            "import", match.start(), match.end()
-        )
+        keyword_start = comment_masked_source.find("import", match.start(), match.end())
         if (keyword_start, "import") not in token_starts:
             continue
         module = _strip_ecmascript_string(match.group("module"))
@@ -2196,9 +2061,7 @@ def _ecmascript_facts(
         r"(?:\s+from\s+(?P<module>['\"][^'\"]+['\"]))?"
     )
     for match in export_re.finditer(comment_masked_source):
-        keyword_start = comment_masked_source.find(
-            "export", match.start(), match.end()
-        )
+        keyword_start = comment_masked_source.find("export", match.start(), match.end())
         if (keyword_start, "export") not in token_starts:
             continue
         body = match.group("body").strip()
@@ -2212,9 +2075,7 @@ def _ecmascript_facts(
         elif body.startswith("{") or body.startswith("type {"):
             content = body[body.find("{") + 1 : body.rfind("}")]
             for item in content.split(","):
-                item_type_only = declaration_type_only or bool(
-                    re.match(r"^\s*type\b", item)
-                )
+                item_type_only = declaration_type_only or bool(re.match(r"^\s*type\b", item))
                 item = re.sub(r"^\s*type\s+", "", item).strip()
                 if item:
                     parts = re.split(r"\s+as\s+", item)
@@ -2248,9 +2109,7 @@ def _ecmascript_facts(
                 )
             )
 
-    decorator_re = re.compile(
-        r"(?m)^[ \t]*@(?P<name>[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)"
-    )
+    decorator_re = re.compile(r"(?m)^[ \t]*@(?P<name>[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)")
     for match in decorator_re.finditer(code_source):
         decorated = next(
             (
@@ -2287,10 +2146,7 @@ def _ecmascript_facts(
         close_index = matching.get(index)
         if close_index is None:
             continue
-        if (
-            close_index + 1 < len(tokens)
-            and tokens[close_index + 1].value == "=>"
-        ):
+        if close_index + 1 < len(tokens) and tokens[close_index + 1].value == "=>":
             continue
         callee_end = index - 1
         if callee_end < 0:
@@ -2299,8 +2155,7 @@ def _ecmascript_facts(
         while callee_start > 0:
             previous = tokens[callee_start - 1]
             if previous.value in {".", "?."} or (
-                previous.kind == "identifier"
-                and tokens[callee_start].value in {".", "?."}
+                previous.kind == "identifier" and tokens[callee_start].value in {".", "?."}
             ):
                 callee_start -= 1
                 continue
@@ -2323,16 +2178,12 @@ def _ecmascript_facts(
         is_new = callee_start > 0 and tokens[callee_start - 1].value == "new"
         is_awaited = callee_start > 0 and tokens[callee_start - 1].value == "await"
         call_start = (
-            tokens[callee_start - 1].start
-            if is_new or is_awaited
-            else tokens[callee_start].start
+            tokens[callee_start - 1].start if is_new or is_awaited else tokens[callee_start].start
         )
         owner = _ecmascript_owner(token.start, definitions)
         root = callee.split(".", 1)[0]
         alias_target = aliases.get(root, "")
-        resolved_name = (
-            alias_target.rsplit(":", 1)[-1] if alias_target else ""
-        )
+        resolved_name = alias_target.rsplit(":", 1)[-1] if alias_target else ""
         call_fact = ProgramEvidenceFact(
             kind="new_expression" if is_new else "call",
             name=callee,
@@ -2356,8 +2207,7 @@ def _ecmascript_facts(
             first_argument = tokens[index + 1] if index + 1 < close_index else None
             literal = (
                 _strip_ecmascript_string(first_argument.value)
-                if first_argument is not None
-                and first_argument.kind in {"string", "template"}
+                if first_argument is not None and first_argument.kind in {"string", "template"}
                 else ""
             )
             facts.append(
@@ -2379,9 +2229,7 @@ def _ecmascript_facts(
             )
         tail = callee.rsplit(".", 1)[-1]
         arguments = code_source[token.end : tokens[close_index].start]
-        has_callback = "=>" in arguments or re.search(
-            r"\b(?:async\s+)?function\b", arguments
-        )
+        has_callback = "=>" in arguments or re.search(r"\b(?:async\s+)?function\b", arguments)
         callback_kind = (
             "async_arrow"
             if re.search(r"\basync\b[^=]*=>", arguments, re.DOTALL)
@@ -2422,9 +2270,7 @@ def _ecmascript_facts(
                     name=callee,
                     owner=owner,
                     target=callee,
-                    relationship="registers_callback"
-                    if has_callback
-                    else "registers_handler",
+                    relationship="registers_callback" if has_callback else "registers_handler",
                     ambiguous=True,
                     span=call_fact.span,
                     generated=generated,
@@ -2491,9 +2337,7 @@ def _ecmascript_facts(
                 )
 
     if language in {"jsx", "tsx"}:
-        for match in re.finditer(
-            r"<(?P<name>[A-Za-z][\w.-]*)(?:\s|/?>)", code_source
-        ):
+        for match in re.finditer(r"<(?P<name>[A-Za-z][\w.-]*)(?:\s|/?>)", code_source):
             facts.append(
                 ProgramEvidenceFact(
                     kind="jsx_element",
@@ -2506,9 +2350,7 @@ def _ecmascript_facts(
                 )
             )
 
-    registration_spans = [
-        fact.span for fact in facts if fact.kind == "registration"
-    ]
+    registration_spans = [fact.span for fact in facts if fact.kind == "registration"]
     for token in tokens:
         if token.kind not in {"string", "template"}:
             continue
@@ -2516,8 +2358,7 @@ def _ecmascript_facts(
         if not _ECMASCRIPT_MCP_STRING_RE.search(literal):
             continue
         if any(
-            item.line_start <= token.span.line_start <= item.line_end
-            for item in registration_spans
+            item.line_start <= token.span.line_start <= item.line_end for item in registration_spans
         ):
             continue
         facts.append(
@@ -2566,10 +2407,7 @@ def _ecmascript_facts(
         re.MULTILINE,
     ):
         initializer_start = code_source.find("=", match.start(), match.end()) + 1
-        if any(
-            initializer_start <= token.start < match.end()
-            for token in tokens
-        ):
+        if any(initializer_start <= token.start < match.end() for token in tokens):
             continue
         diagnostics.append(
             AdapterDiagnostic(
@@ -2612,9 +2450,7 @@ def adapt_ecmascript_source(
         generated=generated,
     )
     errors = tuple(item for item in diagnostics if item.severity == "error")
-    parse_error = "; ".join(
-        f"{item.code}: {item.message}" for item in errors
-    )
+    parse_error = "; ".join(f"{item.code}: {item.message}" for item in errors)
     derived_record = _ecmascript_record(
         source=source,
         facts=facts,
@@ -2673,15 +2509,11 @@ def _decode_json_pairs(
             if key in seen:
                 duplicates.append((pointer or "/", key))
             seen.add(key)
-            result[key] = _decode_json_pairs(
-                item, pointer=child_pointer, duplicates=duplicates
-            )
+            result[key] = _decode_json_pairs(item, pointer=child_pointer, duplicates=duplicates)
         return result
     if isinstance(value, list):
         return [
-            _decode_json_pairs(
-                item, pointer=f"{pointer}/{index}", duplicates=duplicates
-            )
+            _decode_json_pairs(item, pointer=f"{pointer}/{index}", duplicates=duplicates)
             for index, item in enumerate(value)
         ]
     return value
@@ -2713,9 +2545,7 @@ def _json_key_spans(source: str) -> dict[str, list[SourceSpan]]:
         except json.JSONDecodeError:
             continue
         if isinstance(key, str):
-            spans.setdefault(key, []).append(
-                _offset_span(source, match.start(), match.end())
-            )
+            spans.setdefault(key, []).append(_offset_span(source, match.start(), match.end()))
     return spans
 
 
@@ -2800,11 +2630,7 @@ def _json_facts(
                     )
                 if is_schema and key in {"$defs", "definitions", "properties"}:
                     if isinstance(item, Mapping):
-                        subkind = (
-                            "schema_property"
-                            if key == "properties"
-                            else "schema_definition"
-                        )
+                        subkind = "schema_property" if key == "properties" else "schema_definition"
                         for member in item:
                             facts.append(
                                 ProgramEvidenceFact(
@@ -2852,10 +2678,7 @@ def _json_facts(
                     for index, entry in enumerate(entries):
                         if isinstance(entry, Mapping):
                             entry_name = str(
-                                entry.get("name")
-                                or entry.get("uri")
-                                or entry.get("id")
-                                or index
+                                entry.get("name") or entry.get("uri") or entry.get("id") or index
                             )
                             facts.append(
                                 ProgramEvidenceFact(
@@ -2962,17 +2785,11 @@ def _record_from_noncode_facts(
         # than source content, so it cannot participate in a path-independent
         # canonical record identity.
         symbol_hashes[name] = _semantic_hash(
-            {
-                key: value
-                for key, value in fact._payload().items()
-                if key != "generated"
-            }
+            {key: value for key, value in fact._payload().items() if key != "generated"}
         )
         symbol_lines[name] = (fact.span.line_start, fact.span.line_end)
     imports = tuple(
-        f"$ref {fact.target}"
-        for fact in facts
-        if fact.kind == "schema_reference" and fact.target
+        f"$ref {fact.target}" for fact in facts if fact.kind == "schema_reference" and fact.target
     )
     interfaces = tuple(
         f"{fact.kind}:{fact.owner}:{fact.name}"
@@ -3030,9 +2847,7 @@ def adapt_json_source(
         else:
             span = SourceSpan()
             message = str(exc)
-        diagnostic = AdapterDiagnostic(
-            code="json_syntax_error", message=message, span=span
-        )
+        diagnostic = AdapterDiagnostic(code="json_syntax_error", message=message, span=span)
         record = _record_from_noncode_facts(
             facts=(),
             source_hash=source_hash,
@@ -3066,9 +2881,7 @@ def adapt_json_source(
         or "mcp" in filename
     )
     language = "mcp-manifest" if is_mcp else "json-schema" if is_schema else "json"
-    facts = _json_facts(
-        payload, source=source, path=path, generated=generated
-    )
+    facts = _json_facts(payload, source=source, path=path, generated=generated)
     key_spans = _json_key_spans(source)
     duplicate_offsets: dict[str, int] = {}
     diagnostics: list[AdapterDiagnostic] = []
@@ -3093,13 +2906,10 @@ def adapt_json_source(
         language=language,
     )
     previous_record = (
-        previous.ast_record
-        if isinstance(previous, ProgramASTAdapterResult)
-        else previous
+        previous.ast_record if isinstance(previous, ProgramASTAdapterResult) else previous
     )
     reused = bool(
-        isinstance(previous_record, ASTBlobRecord)
-        and previous_record.record_id == record.record_id
+        isinstance(previous_record, ASTBlobRecord) and previous_record.record_id == record.record_id
     )
     if reused:
         record = previous_record
@@ -3212,11 +3022,7 @@ def _markdown_facts(
                     normative=True,
                     span=SourceSpan(line_number, 0, line_number, len(line)),
                     generated=generated,
-                    details={
-                        "keywords": tuple(
-                            match.group(1).upper() for match in matches
-                        )
-                    },
+                    details={"keywords": tuple(match.group(1).upper() for match in matches)},
                 )
             )
         for match in _INLINE_CODE_RE.finditer(line):
@@ -3289,13 +3095,10 @@ def adapt_markdown_source(
         language="markdown",
     )
     previous_record = (
-        previous.ast_record
-        if isinstance(previous, ProgramASTAdapterResult)
-        else previous
+        previous.ast_record if isinstance(previous, ProgramASTAdapterResult) else previous
     )
     reused = bool(
-        isinstance(previous_record, ASTBlobRecord)
-        and previous_record.record_id == record.record_id
+        isinstance(previous_record, ASTBlobRecord) and previous_record.record_id == record.record_id
     )
     if reused:
         record = previous_record
@@ -3395,8 +3198,7 @@ def adapt_program_source(
                 AdapterDiagnostic(
                     code="source_size_bound_exceeded",
                     message=(
-                        f"source contains {byte_count} bytes; adapter limit is "
-                        f"{max_source_bytes}"
+                        f"source contains {byte_count} bytes; adapter limit is {max_source_bytes}"
                     ),
                     details={
                         "observed_bytes": byte_count,
@@ -3461,10 +3263,7 @@ def adapt_program_source(
     retained = result.facts[:max_facts]
     diagnostic = AdapterDiagnostic(
         code="fact_bound_exceeded",
-        message=(
-            f"adapter emitted {len(result.facts)} facts; retained "
-            f"{max_facts}"
-        ),
+        message=(f"adapter emitted {len(result.facts)} facts; retained {max_facts}"),
         severity="warning",
         details={"observed_facts": len(result.facts), "max_facts": max_facts},
     )
@@ -3498,14 +3297,10 @@ def _coerce_document(value: Any) -> SourceDocument:
         return SourceDocument(
             path=str(value.get("path") or value.get("file") or ""),
             source=str(
-                value.get("source")
-                if value.get("source") is not None
-                else value.get("text", "")
+                value.get("source") if value.get("source") is not None else value.get("text", "")
             ),
             language=str(value.get("language") or ""),
-            blob_identity=str(
-                value.get("blob_identity") or value.get("blob_id") or ""
-            ),
+            blob_identity=str(value.get("blob_identity") or value.get("blob_id") or ""),
             generated=bool(value.get("generated", False)),
         )
     if (
@@ -3539,8 +3334,7 @@ def _program_result_cache_key(
 
 
 def build_program_evidence_index(
-    documents: Iterable[SourceDocument | Mapping[str, Any] | Sequence[str]]
-    | Mapping[str, str],
+    documents: Iterable[SourceDocument | Mapping[str, Any] | Sequence[str]] | Mapping[str, str],
     *,
     previous: ProgramEvidenceIndex | None = None,
     max_source_bytes: int = DEFAULT_MAX_SOURCE_BYTES,
@@ -3606,9 +3400,7 @@ def build_program_evidence_index(
         for item in normalized
     )
     path_records = tuple(
-        (item.path, item.ast_record)
-        for item in results
-        if item.ast_record is not None
+        (item.path, item.ast_record) for item in results if item.ast_record is not None
     )
     index = build_analysis_ast_index(
         path_records,
@@ -3619,8 +3411,7 @@ def build_program_evidence_index(
 
 def build_inventory_program_evidence_receipt(
     inventory: RepositoryCorpusIndex,
-    documents: Iterable[SourceDocument | Mapping[str, Any] | Sequence[str]]
-    | Mapping[str, str],
+    documents: Iterable[SourceDocument | Mapping[str, Any] | Sequence[str]] | Mapping[str, str],
     *,
     previous: InventoryProgramEvidenceReceipt | None = None,
     max_source_bytes: int = DEFAULT_MAX_SOURCE_BYTES,
@@ -3637,12 +3428,9 @@ def build_inventory_program_evidence_receipt(
 
     if not isinstance(inventory, RepositoryCorpusIndex):
         raise TypeError("inventory program evidence requires RepositoryCorpusIndex")
-    if previous is not None and not isinstance(
-        previous, InventoryProgramEvidenceReceipt
-    ):
+    if previous is not None and not isinstance(previous, InventoryProgramEvidenceReceipt):
         raise TypeError(
-            "previous inventory program evidence must be a verified "
-            "InventoryProgramEvidenceReceipt"
+            "previous inventory program evidence must be a verified InventoryProgramEvidenceReceipt"
         )
 
     raw_documents: Iterable[Any]
@@ -3654,9 +3442,7 @@ def build_inventory_program_evidence_receipt(
     if not all(item.path for item in supplied):
         raise ValueError("inventory program evidence inputs require repository paths")
 
-    admitted = tuple(
-        item for item in inventory.included_entries if item.parser_eligible
-    )
+    admitted = tuple(item for item in inventory.included_entries if item.parser_eligible)
     by_canonical = {item.canonical_path: item for item in admitted}
     if len(by_canonical) != len(admitted):
         raise ValueError("inventory contains duplicate admitted canonical paths")
@@ -3674,18 +3460,14 @@ def build_inventory_program_evidence_receipt(
             candidates = by_relative.get(document.path, ())
             if len(candidates) > 1:
                 raise ValueError(
-                    "inventory document path is ambiguous across repositories: "
-                    f"{document.path!r}"
+                    f"inventory document path is ambiguous across repositories: {document.path!r}"
                 )
             entry = candidates[0] if candidates else None
         if entry is None:
-            raise ValueError(
-                f"document is not an admitted inventory input: {document.path!r}"
-            )
+            raise ValueError(f"document is not an admitted inventory input: {document.path!r}")
         if entry.canonical_path in seen:
             raise ValueError(
-                "inventory program evidence contains duplicate path "
-                f"{entry.canonical_path!r}"
+                f"inventory program evidence contains duplicate path {entry.canonical_path!r}"
             )
         seen.add(entry.canonical_path)
 
@@ -3693,8 +3475,7 @@ def build_inventory_program_evidence_receipt(
         expected_hash = "sha256:" + entry.content_sha256
         if observed_hash != expected_hash:
             raise ValueError(
-                "document content does not match inventory provenance for "
-                f"{entry.canonical_path!r}"
+                f"document content does not match inventory provenance for {entry.canonical_path!r}"
             )
         if document.blob_identity and document.blob_identity != entry.blob_oid:
             raise ValueError(
@@ -3703,19 +3484,14 @@ def build_inventory_program_evidence_receipt(
             )
         inventory_language = detect_program_language(entry.relative_path)
         if document.language:
-            hinted_language = detect_program_language(
-                entry.relative_path, document.language
-            )
+            hinted_language = detect_program_language(entry.relative_path, document.language)
             if hinted_language != inventory_language:
                 raise ValueError(
                     "document language conflicts with inventory path for "
                     f"{entry.canonical_path!r}: expected {inventory_language!r}, "
                     f"received {hinted_language!r}"
                 )
-        inventory_generated = (
-            CorpusClassification.GENERATED_SOURCE.value
-            in entry.classifications
-        )
+        inventory_generated = CorpusClassification.GENERATED_SOURCE.value in entry.classifications
         if document.generated and not inventory_generated:
             raise ValueError(
                 "document generated classification conflicts with inventory for "
@@ -3761,9 +3537,7 @@ def build_program_ast_blob_record(
     :func:`adapt_program_source`, whose result never hides that status.
     """
 
-    return adapt_program_source(
-        source, path=path, language=language, **kwargs
-    ).ast_record
+    return adapt_program_source(source, path=path, language=language, **kwargs).ast_record
 
 
 # Friendly aliases for evidence-oriented and incremental callers.
@@ -3884,10 +3658,7 @@ def prove_objective_validation_repair(
         reason_codes = list(index.reason_codes)
         reused_result_count = index.reused_result_count
     return {
-        "schema": (
-            "ipfs_accelerate_py/agent-supervisor/"
-            "objective-validation-repair-claim@1"
-        ),
+        "schema": ("ipfs_accelerate_py/agent-supervisor/objective-validation-repair-claim@1"),
         "evidence": OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
         "evidence_terms": list(objective_validation_repair_evidence_terms()),
         "domain_evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
@@ -4000,6 +3771,7 @@ def prove_incremental_ast_index(
         "authoritative": False,
         "completion_authoritative": False,
     }
+
 
 # Narrow compatibility surface for software-verification source adapters
 # (LFV SourceSoftwareVerificationAdapter@1).  This does not introduce a second

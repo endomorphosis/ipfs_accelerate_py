@@ -37,12 +37,10 @@ OBJECTIVE_VALIDATION_COMMAND = (
     "ipfs_accelerate_py/test/api/test_agent_supervisor_contract_execution_profile.py"
 )
 OBJECTIVE_VALIDATED_ARTIFACTS = (
-    "ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/"
-    "contract_analysis/execution_profile.py",
+    "ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/contract_analysis/execution_profile.py",
     "data/datasets_contract_analysis/policy/analyzer-profile-v1.json",
     "data/datasets_contract_analysis/policy/resource-bounds-v1.json",
-    "ipfs_accelerate_py/test/api/"
-    "test_agent_supervisor_contract_execution_profile.py",
+    "ipfs_accelerate_py/test/api/test_agent_supervisor_contract_execution_profile.py",
 )
 REQUIRED_TOOL_ROLES = frozenset(
     {
@@ -335,9 +333,7 @@ class ResourceBudget:
                 or not isinstance(supplied_value, int)
                 or supplied_value < 0
             ):
-                raise ExecutionProfileError(
-                    f"usage.{supplied_name} must be a non-negative integer"
-                )
+                raise ExecutionProfileError(f"usage.{supplied_name} must be a non-negative integer")
             if supplied_value > getattr(self, field_name):
                 exceeded.append(field_name)
         return tuple(sorted(exceeded))
@@ -478,9 +474,7 @@ class SandboxPolicy:
             "write_roots",
             "environment_allowlist",
         }
-        payload = _closed_mapping(
-            value, name="sandbox", allowed=fields, required=fields
-        )
+        payload = _closed_mapping(value, name="sandbox", allowed=fields, required=fields)
         return cls(
             network=str(payload["network"]),
             auto_install=str(payload["auto_install"]),
@@ -693,9 +687,7 @@ class AnalysisExecutionProfile:
             "objective_validation_repair",
         }
         required = fields - {"objective_validation_repair"}
-        payload = _closed_mapping(
-            value, name="profile", allowed=fields, required=required
-        )
+        payload = _closed_mapping(value, name="profile", allowed=fields, required=required)
         if payload["schema"] != PROFILE_SCHEMA:
             raise ExecutionProfileError("unsupported analyzer-profile schema")
         if not isinstance(payload["tools"], Sequence) or isinstance(
@@ -709,9 +701,7 @@ class AnalysisExecutionProfile:
         resource_class = str(payload["resource_class"]).strip()
         resources = ResourceBudget.from_dict(payload["resource_bounds"])
         if str(payload["resource_bounds"]["class"]) != resource_class:
-            raise ExecutionProfileError(
-                "resource_bounds.class must match profile.resource_class"
-            )
+            raise ExecutionProfileError("resource_bounds.class must match profile.resource_class")
         repair = payload.get("objective_validation_repair")
         if repair is not None:
             repair = _parse_objective_validation_repair(repair)
@@ -744,9 +734,7 @@ class AnalysisExecutionProfile:
     ) -> "AnalysisExecutionProfile":
         profile = cls.from_json(Path(path).read_text(encoding="utf-8"))
         if repository_root is not None:
-            profile.validate_resource_bounds_evidence(
-                repository_root=repository_root
-            )
+            profile.validate_resource_bounds_evidence(repository_root=repository_root)
         return profile
 
     def to_dict(self) -> dict[str, Any]:
@@ -758,15 +746,11 @@ class AnalysisExecutionProfile:
             "resource_bounds_evidence": self.resource_bounds_evidence,
             "tools": [tool.to_dict() for tool in self.tools],
             "locks": [lock.to_dict() for lock in self.locks],
-            "resource_bounds": self.resources.to_dict(
-                resource_class=self.resource_class
-            ),
+            "resource_bounds": self.resources.to_dict(resource_class=self.resource_class),
             "sandbox": self.sandbox.to_dict(),
         }
         if self.objective_validation_repair is not None:
-            payload["objective_validation_repair"] = dict(
-                self.objective_validation_repair
-            )
+            payload["objective_validation_repair"] = dict(self.objective_validation_repair)
         return payload
 
     def to_json(self) -> str:
@@ -789,19 +773,13 @@ class AnalysisExecutionProfile:
         repository = _real_path(repository_root)
         evidence = _real_path(repository / self.resource_bounds_evidence)
         if not _is_within(evidence, (repository,)):
-            raise ExecutionProfileError(
-                "resource_bounds_evidence escapes the repository root"
-            )
+            raise ExecutionProfileError("resource_bounds_evidence escapes the repository root")
         try:
             payload = json.loads(evidence.read_text(encoding="utf-8"))
         except OSError as exc:
-            raise ExecutionProfileError(
-                "resource_bounds_evidence is unavailable"
-            ) from exc
+            raise ExecutionProfileError("resource_bounds_evidence is unavailable") from exc
         except json.JSONDecodeError as exc:
-            raise ExecutionProfileError(
-                "resource_bounds_evidence is not valid JSON"
-            ) from exc
+            raise ExecutionProfileError("resource_bounds_evidence is not valid JSON") from exc
 
         budget = ResourceBudget.from_dict(payload)
         if str(payload["class"]) != self.resource_class:
@@ -863,9 +841,7 @@ class AnalysisExecutionProfile:
 
         repository = _real_path(repository_root)
         read_roots = tuple(_real_path(repository / root) for root in self.sandbox.read_roots)
-        write_roots = tuple(
-            _real_path(repository / root) for root in self.sandbox.write_roots
-        )
+        write_roots = tuple(_real_path(repository / root) for root in self.sandbox.write_roots)
         if any(not _is_within(root, (repository,)) for root in (*read_roots, *write_roots)):
             violations.append("sandbox_root_escape")
         for supplied in snapshot.read_paths:
@@ -899,7 +875,6 @@ class AnalysisExecutionProfile:
         return self.resources.validate_usage(usage, proof_required=proof_required)
 
 
-
 def _parse_objective_validation_repair(value: Any) -> Mapping[str, Any]:
     """Validate the optional closed objective validation repair metadata block."""
 
@@ -925,13 +900,10 @@ def _parse_objective_validation_repair(value: Any) -> Mapping[str, Any]:
     )
     if payload["evidence_term"] != OBJECTIVE_VALIDATION_EVIDENCE:
         raise ExecutionProfileError(
-            "objective_validation_repair.evidence_term must be "
-            f"{OBJECTIVE_VALIDATION_EVIDENCE!r}"
+            f"objective_validation_repair.evidence_term must be {OBJECTIVE_VALIDATION_EVIDENCE!r}"
         )
     if str(payload["goal_id"]).strip() != GOAL_ID:
-        raise ExecutionProfileError(
-            f"objective_validation_repair.goal_id must be {GOAL_ID}"
-        )
+        raise ExecutionProfileError(f"objective_validation_repair.goal_id must be {GOAL_ID}")
     if str(payload["task_id"]).strip() != VALIDATION_TASK_ID:
         raise ExecutionProfileError(
             f"objective_validation_repair.task_id must be {VALIDATION_TASK_ID}"
@@ -941,9 +913,7 @@ def _parse_objective_validation_repair(value: Any) -> Mapping[str, Any]:
             "objective_validation_repair.command must match the goal validation"
         )
     if payload["fail_closed"] is not True:
-        raise ExecutionProfileError(
-            "objective_validation_repair.fail_closed must be true"
-        )
+        raise ExecutionProfileError("objective_validation_repair.fail_closed must be true")
     artifacts = _strings(
         payload["validated_artifacts"],
         "objective_validation_repair.validated_artifacts",
@@ -1007,9 +977,7 @@ def verify_objective_validation_repair(
 
     profile = AnalysisExecutionProfile.load(path, repository_root=repository_root)
     if profile.goal_id != GOAL_ID:
-        raise ExecutionProfileError(
-            f"objective validation repair requires goal_id {GOAL_ID}"
-        )
+        raise ExecutionProfileError(f"objective validation repair requires goal_id {GOAL_ID}")
 
     present_roles = {role for tool in profile.tools for role in tool.roles}
     missing_roles = sorted(REQUIRED_TOOL_ROLES - present_roles)
@@ -1018,13 +986,9 @@ def verify_objective_validation_repair(
             f"objective validation repair missing tool roles: {missing_roles}"
         )
     if any(not tool.identity.startswith("sha256:") for tool in profile.tools):
-        raise ExecutionProfileError(
-            "objective validation repair requires sha256 tool identities"
-        )
+        raise ExecutionProfileError("objective validation repair requires sha256 tool identities")
     if any(not lock.identity.startswith("sha256:") for lock in profile.locks):
-        raise ExecutionProfileError(
-            "objective validation repair requires sha256 lock identities"
-        )
+        raise ExecutionProfileError("objective validation repair requires sha256 lock identities")
 
     bounds = profile.resources.to_dict(resource_class=profile.resource_class)
     missing_dims = sorted(REQUIRED_RESOURCE_DIMENSIONS - set(bounds))
@@ -1062,21 +1026,13 @@ def verify_objective_validation_repair(
         lock_identities={},
         unavailable_tools=tuple(tool.name for tool in profile.tools),
     )
-    capability = profile.validate(
-        snapshot, repository_root=repository_root, proof_required=True
-    )
+    capability = profile.validate(snapshot, repository_root=repository_root, proof_required=True)
     if not capability.safe:
-        raise ExecutionProfileError(
-            "missing tools must remain safe capability facts"
-        )
+        raise ExecutionProfileError("missing tools must remain safe capability facts")
     if capability.disposition not in {"incomplete", "unknown"}:
-        raise ExecutionProfileError(
-            "missing tools must yield incomplete or unknown, never pass"
-        )
+        raise ExecutionProfileError("missing tools must yield incomplete or unknown, never pass")
     if any("auto_install" in item for item in capability.unavailable_capabilities):
-        raise ExecutionProfileError(
-            "missing tools must never request auto-install"
-        )
+        raise ExecutionProfileError("missing tools must never request auto-install")
     if profile.sandbox.auto_install != "deny":
         raise ExecutionProfileError("auto_install must remain deny")
 
@@ -1085,13 +1041,8 @@ def verify_objective_validation_repair(
         raise ExecutionProfileError(
             "objective validation repair metadata is required on the reviewed profile"
         )
-    if (
-        profile.objective_validation_repair["evidence_term"]
-        != OBJECTIVE_VALIDATION_EVIDENCE
-    ):
-        raise ExecutionProfileError(
-            "profile objective_validation_repair evidence_term mismatch"
-        )
+    if profile.objective_validation_repair["evidence_term"] != OBJECTIVE_VALIDATION_EVIDENCE:
+        raise ExecutionProfileError("profile objective_validation_repair evidence_term mismatch")
     return profile
 
 

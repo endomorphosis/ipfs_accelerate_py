@@ -356,7 +356,9 @@ def test_restart_restores_plan_attempts_receipts_and_does_not_reexecute(tmp_path
 
     assert restarted.states == first.states
     assert len(restarted.authoritative_receipts) == 1
-    assert restarted.authoritative_receipts[0].receipt_id == first.authoritative_receipts[0].receipt_id
+    assert (
+        restarted.authoritative_receipts[0].receipt_id == first.authoritative_receipts[0].receipt_id
+    )
     assert any(attempt.status is AttemptStatus.SUCCEEDED for attempt in restarted.attempts)
 
 

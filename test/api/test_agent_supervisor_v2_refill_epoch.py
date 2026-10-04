@@ -115,9 +115,7 @@ def _residual(
             f"test/api/test_{slug.replace('-', '_')}.py",
         ),
         predicted_symbols=(f"repair_{slug.replace('-', '_')}",),
-        validation_commands=(
-            f"python -m pytest test/api/test_{slug.replace('-', '_')}.py -q",
-        ),
+        validation_commands=(f"python -m pytest test/api/test_{slug.replace('-', '_')}.py -q",),
         confidence=0.9,
         estimated_tokens=1_000,
         depth=2,
@@ -200,9 +198,7 @@ def _binding(paths: dict[str, Path]) -> V2RefillEpochBinding:
         objective_revision=objective_heap_content_id(
             paths["objective_path"].read_text(encoding="utf-8")
         ),
-        board_revision=taskboard_revision(
-            paths["taskboard_path"].read_bytes()
-        ),
+        board_revision=taskboard_revision(paths["taskboard_path"].read_bytes()),
         benchmark_policy_id="policy:v2-benchmark",
         benchmark_policy_revision="sha256:benchmark-policy-v3",
         capability_id="capabilities:agent-supervisor",
@@ -261,14 +257,9 @@ def test_preview_is_pure_and_contains_the_complete_exact_delta(
     assert len(preview.goal_ids) == 1
     assert len(preview.task_ids) == 2
     assert preview.goal_task_mappings[0].task_ids == preview.task_ids
-    assert preview.candidate_objective_revision != (
-        preview.base_objective_revision
-    )
+    assert preview.candidate_objective_revision != (preview.base_objective_revision)
     assert preview.candidate_board_revision != preview.base_board_revision
-    assert {
-        path: path.read_bytes()
-        for path in before
-    } == before
+    assert {path: path.read_bytes() for path in before} == before
 
 
 def test_epoch_binds_every_input_and_previews_one_exact_mapped_delta(
@@ -316,18 +307,14 @@ def test_epoch_binds_every_input_and_previews_one_exact_mapped_delta(
     assert binding.capability_revision == "sha256:capabilities-v7"
     assert binding.operation_catalog_id == "catalog:supervisor-operations-v4"
     assert binding.storage_policy_id == "storage:durable-local-cas-v2"
-    assert binding.observation_window_start == (
-        NOW - timedelta(hours=1)
-    ).isoformat()
+    assert binding.observation_window_start == (NOW - timedelta(hours=1)).isoformat()
     assert binding.observation_window_end == NOW.isoformat()
 
     preview = result.preview
     assert isinstance(preview, V2RefillEpochPreview)
     assert preview.epoch_id == result.epoch_id
     assert preview.admission_id == admission.admission_id
-    assert preview.goal_ids == tuple(
-        item.proposal.canonical_id for item in admission.accepted
-    )
+    assert preview.goal_ids == tuple(item.proposal.canonical_id for item in admission.accepted)
     assert preview.task_ids == admission.accepted[0].task_ids
     assert len(preview.goal_task_mappings) == 1
     assert preview.goal_task_mappings[0].goal_id == preview.goal_ids[0]
@@ -340,21 +327,14 @@ def test_epoch_binds_every_input_and_previews_one_exact_mapped_delta(
     assert objective == preview.candidate_objective_text
     assert taskboard == preview.candidate_board_text
     assert objective.count(f"## {preview.goal_ids[0]} ") == 1
-    assert all(
-        taskboard.count(f"## {task_id} ") == 1
-        for task_id in preview.task_ids
-    )
+    assert all(taskboard.count(f"## {task_id} ") == 1 for task_id in preview.task_ids)
 
     transaction = _transaction(_journal(paths), result.epoch_id)
     assert transaction["state"] == "committed"
     assert transaction["base_objective_revision"] == binding.objective_revision
     assert transaction["base_board_revision"] == binding.board_revision
-    assert transaction["candidate_objective_revision"] == (
-        preview.candidate_objective_revision
-    )
-    assert transaction["candidate_board_revision"] == (
-        preview.candidate_board_revision
-    )
+    assert transaction["candidate_objective_revision"] == (preview.candidate_objective_revision)
+    assert transaction["candidate_board_revision"] == (preview.candidate_board_revision)
     assert transaction["goal_ids"] == list(preview.goal_ids)
     assert transaction["task_ids"] == list(preview.task_ids)
 
@@ -407,12 +387,9 @@ def test_objective_and_board_revisions_are_epoch_identity_inputs(
 ) -> None:
     baseline_paths = _paths(tmp_path / "baseline")
     changed_paths = _paths(tmp_path / "changed")
-    target = changed_paths[
-        "objective_path" if document == "objective" else "taskboard_path"
-    ]
+    target = changed_paths["objective_path" if document == "objective" else "taskboard_path"]
     target.write_text(
-        target.read_text(encoding="utf-8")
-        + f"\n<!-- meaningful {document} revision -->\n",
+        target.read_text(encoding="utf-8") + f"\n<!-- meaningful {document} revision -->\n",
         encoding="utf-8",
     )
 
@@ -425,12 +402,8 @@ def test_objective_and_board_revisions_are_epoch_identity_inputs(
         observation_provider=_healthy_observation,
     )
 
-    revision_field = (
-        "objective_revision" if document == "objective" else "board_revision"
-    )
-    assert getattr(baseline.binding, revision_field) != getattr(
-        changed.binding, revision_field
-    )
+    revision_field = "objective_revision" if document == "objective" else "board_revision"
+    assert getattr(baseline.binding, revision_field) != getattr(changed.binding, revision_field)
     assert baseline.epoch_id != changed.epoch_id
 
 
@@ -449,9 +422,7 @@ def test_epoch_hard_caps_at_eight_goals_and_twenty_four_tasks(
 
     result = run_v2_refill_epoch(
         **_kwargs(paths),
-        observation_provider=lambda _binding: V2RefillObservation(
-            residuals=residuals
-        ),
+        observation_provider=lambda _binding: V2RefillObservation(residuals=residuals),
         proposal_provider=lambda *_args, **_kwargs: admission,
     )
 
@@ -460,10 +431,7 @@ def test_epoch_hard_caps_at_eight_goals_and_twenty_four_tasks(
     assert len(result.created_task_ids) == MAX_V2_SUCCESSOR_TASKS == 24
     assert len(set(result.created_goal_ids)) == 8
     assert len(set(result.created_task_ids)) == 24
-    assert sum(
-        len(mapping.task_ids)
-        for mapping in result.preview.goal_task_mappings
-    ) == 24
+    assert sum(len(mapping.task_ids) for mapping in result.preview.goal_task_mappings) == 24
     assert result.admission.rejected[-1].reason.value == "goal-budget"
 
     with pytest.raises(ValueError):
@@ -489,9 +457,7 @@ def test_objective_and_board_commit_share_cas_and_durable_journal(
 
     blocked = run_v2_refill_epoch(
         **_kwargs(paths),
-        observation_provider=lambda _binding: V2RefillObservation(
-            residuals=(residual,)
-        ),
+        observation_provider=lambda _binding: V2RefillObservation(residuals=(residual,)),
         proposal_provider=mutate_after_preview,
     )
 
@@ -499,8 +465,10 @@ def test_objective_and_board_commit_share_cas_and_durable_journal(
     assert not blocked.created_goal_ids
     assert not blocked.created_task_ids
     assert paths["objective_path"].read_bytes() == objective_before
-    assert paths["taskboard_path"].read_text(encoding="utf-8").endswith(
-        "<!-- concurrent board owner -->\n"
+    assert (
+        paths["taskboard_path"]
+        .read_text(encoding="utf-8")
+        .endswith("<!-- concurrent board owner -->\n")
     )
     transaction = _transaction(_journal(paths), blocked.epoch_id)
     assert transaction["state"] in {"blocked", "prepared"}
@@ -531,9 +499,7 @@ def test_durable_journal_recovers_interruption_after_heap_cas(
         with pytest.raises(RuntimeError, match="process interruption"):
             run_v2_refill_epoch(
                 **_kwargs(paths),
-                observation_provider=lambda _binding: V2RefillObservation(
-                    residuals=(residual,)
-                ),
+                observation_provider=lambda _binding: V2RefillObservation(residuals=(residual,)),
                 proposal_provider=lambda *_args, **_kwargs: admission,
             )
 
@@ -558,12 +524,11 @@ def test_durable_journal_recovers_interruption_after_heap_cas(
     assert recovered.epoch_id == interrupted["epoch_id"]
     assert recovered.created_goal_ids == tuple(interrupted["goal_ids"])
     assert recovered.created_task_ids == tuple(interrupted["task_ids"])
-    assert paths["taskboard_path"].read_text(encoding="utf-8") == (
-        interrupted["preview"]["candidate_board_text"]
+    assert (
+        paths["taskboard_path"].read_text(encoding="utf-8")
+        == (interrupted["preview"]["candidate_board_text"])
     )
-    assert _transaction(
-        _journal(paths), recovered.epoch_id
-    )["state"] == "committed"
+    assert _transaction(_journal(paths), recovered.epoch_id)["state"] == "committed"
 
 
 def test_exact_replay_does_zero_provider_proposal_write_or_task_work(
@@ -573,9 +538,7 @@ def test_exact_replay_does_zero_provider_proposal_write_or_task_work(
     residual = _residual()
     first = run_v2_refill_epoch(
         **_kwargs(paths),
-        observation_provider=lambda _binding: V2RefillObservation(
-            residuals=(residual,)
-        ),
+        observation_provider=lambda _binding: V2RefillObservation(residuals=(residual,)),
     )
     assert _status_value(first) == "proposed"
     tracked = (
@@ -696,9 +659,7 @@ def test_healthy_exhaustion_persists_six_hour_wait_and_suppresses_work(
     assert wait["epoch_id"] == first.epoch_id
     assert wait["state"] == "waiting_for_meaningful_trigger"
     assert wait["observed_at"] == NOW.isoformat()
-    assert wait["suppress_until"] == (
-        NOW + timedelta(hours=6)
-    ).isoformat()
+    assert wait["suppress_until"] == (NOW + timedelta(hours=6)).isoformat()
     assert wait["quorum"]["satisfied"]
     assert wait["quorum"]["member_count"] == 2
 

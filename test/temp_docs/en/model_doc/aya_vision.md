@@ -63,26 +63,39 @@ model = AutoModelForImageTextToText.from_pretrained(
 
 # Format message with the aya-vision chat template
 messages = [
-    {"role": "user",
-     "content": [
-       {"type": "image", "url": "https://pbs.twimg.com/media/Fx7YvfQWYAIp6rZ?format=jpg&name=medium"},
-        {"type": "text", "text": "चित्र में लिखा पाठ क्या कहता है?"},
-    ]},
-    ]
+    {
+        "role": "user",
+        "content": [
+            {
+                "type": "image",
+                "url": "https://pbs.twimg.com/media/Fx7YvfQWYAIp6rZ?format=jpg&name=medium",
+            },
+            {"type": "text", "text": "चित्र में लिखा पाठ क्या कहता है?"},
+        ],
+    },
+]
 
 # Process image on CUDA
 inputs = processor.apply_chat_template(
-    messages, padding=True, add_generation_prompt=True, tokenize=True, return_dict=True, return_tensors="pt", device=torch_device
+    messages,
+    padding=True,
+    add_generation_prompt=True,
+    tokenize=True,
+    return_dict=True,
+    return_tensors="pt",
+    device=torch_device,
 ).to(model.device)
 
 gen_tokens = model.generate(
-    **inputs, 
-    max_new_tokens=300, 
-    do_sample=True, 
+    **inputs,
+    max_new_tokens=300,
+    do_sample=True,
     temperature=0.3,
 )
 
-gen_text = print(processor.tokenizer.decode(gen_tokens[0][inputs.input_ids.shape[1]:], skip_special_tokens=True))
+gen_text = print(
+    processor.tokenizer.decode(gen_tokens[0][inputs.input_ids.shape[1] :], skip_special_tokens=True)
+)
 ```
 ### Pipeline
 
@@ -93,12 +106,17 @@ pipe = pipeline(model="CohereForAI/aya-vision-8b", task="image-text-to-text", de
 
 # Format message with the aya-vision chat template
 messages = [
-    {"role": "user",
-     "content": [
-       {"type": "image", "url": "https://media.istockphoto.com/id/458012057/photo/istanbul-turkey.jpg?s=612x612&w=0&k=20&c=qogAOVvkpfUyqLUMr_XJQyq-HkACXyYUSZbKhBlPrxo="},
-        {"type": "text", "text": "Bu resimde hangi anıt gösterilmektedir?"},
-    ]},
-    ]
+    {
+        "role": "user",
+        "content": [
+            {
+                "type": "image",
+                "url": "https://media.istockphoto.com/id/458012057/photo/istanbul-turkey.jpg?s=612x612&w=0&k=20&c=qogAOVvkpfUyqLUMr_XJQyq-HkACXyYUSZbKhBlPrxo=",
+            },
+            {"type": "text", "text": "Bu resimde hangi anıt gösterilmektedir?"},
+        ],
+    },
+]
 outputs = pipe(text=messages, max_new_tokens=300, return_full_text=False)
 
 print(outputs)
@@ -141,17 +159,24 @@ messages = [
 ]
 
 inputs = processor.apply_chat_template(
-    messages, padding=True, add_generation_prompt=True, tokenize=True, return_dict=True, return_tensors="pt"
+    messages,
+    padding=True,
+    add_generation_prompt=True,
+    tokenize=True,
+    return_dict=True,
+    return_tensors="pt",
 ).to(model.device)
 
 gen_tokens = model.generate(
-    **inputs, 
-    max_new_tokens=300, 
-    do_sample=True, 
+    **inputs,
+    max_new_tokens=300,
+    do_sample=True,
     temperature=0.3,
 )
 
-gen_text = processor.tokenizer.decode(gen_tokens[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
+gen_text = processor.tokenizer.decode(
+    gen_tokens[0][inputs.input_ids.shape[1] :], skip_special_tokens=True
+)
 print(gen_text)
 ```
 
@@ -204,12 +229,12 @@ batch_messages = [
 
 # Process each conversation separately and combine into a batch
 batch_inputs = processor.apply_chat_template(
-    batch_messages, 
-    padding=True, 
-    add_generation_prompt=True, 
-    tokenize=True, 
-    return_dict=True, 
-    return_tensors="pt"
+    batch_messages,
+    padding=True,
+    add_generation_prompt=True,
+    tokenize=True,
+    return_dict=True,
+    return_tensors="pt",
 ).to(model.device)
 
 # Generate responses for the batch
@@ -223,10 +248,9 @@ batch_outputs = model.generate(
 # Decode the generated responses
 for i, output in enumerate(batch_outputs):
     response = processor.tokenizer.decode(
-        output[batch_inputs.input_ids.shape[1]:], 
-        skip_special_tokens=True
+        output[batch_inputs.input_ids.shape[1] :], skip_special_tokens=True
     )
-    print(f"Response {i+1}:\n{response}\n")
+    print(f"Response {i + 1}:\n{response}\n")
 ```
 
 ## AyaVisionProcessor

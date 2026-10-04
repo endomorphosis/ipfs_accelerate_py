@@ -205,39 +205,42 @@ class DependencyManager:
     def __init__(self, mock_config=None):
         self.mock_config = mock_config or {}
         self.dependencies = self.check_dependencies()
-        
+
     def check_dependencies(self):
         """Check all dependencies and return their status"""
         results = {}
-        results['torch'] = self.check_torch()
-        results['transformers'] = self.check_transformers()
-        results['tokenizers'] = self.check_tokenizers()
-        results['sentencepiece'] = self.check_sentencepiece()
+        results["torch"] = self.check_torch()
+        results["transformers"] = self.check_transformers()
+        results["tokenizers"] = self.check_tokenizers()
+        results["sentencepiece"] = self.check_sentencepiece()
         # Additional dependencies
         return results
-        
+
     def check_torch(self):
         """Check torch availability"""
-        if self.should_mock('torch'):
-            return {'available': False, 'mocked': True}
-            
+        if self.should_mock("torch"):
+            return {"available": False, "mocked": True}
+
         try:
             import torch
+
             return {
-                'available': True, 
-                'mocked': False,
-                'version': torch.__version__,
-                'cuda': torch.cuda.is_available()
+                "available": True,
+                "mocked": False,
+                "version": torch.__version__,
+                "cuda": torch.cuda.is_available(),
             }
         except ImportError:
-            return {'available': False, 'mocked': False}
-            
+            return {"available": False, "mocked": False}
+
     # Additional dependency checking methods
-    
+
     def should_mock(self, dependency):
         """Check if a dependency should be mocked"""
         env_var = f"MOCK_{dependency.upper()}"
-        return os.environ.get(env_var, 'False').lower() == 'true' or self.mock_config.get(dependency, False)
+        return os.environ.get(env_var, "False").lower() == "true" or self.mock_config.get(
+            dependency, False
+        )
 ```
 
 #### 4.2.7 Configuration Management
@@ -404,20 +407,20 @@ The new template system will use a base class that defines common functionality:
 class TemplateBase:
     def __init__(self, config):
         self.config = config
-        
+
     def render(self, context):
         """Render the template with the provided context"""
         template_str = self.get_template_str()
         return self._render_template(template_str, context)
-        
+
     def get_template_str(self):
         """Get the template string"""
         raise NotImplementedError
-        
+
     def _render_template(self, template_str, context):
         """Render the template string with the provided context"""
         # Implementation using string.Template or similar
-        
+
     def get_imports(self):
         """Get the imports required by this template"""
         return [
@@ -430,16 +433,16 @@ class TemplateBase:
             "import argparse",
             "from unittest.mock import patch, MagicMock, Mock",
             "from typing import Dict, List, Any, Optional, Union",
-            "from pathlib import Path"
+            "from pathlib import Path",
         ]
-        
+
     def get_metadata(self):
         """Get metadata about this template"""
         return {
             "name": self.__class__.__name__,
             "version": "1.0.0",
             "description": "Base template",
-            "supported_architectures": []
+            "supported_architectures": [],
         }
 ```
 
@@ -545,15 +548,15 @@ def build_context(model_type, model_info, hardware_info, options):
         "has_webgpu": hardware_info.get("webgpu", {}).get("available", False),
         "options": options,
         "timestamp": datetime.datetime.now().isoformat(),
-        "uuid": str(uuid.uuid4())
+        "uuid": str(uuid.uuid4()),
     }
-    
+
     # Add dependency information
     context.update(options.get("dependencies", {}))
-    
+
     # Add template-specific context
     context.update(options.get("template_context", {}))
-    
+
     return context
 ```
 
@@ -606,40 +609,44 @@ class ModelFilter:
         """Filter models based on criteria"""
         raise NotImplementedError
 
+
 class TaskFilter(ModelFilter):
     def filter(self, models, task):
         """Filter models based on task compatibility"""
         if not task:
             return models
-            
+
         return [model for model in models if task in model.get("recommended_tasks", [])]
+
 
 class HardwareFilter(ModelFilter):
     def filter(self, models, hardware_profile):
         """Filter models based on hardware compatibility"""
         if not hardware_profile:
             return models
-            
+
         # Implement hardware-specific filtering logic
-        
+
+
 class SizeFilter(ModelFilter):
     def filter(self, models, max_size_mb):
         """Filter models based on size constraints"""
         if not max_size_mb:
             return models
-            
+
         return [model for model in models if self._get_model_size_mb(model) <= max_size_mb]
-        
+
     def _get_model_size_mb(self, model):
         """Extract model size in MB from model metadata"""
         # Implementation
-        
+
+
 class FrameworkFilter(ModelFilter):
     def filter(self, models, framework):
         """Filter models based on framework compatibility"""
         if not framework:
             return models
-            
+
         return [model for model in models if framework in model.get("frameworks", [])]
 ```
 
@@ -655,37 +662,37 @@ class ModelSelector:
             "task": TaskFilter(),
             "hardware": HardwareFilter(),
             "size": SizeFilter(),
-            "framework": FrameworkFilter()
+            "framework": FrameworkFilter(),
         }
-        
+
     def select(self, model_type, criteria=None):
         """Select the best model based on criteria"""
         criteria = criteria or {}
-        
+
         # Get all models of this type
         architecture = self._map_model_to_architecture(model_type)
         candidates = self.registry.get_models_by_architecture(architecture)
-        
+
         # Filter candidates based on criteria
         for filter_name, filter_value in criteria.items():
             if filter_name in self.filters and filter_value:
                 candidates = self.filters[filter_name].filter(candidates, filter_value)
-                
+
         # If no candidates remain, return a default
         if not candidates:
             return self._get_default_model(model_type)
-            
+
         # Rank and return the best candidate
         return self._rank_candidates(candidates)[0]
-        
+
     def _map_model_to_architecture(self, model_type):
         """Map a model type to its architecture"""
         # Implementation
-        
+
     def _get_default_model(self, model_type):
         """Get a default model for the given type"""
         # Implementation
-        
+
     def _rank_candidates(self, candidates):
         """Rank candidates by preference"""
         # Implementation
@@ -702,13 +709,13 @@ class HardwareDetectorBase:
     def detect(self):
         """Detect hardware availability and properties"""
         raise NotImplementedError
-        
+
     def get_metadata(self):
         """Get metadata about this detector"""
         return {
             "name": self.__class__.__name__,
             "version": "1.0.0",
-            "description": "Base hardware detector"
+            "description": "Base hardware detector",
         }
 ```
 
@@ -721,41 +728,40 @@ class CUDADetector(HardwareDetectorBase):
     def detect(self):
         """Detect CUDA availability and properties"""
         result = {"available": False, "version": None, "devices": []}
-        
+
         try:
             import torch
-            
+
             result["available"] = torch.cuda.is_available()
-            
+
             if result["available"]:
                 result["version"] = torch.version.cuda
                 result["device_count"] = torch.cuda.device_count()
-                
+
                 # Get device properties
                 devices = []
                 for i in range(result["device_count"]):
                     props = torch.cuda.get_device_properties(i)
-                    devices.append({
-                        "index": i,
-                        "name": props.name,
-                        "total_memory": props.total_memory,
-                        "major": props.major,
-                        "minor": props.minor
-                    })
-                    
+                    devices.append(
+                        {
+                            "index": i,
+                            "name": props.name,
+                            "total_memory": props.total_memory,
+                            "major": props.major,
+                            "minor": props.minor,
+                        }
+                    )
+
                 result["devices"] = devices
         except ImportError:
             pass
-            
+
         return result
-        
+
     def get_metadata(self):
         """Get metadata about this detector"""
         metadata = super().get_metadata()
-        metadata.update({
-            "name": "CUDADetector",
-            "description": "Detector for NVIDIA CUDA GPUs"
-        })
+        metadata.update({"name": "CUDADetector", "description": "Detector for NVIDIA CUDA GPUs"})
         return metadata
 ```
 
@@ -767,38 +773,32 @@ The hardware detection manager will coordinate all detectors:
 class HardwareDetectionManager:
     def __init__(self):
         self.detectors = {}
-        
+
     def register_detector(self, hardware_type, detector):
         """Register a hardware detector"""
         self.detectors[hardware_type] = detector
-        
+
     def detect_all(self):
         """Detect all hardware"""
         results = {}
-        
+
         for hardware_type, detector in self.detectors.items():
             try:
                 results[hardware_type] = detector.detect()
             except Exception as e:
-                results[hardware_type] = {
-                    "available": False,
-                    "error": str(e)
-                }
-                
+                results[hardware_type] = {"available": False, "error": str(e)}
+
         return results
-        
+
     def detect(self, hardware_type):
         """Detect specific hardware"""
         if hardware_type not in self.detectors:
             return {"available": False, "error": f"No detector for {hardware_type}"}
-            
+
         try:
             return self.detectors[hardware_type].detect()
         except Exception as e:
-            return {
-                "available": False,
-                "error": str(e)
-            }
+            return {"available": False, "error": str(e)}
 ```
 
 ## 8. Dependency Management System
@@ -812,12 +812,12 @@ class DependencyManager:
     def __init__(self, mock_config=None):
         self.mock_config = mock_config or {}
         self.cached_results = {}
-        
+
     def check(self, dependency_name):
         """Check a dependency's availability"""
         if dependency_name in self.cached_results:
             return self.cached_results[dependency_name]
-            
+
         checker_method = getattr(self, f"check_{dependency_name}", None)
         if not checker_method:
             result = {"available": False, "error": f"No checker for {dependency_name}"}
@@ -826,43 +826,46 @@ class DependencyManager:
                 result = checker_method()
             except Exception as e:
                 result = {"available": False, "error": str(e)}
-                
+
         self.cached_results[dependency_name] = result
         return result
-        
+
     def check_all(self):
         """Check all dependencies"""
         results = {}
         for dependency_name in self.get_all_dependency_names():
             results[dependency_name] = self.check(dependency_name)
         return results
-        
+
     def get_all_dependency_names(self):
         """Get all dependency names"""
         methods = dir(self)
         return [m[6:] for m in methods if m.startswith("check_") and callable(getattr(self, m))]
-        
+
     def should_mock(self, dependency_name):
         """Check if a dependency should be mocked"""
         env_var = f"MOCK_{dependency_name.upper()}"
-        return os.environ.get(env_var, "False").lower() == "true" or self.mock_config.get(dependency_name, False)
-        
+        return os.environ.get(env_var, "False").lower() == "true" or self.mock_config.get(
+            dependency_name, False
+        )
+
     def check_torch(self):
         """Check torch availability"""
         if self.should_mock("torch"):
             return {"available": False, "mocked": True}
-            
+
         try:
             import torch
+
             return {
                 "available": True,
                 "mocked": False,
                 "version": torch.__version__,
-                "cuda": torch.cuda.is_available() if hasattr(torch, "cuda") else False
+                "cuda": torch.cuda.is_available() if hasattr(torch, "cuda") else False,
             }
         except ImportError:
             return {"available": False, "mocked": False}
-        
+
     # Additional dependency checkers (transformers, tokenizers, sentencepiece, etc.)
 ```
 
@@ -875,23 +878,24 @@ class MockProvider:
     def get_mock(self):
         """Get a mock for this dependency"""
         raise NotImplementedError
-        
+
+
 class TorchMockProvider(MockProvider):
     def get_mock(self):
         """Get a mock for torch"""
         mock = MagicMock()
-        
+
         # Configure common torch attributes and methods
         mock.__version__ = "MOCK"
-        
+
         # Mock CUDA
         mock.cuda = MagicMock()
         mock.cuda.is_available = lambda: False
         mock.cuda.device_count = lambda: 0
-        
+
         # Mock device handling
         mock.device = lambda device_str: device_str
-        
+
         # Mock tensor creation
         def mock_tensor(data, *args, **kwargs):
             result = MagicMock()
@@ -899,39 +903,40 @@ class TorchMockProvider(MockProvider):
             result.dtype = kwargs.get("dtype", None)
             result.device = kwargs.get("device", "cpu")
             return result
-            
+
         mock.tensor = mock_tensor
-        
+
         return mock
-        
+
+
 class TransformersMockProvider(MockProvider):
     def get_mock(self):
         """Get a mock for transformers"""
         mock = MagicMock()
-        
+
         # Configure common transformers attributes and methods
         mock.__version__ = "MOCK"
-        
+
         # Mock pipeline
         def mock_pipeline(task, model=None, **kwargs):
             pipeline_mock = MagicMock()
             pipeline_mock.return_value = [{"generated_text": "Mock generated text"}]
             return pipeline_mock
-            
+
         mock.pipeline = mock_pipeline
-        
+
         # Mock model loading
         model_mock = MagicMock()
         mock.AutoModelForSequenceClassification.from_pretrained = lambda *args, **kwargs: model_mock
         mock.AutoModelForCausalLM.from_pretrained = lambda *args, **kwargs: model_mock
         mock.AutoModelForMaskedLM.from_pretrained = lambda *args, **kwargs: model_mock
-        
+
         # Mock tokenizer loading
         tokenizer_mock = MagicMock()
         tokenizer_mock.encode = lambda text, **kwargs: [101, 102, 103]
         tokenizer_mock.decode = lambda ids, **kwargs: "Decoded text"
         mock.AutoTokenizer.from_pretrained = lambda *args, **kwargs: tokenizer_mock
-        
+
         return mock
 ```
 
@@ -950,12 +955,7 @@ class SyntaxValidator:
             compile(content, "<string>", "exec")
             return True, None
         except SyntaxError as e:
-            return False, {
-                "line": e.lineno,
-                "offset": e.offset,
-                "text": e.text,
-                "message": str(e)
-            }
+            return False, {"line": e.lineno, "offset": e.offset, "text": e.text, "message": str(e)}
 ```
 
 ### 9.2 Syntax Fixer
@@ -970,60 +970,60 @@ class SyntaxFixer:
             self.fix_indentation,
             self.fix_unbalanced_delimiters,
             self.fix_dangling_commas,
-            self.fix_unbalanced_blocks
+            self.fix_unbalanced_blocks,
         ]
-        
+
     def fix(self, content):
         """Apply all fixers to the content"""
         for fixer in self.fixers:
             content = fixer(content)
         return content
-        
+
     def fix_quotes(self, content):
         """Fix quote-related issues"""
         # Replace multiple consecutive quotes
         content = content.replace('""""', '"""')
         content = content.replace("''''", "'''")
-        
+
         # Fix unterminated triple quotes
         content = self._fix_unterminated_triple_quotes(content)
-        
+
         return content
-        
+
     def fix_indentation(self, content):
         """Fix indentation issues"""
-        lines = content.split('\n')
+        lines = content.split("\n")
         fixed_lines = []
-        
+
         # Track indentation level
         current_level = 0
-        
+
         for line in lines:
             stripped = line.strip()
-            
+
             # Skip empty lines or comment-only lines
-            if not stripped or stripped.startswith('#'):
+            if not stripped or stripped.startswith("#"):
                 fixed_lines.append(line)
                 continue
-                
+
             # Adjust indentation for blocks that increase level
-            if stripped.endswith(':'):
-                fixed_lines.append(' ' * (4 * current_level) + stripped)
+            if stripped.endswith(":"):
+                fixed_lines.append(" " * (4 * current_level) + stripped)
                 current_level += 1
                 continue
-                
+
             # Handle dedentation
-            if stripped in ('else:', 'elif', 'except:', 'finally:', 'except', 'elif:'):
+            if stripped in ("else:", "elif", "except:", "finally:", "except", "elif:"):
                 current_level = max(0, current_level - 1)
-                fixed_lines.append(' ' * (4 * current_level) + stripped)
+                fixed_lines.append(" " * (4 * current_level) + stripped)
                 current_level += 1
                 continue
-                
+
             # Normal line
-            fixed_lines.append(' ' * (4 * current_level) + stripped)
-            
-        return '\n'.join(fixed_lines)
-        
+            fixed_lines.append(" " * (4 * current_level) + stripped)
+
+        return "\n".join(fixed_lines)
+
     # Additional fixing methods
 ```
 
@@ -1037,19 +1037,20 @@ class ASTIndentationFixer:
         """Fix indentation using AST parsing"""
         try:
             import ast
-            
+
             # Try to parse the AST
             tree = ast.parse(content)
-            
+
             # Generate properly formatted code
             import astor
+
             fixed_content = astor.to_source(tree)
-            
+
             return fixed_content
         except SyntaxError:
             # Fall back to regex-based fixer if AST parsing fails
             return self._fix_with_regex(content)
-            
+
     def _fix_with_regex(self, content):
         """Fix indentation using regex patterns"""
         # Implementation

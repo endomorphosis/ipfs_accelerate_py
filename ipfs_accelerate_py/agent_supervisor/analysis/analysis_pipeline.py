@@ -89,13 +89,9 @@ from ..integrations.ipfs_datasets_analysis_provider import (
 )
 
 
-EXACT_TREE_REUSE_REQUIREMENT_ID: Final = (
-    "189057730455837902155591890661235220962"
-)
+EXACT_TREE_REUSE_REQUIREMENT_ID: Final = "189057730455837902155591890661235220962"
 EXACT_TREE_ANALYSIS_REUSE_REQUIREMENT_ID: Final = EXACT_TREE_REUSE_REQUIREMENT_ID
-ANALYSIS_PIPELINE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/analysis-pipeline-result@1"
-)
+ANALYSIS_PIPELINE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/analysis-pipeline-result@1"
 EXACT_TREE_REUSE_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/exact-tree-reuse-evidence@1"
 )
@@ -110,19 +106,13 @@ EXACT_TREE_REUSE_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
     ),
     "never treats an attached invalidated entry as authority",
     "revalidates all seven key dimensions and derived completion state",
-    (
-        "collapses identical in-process lane misses without globally "
-        "serializing different keys"
-    ),
+    ("collapses identical in-process lane misses without globally serializing different keys"),
     "achieves at least 70 percent reuse on repeated fixtures",
     "and reports zero stale authoritative hits.",
 )
 SINGLE_FLIGHT_COLLAPSE_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
     "Sync, async, and mixed facades share one keyed flight",
-    (
-        "the full AST/retrieval/provider/analyzer path executes once for "
-        "identical concurrent misses"
-    ),
+    ("the full AST/retrieval/provider/analyzer path executes once for identical concurrent misses"),
     "unrelated keys are not globally serialized",
     "failed flights clean up before retry",
     (
@@ -160,20 +150,15 @@ INTEGRATED_ANALYSIS_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
     INTEGRATED_ANALYSIS_CACHE_ACCEPTANCE_CRITERIA[2],
 )
 INTEGRATED_ANALYSIS_COMPLETION_EVIDENCE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "integrated-analysis-completion-evidence@1"
+    "ipfs_accelerate_py/agent-supervisor/integrated-analysis-completion-evidence@1"
 )
 ANALYSIS_PIPELINE_VERSION: Final = "analysis-pipeline@1"
 DEFAULT_ANALYZER_VERSION: Final = "supervisor-integrated-analysis@1"
-DEFAULT_POLICY_DIGEST: Final = digest_analysis_input(
-    {"policy": "supervisor-analysis-default@1"}
-)
+DEFAULT_POLICY_DIGEST: Final = digest_analysis_input({"policy": "supervisor-analysis-default@1"})
 DEFAULT_CONFIGURATION_DIGEST: Final = digest_analysis_input(
     {"configuration": "supervisor-analysis-default@1"}
 )
-_PACKET_ARTIFACT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/analysis-packet-artifact@1"
-)
+_PACKET_ARTIFACT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/analysis-packet-artifact@1"
 _CONSENSUS_ARTIFACT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/analysis-consensus-artifact@1"
 )
@@ -222,9 +207,7 @@ def _canonical_digest(value: Any, *, default: str) -> str:
 
 
 def _json_digest(value: Any) -> str:
-    return "sha256:" + hashlib.sha256(
-        canonical_analysis_json(value).encode("utf-8")
-    ).hexdigest()
+    return "sha256:" + hashlib.sha256(canonical_analysis_json(value).encode("utf-8")).hexdigest()
 
 
 def _identity_projection(value: Any) -> Any:
@@ -248,8 +231,7 @@ def _identity_projection(value: Any) -> Any:
         return projected
     if is_dataclass(value) and not isinstance(value, type):
         return {
-            item.name: _identity_projection(getattr(value, item.name))
-            for item in fields(value)
+            item.name: _identity_projection(getattr(value, item.name)) for item in fields(value)
         }
     converter = getattr(value, "to_dict", None)
     if callable(converter):
@@ -286,9 +268,7 @@ class AnalysisPipelinePolicy:
     require_local_completion: bool = True
     cache_negative_results: bool = True
     negative_ttl_seconds: int = 300
-    consensus_policy: AnalysisConsensusPolicy = field(
-        default_factory=AnalysisConsensusPolicy
-    )
+    consensus_policy: AnalysisConsensusPolicy = field(default_factory=AnalysisConsensusPolicy)
 
     def __post_init__(self) -> None:
         limits = RetrievalLimits.from_value(self.retrieval_limits)
@@ -300,14 +280,9 @@ class AnalysisPipelinePolicy:
         ):
             if not isinstance(getattr(self, name), bool):
                 raise ValueError(f"{name} must be a boolean")
-        if (
-            isinstance(self.negative_ttl_seconds, bool)
-            or int(self.negative_ttl_seconds) < 1
-        ):
+        if isinstance(self.negative_ttl_seconds, bool) or int(self.negative_ttl_seconds) < 1:
             raise ValueError("negative_ttl_seconds must be a positive integer")
-        object.__setattr__(
-            self, "negative_ttl_seconds", int(self.negative_ttl_seconds)
-        )
+        object.__setattr__(self, "negative_ttl_seconds", int(self.negative_ttl_seconds))
         object.__setattr__(
             self,
             "consensus_policy",
@@ -326,18 +301,14 @@ class AnalysisPipelinePolicy:
             raise TypeError("analysis pipeline policy must be a mapping")
         values = dict(value)
         if "retrieval_limits" in values:
-            values["retrieval_limits"] = RetrievalLimits.from_value(
-                values["retrieval_limits"]
-            )
+            values["retrieval_limits"] = RetrievalLimits.from_value(values["retrieval_limits"])
         if "consensus_policy" in values:
             values["consensus_policy"] = AnalysisConsensusPolicy.from_value(
                 values["consensus_policy"]
             )
         unknown = sorted(set(values) - set(cls.__dataclass_fields__))
         if unknown:
-            raise ValueError(
-                "unknown analysis pipeline policy fields: " + ", ".join(unknown)
-            )
+            raise ValueError("unknown analysis pipeline policy fields: " + ", ".join(unknown))
         return cls(**values)
 
     def to_dict(self) -> dict[str, Any]:
@@ -383,36 +354,24 @@ class AnalysisPipelineRequest:
             "analyzer_version",
             "schema_version",
         ):
-            object.__setattr__(
-                self, name, _required_text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _required_text(getattr(self, name), name))
         query = RetrievalQuery.from_value(self.query)
         object.__setattr__(self, "query", query)
         declared_configuration = (
-            self.configuration_digest
-            if self.configuration_digest
-            else self.configuration
+            self.configuration_digest if self.configuration_digest else self.configuration
         )
         object.__setattr__(
             self,
             "configuration_digest",
             digest_analysis_input(
                 {
-                    "declared_configuration": _identity_projection(
-                        declared_configuration
-                    ),
+                    "declared_configuration": _identity_projection(declared_configuration),
                     "analyzer_id": self.analyzer_id,
                     "ast_records": _identity_projection(self.ast_records),
-                    "previous_ast_index": _identity_projection(
-                        self.previous_ast_index
-                    ),
-                    "retrieval_inputs": _identity_projection(
-                        self.retrieval_inputs
-                    ),
+                    "previous_ast_index": _identity_projection(self.previous_ast_index),
+                    "retrieval_inputs": _identity_projection(self.retrieval_inputs),
                     "provider_operation": self.provider_operation,
-                    "provider_payload": _identity_projection(
-                        self.provider_payload
-                    ),
+                    "provider_payload": _identity_projection(self.provider_payload),
                 }
             ),
         )
@@ -448,9 +407,7 @@ class AnalysisPipelineRequest:
             raise TypeError("retrieval_inputs must be a mapping")
         if not isinstance(self.provider_payload, Mapping):
             raise TypeError("provider_payload must be a mapping")
-        object.__setattr__(
-            self, "retrieval_inputs", dict(self.retrieval_inputs)
-        )
+        object.__setattr__(self, "retrieval_inputs", dict(self.retrieval_inputs))
         object.__setattr__(self, "provider_payload", dict(self.provider_payload))
         object.__setattr__(
             self,
@@ -494,9 +451,12 @@ class AnalysisPipelineRequest:
 
     @property
     def request_id(self) -> str:
-        return "analysis-request:sha256:" + hashlib.sha256(
-            canonical_analysis_json(self.identity_dict()).encode("utf-8")
-        ).hexdigest()
+        return (
+            "analysis-request:sha256:"
+            + hashlib.sha256(
+                canonical_analysis_json(self.identity_dict()).encode("utf-8")
+            ).hexdigest()
+        )
 
     def identity_dict(self) -> dict[str, Any]:
         return {
@@ -529,9 +489,7 @@ class AnalysisStageContext:
     provider_request: AnalysisProviderRequest | None = field(
         default=None, repr=False, compare=False
     )
-    provider_policy: AnalysisProviderPolicy | None = field(
-        default=None, repr=False, compare=False
-    )
+    provider_policy: AnalysisProviderPolicy | None = field(default=None, repr=False, compare=False)
 
 
 @dataclass(frozen=True)
@@ -713,9 +671,7 @@ class ExactTreeReuseEvidence:
             "policy_digest",
             "lookup_reason",
         ):
-            object.__setattr__(
-                self, name, _required_text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _required_text(getattr(self, name), name))
         if self.requirement_id != EXACT_TREE_REUSE_REQUIREMENT_ID:
             raise AnalysisBindingError("unexpected exact-tree requirement ID")
         if self.lookup_reason != "exact_key_hit":
@@ -744,9 +700,10 @@ class ExactTreeReuseEvidence:
 
     @property
     def evidence_id(self) -> str:
-        return "exact-tree-reuse:sha256:" + hashlib.sha256(
-            canonical_analysis_json(self._content()).encode("utf-8")
-        ).hexdigest()
+        return (
+            "exact-tree-reuse:sha256:"
+            + hashlib.sha256(canonical_analysis_json(self._content()).encode("utf-8")).hexdigest()
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {**self._content(), "evidence_id": self.evidence_id}
@@ -778,8 +735,7 @@ class ExactTreeReuseEvidence:
         unknown = sorted(set(value) - allowed)
         if unknown:
             raise AnalysisBindingError(
-                "exact-tree evidence has unknown fields: "
-                + ", ".join(unknown)
+                "exact-tree evidence has unknown fields: " + ", ".join(unknown)
             )
         if value.get("schema") != EXACT_TREE_REUSE_EVIDENCE_SCHEMA:
             raise AnalysisBindingError("unsupported exact-tree evidence schema")
@@ -800,9 +756,7 @@ class ExactTreeReuseEvidence:
             requirement_id=value.get("requirement_id", ""),
         )
         if value.get("evidence_id") != restored.evidence_id:
-            raise AnalysisBindingError(
-                "exact-tree evidence identity does not match its content"
-            )
+            raise AnalysisBindingError("exact-tree evidence identity does not match its content")
         return restored
 
     @classmethod
@@ -814,15 +768,9 @@ class ExactTreeReuseEvidence:
     ) -> "ExactTreeReuseEvidence":
         """Build a witness only from a verified, exact completion lookup."""
 
-        entry = (
-            lookup.entry
-            if isinstance(lookup, AnalysisCacheLookupResult)
-            else None
-        )
+        entry = lookup.entry if isinstance(lookup, AnalysisCacheLookupResult) else None
         if entry is None:
-            raise AnalysisBindingError(
-                "exact-tree evidence requires a typed cache entry"
-            )
+            raise AnalysisBindingError("exact-tree evidence requires a typed cache entry")
         witness = cls(
             request_id=request.request_id,
             cache_key_id=request.cache_key.key_id,
@@ -890,10 +838,7 @@ class ExactTreeReuseEvidence:
             "packet_id": packet.packet_id,
             "safe_for_completion_reasoning": True,
         }
-        if any(
-            summary.get(name) != expected
-            for name, expected in expected_summary.items()
-        ):
+        if any(summary.get(name) != expected for name, expected in expected_summary.items()):
             return False
         expected_witness = {
             "request_id": request.request_id,
@@ -911,10 +856,7 @@ class ExactTreeReuseEvidence:
             "lookup_reason": "exact_key_hit",
             "requirement_id": EXACT_TREE_REUSE_REQUIREMENT_ID,
         }
-        return all(
-            getattr(self, name) == expected
-            for name, expected in expected_witness.items()
-        )
+        return all(getattr(self, name) == expected for name, expected in expected_witness.items())
 
 
 @dataclass(frozen=True)
@@ -956,24 +898,18 @@ class AnalysisPipelineResult:
     producer_executed: bool = False
     joined_existing_flight: bool = False
     exact_tree_reuse_evidence: ExactTreeReuseEvidence | None = None
-    cache_lookup: AnalysisCacheLookupResult | None = field(
-        default=None, repr=False, compare=False
-    )
+    cache_lookup: AnalysisCacheLookupResult | None = field(default=None, repr=False, compare=False)
     ast_index_id: str = ""
     retrieval_response_id: str = ""
     ranked_evidence_references: tuple[Mapping[str, Any], ...] = ()
-    retrieval_backend_health: Mapping[str, Mapping[str, Any]] = field(
-        default_factory=dict
-    )
+    retrieval_backend_health: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
     retrieval_truncation: Mapping[str, Any] = field(default_factory=dict)
     provider_result: Any = None
     advisory_evidence_claim_references: tuple[str, ...] = ()
     provider_request: AnalysisProviderRequest | None = field(
         default=None, repr=False, compare=False
     )
-    provider_policy: AnalysisProviderPolicy | None = field(
-        default=None, repr=False, compare=False
-    )
+    provider_policy: AnalysisProviderPolicy | None = field(default=None, repr=False, compare=False)
     consensus_receipt: AnalysisConsensusReceipt | None = None
     single_flight_collapse_evidence: SingleFlightCollapseEvidence | None = None
     coordination_result: CacheCoordinationResult | None = field(
@@ -982,12 +918,8 @@ class AnalysisPipelineResult:
 
     def __post_init__(self) -> None:
         if not isinstance(self.cache_status, PipelineCacheStatus):
-            object.__setattr__(
-                self, "cache_status", PipelineCacheStatus(str(self.cache_status))
-            )
-        if not isinstance(
-            self.cache_lookup_status, AnalysisCacheLookupStatus
-        ):
+            object.__setattr__(self, "cache_status", PipelineCacheStatus(str(self.cache_status)))
+        if not isinstance(self.cache_lookup_status, AnalysisCacheLookupStatus):
             object.__setattr__(
                 self,
                 "cache_lookup_status",
@@ -996,10 +928,7 @@ class AnalysisPipelineResult:
         object.__setattr__(
             self,
             "cache_reason_codes",
-            tuple(
-                _required_text(item, "cache reason code")
-                for item in self.cache_reason_codes
-            ),
+            tuple(_required_text(item, "cache reason code") for item in self.cache_reason_codes),
         )
         advisory_claims = tuple(
             dict.fromkeys(
@@ -1007,9 +936,7 @@ class AnalysisPipelineResult:
                 for item in self.advisory_evidence_claim_references
             )
         )
-        object.__setattr__(
-            self, "advisory_evidence_claim_references", advisory_claims
-        )
+        object.__setattr__(self, "advisory_evidence_claim_references", advisory_claims)
         object.__setattr__(
             self,
             "ranked_evidence_references",
@@ -1018,23 +945,16 @@ class AnalysisPipelineResult:
         object.__setattr__(
             self,
             "retrieval_backend_health",
-            {
-                str(name): dict(value)
-                for name, value in self.retrieval_backend_health.items()
-            },
+            {str(name): dict(value) for name, value in self.retrieval_backend_health.items()},
         )
-        object.__setattr__(
-            self, "retrieval_truncation", dict(self.retrieval_truncation)
-        )
+        object.__setattr__(self, "retrieval_truncation", dict(self.retrieval_truncation))
         consensus = self.consensus_receipt
         if isinstance(consensus, Mapping):
             consensus = AnalysisConsensusReceipt.from_dict(consensus)
             object.__setattr__(self, "consensus_receipt", consensus)
         if consensus is not None:
             if not isinstance(consensus, AnalysisConsensusReceipt):
-                raise AnalysisBindingError(
-                    "consensus_receipt must be a typed consensus receipt"
-                )
+                raise AnalysisBindingError("consensus_receipt must be a typed consensus receipt")
             expected_consensus_binding = {
                 "repository_id": self.request.repository_id,
                 "tree_id": self.request.tree_id,
@@ -1053,9 +973,7 @@ class AnalysisPipelineResult:
                 or consensus.is_completion_evidence
                 or consensus.safe_for_completion_reasoning
             ):
-                raise AnalysisBindingError(
-                    "analysis consensus cannot create completion authority"
-                )
+                raise AnalysisBindingError("analysis consensus cannot create completion authority")
         if advisory_claims:
             if not isinstance(self.provider_result, AnalysisProviderResult):
                 raise AnalysisBindingError(
@@ -1066,9 +984,7 @@ class AnalysisPipelineResult:
                     "advisory provider claims require the exact provider request"
                 )
             if not isinstance(self.provider_policy, AnalysisProviderPolicy):
-                raise AnalysisBindingError(
-                    "advisory provider claims require the provider policy"
-                )
+                raise AnalysisBindingError("advisory provider claims require the provider policy")
             provider_request = self.provider_request
             try:
                 expected_provider_request = AnalysisProviderRequest(
@@ -1085,27 +1001,20 @@ class AnalysisPipelineResult:
                     "pipeline request cannot reproduce the provider request"
                 ) from exc
             if expected_provider_request.request_id != provider_request.request_id:
-                raise AnalysisBindingError(
-                    "provider request is detached from pipeline request"
-                )
+                raise AnalysisBindingError("provider request is detached from pipeline request")
             policy_bounds = self.provider_policy.bounds
             if any(
-                getattr(provider_request.bounds, name)
-                > getattr(policy_bounds, name)
+                getattr(provider_request.bounds, name) > getattr(policy_bounds, name)
                 for name in provider_request.bounds.__dataclass_fields__
             ):
-                raise AnalysisBindingError(
-                    "provider request bounds expand the provider policy"
-                )
+                raise AnalysisBindingError("provider request bounds expand the provider policy")
             proved = tuple(
                 self.provider_result.proved_requirement_ids_for(
                     provider_request, self.provider_policy
                 )
             )
             if any(item not in proved for item in advisory_claims):
-                raise AnalysisBindingError(
-                    "advisory provider claims are not active-request bound"
-                )
+                raise AnalysisBindingError("advisory provider claims are not active-request bound")
             if EXACT_TREE_REUSE_REQUIREMENT_ID in advisory_claims:
                 raise AnalysisBindingError(
                     "exact-tree authority cannot be an advisory provider claim"
@@ -1118,17 +1027,11 @@ class AnalysisPipelineResult:
         witness = self.exact_tree_reuse_evidence
         if self.cache_status is PipelineCacheStatus.EXACT_HIT:
             if witness is None:
-                raise AnalysisBindingError(
-                    "exact cache hits require exact-tree reuse evidence"
-                )
+                raise AnalysisBindingError("exact cache hits require exact-tree reuse evidence")
             if self.cache_lookup_status is not AnalysisCacheLookupStatus.HIT:
-                raise AnalysisBindingError(
-                    "exact cache hits require an authoritative HIT lookup"
-                )
+                raise AnalysisBindingError("exact cache hits require an authoritative HIT lookup")
             if "exact_key_hit" not in self.cache_reason_codes:
-                raise AnalysisBindingError(
-                    "exact cache hits require the exact_key_hit reason"
-                )
+                raise AnalysisBindingError("exact cache hits require the exact_key_hit reason")
             if self.producer_executed or self.joined_existing_flight:
                 raise AnalysisBindingError(
                     "exact cache hits cannot claim producer or follower work"
@@ -1150,18 +1053,11 @@ class AnalysisPipelineResult:
                     "inconclusive packets cannot carry exact-tree reuse evidence"
                 )
             if not witness.proves_for(self.request, self.packet, lookup):
-                raise AnalysisBindingError(
-                    "exact-tree evidence is not bound to the typed lookup"
-                )
+                raise AnalysisBindingError("exact-tree evidence is not bound to the typed lookup")
         elif witness is not None:
             if self.cache_status is not PipelineCacheStatus.EXACT_HIT:
-                raise AnalysisBindingError(
-                    "exact-tree evidence is only valid for exact cache hits"
-                )
-        if (
-            self.cache_status is PipelineCacheStatus.JOINED
-            and not self.joined_existing_flight
-        ):
+                raise AnalysisBindingError("exact-tree evidence is only valid for exact cache hits")
+        if self.cache_status is PipelineCacheStatus.JOINED and not self.joined_existing_flight:
             raise AnalysisBindingError("joined results must record flight joining")
         collapse = self.single_flight_collapse_evidence
         coordinated = self.coordination_result
@@ -1194,9 +1090,7 @@ class AnalysisPipelineResult:
             isinstance(coordinated, CacheCoordinationResult)
             and coordinated.single_flight_collapse_evidence is not None
         ):
-            raise AnalysisBindingError(
-                "pipeline result dropped coordinator single-flight evidence"
-            )
+            raise AnalysisBindingError("pipeline result dropped coordinator single-flight evidence")
 
     @property
     def safe_for_completion_reasoning(self) -> bool:
@@ -1267,9 +1161,10 @@ class AnalysisPipelineResult:
     @property
     def result_id(self) -> str:
         payload = self.to_dict(include_result_id=False)
-        return "analysis-pipeline-result:sha256:" + hashlib.sha256(
-            canonical_analysis_json(payload).encode("utf-8")
-        ).hexdigest()
+        return (
+            "analysis-pipeline-result:sha256:"
+            + hashlib.sha256(canonical_analysis_json(payload).encode("utf-8")).hexdigest()
+        )
 
     def to_dict(self, *, include_result_id: bool = True) -> dict[str, Any]:
         provider = self.provider_result
@@ -1302,28 +1197,19 @@ class AnalysisPipelineResult:
             "operational_evidence_claim_references": list(
                 self.operational_evidence_claim_references
             ),
-            "advisory_evidence_claim_references": list(
-                self.advisory_evidence_claim_references
-            ),
+            "advisory_evidence_claim_references": list(self.advisory_evidence_claim_references),
             "evidence_claim_references": list(self.evidence_claim_references),
-            "all_evidence_claim_references": list(
-                self.all_evidence_claim_references
-            ),
+            "all_evidence_claim_references": list(self.all_evidence_claim_references),
             "ast_index_id": self.ast_index_id,
             "retrieval_response_id": self.retrieval_response_id,
-            "ranked_evidence_references": [
-                dict(item) for item in self.ranked_evidence_references
-            ],
+            "ranked_evidence_references": [dict(item) for item in self.ranked_evidence_references],
             "retrieval_backend_health": {
-                name: dict(value)
-                for name, value in sorted(self.retrieval_backend_health.items())
+                name: dict(value) for name, value in sorted(self.retrieval_backend_health.items())
             },
             "retrieval_truncation": dict(self.retrieval_truncation),
             "provider_result": provider,
             "consensus_receipt": (
-                self.consensus_receipt.to_dict()
-                if self.consensus_receipt is not None
-                else None
+                self.consensus_receipt.to_dict() if self.consensus_receipt is not None else None
             ),
             "safe_for_completion_reasoning": self.safe_for_completion_reasoning,
         }
@@ -1428,8 +1314,7 @@ class AnalysisPipelineResult:
             str(health_value.get("status") or "").strip().lower() == "healthy"
             and health_value.get("healthy") is True
             and health_value.get("safe_for_completion_reasoning") is True
-            and health_value.get("analyzer_version")
-            == self.request.analyzer_version
+            and health_value.get("analyzer_version") == self.request.analyzer_version
         ):
             health_value = {
                 **health_value,
@@ -1439,9 +1324,7 @@ class AnalysisPipelineResult:
 
         coverage_value = payload(coverage)
         coverage_rows = coverage_value.get("criteria")
-        coverage_rows = (
-            coverage_rows if isinstance(coverage_rows, list) else []
-        )
+        coverage_rows = coverage_rows if isinstance(coverage_rows, list) else []
         rows_by_criterion: dict[str, list[Mapping[str, Any]]] = {}
         for row in coverage_rows:
             if not isinstance(row, Mapping):
@@ -1464,14 +1347,9 @@ class AnalysisPipelineResult:
             if criterion:
                 rows_by_criterion.setdefault(criterion, []).append(row)
         expected_criteria = {
-            " ".join(criterion.strip().lower().split())
-            for criterion in acceptance_criteria
+            " ".join(criterion.strip().lower().split()) for criterion in acceptance_criteria
         }
-        mapped_criteria = [
-            criterion
-            for criterion, rows in rows_by_criterion.items()
-            for _ in rows
-        ]
+        mapped_criteria = [criterion for criterion, rows in rows_by_criterion.items() for _ in rows]
         bindings_complete = bool(coverage_rows) and (
             len(mapped_criteria) == len(expected_criteria)
             and set(mapped_criteria) == expected_criteria
@@ -1485,16 +1363,13 @@ class AnalysisPipelineResult:
         )
         operational_proof_bound = (
             not required_operational_requirement_id
-            or self.operational_evidence_claim_references
-            == (required_operational_requirement_id,)
+            or self.operational_evidence_claim_references == (required_operational_requirement_id,)
         )
         if not bindings_complete or not operational_proof_bound:
             reasons = coverage_value.get("reason_codes")
             reasons = list(reasons) if isinstance(reasons, (list, tuple)) else []
             if not bindings_complete:
-                reasons.append(
-                    "coverage_missing_implementation_validation_binding"
-                )
+                reasons.append("coverage_missing_implementation_validation_binding")
             if not operational_proof_bound:
                 reasons.append("active_operational_evidence_missing")
             coverage_value = {
@@ -1510,8 +1385,7 @@ class AnalysisPipelineResult:
             isinstance(member, Mapping)
             and member.get("healthy") is True
             and member.get("safe_for_completion_reasoning") is True
-            and str(member.get("scan_mode") or "").strip().lower()
-            == "exhaustive"
+            and str(member.get("scan_mode") or "").strip().lower() == "exhaustive"
             for member in members
         )
         receipt_ids = [
@@ -1520,13 +1394,10 @@ class AnalysisPipelineResult:
             if isinstance(member, Mapping)
         ]
         receipts_independent = bool(receipt_ids) and (
-            len(receipt_ids) == len(set(receipt_ids))
-            and all(receipt_ids)
+            len(receipt_ids) == len(set(receipt_ids)) and all(receipt_ids)
         )
         binding_value = quorum_value.get("binding")
-        binding_value = (
-            binding_value if isinstance(binding_value, Mapping) else {}
-        )
+        binding_value = binding_value if isinstance(binding_value, Mapping) else {}
         expected_binding = {
             "repository_id": self.request.repository_id,
             "tree_id": self.request.tree_id,
@@ -1535,8 +1406,7 @@ class AnalysisPipelineResult:
             "objective_revision": self.request.objective_revision,
         }
         binding_complete = all(
-            binding_value.get(name) == expected
-            for name, expected in expected_binding.items()
+            binding_value.get(name) == expected for name, expected in expected_binding.items()
         )
         member_bindings_complete = bool(members) and all(
             isinstance(member, Mapping)
@@ -1547,13 +1417,9 @@ class AnalysisPipelineResult:
             )
             for member in members
         )
-        configured_count_complete = (
-            required_exhaustive_receipts is None
-            or (
-                quorum_value.get("required_members")
-                == required_exhaustive_receipts
-                and len(members) >= required_exhaustive_receipts
-            )
+        configured_count_complete = required_exhaustive_receipts is None or (
+            quorum_value.get("required_members") == required_exhaustive_receipts
+            and len(members) >= required_exhaustive_receipts
         )
         if (
             not members_complete
@@ -1651,15 +1517,11 @@ class AnalysisPipelineResult:
             or not isinstance(required_exhaustive_receipts, int)
             or required_exhaustive_receipts < 1
         ):
-            raise ValueError(
-                "required_exhaustive_receipts must be a positive integer"
-            )
+            raise ValueError("required_exhaustive_receipts must be a positive integer")
 
         return self._evaluate_closed_objective_completion(
             acceptance_criteria=SINGLE_FLIGHT_COLLAPSE_ACCEPTANCE_CRITERIA,
-            required_operational_requirement_id=(
-                SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID
-            ),
+            required_operational_requirement_id=(SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID),
             required_exhaustive_receipts=required_exhaustive_receipts,
             current_state=current_state,
             evidence=evidence,
@@ -1688,9 +1550,7 @@ class AnalysisPipelineResult:
         coverage: Any = None,
         analyzer_health: Any = None,
         exhaustion_quorum: Any = None,
-        required_exhaustive_receipts: int = (
-            INTEGRATED_ANALYSIS_REQUIRED_EXHAUSTIVE_RECEIPTS
-        ),
+        required_exhaustive_receipts: int = (INTEGRATED_ANALYSIS_REQUIRED_EXHAUSTIVE_RECEIPTS),
         child_goals: Sequence[Any] = (),
         now: Any = None,
         freshness_seconds: float | None = None,
@@ -1712,8 +1572,7 @@ class AnalysisPipelineResult:
         if (
             isinstance(required_exhaustive_receipts, bool)
             or not isinstance(required_exhaustive_receipts, int)
-            or required_exhaustive_receipts
-            != INTEGRATED_ANALYSIS_REQUIRED_EXHAUSTIVE_RECEIPTS
+            or required_exhaustive_receipts != INTEGRATED_ANALYSIS_REQUIRED_EXHAUSTIVE_RECEIPTS
         ):
             raise ValueError(
                 "required_exhaustive_receipts must equal the configured "
@@ -1734,9 +1593,7 @@ class AnalysisPipelineResult:
         operational = operational_evidence
         if isinstance(operational, Mapping):
             try:
-                operational = IntegratedAnalysisCompletionEvidence.from_dict(
-                    operational
-                )
+                operational = IntegratedAnalysisCompletionEvidence.from_dict(operational)
             except (CacheCoordinationError, TypeError, ValueError):
                 operational = None
         operational_complete = bool(
@@ -1774,12 +1631,9 @@ class AnalysisPipelineResult:
         }
         producing_tasks_complete = bool(task_payloads) and (
             len(task_ids) == len(set(task_ids))
-            and tuple(sorted(task_ids))
-            == tuple(sorted(INTEGRATED_ANALYSIS_PRODUCING_TASK_IDS))
+            and tuple(sorted(task_ids)) == tuple(sorted(INTEGRATED_ANALYSIS_PRODUCING_TASK_IDS))
             and all(
-                str(item.get("status") or item.get("state") or "")
-                .strip()
-                .lower()
+                str(item.get("status") or item.get("state") or "").strip().lower()
                 in successful_statuses
                 for item in task_payloads
             )
@@ -1787,9 +1641,7 @@ class AnalysisPipelineResult:
 
         health_value = payload(analyzer_health)
         health_binding = health_value.get("binding")
-        health_binding = (
-            health_binding if isinstance(health_binding, Mapping) else {}
-        )
+        health_binding = health_binding if isinstance(health_binding, Mapping) else {}
         expected_binding = {
             "repository_id": self.request.repository_id,
             "tree_id": self.request.tree_id,
@@ -1798,8 +1650,7 @@ class AnalysisPipelineResult:
             "objective_revision": self.request.objective_revision,
         }
         health_fully_bound = bool(health_binding) and all(
-            health_binding.get(name) == expected
-            for name, expected in expected_binding.items()
+            health_binding.get(name) == expected for name, expected in expected_binding.items()
         )
         if not health_fully_bound:
             health_value = {
@@ -1812,10 +1663,7 @@ class AnalysisPipelineResult:
         receipt_ids_by_criterion: dict[str, set[str]] = {}
         for item in evidence_payloads:
             criterion = " ".join(
-                str(item.get("acceptance_criterion") or "")
-                .strip()
-                .lower()
-                .split()
+                str(item.get("acceptance_criterion") or "").strip().lower().split()
             )
             receipt_id = str(
                 item.get(
@@ -1825,9 +1673,7 @@ class AnalysisPipelineResult:
                 or ""
             ).strip()
             if criterion and receipt_id:
-                receipt_ids_by_criterion.setdefault(criterion, set()).add(
-                    receipt_id
-                )
+                receipt_ids_by_criterion.setdefault(criterion, set()).add(receipt_id)
         coverage_value = payload(coverage)
         rows = coverage_value.get("criteria")
         rows = rows if isinstance(rows, list) else []
@@ -1866,14 +1712,11 @@ class AnalysisPipelineResult:
 
         child_values = [payload(item) for item in child_goals]
         child_ids = [
-            str(item.get("goal_id") or item.get("id") or "").strip()
-            for item in child_values
+            str(item.get("goal_id") or item.get("id") or "").strip() for item in child_values
         ]
-        child_population_complete = (
-            len(child_ids) == len(set(child_ids))
-            and tuple(sorted(child_ids))
-            == tuple(sorted(INTEGRATED_ANALYSIS_CHILD_GOAL_IDS))
-        )
+        child_population_complete = len(child_ids) == len(set(child_ids)) and tuple(
+            sorted(child_ids)
+        ) == tuple(sorted(INTEGRATED_ANALYSIS_CHILD_GOAL_IDS))
         if not child_population_complete:
             child_values.append(
                 {
@@ -1889,14 +1732,10 @@ class AnalysisPipelineResult:
 
         return self._evaluate_closed_objective_completion(
             acceptance_criteria=INTEGRATED_ANALYSIS_ACCEPTANCE_CRITERIA,
-            required_exhaustive_receipts=(
-                INTEGRATED_ANALYSIS_REQUIRED_EXHAUSTIVE_RECEIPTS
-            ),
+            required_exhaustive_receipts=(INTEGRATED_ANALYSIS_REQUIRED_EXHAUSTIVE_RECEIPTS),
             current_state=current_state,
             evidence=evidence,
-            tasks_complete=bool(
-                tasks_complete and producing_tasks_complete
-            ),
+            tasks_complete=bool(tasks_complete and producing_tasks_complete),
             coverage=coverage_value,
             analyzer_health=health_value,
             exhaustion_quorum=exhaustion_quorum,
@@ -1955,25 +1794,15 @@ class IntegratedAnalysisCompletionEvidence:
             "retrieval_response_id",
             "objective_id",
         ):
-            object.__setattr__(
-                self, name, _required_text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _required_text(getattr(self, name), name))
         if self.objective_id != INTEGRATED_ANALYSIS_OBJECTIVE_ID:
-            raise AnalysisBindingError(
-                "integrated completion evidence objective is not ASI-G020"
-            )
+            raise AnalysisBindingError("integrated completion evidence objective is not ASI-G020")
         if self.analyzer_id not in INTEGRATED_ANALYSIS_LIVE_ANALYZER_IDS:
             raise AnalysisBindingError(
-                "integrated completion evidence is not from a live "
-                "objective/planning analyzer"
+                "integrated completion evidence is not from a live objective/planning analyzer"
             )
         task_ids = tuple(
-            sorted(
-                {
-                    _required_text(item, "producing task id")
-                    for item in self.producing_task_ids
-                }
-            )
+            sorted({_required_text(item, "producing task id") for item in self.producing_task_ids})
         )
         if task_ids != tuple(sorted(INTEGRATED_ANALYSIS_PRODUCING_TASK_IDS)):
             raise AnalysisBindingError(
@@ -1986,34 +1815,21 @@ class IntegratedAnalysisCompletionEvidence:
             self.single_flight_collapse_evidence,
             SingleFlightCollapseEvidence,
         ):
-            raise AnalysisBindingError(
-                "single-flight collapse evidence must be typed"
-            )
+            raise AnalysisBindingError("single-flight collapse evidence must be typed")
         if not isinstance(
             self.provider_degradation_evidence,
             IpfsDatasetsProviderDegradationEvidence,
         ):
-            raise AnalysisBindingError(
-                "provider degradation evidence must be typed"
-            )
+            raise AnalysisBindingError("provider degradation evidence must be typed")
         if not isinstance(self.metrics, AnalysisPipelineMetrics):
             if not isinstance(self.metrics, Mapping):
-                raise AnalysisBindingError(
-                    "integrated completion metrics must be typed"
-                )
+                raise AnalysisBindingError("integrated completion metrics must be typed")
             allowed_metrics = set(AnalysisPipelineMetrics.__dataclass_fields__)
-            values = {
-                name: self.metrics.get(name, 0)
-                for name in allowed_metrics
-            }
+            values = {name: self.metrics.get(name, 0) for name in allowed_metrics}
             try:
-                object.__setattr__(
-                    self, "metrics", AnalysisPipelineMetrics(**values)
-                )
+                object.__setattr__(self, "metrics", AnalysisPipelineMetrics(**values))
             except (TypeError, ValueError) as exc:
-                raise AnalysisBindingError(
-                    "integrated completion metrics are malformed"
-                ) from exc
+                raise AnalysisBindingError("integrated completion metrics are malformed") from exc
         for name in AnalysisPipelineMetrics.__dataclass_fields__:
             value = getattr(self.metrics, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
@@ -2030,16 +1846,12 @@ class IntegratedAnalysisCompletionEvidence:
             "analyzer_version": self.analyzer_version,
             "configuration_digest": self.configuration_digest,
         }
-        if any(
-            getattr(exact, name) != value for name, value in expected.items()
-        ):
+        if any(getattr(exact, name) != value for name, value in expected.items()):
             raise AnalysisBindingError(
                 "exact-tree evidence is detached from the integrated binding"
             )
         if exact.cache_key_id != self.cache_key_id:
-            raise AnalysisBindingError(
-                "exact-tree evidence uses a different cache key"
-            )
+            raise AnalysisBindingError("exact-tree evidence uses a different cache key")
         collapse_key = collapse.cache_key
         if (
             collapse_key.key_id != self.cache_key_id
@@ -2053,28 +1865,22 @@ class IntegratedAnalysisCompletionEvidence:
             or collapse_key.configuration_digest != self.configuration_digest
             or collapse.receipt_id != self.live_packet_id
         ):
-            raise AnalysisBindingError(
-                "single-flight evidence is detached from the live binding"
-            )
+            raise AnalysisBindingError("single-flight evidence is detached from the live binding")
         if (
             provider.repository_id != self.repository_id
             or provider.tree_id != self.tree_id
             or provider.objective_revision != self.objective_revision
-            or provider.requirement_id
-            != IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID
+            or provider.requirement_id != IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID
             or not provider.proves_requirement
         ):
-            raise AnalysisBindingError(
-                "provider degradation evidence is detached or non-proving"
-            )
+            raise AnalysisBindingError("provider degradation evidence is detached or non-proving")
         if (
             self.metrics.requests < 2
             or self.metrics.reuse_ratio < 0.70
             or self.metrics.stale_authoritative_hits != 0
         ):
             raise AnalysisBindingError(
-                "integrated completion metrics do not prove reuse and stale "
-                "authority thresholds"
+                "integrated completion metrics do not prove reuse and stale authority thresholds"
             )
 
     @classmethod
@@ -2085,9 +1891,7 @@ class IntegratedAnalysisCompletionEvidence:
         exact_reuse_result: AnalysisPipelineResult,
         collapse_result: AnalysisPipelineResult,
         metrics: AnalysisPipelineMetrics | Mapping[str, Any],
-        producing_task_ids: Sequence[str] = (
-            INTEGRATED_ANALYSIS_PRODUCING_TASK_IDS
-        ),
+        producing_task_ids: Sequence[str] = (INTEGRATED_ANALYSIS_PRODUCING_TASK_IDS),
     ) -> "IntegratedAnalysisCompletionEvidence":
         """Build the parent operational cohort from active typed results."""
 
@@ -2113,8 +1917,7 @@ class IntegratedAnalysisCompletionEvidence:
             or not live_result.retrieval_response_id
         ):
             raise AnalysisBindingError(
-                "live result did not execute AST-backed objective/planning "
-                "analysis safely"
+                "live result did not execute AST-backed objective/planning analysis safely"
             )
         exact = exact_reuse_result.exact_tree_reuse_evidence
         collapse = collapse_result.single_flight_collapse_evidence
@@ -2129,15 +1932,12 @@ class IntegratedAnalysisCompletionEvidence:
             not isinstance(provider_result, AnalysisProviderResult)
             or not isinstance(provider_request, AnalysisProviderRequest)
             or not isinstance(provider_policy, AnalysisProviderPolicy)
-            or provider_result.proved_requirement_ids_for(
-                provider_request, provider_policy
-            )
+            or provider_result.proved_requirement_ids_for(provider_request, provider_policy)
             != (IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,)
             or provider_result.degradation_evidence is None
         ):
             raise AnalysisBindingError(
-                "integrated completion requires active-policy-bound explicit "
-                "provider degradation"
+                "integrated completion requires active-policy-bound explicit provider degradation"
             )
         return cls(
             repository_id=request.repository_id,
@@ -2153,9 +1953,7 @@ class IntegratedAnalysisCompletionEvidence:
             retrieval_response_id=live_result.retrieval_response_id,
             exact_tree_reuse_evidence=exact,
             single_flight_collapse_evidence=collapse,
-            provider_degradation_evidence=(
-                provider_result.degradation_evidence
-            ),
+            provider_degradation_evidence=(provider_result.degradation_evidence),
             metrics=metrics,
             producing_task_ids=tuple(producing_task_ids),
         )
@@ -2178,9 +1976,10 @@ class IntegratedAnalysisCompletionEvidence:
 
     @property
     def content_id(self) -> str:
-        return "integrated-analysis-completion:sha256:" + hashlib.sha256(
-            canonical_analysis_json(self._content()).encode("utf-8")
-        ).hexdigest()
+        return (
+            "integrated-analysis-completion:sha256:"
+            + hashlib.sha256(canonical_analysis_json(self._content()).encode("utf-8")).hexdigest()
+        )
 
     evidence_id = content_id
 
@@ -2204,15 +2003,9 @@ class IntegratedAnalysisCompletionEvidence:
             "live_packet_id": self.live_packet_id,
             "ast_index_id": self.ast_index_id,
             "retrieval_response_id": self.retrieval_response_id,
-            "exact_tree_reuse_evidence": (
-                self.exact_tree_reuse_evidence.to_dict()
-            ),
-            "single_flight_collapse_evidence": (
-                self.single_flight_collapse_evidence.to_dict()
-            ),
-            "provider_degradation_evidence": (
-                self.provider_degradation_evidence.to_dict()
-            ),
+            "exact_tree_reuse_evidence": (self.exact_tree_reuse_evidence.to_dict()),
+            "single_flight_collapse_evidence": (self.single_flight_collapse_evidence.to_dict()),
+            "provider_degradation_evidence": (self.provider_degradation_evidence.to_dict()),
             "metrics": metrics,
             "producing_task_ids": list(self.producing_task_ids),
             "completion_authority": False,
@@ -2223,13 +2016,9 @@ class IntegratedAnalysisCompletionEvidence:
         return {**self._content(), "content_id": self.content_id}
 
     @classmethod
-    def from_dict(
-        cls, value: Mapping[str, Any]
-    ) -> "IntegratedAnalysisCompletionEvidence":
+    def from_dict(cls, value: Mapping[str, Any]) -> "IntegratedAnalysisCompletionEvidence":
         if not isinstance(value, Mapping):
-            raise AnalysisBindingError(
-                "integrated completion evidence must be an object"
-            )
+            raise AnalysisBindingError("integrated completion evidence must be an object")
         allowed = set(
             {
                 "content_id",
@@ -2243,13 +2032,10 @@ class IntegratedAnalysisCompletionEvidence:
         unknown = sorted(set(value) - allowed)
         if unknown:
             raise AnalysisBindingError(
-                "integrated completion evidence has unknown fields: "
-                + ", ".join(unknown)
+                "integrated completion evidence has unknown fields: " + ", ".join(unknown)
             )
         if value.get("schema") != INTEGRATED_ANALYSIS_COMPLETION_EVIDENCE_SCHEMA:
-            raise AnalysisBindingError(
-                "unsupported integrated completion evidence schema"
-            )
+            raise AnalysisBindingError("unsupported integrated completion evidence schema")
         if (
             value.get("completion_authority") is not False
             or value.get("safe_for_completion_reasoning") is not False
@@ -2284,27 +2070,19 @@ class IntegratedAnalysisCompletionEvidence:
                     )
                 ),
                 metrics=value.get("metrics") or {},
-                producing_task_ids=tuple(
-                    value.get("producing_task_ids") or ()
-                ),
+                producing_task_ids=tuple(value.get("producing_task_ids") or ()),
                 objective_id=value.get("objective_id", ""),
             )
         except (CacheCoordinationError, TypeError, ValueError) as exc:
             if isinstance(exc, AnalysisBindingError):
                 raise
-            raise AnalysisBindingError(
-                "integrated completion evidence is malformed"
-            ) from exc
-        if tuple(value.get("requirement_ids") or ()) != (
-            result.proved_requirement_ids
-        ):
+            raise AnalysisBindingError("integrated completion evidence is malformed") from exc
+        if tuple(value.get("requirement_ids") or ()) != (result.proved_requirement_ids):
             raise AnalysisBindingError(
                 "integrated completion requirement population does not match"
             )
         if value.get("content_id") != result.content_id:
-            raise AnalysisBindingError(
-                "integrated completion evidence identity does not match"
-            )
+            raise AnalysisBindingError("integrated completion evidence identity does not match")
         return result
 
     def proves_for(self, result: AnalysisPipelineResult) -> bool:
@@ -2316,8 +2094,7 @@ class IntegratedAnalysisCompletionEvidence:
             and result.request.objective_revision == self.objective_revision
             and result.request.analyzer_id == self.analyzer_id
             and result.request.analyzer_version == self.analyzer_version
-            and result.request.configuration_digest
-            == self.configuration_digest
+            and result.request.configuration_digest == self.configuration_digest
             and result.request.cache_key.key_id == self.cache_key_id
             and result.packet.packet_id == self.live_packet_id
             and result.ast_index_id == self.ast_index_id
@@ -2335,9 +2112,7 @@ def _validate_packet_binding(
     }
     for name, value in expected.items():
         if getattr(packet, name) != value:
-            raise AnalysisBindingError(
-                f"analysis packet {name} is not bound to the active request"
-            )
+            raise AnalysisBindingError(f"analysis packet {name} is not bound to the active request")
     for receipt in packet.stage_receipts:
         bindings = {
             "analyzer_version": request.analyzer_version,
@@ -2424,9 +2199,7 @@ class _PacketArtifactStore:
             raise AnalysisBindingError("packet artifact identity mismatch")
         return packet
 
-    def put_consensus(
-        self, receipt: AnalysisConsensusReceipt
-    ) -> dict[str, str]:
+    def put_consensus(self, receipt: AnalysisConsensusReceipt) -> dict[str, str]:
         payload = {
             "schema": _CONSENSUS_ARTIFACT_SCHEMA,
             "consensus_receipt": receipt.to_dict(),
@@ -2466,18 +2239,14 @@ class _PacketArtifactStore:
             "schema": _CONSENSUS_ARTIFACT_SCHEMA,
         }
 
-    def get_consensus(
-        self, reference: Mapping[str, Any]
-    ) -> AnalysisConsensusReceipt:
+    def get_consensus(self, reference: Mapping[str, Any]) -> AnalysisConsensusReceipt:
         if reference.get("schema") != _CONSENSUS_ARTIFACT_SCHEMA:
             raise AnalysisBindingError("unsupported consensus artifact schema")
         digest = _required_text(reference.get("digest"), "artifact digest")
         path = Path(_required_text(reference.get("path"), "artifact path"))
         expected = self._path(digest).resolve()
         if path.resolve() != expected:
-            raise AnalysisBindingError(
-                "consensus artifact path is not content addressed"
-            )
+            raise AnalysisBindingError("consensus artifact path is not content addressed")
         raw = path.read_bytes()
         if "sha256:" + hashlib.sha256(raw).hexdigest() != digest:
             raise AnalysisBindingError("consensus artifact digest mismatch")
@@ -2488,9 +2257,7 @@ class _PacketArtifactStore:
             or not isinstance(payload.get("consensus_receipt"), Mapping)
         ):
             raise AnalysisBindingError("malformed analysis consensus artifact")
-        receipt = AnalysisConsensusReceipt.from_dict(
-            payload["consensus_receipt"]
-        )
+        receipt = AnalysisConsensusReceipt.from_dict(payload["consensus_receipt"])
         if reference.get("artifact_id") != receipt.receipt_id:
             raise AnalysisBindingError("consensus artifact identity mismatch")
         return receipt
@@ -2509,9 +2276,7 @@ def _cache_receipt(
     ranked_references = _ranked_retrieval_references(retrieval)
     return {
         "status": (
-            CacheOutcome.SUCCESSFUL.value
-            if successful
-            else CacheOutcome.INCONCLUSIVE.value
+            CacheOutcome.SUCCESSFUL.value if successful else CacheOutcome.INCONCLUSIVE.value
         ),
         "receipt_id": packet.packet_id,
         "summary": {
@@ -2529,8 +2294,7 @@ def _cache_receipt(
             "retrieval_response_id": retrieval.response_id,
             "ranked_evidence_references": list(ranked_references),
             "retrieval_backend_health": {
-                name: value.to_dict()
-                for name, value in sorted(retrieval.backend_health.items())
+                name: value.to_dict() for name, value in sorted(retrieval.backend_health.items())
             },
             "retrieval_truncation": retrieval.truncation.to_dict(),
             "consensus_receipt_id": consensus_receipt.receipt_id,
@@ -2538,9 +2302,7 @@ def _cache_receipt(
             "cache_namespace": namespace_metadata(
                 CacheNamespace.ANALYSIS,
                 authority=(
-                    CacheAuthority.AUTHORITATIVE
-                    if successful
-                    else CacheAuthority.DIAGNOSTIC
+                    CacheAuthority.AUTHORITATIVE if successful else CacheAuthority.DIAGNOSTIC
                 ),
                 key_schema=ANALYSIS_CACHE_KEY_SCHEMA,
                 entry_schema=ANALYSIS_CACHE_ENTRY_SCHEMA,
@@ -2570,9 +2332,7 @@ def _ranked_retrieval_references(
     return tuple(references)
 
 
-def _first_reference_value(
-    references: Sequence[Mapping[str, Any]], *names: str
-) -> str:
+def _first_reference_value(references: Sequence[Mapping[str, Any]], *names: str) -> str:
     for reference in references:
         for name in names:
             value = reference.get(name)
@@ -2642,10 +2402,7 @@ def _pipeline_consensus_receipt(
         proposal_only=False,
         truncated=packet.truncated,
         confidence_millionths=max(
-            (
-                receipt.confidence_millionths
-                for receipt in packet.stage_receipts
-            ),
+            (receipt.confidence_millionths for receipt in packet.stage_receipts),
             default=0,
         ),
     )
@@ -2659,11 +2416,7 @@ def _pipeline_consensus_receipt(
             projection = (
                 converter()
                 if callable(converter)
-                else (
-                    dict(provider_value)
-                    if isinstance(provider_value, Mapping)
-                    else {}
-                )
+                else (dict(provider_value) if isinstance(provider_value, Mapping) else {})
             )
         except Exception:
             projection = {}
@@ -2681,8 +2434,7 @@ def _pipeline_consensus_receipt(
             or "optional_provider_result_unknown"
         ).strip()
         truncated = bool(
-            getattr(provider_value, "truncated", False)
-            or projection.get("truncated", False)
+            getattr(provider_value, "truncated", False) or projection.get("truncated", False)
         )
         if status_value == "completed" and not truncated:
             datasets_status = AnalysisClaimStatus.CONCLUSIVE
@@ -2698,21 +2450,17 @@ def _pipeline_consensus_receipt(
         evidence_raw = projection.get("evidence_references")
         evidence_raw = (
             evidence_raw
-            if isinstance(evidence_raw, Sequence)
-            and not isinstance(evidence_raw, (str, bytes))
+            if isinstance(evidence_raw, Sequence) and not isinstance(evidence_raw, (str, bytes))
             else ()
         )
         provenance_raw = projection.get("provenance_references")
         provenance_raw = (
             provenance_raw
-            if isinstance(provenance_raw, Sequence)
-            and not isinstance(provenance_raw, (str, bytes))
+            if isinstance(provenance_raw, Sequence) and not isinstance(provenance_raw, (str, bytes))
             else ()
         )
         compact_references = tuple(
-            item
-            for item in (*evidence_raw, *provenance_raw)
-            if isinstance(item, Mapping)
+            item for item in (*evidence_raw, *provenance_raw) if isinstance(item, Mapping)
         )
         result_id = str(
             getattr(provider_value, "result_id", "")
@@ -2745,19 +2493,11 @@ def _pipeline_consensus_receipt(
                     )
                     or result_id
                 ),
-                dataset_id=_first_reference_value(
-                    compact_references, "dataset_id", "dataset"
-                ),
-                graph_id=_first_reference_value(
-                    compact_references, "graph_id"
-                ),
-                chunk_id=_first_reference_value(
-                    compact_references, "chunk_id", "chunk"
-                ),
+                dataset_id=_first_reference_value(compact_references, "dataset_id", "dataset"),
+                graph_id=_first_reference_value(compact_references, "graph_id"),
+                chunk_id=_first_reference_value(compact_references, "chunk_id", "chunk"),
                 producer_id=provider_id,
-                model_id=_first_reference_value(
-                    compact_references, "model_id", "model"
-                ),
+                model_id=_first_reference_value(compact_references, "model_id", "model"),
                 policy_id=request.effective_policy_digest,
                 capability_id=provider_version,
                 tree_id=request.tree_id,
@@ -2785,9 +2525,7 @@ def _pipeline_consensus_receipt(
     )
 
 
-def _packet_from_producer(
-    value: Any, request: AnalysisPipelineRequest
-) -> AnalysisEvidencePacket:
+def _packet_from_producer(value: Any, request: AnalysisPipelineRequest) -> AnalysisEvidencePacket:
     if isinstance(value, AnalysisEvidencePacket):
         packet = value
     elif isinstance(value, AnalysisStageReceipt):
@@ -2834,8 +2572,7 @@ def _packet_from_producer(
             return _packet_from_producer(receipt, request)
     else:
         raise AnalysisProducerError(
-            "analysis producer must return AnalysisEvidencePacket or "
-            "AnalysisStageReceipt"
+            "analysis producer must return AnalysisEvidencePacket or AnalysisStageReceipt"
         )
     _validate_packet_binding(packet, request)
     return packet
@@ -2854,11 +2591,7 @@ def make_analysis_stage_receipt(
 ) -> AnalysisStageReceipt:
     """Build a correctly request-bound receipt for simple local analyzers."""
 
-    status = (
-        AnalysisStageStatus.COMPLETED
-        if successful
-        else AnalysisStageStatus.FAILED
-    )
+    status = AnalysisStageStatus.COMPLETED if successful else AnalysisStageStatus.FAILED
     outcome = (
         ContractOutcome.CONCLUSIVE
         if successful and coverage_complete and not truncated and not error_code
@@ -2912,9 +2645,7 @@ class AnalysisPipeline:
             "pipeline_policy": self.policy.to_dict(),
             "analyzer": _identity_projection(analyzer),
             "provider": _identity_projection(provider),
-            "provider_policy": _identity_projection(
-                getattr(provider, "policy", None)
-            ),
+            "provider_policy": _identity_projection(getattr(provider, "policy", None)),
         }
         if coordinator is None:
             from .cache_coordinator import AnalysisCacheCoordinator
@@ -2922,9 +2653,7 @@ class AnalysisPipeline:
             coordinator = AnalysisCacheCoordinator(cache)
         self.coordinator = coordinator
         root = (
-            Path(artifact_path)
-            if artifact_path is not None
-            else cache.path / "pipeline-artifacts"
+            Path(artifact_path) if artifact_path is not None else cache.path / "pipeline-artifacts"
         )
         self._artifacts = _PacketArtifactStore(root)
         self._metrics = {
@@ -2987,9 +2716,7 @@ class AnalysisPipeline:
         receipt = lookup.receipt
         if not isinstance(receipt, Mapping):
             raise AnalysisBindingError("cache hit has no compact receipt")
-        return self._load_packet_receipt(
-            receipt, request, require_completion_evidence=True
-        )
+        return self._load_packet_receipt(receipt, request, require_completion_evidence=True)
 
     def _exact_hit_result(
         self,
@@ -3008,13 +2735,9 @@ class AnalysisPipeline:
             raise AnalysisBindingError(
                 "cache hit lacks the normalized consensus artifact reference"
             )
-        consensus_receipt = self._artifacts.get_consensus(
-            consensus_reference
-        )
+        consensus_receipt = self._artifacts.get_consensus(consensus_reference)
         if consensus_receipt.receipt_id != summary.get("consensus_receipt_id"):
-            raise AnalysisBindingError(
-                "cached consensus receipt ID does not match its artifact"
-            )
+            raise AnalysisBindingError("cached consensus receipt ID does not match its artifact")
         return AnalysisPipelineResult(
             request=request,
             packet=packet,
@@ -3024,9 +2747,7 @@ class AnalysisPipeline:
             exact_tree_reuse_evidence=witness,
             cache_lookup=lookup,
             ast_index_id=str(summary.get("ast_index_id") or ""),
-            retrieval_response_id=str(
-                summary.get("retrieval_response_id") or ""
-            ),
+            retrieval_response_id=str(summary.get("retrieval_response_id") or ""),
             ranked_evidence_references=tuple(
                 item
                 for item in (summary.get("ranked_evidence_references") or ())
@@ -3058,9 +2779,7 @@ class AnalysisPipeline:
             return False
         return True
 
-    def _build_context(
-        self, request: AnalysisPipelineRequest
-    ) -> AnalysisStageContext:
+    def _build_context(self, request: AnalysisPipelineRequest) -> AnalysisStageContext:
         ast_index: AnalysisASTIndex | None = None
         records = request.ast_records
         if records not in (None, (), [], {}):
@@ -3084,9 +2803,7 @@ class AnalysisPipeline:
         }
         unknown = sorted(set(retrieval_values) - allowed)
         if unknown:
-            raise ValueError(
-                "unknown retrieval input fields: " + ", ".join(unknown)
-            )
+            raise ValueError("unknown retrieval input fields: " + ", ".join(unknown))
         if ast_index is not None and "ast_backend" not in retrieval_values:
             # Feed compact AST query hits as retrieval records.  This avoids
             # adapting incompatible backend signatures or exposing AST bodies.
@@ -3124,9 +2841,7 @@ class AnalysisPipeline:
         if self.provider is not None and self.policy.enable_datasets_provider:
             analyze = getattr(self.provider, "analyze", None)
             if not callable(analyze):
-                analyze = (
-                    self.provider if callable(self.provider) else None
-                )
+                analyze = self.provider if callable(self.provider) else None
             if analyze is not None:
                 try:
                     if isinstance(self.provider, IpfsDatasetsAnalysisProvider):
@@ -3166,9 +2881,7 @@ class AnalysisPipeline:
                         repository_id=request.repository_id,
                         tree_id=request.tree_id,
                         objective_revision=request.objective_revision,
-                        reason_code=(
-                            "optional_provider_async_result_unsupported"
-                        ),
+                        reason_code=("optional_provider_async_result_unsupported"),
                     )
                 if isinstance(provider_result, OptionalProviderFailure):
                     violation = ""
@@ -3201,16 +2914,12 @@ class AnalysisPipeline:
             ast_index=ast_index,
             retrieval=retrieval,
             provider_result=provider_result,
-            provider_evidence_claim_references=(
-                provider_evidence_claim_references
-            ),
+            provider_evidence_claim_references=(provider_evidence_claim_references),
             provider_request=provider_request,
             provider_policy=provider_policy,
         )
 
-    def _invoke_analyzer(
-        self, context: AnalysisStageContext
-    ) -> AnalysisEvidencePacket:
+    def _invoke_analyzer(self, context: AnalysisStageContext) -> AnalysisEvidencePacket:
         analyzer = self.analyzer
         method = getattr(analyzer, "analyze", None)
         if callable(method):
@@ -3220,9 +2929,7 @@ class AnalysisPipeline:
         else:
             raise TypeError("analyzer must be callable or expose analyze()")
         if inspect.isawaitable(value):
-            raise AnalysisProducerError(
-                "async analyzers require AnalysisPipeline.aanalyze"
-            )
+            raise AnalysisProducerError("async analyzers require AnalysisPipeline.aanalyze")
         return _packet_from_producer(value, context.request)
 
     def _prepare_receipt(
@@ -3264,16 +2971,11 @@ class AnalysisPipeline:
             request = AnalysisPipelineRequest(**dict(request))
         request = request.bind_pipeline_policy(self._execution_identity)
         self._metrics["requests"] += 1
-        lookup = self.cache.lookup(
-            request.cache_key, require_completion_evidence=True
-        )
+        lookup = self.cache.lookup(request.cache_key, require_completion_evidence=True)
         initial_reasons = tuple(lookup.reason_codes)
         if lookup.status is AnalysisCacheLookupStatus.INVALIDATED:
             self._metrics["invalidated"] += 1
-            if (
-                lookup.entry is not None
-                and not lookup.entry.is_completion_evidence
-            ):
+            if lookup.entry is not None and not lookup.entry.is_completion_evidence:
                 self._metrics["negative_rejections"] += 1
         if lookup.hit and lookup.is_completion_evidence:
             try:
@@ -3295,9 +2997,7 @@ class AnalysisPipeline:
         produced: dict[str, Any] = {}
 
         def produce() -> Mapping[str, Any]:
-            receipt, packet, context, consensus_receipt = self._prepare_receipt(
-                request
-            )
+            receipt, packet, context, consensus_receipt = self._prepare_receipt(request)
             produced["packet"] = packet
             produced["context"] = context
             produced["consensus_receipt"] = consensus_receipt
@@ -3314,15 +3014,11 @@ class AnalysisPipeline:
                 receipt,
                 store=self.policy.cache_negative_results,
                 ttl_seconds=(
-                    self.policy.negative_ttl_seconds
-                    if self.policy.cache_negative_results
-                    else None
+                    self.policy.negative_ttl_seconds if self.policy.cache_negative_results else None
                 ),
             )
 
-        coordinate = (
-            getattr(self.coordinator, "single_flight", None)
-        )
+        coordinate = getattr(self.coordinator, "single_flight", None)
         if coordinate is None:
             coordinate = getattr(self.coordinator, "run", None)
         coordinated_receipt: Mapping[str, Any] = {}
@@ -3339,16 +3035,10 @@ class AnalysisPipeline:
                 produced["packet"].safe_for_completion_reasoning
                 or self.policy.cache_negative_results
             ):
-                stored = self.cache.put(
-                    request.cache_key, receipt, ttl_seconds=ttl
-                )
-                if (
-                    produced["packet"].safe_for_completion_reasoning
-                    and not stored.stored
-                ):
+                stored = self.cache.put(request.cache_key, receipt, ttl_seconds=ttl)
+                if produced["packet"].safe_for_completion_reasoning and not stored.stored:
                     raise AnalysisPipelineError(
-                        "authoritative analysis receipt could not be cached: "
-                        + stored.reason_code
+                        "authoritative analysis receipt could not be cached: " + stored.reason_code
                     )
             packet = produced["packet"]
             context = produced["context"]
@@ -3359,20 +3049,15 @@ class AnalysisPipeline:
                 request.cache_key,
                 coordinated_produce,
                 ttl_seconds=None,
-                completion_validator=lambda candidate: (
-                    self._accept_completion_lookup(candidate, request)
+                completion_validator=lambda candidate: self._accept_completion_lookup(
+                    candidate, request
                 ),
             )
             joined = bool(
-                getattr(coordinated, "shared", False)
-                or getattr(coordinated, "waited", False)
+                getattr(coordinated, "shared", False) or getattr(coordinated, "waited", False)
             )
-            coordinated_status = str(
-                getattr(getattr(coordinated, "status", ""), "value", "")
-            )
-            refreshed = self.cache.lookup(
-                request.cache_key, require_completion_evidence=True
-            )
+            coordinated_status = str(getattr(getattr(coordinated, "status", ""), "value", ""))
+            refreshed = self.cache.lookup(request.cache_key, require_completion_evidence=True)
             if refreshed.hit and refreshed.is_completion_evidence:
                 packet = self._load_cached_packet(refreshed, request)
             else:
@@ -3381,9 +3066,7 @@ class AnalysisPipeline:
                     value = getattr(coordinated, "value", coordinated)
                     receipt = value if isinstance(value, Mapping) else None
                 if not isinstance(receipt, Mapping):
-                    raise AnalysisPipelineError(
-                        "coordinator returned no compact analysis receipt"
-                    )
+                    raise AnalysisPipelineError("coordinator returned no compact analysis receipt")
                 coordinated_receipt = receipt
                 packet = self._load_packet_receipt(
                     receipt, request, require_completion_evidence=False
@@ -3419,16 +3102,9 @@ class AnalysisPipeline:
                 cached_summary = candidate_summary
             cached_consensus = cached_summary.get("consensus_artifact_ref")
             if isinstance(cached_consensus, Mapping):
-                consensus_receipt = self._artifacts.get_consensus(
-                    cached_consensus
-                )
-                if (
-                    consensus_receipt.receipt_id
-                    != cached_summary.get("consensus_receipt_id")
-                ):
-                    raise AnalysisBindingError(
-                        "cached consensus receipt identity mismatch"
-                    )
+                consensus_receipt = self._artifacts.get_consensus(cached_consensus)
+                if consensus_receipt.receipt_id != cached_summary.get("consensus_receipt_id"):
+                    raise AnalysisBindingError("cached consensus receipt identity mismatch")
         return AnalysisPipelineResult(
             request=request,
             packet=packet,
@@ -3452,25 +3128,19 @@ class AnalysisPipeline:
                 if context is not None
                 else tuple(
                     item
-                    for item in (
-                        cached_summary.get("ranked_evidence_references") or ()
-                    )
+                    for item in (cached_summary.get("ranked_evidence_references") or ())
                     if isinstance(item, Mapping)
                 )
             ),
             retrieval_backend_health=(
                 {
                     name: value.to_dict()
-                    for name, value in sorted(
-                        context.retrieval.backend_health.items()
-                    )
+                    for name, value in sorted(context.retrieval.backend_health.items())
                 }
                 if context is not None
                 else (
                     cached_summary.get("retrieval_backend_health")
-                    if isinstance(
-                        cached_summary.get("retrieval_backend_health"), Mapping
-                    )
+                    if isinstance(cached_summary.get("retrieval_backend_health"), Mapping)
                     else {}
                 )
             ),
@@ -3479,26 +3149,16 @@ class AnalysisPipeline:
                 if context is not None
                 else (
                     cached_summary.get("retrieval_truncation")
-                    if isinstance(
-                        cached_summary.get("retrieval_truncation"), Mapping
-                    )
+                    if isinstance(cached_summary.get("retrieval_truncation"), Mapping)
                     else {}
                 )
             ),
-            provider_result=(
-                context.provider_result if context is not None else None
-            ),
+            provider_result=(context.provider_result if context is not None else None),
             advisory_evidence_claim_references=(
-                context.provider_evidence_claim_references
-                if context is not None
-                else ()
+                context.provider_evidence_claim_references if context is not None else ()
             ),
-            provider_request=(
-                context.provider_request if context is not None else None
-            ),
-            provider_policy=(
-                context.provider_policy if context is not None else None
-            ),
+            provider_request=(context.provider_request if context is not None else None),
+            provider_policy=(context.provider_policy if context is not None else None),
             consensus_receipt=consensus_receipt,
             single_flight_collapse_evidence=(
                 coordinated.single_flight_collapse_evidence
@@ -3506,9 +3166,7 @@ class AnalysisPipeline:
                 else None
             ),
             coordination_result=(
-                coordinated
-                if isinstance(coordinated, CacheCoordinationResult)
-                else None
+                coordinated if isinstance(coordinated, CacheCoordinationResult) else None
             ),
         )
 

@@ -17,26 +17,26 @@ from datetime import datetime
 
 def load_compatibility_matrix(file_path):
     """Load the compatibility matrix from a JSON file."""
-    with open(file_path, 'r') as f:
+    with open(file_path, "r") as f:
         return json.load(f)
 
 
 def generate_compatibility_table(matrix_data, architecture_types=None, hardware_types=None):
     """
     Generate a markdown table showing architecture-hardware compatibility.
-    
+
     Args:
         matrix_data: The compatibility matrix data
         architecture_types: List of architecture types to include (default: all)
         hardware_types: List of hardware types to include (default: all)
-    
+
     Returns:
         Markdown string with the compatibility table
     """
     # Get architecture and hardware types
     all_architectures = list(matrix_data["architecture_hardware_compatibility"].keys())
     architectures = architecture_types or all_architectures
-    
+
     # Sort architectures in a logical order
     sorted_architectures = []
     architecture_groups = [
@@ -44,41 +44,41 @@ def generate_compatibility_table(matrix_data, architecture_types=None, hardware_
         ["vision", "vision-encoder-text-decoder"],  # Vision models
         ["speech"],  # Audio models
         ["multimodal", "diffusion"],  # Complex models
-        ["mixture-of-experts", "state-space", "rag"]  # Special architectures
+        ["mixture-of-experts", "state-space", "rag"],  # Special architectures
     ]
-    
+
     for group in architecture_groups:
         for arch in group:
             if arch in architectures:
                 sorted_architectures.append(arch)
-    
+
     # Add any remaining architectures
     for arch in architectures:
         if arch not in sorted_architectures:
             sorted_architectures.append(arch)
-    
+
     # Get all hardware types from the first architecture
     first_arch = list(matrix_data["architecture_hardware_compatibility"].keys())[0]
     all_hardware = list(matrix_data["architecture_hardware_compatibility"][first_arch].keys())
     hardware = hardware_types or all_hardware
-    
+
     # Sort hardware in a logical order
     hw_order = ["cpu", "cuda", "rocm", "mps", "openvino", "qnn"]
     sorted_hardware = sorted(hardware, key=lambda x: hw_order.index(x) if x in hw_order else 999)
-    
+
     # Create the table header
     table = "| Architecture | " + " | ".join(sorted_hardware) + " |\n"
     table += "| --- | " + " | ".join(["---"] * len(sorted_hardware)) + " |\n"
-    
+
     # Add rows for each architecture
     for arch in sorted_architectures:
         row = f"| **{arch}** | "
-        
+
         for hw in sorted_hardware:
             hw_data = matrix_data["architecture_hardware_compatibility"][arch][hw]
             compatible = hw_data.get("compatible", False)
             performance = hw_data.get("performance", "n/a")
-            
+
             if compatible:
                 if performance == "excellent":
                     cell = "✅ **Excellent**"
@@ -94,74 +94,80 @@ def generate_compatibility_table(matrix_data, architecture_types=None, hardware_
                     cell = "✓ Compatible"
             else:
                 cell = "❌ No"
-                
+
             row += f"{cell} | "
-            
+
         table += row + "\n"
-    
+
     return table
 
 
 def generate_detailed_report(matrix_data, architecture_types=None, hardware_types=None):
     """
     Generate a detailed markdown report with architecture-hardware compatibility details.
-    
+
     Args:
         matrix_data: The compatibility matrix data
         architecture_types: List of architecture types to include (default: all)
         hardware_types: List of hardware types to include (default: all)
-    
+
     Returns:
         Markdown string with the detailed report
     """
     # Get architecture and hardware types
     all_architectures = list(matrix_data["architecture_hardware_compatibility"].keys())
     architectures = architecture_types or all_architectures
-    
-    all_hardware = list(matrix_data["architecture_hardware_compatibility"][all_architectures[0]].keys())
+
+    all_hardware = list(
+        matrix_data["architecture_hardware_compatibility"][all_architectures[0]].keys()
+    )
     hardware = hardware_types or all_hardware
-    
+
     # Create the report
     report = f"# Hardware Compatibility Report\n\n"
     report += f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-    
+
     # Add metadata
     metadata = matrix_data.get("metadata", {})
     report += f"**Version:** {metadata.get('version', 'N/A')}\n"
     report += f"**Last Updated:** {metadata.get('last_updated', 'N/A')}\n"
     report += f"**Description:** {metadata.get('description', 'N/A')}\n\n"
-    
+
     # Add compatibility table
     report += "## Compatibility Overview\n\n"
     report += generate_compatibility_table(matrix_data, architectures, hardware)
     report += "\n\n"
-    
+
     # Add detailed sections for each architecture
     report += "## Detailed Architecture Compatibility\n\n"
-    
+
     for arch in architectures:
         report += f"### {arch.capitalize()} Architecture\n\n"
-        
+
         if arch in matrix_data["architecture_hardware_compatibility"]:
             arch_data = matrix_data["architecture_hardware_compatibility"][arch]
-            
+
             # Add examples
             example_models = []
             for hw in hardware:
                 if hw in arch_data:
                     hw_examples = arch_data[hw].get("examples", [])
                     example_models.extend(hw_examples)
-            
+
             # Deduplicate examples
             example_models = list(set(example_models))
-            
+
             if example_models:
-                report += "**Example Models:** " + ", ".join(f"`{model}`" for model in example_models) + "\n\n"
-            
+                report += (
+                    "**Example Models:** "
+                    + ", ".join(f"`{model}`" for model in example_models)
+                    + "\n\n"
+                )
+
             # Add hardware support details
             report += "| Hardware | Compatibility | Performance | Notes | Optimizations |\n"
             report += "| --- | --- | --- | --- | --- |\n"
-            
+
             for hw in hardware:
                 if hw in arch_data:
                     hw_data = arch_data[hw]
@@ -169,16 +175,16 @@ def generate_detailed_report(matrix_data, architecture_types=None, hardware_type
                     performance = hw_data.get("performance", "n/a")
                     notes = hw_data.get("notes", "")
                     optimizations = ", ".join(hw_data.get("optimizations", []))
-                    
+
                     report += f"| **{hw.upper()}** | {compatible} | {performance} | {notes} | {optimizations} |\n"
-            
+
             report += "\n"
         else:
             report += "No compatibility data available for this architecture.\n\n"
-    
+
     # Add hardware backend details
     report += "## Hardware Backend Details\n\n"
-    
+
     # CPU
     if "cpu" in hardware:
         report += "### CPU\n\n"
@@ -190,7 +196,7 @@ def generate_detailed_report(matrix_data, architecture_types=None, hardware_type
         report += "**Limitations:**\n"
         report += "- Slower inference compared to accelerated hardware\n"
         report += "- Memory constraints for larger models\n\n"
-    
+
     # CUDA
     if "cuda" in hardware:
         report += "### CUDA (NVIDIA GPUs)\n\n"
@@ -202,7 +208,7 @@ def generate_detailed_report(matrix_data, architecture_types=None, hardware_type
         report += "**Limitations:**\n"
         report += "- Requires NVIDIA GPU hardware\n"
         report += "- Memory constraints for very large models\n\n"
-    
+
     # ROCm
     if "rocm" in hardware:
         report += "### ROCm (AMD GPUs)\n\n"
@@ -214,7 +220,7 @@ def generate_detailed_report(matrix_data, architecture_types=None, hardware_type
         report += "**Limitations:**\n"
         report += "- Requires AMD GPU hardware\n"
         report += "- Some advanced optimizations may lag behind CUDA\n\n"
-    
+
     # MPS
     if "mps" in hardware:
         report += "### MPS (Apple Silicon)\n\n"
@@ -227,7 +233,7 @@ def generate_detailed_report(matrix_data, architecture_types=None, hardware_type
         report += "- Limited to Apple hardware\n"
         report += "- Memory constraints for large models\n"
         report += "- Limited support for very large models\n\n"
-    
+
     # OpenVINO
     if "openvino" in hardware:
         report += "### OpenVINO (Intel)\n\n"
@@ -239,7 +245,7 @@ def generate_detailed_report(matrix_data, architecture_types=None, hardware_type
         report += "**Limitations:**\n"
         report += "- Limited support for specialized architectures\n"
         report += "- Best performance on Intel hardware\n\n"
-    
+
     # QNN
     if "qnn" in hardware:
         report += "### QNN (Qualcomm)\n\n"
@@ -252,29 +258,33 @@ def generate_detailed_report(matrix_data, architecture_types=None, hardware_type
         report += "- Limited support for large and complex models\n"
         report += "- Requires fixed input shapes\n"
         report += "- Limited availability outside Qualcomm hardware\n\n"
-    
+
     return report
 
 
 def main():
     # Parse arguments
     parser = argparse.ArgumentParser(description="Generate hardware compatibility report")
-    parser.add_argument("--input", default="hardware_compatibility_matrix.json", help="Input JSON file")
-    parser.add_argument("--output", default="hardware_compatibility_report.md", help="Output markdown file")
+    parser.add_argument(
+        "--input", default="hardware_compatibility_matrix.json", help="Input JSON file"
+    )
+    parser.add_argument(
+        "--output", default="hardware_compatibility_report.md", help="Output markdown file"
+    )
     parser.add_argument("--architecture", action="append", help="Filter by architecture type")
     parser.add_argument("--hardware", action="append", help="Filter by hardware type")
     args = parser.parse_args()
-    
+
     # Load compatibility matrix
     matrix_data = load_compatibility_matrix(args.input)
-    
+
     # Generate report
     report = generate_detailed_report(matrix_data, args.architecture, args.hardware)
-    
+
     # Write report to file
-    with open(args.output, 'w') as f:
+    with open(args.output, "w") as f:
         f.write(report)
-    
+
     print(f"Report generated and saved to {args.output}")
 
 

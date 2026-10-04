@@ -289,16 +289,10 @@ def test_python_mcp_cli_share_envelope_for_each_operation(operation: str) -> Non
     tool_name = next(
         name for name, op in GOAL_TACTICIAN_TOOL_TO_OPERATION.items() if op == operation
     )
-    command = next(
-        name for name, op in GOAL_TACTICIAN_CLI_TO_OPERATION.items() if op == operation
-    )
+    command = next(name for name, op in GOAL_TACTICIAN_CLI_TO_OPERATION.items() if op == operation)
 
-    mcp = invoke_goal_tactician_mcp_tool(
-        tool_name, request, request_id=f"req:mcp:{operation}"
-    )
-    cli = invoke_goal_tactician_cli(
-        command, request, request_id=f"req:cli:{operation}"
-    )
+    mcp = invoke_goal_tactician_mcp_tool(tool_name, request, request_id=f"req:mcp:{operation}")
+    cli = invoke_goal_tactician_cli(command, request, request_id=f"req:cli:{operation}")
 
     for channel_payload, channel in ((mcp, "mcp"), (cli, "cli")):
         _assert_envelope(channel_payload, operation=operation)
@@ -338,9 +332,7 @@ def test_python_mcp_cli_share_envelope_for_each_operation(operation: str) -> Non
 def test_channels_agree_on_cancellation() -> None:
     request = _formalize_request()
     cancellation = {"cancelled": True}
-    py = invoke_goal_tactician(
-        "formalize_goal", request, cancellation=cancellation
-    ).to_dict()
+    py = invoke_goal_tactician("formalize_goal", request, cancellation=cancellation).to_dict()
     mcp = invoke_goal_tactician_mcp_tool(
         "goal_tactician_formalize_goal",
         request,
@@ -365,9 +357,7 @@ def test_channels_agree_on_supervisor_control_refusal() -> None:
         "controls": {"mutate_supervisor": True},
     }
     py = invoke_goal_tactician("execute_proof_plan", request).to_dict()
-    mcp = invoke_goal_tactician_mcp_tool(
-        "goal_tactician_execute_proof_plan", request
-    )
+    mcp = invoke_goal_tactician_mcp_tool("goal_tactician_execute_proof_plan", request)
     cli = invoke_goal_tactician_cli("goal-execute-plan", request)
     for payload in (py, mcp, cli):
         assert payload["status"] == "invalid"

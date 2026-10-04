@@ -38,7 +38,9 @@ def _load_vector_store_api() -> Dict[str, Any]:
             "enhanced_vector_storage": _enhanced_vector_storage,
         }
     except Exception:
-        logger.warning("Source vector_store_tools import unavailable, using fallback vector-store functions")
+        logger.warning(
+            "Source vector_store_tools import unavailable, using fallback vector-store functions"
+        )
 
         async def _index_fallback(
             action: str,
@@ -366,12 +368,24 @@ async def enhanced_vector_index(
     """Expose enhanced vector-index lifecycle operations from the source surface."""
     normalized_action = str(action or "").strip().lower()
     if normalized_action not in {"create", "update", "delete", "info", "list"}:
-        return {"status": "error", "message": "action must be one of: create, update, delete, info, list", "action": action}
+        return {
+            "status": "error",
+            "message": "action must be one of: create, update, delete, info, list",
+            "action": action,
+        }
     normalized_index_name = str(index_name or "").strip() or None
     if normalized_action != "list" and not normalized_index_name:
-        return {"status": "error", "message": "index_name must be provided for create/update/delete/info actions", "index_name": index_name}
+        return {
+            "status": "error",
+            "message": "index_name must be provided for create/update/delete/info actions",
+            "index_name": index_name,
+        }
     if config is not None and not isinstance(config, dict):
-        return {"status": "error", "message": "config must be an object when provided", "config": config}
+        return {
+            "status": "error",
+            "message": "config must be an object when provided",
+            "config": config,
+        }
 
     result = await _API["enhanced_vector_index"](
         action=normalized_action,
@@ -398,15 +412,35 @@ async def enhanced_vector_search(
     """Expose enhanced vector search with filtering and reranking controls."""
     normalized_collection = str(collection or "").strip()
     if not normalized_collection:
-        return {"status": "error", "message": "collection must be a non-empty string", "collection": collection}
-    if not isinstance(query_vector, list) or not query_vector or not all(isinstance(item, (int, float)) for item in query_vector):
-        return {"status": "error", "message": "query_vector must be a non-empty list of numbers", "query_vector": query_vector}
+        return {
+            "status": "error",
+            "message": "collection must be a non-empty string",
+            "collection": collection,
+        }
+    if (
+        not isinstance(query_vector, list)
+        or not query_vector
+        or not all(isinstance(item, (int, float)) for item in query_vector)
+    ):
+        return {
+            "status": "error",
+            "message": "query_vector must be a non-empty list of numbers",
+            "query_vector": query_vector,
+        }
     if not isinstance(top_k, int) or top_k < 1:
         return {"status": "error", "message": "top_k must be an integer >= 1", "top_k": top_k}
     if filters is not None and not isinstance(filters, dict):
-        return {"status": "error", "message": "filters must be an object when provided", "filters": filters}
+        return {
+            "status": "error",
+            "message": "filters must be an object when provided",
+            "filters": filters,
+        }
     if score_threshold is not None and not isinstance(score_threshold, (int, float)):
-        return {"status": "error", "message": "score_threshold must be a number when provided", "score_threshold": score_threshold}
+        return {
+            "status": "error",
+            "message": "score_threshold must be a number when provided",
+            "score_threshold": score_threshold,
+        }
     for name, value in {
         "include_metadata": include_metadata,
         "include_vectors": include_vectors,
@@ -420,7 +454,9 @@ async def enhanced_vector_search(
         query_vector=[float(item) for item in query_vector],
         top_k=top_k,
         filters=filters,
-        score_threshold=float(score_threshold) if isinstance(score_threshold, (int, float)) else None,
+        score_threshold=float(score_threshold)
+        if isinstance(score_threshold, (int, float))
+        else None,
         include_metadata=include_metadata,
         include_vectors=include_vectors,
         rerank=rerank,
@@ -446,17 +482,39 @@ async def enhanced_vector_storage(
     normalized_action = str(action or "").strip().lower()
     valid_actions = {"add", "batch_add", "update", "delete", "get", "list", "get_metadata"}
     if normalized_action not in valid_actions:
-        return {"status": "error", "message": "action must be one of: add, batch_add, update, delete, get, get_metadata, list", "action": action}
+        return {
+            "status": "error",
+            "message": "action must be one of: add, batch_add, update, delete, get, get_metadata, list",
+            "action": action,
+        }
     normalized_collection = str(collection or "default").strip() or "default"
     if vectors is not None and not isinstance(vectors, list):
-        return {"status": "error", "message": "vectors must be an array when provided", "vectors": vectors}
+        return {
+            "status": "error",
+            "message": "vectors must be an array when provided",
+            "vectors": vectors,
+        }
     if vector_ids is not None:
-        if not isinstance(vector_ids, list) or not all(isinstance(item, str) and item.strip() for item in vector_ids):
-            return {"status": "error", "message": "vector_ids must be a list of non-empty strings when provided", "vector_ids": vector_ids}
+        if not isinstance(vector_ids, list) or not all(
+            isinstance(item, str) and item.strip() for item in vector_ids
+        ):
+            return {
+                "status": "error",
+                "message": "vector_ids must be a list of non-empty strings when provided",
+                "vector_ids": vector_ids,
+            }
     if vector_id is not None and (not isinstance(vector_id, str) or not vector_id.strip()):
-        return {"status": "error", "message": "vector_id must be a non-empty string when provided", "vector_id": vector_id}
+        return {
+            "status": "error",
+            "message": "vector_id must be a non-empty string when provided",
+            "vector_id": vector_id,
+        }
     if metadata_updates is not None and not isinstance(metadata_updates, dict):
-        return {"status": "error", "message": "metadata_updates must be an object when provided", "metadata_updates": metadata_updates}
+        return {
+            "status": "error",
+            "message": "metadata_updates must be an object when provided",
+            "metadata_updates": metadata_updates,
+        }
 
     result = await _API["enhanced_vector_storage"](
         action=normalized_action,
@@ -545,7 +603,10 @@ def register_native_vector_store_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "action": {"type": "string", "enum": ["create", "update", "delete", "info", "list"]},
+                "action": {
+                    "type": "string",
+                    "enum": ["create", "update", "delete", "info", "list"],
+                },
                 "index_name": {"type": ["string", "null"], "minLength": 1},
                 "config": {"type": ["object", "null"]},
             },
@@ -586,10 +647,16 @@ def register_native_vector_store_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "action": {"type": "string", "enum": ["add", "batch_add", "update", "delete", "get", "list", "get_metadata"]},
+                "action": {
+                    "type": "string",
+                    "enum": ["add", "batch_add", "update", "delete", "get", "list", "get_metadata"],
+                },
                 "collection": {"type": ["string", "null"], "minLength": 1, "default": "default"},
                 "vectors": {"type": ["array", "null"]},
-                "vector_ids": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}},
+                "vector_ids": {
+                    "type": ["array", "null"],
+                    "items": {"type": "string", "minLength": 1},
+                },
                 "vector_id": {"type": ["string", "null"], "minLength": 1},
                 "metadata_updates": {"type": ["object", "null"]},
             },

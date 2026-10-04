@@ -56,30 +56,16 @@ from ..proof.multi_prover_router import (
 
 
 GOAL_REFINEMENT_VERIFICATION_VERSION = 1
-REFINEMENT_OBLIGATION_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/refinement-obligation@1"
-)
-FROZEN_REFINEMENT_CONTEXT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/frozen-refinement-context@1"
-)
-REFINEMENT_POLICY_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/refinement-verification-policy@1"
-)
-REFINEMENT_ATTEMPT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/refinement-verification-attempt@1"
-)
-REFINEMENT_COUNTEREXAMPLE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/refinement-counterexample@1"
-)
+REFINEMENT_OBLIGATION_SCHEMA = "ipfs_accelerate_py/agent-supervisor/refinement-obligation@1"
+FROZEN_REFINEMENT_CONTEXT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/frozen-refinement-context@1"
+REFINEMENT_POLICY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/refinement-verification-policy@1"
+REFINEMENT_ATTEMPT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/refinement-verification-attempt@1"
+REFINEMENT_COUNTEREXAMPLE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/refinement-counterexample@1"
 REFINEMENT_REPAIR_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/refinement-repair-immutability@1"
 )
-REFINEMENT_ROUND_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/refinement-verification-round@1"
-)
-REFINEMENT_RESULT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/refinement-verification-result@1"
-)
+REFINEMENT_ROUND_SCHEMA = "ipfs_accelerate_py/agent-supervisor/refinement-verification-round@1"
+REFINEMENT_RESULT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/refinement-verification-result@1"
 MAX_LEANSTRAL_REPAIR_ROUNDS = 2
 DEFAULT_MAX_COUNTEREXAMPLE_BYTES = 256 * 1024
 
@@ -121,9 +107,7 @@ def _text(value: Any, name: str, *, required: bool = True) -> str:
     return value
 
 
-def _strings(
-    value: Iterable[Any] | None, name: str, *, required: bool = False
-) -> tuple[str, ...]:
+def _strings(value: Iterable[Any] | None, name: str, *, required: bool = False) -> tuple[str, ...]:
     if value is None:
         result: tuple[str, ...] = ()
     elif isinstance(value, (str, bytes, bytearray, memoryview)):
@@ -177,16 +161,10 @@ def _nonnegative(value: Any, name: str, *, maximum: int | None = None) -> int:
 
 _PROPERTY_BY_OBLIGATION: Mapping[RefinementObligationKind, PropertyKind] = {
     RefinementObligationKind.CHILD_TO_PARENT: PropertyKind.FIRST_ORDER_THEOREM,
-    RefinementObligationKind.ACCEPTANCE_CRITERION_COVERAGE: (
-        PropertyKind.TYPED_PLANNING
-    ),
+    RefinementObligationKind.ACCEPTANCE_CRITERION_COVERAGE: (PropertyKind.TYPED_PLANNING),
     RefinementObligationKind.EVIDENCE_PRODUCTION: PropertyKind.STATE_MACHINE,
-    RefinementObligationKind.TASK_EFFECT_SUFFICIENCY: (
-        PropertyKind.FIRST_ORDER_THEOREM
-    ),
-    RefinementObligationKind.DEPENDENCY_LIVENESS: (
-        PropertyKind.TEMPORAL_DEONTIC
-    ),
+    RefinementObligationKind.TASK_EFFECT_SUFFICIENCY: (PropertyKind.FIRST_ORDER_THEOREM),
+    RefinementObligationKind.DEPENDENCY_LIVENESS: (PropertyKind.TEMPORAL_DEONTIC),
     RefinementObligationKind.AUTHORITY: PropertyKind.FINITE_CONSTRAINT,
     RefinementObligationKind.RESOURCE_FEASIBILITY: PropertyKind.FINITE_CONSTRAINT,
     RefinementObligationKind.DEONTIC_CONSISTENCY: PropertyKind.TEMPORAL_DEONTIC,
@@ -198,9 +176,7 @@ def property_kind_for_refinement_obligation(
 ) -> PropertyKind:
     """Return the reviewed property family for a refinement check."""
 
-    kind = _enum(
-        obligation_kind, RefinementObligationKind, "refinement_obligation_kind"
-    )
+    kind = _enum(obligation_kind, RefinementObligationKind, "refinement_obligation_kind")
     return _PROPERTY_BY_OBLIGATION[kind]
 
 
@@ -245,20 +221,14 @@ class RefinementObligation(CanonicalContract):
         kind = _enum(self.kind, RefinementObligationKind, "kind")
         property_kind = _enum(self.property_kind, PropertyKind, "property_kind")
         if property_kind is not property_kind_for_refinement_obligation(kind):
-            raise ContractValidationError(
-                "refinement obligation has the wrong property family"
-            )
+            raise ContractValidationError("refinement obligation has the wrong property family")
         object.__setattr__(self, "kind", kind)
         object.__setattr__(self, "property_kind", property_kind)
         object.__setattr__(
             self, "subject_ids", _strings(self.subject_ids, "subject_ids", required=True)
         )
-        object.__setattr__(
-            self, "premise_ids", _strings(self.premise_ids, "premise_ids")
-        )
-        object.__setattr__(
-            self, "assumption_ids", _strings(self.assumption_ids, "assumption_ids")
-        )
+        object.__setattr__(self, "premise_ids", _strings(self.premise_ids, "premise_ids"))
+        object.__setattr__(self, "assumption_ids", _strings(self.assumption_ids, "assumption_ids"))
         object.__setattr__(
             self, "statement_model", _mapping(self.statement_model, "statement_model")
         )
@@ -325,9 +295,7 @@ class RefinementObligation(CanonicalContract):
             subject_ids=tuple(payload.get("subject_ids") or ()),
             statement_model=payload.get("statement_model") or {},
             premise_ids=tuple(payload.get("premise_ids") or ()),
-            required_assurance=payload.get(
-                "required_assurance", AssuranceLevel.UNVERIFIED
-            ),
+            required_assurance=payload.get("required_assurance", AssuranceLevel.UNVERIFIED),
             root_goal_id=payload.get("root_goal_id", ""),
             root_goal_content_id=payload.get("root_goal_content_id", ""),
             assumption_ids=tuple(payload.get("assumption_ids") or ()),
@@ -348,17 +316,13 @@ class FrozenRefinementContext(CanonicalContract):
     assumption_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "root_goal_id", _text(self.root_goal_id, "root_goal_id")
-        )
+        object.__setattr__(self, "root_goal_id", _text(self.root_goal_id, "root_goal_id"))
         object.__setattr__(
             self,
             "root_goal_content_id",
             _text(self.root_goal_content_id, "root_goal_content_id"),
         )
-        object.__setattr__(
-            self, "assumption_ids", _strings(self.assumption_ids, "assumption_ids")
-        )
+        object.__setattr__(self, "assumption_ids", _strings(self.assumption_ids, "assumption_ids"))
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -404,15 +368,13 @@ class RefinementVerificationPolicy(CanonicalContract):
         if not isinstance(self.allow_leanstral_repairs, bool):
             raise ContractValidationError("allow_leanstral_repairs must be boolean")
         if self.max_repair_rounds and not self.allow_leanstral_repairs:
-            raise ContractValidationError(
-                "repair rounds require allow_leanstral_repairs"
-            )
-        if isinstance(self.max_counterexample_bytes, bool) or not isinstance(
-            self.max_counterexample_bytes, int
-        ) or self.max_counterexample_bytes < 1:
-            raise ContractValidationError(
-                "max_counterexample_bytes must be positive"
-            )
+            raise ContractValidationError("repair rounds require allow_leanstral_repairs")
+        if (
+            isinstance(self.max_counterexample_bytes, bool)
+            or not isinstance(self.max_counterexample_bytes, int)
+            or self.max_counterexample_bytes < 1
+        ):
+            raise ContractValidationError("max_counterexample_bytes must be positive")
         if not isinstance(self.stop_on_counterexample, bool):
             raise ContractValidationError("stop_on_counterexample must be boolean")
 
@@ -448,9 +410,7 @@ def _root(plan: FormalWorkPlan, root_goal_id: str) -> Goal:
     elif len(plan.goals) == 1:
         matches = [plan.goals[0]]
     else:
-        raise ContractValidationError(
-            "root_goal_id is required for plans with multiple goals"
-        )
+        raise ContractValidationError("root_goal_id is required for plans with multiple goals")
     if not matches:
         raise ContractValidationError("root_goal_id is not present in the plan")
     return matches[0]
@@ -470,9 +430,7 @@ def _resource_ids(metadata: Mapping[str, Any]) -> tuple[str, ...]:
             continue
         if isinstance(value, str):
             return (value.strip(),) if value.strip() else ()
-        if isinstance(value, Sequence) and not isinstance(
-            value, (bytes, bytearray, memoryview)
-        ):
+        if isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray, memoryview)):
             return _strings(value, key)
         if isinstance(value, Mapping):
             return _strings(value.keys(), key)
@@ -509,9 +467,7 @@ class GoalRefinementObligationGenerator:
         goals = {item.goal_id: item for item in plan.goals}
         subgoals = {item.subgoal_id: item for item in plan.subgoals}
         tasks_by_subgoal = {
-            subgoal_id: tuple(
-                task for task in plan.tasks if task.subgoal_id == subgoal_id
-            )
+            subgoal_id: tuple(task for task in plan.tasks if task.subgoal_id == subgoal_id)
             for subgoal_id in subgoals
         }
         effects = {item.effect_id: item for item in plan.effects}
@@ -588,9 +544,7 @@ class GoalRefinementObligationGenerator:
                 )
             )
 
-        for requirement in sorted(
-            plan.evidence_requirements, key=lambda item: item.requirement_id
-        ):
+        for requirement in sorted(plan.evidence_requirements, key=lambda item: item.requirement_id):
             producing_tasks = tuple(
                 sorted(
                     task.task_id
@@ -608,9 +562,7 @@ class GoalRefinementObligationGenerator:
                         "requirement_kind": requirement.kind.value,
                         "subject_ids": list(requirement.subject_ids),
                         "producing_task_ids": producing_tasks,
-                        "required_assurance": (
-                            requirement.minimum_code_assurance.value
-                        ),
+                        "required_assurance": (requirement.minimum_code_assurance.value),
                         "freshness_seconds": requirement.freshness_seconds,
                         "fallback_check_ids": list(requirement.fallback_check_ids),
                         "transition": "task_completion_leads_to_fresh_evidence",
@@ -702,11 +654,7 @@ class GoalRefinementObligationGenerator:
             )
             available_resources = {
                 *_resource_ids(plan.metadata),
-                *(
-                    capability
-                    for actor in assigned
-                    for capability in actor.capabilities
-                ),
+                *(capability for actor in assigned for capability in actor.capabilities),
             }
             required_resources = set(_resource_ids(task.metadata))
             seeds.append(
@@ -784,9 +732,7 @@ class GoalRefinementObligationGenerator:
             }
             obligations.append(
                 RefinementObligation(
-                    obligation_id=(
-                        "refinement-obligation:" + content_identity(identity_seed)
-                    ),
+                    obligation_id=("refinement-obligation:" + content_identity(identity_seed)),
                     kind=kind,
                     property_kind=property_kind,
                     subject_ids=tuple(subject_ids),
@@ -843,9 +789,7 @@ class RefinementVerificationAttempt(CanonicalContract):
     attempt: PortfolioAttempt
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "round_index", _nonnegative(self.round_index, "round_index")
-        )
+        object.__setattr__(self, "round_index", _nonnegative(self.round_index, "round_index"))
         for name in (
             "obligation_id",
             "obligation_content_id",
@@ -901,9 +845,7 @@ class RefinementCounterexample(CanonicalContract):
     maximum_bytes: int = DEFAULT_MAX_COUNTEREXAMPLE_BYTES
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "round_index", _nonnegative(self.round_index, "round_index")
-        )
+        object.__setattr__(self, "round_index", _nonnegative(self.round_index, "round_index"))
         for name in ("obligation_id", "portfolio_attempt_id", "prover_id"):
             object.__setattr__(self, name, _text(getattr(self, name), name))
         object.__setattr__(self, "bounds", _mapping(self.bounds, "bounds"))
@@ -914,13 +856,13 @@ class RefinementCounterexample(CanonicalContract):
             )
         if not self.witness:
             raise ContractValidationError("counterexample witness must not be empty")
-        if isinstance(self.maximum_bytes, bool) or not isinstance(
-            self.maximum_bytes, int
-        ) or self.maximum_bytes < 1:
+        if (
+            isinstance(self.maximum_bytes, bool)
+            or not isinstance(self.maximum_bytes, int)
+            or self.maximum_bytes < 1
+        ):
             raise ContractValidationError("maximum_bytes must be positive")
-        measured = len(
-            canonical_json_bytes({"bounds": self.bounds, "witness": self.witness})
-        )
+        measured = len(canonical_json_bytes({"bounds": self.bounds, "witness": self.witness}))
         if measured > self.maximum_bytes:
             raise ContractValidationError(
                 f"counterexample exceeds maximum of {self.maximum_bytes} bytes"
@@ -952,17 +894,14 @@ class RefinementCounterexample(CanonicalContract):
             prover_id=payload.get("prover_id", ""),
             bounds=payload.get("bounds") or {},
             witness=payload.get("witness") or {},
-            maximum_bytes=payload.get(
-                "maximum_bytes", DEFAULT_MAX_COUNTEREXAMPLE_BYTES
-            ),
+            maximum_bytes=payload.get("maximum_bytes", DEFAULT_MAX_COUNTEREXAMPLE_BYTES),
         )
         _identity(payload, result.content_id, "refinement counterexample")
         return result
 
 
 class RefinementAuditSink(Protocol):
-    def append(self, record: CanonicalContract) -> None:
-        ...
+    def append(self, record: CanonicalContract) -> None: ...
 
 
 class InMemoryRefinementAuditStore:
@@ -1049,14 +988,10 @@ class RefinementRepairCandidate:
         if not isinstance(self.plan, FormalWorkPlan):
             raise ContractValidationError("repair candidate plan must be FormalWorkPlan")
         if not isinstance(self.frozen_context, FrozenRefinementContext):
-            raise ContractValidationError(
-                "repair candidate must carry FrozenRefinementContext"
-            )
+            raise ContractValidationError("repair candidate must carry FrozenRefinementContext")
         producer = _text(self.producer_id, "producer_id").casefold()
         if not producer.startswith("leanstral"):
-            raise ContractValidationError(
-                "refinement repair candidates must come from Leanstral"
-            )
+            raise ContractValidationError("refinement repair candidates must come from Leanstral")
         object.__setattr__(self, "producer_id", producer)
 
 
@@ -1072,21 +1007,14 @@ class RefinementRepairRequest:
         if not 1 <= self.round_index <= MAX_LEANSTRAL_REPAIR_ROUNDS:
             raise ContractValidationError("repair round index is outside policy bounds")
         if not isinstance(self.frozen_context, FrozenRefinementContext):
-            raise ContractValidationError(
-                "repair request requires a frozen refinement context"
-            )
-        object.__setattr__(
-            self, "prior_plan_id", _text(self.prior_plan_id, "prior_plan_id")
-        )
+            raise ContractValidationError("repair request requires a frozen refinement context")
+        object.__setattr__(self, "prior_plan_id", _text(self.prior_plan_id, "prior_plan_id"))
         object.__setattr__(
             self,
             "failed_obligation_ids",
             _strings(self.failed_obligation_ids, "failed_obligation_ids"),
         )
-        if any(
-            not isinstance(item, RefinementCounterexample)
-            for item in self.counterexamples
-        ):
+        if any(not isinstance(item, RefinementCounterexample) for item in self.counterexamples):
             raise ContractValidationError(
                 "counterexamples must contain RefinementCounterexample values"
             )
@@ -1128,9 +1056,7 @@ class RepairImmutabilityReceipt(CanonicalContract):
             raise ContractValidationError(
                 "repair acceptance must be derived from frozen root and assumptions"
             )
-        object.__setattr__(
-            self, "reason", _text(self.reason, "reason", required=False)
-        )
+        object.__setattr__(self, "reason", _text(self.reason, "reason", required=False))
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -1178,41 +1104,29 @@ class RefinementVerificationRound(CanonicalContract):
     counterexamples: tuple[RefinementCounterexample, ...]
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "round_index", _nonnegative(self.round_index, "round_index")
-        )
+        object.__setattr__(self, "round_index", _nonnegative(self.round_index, "round_index"))
         object.__setattr__(self, "plan_id", _text(self.plan_id, "plan_id"))
         if len(self.obligations) != len(self.portfolio_results):
             raise ContractValidationError(
                 "every generated obligation must retain a portfolio result"
             )
         if any(not isinstance(item, RefinementObligation) for item in self.obligations):
-            raise ContractValidationError(
-                "obligations must contain RefinementObligation values"
-            )
+            raise ContractValidationError("obligations must contain RefinementObligation values")
         if any(not isinstance(item, PortfolioResult) for item in self.portfolio_results):
-            raise ContractValidationError(
-                "portfolio_results must contain PortfolioResult values"
-            )
+            raise ContractValidationError("portfolio_results must contain PortfolioResult values")
         expected = sum(len(item.attempts) for item in self.portfolio_results)
         if len(self.attempts) != expected:
-            raise ContractValidationError(
-                "round must retain every selected portfolio attempt"
-            )
+            raise ContractValidationError("round must retain every selected portfolio attempt")
 
     @property
     def proved(self) -> bool:
         return bool(self.portfolio_results) and all(
-            item.verdict is PortfolioVerdict.PROVED
-            for item in self.portfolio_results
+            item.verdict is PortfolioVerdict.PROVED for item in self.portfolio_results
         )
 
     @property
     def disproved(self) -> bool:
-        return any(
-            item.verdict is PortfolioVerdict.DISPROVED
-            for item in self.portfolio_results
-        )
+        return any(item.verdict is PortfolioVerdict.DISPROVED for item in self.portfolio_results)
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -1238,9 +1152,7 @@ class RefinementVerificationRound(CanonicalContract):
                 for item in (payload.get("obligations") or ())
             ),
             portfolio_results=tuple(
-                item
-                if isinstance(item, PortfolioResult)
-                else PortfolioResult.from_dict(item)
+                item if isinstance(item, PortfolioResult) else PortfolioResult.from_dict(item)
                 for item in (payload.get("portfolio_results") or ())
             ),
             attempts=tuple(
@@ -1275,38 +1187,26 @@ class RefinementVerificationResult(CanonicalContract):
         if not isinstance(self.frozen_context, FrozenRefinementContext):
             raise ContractValidationError("result requires FrozenRefinementContext")
         if not isinstance(self.policy, RefinementVerificationPolicy):
-            raise ContractValidationError(
-                "result requires RefinementVerificationPolicy"
-            )
+            raise ContractValidationError("result requires RefinementVerificationPolicy")
         object.__setattr__(
             self,
             "status",
             _enum(self.status, RefinementVerificationStatus, "status"),
         )
         if not self.rounds or any(
-            not isinstance(item, RefinementVerificationRound)
-            for item in self.rounds
+            not isinstance(item, RefinementVerificationRound) for item in self.rounds
         ):
             raise ContractValidationError("result requires verification rounds")
         if len(self.rounds) > self.policy.max_repair_rounds + 1:
             raise ContractValidationError("result exceeds the repair-round policy")
-        accepted_receipts = tuple(
-            item for item in self.repair_receipts if item.accepted
-        )
-        rejected_receipts = tuple(
-            item for item in self.repair_receipts if not item.accepted
-        )
+        accepted_receipts = tuple(item for item in self.repair_receipts if item.accepted)
+        rejected_receipts = tuple(item for item in self.repair_receipts if not item.accepted)
         if len(accepted_receipts) != len(self.rounds) - 1:
-            raise ContractValidationError(
-                "every repaired round requires an immutability receipt"
-            )
+            raise ContractValidationError("every repaired round requires an immutability receipt")
         if len(rejected_receipts) > 1 or (
-            rejected_receipts
-            and self.repair_receipts[-1] is not rejected_receipts[0]
+            rejected_receipts and self.repair_receipts[-1] is not rejected_receipts[0]
         ):
-            raise ContractValidationError(
-                "only the final attempted repair may be rejected"
-            )
+            raise ContractValidationError("only the final attempted repair may be rejected")
         if rejected_receipts and self.status is not RefinementVerificationStatus.ERROR:
             raise ContractValidationError("rejected repair must fail closed")
         if self.status is RefinementVerificationStatus.VERIFIED:
@@ -1314,9 +1214,7 @@ class RefinementVerificationResult(CanonicalContract):
                 raise ContractValidationError(
                     "verified status requires all final obligations proved"
                 )
-        object.__setattr__(
-            self, "reason", _text(self.reason, "reason", required=False)
-        )
+        object.__setattr__(self, "reason", _text(self.reason, "reason", required=False))
 
     @property
     def verified(self) -> bool:
@@ -1418,9 +1316,7 @@ class GoalRefinementVerifier:
         attempts: list[RefinementVerificationAttempt] = []
         counterexamples: list[RefinementCounterexample] = []
         for obligation in obligations:
-            result = self.router.execute(
-                obligation.to_property_obligation(), runner
-            )
+            result = self.router.execute(obligation.to_property_obligation(), runner)
             results.append(result)
             for attempt in result.attempts:
                 retained = RefinementVerificationAttempt(
@@ -1449,10 +1345,7 @@ class GoalRefinementVerifier:
                     )
                     self._persist(counterexample)
                     counterexamples.append(counterexample)
-            if (
-                self.policy.stop_on_counterexample
-                and result.verdict is PortfolioVerdict.DISPROVED
-            ):
+            if self.policy.stop_on_counterexample and result.verdict is PortfolioVerdict.DISPROVED:
                 # The remaining obligations still need terminal attempt records.
                 # Execute them: portfolio runners are bounded and persistence is
                 # part of the contract.  "stop" applies between repair rounds,
@@ -1476,9 +1369,7 @@ class GoalRefinementVerifier:
         claimed = candidate.frozen_context
         try:
             candidate_root = _root(candidate.plan, frozen.root_goal_id)
-            plan_root_unchanged = (
-                candidate_root.content_id == frozen.root_goal_content_id
-            )
+            plan_root_unchanged = candidate_root.content_id == frozen.root_goal_content_id
         except ContractValidationError:
             plan_root_unchanged = False
         root_unchanged = (
@@ -1530,9 +1421,7 @@ class GoalRefinementVerifier:
                 "repairer supplied but Leanstral repairs are disabled by policy"
             )
         if self.policy.max_repair_rounds and repairer is None:
-            raise ContractValidationError(
-                "repair policy requires a Leanstral repair callback"
-            )
+            raise ContractValidationError("repair policy requires a Leanstral repair callback")
 
         rounds: list[RefinementVerificationRound] = []
         receipts: list[RepairImmutabilityReceipt] = []
@@ -1568,9 +1457,7 @@ class GoalRefinementVerifier:
             try:
                 candidate = repairer(request)
                 if not isinstance(candidate, RefinementRepairCandidate):
-                    raise ContractValidationError(
-                        "repairer must return RefinementRepairCandidate"
-                    )
+                    raise ContractValidationError("repairer must return RefinementRepairCandidate")
             except BaseException as exc:
                 return RefinementVerificationResult(
                     frozen_context=frozen,
@@ -1578,10 +1465,7 @@ class GoalRefinementVerifier:
                     status=RefinementVerificationStatus.ERROR,
                     rounds=tuple(rounds),
                     repair_receipts=tuple(receipts),
-                    reason=(
-                        "Leanstral repair failed closed: "
-                        f"{type(exc).__name__}: {exc}"
-                    ),
+                    reason=(f"Leanstral repair failed closed: {type(exc).__name__}: {exc}"),
                 )
             receipt = self._repair_receipt(request, candidate)
             self._persist(receipt)

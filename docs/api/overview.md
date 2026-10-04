@@ -57,7 +57,7 @@ Important methods include:
 ```python
 accelerator.get_capabilities(detail=True)  # JSON-friendly capability summary
 accelerator.get_mcp_manifest(detail=True)  # MCP tools/resources/prompts
-accelerator.run_model(                         # load and run a model
+accelerator.run_model(  # load and run a model
     model_name="bert-base-uncased",
     inputs={"input_ids": [[101, 2023, 2003, 102]]},
     model_type="text_generation",
@@ -86,7 +86,7 @@ from ipfs_accelerate_py import generate_text
 
 answer = generate_text(
     "Summarize the role of a content identifier in one sentence.",
-    provider="openrouter",       # omit to use configured provider order
+    provider="openrouter",  # omit to use configured provider order
     model_name="openai/gpt-4o-mini",
     max_tokens=128,
     temperature=0.1,

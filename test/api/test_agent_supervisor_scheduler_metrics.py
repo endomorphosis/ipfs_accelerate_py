@@ -173,14 +173,10 @@ def test_terminal_projection_deduplicates_provider_history_and_clears_live_backp
                                 "scheduled": 12,
                                 "admitted": 8,
                                 "backpressured": 4,
-                                "backpressure_reasons": {
-                                    "provider_concurrency": 4
-                                },
+                                "backpressure_reasons": {"provider_concurrency": 4},
                             }
                         ],
-                        "backpressure_reasons": {
-                            "provider_concurrency": 4
-                        },
+                        "backpressure_reasons": {"provider_concurrency": 4},
                     },
                 },
             },
@@ -194,12 +190,7 @@ def test_terminal_projection_deduplicates_provider_history_and_clears_live_backp
     assert snapshot["resource_admission"]["backpressured_count"] == 0
     assert snapshot["resource_admission"]["backpressure_reasons"] == []
     assert snapshot["resource_admission"]["backpressure_reason_counts"] == {}
-    assert (
-        snapshot["resource_admission"]["by_stage"]["inference"][
-            "backpressured"
-        ]
-        == 4
-    )
+    assert snapshot["resource_admission"]["by_stage"]["inference"]["backpressured"] == 4
 
 
 def test_authoritative_projection_replaces_historical_child_task_identities() -> None:
@@ -232,10 +223,9 @@ def test_authoritative_projection_replaces_historical_child_task_identities() ->
     assert len(snapshot["metrics"]) == 2
     assert snapshot["phase_counts"]["active"] == 0
     assert snapshot["phase_counts"]["idle"] == 1
-    assert [
-        (state["task_cid"], state["status"])
-        for state in snapshot["task_states"]
-    ] == [("task:bundle-projection", "completed")]
+    assert [(state["task_cid"], state["status"]) for state in snapshot["task_states"]] == [
+        ("task:bundle-projection", "completed")
+    ]
 
 
 def test_empty_authoritative_projection_clears_historical_live_state() -> None:
@@ -366,11 +356,7 @@ def test_refill_receipt_metrics_distinguish_terminal_outcomes_and_dedupe_cids() 
     scans = snapshot["scan_metrics"]
 
     assert (
-        scans["attempts"]
-        == scans["attempted"]
-        == scans["receipts"]
-        == scans["receipt_count"]
-        == 9
+        scans["attempts"] == scans["attempted"] == scans["receipts"] == scans["receipt_count"] == 9
     )
     assert scans["skipped"] == 3
     assert scans["failed_total"] == 2
@@ -521,7 +507,9 @@ def test_scheduler_decisions_reference_the_exposed_event_snapshot(tmp_path: Path
     manifest = scheduler.reconcile_once()
 
     assert started
-    decision = next(item for item in manifest["scheduler_decisions"] if item["decision"] == "launched")
+    decision = next(
+        item for item in manifest["scheduler_decisions"] if item["decision"] == "launched"
+    )
     assert decision["snapshot_id"] == manifest["scheduler_decision_snapshot_id"]
     assert manifest["scheduler_decision_snapshot"]["snapshot_id"] == decision["snapshot_id"]
     assert manifest["scheduler_snapshot"]["authoritative"] is True
@@ -670,9 +658,7 @@ def test_migration_and_runner_diagnostic_shapes_retain_nested_structured_proof()
                 },
                 "diagnostics": {
                     "confidence": 0.25,
-                    "stale_evidence": [
-                        {"receipt_cid": "bafy-old", "reason": "tree_changed"}
-                    ],
+                    "stale_evidence": [{"receipt_cid": "bafy-old", "reason": "tree_changed"}],
                     "analyzer_health": {"status": "unknown"},
                 },
             },
@@ -694,9 +680,7 @@ def test_migration_and_runner_diagnostic_shapes_retain_nested_structured_proof()
     assert migrated["lifecycle_state"] == "provisionally_complete"
     assert migrated["confidence"] == 0.25
     assert migrated["uncovered_criteria"] == ["Current validation"]
-    assert migrated["stale_evidence"] == [
-        {"receipt_cid": "bafy-old", "reason": "tree_changed"}
-    ]
+    assert migrated["stale_evidence"] == [{"receipt_cid": "bafy-old", "reason": "tree_changed"}]
     assert projection["by_goal_id"]["G2"]["lifecycle_state"] == "verified_complete"
     assert projection["by_goal_id"]["G2"]["exhaustion_quorum"]["satisfied"] is True
 

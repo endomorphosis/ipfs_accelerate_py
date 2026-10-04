@@ -73,9 +73,7 @@ from dynamic_resource_management_visualization import DRMVisualization
 
 # Create a visualization instance
 visualization = DRMVisualization(
-    dynamic_resource_manager=drm,
-    output_dir="./visualizations",
-    interactive=True
+    dynamic_resource_manager=drm, output_dir="./visualizations", interactive=True
 )
 
 # Generate visualizations

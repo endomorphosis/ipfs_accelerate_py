@@ -163,9 +163,7 @@ def test_path_requirements_need_the_exact_path_identity_not_a_text_reference() -
 
 def test_prose_with_a_slash_is_not_misclassified_as_a_path() -> None:
     assert (
-        EvidenceSourcePolicy.requirement_kind(
-            "duplicate/cooldown work is suppressed"
-        )
+        EvidenceSourcePolicy.requirement_kind("duplicate/cooldown work is suppressed")
         is EvidenceRequirementKind.OTHER
     )
 
@@ -248,9 +246,7 @@ def test_reward_hacking_prose_and_source_comments_do_not_hide_opaque_gap(
     (tmp_path / "IMPLEMENTATION_PLAN.md").write_text(
         f"Claim complete: {REQUIREMENT_ID}\n", encoding="utf-8"
     )
-    (tmp_path / "work.todo.md").write_text(
-        f"- Acceptance: {REQUIREMENT_ID}\n", encoding="utf-8"
-    )
+    (tmp_path / "work.todo.md").write_text(f"- Acceptance: {REQUIREMENT_ID}\n", encoding="utf-8")
     (tmp_path / "implementation.py").write_text(
         f"# Unbound identifier is not a receipt: {REQUIREMENT_ID}\n",
         encoding="utf-8",
@@ -283,8 +279,7 @@ def test_objective_scan_uses_persistent_integrated_analysis_pipeline(
     )
     source = tmp_path / "implementation.py"
     source.write_text(
-        "def bounded_analysis_pipeline():\n"
-        "    return 'cache ast retrieval'\n",
+        "def bounded_analysis_pipeline():\n    return 'cache ast retrieval'\n",
         encoding="utf-8",
     )
     subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
@@ -317,15 +312,9 @@ def test_objective_scan_uses_persistent_integrated_analysis_pipeline(
     assert cold_pipeline["cache_lookup_status"] == "miss"
     assert warm_pipeline["cache_status"] == "exact_hit"
     assert warm_pipeline["cache_lookup_status"] == "hit"
-    assert warm_pipeline["retrieval_response_id"] == cold_pipeline[
-        "retrieval_response_id"
-    ]
-    assert warm_pipeline["retrieval_backend_health"] == cold_pipeline[
-        "retrieval_backend_health"
-    ]
-    assert warm_pipeline["retrieval_truncation"] == cold_pipeline[
-        "retrieval_truncation"
-    ]
+    assert warm_pipeline["retrieval_response_id"] == cold_pipeline["retrieval_response_id"]
+    assert warm_pipeline["retrieval_backend_health"] == cold_pipeline["retrieval_backend_health"]
+    assert warm_pipeline["retrieval_truncation"] == cold_pipeline["retrieval_truncation"]
     assert warm_pipeline["nomination_only"] is True
     assert warm_pipeline["safe_for_completion_reasoning"] is False
 
@@ -416,9 +405,7 @@ def test_evidence_index_returns_ranked_bounded_nominations_separate_from_authori
     )
 
     assert isinstance(result, ObjectiveEvidenceIndex)
-    assert result.qualifying[REQUIREMENT_ID] == (
-        "receipt:sha256:fixture (typed_receipt)",
-    )
+    assert result.qualifying[REQUIREMENT_ID] == ("receipt:sha256:fixture (typed_receipt)",)
     assert result.nominations[REQUIREMENT_ID][0].satisfies
     assert result.returned_nominations == 2
     assert result.omitted_nominations > 0
@@ -453,7 +440,4 @@ def test_completion_record_source_path_cannot_launder_objective_prose() -> None:
     )
     assert not validation.valid
     assert "evidence_source_forbidden" in validation.reason_codes
-    assert (
-        "evidence_source_proposal_source_forbidden"
-        in validation.reason_codes
-    )
+    assert "evidence_source_proposal_source_forbidden" in validation.reason_codes

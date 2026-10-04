@@ -80,9 +80,10 @@ def test_datasets_envelope_reuses_supervisor_semantic_identity() -> None:
     )
     envelope = project_public_counterexample(raw)
 
-    assert formal.schema == FORMAL_COUNTEREXAMPLE_SCHEMA or formal.to_dict()[
-        "schema"
-    ] == FORMAL_COUNTEREXAMPLE_SCHEMA
+    assert (
+        formal.schema == FORMAL_COUNTEREXAMPLE_SCHEMA
+        or formal.to_dict()["schema"] == FORMAL_COUNTEREXAMPLE_SCHEMA
+    )
     assert envelope.schema == COUNTEREXAMPLE_ENVELOPE_SCHEMA
     assert envelope.counterexample_id == formal.semantic_id
     assert envelope.semantic_id == formal.semantic_id
@@ -138,9 +139,7 @@ def test_public_surfaces_never_reintroduce_private_channels() -> None:
     ]
     for surface in surfaces:
         encoded = (
-            surface
-            if isinstance(surface, str)
-            else json.dumps(surface, sort_keys=True).lower()
+            surface if isinstance(surface, str) else json.dumps(surface, sort_keys=True).lower()
         )
         if not isinstance(encoded, str):
             encoded = json.dumps(encoded, sort_keys=True).lower()
@@ -172,15 +171,11 @@ def test_verification_api_module_entry_matches_boundary_projection() -> None:
 def test_forged_supervisor_or_datasets_identity_fails_closed() -> None:
     formal = normalize_counterexample(_shared_raw_witness())
     with pytest.raises(CounterexampleValidationError, match="identity"):
-        FormalCounterexample.from_dict(
-            {**formal.to_dict(), "counterexample_id": "forged"}
-        )
+        FormalCounterexample.from_dict({**formal.to_dict(), "counterexample_id": "forged"})
 
     envelope = project_public_counterexample(_shared_raw_witness())
     with pytest.raises(CounterexampleBoundaryError, match="identity"):
-        CounterexampleEnvelope.from_dict(
-            {**envelope.to_dict(), "counterexample_id": "forged"}
-        )
+        CounterexampleEnvelope.from_dict({**envelope.to_dict(), "counterexample_id": "forged"})
 
 
 def test_boundary_adapter_and_kinds_cover_required_families() -> None:
@@ -241,9 +236,7 @@ def test_retained_private_artifact_metadata_never_embeds_raw_bytes() -> None:
             "media_type": "application/octet-stream",
         }
     }
-    envelope = project_public_counterexample(
-        _shared_raw_witness(), private_store=store
-    )
+    envelope = project_public_counterexample(_shared_raw_witness(), private_store=store)
     formal = normalize_counterexample(_shared_raw_witness())
 
     refs = {item.channel: item for item in envelope.private_artifacts}

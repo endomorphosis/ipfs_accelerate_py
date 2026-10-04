@@ -220,7 +220,9 @@ def test_interface_contract_codegen_runner_defaults_to_check_and_can_write(tmp_p
     assert not config.js_target_path.exists()
 
     assert run_action_contract_sync(config, ["--write"]) == 0
-    assert capsys.readouterr().out == "updated:pkg/widget_contract.py\nupdated:web/widgetContract.js\n"
+    assert (
+        capsys.readouterr().out == "updated:pkg/widget_contract.py\nupdated:web/widgetContract.js\n"
+    )
     assert config.python_target_path.exists()
     assert config.js_target_path.exists()
 
@@ -289,7 +291,9 @@ def test_configured_action_contract_sync_runner_reuses_binding(tmp_path: Path, c
     ]
 
     assert runner.run(["--write"]) == 0
-    assert capsys.readouterr().out == "updated:pkg/widget_contract.py\nupdated:web/widgetContract.js\n"
+    assert (
+        capsys.readouterr().out == "updated:pkg/widget_contract.py\nupdated:web/widgetContract.js\n"
+    )
     assert runner.run(["--check"]) == 0
     assert capsys.readouterr().out == ""
 
@@ -353,7 +357,9 @@ def test_action_contract_sync_spec_binds_repo_relative_paths(tmp_path: Path, cap
     assert runner.config.description == "Sync portable widget contracts."
 
     assert runner.run(["--write"]) == 0
-    assert capsys.readouterr().out == "updated:pkg/widget_contract.py\nupdated:web/widgetContract.js\n"
+    assert (
+        capsys.readouterr().out == "updated:pkg/widget_contract.py\nupdated:web/widgetContract.js\n"
+    )
 
     with pytest.raises(ValueError, match="Unsupported portable operation: missing"):
         runner.config.operation_to_action("missing")

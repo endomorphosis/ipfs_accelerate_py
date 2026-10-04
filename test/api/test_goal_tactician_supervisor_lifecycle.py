@@ -99,18 +99,11 @@ def lifecycle(tmp_path: Path) -> GoalTacticianSupervisorLifecycle:
 
 
 def test_interface_identity_and_factory(tmp_path: Path) -> None:
+    assert GOAL_TACTICIAN_SUPERVISOR_LIFECYCLE_INTERFACE == "GoalTacticianSupervisorLifecycle@1"
     assert (
-        GOAL_TACTICIAN_SUPERVISOR_LIFECYCLE_INTERFACE
-        == "GoalTacticianSupervisorLifecycle@1"
+        GoalTacticianSupervisorLifecycle.interface == GOAL_TACTICIAN_SUPERVISOR_LIFECYCLE_INTERFACE
     )
-    assert (
-        GoalTacticianSupervisorLifecycle.interface
-        == GOAL_TACTICIAN_SUPERVISOR_LIFECYCLE_INTERFACE
-    )
-    assert (
-        GoalTacticianSupervisorLifecycle.schema
-        == GOAL_TACTICIAN_SUPERVISOR_LIFECYCLE_SCHEMA
-    )
+    assert GoalTacticianSupervisorLifecycle.schema == GOAL_TACTICIAN_SUPERVISOR_LIFECYCLE_SCHEMA
     instance = create_goal_tactician_supervisor_lifecycle(tmp_path)
     assert isinstance(instance, GoalTacticianSupervisorLifecycle)
     assert instance.config.state_path.parent == tmp_path
@@ -146,9 +139,7 @@ def test_exact_cache_key_includes_required_components() -> None:
         assert field_name in payload
     assert key.key_id.startswith("b")
     # Changing tree identity changes the exact key.
-    other = ExactLifecycleCacheKey.from_dict(
-        {**payload, "tree_id": "tree:2"}
-    )
+    other = ExactLifecycleCacheKey.from_dict({**payload, "tree_id": "tree:2"})
     assert other.key_id != key.key_id
 
 
@@ -291,9 +282,7 @@ def test_stale_worker_cannot_mutate_after_successor_lease(
         second,
     )
     state = lifecycle.authoritative_state()
-    assert any(
-        item.get("candidate_id") == "cand:fresh" for item in state.candidates
-    )
+    assert any(item.get("candidate_id") == "cand:fresh" for item in state.candidates)
 
 
 def test_stale_worker_cannot_complete(

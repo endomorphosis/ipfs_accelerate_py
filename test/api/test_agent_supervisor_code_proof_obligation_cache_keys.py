@@ -99,9 +99,7 @@ def test_normalize_premise_ids_rejects_repository_wide_and_source_dumps() -> Non
     with pytest.raises(PremiseValidationError, match="opaque"):
         normalize_premise_ids(["def worker():\n    return 1\n"])
     with pytest.raises(PremiseValidationError, match="opaque|gold"):
-        normalize_premise_ids(
-            [{"premise_id": "premise:x", "gold_ir": "SECRET_GOLD_BODY"}]
-        )
+        normalize_premise_ids([{"premise_id": "premise:x", "gold_ir": "SECRET_GOLD_BODY"}])
     with pytest.raises(PremiseValidationError, match="opaque"):
         normalize_premise_ids(["-----BEGIN PRIVATE KEY-----\nabc\n"])
 
@@ -112,9 +110,7 @@ def test_normalize_residual_refs_reject_gold_bodies_accept_handles() -> None:
         [{"residual_ref_id": RESIDUAL_REF, "facet": "non_vacuous_candidate"}]
     ) == (RESIDUAL_REF,)
     with pytest.raises(PremiseValidationError, match="gold|source"):
-        normalize_residual_refs(
-            [{"residual_ref_id": RESIDUAL_REF, "gold_body": "IR(...)"}]
-        )
+        normalize_residual_refs([{"residual_ref_id": RESIDUAL_REF, "gold_body": "IR(...)"}])
     with pytest.raises(PremiseValidationError, match="gold|source"):
         normalize_residual_refs([{"id": RESIDUAL_REF, "source_dump": "entire repo"}])
 

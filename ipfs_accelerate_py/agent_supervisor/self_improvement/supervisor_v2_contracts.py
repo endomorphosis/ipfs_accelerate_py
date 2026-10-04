@@ -48,38 +48,22 @@ MILLION: Final[int] = 1_000_000
 # Stable producer routing identity declared by the ASI-G200 objective.  The
 # identifier is metadata, not proof by itself; later rollout assembly must
 # obtain a fresh current-tree receipt before it can qualify.
-V2_CONTRACT_INTEGRITY_REQUIREMENT_ID: Final[str] = (
-    "66755390419724488747029814613031064528"
-)
+V2_CONTRACT_INTEGRITY_REQUIREMENT_ID: Final[str] = "66755390419724488747029814613031064528"
 
 SEMANTIC_DEPENDENCY_IDENTITY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/v2/semantic-dependency-identity@2"
 )
 RESULT_BINDING_SCHEMA = "ipfs_accelerate_py/agent-supervisor/v2/result-binding@2"
 ARTIFACT_BOUNDS_SCHEMA = "ipfs_accelerate_py/agent-supervisor/v2/artifact-bounds@2"
-EVIDENCE_REFERENCE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/v2/evidence-reference@2"
-)
+EVIDENCE_REFERENCE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/v2/evidence-reference@2"
 STAGE_EVENT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/v2/stage-event@2"
 STAGE_RECEIPT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/v2/stage-receipt@2"
-OPERATION_CAPABILITY_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/v2/operation-capability@2"
-)
-UNCERTAINTY_RECORD_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/v2/uncertainty-record@2"
-)
-DISAGREEMENT_RECORD_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/v2/disagreement-record@2"
-)
-PROMOTION_VECTOR_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/v2/promotion-vector@2"
-)
-SUPERVISOR_V2_POLICY_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/v2/policy@2"
-)
-TARGET_DESCRIPTOR_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/v2/target-descriptor@2"
-)
+OPERATION_CAPABILITY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/v2/operation-capability@2"
+UNCERTAINTY_RECORD_SCHEMA = "ipfs_accelerate_py/agent-supervisor/v2/uncertainty-record@2"
+DISAGREEMENT_RECORD_SCHEMA = "ipfs_accelerate_py/agent-supervisor/v2/disagreement-record@2"
+PROMOTION_VECTOR_SCHEMA = "ipfs_accelerate_py/agent-supervisor/v2/promotion-vector@2"
+SUPERVISOR_V2_POLICY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/v2/policy@2"
+TARGET_DESCRIPTOR_SCHEMA = "ipfs_accelerate_py/agent-supervisor/v2/target-descriptor@2"
 REFILL_EPOCH_SCHEMA = "ipfs_accelerate_py/agent-supervisor/v2/refill-epoch@2"
 TYPED_FAILURE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/v2/typed-failure@2"
 
@@ -263,9 +247,7 @@ def _integer(
         raise SupervisorV2ContractError(f"{field_name} must be an integer")
     if value < minimum or (maximum is not None and value > maximum):
         suffix = f" and at most {maximum}" if maximum is not None else ""
-        raise ContractBoundsError(
-            f"{field_name} must be at least {minimum}{suffix}"
-        )
+        raise ContractBoundsError(f"{field_name} must be at least {minimum}{suffix}")
     return value
 
 
@@ -296,9 +278,7 @@ def _strings(
     for index, value in enumerate(values):
         item = _text(value, field_name=f"{field_name}[{index}]")
         if item in result:
-            raise SupervisorV2ContractError(
-                f"{field_name} must not contain duplicates"
-            )
+            raise SupervisorV2ContractError(f"{field_name} must not contain duplicates")
         result.append(item)
     if required and not result:
         raise SupervisorV2ContractError(f"{field_name} must not be empty")
@@ -349,13 +329,9 @@ def _timestamp(value: Any, *, field_name: str, required: bool = True) -> str:
         try:
             parsed = datetime.fromisoformat(candidate)
         except ValueError as exc:
-            raise SupervisorV2ContractError(
-                f"{field_name} must be an ISO-8601 timestamp"
-            ) from exc
+            raise SupervisorV2ContractError(f"{field_name} must be an ISO-8601 timestamp") from exc
     else:
-        raise SupervisorV2ContractError(
-            f"{field_name} must be a datetime or ISO-8601 string"
-        )
+        raise SupervisorV2ContractError(f"{field_name} must be a datetime or ISO-8601 string")
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise SupervisorV2ContractError(f"{field_name} must be timezone-aware")
     return parsed.astimezone(timezone.utc).isoformat()
@@ -367,9 +343,7 @@ def _sha256(value: Any, *, field_name: str, required: bool = True) -> str:
         return ""
     digest = result.removeprefix("sha256:")
     if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
-        raise SupervisorV2ContractError(
-            f"{field_name} must be a SHA-256 digest"
-        )
+        raise SupervisorV2ContractError(f"{field_name} must be a SHA-256 digest")
     return f"sha256:{digest}"
 
 
@@ -391,9 +365,7 @@ def _relative_path(value: Any, *, field_name: str) -> str:
         or normalized != result
         or ".." in candidate.parts
     ):
-        raise PathEscapeError(
-            f"{field_name} must be a normalized repository-relative path"
-        )
+        raise PathEscapeError(f"{field_name} must be a normalized repository-relative path")
     return result
 
 
@@ -407,9 +379,7 @@ def _root_path(value: Any, *, field_name: str) -> str:
         or normalized != result
         or ".." in PurePosixPath(result).parts
     ):
-        raise PathEscapeError(
-            f"{field_name} must be a normalized, non-root absolute path"
-        )
+        raise PathEscapeError(f"{field_name} must be a normalized, non-root absolute path")
     return result
 
 
@@ -445,9 +415,7 @@ def _check_header(payload: Mapping[str, Any], schema: str) -> None:
     for version_field in ("contract_version", "schema_version"):
         supplied_version = payload.get(version_field)
         if supplied_version not in (None, SUPERVISOR_V2_CONTRACT_VERSION):
-            raise SupervisorV2ContractError(
-                "unsupported generation-2 contract version"
-            )
+            raise SupervisorV2ContractError("unsupported generation-2 contract version")
 
 
 def _check_claim(
@@ -468,9 +436,7 @@ def _check_claim(
 def _bounded(value: Any, *, maximum: int, artifact_name: str) -> None:
     payload = value.to_dict() if isinstance(value, CanonicalContract) else value
     if _payload_depth(payload) > MAX_PAYLOAD_DEPTH:
-        raise ContractBoundsError(
-            f"{artifact_name} exceeds maximum depth {MAX_PAYLOAD_DEPTH}"
-        )
+        raise ContractBoundsError(f"{artifact_name} exceeds maximum depth {MAX_PAYLOAD_DEPTH}")
     size = len(canonical_json_bytes(payload))
     if size > maximum:
         raise ContractBoundsError(f"{artifact_name} exceeds {maximum} bytes")
@@ -486,13 +452,9 @@ class _V2Contract(CanonicalContract):
         try:
             value = json.loads(payload)
         except (TypeError, json.JSONDecodeError, RecursionError) as exc:
-            raise SupervisorV2ContractError(
-                "generation-2 contract JSON is malformed"
-            ) from exc
+            raise SupervisorV2ContractError("generation-2 contract JSON is malformed") from exc
         if not isinstance(value, Mapping):
-            raise SupervisorV2ContractError(
-                "generation-2 contract JSON must contain an object"
-            )
+            raise SupervisorV2ContractError("generation-2 contract JSON must contain an object")
         _bounded(value, maximum=MAX_PROJECTION_BYTES, artifact_name=cls.__name__)
         return cls.from_dict(value)  # type: ignore[attr-defined,no-any-return]
 
@@ -510,9 +472,7 @@ class SemanticDependencyIdentity(_V2Contract):
 
     def __post_init__(self) -> None:
         for name in ("namespace", "key", "revision"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
         object.__setattr__(self, "digest", _sha256(self.digest, field_name="digest"))
         _bounded(self, maximum=MAX_RECEIPT_BYTES, artifact_name="semantic dependency")
 
@@ -601,9 +561,7 @@ class ResultBinding(_V2Contract):
             "environment_id",
             "environment_revision",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
         dependencies = _records(
             self.semantic_dependencies,
             SemanticDependencyIdentity,
@@ -644,9 +602,7 @@ class ResultBinding(_V2Contract):
             "capability_revision": self.capability_revision,
             "environment_id": self.environment_id,
             "environment_revision": self.environment_revision,
-            "semantic_dependencies": tuple(
-                item.to_record() for item in self.semantic_dependencies
-            ),
+            "semantic_dependencies": tuple(item.to_record() for item in self.semantic_dependencies),
         }
 
     @classmethod
@@ -699,7 +655,10 @@ class ResultBinding(_V2Contract):
             semantic_dependencies=payload.get("semantic_dependencies", ()),
         )
         claimed_dependencies = payload.get("semantic_dependency_ids")
-        if claimed_dependencies is not None and tuple(claimed_dependencies) != result.semantic_dependency_ids:
+        if (
+            claimed_dependencies is not None
+            and tuple(claimed_dependencies) != result.semantic_dependency_ids
+        ):
             raise DetachedReferenceError(
                 "semantic_dependency_ids do not match embedded dependencies"
             )
@@ -741,13 +700,9 @@ class ArtifactBounds(_V2Contract):
                 _integer(value, field_name=name, minimum=1, maximum=maximum),
             )
         if self.max_reference_bytes > self.max_receipt_bytes:
-            raise ContractBoundsError(
-                "max_reference_bytes cannot exceed max_receipt_bytes"
-            )
+            raise ContractBoundsError("max_reference_bytes cannot exceed max_receipt_bytes")
         if self.max_receipt_bytes > self.max_projection_bytes:
-            raise ContractBoundsError(
-                "max_receipt_bytes cannot exceed max_projection_bytes"
-            )
+            raise ContractBoundsError("max_receipt_bytes cannot exceed max_projection_bytes")
 
     def validate(self, value: Any, *, projection: bool = False) -> None:
         payload = value.to_dict() if isinstance(value, CanonicalContract) else value
@@ -804,9 +759,7 @@ class ArtifactBounds(_V2Contract):
                 )
             }
         )
-        _check_claim(
-            payload, result.content_id, artifact_name="artifact bounds"
-        )
+        _check_claim(payload, result.content_id, artifact_name="artifact bounds")
         return result
 
 
@@ -874,9 +827,7 @@ class EvidenceReference(_V2Contract):
             uri = _relative_path(uri, field_name="artifact_uri")
         else:
             if not uri.startswith(("cas://", "ipfs://")):
-                raise PathEscapeError(
-                    "artifact_uri must be repository-relative or a cas/ipfs URI"
-                )
+                raise PathEscapeError("artifact_uri must be repository-relative or a cas/ipfs URI")
             scheme, location = uri.split("://", 1)
             if not location:
                 raise PathEscapeError(f"{scheme} artifact URI must identify content")
@@ -887,9 +838,7 @@ class EvidenceReference(_V2Contract):
                 or "?" in location
                 or "#" in location
             ):
-                raise PathEscapeError(
-                    f"{scheme} artifact URI contains an unsafe content path"
-                )
+                raise PathEscapeError(f"{scheme} artifact URI contains an unsafe content path")
         object.__setattr__(self, "artifact_uri", uri)
         object.__setattr__(
             self,
@@ -902,9 +851,7 @@ class EvidenceReference(_V2Contract):
             "byte_count",
             _integer(self.byte_count, field_name="byte_count", minimum=1),
         )
-        object.__setattr__(
-            self, "media_type", _text(self.media_type, field_name="media_type")
-        )
+        object.__setattr__(self, "media_type", _text(self.media_type, field_name="media_type"))
         summary = _text(
             self.summary,
             field_name="summary",
@@ -912,9 +859,10 @@ class EvidenceReference(_V2Contract):
         )
         object.__setattr__(self, "summary", summary)
         expected_summary_digest = _summary_digest(summary)
-        if self.summary_sha256 and _sha256(
-            self.summary_sha256, field_name="summary_sha256"
-        ) != expected_summary_digest:
+        if (
+            self.summary_sha256
+            and _sha256(self.summary_sha256, field_name="summary_sha256") != expected_summary_digest
+        ):
             raise ForgedSummaryError("evidence summary digest does not match summary")
         object.__setattr__(self, "summary_sha256", expected_summary_digest)
         object.__setattr__(
@@ -990,9 +938,10 @@ class EvidenceReference(_V2Contract):
             summary_sha256=payload.get("summary_sha256", ""),
             freshness=payload.get("freshness", EvidenceFreshness.FRESH),
         )
-        if "completion_authoritative" in payload and payload[
-            "completion_authoritative"
-        ] is not result.completion_authoritative:
+        if (
+            "completion_authoritative" in payload
+            and payload["completion_authoritative"] is not result.completion_authoritative
+        ):
             raise ForgedSummaryError(
                 "completion_authoritative is derived from authority and freshness"
             )
@@ -1025,15 +974,9 @@ class StageEvent(_V2Contract):
         binding = _coerce_binding(self.binding)
         object.__setattr__(self, "binding", binding)
         object.__setattr__(self, "stage", _text(self.stage, field_name="stage"))
-        object.__setattr__(
-            self, "attempt", _integer(self.attempt, field_name="attempt", minimum=1)
-        )
-        object.__setattr__(
-            self, "sequence", _integer(self.sequence, field_name="sequence")
-        )
-        object.__setattr__(
-            self, "kind", _enum(self.kind, StageEventKind, field_name="kind")
-        )
+        object.__setattr__(self, "attempt", _integer(self.attempt, field_name="attempt", minimum=1))
+        object.__setattr__(self, "sequence", _integer(self.sequence, field_name="sequence"))
+        object.__setattr__(self, "kind", _enum(self.kind, StageEventKind, field_name="kind"))
         object.__setattr__(
             self,
             "authority",
@@ -1065,15 +1008,17 @@ class StageEvent(_V2Contract):
             "reason_code",
             _text(self.reason_code, field_name="reason_code", required=False),
         )
-        if self.kind in {
-            StageEventKind.FAILED,
-            StageEventKind.CANCELLED,
-            StageEventKind.TIMED_OUT,
-            StageEventKind.SKIPPED,
-        } and not self.reason_code:
-            raise SupervisorV2ContractError(
-                f"{self.kind.value} events require reason_code"
-            )
+        if (
+            self.kind
+            in {
+                StageEventKind.FAILED,
+                StageEventKind.CANCELLED,
+                StageEventKind.TIMED_OUT,
+                StageEventKind.SKIPPED,
+            }
+            and not self.reason_code
+        ):
+            raise SupervisorV2ContractError(f"{self.kind.value} events require reason_code")
         if not self.kind.terminal and self.authority in {
             AuthorityClass.MERGE,
             AuthorityClass.MUTATION,
@@ -1102,9 +1047,7 @@ class StageEvent(_V2Contract):
             "kind": self.kind,
             "authority": self.authority,
             "occurred_at": self.occurred_at,
-            "evidence_references": tuple(
-                item.to_record() for item in self.evidence_references
-            ),
+            "evidence_references": tuple(item.to_record() for item in self.evidence_references),
             "reason_code": self.reason_code,
         }
 
@@ -1179,9 +1122,7 @@ class StageReceipt(_V2Contract):
         binding = _coerce_binding(self.binding)
         object.__setattr__(self, "binding", binding)
         object.__setattr__(self, "stage", _text(self.stage, field_name="stage"))
-        object.__setattr__(
-            self, "attempt", _integer(self.attempt, field_name="attempt", minimum=1)
-        )
+        object.__setattr__(self, "attempt", _integer(self.attempt, field_name="attempt", minimum=1))
         object.__setattr__(
             self,
             "authority",
@@ -1206,35 +1147,28 @@ class StageReceipt(_V2Contract):
                 or event.stage != self.stage
                 or event.attempt != self.attempt
             ):
-                raise DetachedReferenceError(
-                    "stage receipt contains a foreign or detached event"
-                )
+                raise DetachedReferenceError("stage receipt contains a foreign or detached event")
             if event.authority is not self.authority:
-                raise AuthorityClassError(
-                    "stage receipt and event authority must match"
-                )
+                raise AuthorityClassError("stage receipt and event authority must match")
         if any(event.kind.terminal for event in ordered[:-1]):
             raise SupervisorV2ContractError(
                 "stage receipt cannot contain events after a terminal event"
             )
         if not ordered[-1].kind.terminal:
-            raise SupervisorV2ContractError(
-                "stage receipt must end with a terminal event"
-            )
+            raise SupervisorV2ContractError("stage receipt must end with a terminal event")
         if any(
             previous.occurred_at > current.occurred_at
             for previous, current in zip(ordered, ordered[1:])
         ):
-            raise SupervisorV2ContractError(
-                "stage receipt event timestamps must be nondecreasing"
-            )
+            raise SupervisorV2ContractError("stage receipt event timestamps must be nondecreasing")
         object.__setattr__(self, "events", ordered)
         summary = _text(self.summary, field_name="summary", max_bytes=4_096)
         object.__setattr__(self, "summary", summary)
         expected = _summary_digest(summary)
-        if self.summary_sha256 and _sha256(
-            self.summary_sha256, field_name="summary_sha256"
-        ) != expected:
+        if (
+            self.summary_sha256
+            and _sha256(self.summary_sha256, field_name="summary_sha256") != expected
+        ):
             raise ForgedSummaryError("stage receipt summary digest does not match")
         object.__setattr__(self, "summary_sha256", expected)
         _bounded(self, maximum=MAX_RECEIPT_BYTES, artifact_name="stage receipt")
@@ -1333,9 +1267,7 @@ class OperationCapability(_V2Contract):
             "request_schema",
             "result_schema",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
         object.__setattr__(
             self,
             "authority",
@@ -1344,8 +1276,7 @@ class OperationCapability(_V2Contract):
         if not isinstance(self.target_kinds, Sequence):
             raise SupervisorV2ContractError("target_kinds must be a sequence")
         target_kind_values = tuple(
-            _enum(item, TargetKind, field_name="target_kinds")
-            for item in self.target_kinds
+            _enum(item, TargetKind, field_name="target_kinds") for item in self.target_kinds
         )
         if len(target_kind_values) != len(set(target_kind_values)):
             raise SupervisorV2ContractError("target_kinds contains duplicates")
@@ -1354,10 +1285,7 @@ class OperationCapability(_V2Contract):
             raise SupervisorV2ContractError("target_kinds must not be empty")
         object.__setattr__(self, "target_kinds", target_kinds)
         roots = tuple(
-            sorted(
-                _root_path(item, field_name="allowed_roots")
-                for item in self.allowed_roots
-            )
+            sorted(_root_path(item, field_name="allowed_roots") for item in self.allowed_roots)
         )
         if len(set(roots)) != len(roots):
             raise SupervisorV2ContractError("allowed_roots contains duplicates")
@@ -1379,9 +1307,7 @@ class OperationCapability(_V2Contract):
             "requires_lease",
             "requires_fencing",
         ):
-            object.__setattr__(
-                self, name, _boolean(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _boolean(getattr(self, name), field_name=name))
         object.__setattr__(
             self,
             "backend_capabilities",
@@ -1513,9 +1439,7 @@ class UncertaintyRecord(_V2Contract):
         binding = _coerce_binding(self.binding)
         object.__setattr__(self, "binding", binding)
         object.__setattr__(self, "subject", _text(self.subject, field_name="subject"))
-        object.__setattr__(
-            self, "statement", _text(self.statement, field_name="statement")
-        )
+        object.__setattr__(self, "statement", _text(self.statement, field_name="statement"))
         object.__setattr__(
             self,
             "disposition",
@@ -1550,9 +1474,7 @@ class UncertaintyRecord(_V2Contract):
         )
         for reference in references:
             if not _same_semantic_scope(reference.binding, binding):
-                raise DetachedReferenceError(
-                    "uncertainty evidence is detached from its binding"
-                )
+                raise DetachedReferenceError("uncertainty evidence is detached from its binding")
             if reference.authority is AuthorityClass.COMPLETION:
                 raise AuthorityClassError(
                     "uncertainty cannot consume completion authority as uncertainty"
@@ -1568,17 +1490,12 @@ class UncertaintyRecord(_V2Contract):
             ),
         )
         if self.disposition is UncertaintyDisposition.RESOLVED and not self.resolution_code:
-            raise SupervisorV2ContractError(
-                "resolved uncertainty requires resolution_code"
-            )
+            raise SupervisorV2ContractError("resolved uncertainty requires resolution_code")
         if (
             self.disposition is UncertaintyDisposition.OPEN
-            and self.probability_lower_millionths
-            == self.probability_upper_millionths
+            and self.probability_lower_millionths == self.probability_upper_millionths
         ):
-            raise SupervisorV2ContractError(
-                "open uncertainty must retain a non-zero interval"
-            )
+            raise SupervisorV2ContractError("open uncertainty must retain a non-zero interval")
         _bounded(self, maximum=MAX_RECEIPT_BYTES, artifact_name="uncertainty record")
 
     @property
@@ -1594,9 +1511,7 @@ class UncertaintyRecord(_V2Contract):
             "disposition": self.disposition,
             "probability_lower_millionths": self.probability_lower_millionths,
             "probability_upper_millionths": self.probability_upper_millionths,
-            "evidence_references": tuple(
-                item.to_record() for item in self.evidence_references
-            ),
+            "evidence_references": tuple(item.to_record() for item in self.evidence_references),
             "resolution_code": self.resolution_code,
         }
 
@@ -1624,12 +1539,8 @@ class UncertaintyRecord(_V2Contract):
             subject=payload.get("subject", ""),
             statement=payload.get("statement", ""),
             disposition=payload.get("disposition", ""),
-            probability_lower_millionths=payload.get(
-                "probability_lower_millionths", -1
-            ),
-            probability_upper_millionths=payload.get(
-                "probability_upper_millionths", -1
-            ),
+            probability_lower_millionths=payload.get("probability_lower_millionths", -1),
+            probability_upper_millionths=payload.get("probability_upper_millionths", -1),
             evidence_references=payload.get("evidence_references", ()),
             resolution_code=payload.get("resolution_code", ""),
         )
@@ -1667,19 +1578,13 @@ class DisagreementRecord(_V2Contract):
             maximum=32,
         )
         if len(claims) < 2:
-            raise SupervisorV2ContractError(
-                "disagreement requires at least two evidence claims"
-            )
+            raise SupervisorV2ContractError("disagreement requires at least two evidence claims")
         producers = {item.binding.producer_id for item in claims}
         if len(producers) < 2:
-            raise SupervisorV2ContractError(
-                "disagreement claims require independent producers"
-            )
+            raise SupervisorV2ContractError("disagreement claims require independent producers")
         for claim in claims:
             if not _same_semantic_scope(claim.binding, binding):
-                raise DetachedReferenceError(
-                    "disagreement claim is detached from its binding"
-                )
+                raise DetachedReferenceError("disagreement claim is detached from its binding")
             if claim.authority is AuthorityClass.COMPLETION:
                 raise AuthorityClassError(
                     "a disagreement claim cannot itself have completion authority"
@@ -1704,13 +1609,9 @@ class DisagreementRecord(_V2Contract):
             resolver = EvidenceReference.from_dict(resolver)
         if resolver is not None:
             if not isinstance(resolver, EvidenceReference):
-                raise SupervisorV2ContractError(
-                    "resolver_reference must be an EvidenceReference"
-                )
+                raise SupervisorV2ContractError("resolver_reference must be an EvidenceReference")
             if not _same_semantic_scope(resolver.binding, binding):
-                raise DetachedReferenceError(
-                    "disagreement resolver is detached from its binding"
-                )
+                raise DetachedReferenceError("disagreement resolver is detached from its binding")
             if resolver.authority not in {
                 AuthorityClass.VALIDATION,
                 AuthorityClass.PROOF,
@@ -1766,9 +1667,7 @@ class DisagreementRecord(_V2Contract):
             "resolution": self.resolution,
             "selected_reference_id": self.selected_reference_id,
             "resolver_reference": (
-                self.resolver_reference.to_record()
-                if self.resolver_reference is not None
-                else None
+                self.resolver_reference.to_record() if self.resolver_reference is not None else None
             ),
         }
 
@@ -1796,9 +1695,7 @@ class DisagreementRecord(_V2Contract):
             binding=payload.get("binding", {}),
             subject=payload.get("subject", ""),
             claims=payload.get("claims", ()),
-            resolution=payload.get(
-                "resolution", DisagreementResolution.UNRESOLVED
-            ),
+            resolution=payload.get("resolution", DisagreementResolution.UNRESOLVED),
             selected_reference_id=payload.get("selected_reference_id", ""),
             resolver_reference=payload.get("resolver_reference"),
         )
@@ -1831,12 +1728,8 @@ class PromotionVector(_V2Contract):
         for name, value in self.safety_gates.items():
             normalized_name = _text(name, field_name="safety gate")
             if normalized_name in gates:
-                raise SupervisorV2ContractError(
-                    "safety_gates contains duplicate normalized names"
-                )
-            gates[normalized_name] = _boolean(
-                value, field_name=f"safety_gates.{normalized_name}"
-            )
+                raise SupervisorV2ContractError("safety_gates contains duplicate normalized names")
+            gates[normalized_name] = _boolean(value, field_name=f"safety_gates.{normalized_name}")
         if tuple(sorted(gates)) != NON_COMPENSABLE_GATES:
             raise SupervisorV2ContractError(
                 "safety_gates must contain the exact closed non-compensable population"
@@ -1945,9 +1838,7 @@ class PromotionVector(_V2Contract):
             safety_gates=payload.get("safety_gates", {}),
             metrics_millionths=payload.get("metrics_millionths", {}),
             decision=payload.get("decision", PromotionDecision.SHADOW),
-            composite_score_millionths=payload.get(
-                "composite_score_millionths", 0
-            ),
+            composite_score_millionths=payload.get("composite_score_millionths", 0),
         )
         for name in ("hard_gates_pass", "promotion_eligible"):
             if name in payload and payload[name] is not getattr(result, name):
@@ -1978,9 +1869,7 @@ class SupervisorV2Policy(_V2Contract):
     require_independent_disagreement_resolution: bool = True
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "policy_id", _text(self.policy_id, field_name="policy_id")
-        )
+        object.__setattr__(self, "policy_id", _text(self.policy_id, field_name="policy_id"))
         object.__setattr__(
             self,
             "policy_revision",
@@ -1990,18 +1879,14 @@ class SupervisorV2Policy(_V2Contract):
         if isinstance(bounds, Mapping):
             bounds = ArtifactBounds.from_dict(bounds)
         if not isinstance(bounds, ArtifactBounds):
-            raise SupervisorV2ContractError(
-                "artifact_bounds must be ArtifactBounds"
-            )
+            raise SupervisorV2ContractError("artifact_bounds must be ArtifactBounds")
         object.__setattr__(self, "artifact_bounds", bounds)
         authority_values = tuple(
             _enum(item, AuthorityClass, field_name="allowed_authorities")
             for item in self.allowed_authorities
         )
         if len(authority_values) != len(set(authority_values)):
-            raise SupervisorV2ContractError(
-                "allowed_authorities contains duplicates"
-            )
+            raise SupervisorV2ContractError("allowed_authorities contains duplicates")
         authorities = tuple(sorted(authority_values, key=lambda item: item.value))
         if not authorities:
             raise SupervisorV2ContractError("allowed_authorities must not be empty")
@@ -2037,9 +1922,7 @@ class SupervisorV2Policy(_V2Contract):
             "require_fresh_evidence",
             "require_independent_disagreement_resolution",
         ):
-            object.__setattr__(
-                self, name, _boolean(getattr(self, name), field_name=name)
-            )
+            object.__setattr__(self, name, _boolean(getattr(self, name), field_name=name))
 
     @property
     def policy_content_id(self) -> str:
@@ -2088,12 +1971,7 @@ class SupervisorV2Policy(_V2Contract):
             artifact_name="supervisor v2 policy",
         )
         defaults = cls("policy:default", "policy:default@2")
-        result = cls(
-            **{
-                name: payload.get(name, getattr(defaults, name))
-                for name in fields
-            }
-        )
+        result = cls(**{name: payload.get(name, getattr(defaults, name)) for name in fields})
         _check_claim(
             payload,
             result.content_id,
@@ -2119,24 +1997,17 @@ class TargetDescriptor(_V2Contract):
 
     def __post_init__(self) -> None:
         for name in ("repository_id", "tree_id", "state_revision"):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
-        object.__setattr__(
-            self, "kind", _enum(self.kind, TargetKind, field_name="kind")
-        )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
+        object.__setattr__(self, "kind", _enum(self.kind, TargetKind, field_name="kind"))
         object.__setattr__(
             self,
             "repository_root",
             _root_path(self.repository_root, field_name="repository_root"),
         )
-        object.__setattr__(
-            self, "state_root", _root_path(self.state_root, field_name="state_root")
-        )
+        object.__setattr__(self, "state_root", _root_path(self.state_root, field_name="state_root"))
         paths = tuple(
             sorted(
-                _relative_path(item, field_name="relative_paths")
-                for item in self.relative_paths
+                _relative_path(item, field_name="relative_paths") for item in self.relative_paths
             )
         )
         if len(paths) != len(set(paths)):
@@ -2223,12 +2094,8 @@ class TypedFailure(_V2Contract):
             "authority",
             _enum(self.authority, AuthorityClass, field_name="authority"),
         )
-        object.__setattr__(
-            self, "retry", _enum(self.retry, RetryDisposition, field_name="retry")
-        )
-        object.__setattr__(
-            self, "reason_code", _text(self.reason_code, field_name="reason_code")
-        )
+        object.__setattr__(self, "retry", _enum(self.retry, RetryDisposition, field_name="retry"))
+        object.__setattr__(self, "reason_code", _text(self.reason_code, field_name="reason_code"))
         message = _text(
             self.public_message,
             field_name="public_message",
@@ -2246,9 +2113,7 @@ class TypedFailure(_V2Contract):
                 "token=",
             )
         ):
-            raise SupervisorV2ContractError(
-                "public_message must not contain credential material"
-            )
+            raise SupervisorV2ContractError("public_message must not contain credential material")
         object.__setattr__(self, "public_message", message)
         object.__setattr__(
             self,
@@ -2263,9 +2128,7 @@ class TypedFailure(_V2Contract):
         )
         for reference in references:
             if reference.binding.binding_id != binding.binding_id:
-                raise DetachedReferenceError(
-                    "failure evidence is detached from its binding"
-                )
+                raise DetachedReferenceError("failure evidence is detached from its binding")
         object.__setattr__(self, "evidence_references", references)
         _bounded(self, maximum=MAX_RECEIPT_BYTES, artifact_name="typed failure")
 
@@ -2283,9 +2146,7 @@ class TypedFailure(_V2Contract):
             "reason_code": self.reason_code,
             "public_message": self.public_message,
             "occurred_at": self.occurred_at,
-            "evidence_references": tuple(
-                item.to_record() for item in self.evidence_references
-            ),
+            "evidence_references": tuple(item.to_record() for item in self.evidence_references),
         }
 
     @classmethod
@@ -2357,32 +2218,19 @@ class RefillEpoch(_V2Contract):
             target = TargetDescriptor.from_dict(target)
         if not isinstance(target, TargetDescriptor):
             raise SupervisorV2ContractError("target must be a TargetDescriptor")
-        if (
-            target.repository_id != binding.repository_id
-            or target.tree_id != binding.tree_id
-        ):
-            raise DetachedReferenceError(
-                "refill target is detached from repository/tree binding"
-            )
+        if target.repository_id != binding.repository_id or target.tree_id != binding.tree_id:
+            raise DetachedReferenceError("refill target is detached from repository/tree binding")
         object.__setattr__(self, "target", target)
         for name in (
             "board_revision",
             "operation_catalog_id",
             "artifact_store_policy_id",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), field_name=name)
-            )
-        start = _timestamp(
-            self.observation_window_start, field_name="observation_window_start"
-        )
-        end = _timestamp(
-            self.observation_window_end, field_name="observation_window_end"
-        )
+            object.__setattr__(self, name, _text(getattr(self, name), field_name=name))
+        start = _timestamp(self.observation_window_start, field_name="observation_window_start")
+        end = _timestamp(self.observation_window_end, field_name="observation_window_end")
         if end <= start:
-            raise SupervisorV2ContractError(
-                "observation window end must be later than start"
-            )
+            raise SupervisorV2ContractError("observation window end must be later than start")
         object.__setattr__(self, "observation_window_start", start)
         object.__setattr__(self, "observation_window_end", end)
         object.__setattr__(
@@ -2419,9 +2267,7 @@ class RefillEpoch(_V2Contract):
             vector = PromotionVector.from_dict(vector)
         if vector is not None:
             if not isinstance(vector, PromotionVector):
-                raise SupervisorV2ContractError(
-                    "promotion_vector must be PromotionVector"
-                )
+                raise SupervisorV2ContractError("promotion_vector must be PromotionVector")
             if vector.binding.binding_id != binding.binding_id:
                 raise DetachedReferenceError(
                     "refill promotion vector is detached from epoch binding"
@@ -2435,13 +2281,15 @@ class RefillEpoch(_V2Contract):
         object.__setattr__(self, "previous_epoch_id", previous)
         has_work = bool(goals or tasks)
         if self.status is RefillEpochStatus.HEALTHY_EXHAUSTION and has_work:
-            raise SupervisorV2ContractError(
-                "healthy exhaustion cannot contain successor work"
-            )
-        if self.status in {
-            RefillEpochStatus.PROPOSED,
-            RefillEpochStatus.MATERIALIZED,
-        } and not has_work:
+            raise SupervisorV2ContractError("healthy exhaustion cannot contain successor work")
+        if (
+            self.status
+            in {
+                RefillEpochStatus.PROPOSED,
+                RefillEpochStatus.MATERIALIZED,
+            }
+            and not has_work
+        ):
             raise SupervisorV2ContractError(
                 f"{self.status.value} refill epoch requires successor work"
             )
@@ -2471,9 +2319,7 @@ class RefillEpoch(_V2Contract):
             "successor_task_ids": self.successor_task_ids,
             "trigger_dependency_ids": self.trigger_dependency_ids,
             "promotion_vector": (
-                self.promotion_vector.to_record()
-                if self.promotion_vector is not None
-                else None
+                self.promotion_vector.to_record() if self.promotion_vector is not None else None
             ),
             "previous_epoch_id": self.previous_epoch_id,
         }
@@ -2560,9 +2406,7 @@ def semantic_dependency_set_id(
     )
     keys = [(item.namespace, item.key) for item in normalized]
     if len(keys) != len(set(keys)):
-        raise SupervisorV2ContractError(
-            "dependencies contains duplicate namespace/key identities"
-        )
+        raise SupervisorV2ContractError("dependencies contains duplicate namespace/key identities")
     return content_identity(tuple(item.to_record() for item in normalized))
 
 

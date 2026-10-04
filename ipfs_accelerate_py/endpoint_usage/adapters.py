@@ -181,6 +181,7 @@ _USAGE_LIMIT_MARKERS = (
     "overloaded",
 )
 
+
 class AdapterParseError(AdapterError):
     """Input was rejected as negative, overflowing, credential-bearing, etc."""
 
@@ -250,17 +251,13 @@ def normalize_configured_limits(
     if len(limits) > MAX_LIMITS:
         raise AdapterParseError("limits exceeds maximum count")
 
-    source_enum = (
-        source if isinstance(source, LimitSource) else LimitSource(str(source))
-    )
+    source_enum = source if isinstance(source, LimitSource) else LimitSource(str(source))
     if source_enum not in (
         LimitSource.POLICY,
         LimitSource.CONFIGURED,
         LimitSource.RECONCILED,
     ):
-        raise AdapterParseError(
-            "configured limit source must be policy, configured, or reconciled"
-        )
+        raise AdapterParseError("configured limit source must be policy, configured, or reconciled")
     observed = _coerce_timestamp(observed_at, "observed_at") or _utcnow()
     observed_text = _format_ts(observed)
     out: List[UsageLimit] = []
@@ -274,9 +271,7 @@ def normalize_configured_limits(
                 parser_version=parser_version,
             )
         except (AdapterParseError, SchemaValidationError, AdapterError) as exc:
-            raise AdapterParseError(
-                "configured limit[%d] rejected: %s" % (index, exc)
-            ) from exc
+            raise AdapterParseError("configured limit[%d] rejected: %s" % (index, exc)) from exc
         out.append(limit)
     return tuple(out)
 
@@ -334,9 +329,7 @@ def _normalize_one_configured_limit(
     )
 
 
-def _coerce_quantity(
-    value: Any, field_name: str, *, default_unknown: bool = False
-) -> Quantity:
+def _coerce_quantity(value: Any, field_name: str, *, default_unknown: bool = False) -> Quantity:
     if value is None:
         if default_unknown:
             return Quantity.unknown()
@@ -388,9 +381,7 @@ class ObservationInput:
             # reject only credential-shaped keys here.
             for key in unknown:
                 if is_secret_key(str(key)):
-                    raise AdapterParseError(
-                        "credential-bearing field is forbidden: %s" % key
-                    )
+                    raise AdapterParseError("credential-bearing field is forbidden: %s" % key)
         scope = data.get("scope")
         request_id = data.get("request_id")
         if scope is None or request_id is None:
@@ -483,9 +474,7 @@ def parse_provider_observation(
             )
             for limit in state.configured_limits:
                 if limit.ceiling.kind is QuantityKind.FINITE and limit.ceiling.value is not None:
-                    state.policy_ceilings.setdefault(
-                        limit.dimension.value, limit.ceiling.value
-                    )
+                    state.policy_ceilings.setdefault(limit.dimension.value, limit.ceiling.value)
         except AdapterParseError as exc:
             state.note_failure("configured.limits_rejected")
             # Continue; configured limits are optional for observation.
@@ -496,9 +485,7 @@ def parse_provider_observation(
     if state.http_status in (429, 503):
         state.restrictive = True
         state.add_reason(
-            "http.%d" % state.http_status
-            if state.http_status is not None
-            else "http.restrictive"
+            "http.%d" % state.http_status if state.http_status is not None else "http.restrictive"
         )
 
     # Parse channels; each channel is isolated so partial failure still allows
@@ -776,7 +763,10 @@ def _parse_headers(state: _ParseState, headers: Any) -> None:
                 continue
             existing = bucket.get("reset")
             if existing is not None and isinstance(existing, datetime):
-                if abs(int((existing - reset_dt).total_seconds() * 1000)) > RESET_CONFLICT_TOLERANCE_MS:
+                if (
+                    abs(int((existing - reset_dt).total_seconds() * 1000))
+                    > RESET_CONFLICT_TOLERANCE_MS
+                ):
                     state.note_failure("header.reset_conflict")
                     # Prefer the more restrictive (earlier) reset.
                     if reset_dt < existing:
@@ -856,15 +846,9 @@ def _materialize_header_limits(state: _ParseState) -> None:
                 reset_dt = None
             else:
                 _merge_reset(state, reset_dt)
-        ceiling = (
-            Quantity.finite(limit_val)
-            if isinstance(limit_val, int)
-            else Quantity.unknown()
-        )
+        ceiling = Quantity.finite(limit_val) if isinstance(limit_val, int) else Quantity.unknown()
         remaining = (
-            Quantity.finite(remaining_val)
-            if isinstance(remaining_val, int)
-            else Quantity.unknown()
+            Quantity.finite(remaining_val) if isinstance(remaining_val, int) else Quantity.unknown()
         )
         used = Quantity.unknown()
         if (
@@ -1242,9 +1226,7 @@ def _parse_structured_limits(
     for key, value in node.items():
         if not isinstance(key, str) or is_secret_key(key):
             if isinstance(key, str) and is_secret_key(key):
-                raise AdapterParseError(
-                    "credential-bearing field is forbidden: %s" % key
-                )
+                raise AdapterParseError("credential-bearing field is forbidden: %s" % key)
             continue
         key_cf = key.casefold()
         try:
@@ -1267,13 +1249,10 @@ def _parse_structured_limits(
         )
         remaining = (
             Quantity.finite(_parse_bounded_int(remaining_v, "remaining"))
-            if remaining_v is not None
-            and _parse_bounded_int(remaining_v, "remaining") is not None
+            if remaining_v is not None and _parse_bounded_int(remaining_v, "remaining") is not None
             else Quantity.unknown()
         )
-        reset_dt = (
-            _parse_reset_value(reset_v, now=state.now) if reset_v is not None else None
-        )
+        reset_dt = _parse_reset_value(reset_v, now=state.now) if reset_v is not None else None
         if reset_dt is not None and not _validate_reset_clock(state, reset_dt):
             reset_dt = None
         if reset_dt is not None:
@@ -1676,9 +1655,7 @@ def _format_ts(value: Optional[datetime]) -> Optional[str]:
         return None
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc).isoformat(timespec="microseconds").replace(
-        "+00:00", "Z"
-    )
+    return value.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def _coerce_timestamp(value: Any, field_name: str) -> Optional[datetime]:
@@ -1696,9 +1673,7 @@ def _coerce_timestamp(value: Any, field_name: str) -> Optional[datetime]:
             raw = text[:-1] + "+00:00" if text.endswith("Z") else text
             parsed = datetime.fromisoformat(raw)
         except ValueError as exc:
-            raise AdapterParseError(
-                "%s must be an RFC 3339 timestamp" % field_name
-            ) from exc
+            raise AdapterParseError("%s must be an RFC 3339 timestamp" % field_name) from exc
         if parsed.tzinfo is None:
             raise AdapterParseError("%s must include a timezone" % field_name)
         return parsed.astimezone(timezone.utc)
@@ -1814,13 +1789,9 @@ def _reject_secret_keys(mapping: Mapping[str, Any], *, path: str) -> None:
         if not isinstance(key, str):
             raise AdapterParseError("%s keys must be strings" % path)
         if is_secret_key(key):
-            raise AdapterParseError(
-                "credential-bearing field is forbidden: %s" % key
-            )
+            raise AdapterParseError("credential-bearing field is forbidden: %s" % key)
         if isinstance(value, str) and is_secret_value(value):
-            raise AdapterParseError(
-                "credential-bearing value is forbidden at %s.%s" % (path, key)
-            )
+            raise AdapterParseError("credential-bearing value is forbidden at %s.%s" % (path, key))
 
 
 def _normalize_headers(headers: Any) -> Dict[str, str]:
@@ -1843,17 +1814,13 @@ def _normalize_headers(headers: Any) -> Dict[str, str]:
             "x-api-key",
             "api-key",
         ):
-            raise AdapterParseError(
-                "credential-bearing header is forbidden: %s" % name
-            )
+            raise AdapterParseError("credential-bearing header is forbidden: %s" % name)
         if value is None:
             continue
         if not isinstance(value, str):
             value = str(value)
         if is_secret_value(value):
-            raise AdapterParseError(
-                "credential-bearing header value is forbidden: %s" % name
-            )
+            raise AdapterParseError("credential-bearing header value is forbidden: %s" % name)
         if len(value.encode("utf-8")) > MAX_HEADER_VALUE_BYTES:
             raise AdapterParseError("header value exceeds bound: %s" % name)
         out[name] = value.strip()

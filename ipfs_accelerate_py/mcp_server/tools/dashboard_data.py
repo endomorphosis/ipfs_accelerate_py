@@ -23,6 +23,7 @@ def get_cache_stats() -> Dict[str, Any]:
             get_cache_stats as _get_cache_stats,
         )
         import asyncio  # noqa: PLC0415
+
         result = _get_cache_stats(None)  # type: ignore[call-arg]
         if asyncio.iscoroutine(result):
             return asyncio.get_event_loop().run_until_complete(result)
@@ -34,6 +35,7 @@ def get_cache_stats() -> Dict[str, Any]:
         from ipfs_accelerate_py.mcp.tools.dashboard_data import (  # type: ignore[import]  # noqa: PLC0415
             get_cache_stats as _legacy_get_cache_stats,
         )
+
         return _legacy_get_cache_stats()
     except Exception:
         return {}
@@ -48,6 +50,7 @@ def get_peer_status() -> Dict[str, Any]:
         from ipfs_accelerate_py.mcp.tools.dashboard_data import (  # type: ignore[import]  # noqa: PLC0415
             get_peer_status as _legacy_get_peer_status,
         )
+
         return _legacy_get_peer_status()
     except Exception:
         return {}
@@ -64,6 +67,7 @@ def get_user_info() -> Dict[str, Any]:
             get_user_info as _get_user_info,
         )
         import asyncio  # noqa: PLC0415
+
         result = _get_user_info(None)  # type: ignore[call-arg]
         if asyncio.iscoroutine(result):
             return asyncio.get_event_loop().run_until_complete(result)
@@ -75,6 +79,7 @@ def get_user_info() -> Dict[str, Any]:
         from ipfs_accelerate_py.mcp.tools.dashboard_data import (  # type: ignore[import]  # noqa: PLC0415
             get_user_info as _legacy_get_user_info,
         )
+
         return _legacy_get_user_info()
     except Exception:
         return {}
@@ -89,6 +94,7 @@ def get_system_metrics(start_time: float | None = None) -> Dict[str, Any]:
         from ipfs_accelerate_py.mcp.tools.dashboard_data import (  # type: ignore[import]  # noqa: PLC0415
             get_system_metrics as _legacy_get_system_metrics,
         )
+
         return _legacy_get_system_metrics(start_time=start_time)
     except Exception:
         return {}

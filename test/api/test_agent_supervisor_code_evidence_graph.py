@@ -165,21 +165,20 @@ def test_json_and_duckdb_round_trip_canonical_records_and_indexes(
         kind=CODE_EVIDENCE_GRAPH_KIND,
     )["rows"]
     assert task_rows == [{"task_id": "REF-250"}]
-    assert query_artifact(
-        duckdb_path,
-        table="tree_index",
-        columns=("tree_id",),
-        where="tree_id = 'tree-candidate'",
-    )["row_count"] == 1
+    assert (
+        query_artifact(
+            duckdb_path,
+            table="tree_index",
+            columns=("tree_id",),
+            where="tree_id = 'tree-candidate'",
+        )["row_count"]
+        == 1
+    )
     assert query_artifact(
         json_path,
         table="symbol_index",
         columns=("symbol",),
-    )["rows"] == [
-        {
-            "symbol": "agent_supervisor.code_evidence_graph.CodeEvidenceGraph"
-        }
-    ]
+    )["rows"] == [{"symbol": "agent_supervisor.code_evidence_graph.CodeEvidenceGraph"}]
     assert query_artifact(
         json_path,
         table="obligation_index",
@@ -187,26 +186,30 @@ def test_json_and_duckdb_round_trip_canonical_records_and_indexes(
     )["rows"] == [{"obligation_id": "obligation-projection"}]
     assert {
         row["assurance"]
-        for row in query_artifact(
-            json_path, table="assurance_index", columns=("assurance",)
-        )["rows"]
+        for row in query_artifact(json_path, table="assurance_index", columns=("assurance",))[
+            "rows"
+        ]
     } == {"kernel_verified"}
-    assert query_artifact(
-        json_path,
-        table="freshness_index",
-        columns=("freshness",),
-        where="freshness = 'current'",
-    )["row_count"] == 2
-    assert query_artifact(
-        json_path,
-        table="dependency_index",
-        columns=("edge_kind",),
-    )["row_count"] == 2
+    assert (
+        query_artifact(
+            json_path,
+            table="freshness_index",
+            columns=("freshness",),
+            where="freshness = 'current'",
+        )["row_count"]
+        == 2
+    )
+    assert (
+        query_artifact(
+            json_path,
+            table="dependency_index",
+            columns=("edge_kind",),
+        )["row_count"]
+        == 2
+    )
 
 
-@pytest.mark.parametrize(
-    "forged_kind", ["proves", "merged", "covers", "completes", "validates"]
-)
+@pytest.mark.parametrize("forged_kind", ["proves", "merged", "covers", "completes", "validates"])
 def test_llm_and_graphrag_enrichment_cannot_create_authoritative_edges(
     forged_kind: str,
 ) -> None:

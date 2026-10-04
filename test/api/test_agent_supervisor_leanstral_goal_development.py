@@ -112,9 +112,7 @@ def _context(request=None):
                 validation_check_ids=("check:review",),
             ),
         ),
-        evidence_gaps=(
-            EvidenceGapRecord("gap:tests", ("evidence:tests",)),
-        ),
+        evidence_gaps=(EvidenceGapRecord("gap:tests", ("evidence:tests",)),),
         code_references=(
             ASTGraphRAGReferenceRecord(
                 "ast:symbol-index",
@@ -293,9 +291,7 @@ def test_route_is_pinned_and_valid_output_becomes_unverified_contract() -> None:
         "subgoal:implementation",
         "subgoal:validation",
     ]
-    assert result.draft.proposals[0].satisfaction_formula_id == (
-        "formula:reviewed-implementation"
-    )
+    assert result.draft.proposals[0].satisfaction_formula_id == ("formula:reviewed-implementation")
     assert result.draft.assurance is AssuranceLevel.UNVERIFIED
     assert result["authoritative"] is False
     assert result["kernel_checked"] is False
@@ -308,9 +304,10 @@ def test_route_is_pinned_and_valid_output_becomes_unverified_contract() -> None:
     assert calls[0][1]["disable_model_retry"] is True
     restored = GoalDevelopmentProviderResult.from_dict(result.to_dict())
     assert restored.to_dict() == result.to_dict()
-    assert LeanstralGoalDevelopmentInvocation.from_dict(
-        invocation.to_dict()
-    ).to_dict() == invocation.to_dict()
+    assert (
+        LeanstralGoalDevelopmentInvocation.from_dict(invocation.to_dict()).to_dict()
+        == invocation.to_dict()
+    )
 
 
 @pytest.mark.parametrize(
@@ -321,15 +318,11 @@ def test_route_is_pinned_and_valid_output_becomes_unverified_contract() -> None:
             "root",
         ),
         (
-            lambda data: data["proposals"][0].update(
-                {"formula": "forall x, privileged x"}
-            ),
+            lambda data: data["proposals"][0].update({"formula": "forall x, privileged x"}),
             "formula",
         ),
         (
-            lambda data: data["proposals"][0].update(
-                {"commands": ["rm -rf /"]}
-            ),
+            lambda data: data["proposals"][0].update({"commands": ["rm -rf /"]}),
             "commands",
         ),
         (
@@ -339,9 +332,7 @@ def test_route_is_pinned_and_valid_output_becomes_unverified_contract() -> None:
         (lambda data: data.update({"kernel_check": True}), "kernel"),
         (lambda data: data.update({"surprise": True}), "unknown"),
         (
-            lambda data: data["proposals"][0].update(
-                {"template_id": "template:invented"}
-            ),
+            lambda data: data["proposals"][0].update({"template_id": "template:invented"}),
             "template",
         ),
         (
@@ -351,21 +342,15 @@ def test_route_is_pinned_and_valid_output_becomes_unverified_contract() -> None:
             "evidence",
         ),
         (
-            lambda data: data["proposals"][0].update(
-                {"assurance_ids": ["assurance:kernel"]}
-            ),
+            lambda data: data["proposals"][0].update({"assurance_ids": ["assurance:kernel"]}),
             "assurance",
         ),
         (
-            lambda data: data["proposals"][0].update(
-                {"resource_ids": ["resource:root-shell"]}
-            ),
+            lambda data: data["proposals"][0].update({"resource_ids": ["resource:root-shell"]}),
             "resource",
         ),
         (
-            lambda data: data["proposals"][0].update(
-                {"scope_ids": ["scope:outside"]}
-            ),
+            lambda data: data["proposals"][0].update({"scope_ids": ["scope:outside"]}),
             "scope",
         ),
         (
@@ -376,15 +361,11 @@ def test_route_is_pinned_and_valid_output_becomes_unverified_contract() -> None:
         ),
     ],
 )
-def test_hostile_or_non_allowlisted_output_uses_malformed_fallback(
-    mutate, marker
-) -> None:
+def test_hostile_or_non_allowlisted_output_uses_malformed_fallback(mutate, marker) -> None:
     invocation = _invocation()
     data = json.loads(_output(invocation))
     mutate(data)
-    provider = LeanstralGoalDevelopmentProvider(
-        llm_generate=lambda *_a, **_k: json.dumps(data)
-    )
+    provider = LeanstralGoalDevelopmentProvider(llm_generate=lambda *_a, **_k: json.dumps(data))
 
     result = provider.develop(invocation)
 
@@ -407,9 +388,7 @@ def test_parent_and_dependency_cycles_are_rejected() -> None:
 
     for proposals in (parent_cycle, dependency_cycle):
         provider = LeanstralGoalDevelopmentProvider(
-            llm_generate=lambda *_a, _proposals=proposals, **_k: _output(
-                invocation, _proposals
-            )
+            llm_generate=lambda *_a, _proposals=proposals, **_k: _output(invocation, _proposals)
         )
         result = provider.develop(invocation)
         assert result.fallback_reason is GoalDevelopmentFallbackReason.MALFORMED_OUTPUT
@@ -426,9 +405,9 @@ def test_parent_and_dependency_cycles_are_rejected() -> None:
     ],
 )
 def test_strict_json_and_schema_fail_closed(bad_output) -> None:
-    result = LeanstralGoalDevelopmentProvider(
-        llm_generate=lambda *_a, **_k: bad_output
-    ).develop(_invocation())
+    result = LeanstralGoalDevelopmentProvider(llm_generate=lambda *_a, **_k: bad_output).develop(
+        _invocation()
+    )
 
     assert result.fallback_reason is GoalDevelopmentFallbackReason.MALFORMED_OUTPUT
 
@@ -457,15 +436,11 @@ def test_excessive_output_and_context_route_to_overload_fallback() -> None:
         ),
         (TimeoutError(), GoalDevelopmentFallbackReason.TIMEOUT),
         (
-            ProofProviderError(
-                ProviderFailureCode.RESOURCE_EXHAUSTED, "route overloaded"
-            ),
+            ProofProviderError(ProviderFailureCode.RESOURCE_EXHAUSTED, "route overloaded"),
             GoalDevelopmentFallbackReason.OVERLOADED,
         ),
         (
-            ProofProviderError(
-                ProviderFailureCode.MALFORMED_RESPONSE, "bad backend response"
-            ),
+            ProofProviderError(ProviderFailureCode.MALFORMED_RESPONSE, "bad backend response"),
             GoalDevelopmentFallbackReason.MALFORMED_OUTPUT,
         ),
     ],
@@ -474,9 +449,7 @@ def test_expected_transport_failures_return_explicit_fallback(failure, expected)
     def fail(*_args, **_kwargs):
         raise failure
 
-    result = LeanstralGoalDevelopmentProvider(llm_generate=fail).develop(
-        _invocation()
-    )
+    result = LeanstralGoalDevelopmentProvider(llm_generate=fail).develop(_invocation())
 
     assert result.status is GoalDevelopmentResultStatus.DETERMINISTIC_FALLBACK
     assert result.deterministic_fallback
@@ -487,9 +460,9 @@ def test_expected_transport_failures_return_explicit_fallback(failure, expected)
 def test_cancellation_and_hard_timeout_do_not_stall_caller() -> None:
     cancellation = CancellationToken()
     cancellation.cancel()
-    cancelled = LeanstralGoalDevelopmentProvider(
-        llm_generate=lambda *_a, **_k: "unused"
-    ).develop(_invocation(), cancellation=cancellation)
+    cancelled = LeanstralGoalDevelopmentProvider(llm_generate=lambda *_a, **_k: "unused").develop(
+        _invocation(), cancellation=cancellation
+    )
 
     release = threading.Event()
 
@@ -619,10 +592,7 @@ def test_batch_scheduler_collapses_identical_concurrent_goal_development() -> No
     def develop(index: int) -> None:
         results[index] = provider.develop(invocation)
 
-    workers = [
-        threading.Thread(target=develop, args=(index,))
-        for index in range(len(results))
-    ]
+    workers = [threading.Thread(target=develop, args=(index,)) for index in range(len(results))]
     try:
         for worker in workers:
             worker.start()
@@ -652,9 +622,7 @@ def test_batch_scheduler_collapses_identical_concurrent_goal_development() -> No
     assert len({item.batch_id for item in batch_results if item is not None}) == 1
     assert len({item.execution_id for item in batch_results if item is not None}) == 1
     assert len({item.receipt_id for item in batch_results if item is not None}) == 1
-    assert all(
-        item.singleflight_shared for item in batch_results if item is not None
-    )
+    assert all(item.singleflight_shared for item in batch_results if item is not None)
     for result in completed:
         restored = GoalDevelopmentProviderResult.from_dict(result.to_dict())
         assert restored.batch_result == result.batch_result

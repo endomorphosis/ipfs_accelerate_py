@@ -32,41 +32,17 @@ RECEIPT_PATH = (
     / "formal_verification_tactician_readiness_completion_receipt.json"
 )
 OBJECTIVES_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "formal_verification_tactician_readiness.objectives.md"
+    REPO_ROOT / "docs" / "architecture" / "formal_verification_tactician_readiness.objectives.md"
 )
-BUILDER_PATH = (
-    REPO_ROOT
-    / "tools"
-    / "logic"
-    / "build_formal_verification_tactician_receipt.py"
-)
-BASELINE_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "formal_verification_readiness_baseline.json"
-)
+BUILDER_PATH = REPO_ROOT / "tools" / "logic" / "build_formal_verification_tactician_receipt.py"
+BASELINE_PATH = REPO_ROOT / "docs" / "architecture" / "formal_verification_readiness_baseline.json"
 TOOLCHAIN_CERT_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "formal_verification_toolchain_certificate.json"
+    REPO_ROOT / "docs" / "architecture" / "formal_verification_toolchain_certificate.json"
 )
 BENCHMARK_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "formal_verification_tactician_benchmark.json"
+    REPO_ROOT / "docs" / "architecture" / "formal_verification_tactician_benchmark.json"
 )
-ROLLOUT_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "formal_verification_tactician_rollout.md"
-)
+ROLLOUT_PATH = REPO_ROOT / "docs" / "architecture" / "formal_verification_tactician_rollout.md"
 CORPUS_PATH = (
     REPO_ROOT
     / "ipfs_datasets_py"
@@ -267,9 +243,9 @@ def test_hard_zero_gates_clear_when_child_certificates_pass() -> None:
     benchmark = json.loads(BENCHMARK_PATH.read_text(encoding="utf-8"))
 
     quarantines = certificate.get("disagreement_quarantines") or []
-    hard = (
-        (benchmark.get("report") or {}).get("gates") or benchmark.get("gates") or {}
-    ).get("hard") or {}
+    hard = ((benchmark.get("report") or {}).get("gates") or benchmark.get("gates") or {}).get(
+        "hard"
+    ) or {}
 
     def _passed(name: str) -> bool:
         status = hard.get(name) or {}
@@ -380,9 +356,7 @@ def test_completion_goal_child_binding_includes_builder_and_test() -> None:
     )
     evidence = set(completion["evidence"])
     assert "tools/logic/build_formal_verification_tactician_receipt.py" in evidence
-    assert (
-        "test/api/test_formal_verification_tactician_readiness_completion.py" in evidence
-    )
+    assert "test/api/test_formal_verification_tactician_readiness_completion.py" in evidence
     outputs = set(completion["outputs"])
     assert (
         "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json"
@@ -415,7 +389,9 @@ def test_g000_and_g090_objective_heap_point_at_this_receipt() -> None:
     )
     assert "build_formal_verification_tactician_receipt.py" in g090.group(0)
     assert "test_formal_verification_tactician_readiness_completion.py" in g090.group(0)
-    assert INTERFACE in g090.group(0) or "FormalVerificationTacticianCompletionReceipt" in g090.group(0)
+    assert INTERFACE in g090.group(
+        0
+    ) or "FormalVerificationTacticianCompletionReceipt" in g090.group(0)
 
 
 def test_receipt_identity_is_content_addressed() -> None:
@@ -477,7 +453,7 @@ def test_no_hardcoded_success_counters_in_builder_source() -> None:
     text = BUILDER_PATH.read_text(encoding="utf-8")
     # Must not assign literal promotional success tallies.
     assert "production_certified_count = 36" not in text
-    assert "false_proof_count\": 0," not in text or "hardcoded" in text.lower()
+    assert 'false_proof_count": 0,' not in text or "hardcoded" in text.lower()
     assert "hardcoded_success_counters" in text
     assert "derive_hard_zero_gates" in text
     assert "never invent" in text.lower() or "never invents" in text.lower()

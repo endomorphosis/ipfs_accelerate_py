@@ -105,9 +105,7 @@ def _descriptor(
 
 def _entry(index: RepositoryCorpusIndex, path: str, origin: str = "committed"):
     return next(
-        item
-        for item in index.entries
-        if item.relative_path == path and item.origin == origin
+        item for item in index.entries if item.relative_path == path and item.origin == origin
     )
 
 
@@ -140,23 +138,18 @@ def test_swissknife_typescript_tree_is_exhaustive_and_classified(
     generated = _entry(result, "src/generated/client.generated.ts")
     assert generated.included
     assert CorpusClassification.GENERATED_SOURCE.value in generated.classifications
-    assert CorpusClassification.SCHEMA.value in _entry(
-        result, "schemas/mcp.schema.json"
-    ).classifications
-    assert CorpusClassification.DOCS.value in _entry(
-        result, "docs/vfs.md"
-    ).classifications
+    assert (
+        CorpusClassification.SCHEMA.value
+        in _entry(result, "schemas/mcp.schema.json").classifications
+    )
+    assert CorpusClassification.DOCS.value in _entry(result, "docs/vfs.md").classifications
     test_entry = _entry(result, "tests/ipfs.spec.ts")
     assert {"source", "tests"}.issubset(test_entry.classifications)
     fixture = _entry(result, "tests/fixtures/sample.ts")
     assert {"source", "tests", "fixtures"}.issubset(fixture.classifications)
-    assert _entry(result, "vendor/dependency.js").reason_codes == (
-        "vendored_dependency",
-    )
+    assert _entry(result, "vendor/dependency.js").reason_codes == ("vendored_dependency",)
     assert "build_output" in _entry(result, "dist/bundle.js").reason_codes
-    assert {"archive", "binary"}.issubset(
-        _entry(result, "archives/sdk.tar.gz").classifications
-    )
+    assert {"archive", "binary"}.issubset(_entry(result, "archives/sdk.tar.gz").classifications)
     assert "binary" in _entry(result, "assets/logo.png").classifications
     assert all(item.blob_oid and item.canonical_path for item in result.entries)
     assert result.repositories[0].observed_entry_count == len(result.entries)
@@ -257,11 +250,7 @@ def test_unicode_and_case_collisions_fail_closed(tmp_path: Path) -> None:
     result = inventory_repository_descriptor(descriptor)
     assert result.exhaustive is False
     assert "canonical_path_collision" in result.reason_codes
-    collided = [
-        item
-        for item in result.entries
-        if "canonical_path_collision" in item.reason_codes
-    ]
+    collided = [item for item in result.entries if "canonical_path_collision" in item.reason_codes]
     assert len(collided) == 4
     assert not any(item.included for item in collided)
 
@@ -391,25 +380,19 @@ def test_bounded_manifest_reports_every_omission(tmp_path: Path) -> None:
 
 def test_multiple_descriptors_remain_independently_bound(tmp_path: Path) -> None:
     swiss = _init_repo(tmp_path / "swiss", {"src/app.tsx": "export const A=<a/>;\n"})
-    accelerator = _init_repo(
-        tmp_path / "accelerator", {"module.py": "VALUE = 1\n"}
-    )
+    accelerator = _init_repo(tmp_path / "accelerator", {"module.py": "VALUE = 1\n"})
     forest = build_repository_forest(
         ForestPolicy(
             roots=(
                 ForestRootSpec(
                     alias="swissknife",
                     root_path=swiss,
-                    authority=RepositoryAuthority(
-                        mode=AuthorityMode.READ_ONLY.value
-                    ),
+                    authority=RepositoryAuthority(mode=AuthorityMode.READ_ONLY.value),
                 ),
                 ForestRootSpec(
                     alias="ipfs_accelerate_py",
                     root_path=accelerator,
-                    authority=RepositoryAuthority(
-                        mode=AuthorityMode.READ_WRITE.value
-                    ),
+                    authority=RepositoryAuthority(mode=AuthorityMode.READ_WRITE.value),
                 ),
             ),
             sole_write_alias="ipfs_accelerate_py",
@@ -422,10 +405,7 @@ def test_multiple_descriptors_remain_independently_bound(tmp_path: Path) -> None
         "ipfs_accelerate_py",
         "swissknife",
     ]
-    assert {
-        (item.repository_alias, item.canonical_path)
-        for item in result.entries
-    } == {
+    assert {(item.repository_alias, item.canonical_path) for item in result.entries} == {
         ("ipfs_accelerate_py", "ipfs_accelerate_py/module.py"),
         ("swissknife", "swissknife/src/app.tsx"),
     }
@@ -471,12 +451,8 @@ def test_policy_exclusions_are_reasoned(tmp_path: Path) -> None:
     )
     result = inventory_repository_descriptor(descriptor)
     assert _entry(result, "src/public.ts").included
-    assert "excluded_by_policy" in _entry(
-        result, "src/private.ts"
-    ).reason_codes
-    assert "not_included_by_policy" in _entry(
-        result, "docs/readme.md"
-    ).reason_codes
+    assert "excluded_by_policy" in _entry(result, "src/private.ts").reason_codes
+    assert "not_included_by_policy" in _entry(result, "docs/readme.md").reason_codes
     assert result.exhaustive
 
 
@@ -514,9 +490,7 @@ def test_exhaustive_file_inventory_evidence_terms_are_bound() -> None:
     assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G020"
     assert OBJECTIVE_TASK_ID == "VFS-063"
     assert PACKET_GOAL_IDS == ("VFS-G138", "VFS-G139")
-    assert GOAL_PACKET_ID == (
-        "goal_packet/corpus_index/ipfs_accelerate_py/26d54d2206f9"
-    )
+    assert GOAL_PACKET_ID == ("goal_packet/corpus_index/ipfs_accelerate_py/26d54d2206f9")
     assert "included and excluded populations publish with reasons" in (
         EXHAUSTIVE_FILE_INVENTORY_INVARIANTS
     )
@@ -537,9 +511,7 @@ def test_objective_validation_repair_evidence_term_discoverable() -> None:
     assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-064"
     assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G020"
     assert OBJECTIVE_TASK_ID == "VFS-063"
-    assert objective_validation_repair_evidence_terms() == (
-        "objective validation repair",
-    )
+    assert objective_validation_repair_evidence_terms() == ("objective validation repair",)
     assert parent_objective_evidence_terms() == (
         "vfs/exhaustive-file-inventory@1",
         "vfs/incremental-ast-index@1",
@@ -547,36 +519,29 @@ def test_objective_validation_repair_evidence_term_discoverable() -> None:
     )
 
     # Domain envelope evidence remains inventory-only on this surface.
-    assert exhaustive_file_inventory_evidence_terms() == (
-        "vfs/exhaustive-file-inventory@1",
-    )
+    assert exhaustive_file_inventory_evidence_terms() == ("vfs/exhaustive-file-inventory@1",)
     assert covered_evidence_terms() == ("vfs/exhaustive-file-inventory@1",)
     assert "objective validation repair" not in covered_evidence_terms()
     assert "objective validation repair" not in packet_evidence_terms()
     assert "objective validation repair" not in all_covered_evidence_terms()
     assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE in parent_objective_evidence_terms()
-    assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE in (
-        objective_validation_repair_evidence_terms()
-    )
+    assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE in (objective_validation_repair_evidence_terms())
 
     # Adapter surface co-owns the same synthetic gate and packet domain keys.
     from ipfs_accelerate_py.agent_supervisor import program_ast_adapters as adapters
 
-    assert adapters.OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == (
-        "objective validation repair"
-    )
+    assert adapters.OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == ("objective validation repair")
     assert adapters.OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-064"
     assert adapters.objective_validation_repair_evidence_terms() == (
         objective_validation_repair_evidence_terms()
     )
-    assert adapters.parent_objective_evidence_terms() == (
-        parent_objective_evidence_terms()
-    )
+    assert adapters.parent_objective_evidence_terms() == (parent_objective_evidence_terms())
     assert adapters.packet_evidence_terms() == packet_evidence_terms()
     assert adapters.all_covered_evidence_terms() == all_covered_evidence_terms()
     assert "objective validation repair" not in adapters.covered_evidence_terms()
-    assert "inventory, language adapters, and incremental persistence stay conflict-domain split" in (
-        OBJECTIVE_VALIDATION_REPAIR_INVARIANTS
+    assert (
+        "inventory, language adapters, and incremental persistence stay conflict-domain split"
+        in (OBJECTIVE_VALIDATION_REPAIR_INVARIANTS)
     )
     assert adapters.OBJECTIVE_VALIDATION_REPAIR_INVARIANTS == (
         OBJECTIVE_VALIDATION_REPAIR_INVARIANTS
@@ -612,9 +577,7 @@ def test_objective_validation_repair_claim_and_identity_separation(
     assert bare["satisfied"] is True
     assert bare["inventory_cid"] is None
     assert bare["packet_evidence_terms"] == list(CORPUS_INDEX_G020_EVIDENCE_TERMS)
-    assert bare["parent_objective_evidence_terms"] == list(
-        parent_objective_evidence_terms()
-    )
+    assert bare["parent_objective_evidence_terms"] == list(parent_objective_evidence_terms())
     assert bare["authoritative"] is False
     assert bare["completion_authoritative"] is False
     assert bare["conflict_domains"] == (
@@ -736,8 +699,7 @@ def test_inventory_receipt_binds_exhaustive_file_inventory_evidence(
         for entry in claim["populations"]["included"]
     )
     assert all(
-        entry["path"] and entry["reason_codes"]
-        for entry in claim["populations"]["excluded"]
+        entry["path"] and entry["reason_codes"] for entry in claim["populations"]["excluded"]
     )
     assert set(claim["packet_evidence_terms"]) == {
         "vfs/exhaustive-file-inventory@1",
@@ -808,9 +770,7 @@ def test_incremental_committed_entry_reuse_preserves_inventory_identity(
         },
     )
     first = inventory_repository_descriptor(_descriptor(repo))
-    second = inventory_repository_descriptor(
-        _descriptor(repo), previous_index=first
-    )
+    second = inventory_repository_descriptor(_descriptor(repo), previous_index=first)
     assert second.inventory_cid == first.inventory_cid
     assert second.reused_entry_count == len(first.entries)
     assert second.exhaustive is True

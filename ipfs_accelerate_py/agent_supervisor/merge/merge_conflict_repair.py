@@ -156,40 +156,53 @@ def resolve_submodule_gitlink_conflicts(
         checkout_flag = "--theirs" if strategy == "theirs" else "--ours"
         checkout = _run_git(repo_root, ["checkout", checkout_flag, "--", relative])
         if checkout.returncode != 0:
-            results.append({
-                "path": relative,
-                "resolved": False,
-                "reason": "gitlink_checkout_failed",
-                "strategy": strategy,
-                "returncode": checkout.returncode,
-                "stderr": checkout.stderr[-2000:],
-            })
+            results.append(
+                {
+                    "path": relative,
+                    "resolved": False,
+                    "reason": "gitlink_checkout_failed",
+                    "strategy": strategy,
+                    "returncode": checkout.returncode,
+                    "stderr": checkout.stderr[-2000:],
+                }
+            )
             continue
 
         add = _run_git(repo_root, ["add", "--", relative])
         if add.returncode != 0:
-            results.append({
-                "path": relative,
-                "resolved": False,
-                "reason": "gitlink_add_failed",
-                "strategy": strategy,
-                "returncode": add.returncode,
-                "stderr": add.stderr[-2000:],
-            })
+            results.append(
+                {
+                    "path": relative,
+                    "resolved": False,
+                    "reason": "gitlink_add_failed",
+                    "strategy": strategy,
+                    "returncode": add.returncode,
+                    "stderr": add.stderr[-2000:],
+                }
+            )
             continue
 
         # Attempt to sync the submodule to its resolved commit
-        update = _run_git(repo_root, [
-            "submodule", "update", "--init", "--", relative,
-        ])
-        results.append({
-            "path": relative,
-            "resolved": True,
-            "reason": "gitlink_resolved",
-            "strategy": strategy,
-            "submodule_update_ok": update.returncode == 0,
-            "submodule_update_stderr": update.stderr[-2000:] if update.returncode != 0 else "",
-        })
+        update = _run_git(
+            repo_root,
+            [
+                "submodule",
+                "update",
+                "--init",
+                "--",
+                relative,
+            ],
+        )
+        results.append(
+            {
+                "path": relative,
+                "resolved": True,
+                "reason": "gitlink_resolved",
+                "strategy": strategy,
+                "submodule_update_ok": update.returncode == 0,
+                "submodule_update_stderr": update.stderr[-2000:] if update.returncode != 0 else "",
+            }
+        )
 
     return results
 
@@ -316,7 +329,9 @@ def _task_section_id(heading: str) -> str:
 
 
 def _reconciliation_guardrail_dedupe_key(block: str) -> str:
-    match = re.search(r"^- Dedupe key:\s*(reconciliation_guardrail:[^\s]+)\s*$", block, flags=re.MULTILINE)
+    match = re.search(
+        r"^- Dedupe key:\s*(reconciliation_guardrail:[^\s]+)\s*$", block, flags=re.MULTILINE
+    )
     return match.group(1) if match else ""
 
 
@@ -364,7 +379,9 @@ def merge_reconciliation_guardrail_todo_sections(
                 continue
             existing_heading, existing_block = ordered[key]
             if key.startswith("guardrail:"):
-                duplicate_variant_count += int(existing_block != block or existing_heading != heading)
+                duplicate_variant_count += int(
+                    existing_block != block or existing_heading != heading
+                )
                 continue
             selected, changed = _select_section_variant(existing_block, block)
             selected_heading = heading if selected == block else existing_heading
@@ -393,7 +410,9 @@ def resolve_append_only_markdown_conflicts(
     normalized_dirs = _normalize_allowed_dirs(repo_root, allowed_dirs)
     results: list[dict[str, object]] = []
     for relative in unmerged_paths(repo_root):
-        if not _path_allowed(relative, allowed_paths=normalized_paths, allowed_dirs=normalized_dirs):
+        if not _path_allowed(
+            relative, allowed_paths=normalized_paths, allowed_dirs=normalized_dirs
+        ):
             continue
         base = _decode_blob(conflict_stage_blob(repo_root, relative, stage=1))
         ours = _decode_blob(conflict_stage_blob(repo_root, relative, stage=2))
@@ -443,7 +462,9 @@ def resolve_reconciliation_guardrail_todo_conflicts(*, repo_root: Path) -> list[
             theirs_text=theirs,
         )
         if merged is None:
-            results.append({"path": relative, "resolved": False, "reason": "no_reconciliation_guardrail"})
+            results.append(
+                {"path": relative, "resolved": False, "reason": "no_reconciliation_guardrail"}
+            )
             continue
         target = repo_root / relative
         _atomic_write_text(target, merged.text)
@@ -555,7 +576,9 @@ def merge_launch_readiness_markdown(
         for goal_id in re.findall(r"\bVAIOS-G\d+\b", line)
     )
     if task_ids:
-        bridge = " / ".join(f"`{task_id}`" for task_id in sorted(task_ids, key=_launch_task_sort_key))
+        bridge = " / ".join(
+            f"`{task_id}`" for task_id in sorted(task_ids, key=_launch_task_sort_key)
+        )
         goal = f" for `{goal_ids[0]}`" if goal_ids else ""
         merged = _replace_or_insert_line(
             merged,
@@ -572,7 +595,10 @@ def _constant_blocks(text: str) -> dict[str, str]:
 
 
 def _source_read_lines(text: str) -> list[str]:
-    pattern = re.compile(r"^    [a-z]+_source = [A-Z]+_\d+_RECEIPT_PATH\.read_text\(encoding=\"utf-8\"\)$", re.MULTILINE)
+    pattern = re.compile(
+        r"^    [a-z]+_source = [A-Z]+_\d+_RECEIPT_PATH\.read_text\(encoding=\"utf-8\"\)$",
+        re.MULTILINE,
+    )
     return [match.group(0) for match in pattern.finditer(text)]
 
 
@@ -601,11 +627,7 @@ def merge_launch_readiness_python(
     merged = max(texts, key=lambda item: (len(set(item.splitlines())), len(item)))
 
     for name, block in sorted(
-        {
-            name: block
-            for text in texts
-            for name, block in _constant_blocks(text).items()
-        }.items()
+        {name: block for text in texts for name, block in _constant_blocks(text).items()}.items()
     ):
         if name not in merged:
             merged = _insert_missing_lines(
@@ -621,12 +643,16 @@ def merge_launch_readiness_python(
     )
     merged = _insert_missing_lines(
         merged,
-        additions=_unique_lines(line for text in texts for line in _assertion_lines(text, indent="        ")),
+        additions=_unique_lines(
+            line for text in texts for line in _assertion_lines(text, indent="        ")
+        ),
         insert_after_contains="assert term in heap_source",
     )
     merged = _insert_missing_lines(
         merged,
-        additions=_unique_lines(line for text in texts for line in _assertion_lines(text, indent="    ")),
+        additions=_unique_lines(
+            line for text in texts for line in _assertion_lines(text, indent="    ")
+        ),
         insert_after_contains='assert receipt["readiness_doc"]',
     )
     return merged if merged.endswith("\n") else merged + "\n"

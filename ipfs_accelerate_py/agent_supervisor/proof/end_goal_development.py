@@ -74,9 +74,7 @@ except Exception:  # pragma: no cover - optional import surface
 # Interface / schema constants
 # ---------------------------------------------------------------------------
 
-FORMALIZED_GOAL_DEVELOPMENT_ROUTE_INTERFACE: Final = (
-    "FormalizedGoalDevelopmentRoute@1"
-)
+FORMALIZED_GOAL_DEVELOPMENT_ROUTE_INTERFACE: Final = "FormalizedGoalDevelopmentRoute@1"
 FORMALIZED_GOAL_DEVELOPMENT_ROUTE_VERSION: Final = "1.0.0"
 FORMALIZED_GOAL_DEVELOPMENT_ROUTE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/formalized-goal-development-route@1"
@@ -194,14 +192,10 @@ def _string_tuple(
         source: Sequence[Any] = ()
     elif isinstance(values, str):
         source = (values,)
-    elif isinstance(values, Sequence) and not isinstance(
-        values, (bytes, bytearray, memoryview)
-    ):
+    elif isinstance(values, Sequence) and not isinstance(values, (bytes, bytearray, memoryview)):
         source = values
     else:
-        raise EndGoalDevelopmentError(
-            f"{field_name} must be a sequence of strings"
-        )
+        raise EndGoalDevelopmentError(f"{field_name} must be a sequence of strings")
     result: list[str] = []
     for index, item in enumerate(source):
         text = _text(item, field_name=f"{field_name}[{index}]", required=True)
@@ -242,9 +236,7 @@ def _reject_authority_claims(payload: Mapping[str, Any], *, artifact: str) -> No
         "implementation_conformant",
     ):
         if payload.get(name) not in (None, False):
-            raise EndGoalDevelopmentError(
-                f"{artifact} cannot claim {name.replace('_', ' ')}"
-            )
+            raise EndGoalDevelopmentError(f"{artifact} cannot claim {name.replace('_', ' ')}")
 
 
 def _is_formal_goal_instance(value: Any) -> bool:
@@ -284,9 +276,7 @@ def _coerce_formal_goal(value: Any) -> Any:
     """Return a FormalGoal instance or raise EndGoalDevelopmentError."""
 
     if value is None:
-        raise EndGoalDevelopmentError(
-            "formal_goal is required; prose cannot bypass formalization"
-        )
+        raise EndGoalDevelopmentError("formal_goal is required; prose cannot bypass formalization")
     if isinstance(value, str):
         raise EndGoalDevelopmentError(
             "prose cannot bypass formalization; supply a confirmed FormalGoal"
@@ -294,17 +284,13 @@ def _coerce_formal_goal(value: Any) -> Any:
     if _is_formal_goal_instance(value):
         return value
     if not isinstance(value, Mapping):
-        raise EndGoalDevelopmentError(
-            "formal_goal must be a FormalGoal or mapping payload"
-        )
+        raise EndGoalDevelopmentError("formal_goal must be a FormalGoal or mapping payload")
     if _looks_like_prose_primary(value):
         raise EndGoalDevelopmentError(
             "prose cannot bypass formalization; supply a confirmed FormalGoal"
         )
     if not _looks_like_formal_goal_payload(value):
-        raise EndGoalDevelopmentError(
-            "formal_goal must include formal_goal_id and end_goal"
-        )
+        raise EndGoalDevelopmentError("formal_goal must include formal_goal_id and end_goal")
     _reject_authority_claims(value, artifact="formal_goal")
     if FormalGoal is None:
         # Minimal structural validation when the datasets package is unavailable.
@@ -312,9 +298,7 @@ def _coerce_formal_goal(value: Any) -> Any:
     try:
         return FormalGoal.from_dict(value)
     except (TacticianContractError, ContractValidationError, TypeError, ValueError) as exc:
-        raise EndGoalDevelopmentError(
-            f"invalid formal_goal: {exc}"
-        ) from exc
+        raise EndGoalDevelopmentError(f"invalid formal_goal: {exc}") from exc
 
 
 def _end_goal_of(formal_goal: Any) -> Any:
@@ -425,7 +409,9 @@ def _assumption_ids(end_goal: Any) -> tuple[str, ...]:
 
 
 def _evidence_ids(end_goal: Any, formal_goal: Any) -> tuple[str, ...]:
-    evidence = list(_string_tuple(_attr(end_goal, "acceptance_evidence", ()), field_name="acceptance_evidence"))
+    evidence = list(
+        _string_tuple(_attr(end_goal, "acceptance_evidence", ()), field_name="acceptance_evidence")
+    )
     if evidence:
         return tuple(evidence)
     receipt = _attr(formal_goal, "confirmation_receipt_id", "")
@@ -449,9 +435,7 @@ def _repository_tree_id(end_goal: Any) -> str:
     source = _attr(end_goal, "source", None)
     tree_id = _attr(source, "tree_id", "") if source is not None else ""
     if not tree_id:
-        raise EndGoalDevelopmentError(
-            "formal_goal.end_goal.source.tree_id is required"
-        )
+        raise EndGoalDevelopmentError("formal_goal.end_goal.source.tree_id is required")
     return _text(tree_id, field_name="repository_tree_id")
 
 
@@ -472,9 +456,7 @@ def _content_id_of(formal_goal: Any) -> str:
         end_goal_id = end_goal_id()
     if not end_goal_id:
         end_goal_id = _attr(end_goal, "goal_id", formal_goal_id)
-    digest = hashlib.sha256(
-        f"{formal_goal_id}:{end_goal_id}".encode("utf-8")
-    ).hexdigest()
+    digest = hashlib.sha256(f"{formal_goal_id}:{end_goal_id}".encode("utf-8")).hexdigest()
     return f"cid:formal-goal:{digest[:32]}"
 
 
@@ -562,17 +544,16 @@ class FormalizedGoalIdentifiers:
             or isinstance(self.vocabulary_version, bool)
             or self.vocabulary_version <= 0
         ):
-            raise EndGoalDevelopmentError(
-                "vocabulary_version must be a positive integer"
-            )
+            raise EndGoalDevelopmentError("vocabulary_version must be a positive integer")
         if self.schema != FORMALIZED_GOAL_IDENTIFIERS_SCHEMA:
             raise EndGoalDevelopmentError("unsupported formalized identifiers schema")
 
     @property
     def content_id(self) -> str:
-        return "formalized-ids-" + hashlib.sha256(
-            canonical_json_bytes(self.to_dict(include_id=False))
-        ).hexdigest()
+        return (
+            "formalized-ids-"
+            + hashlib.sha256(canonical_json_bytes(self.to_dict(include_id=False))).hexdigest()
+        )
 
     def to_dict(self, *, include_id: bool = True) -> dict[str, Any]:
         payload = {
@@ -616,21 +597,15 @@ class FormalizedGoalIdentifiers:
             root_goal_content_id=payload.get("root_goal_content_id", ""),
             satisfaction_formula_id=payload.get("satisfaction_formula_id", ""),
             assumption_ids=tuple(payload.get("assumption_ids") or ()),
-            evidence_requirement_ids=tuple(
-                payload.get("evidence_requirement_ids") or ()
-            ),
+            evidence_requirement_ids=tuple(payload.get("evidence_requirement_ids") or ()),
             vocabulary_profile_id=payload.get(
                 "vocabulary_profile_id", DEFAULT_VOCABULARY_PROFILE_ID
             ),
-            vocabulary_version=payload.get(
-                "vocabulary_version", LOGIC_VOCABULARY_VERSION
-            ),
+            vocabulary_version=payload.get("vocabulary_version", LOGIC_VOCABULARY_VERSION),
             repository_tree_id=payload.get("repository_tree_id", ""),
             scope_ids=tuple(payload.get("scope_ids") or ()),
             template_ids=tuple(payload.get("template_ids") or ()),
-            selected_interpretation_id=payload.get(
-                "selected_interpretation_id", ""
-            ),
+            selected_interpretation_id=payload.get("selected_interpretation_id", ""),
             confirmation_receipt_id=payload.get("confirmation_receipt_id", ""),
         )
         claimed = payload.get("content_id")
@@ -655,9 +630,7 @@ class FormalizedGoalDevelopmentRequest:
     evidence_gaps: tuple[EvidenceGapRecord | Mapping[str, Any], ...] = ()
     code_references: tuple[ASTGraphRAGReferenceRecord | Mapping[str, Any], ...] = ()
     capabilities: tuple[CapabilityRecord | Mapping[str, Any], ...] = ()
-    prior_counterexamples: tuple[
-        PriorCounterexampleRecord | Mapping[str, Any], ...
-    ] = ()
+    prior_counterexamples: tuple[PriorCounterexampleRecord | Mapping[str, Any], ...] = ()
     reusable_receipts: tuple[ReusableReceiptRecord | Mapping[str, Any], ...] = ()
     resource_budget: ResourceBudget | Mapping[str, Any] | None = None
     network_allowed: bool = False
@@ -669,14 +642,10 @@ class FormalizedGoalDevelopmentRequest:
 
     def __post_init__(self) -> None:
         if self.schema != FORMALIZED_GOAL_DEVELOPMENT_REQUEST_SCHEMA:
-            raise EndGoalDevelopmentError(
-                "unsupported formalized goal-development request schema"
-            )
+            raise EndGoalDevelopmentError("unsupported formalized goal-development request schema")
         if not isinstance(self.network_allowed, bool):
             raise EndGoalDevelopmentError("network_allowed must be a boolean")
-        object.__setattr__(
-            self, "prose", _text(self.prose, field_name="prose", required=False)
-        )
+        object.__setattr__(self, "prose", _text(self.prose, field_name="prose", required=False))
         object.__setattr__(
             self,
             "caller_text",
@@ -695,14 +664,10 @@ class FormalizedGoalDevelopmentRequest:
             or isinstance(self.vocabulary_version, bool)
             or self.vocabulary_version <= 0
         ):
-            raise EndGoalDevelopmentError(
-                "vocabulary_version must be a positive integer"
-            )
+            raise EndGoalDevelopmentError("vocabulary_version must be a positive integer")
         templates = tuple(self.templates or ())
         object.__setattr__(self, "templates", templates)
-        object.__setattr__(
-            self, "resource_budget", _resource_budget(self.resource_budget)
-        )
+        object.__setattr__(self, "resource_budget", _resource_budget(self.resource_budget))
         policy = self.policy
         if policy is None:
             policy = GoalDevelopmentPolicy(mode=GoalDevelopmentMode.SHADOW)
@@ -733,9 +698,7 @@ class FormalizedGoalDevelopmentRequest:
             "network_allowed": self.network_allowed,
             "deadline_unix_ms": self.deadline_unix_ms,
             "resource_budget": (
-                self.resource_budget.to_dict()
-                if self.resource_budget is not None
-                else None
+                self.resource_budget.to_dict() if self.resource_budget is not None else None
             ),
             "prose": self.prose,
             "caller_text": self.caller_text,
@@ -745,9 +708,7 @@ class FormalizedGoalDevelopmentRequest:
     def from_dict(cls, value: Mapping[str, Any]) -> "FormalizedGoalDevelopmentRequest":
         payload = _mapping(value, field_name="formalized goal-development request")
         return cls(
-            schema=payload.get(
-                "schema", FORMALIZED_GOAL_DEVELOPMENT_REQUEST_SCHEMA
-            ),
+            schema=payload.get("schema", FORMALIZED_GOAL_DEVELOPMENT_REQUEST_SCHEMA),
             formal_goal=payload.get("formal_goal"),
             policy=payload.get("policy"),
             templates=tuple(payload.get("templates") or ()),
@@ -755,15 +716,11 @@ class FormalizedGoalDevelopmentRequest:
             vocabulary_profile_id=payload.get(
                 "vocabulary_profile_id", DEFAULT_VOCABULARY_PROFILE_ID
             ),
-            vocabulary_version=payload.get(
-                "vocabulary_version", LOGIC_VOCABULARY_VERSION
-            ),
+            vocabulary_version=payload.get("vocabulary_version", LOGIC_VOCABULARY_VERSION),
             evidence_gaps=tuple(payload.get("evidence_gaps") or ()),
             code_references=tuple(payload.get("code_references") or ()),
             capabilities=tuple(payload.get("capabilities") or ()),
-            prior_counterexamples=tuple(
-                payload.get("prior_counterexamples") or ()
-            ),
+            prior_counterexamples=tuple(payload.get("prior_counterexamples") or ()),
             reusable_receipts=tuple(payload.get("reusable_receipts") or ()),
             resource_budget=payload.get("resource_budget"),
             network_allowed=payload.get("network_allowed", False),
@@ -824,9 +781,7 @@ class FormalizedGoalDevelopmentResult(Mapping[str, Any]):
                 )
         elif status is FormalizedRouteStatus.DETERMINISTIC_FALLBACK:
             if self.fallback_reason is None:
-                raise EndGoalDevelopmentError(
-                    "fallback route result requires a fallback reason"
-                )
+                raise EndGoalDevelopmentError("fallback route result requires a fallback reason")
         elif status is FormalizedRouteStatus.DRAFT:
             if self.provider_result is None or self.provider_result.used_fallback:
                 raise EndGoalDevelopmentError(
@@ -861,9 +816,10 @@ class FormalizedGoalDevelopmentResult(Mapping[str, Any]):
 
     @property
     def result_id(self) -> str:
-        return "formalized-goal-route-" + hashlib.sha256(
-            canonical_json_bytes(self.to_dict(include_id=False))
-        ).hexdigest()
+        return (
+            "formalized-goal-route-"
+            + hashlib.sha256(canonical_json_bytes(self.to_dict(include_id=False))).hexdigest()
+        )
 
     def to_dict(self, *, include_id: bool = True) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -874,24 +830,16 @@ class FormalizedGoalDevelopmentResult(Mapping[str, Any]):
             "provider_id": self.provider_id,
             "request_id": self.request_id,
             "status": self.status.value,
-            "gate_reason": (
-                None if self.gate_reason is None else self.gate_reason.value
-            ),
+            "gate_reason": (None if self.gate_reason is None else self.gate_reason.value),
             "fallback_reason": (
-                None
-                if self.fallback_reason is None
-                else self.fallback_reason.value
+                None if self.fallback_reason is None else self.fallback_reason.value
             ),
             "deterministic_fallback": self.used_fallback,
             "rejected": self.rejected,
             "formalization_confirmed": self.formalization_confirmed,
-            "identifiers": (
-                None if self.identifiers is None else self.identifiers.to_dict()
-            ),
+            "identifiers": (None if self.identifiers is None else self.identifiers.to_dict()),
             "provider_result": (
-                None
-                if self.provider_result is None
-                else self.provider_result.to_dict()
+                None if self.provider_result is None else self.provider_result.to_dict()
             ),
             "draft": None if self.draft is None else self.draft.to_dict(),
             "assurance": AssuranceLevel.UNVERIFIED.value,
@@ -939,9 +887,7 @@ class FormalizedGoalDevelopmentResult(Mapping[str, Any]):
             "can_claim_completion",
         ):
             if payload.get(name, False) is not False:
-                raise EndGoalDevelopmentError(
-                    "formalized route result cannot claim authority"
-                )
+                raise EndGoalDevelopmentError("formalized route result cannot claim authority")
         identifiers = payload.get("identifiers")
         provider_result = payload.get("provider_result")
         result = cls(
@@ -949,9 +895,7 @@ class FormalizedGoalDevelopmentResult(Mapping[str, Any]):
             request_id=payload.get("request_id", ""),
             gate_reason=payload.get("gate_reason"),
             identifiers=(
-                None
-                if identifiers is None
-                else FormalizedGoalIdentifiers.from_dict(identifiers)
+                None if identifiers is None else FormalizedGoalIdentifiers.from_dict(identifiers)
             ),
             provider_result=(
                 None
@@ -959,26 +903,14 @@ class FormalizedGoalDevelopmentResult(Mapping[str, Any]):
                 else GoalDevelopmentProviderResult.from_dict(provider_result)
             ),
             fallback_reason=payload.get("fallback_reason"),
-            schema=payload.get(
-                "schema", FORMALIZED_GOAL_DEVELOPMENT_RESULT_SCHEMA
-            ),
-            interface=payload.get(
-                "interface", FORMALIZED_GOAL_DEVELOPMENT_ROUTE_INTERFACE
-            ),
-            route_version=payload.get(
-                "route_version", FORMALIZED_GOAL_DEVELOPMENT_ROUTE_VERSION
-            ),
-            provider_id=payload.get(
-                "provider_id", LEANSTRAL_GOAL_DEVELOPMENT_PROVIDER_ID
-            ),
-            operation=payload.get(
-                "operation", LEANSTRAL_GOAL_DEVELOPMENT_OPERATION
-            ),
+            schema=payload.get("schema", FORMALIZED_GOAL_DEVELOPMENT_RESULT_SCHEMA),
+            interface=payload.get("interface", FORMALIZED_GOAL_DEVELOPMENT_ROUTE_INTERFACE),
+            route_version=payload.get("route_version", FORMALIZED_GOAL_DEVELOPMENT_ROUTE_VERSION),
+            provider_id=payload.get("provider_id", LEANSTRAL_GOAL_DEVELOPMENT_PROVIDER_ID),
+            operation=payload.get("operation", LEANSTRAL_GOAL_DEVELOPMENT_OPERATION),
         )
         if payload.get("result_id") not in (None, "", result.result_id):
-            raise EndGoalDevelopmentError(
-                "formalized route result identity is invalid"
-            )
+            raise EndGoalDevelopmentError("formalized route result identity is invalid")
         return result
 
 
@@ -1004,13 +936,9 @@ def extract_formalized_identifiers(
             )
 
     if request.formal_goal is None:
-        raise EndGoalDevelopmentError(
-            "formal_goal is required; prose cannot bypass formalization"
-        )
+        raise EndGoalDevelopmentError("formal_goal is required; prose cannot bypass formalization")
 
-    if isinstance(request.formal_goal, str) or _looks_like_prose_primary(
-        request.formal_goal
-    ):
+    if isinstance(request.formal_goal, str) or _looks_like_prose_primary(request.formal_goal):
         raise EndGoalDevelopmentError(
             "prose cannot bypass formalization; supply a confirmed FormalGoal"
         )
@@ -1026,13 +954,9 @@ def extract_formalized_identifiers(
             "formal_goal ambiguity must be resolved before Leanstral goal development"
         )
     if gate_reason is FormalizationGateReason.AUTHORITY_CLAIM:
-        raise EndGoalDevelopmentError(
-            "formal_goal cannot claim proof or completion authority"
-        )
+        raise EndGoalDevelopmentError("formal_goal cannot claim proof or completion authority")
     if gate_reason is not None:
-        raise EndGoalDevelopmentError(
-            f"formalization gate rejected request: {gate_reason.value}"
-        )
+        raise EndGoalDevelopmentError(f"formalization gate rejected request: {gate_reason.value}")
 
     if not request.templates:
         raise EndGoalDevelopmentError(
@@ -1046,9 +970,7 @@ def extract_formalized_identifiers(
         elif isinstance(item, Mapping):
             templates.append(GoalDevelopmentTemplate.from_dict(item))
         else:
-            raise EndGoalDevelopmentError(
-                f"templates[{index}] must be a GoalDevelopmentTemplate"
-            )
+            raise EndGoalDevelopmentError(f"templates[{index}] must be a GoalDevelopmentTemplate")
 
     end_goal = _end_goal_of(formal_goal)
     try:
@@ -1058,9 +980,11 @@ def extract_formalized_identifiers(
     evidence = _evidence_ids(end_goal, formal_goal)
     scopes = _scope_ids(end_goal)
     formula_id = _formula_id_from_compilation(request.compilation_result, formal_goal)
-    root_goal_id = _attr(formal_goal, "root_goal_id", None) or _attr(
-        end_goal, "root_goal_id", None
-    ) or _attr(end_goal, "goal_id", "")
+    root_goal_id = (
+        _attr(formal_goal, "root_goal_id", None)
+        or _attr(end_goal, "root_goal_id", None)
+        or _attr(end_goal, "goal_id", "")
+    )
     root_goal_id = _text(root_goal_id, field_name="root_goal_id")
 
     return FormalizedGoalIdentifiers(
@@ -1195,27 +1119,19 @@ class FormalizedGoalDevelopmentRoute:
         # positional argument (mirrors LeanstralGoalDevelopmentProvider).
         if isinstance(provider, LeanstralGoalDevelopmentProviderConfig):
             if config is not None:
-                raise EndGoalDevelopmentError(
-                    "provider config cannot be supplied twice"
-                )
+                raise EndGoalDevelopmentError("provider config cannot be supplied twice")
             config = provider
             provider = None
-        if provider is not None and (
-            config is not None or llm_generate is not None
-        ):
+        if provider is not None and (config is not None or llm_generate is not None):
             raise EndGoalDevelopmentError(
                 "provider cannot be combined with config/llm_generate overrides"
             )
         if provider is not None:
             if not isinstance(provider, LeanstralGoalDevelopmentProvider):
-                raise EndGoalDevelopmentError(
-                    "provider must be a LeanstralGoalDevelopmentProvider"
-                )
+                raise EndGoalDevelopmentError("provider must be a LeanstralGoalDevelopmentProvider")
             self._provider = provider
         else:
-            self._provider = LeanstralGoalDevelopmentProvider(
-                config, llm_generate=llm_generate
-            )
+            self._provider = LeanstralGoalDevelopmentProvider(config, llm_generate=llm_generate)
 
     @property
     def provider(self) -> LeanstralGoalDevelopmentProvider:
@@ -1277,9 +1193,7 @@ class FormalizedGoalDevelopmentRoute:
                 status=FormalizedRouteStatus.REJECTED,
                 gate_reason=FormalizationGateReason.MISSING_FORMAL_GOAL,
             )
-        if isinstance(request.formal_goal, str) or _looks_like_prose_primary(
-            request.formal_goal
-        ):
+        if isinstance(request.formal_goal, str) or _looks_like_prose_primary(request.formal_goal):
             return FormalizedGoalDevelopmentResult(
                 status=FormalizedRouteStatus.REJECTED,
                 gate_reason=FormalizationGateReason.PROSE_BYPASS,
@@ -1333,19 +1247,11 @@ class FormalizedGoalDevelopmentRoute:
 
         admitted = self.admit(request)
         if isinstance(admitted, FormalizedGoalDevelopmentResult):
-            reason = (
-                admitted.gate_reason.value
-                if admitted.gate_reason is not None
-                else "rejected"
-            )
-            raise EndGoalDevelopmentError(
-                f"formalization gate rejected request: {reason}"
-            )
+            reason = admitted.gate_reason.value if admitted.gate_reason is not None else "rejected"
+            raise EndGoalDevelopmentError(f"formalization gate rejected request: {reason}")
         if not isinstance(request, FormalizedGoalDevelopmentRequest):
             request = FormalizedGoalDevelopmentRequest.from_dict(request)
-        return build_formalized_leanstral_invocation(
-            request, identifiers=admitted
-        )
+        return build_formalized_leanstral_invocation(request, identifiers=admitted)
 
     def develop(
         self,
@@ -1373,9 +1279,7 @@ class FormalizedGoalDevelopmentRoute:
             return admitted
 
         try:
-            invocation = build_formalized_leanstral_invocation(
-                request, identifiers=admitted
-            )
+            invocation = build_formalized_leanstral_invocation(request, identifiers=admitted)
         except (EndGoalDevelopmentError, ContractValidationError) as exc:
             return FormalizedGoalDevelopmentResult(
                 status=FormalizedRouteStatus.REJECTED,
@@ -1386,9 +1290,7 @@ class FormalizedGoalDevelopmentRoute:
 
         # Provider.develop already maps timeout / unavailable / malformed /
         # cancelled / overloaded into GoalDevelopmentProviderResult fallbacks.
-        provider_result = self._provider.develop(
-            invocation, cancellation=cancellation
-        )
+        provider_result = self._provider.develop(invocation, cancellation=cancellation)
 
         if provider_result.used_fallback:
             return FormalizedGoalDevelopmentResult(

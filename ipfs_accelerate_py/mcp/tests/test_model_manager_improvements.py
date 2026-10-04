@@ -8,6 +8,7 @@ Tests for model_manager improvements:
             update_serving_config, resolve_launch_command, get_models_by_pipeline_type
             now includes serving_config)
 """
+
 from __future__ import annotations
 
 import json
@@ -46,6 +47,7 @@ from ipfs_accelerate_py.ipfs_kit_integration import IPFSKitStorage
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_metadata(model_id: str = "test/bert", **kwargs) -> ModelMetadata:
     defaults = dict(
@@ -163,6 +165,7 @@ class TestModelManagerServingConfig(unittest.TestCase):
     def tearDown(self):
         self.manager.close()
         import shutil
+
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_get_serving_config_none_initially(self):
@@ -236,6 +239,7 @@ class TestResolveLaunchCommand(unittest.TestCase):
     def tearDown(self):
         self.manager.close()
         import shutil
+
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_no_serving_config_returns_none(self):
@@ -310,12 +314,11 @@ class TestPipelineTypeServingConfig(unittest.TestCase):
     def tearDown(self):
         self.manager.close()
         import shutil
+
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_serving_config_present_in_pipeline_results(self):
-        results = self.manager.get_models_by_pipeline_type(
-            "text-generation", include_api=False
-        )
+        results = self.manager.get_models_by_pipeline_type("text-generation", include_api=False)
         # If the model is matched by the pipeline mapper, verify serving_config is present
         for r in results:
             if r["model_id"] == "test/gpt2":
@@ -401,11 +404,14 @@ class TestModelKnowledgeGraph(unittest.TestCase):
 
     def test_add_model_node(self):
         kg = self._build_graph()
-        kg.add_model_node("test/bert", {
-            "model_name": "bert",
-            "description": "A BERT model",
-            "model_card": "",
-        })
+        kg.add_model_node(
+            "test/bert",
+            {
+                "model_name": "bert",
+                "description": "A BERT model",
+                "model_card": "",
+            },
+        )
         e = kg._graph.get_entity("test/bert")
         self.assertIsNotNone(e)
         self.assertEqual(e["type"], "model")
@@ -442,11 +448,14 @@ class TestModelKnowledgeGraph(unittest.TestCase):
 
     def test_text_entity_extraction_heuristic(self):
         kg = self._build_graph()
-        kg.add_model_node("test/bert", {
-            "model_name": "bert",
-            "description": "A BERT model trained with pytorch on the squad dataset",
-            "model_card": "Uses huggingface transformers",
-        })
+        kg.add_model_node(
+            "test/bert",
+            {
+                "model_name": "bert",
+                "description": "A BERT model trained with pytorch on the squad dataset",
+                "model_card": "Uses huggingface transformers",
+            },
+        )
         # Check that framework/dataset entities were linked
         mentions = kg._graph.get_relationships("test/bert", REL_MENTIONS)
         entity_ids = {e[2] for e in mentions}
@@ -461,10 +470,10 @@ class TestModelKnowledgeGraph(unittest.TestCase):
 
     def test_query_returns_relevant_entities(self):
         kg = self._build_graph()
-        kg.add_model_node("test/cuda-model", {"model_name": "cuda-model",
-                                               "description": "cuda optimized"})
-        kg.add_model_node("test/cpu-model", {"model_name": "cpu-model",
-                                              "description": "cpu only"})
+        kg.add_model_node(
+            "test/cuda-model", {"model_name": "cuda-model", "description": "cuda optimized"}
+        )
+        kg.add_model_node("test/cpu-model", {"model_name": "cpu-model", "description": "cpu only"})
         results = kg.query("cuda")
         ids = [r["entity_id"] for r in results]
         self.assertTrue(any("cuda" in eid for eid in ids))
@@ -497,29 +506,36 @@ class TestModelManagerGraphRAG(unittest.TestCase):
             storage_path=os.path.join(self.tmp, "mm.json"),
             use_database=False,
         )
-        self.manager.add_model(_make_metadata(
-            "test/bert-base-uncased",
-            architecture="BertForMaskedLM",
-            description="BERT model using pytorch and huggingface",
-            tags=["bert", "nlp"],
-        ))
-        self.manager.add_model(_make_metadata(
-            "test/bert-fine-tuned",
-            architecture="BertForSequenceClassification",
-            description="Fine-tuned BERT",
-            parent_model_id="test/bert-base-uncased",
-            tags=["bert", "classification"],
-        ))
-        self.manager.add_model(_make_metadata(
-            "test/gpt2",
-            architecture="GPT2LMHeadModel",
-            description="GPT-2 text generation model pytorch",
-            tags=["gpt2", "text-gen"],
-        ))
+        self.manager.add_model(
+            _make_metadata(
+                "test/bert-base-uncased",
+                architecture="BertForMaskedLM",
+                description="BERT model using pytorch and huggingface",
+                tags=["bert", "nlp"],
+            )
+        )
+        self.manager.add_model(
+            _make_metadata(
+                "test/bert-fine-tuned",
+                architecture="BertForSequenceClassification",
+                description="Fine-tuned BERT",
+                parent_model_id="test/bert-base-uncased",
+                tags=["bert", "classification"],
+            )
+        )
+        self.manager.add_model(
+            _make_metadata(
+                "test/gpt2",
+                architecture="GPT2LMHeadModel",
+                description="GPT-2 text generation model pytorch",
+                tags=["gpt2", "text-gen"],
+            )
+        )
 
     def tearDown(self):
         self.manager.close()
         import shutil
+
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_build_model_graph_returns_true_when_available(self):
@@ -575,6 +591,7 @@ class TestIPFSKitStorageCache(unittest.TestCase):
 
     def tearDown(self):
         import shutil
+
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_configure_cache_returns_dict(self):
@@ -653,6 +670,7 @@ class TestModelManagerCaching(unittest.TestCase):
     def tearDown(self):
         self.manager.close()
         import shutil
+
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_warm_cache_missing_model_returns_false(self):

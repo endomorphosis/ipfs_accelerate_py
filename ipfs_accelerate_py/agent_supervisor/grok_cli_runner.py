@@ -37,9 +37,7 @@ def _resolve_grok_bin(configured: str = "") -> str:
 
         candidate = str(_grok_cli_command() or "").strip()
         if candidate:
-            found = shutil.which(candidate) or (
-                candidate if Path(candidate).is_file() else ""
-            )
+            found = shutil.which(candidate) or (candidate if Path(candidate).is_file() else "")
             if found:
                 return found
     except Exception:
@@ -135,9 +133,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     permission_mode = (
         str(args.permission_mode).strip()
         or os.environ.get("IPFS_ACCELERATE_AGENT_GROK_PERMISSION_MODE", "").strip()
-        or os.environ.get(
-            "ipfs_accelerate_py_GROK_CLI_PERMISSION_MODE", ""
-        ).strip()
+        or os.environ.get("ipfs_accelerate_py_GROK_CLI_PERMISSION_MODE", "").strip()
         or "bypassPermissions"
     )
 

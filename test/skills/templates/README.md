@@ -165,11 +165,13 @@ All templates implement the mock detection system which:
            # ... existing fields ...
            "has_transformers": HAS_TRANSFORMERS,
            "has_torch": HAS_TORCH,
-           "has_tokenizers": HAS_TOKENIZERS, 
+           "has_tokenizers": HAS_TOKENIZERS,
            "has_sentencepiece": HAS_SENTENCEPIECE,
            "using_real_inference": using_real_inference,
            "using_mocks": using_mocks,
-           "test_type": "REAL INFERENCE" if (using_real_inference and not using_mocks) else "MOCK OBJECTS (CI/CD)"
+           "test_type": "REAL INFERENCE"
+           if (using_real_inference and not using_mocks)
+           else "MOCK OBJECTS (CI/CD)",
        }
    }
    ```

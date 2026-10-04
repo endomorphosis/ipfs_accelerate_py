@@ -62,9 +62,7 @@ def parse_argv_override(
     if isinstance(value, (list, tuple)):
         parts = [str(item) for item in value if str(item).strip()]
         return parts or None
-    raise TypeError(
-        f"command override must be str or sequence of str, got {type(value).__name__}"
-    )
+    raise TypeError(f"command override must be str or sequence of str, got {type(value).__name__}")
 
 
 def resolve_command_override_from_env(
@@ -147,9 +145,7 @@ class BaseCLIWrapper(ABC):
             return list(self._command_override)
         return [self.cli_path]
 
-    def set_command_override(
-        self, value: Optional[Union[str, Sequence[str]]]
-    ) -> None:
+    def set_command_override(self, value: Optional[Union[str, Sequence[str]]]) -> None:
         """Replace the operator command override (argv-only, shell-free)."""
         self._command_override = parse_argv_override(value)
 
@@ -165,20 +161,15 @@ class BaseCLIWrapper(ABC):
                 shell=False,
             )
             if result.returncode == 0:
-                logger.info(
-                    f"{self.get_tool_name()} version: {result.stdout.strip()}"
-                )
+                logger.info(f"{self.get_tool_name()} version: {result.stdout.strip()}")
                 self._verified = True
             else:
                 logger.warning(
-                    f"{self.get_tool_name()} verification returned non-zero: "
-                    f"{result.returncode}"
+                    f"{self.get_tool_name()} verification returned non-zero: {result.returncode}"
                 )
                 self._verified = False
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
-            logger.warning(
-                f"Could not verify {self.get_tool_name()} installation: {e}"
-            )
+            logger.warning(f"Could not verify {self.get_tool_name()} installation: {e}")
             self._verified = False
 
     def is_available(self, *, probe: bool = False) -> bool:
@@ -238,9 +229,7 @@ class BaseCLIWrapper(ABC):
         """
         timeout = timeout or self.default_timeout
         is_side_effecting = (
-            self.side_effecting_default
-            if side_effecting is None
-            else bool(side_effecting)
+            self.side_effecting_default if side_effecting is None else bool(side_effecting)
         )
         allow_cache = bool(self.enable_cache) and not is_side_effecting
         attempts_allowed = 1 if is_side_effecting else max(1, int(self.max_retries))
@@ -298,7 +287,7 @@ class BaseCLIWrapper(ABC):
             except subprocess.TimeoutExpired as e:
                 last_error = e
                 if attempt < attempts_allowed - 1:
-                    delay = min(2 ** attempt, 30)
+                    delay = min(2**attempt, 30)
                     logger.warning(
                         f"{self.get_tool_name()} timeout on attempt "
                         f"{attempt + 1}, retrying in {delay}s"

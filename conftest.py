@@ -45,20 +45,20 @@ def pytest_addoption(parser):
         "--run-model-tests",
         action="store_true",
         default=False,
-        help="Run HuggingFace model tests (gated by default to speed up framework testing)"
+        help="Run HuggingFace model tests (gated by default to speed up framework testing)",
     )
     parser.addoption(
         "--update-baselines",
         action="store_true",
         default=False,
-        help="Update performance baselines instead of comparing against them"
+        help="Update performance baselines instead of comparing against them",
     )
     parser.addoption(
         "--baseline-tolerance",
         action="store",
         default=0.20,
         type=float,
-        help="Performance regression tolerance (default: 0.20 = 20%%)"
+        help="Performance regression tolerance (default: 0.20 = 20%%)",
     )
 
 
@@ -125,7 +125,7 @@ def pytest_collection_modifyitems(config, items):
     if config.getoption("--run-model-tests"):
         # Model tests are enabled, don't skip anything
         return
-    
+
     skip_model_tests = pytest.mark.skip(reason="Model tests require --run-model-tests flag")
     for item in items:
         if "model_test" in item.keywords:

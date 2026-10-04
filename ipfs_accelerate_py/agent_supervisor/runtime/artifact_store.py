@@ -58,9 +58,7 @@ BUNDLE_PLANNING_TASK_OMIT_FIELDS = (
     "task_dependency_graph",
     "task_planning_graph",
 )
-PROOF_ATTESTATION_STORE_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.proof-attestation-store@1"
-)
+PROOF_ATTESTATION_STORE_SCHEMA = "ipfs_accelerate_py.agent_supervisor.proof-attestation-store@1"
 PROOF_ATTESTATIONS_KIND = PROOF_ATTESTATION_KIND
 PROOF_ATTESTATION_ARTIFACT_KIND = PROOF_ATTESTATION_KIND
 PROOF_ATTESTATION_ARTIFACT_SCHEMA = PROOF_ATTESTATION_STORE_SCHEMA
@@ -85,9 +83,7 @@ BOUNDED_ARTIFACT_MANIFEST_SCHEMA: Final = (
 BOUNDED_BLOB_REFERENCE_SCHEMA: Final = (
     "ipfs_accelerate_py.agent_supervisor.bounded-blob-reference@1"
 )
-BOUNDED_PROJECTION_SCHEMA: Final = (
-    "ipfs_accelerate_py.agent_supervisor.bounded-projection@1"
-)
+BOUNDED_PROJECTION_SCHEMA: Final = "ipfs_accelerate_py.agent_supervisor.bounded-projection@1"
 DEFAULT_ARTIFACT_STORE_MAX_BYTES: Final = 512 * 1024 * 1024
 DEFAULT_ARTIFACT_STORE_MAX_BLOBS: Final = 16_384
 DEFAULT_ARTIFACT_STORE_MAX_PROJECTIONS: Final = 4_096
@@ -238,13 +234,11 @@ class QueryableArtifactReference:
         unknown = sorted(set(value).difference(required))
         if missing:
             raise ValueError(
-                "queryable artifact reference is missing fields: "
-                + ", ".join(missing)
+                "queryable artifact reference is missing fields: " + ", ".join(missing)
             )
         if unknown:
             raise ValueError(
-                "queryable artifact reference has unknown fields: "
-                + ", ".join(unknown)
+                "queryable artifact reference has unknown fields: " + ", ".join(unknown)
             )
         return cls(
             artifact_id=value["artifact_id"],
@@ -316,9 +310,7 @@ class ArtifactOutcome(str, Enum):
         try:
             return aliases.get(normalized, cls(normalized))
         except ValueError as exc:
-            raise ValueError(
-                "outcome must be successful, negative, or inconclusive"
-            ) from exc
+            raise ValueError("outcome must be successful, negative, or inconclusive") from exc
 
     @property
     def can_complete(self) -> bool:
@@ -345,36 +337,23 @@ class ArtifactQuotaPolicy:
         for name in self.__dataclass_fields__:
             value = getattr(self, name)
             minimum = 0 if name == "min_free_bytes" else 1
-            if (
-                isinstance(value, bool)
-                or not isinstance(value, int)
-                or value < minimum
-            ):
+            if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
                 qualifier = "non-negative" if minimum == 0 else "positive"
                 raise ValueError(f"{name} must be a {qualifier} integer")
         if self.max_blob_bytes > self.max_bytes:
             raise ValueError("max_blob_bytes cannot exceed max_bytes")
         if self.max_receipt_bytes > MAX_RECEIPT_BYTES:
-            raise ValueError(
-                f"max_receipt_bytes cannot exceed {MAX_RECEIPT_BYTES}"
-            )
+            raise ValueError(f"max_receipt_bytes cannot exceed {MAX_RECEIPT_BYTES}")
         if self.max_projection_bytes > MAX_PROJECTION_BYTES:
-            raise ValueError(
-                f"max_projection_bytes cannot exceed {MAX_PROJECTION_BYTES}"
-            )
+            raise ValueError(f"max_projection_bytes cannot exceed {MAX_PROJECTION_BYTES}")
         if self.max_receipt_bytes > self.max_projection_bytes:
-            raise ValueError(
-                "max_receipt_bytes cannot exceed max_projection_bytes"
-            )
+            raise ValueError("max_receipt_bytes cannot exceed max_projection_bytes")
         for name in ("negative_ttl_seconds", "inconclusive_ttl_seconds"):
             if getattr(self, name) > self.max_ttl_seconds:
                 raise ValueError(f"{name} cannot exceed max_ttl_seconds")
 
     def to_dict(self) -> dict[str, int]:
-        return {
-            name: getattr(self, name)
-            for name in self.__dataclass_fields__
-        }
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
 
 
 ArtifactStoreQuota = ArtifactQuotaPolicy
@@ -395,25 +374,17 @@ class BlobReference:
 
     def __post_init__(self) -> None:
         if self.schema != BOUNDED_BLOB_REFERENCE_SCHEMA:
-            raise ArtifactBlobIntegrityError(
-                "unsupported bounded blob reference schema"
-            )
+            raise ArtifactBlobIntegrityError("unsupported bounded blob reference schema")
         if not _SHA256_DIGEST.fullmatch(str(self.digest)):
-            raise ArtifactBlobIntegrityError(
-                "blob digest must be sha256:<lowercase hex>"
-            )
+            raise ArtifactBlobIntegrityError("blob digest must be sha256:<lowercase hex>")
         if self.artifact_id != f"blob:{self.digest}":
-            raise ArtifactBlobIntegrityError(
-                "blob artifact_id does not match its digest"
-            )
+            raise ArtifactBlobIntegrityError("blob artifact_id does not match its digest")
         if (
             isinstance(self.size_bytes, bool)
             or not isinstance(self.size_bytes, int)
             or self.size_bytes < 0
         ):
-            raise ArtifactBlobIntegrityError(
-                "blob size_bytes must be a non-negative integer"
-            )
+            raise ArtifactBlobIntegrityError("blob size_bytes must be a non-negative integer")
         for name in ("kind", "media_type"):
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
@@ -457,9 +428,7 @@ class BlobReference:
             "references",
         }
         if set(value).difference(allowed):
-            raise ArtifactBlobIntegrityError(
-                "blob reference contains unsupported fields"
-            )
+            raise ArtifactBlobIntegrityError("blob reference contains unsupported fields")
         artifact_id = value.get("artifact_id") or value.get("blob_id") or ""
         return cls(
             schema=str(value.get("schema") or BOUNDED_BLOB_REFERENCE_SCHEMA),
@@ -467,9 +436,7 @@ class BlobReference:
             digest=str(value.get("digest") or ""),
             size_bytes=value.get("size_bytes", -1),
             kind=str(value.get("kind") or "artifact"),
-            media_type=str(
-                value.get("media_type") or "application/octet-stream"
-            ),
+            media_type=str(value.get("media_type") or "application/octet-stream"),
         )
 
 
@@ -507,18 +474,14 @@ class ProjectionReference:
             "outcome": self.outcome.value,
             "created_at_ms": self.created_at_ms,
             "expires_at_ms": self.expires_at_ms,
-            "artifact_references": [
-                item.to_dict() for item in self.artifact_references
-            ],
+            "artifact_references": [item.to_dict() for item in self.artifact_references],
             "can_complete": self.can_complete,
         }
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "ProjectionReference":
         if not isinstance(value, Mapping):
-            raise ArtifactBlobIntegrityError(
-                "projection reference must be an object"
-            )
+            raise ArtifactBlobIntegrityError("projection reference must be an object")
         return cls(
             schema=str(value.get("schema") or BOUNDED_PROJECTION_SCHEMA),
             artifact_id=str(value.get("artifact_id") or ""),
@@ -534,8 +497,7 @@ class ProjectionReference:
             created_at_ms=value.get("created_at_ms", -1),
             expires_at_ms=value.get("expires_at_ms"),
             artifact_references=tuple(
-                BlobReference.from_dict(item)
-                for item in value.get("artifact_references", ())
+                BlobReference.from_dict(item) for item in value.get("artifact_references", ())
             ),
         )
 
@@ -547,45 +509,31 @@ class ProjectionReference:
                 RetentionClass(str(self.retention_class)),
             )
         if not isinstance(self.outcome, ArtifactOutcome):
-            object.__setattr__(
-                self, "outcome", ArtifactOutcome.coerce(self.outcome)
-            )
+            object.__setattr__(self, "outcome", ArtifactOutcome.coerce(self.outcome))
         if self.schema != BOUNDED_PROJECTION_SCHEMA:
-            raise ArtifactBlobIntegrityError(
-                "unsupported bounded projection schema"
-            )
+            raise ArtifactBlobIntegrityError("unsupported bounded projection schema")
         if not _SHA256_DIGEST.fullmatch(str(self.digest)):
-            raise ArtifactBlobIntegrityError(
-                "projection digest must be sha256:<lowercase hex>"
-            )
+            raise ArtifactBlobIntegrityError("projection digest must be sha256:<lowercase hex>")
         if self.artifact_id != f"projection:{self.digest}":
-            raise ArtifactBlobIntegrityError(
-                "projection artifact_id does not match its digest"
-            )
+            raise ArtifactBlobIntegrityError("projection artifact_id does not match its digest")
         if (
             isinstance(self.size_bytes, bool)
             or not isinstance(self.size_bytes, int)
             or self.size_bytes < 1
         ):
-            raise ArtifactBlobIntegrityError(
-                "projection size_bytes must be positive"
-            )
+            raise ArtifactBlobIntegrityError("projection size_bytes must be positive")
         if (
             isinstance(self.created_at_ms, bool)
             or not isinstance(self.created_at_ms, int)
             or self.created_at_ms < 0
         ):
-            raise ArtifactBlobIntegrityError(
-                "projection created_at_ms must be non-negative"
-            )
+            raise ArtifactBlobIntegrityError("projection created_at_ms must be non-negative")
         if self.expires_at_ms is not None and (
             isinstance(self.expires_at_ms, bool)
             or not isinstance(self.expires_at_ms, int)
             or self.expires_at_ms <= self.created_at_ms
         ):
-            raise ArtifactBlobIntegrityError(
-                "projection expires_at_ms must follow created_at_ms"
-            )
+            raise ArtifactBlobIntegrityError("projection expires_at_ms must follow created_at_ms")
         if not self.outcome.can_complete and self.expires_at_ms is None:
             raise ArtifactBlobIntegrityError(
                 "negative and inconclusive projections require finite expiry"
@@ -618,10 +566,7 @@ class ArtifactStoreMetrics:
     manifest_recoveries: int = 0
 
     def to_dict(self) -> dict[str, int]:
-        return {
-            name: getattr(self, name)
-            for name in self.__dataclass_fields__
-        }
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
 
 
 @dataclass(frozen=True)
@@ -667,37 +612,27 @@ def _bounded_canonical_bytes(
             allow_nan=False,
         ).encode("utf-8")
     except (TypeError, ValueError, RecursionError) as exc:
-        raise ArtifactBlobIntegrityError(
-            f"{label} must contain canonical JSON values"
-        ) from exc
+        raise ArtifactBlobIntegrityError(f"{label} must contain canonical JSON values") from exc
     if len(payload) > maximum:
-        raise ArtifactPayloadTooLarge(
-            f"{label} exceeds {maximum} bytes"
-        )
+        raise ArtifactPayloadTooLarge(f"{label} exceeds {maximum} bytes")
     return payload
 
 
 def enforce_receipt_bound(value: Any) -> bytes:
     """Return canonical receipt bytes after enforcing the 256 KiB ceiling."""
 
-    return _bounded_canonical_bytes(
-        value, maximum=MAX_RECEIPT_BYTES, label="receipt"
-    )
+    return _bounded_canonical_bytes(value, maximum=MAX_RECEIPT_BYTES, label="receipt")
 
 
 def enforce_projection_bound(value: Any) -> bytes:
     """Return canonical routine projection bytes after enforcing 1 MiB."""
 
-    return _bounded_canonical_bytes(
-        value, maximum=MAX_PROJECTION_BYTES, label="routine projection"
-    )
+    return _bounded_canonical_bytes(value, maximum=MAX_PROJECTION_BYTES, label="routine projection")
 
 
 def _atomic_write_bytes(path: Path, payload: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    descriptor, temporary = tempfile.mkstemp(
-        prefix=f".{path.name}.", dir=path.parent
-    )
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     try:
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(payload)
@@ -777,9 +712,7 @@ class BoundedArtifactStore:
         self._eviction_observer = eviction_observer
         self._thread_lock = _bounded_store_lock(self.lock_path)
         self._metrics_lock = threading.Lock()
-        self._metric_values = {
-            name: 0 for name in ArtifactStoreMetrics.__dataclass_fields__
-        }
+        self._metric_values = {name: 0 for name in ArtifactStoreMetrics.__dataclass_fields__}
         self._closed = False
         with self._locked():
             self._manifest = self._load_or_recover_manifest()
@@ -812,13 +745,16 @@ class BoundedArtifactStore:
     def _manifest_digest(value: Mapping[str, Any]) -> str:
         body = dict(value)
         body.pop("manifest_digest", None)
-        return "sha256:" + hashlib.sha256(
-            _bounded_canonical_bytes(
-                body,
-                maximum=DEFAULT_ARTIFACT_BLOB_MAX_BYTES,
-                label="artifact manifest",
-            )
-        ).hexdigest()
+        return (
+            "sha256:"
+            + hashlib.sha256(
+                _bounded_canonical_bytes(
+                    body,
+                    maximum=DEFAULT_ARTIFACT_BLOB_MAX_BYTES,
+                    label="artifact manifest",
+                )
+            ).hexdigest()
+        )
 
     def _empty_manifest(self) -> dict[str, Any]:
         value: dict[str, Any] = {
@@ -875,15 +811,16 @@ class BoundedArtifactStore:
                     maximum=self.quotas.max_projection_bytes,
                     label="stored projection",
                 )
-                if self._projection_digest(
-                    wrapper["payload"],
-                    projection_kind=reference.projection_kind,
-                    retention_class=reference.retention_class,
-                    outcome=reference.outcome,
-                ) != reference.digest:
-                    raise ArtifactBlobIntegrityError(
-                        "stored projection digest mismatch"
+                if (
+                    self._projection_digest(
+                        wrapper["payload"],
+                        projection_kind=reference.projection_kind,
+                        retention_class=reference.retention_class,
+                        outcome=reference.outcome,
                     )
+                    != reference.digest
+                ):
+                    raise ArtifactBlobIntegrityError("stored projection digest mismatch")
             except (
                 OSError,
                 KeyError,
@@ -899,9 +836,7 @@ class BoundedArtifactStore:
                 changed = True
                 continue
             if reference.artifact_id not in projections:
-                projections[reference.artifact_id] = self._projection_metadata(
-                    reference
-                )
+                projections[reference.artifact_id] = self._projection_metadata(reference)
                 changed = True
             for blob_ref in reference.artifact_references:
                 metadata = blobs.get(blob_ref.artifact_id)
@@ -976,11 +911,14 @@ class BoundedArtifactStore:
         manifest["generation"] = int(manifest.get("generation", 0)) + 1
         manifest["updated_at_ms"] = self._now_ms()
         manifest["manifest_digest"] = self._manifest_digest(manifest)
-        encoded = _bounded_canonical_bytes(
-            manifest,
-            maximum=DEFAULT_ARTIFACT_BLOB_MAX_BYTES,
-            label="artifact manifest",
-        ) + b"\n"
+        encoded = (
+            _bounded_canonical_bytes(
+                manifest,
+                maximum=DEFAULT_ARTIFACT_BLOB_MAX_BYTES,
+                label="artifact manifest",
+            )
+            + b"\n"
+        )
         if preserve_previous and self.manifest_path.exists():
             current = self._decode_manifest(self.manifest_path)
             if current is not None:
@@ -1000,28 +938,18 @@ class BoundedArtifactStore:
         return digest
 
     def _blob_path(self, reference: BlobReference | str) -> Path:
-        artifact_id = (
-            reference.artifact_id
-            if isinstance(reference, BlobReference)
-            else reference
-        )
+        artifact_id = reference.artifact_id if isinstance(reference, BlobReference) else reference
         digest = self._digest_hex(artifact_id, "blob:sha256:")
         return self.blobs_path / digest[:2] / f"{digest}.blob"
 
-    def _projection_path(
-        self, reference: ProjectionReference | str
-    ) -> Path:
+    def _projection_path(self, reference: ProjectionReference | str) -> Path:
         artifact_id = (
-            reference.artifact_id
-            if isinstance(reference, ProjectionReference)
-            else reference
+            reference.artifact_id if isinstance(reference, ProjectionReference) else reference
         )
         digest = self._digest_hex(artifact_id, "projection:sha256:")
         return self.projections_path / digest[:2] / f"{digest}.json"
 
-    def _coerce_retention(
-        self, value: RetentionClass | str
-    ) -> RetentionClass:
+    def _coerce_retention(self, value: RetentionClass | str) -> RetentionClass:
         return value if isinstance(value, RetentionClass) else RetentionClass(str(value))
 
     def _expiry(
@@ -1031,9 +959,7 @@ class BoundedArtifactStore:
         now_ms: int,
     ) -> int | None:
         if ttl_seconds is not None and (
-            isinstance(ttl_seconds, bool)
-            or not isinstance(ttl_seconds, int)
-            or ttl_seconds < 1
+            isinstance(ttl_seconds, bool) or not isinstance(ttl_seconds, int) or ttl_seconds < 1
         ):
             raise ValueError("ttl_seconds must be a positive integer or None")
         if outcome is ArtifactOutcome.NEGATIVE:
@@ -1077,9 +1003,7 @@ class BoundedArtifactStore:
     def _usage(self) -> tuple[int, int, int]:
         blobs = self._manifest["blobs"]
         projections = self._manifest["projections"]
-        total = sum(
-            int(item.get("size_bytes", 0)) for item in blobs.values()
-        ) + sum(
+        total = sum(int(item.get("size_bytes", 0)) for item in blobs.values()) + sum(
             int(item.get("size_bytes", 0)) for item in projections.values()
         )
         return total, len(blobs), len(projections)
@@ -1095,8 +1019,7 @@ class BoundedArtifactStore:
         return (
             total + additional_bytes <= self.quotas.max_bytes
             and blobs + additional_blobs <= self.quotas.max_blobs
-            and projections + additional_projections
-            <= self.quotas.max_projections
+            and projections + additional_projections <= self.quotas.max_projections
             and not self._disk_pressure(additional_bytes)
         )
 
@@ -1153,9 +1076,7 @@ class BoundedArtifactStore:
                 "artifact write rejected by the configured disk-free reserve"
             )
         self._increment("quota_rejections")
-        raise ArtifactQuotaExceeded(
-            "artifact write exceeds aggregate persistence quota"
-        )
+        raise ArtifactQuotaExceeded("artifact write exceeds aggregate persistence quota")
 
     def put_blob(
         self,
@@ -1210,9 +1131,7 @@ class BoundedArtifactStore:
                 existing["last_accessed_at_ms"] = now_ms
                 self._increment("deduplicated_blob_writes")
                 return current
-            self._ensure_capacity(
-                additional_bytes=len(data), additional_blobs=1
-            )
+            self._ensure_capacity(additional_bytes=len(data), additional_blobs=1)
             try:
                 _atomic_write_bytes(self._blob_path(reference), data)
             except OSError as exc:
@@ -1244,9 +1163,8 @@ class BoundedArtifactStore:
         if not isinstance(value, Mapping):
             return False
         return (
-            ("artifact_id" in value or "blob_id" in value or "cid" in value)
-            and "digest" in value
-        )
+            "artifact_id" in value or "blob_id" in value or "cid" in value
+        ) and "digest" in value
 
     @staticmethod
     def _validate_shallow_reference(value: Mapping[str, Any]) -> dict[str, Any]:
@@ -1257,12 +1175,8 @@ class BoundedArtifactStore:
                 + ", ".join(sorted(body_fields))
             )
         for item in value.values():
-            if isinstance(item, Mapping) and set(item).intersection(
-                _REFERENCE_BODY_FIELDS
-            ):
-                raise ArtifactBlobIntegrityError(
-                    "artifact references cannot contain nested bodies"
-                )
+            if isinstance(item, Mapping) and set(item).intersection(_REFERENCE_BODY_FIELDS):
+                raise ArtifactBlobIntegrityError("artifact references cannot contain nested bodies")
         return dict(value)
 
     def project_payload(
@@ -1299,10 +1213,7 @@ class BoundedArtifactStore:
                     )
                 active.add(identity)
                 try:
-                    return {
-                        str(key): visit(item, str(key))
-                        for key, item in value.items()
-                    }
+                    return {str(key): visit(item, str(key)) for key, item in value.items()}
                 finally:
                     active.remove(identity)
             if isinstance(value, (list, tuple)):
@@ -1330,9 +1241,7 @@ class BoundedArtifactStore:
             )
 
         projected = visit(payload)
-        return projected, tuple(
-            references[key] for key in sorted(references)
-        )
+        return projected, tuple(references[key] for key in sorted(references))
 
     externalize_payload = project_payload
 
@@ -1398,11 +1307,7 @@ class BoundedArtifactStore:
         encoded = _bounded_canonical_bytes(
             projected,
             maximum=maximum,
-            label=(
-                "receipt"
-                if maximum <= self.quotas.max_receipt_bytes
-                else "routine projection"
-            ),
+            label=("receipt" if maximum <= self.quotas.max_receipt_bytes else "routine projection"),
         )
         digest = self._projection_digest(
             projected,
@@ -1419,9 +1324,7 @@ class BoundedArtifactStore:
             retention_class=selected_retention,
             outcome=record_outcome,
             created_at_ms=now_ms,
-            expires_at_ms=self._expiry(
-                record_outcome, ttl_seconds, now_ms
-            ),
+            expires_at_ms=self._expiry(record_outcome, ttl_seconds, now_ms),
             artifact_references=references,
         )
         wrapper = {
@@ -1429,16 +1332,16 @@ class BoundedArtifactStore:
             "reference": reference.to_dict(),
             "payload": projected,
         }
-        wrapper_bytes = _bounded_canonical_bytes(
-            wrapper,
-            maximum=self.quotas.max_projection_bytes
-            + self.quotas.max_receipt_bytes,
-            label="stored projection envelope",
-        ) + b"\n"
-        with self._locked():
-            existing = self._manifest["projections"].get(
-                reference.artifact_id
+        wrapper_bytes = (
+            _bounded_canonical_bytes(
+                wrapper,
+                maximum=self.quotas.max_projection_bytes + self.quotas.max_receipt_bytes,
+                label="stored projection envelope",
             )
+            + b"\n"
+        )
+        with self._locked():
+            existing = self._manifest["projections"].get(reference.artifact_id)
             if existing is not None:
                 existing_reference = ProjectionReference.from_dict(existing)
                 if (
@@ -1446,30 +1349,20 @@ class BoundedArtifactStore:
                     or now_ms < existing_reference.expires_at_ms
                 ):
                     return existing_reference
-                self._evict_projection(
-                    existing_reference.artifact_id, reason="expired"
-                )
+                self._evict_projection(existing_reference.artifact_id, reason="expired")
             staged_blob_metadata: list[dict[str, Any]] = []
             for blob_reference in references:
-                metadata = self._manifest["blobs"].get(
-                    blob_reference.artifact_id
-                )
+                metadata = self._manifest["blobs"].get(blob_reference.artifact_id)
                 if metadata is None:
-                    raise ArtifactBlobIntegrityError(
-                        "projection references a missing blob"
-                    )
+                    raise ArtifactBlobIntegrityError("projection references a missing blob")
                 owners = set(metadata.get("references", ()))
                 owners.add(reference.artifact_id)
                 metadata["references"] = sorted(owners)
                 staged_blob_metadata.append(metadata)
             try:
-                self._ensure_capacity(
-                    additional_bytes=len(encoded), additional_projections=1
-                )
+                self._ensure_capacity(additional_bytes=len(encoded), additional_projections=1)
                 try:
-                    _atomic_write_bytes(
-                        self._projection_path(reference), wrapper_bytes
-                    )
+                    _atomic_write_bytes(self._projection_path(reference), wrapper_bytes)
                 except OSError as exc:
                     if exc.errno in {errno.ENOSPC, errno.EDQUOT}:
                         self._increment("disk_pressure_rejections")
@@ -1483,8 +1376,8 @@ class BoundedArtifactStore:
                     owners.discard(reference.artifact_id)
                     metadata["references"] = sorted(owners)
                 raise
-            self._manifest["projections"][reference.artifact_id] = (
-                self._projection_metadata(reference)
+            self._manifest["projections"][reference.artifact_id] = self._projection_metadata(
+                reference
             )
             self._write_manifest(self._manifest)
             self._increment("writes")
@@ -1501,13 +1394,9 @@ class BoundedArtifactStore:
         supplied = kwargs.pop("projection_kind", "receipt")
         if "receipt" not in str(supplied).casefold():
             supplied = f"{supplied}_receipt"
-        return self.store_projection(
-            payload, projection_kind=str(supplied), **kwargs
-        )
+        return self.store_projection(payload, projection_kind=str(supplied), **kwargs)
 
-    def store_routine_projection(
-        self, payload: Any, **kwargs: Any
-    ) -> ProjectionReference:
+    def store_routine_projection(self, payload: Any, **kwargs: Any) -> ProjectionReference:
         """Persist one ordinary projection under the 1 MiB bound."""
 
         return self.store_projection(
@@ -1528,9 +1417,7 @@ class BoundedArtifactStore:
             raise ArtifactBlobIntegrityError("blob reference is unknown")
         return BlobReference.from_dict(metadata)
 
-    def verify_blob(
-        self, value: BlobReference | Mapping[str, Any] | str
-    ) -> bool:
+    def verify_blob(self, value: BlobReference | Mapping[str, Any] | str) -> bool:
         try:
             reference = self._coerce_blob_reference(value)
             data = self._blob_path(reference).read_bytes()
@@ -1538,8 +1425,7 @@ class BoundedArtifactStore:
             return False
         return (
             len(data) == reference.size_bytes
-            and "sha256:" + hashlib.sha256(data).hexdigest()
-            == reference.digest
+            and "sha256:" + hashlib.sha256(data).hexdigest() == reference.digest
         )
 
     verify = verify_blob
@@ -1556,13 +1442,10 @@ class BoundedArtifactStore:
             try:
                 data = self._blob_path(reference).read_bytes()
             except OSError as exc:
-                raise ArtifactBlobIntegrityError(
-                    "referenced blob is missing"
-                ) from exc
+                raise ArtifactBlobIntegrityError("referenced blob is missing") from exc
             if (
                 len(data) != reference.size_bytes
-                or "sha256:" + hashlib.sha256(data).hexdigest()
-                != reference.digest
+                or "sha256:" + hashlib.sha256(data).hexdigest() != reference.digest
             ):
                 self._increment("corruption_recoveries")
                 raise ArtifactBlobIntegrityError(
@@ -1604,19 +1487,12 @@ class BoundedArtifactStore:
         self._assert_open()
         with self._locked():
             reference = self._coerce_projection_reference(value)
-            if (
-                reference.expires_at_ms is not None
-                and self._now_ms() >= reference.expires_at_ms
-            ):
+            if reference.expires_at_ms is not None and self._now_ms() >= reference.expires_at_ms:
                 raise ArtifactBlobIntegrityError("projection has expired")
             try:
-                wrapper = json.loads(
-                    self._projection_path(reference).read_text(encoding="utf-8")
-                )
+                wrapper = json.loads(self._projection_path(reference).read_text(encoding="utf-8"))
             except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-                raise ArtifactBlobIntegrityError(
-                    "stored projection is missing or corrupt"
-                ) from exc
+                raise ArtifactBlobIntegrityError("stored projection is missing or corrupt") from exc
             encoded = _bounded_canonical_bytes(
                 wrapper.get("payload"),
                 maximum=self.quotas.max_projection_bytes,
@@ -1663,12 +1539,11 @@ class BoundedArtifactStore:
             "reason": reason,
             "retention_class": retention_class,
         }
-        encoded = _bounded_canonical_bytes(
-            event, maximum=MAX_RECEIPT_BYTES, label="eviction event"
-        ) + b"\n"
-        self.eviction_log_path.parent.mkdir(
-            parents=True, exist_ok=True, mode=0o700
+        encoded = (
+            _bounded_canonical_bytes(event, maximum=MAX_RECEIPT_BYTES, label="eviction event")
+            + b"\n"
         )
+        self.eviction_log_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         with self.eviction_log_path.open("ab") as stream:
             stream.write(encoded)
             stream.flush()
@@ -1676,9 +1551,7 @@ class BoundedArtifactStore:
         if self._eviction_observer is not None:
             self._eviction_observer(dict(event))
 
-    def _evict_projection(
-        self, artifact_id: str, *, reason: str
-    ) -> tuple[int, str]:
+    def _evict_projection(self, artifact_id: str, *, reason: str) -> tuple[int, str]:
         metadata = self._manifest["projections"].pop(artifact_id)
         reference = ProjectionReference.from_dict(metadata)
         try:
@@ -1686,9 +1559,7 @@ class BoundedArtifactStore:
         except FileNotFoundError:
             pass
         for blob_reference in reference.artifact_references:
-            blob_metadata = self._manifest["blobs"].get(
-                blob_reference.artifact_id
-            )
+            blob_metadata = self._manifest["blobs"].get(blob_reference.artifact_id)
             if blob_metadata is not None:
                 owners = set(blob_metadata.get("references", ()))
                 owners.discard(artifact_id)
@@ -1701,18 +1572,14 @@ class BoundedArtifactStore:
         )
         return reference.size_bytes, reference.retention_class.value
 
-    def _evict_blob(
-        self, artifact_id: str, *, reason: str
-    ) -> tuple[int, str]:
+    def _evict_blob(self, artifact_id: str, *, reason: str) -> tuple[int, str]:
         metadata = self._manifest["blobs"].pop(artifact_id)
         reference = BlobReference.from_dict(metadata)
         try:
             self._blob_path(reference).unlink()
         except FileNotFoundError:
             pass
-        retention = str(
-            metadata.get("retention_class") or RetentionClass.ROUTINE.value
-        )
+        retention = str(metadata.get("retention_class") or RetentionClass.ROUTINE.value)
         self._emit_eviction(
             artifact_id=artifact_id,
             size_bytes=reference.size_bytes,
@@ -1748,16 +1615,11 @@ class BoundedArtifactStore:
         candidates: list[tuple[int, int, str, str, Mapping[str, Any]]] = []
         for artifact_id, metadata in self._manifest["projections"].items():
             retention = RetentionClass(
-                str(
-                    metadata.get("retention_class")
-                    or RetentionClass.ROUTINE.value
-                )
+                str(metadata.get("retention_class") or RetentionClass.ROUTINE.value)
             )
             expires_at = metadata.get("expires_at_ms")
             expired = isinstance(expires_at, int) and now_ms >= expires_at
-            if expired or (
-                force_quota and retention is not RetentionClass.PINNED
-            ):
+            if expired or (force_quota and retention is not RetentionClass.PINNED):
                 candidates.append(
                     (
                         0 if expired else 1,
@@ -1771,16 +1633,11 @@ class BoundedArtifactStore:
             if metadata.get("references"):
                 continue
             retention = RetentionClass(
-                str(
-                    metadata.get("retention_class")
-                    or RetentionClass.ROUTINE.value
-                )
+                str(metadata.get("retention_class") or RetentionClass.ROUTINE.value)
             )
             expires_at = metadata.get("expires_at_ms")
             expired = isinstance(expires_at, int) and now_ms >= expires_at
-            if expired or (
-                force_quota and retention is not RetentionClass.PINNED
-            ):
+            if expired or (force_quota and retention is not RetentionClass.PINNED):
                 candidates.append(
                     (
                         0 if expired else 1,
@@ -1794,11 +1651,7 @@ class BoundedArtifactStore:
             key=lambda item: (
                 item[0],
                 item[1],
-                int(
-                    item[4].get("last_accessed_at_ms")
-                    or item[4].get("created_at_ms")
-                    or 0
-                ),
+                int(item[4].get("last_accessed_at_ms") or item[4].get("created_at_ms") or 0),
                 item[2],
             )
         )
@@ -1815,11 +1668,8 @@ class BoundedArtifactStore:
             if scanned >= max_items:
                 break
             scanned += 1
-            if (
-                expiry_rank != 0
-                and self._quota_satisfied(
-                    reserve_bytes, reserve_blobs, reserve_projections
-                )
+            if expiry_rank != 0 and self._quota_satisfied(
+                reserve_bytes, reserve_blobs, reserve_projections
             ):
                 continue
             if kind == "projection":
@@ -1839,9 +1689,7 @@ class BoundedArtifactStore:
                 expired_count += 1
             else:
                 quota_count += 1
-        self._manifest["compaction_cursor"] = (
-            (cursor + scanned) % max(1, len(candidates))
-        )
+        self._manifest["compaction_cursor"] = (cursor + scanned) % max(1, len(candidates))
         if evicted or scanned:
             self._write_manifest(self._manifest)
         self._increment("compactions")
@@ -1877,9 +1725,7 @@ class BoundedArtifactStore:
             raise ValueError("pass max_items or limit, not both")
         with self._locked():
             return self._compact_locked(
-                max_items=max_items
-                or limit
-                or self.quotas.compaction_batch_size,
+                max_items=max_items or limit or self.quotas.compaction_batch_size,
                 force_quota=force_quota,
             )
 
@@ -1894,9 +1740,7 @@ class BoundedArtifactStore:
 
     def eviction_events(self) -> list[dict[str, Any]]:
         try:
-            lines = self.eviction_log_path.read_text(
-                encoding="utf-8"
-            ).splitlines()
+            lines = self.eviction_log_path.read_text(encoding="utf-8").splitlines()
         except OSError:
             return []
         events: list[dict[str, Any]] = []
@@ -1920,12 +1764,10 @@ class BoundedArtifactStore:
 
         with self._locked():
             blob_bytes = sum(
-                int(item.get("size_bytes", 0))
-                for item in self._manifest["blobs"].values()
+                int(item.get("size_bytes", 0)) for item in self._manifest["blobs"].values()
             )
             projection_bytes = sum(
-                int(item.get("size_bytes", 0))
-                for item in self._manifest["projections"].values()
+                int(item.get("size_bytes", 0)) for item in self._manifest["projections"].values()
             )
             try:
                 disk_free_bytes = shutil.disk_usage(self.path).free
@@ -1984,13 +1826,9 @@ def query_artifact_paths(path: Path | str) -> QueryArtifactPaths:
     resolved = Path(path).resolve()
     suffix = resolved.suffix.lower()
     if suffix == ".duckdb":
-        return QueryArtifactPaths(
-            json_path=resolved.with_suffix(".json"), duckdb_path=resolved
-        )
+        return QueryArtifactPaths(json_path=resolved.with_suffix(".json"), duckdb_path=resolved)
     if suffix == ".json":
-        return QueryArtifactPaths(
-            json_path=resolved, duckdb_path=resolved.with_suffix(".duckdb")
-        )
+        return QueryArtifactPaths(json_path=resolved, duckdb_path=resolved.with_suffix(".duckdb"))
     raise ValueError(f"queryable artifacts require a .json or .duckdb path: {resolved}")
 
 
@@ -1998,9 +1836,7 @@ def _duckdb_module() -> Any:
     try:
         import duckdb
     except ImportError as exc:  # pragma: no cover - declared runtime dependency
-        raise RuntimeError(
-            "DuckDB is required for queryable supervisor artifacts"
-        ) from exc
+        raise RuntimeError("DuckDB is required for queryable supervisor artifacts") from exc
     return duckdb
 
 
@@ -2029,9 +1865,7 @@ def _artifact_write_lock(database_path: Path) -> Iterator[None]:
                 break
             except BlockingIOError:
                 if time.monotonic() >= deadline:
-                    raise TimeoutError(
-                        f"timed out acquiring query artifact lock: {lock_path}"
-                    )
+                    raise TimeoutError(f"timed out acquiring query artifact lock: {lock_path}")
                 time.sleep(0.01)
         yield
     finally:
@@ -2084,9 +1918,7 @@ def _string_values(value: Any) -> list[str]:
 
 def _atomic_write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(
-        f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp"
-    )
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
     try:
         temporary.write_text(text, encoding="utf-8")
         os.replace(temporary, path)
@@ -2096,13 +1928,9 @@ def _atomic_write_text(path: Path, text: str) -> None:
 
 def _artifact_kind(payload: Mapping[str, Any]) -> str:
     schema = str(payload.get("schema") or "")
-    if schema == PROOF_ATTESTATION_STORE_SCHEMA and isinstance(
-        payload.get("attestations"), list
-    ):
+    if schema == PROOF_ATTESTATION_STORE_SCHEMA and isinstance(payload.get("attestations"), list):
         return PROOF_ATTESTATION_KIND
-    if schema.startswith(
-        "ipfs_accelerate_py.agent_supervisor.proof-metrics@"
-    ) or all(
+    if schema.startswith("ipfs_accelerate_py.agent_supervisor.proof-metrics@") or all(
         key in payload
         for key in ("obligations", "attempts", "receipts", "cache_outcomes", "metrics")
     ):
@@ -2223,9 +2051,7 @@ def _bundle_schema(connection: Any) -> None:
         )
         """)
     connection.execute("CREATE INDEX bundle_tasks_task_id_idx ON bundle_tasks(task_id)")
-    connection.execute(
-        "CREATE INDEX bundle_tasks_cid_idx ON bundle_tasks(canonical_task_cid)"
-    )
+    connection.execute("CREATE INDEX bundle_tasks_cid_idx ON bundle_tasks(canonical_task_cid)")
     connection.execute("""
         CREATE VIEW open_bundle_tasks AS
         SELECT * FROM bundle_tasks
@@ -2347,13 +2173,9 @@ def _manifest_schema(connection: Any) -> None:
             task_count BIGINT NOT NULL
         )
         """)
-    connection.execute(
-        "CREATE INDEX manifest_tasks_cid_idx ON manifest_tasks(task_cid)"
-    )
+    connection.execute("CREATE INDEX manifest_tasks_cid_idx ON manifest_tasks(task_cid)")
     connection.execute("CREATE INDEX manifest_tasks_state_idx ON manifest_tasks(state)")
-    connection.execute(
-        "CREATE INDEX manifest_lanes_key_idx ON manifest_lanes(bundle_key)"
-    )
+    connection.execute("CREATE INDEX manifest_lanes_key_idx ON manifest_lanes(bundle_key)")
     connection.execute(
         "CREATE INDEX scheduler_task_states_cid_idx ON scheduler_task_states(task_cid)"
     )
@@ -2432,16 +2254,13 @@ def _code_evidence_graph_schema(connection: Any) -> None:
     # and explicit ``code_evidence_*`` aliases are kept for callers composing
     # SQL across multiple supervisor artifact kinds.
     connection.execute(
-        "CREATE VIEW task_index AS SELECT * FROM evidence_nodes "
-        "WHERE node_kind = 'task'"
+        "CREATE VIEW task_index AS SELECT * FROM evidence_nodes WHERE node_kind = 'task'"
     )
     connection.execute(
-        "CREATE VIEW tree_index AS SELECT * FROM evidence_nodes "
-        "WHERE node_kind = 'tree'"
+        "CREATE VIEW tree_index AS SELECT * FROM evidence_nodes WHERE node_kind = 'tree'"
     )
     connection.execute(
-        "CREATE VIEW symbol_index AS SELECT * FROM evidence_nodes "
-        "WHERE node_kind = 'symbol'"
+        "CREATE VIEW symbol_index AS SELECT * FROM evidence_nodes WHERE node_kind = 'symbol'"
     )
     connection.execute(
         "CREATE VIEW obligation_index AS SELECT * FROM evidence_nodes "
@@ -2528,12 +2347,10 @@ def _proof_attestation_schema(connection: Any) -> None:
         )
         """)
     connection.execute(
-        "CREATE INDEX proof_attestations_receipt_idx "
-        "ON proof_attestations(proof_receipt_id)"
+        "CREATE INDEX proof_attestations_receipt_idx ON proof_attestations(proof_receipt_id)"
     )
     connection.execute(
-        "CREATE INDEX proof_attestations_expiry_idx "
-        "ON proof_attestations(expires_at)"
+        "CREATE INDEX proof_attestations_expiry_idx ON proof_attestations(expires_at)"
     )
 
 
@@ -2741,9 +2558,7 @@ def _proof_metrics_schema(connection: Any) -> None:
         ("proof_attempts", "attempt_id"),
         ("proof_receipts", "receipt_id"),
     ):
-        connection.execute(
-            f"CREATE INDEX {table}_{identifier}_idx ON {table}({identifier})"
-        )
+        connection.execute(f"CREATE INDEX {table}_{identifier}_idx ON {table}({identifier})")
     for alias, source in (
         ("obligations", "proof_obligations"),
         ("attempts", "proof_attempts"),
@@ -2759,9 +2574,7 @@ def _proof_metrics_schema(connection: Any) -> None:
         connection.execute(f"CREATE VIEW {alias} AS SELECT * FROM {source}")
 
 
-def _top_level_fields(
-    payload: Mapping[str, Any], kind: str
-) -> Iterable[tuple[str, str]]:
+def _top_level_fields(payload: Mapping[str, Any], kind: str) -> Iterable[tuple[str, str]]:
     if kind == PROOF_ATTESTATION_KIND:
         for key, value in payload.items():
             if key != "attestations":
@@ -2836,9 +2649,7 @@ def _mapping_items(value: Any) -> list[Mapping[str, Any]]:
 
 
 def _populate_bundle_tables(connection: Any, payload: Mapping[str, Any]) -> None:
-    bundles = (
-        payload.get("bundles") if isinstance(payload.get("bundles"), Mapping) else {}
-    )
+    bundles = payload.get("bundles") if isinstance(payload.get("bundles"), Mapping) else {}
     bundle_rows: list[tuple[Any, ...]] = []
     task_rows: list[tuple[Any, ...]] = []
     dependency_rows: list[tuple[Any, ...]] = []
@@ -2846,9 +2657,7 @@ def _populate_bundle_tables(connection: Any, payload: Mapping[str, Any]) -> None
         if not isinstance(raw_bundle, Mapping):
             continue
         tasks = _mapping_items(raw_bundle.get("tasks"))
-        bundle_payload = {
-            key: value for key, value in raw_bundle.items() if key != "tasks"
-        }
+        bundle_payload = {key: value for key, value in raw_bundle.items() if key != "tasks"}
         bundle_rows.append(
             (
                 str(bundle_key),
@@ -2887,9 +2696,7 @@ def _populate_bundle_tables(connection: Any, payload: Mapping[str, Any]) -> None
                     for dependency_id in _string_values(task.get(dependency_kind))
                 )
     if bundle_rows:
-        connection.executemany(
-            "INSERT INTO bundles VALUES (?, ?, ?, ?, ?, ?, ?)", bundle_rows
-        )
+        connection.executemany("INSERT INTO bundles VALUES (?, ?, ?, ?, ?, ?, ?)", bundle_rows)
     if task_rows:
         connection.executemany(
             "INSERT INTO bundle_tasks VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -2900,9 +2707,7 @@ def _populate_bundle_tables(connection: Any, payload: Mapping[str, Any]) -> None
             "INSERT INTO bundle_task_dependencies VALUES (?, ?, ?, ?)", dependency_rows
         )
 
-    dependency_graph = _graph_mapping(
-        payload, "task_dependency_graph", "dependency_dag"
-    )
+    dependency_graph = _graph_mapping(payload, "task_dependency_graph", "dependency_dag")
     dependency_edges = _mapping_items(dependency_graph.get("edges"))
     if dependency_edges:
         connection.executemany(
@@ -3063,17 +2868,9 @@ def _populate_manifest_tables(connection: Any, payload: Mapping[str, Any]) -> No
                     str(item.get("task_cid") or item.get("canonical_task_cid") or ""),
                     str(item.get("task_id") or ""),
                     str(item.get("goal_cid") or item.get("canonical_goal_id") or ""),
-                    str(
-                        item.get("subgoal_cid")
-                        or item.get("canonical_subgoal_id")
-                        or ""
-                    ),
+                    str(item.get("subgoal_cid") or item.get("canonical_subgoal_id") or ""),
                     str(item.get("lane_id") or item.get("canonical_lane_id") or ""),
-                    str(
-                        item.get("provider_id")
-                        or item.get("canonical_provider_id")
-                        or ""
-                    ),
+                    str(item.get("provider_id") or item.get("canonical_provider_id") or ""),
                     str(item.get("phase") or ""),
                     str(item.get("status") or ""),
                     str(item.get("last_event_at") or ""),
@@ -3085,36 +2882,22 @@ def _populate_manifest_tables(connection: Any, payload: Mapping[str, Any]) -> No
     metrics = _mapping_items(scheduler_snapshot.get("metrics"))
     if metrics:
         connection.executemany(
-            "INSERT INTO scheduler_metrics VALUES ("
-            + ", ".join("?" for _ in range(27))
-            + ")",
+            "INSERT INTO scheduler_metrics VALUES (" + ", ".join("?" for _ in range(27)) + ")",
             [
                 (
                     ordinal,
                     str(item.get("task_cid") or item.get("canonical_task_cid") or ""),
                     str(item.get("goal_cid") or item.get("canonical_goal_id") or ""),
-                    str(
-                        item.get("subgoal_cid")
-                        or item.get("canonical_subgoal_id")
-                        or ""
-                    ),
+                    str(item.get("subgoal_cid") or item.get("canonical_subgoal_id") or ""),
                     str(item.get("lane_id") or item.get("canonical_lane_id") or ""),
-                    str(
-                        item.get("provider_id")
-                        or item.get("canonical_provider_id")
-                        or ""
-                    ),
+                    str(item.get("provider_id") or item.get("canonical_provider_id") or ""),
                     str(
                         item.get("repository_tree_id")
                         or item.get("tree_id")
                         or item.get("canonical_tree_id")
                         or "unknown"
                     ),
-                    str(
-                        item.get("template_id")
-                        or item.get("canonical_template_id")
-                        or "unknown"
-                    ),
+                    str(item.get("template_id") or item.get("canonical_template_id") or "unknown"),
                     str(
                         item.get("resource_class")
                         or item.get("canonical_resource_class")
@@ -3152,14 +2935,10 @@ def _populate_manifest_tables(connection: Any, payload: Mapping[str, Any]) -> No
             for phase, value in sorted(phases.items())
         ]
         if phase_rows:
-            connection.executemany(
-                "INSERT INTO scheduler_phases VALUES (?, ?)", phase_rows
-            )
+            connection.executemany("INSERT INTO scheduler_phases VALUES (?, ?)", phase_rows)
 
 
-def _populate_code_evidence_graph_tables(
-    connection: Any, payload: Mapping[str, Any]
-) -> None:
+def _populate_code_evidence_graph_tables(connection: Any, payload: Mapping[str, Any]) -> None:
     # Decode through the graph contract before persistence.  This rejects
     # forged identities and any enrichment-originated authoritative edge.
     from ..analysis.code_evidence_graph import CodeEvidenceGraph
@@ -3215,9 +2994,7 @@ def _populate_code_evidence_graph_tables(
             edge_rows,
         )
     if graph_rows:
-        connection.executemany(
-            "INSERT INTO graph_records VALUES (?, ?, ?, ?)", graph_rows
-        )
+        connection.executemany("INSERT INTO graph_records VALUES (?, ?, ?, ?)", graph_rows)
 
 
 def _table_descriptions(kind: str) -> dict[str, str]:
@@ -3338,9 +3115,7 @@ def _proof_dimensions(row: Mapping[str, Any]) -> tuple[str, ...]:
     )
 
 
-def _populate_proof_attestation_tables(
-    connection: Any, payload: Mapping[str, Any]
-) -> None:
+def _populate_proof_attestation_tables(connection: Any, payload: Mapping[str, Any]) -> None:
     from ..proof.proof_attestation import PersistedAttestationRecord
 
     for raw in payload.get("attestations") or ():
@@ -3351,9 +3126,7 @@ def _populate_proof_attestation_tables(
         statement = record.envelope.statement
         verification = record.verification
         connection.execute(
-            "INSERT INTO proof_attestations VALUES ("
-            + ", ".join("?" for _ in range(29))
-            + ")",
+            "INSERT INTO proof_attestations VALUES (" + ", ".join("?" for _ in range(29)) + ")",
             (
                 record.record_id,
                 record.proof_receipt_id,
@@ -3388,15 +3161,12 @@ def _populate_proof_attestation_tables(
         )
 
 
-def _populate_proof_metrics_tables(
-    connection: Any, payload: Mapping[str, Any]
-) -> None:
+def _populate_proof_metrics_tables(connection: Any, payload: Mapping[str, Any]) -> None:
     """Populate proof tables from allowlisted public projection fields only."""
 
     for row in _mapping_items(payload.get("obligations")):
         connection.execute(
-            "INSERT INTO proof_obligations VALUES "
-            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO proof_obligations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 *_proof_dimensions(row),
                 str(row.get("obligation_id") or ""),
@@ -3411,9 +3181,7 @@ def _populate_proof_metrics_tables(
         )
     for row in _mapping_items(payload.get("attempts")):
         connection.execute(
-            "INSERT INTO proof_attempts VALUES ("
-            + ", ".join("?" for _ in range(27))
-            + ")",
+            "INSERT INTO proof_attempts VALUES (" + ", ".join("?" for _ in range(27)) + ")",
             (
                 *_proof_dimensions(row),
                 str(row.get("attempt_id") or ""),
@@ -3471,8 +3239,7 @@ def _populate_proof_metrics_tables(
         )
     for row in _mapping_items(payload.get("dependencies")):
         connection.execute(
-            "INSERT INTO proof_dependencies VALUES "
-            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO proof_dependencies VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 *_proof_dimensions(row),
                 str(row.get("plan_id") or ""),
@@ -3524,8 +3291,7 @@ def _populate_proof_metrics_tables(
         )
     for row in _mapping_items(payload.get("assurance_counts")):
         connection.execute(
-            "INSERT INTO proof_assurance_counts VALUES "
-            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO proof_assurance_counts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 *_proof_dimensions(row),
                 str(row.get("assurance") or "unverified"),
@@ -3583,9 +3349,7 @@ def _populate_proof_metrics_tables(
     )
     for row in _mapping_items(payload.get("metrics") or payload.get("latency_metrics")):
         connection.execute(
-            "INSERT INTO proof_metrics VALUES ("
-            + ", ".join("?" for _ in range(57))
-            + ")",
+            "INSERT INTO proof_metrics VALUES (" + ", ".join("?" for _ in range(57)) + ")",
             (
                 *_proof_dimensions(row),
                 *(_as_int(row.get(name)) or 0 for name in count_fields),
@@ -3615,16 +3379,12 @@ def _write_duckdb(
         payload = ProofMetricsSnapshot(payload).to_dict()
     duckdb = _duckdb_module()
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(
-        f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp"
-    )
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
     temporary.unlink(missing_ok=True)
     Path(f"{temporary}.wal").unlink(missing_ok=True)
     payload_text = _json_text(payload)
     try:
-        connection = _configure_duckdb_connection(
-            duckdb.connect(str(temporary))
-        )
+        connection = _configure_duckdb_connection(duckdb.connect(str(temporary)))
         try:
             connection.execute("BEGIN TRANSACTION")
             try:
@@ -3661,9 +3421,7 @@ def _write_duckdb(
                 )
                 fields = list(_top_level_fields(payload, kind))
                 if fields:
-                    connection.executemany(
-                        "INSERT INTO artifact_fields VALUES (?, ?)", fields
-                    )
+                    connection.executemany("INSERT INTO artifact_fields VALUES (?, ?)", fields)
                 connection.executemany(
                     "INSERT INTO artifact_tables VALUES (?, ?)",
                     sorted(_table_descriptions(kind).items()),
@@ -3770,9 +3528,7 @@ def _compact_bundle_task(value: Any) -> dict[str, Any]:
         "todo_vector_summary",
     ):
         task.pop(field_name, None)
-    if task_cid and (
-        task.get("conflict_decision_count") or task.get("conflict_edge_count")
-    ):
+    if task_cid and (task.get("conflict_decision_count") or task.get("conflict_edge_count")):
         task.setdefault(
             "conflict_evidence_ref",
             {
@@ -3841,13 +3597,16 @@ def compact_conflict_graph_projection(
         "assignment_count",
     )
     lane_count = _stored_collection_count(graph, "lanes", "lane_count")
-    if max(
-        edge_count,
-        decision_count,
-        surface_count,
-        assignment_count,
-        lane_count,
-    ) > max_inline_items:
+    if (
+        max(
+            edge_count,
+            decision_count,
+            surface_count,
+            assignment_count,
+            lane_count,
+        )
+        > max_inline_items
+    ):
         return {
             "schema": str(graph.get("schema") or ""),
             "history": dict(graph.get("history") or {})
@@ -3929,9 +3688,7 @@ def _compact_task_planning_graph(value: Any) -> dict[str, Any]:
     return {
         "schema": "ipfs_accelerate_py.agent_supervisor.task_planning_projection@1",
         "claimable_task_cids": _string_values(value.get("claimable_task_cids")),
-        "lanes": dict(value.get("lanes") or {})
-        if isinstance(value.get("lanes"), Mapping)
-        else {},
+        "lanes": dict(value.get("lanes") or {}) if isinstance(value.get("lanes"), Mapping) else {},
         "lane_assignments": list(value.get("lane_assignments") or [])
         if isinstance(value.get("lane_assignments"), list)
         else [],
@@ -3966,9 +3723,7 @@ def _compact_bundle_index_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
             tasks = bundle.get("tasks")
             if isinstance(tasks, list):
                 bundle["tasks"] = [
-                    _compact_bundle_task(task)
-                    for task in tasks
-                    if isinstance(task, Mapping)
+                    _compact_bundle_task(task) for task in tasks if isinstance(task, Mapping)
                 ]
             summary = bundle.get("todo_vector_summary")
             if isinstance(summary, Mapping):
@@ -4029,17 +3784,13 @@ def _compact_bundle_index_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
     planning_graph = _compact_task_planning_graph(rendered.get("task_planning_graph"))
     if planning_graph:
         rendered["task_planning_graph"] = planning_graph
-    coverage_inputs = compact_coverage_inputs_projection(
-        rendered.get("todo_coverage_inputs")
-    )
+    coverage_inputs = compact_coverage_inputs_projection(rendered.get("todo_coverage_inputs"))
     if coverage_inputs:
         rendered["todo_coverage_inputs"] = coverage_inputs
     return rendered
 
 
-def write_bundle_index_artifact(
-    path: Path | str, payload: Mapping[str, Any]
-) -> dict[str, Any]:
+def write_bundle_index_artifact(path: Path | str, payload: Mapping[str, Any]) -> dict[str, Any]:
     portable_payload = _compact_bundle_index_payload(payload)
     database_payload = dict(payload)
     if isinstance(portable_payload.get("bundles"), Mapping):
@@ -4098,8 +3849,7 @@ def _attestation_records(value: Any) -> tuple[Any, ...]:
 
     raw_values = (
         value
-        if isinstance(value, Sequence)
-        and not isinstance(value, (str, bytes, bytearray, Mapping))
+        if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, Mapping))
         else (value,)
     )
     records = []
@@ -4197,8 +3947,7 @@ def write_proof_attestation_artifact(
         rows.append(row)
     payload = {
         "schema": PROOF_ATTESTATION_STORE_SCHEMA,
-        "generated_at": generated_at
-        or max(record.created_at for record in typed),
+        "generated_at": generated_at or max(record.created_at for record in typed),
         # A portable artifact is evidence to replay, never a live trust root.
         "authoritative": False,
         "contains_hidden_witnesses": False,
@@ -4254,10 +4003,7 @@ def read_proof_attestation_artifact(
     if requested.exists() or requested.suffix.lower() in {".json", ".duckdb"}:
         paths = query_artifact_paths(requested)
         payload = json.loads(paths.json_path.read_text(encoding="utf-8"))
-        if (
-            not isinstance(payload, dict)
-            or _artifact_kind(payload) != PROOF_ATTESTATION_KIND
-        ):
+        if not isinstance(payload, dict) or _artifact_kind(payload) != PROOF_ATTESTATION_KIND:
             raise ValueError(f"not a proof attestation artifact: {paths.json_path}")
         raw_rows = payload.get("attestations")
         if not isinstance(raw_rows, list):
@@ -4289,11 +4035,7 @@ def read_proof_attestation_artifact(
         if not isinstance(raw_row, Mapping):
             raise ValueError("proof attestation row must be an object")
         record = PersistedAttestationRecord.from_dict(raw_row)
-        current = (
-            record.is_current_at(checked_at)
-            if checked_at is not None
-            else None
-        )
+        current = record.is_current_at(checked_at) if checked_at is not None else None
         reproduced_authoritative = False
         if verifier is not None:
             if checked_at is None:
@@ -4309,9 +4051,7 @@ def read_proof_attestation_artifact(
             attested_count += 1
         rendered = record.to_public_artifact()
         rendered["ipfs_cid"] = str(raw_row.get("ipfs_cid") or "")
-        rendered["ipfs_publication_error"] = str(
-            raw_row.get("ipfs_publication_error") or ""
-        )
+        rendered["ipfs_publication_error"] = str(raw_row.get("ipfs_publication_error") or "")
         rendered["attestation_current"] = current
         rendered["reproduced_authoritative"] = reproduced_authoritative
         rendered["effective_assurance"] = (
@@ -4380,21 +4120,15 @@ def query_proof_metrics(path: Path | str, **query: Any) -> dict[str, Any]:
     return query_artifact(path, kind=PROOF_METRICS_KIND, **query)
 
 
-def write_code_evidence_graph_artifact(
-    path: Path | str, payload: Any
-) -> dict[str, Any]:
+def write_code_evidence_graph_artifact(path: Path | str, payload: Any) -> dict[str, Any]:
     """Write a validated code-evidence graph to paired JSON and DuckDB files."""
 
     from ..analysis.code_evidence_graph import CodeEvidenceGraph
 
     graph = (
-        payload
-        if isinstance(payload, CodeEvidenceGraph)
-        else CodeEvidenceGraph.from_dict(payload)
+        payload if isinstance(payload, CodeEvidenceGraph) else CodeEvidenceGraph.from_dict(payload)
     )
-    return write_queryable_artifact(
-        path, graph.to_dict(), kind=CODE_EVIDENCE_GRAPH_KIND
-    )
+    return write_queryable_artifact(path, graph.to_dict(), kind=CODE_EVIDENCE_GRAPH_KIND)
 
 
 def _stable_file_identity(path: Path) -> tuple[os.stat_result, str] | None:
@@ -4441,9 +4175,7 @@ def _bundle_tables_match_source(
             return False
         bundle = dict(raw_bundle)
         tasks = bundle.pop("tasks", [])
-        if not isinstance(tasks, list) or not all(
-            isinstance(task, Mapping) for task in tasks
-        ):
+        if not isinstance(tasks, list) or not all(isinstance(task, Mapping) for task in tasks):
             return False
         bundle["tasks"] = [dict(task) for task in tasks]
         expected[str(bundle_key)] = bundle
@@ -4452,8 +4184,7 @@ def _bundle_tables_match_source(
             "SELECT bundle_key, payload_json FROM bundles ORDER BY bundle_key"
         ).fetchall()
         task_rows = connection.execute(
-            "SELECT bundle_key, payload_json "
-            "FROM bundle_tasks ORDER BY bundle_key, task_ordinal"
+            "SELECT bundle_key, payload_json FROM bundle_tasks ORDER BY bundle_key, task_ordinal"
         ).fetchall()
     except Exception:
         return False
@@ -4497,9 +4228,7 @@ def _database_fresh(database_path: Path, source_path: Path, kind: str | None) ->
                 and int(row[4]) == source_stat.st_mtime_ns
             )
             if basic_match and str(row[0]) == BUNDLE_INDEX_KIND:
-                source_payload, verified_stat, verified_sha256 = (
-                    _read_stable_json(source_path)
-                )
+                source_payload, verified_stat, verified_sha256 = _read_stable_json(source_path)
                 basic_match = bool(
                     verified_sha256 == source_sha256
                     and verified_stat.st_size == source_stat.st_size
@@ -4559,36 +4288,18 @@ def ensure_query_database(path: Path | str, *, kind: str | None = None) -> Path:
                 "source_size FROM artifact_catalog LIMIT 1"
             ).fetchone()
             if row and paths.json_path.exists():
-                source_payload, source_stat, source_sha256 = _read_stable_json(
-                    paths.json_path
-                )
-                if (
-                    str(row[2]) != source_sha256
-                    or int(row[3]) != source_stat.st_size
-                ):
-                    raise ValueError(
-                        "paired JSON/DuckDB source digest mismatch: "
-                        f"{requested}"
-                    )
+                source_payload, source_stat, source_sha256 = _read_stable_json(paths.json_path)
+                if str(row[2]) != source_sha256 or int(row[3]) != source_stat.st_size:
+                    raise ValueError(f"paired JSON/DuckDB source digest mismatch: {requested}")
                 observed_kind = str(row[0])
-                if (
-                    observed_kind == BUNDLE_INDEX_KIND
-                    and not _bundle_tables_match_source(
-                        connection,
-                        source_payload,
-                    )
+                if observed_kind == BUNDLE_INDEX_KIND and not _bundle_tables_match_source(
+                    connection,
+                    source_payload,
                 ):
-                    raise ValueError(
-                        "paired JSON/DuckDB bundle projection mismatch: "
-                        f"{requested}"
-                    )
+                    raise ValueError(f"paired JSON/DuckDB bundle projection mismatch: {requested}")
         finally:
             connection.close()
-        if (
-            row
-            and str(row[1]) == QUERY_SCHEMA
-            and (kind is None or str(row[0]) == kind)
-        ):
+        if row and str(row[1]) == QUERY_SCHEMA and (kind is None or str(row[0]) == kind):
             return requested
         if paths.json_path.exists():
             return ensure_query_database(paths.json_path, kind=kind)
@@ -4627,9 +4338,7 @@ def read_artifact_fields(
         return {}
     database_path = ensure_query_database(path, kind=kind)
     duckdb = _duckdb_module()
-    connection = _configure_duckdb_connection(
-        duckdb.connect(str(database_path), read_only=True)
-    )
+    connection = _configure_duckdb_connection(duckdb.connect(str(database_path), read_only=True))
     try:
         placeholders = ", ".join("?" for _ in field_names)
         rows = connection.execute(
@@ -4656,9 +4365,7 @@ def read_bundle_index_projection(
 
     database_path = ensure_query_database(path, kind=BUNDLE_INDEX_KIND)
     duckdb = _duckdb_module()
-    connection = _configure_duckdb_connection(
-        duckdb.connect(str(database_path), read_only=True)
-    )
+    connection = _configure_duckdb_connection(duckdb.connect(str(database_path), read_only=True))
     try:
         bundle_expression = "payload_json"
         bundle_parameters: list[str] = []
@@ -4674,8 +4381,7 @@ def read_bundle_index_projection(
                 )
             )
         bundle_rows = connection.execute(
-            f"SELECT bundle_key, {bundle_expression} "
-            "FROM bundles ORDER BY bundle_key",
+            f"SELECT bundle_key, {bundle_expression} FROM bundles ORDER BY bundle_key",
             bundle_parameters,
         ).fetchall()
         task_expression = "payload_json"
@@ -4838,15 +4544,13 @@ def query_artifact(
     if sql:
         statement = sql.strip().rstrip(";").strip()
         if ";" in statement or not _READ_ONLY_SQL.match(statement):
-            raise ValueError(
-                "only one read-only SELECT/WITH/DESCRIBE/SHOW query is allowed"
-            )
+            raise ValueError("only one read-only SELECT/WITH/DESCRIBE/SHOW query is allowed")
         if re.match(r"^(?:select|with)\b", statement, re.IGNORECASE):
-            statement = f"SELECT * FROM ({statement}) AS bounded_artifact_query LIMIT {row_limit + 1}"
+            statement = (
+                f"SELECT * FROM ({statement}) AS bounded_artifact_query LIMIT {row_limit + 1}"
+            )
     else:
-        selected_table = _validated_identifier(
-            table or "artifact_catalog", label="table name"
-        )
+        selected_table = _validated_identifier(table or "artifact_catalog", label="table name")
         if columns == ("*",) or list(columns) == ["*"]:
             selected_columns = "*"
         else:
@@ -4870,8 +4574,7 @@ def query_artifact(
         connection.close()
     truncated = len(values) > row_limit
     rows = [
-        {name: _jsonable(value) for name, value in zip(names, row)}
-        for row in values[:row_limit]
+        {name: _jsonable(value) for name, value in zip(names, row)} for row in values[:row_limit]
     ]
     return {
         "schema": QUERY_SCHEMA,
@@ -4898,9 +4601,7 @@ def _logical_artifact_digest(payload: Mapping[str, Any]) -> str:
             allow_nan=False,
         ).encode("utf-8")
     except (TypeError, ValueError) as exc:
-        raise ValueError(
-            "queryable artifact must contain canonical JSON values"
-        ) from exc
+        raise ValueError("queryable artifact must contain canonical JSON values") from exc
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
@@ -4914,8 +4615,7 @@ def _queryable_artifact_snapshot(
     paths = query_artifact_paths(path)
     if not paths.json_path.exists():
         raise FileNotFoundError(
-            "a paired JSON source is required to verify a queryable artifact: "
-            f"{paths.json_path}"
+            f"a paired JSON source is required to verify a queryable artifact: {paths.json_path}"
         )
     for _attempt in range(3):
         # Always enter through JSON.  In addition to creating a missing
@@ -4924,9 +4624,7 @@ def _queryable_artifact_snapshot(
         database_path = ensure_query_database(paths.json_path, kind=kind)
         payload, source_stat, source_sha256 = _read_stable_json(paths.json_path)
         resolved_kind = kind or _artifact_kind(payload)
-        if not _database_fresh(
-            database_path, paths.json_path, resolved_kind
-        ):
+        if not _database_fresh(database_path, paths.json_path, resolved_kind):
             continue
 
         duckdb = _duckdb_module()
@@ -4945,9 +4643,7 @@ def _queryable_artifact_snapshot(
             # The next pass asks ensure_query_database to recover it.
             continue
         if len(rows) != 1:
-            raise ValueError(
-                "queryable artifact catalog must contain exactly one record"
-            )
+            raise ValueError("queryable artifact catalog must contain exactly one record")
         catalog = rows[0]
         if (
             str(catalog[0]) != resolved_kind
@@ -5014,22 +4710,18 @@ def _adapter_reference_constraints(
     unknown = sorted(set(reference).difference(allowed))
     if unknown:
         raise ValueError(
-            "queryable artifact reference has unsupported fields: "
-            + ", ".join(unknown)
+            "queryable artifact reference has unsupported fields: " + ", ".join(unknown)
         )
     required = {"artifact_id", "digest", "path"}
     missing = sorted(required.difference(reference))
     if missing:
         raise ValueError(
-            "queryable artifact reference is missing identity fields: "
-            + ", ".join(missing)
+            "queryable artifact reference is missing identity fields: " + ", ".join(missing)
         )
     constraints = dict(reference)
     if not _SHA256_DIGEST.fullmatch(str(constraints["digest"])):
         raise ValueError("queryable artifact digest must be sha256:<hex>")
-    if constraints["artifact_id"] != (
-        f"queryable-artifact:{constraints['digest']}"
-    ):
+    if constraints["artifact_id"] != (f"queryable-artifact:{constraints['digest']}"):
         raise ValueError("queryable artifact identity does not match its digest")
     supplied_path = Path(str(constraints["path"]))
     if not supplied_path.is_absolute():
@@ -5088,14 +4780,8 @@ class QueryableArtifactCASAdapter:
     ) -> QueryableArtifactReference:
         expected = self.reference() if reference is None else reference
         if not self.verify(expected):
-            raise ValueError(
-                "queryable artifact reference does not match the current source"
-            )
-        return (
-            expected
-            if isinstance(expected, QueryableArtifactReference)
-            else self.reference()
-        )
+            raise ValueError("queryable artifact reference does not match the current source")
+        return expected if isinstance(expected, QueryableArtifactReference) else self.reference()
 
     def read(
         self,
@@ -5120,10 +4806,7 @@ class QueryableArtifactCASAdapter:
             raise ValueError("queryable artifact field selection exceeds its bound")
         if len(set(selected_fields)) != len(selected_fields):
             raise ValueError("queryable artifact fields must be unique")
-        if any(
-            not isinstance(field, str) or not field.strip()
-            for field in selected_fields
-        ):
+        if any(not isinstance(field, str) or not field.strip() for field in selected_fields):
             raise ValueError("queryable artifact fields must be nonempty strings")
         byte_limit = _bounded_adapter_bytes(
             max_bytes,
@@ -5210,9 +4893,7 @@ def _exact_strings(values: Sequence[str] | str, *, label: str) -> tuple[str, ...
         raw_values = (values,)
     else:
         raw_values = values
-    result = tuple(
-        sorted({str(value).strip() for value in raw_values if str(value).strip()})
-    )
+    result = tuple(sorted({str(value).strip() for value in raw_values if str(value).strip()}))
     if any(value in {"*", "%"} for value in result):
         raise ValueError(f"{label} selectors must be exact identifiers")
     return result
@@ -5290,8 +4971,7 @@ def query_code_evidence_neighborhood(
         exact_obligations,
     )
     add_in(
-        "(node_kind IN ('proof', 'validation', 'merge') "
-        "AND record_key IN ({placeholders}))",
+        "(node_kind IN ('proof', 'validation', 'merge') AND record_key IN ({placeholders}))",
         exact_receipts,
     )
     if exact_contradictions:
@@ -5390,15 +5070,9 @@ def query_code_evidence_neighborhood(
             ("validation", "out", "validates"): frozenset({"task"}),
             ("merge", "out", "merged"): frozenset({"task"}),
             ("merge", "out", "completes"): frozenset({"task"}),
-            ("enrichment", "out", "mentions"): frozenset(
-                {"task", "obligation", "symbol"}
-            ),
-            ("enrichment", "out", "suggests"): frozenset(
-                {"task", "obligation", "symbol"}
-            ),
-            ("enrichment", "out", "related_to"): frozenset(
-                {"task", "obligation", "symbol"}
-            ),
+            ("enrichment", "out", "mentions"): frozenset({"task", "obligation", "symbol"}),
+            ("enrichment", "out", "suggests"): frozenset({"task", "obligation", "symbol"}),
+            ("enrichment", "out", "related_to"): frozenset({"task", "obligation", "symbol"}),
         }
         candidate_edges: dict[str, dict[str, Any]] = {}
         for _hop in range(hop_limit):
@@ -5436,9 +5110,7 @@ def query_code_evidence_neighborhood(
                 f"LIMIT {MAX_QUERY_ROWS + 1}",
                 neighbor_ids,
             ).fetchall()
-            neighbor_map = {
-                str(row[0]): node_dict(row) for row in neighbor_rows[:MAX_QUERY_ROWS]
-            }
+            neighbor_map = {str(row[0]): node_dict(row) for row in neighbor_rows[:MAX_QUERY_ROWS]}
             accepted: set[str] = set()
             for row in edge_rows:
                 edge = edge_dict(row)
@@ -5535,9 +5207,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--where", default="")
     parser.add_argument("--sql", default="")
     parser.add_argument("--limit", type=int, default=50)
-    parser.add_argument(
-        "--schema", action="store_true", help="Return table and column metadata"
-    )
+    parser.add_argument("--schema", action="store_true", help="Return table and column metadata")
     return parser
 
 
@@ -5546,9 +5216,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.schema:
         result = artifact_schema(args.artifact_path)
     else:
-        columns = tuple(
-            item.strip() for item in args.columns.split(",") if item.strip()
-        ) or ("*",)
+        columns = tuple(item.strip() for item in args.columns.split(",") if item.strip()) or ("*",)
         result = query_artifact(
             args.artifact_path,
             table=args.table,

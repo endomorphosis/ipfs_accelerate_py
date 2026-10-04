@@ -66,11 +66,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.runtime_temporal_monitor import
         ),
         (
             normalize_tdfol_contradiction,
-            {
-                "contradiction": {
-                    "formula": "Started(t) and not DependenciesComplete(t)"
-                }
-            },
+            {"contradiction": {"formula": "Started(t) and not DependenciesComplete(t)"}},
             CounterexampleKind.TDFOL_CONTRADICTION,
             "contradiction",
         ),
@@ -195,9 +191,7 @@ def test_graph_binds_every_required_plan_and_evidence_identity() -> None:
         "evidence:old-proof": CounterexampleEdgeKind.INVALIDATES,
         "policy:formal-plan": CounterexampleEdgeKind.GOVERNED_BY,
     }
-    assert {item.node_id for item in graph.neighbors(value.semantic_id)} == set(
-        by_target
-    )
+    assert {item.node_id for item in graph.neighbors(value.semantic_id)} == set(by_target)
     assert graph.counterexamples_for("task:288") == (value,)
     assert CounterexampleKnowledgeGraph.from_dict(graph.to_record()) == graph
 
@@ -402,18 +396,13 @@ def test_malformed_or_private_prebuilt_contracts_fail_closed() -> None:
     with pytest.raises(CounterexampleValidationError, match="minimized"):
         replace(valid, minimized=False)
     with pytest.raises(CounterexampleValidationError, match="identity"):
-        FormalCounterexample.from_dict(
-            {**valid.to_dict(), "counterexample_id": "forged"}
-        )
+        FormalCounterexample.from_dict({**valid.to_dict(), "counterexample_id": "forged"})
 
 
 def test_inference_and_repair_classes_are_typed_and_actionable() -> None:
     value = normalize_counterexample(
         {
-            "schema": (
-                "ipfs_accelerate_py/agent-supervisor/"
-                "hypertrace-counterexample@1"
-            ),
+            "schema": ("ipfs_accelerate_py/agent-supervisor/hypertrace-counterexample@1"),
             "trace_refs": ["b-left", "b-right"],
             "observed_fields": ["route"],
             "differences": [

@@ -16,7 +16,7 @@ sys.path.append(str(script_dir))
 # Try to import the create_hyphenated_test_file function
 try:
     from simplified_fix_hyphenated import create_hyphenated_test_file
-    
+
     # Missing critical models
     missing_models = [
         # Create pix2struct test using the hyphenated approach
@@ -27,7 +27,7 @@ try:
             "model_upper": "PIX2STRUCT",
             "arch_type": "multimodal",
             "default_model": "google/pix2struct-base",
-            "task": "image-to-text"
+            "task": "image-to-text",
         },
         # Create speecht5 test using the hyphenated approach
         {
@@ -37,20 +37,20 @@ try:
             "model_upper": "SPEECHT5",
             "arch_type": "speech",
             "default_model": "microsoft/speecht5_tts",
-            "task": "automatic-speech-recognition"
-        }
+            "task": "automatic-speech-recognition",
+        },
     ]
-    
+
     # Output directory
     output_dir = script_dir / "fixed_tests"
     os.makedirs(output_dir, exist_ok=True)
-    
+
     # Create test files
     for model in missing_models:
         # Create test file
         model_name = model["name"]
         print(f"Creating test file for {model_name}")
-        
+
         # Create file content
         content = f"""#!/usr/bin/env python3
 
@@ -231,14 +231,14 @@ def main():
 if __name__ == "__main__":
     sys.exit(main())
 '''
-        
+
         # Write the file
         output_file = output_dir / f"test_hf_{model['model_id']}.py"
-        with open(output_file, 'w') as f:
+        with open(output_file, "w") as f:
             f.write(content)
-        
+
         print(f"Successfully created {output_file}")
-        
+
 except ImportError as e:
     print(f"Error importing simplified_fix_hyphenated: {e}")
     sys.exit(1)

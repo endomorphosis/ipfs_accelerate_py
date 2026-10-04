@@ -28,24 +28,13 @@ RECEIPT_PATH = (
     / "logic_formal_verification_expansion_completion_receipt.json"
 )
 OBJECTIVES_PATH = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "logic_formal_verification_expansion.objectives.md"
+    REPO_ROOT / "docs" / "architecture" / "logic_formal_verification_expansion.objectives.md"
 )
 ROLLOUT_PATH = (
-    REPO_ROOT
-    / "ipfs_datasets_py"
-    / "docs"
-    / "logic"
-    / "software_verification_rollout.md"
+    REPO_ROOT / "ipfs_datasets_py" / "docs" / "logic" / "software_verification_rollout.md"
 )
 PROVER_MATRIX_PATH = (
-    REPO_ROOT
-    / "ipfs_datasets_py"
-    / "docs"
-    / "security_verification"
-    / "prover_matrix.md"
+    REPO_ROOT / "ipfs_datasets_py" / "docs" / "security_verification" / "prover_matrix.md"
 )
 MATRIX_TEST_PATH = (
     REPO_ROOT
@@ -169,9 +158,7 @@ def test_release_artifacts_are_bound_and_present() -> None:
 
     # Self path must match this test file relative to repo root.
     completion_rel = artifacts["completion_test"]["path"]
-    assert completion_rel.endswith(
-        "test/api/test_logic_formal_verification_completion.py"
-    )
+    assert completion_rel.endswith("test/api/test_logic_formal_verification_completion.py")
 
 
 def test_rollout_and_benchmark_policy_surfaces() -> None:
@@ -215,7 +202,10 @@ def test_g000_and_g083_objective_heap_point_at_this_receipt() -> None:
         flags=re.MULTILINE | re.DOTALL,
     )
     assert g000 is not None and g083 is not None
-    assert "docs/architecture/logic_formal_verification_expansion_completion_receipt.json" in g000.group(0)
+    assert (
+        "docs/architecture/logic_formal_verification_expansion_completion_receipt.json"
+        in g000.group(0)
+    )
     assert "ipfs_datasets_py/docs/logic/software_verification_rollout.md" in g083.group(0)
     assert "test_software_verification_matrix.py" in g083.group(0)
     assert "test_logic_formal_verification_completion.py" in g083.group(0)
@@ -237,9 +227,7 @@ def test_receipt_identity_is_content_addressed() -> None:
 
 def test_release_goal_child_binding_includes_release_evidence_terms() -> None:
     receipt = _load_receipt()
-    release = next(
-        child for child in receipt["child_goals"] if child["goal_id"] == "LFV-G083"
-    )
+    release = next(child for child in receipt["child_goals"] if child["goal_id"] == "LFV-G083")
     evidence = set(release["evidence"])
     assert "ipfs_datasets_py/docs/logic/software_verification_rollout.md" in evidence
     assert (

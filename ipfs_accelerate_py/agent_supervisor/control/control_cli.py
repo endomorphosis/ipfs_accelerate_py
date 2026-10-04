@@ -70,9 +70,7 @@ MAX_WATCH_COUNT = 100
 MAX_WATCH_INTERVAL_MS = 60_000
 
 # Evidence identity for ASI-152 prompt CLI surface publication.
-PROMPT_CLI_REQUIREMENT_ID = (
-    "requirement:agent-supervisor/prompt-cli-surface@1"
-)
+PROMPT_CLI_REQUIREMENT_ID = "requirement:agent-supervisor/prompt-cli-surface@1"
 
 COMMAND_OPERATIONS: dict[str, Operation] = {
     "capabilities": Operation.CAPABILITIES,
@@ -128,9 +126,7 @@ USAGE_CLI_COMMANDS: dict[str, str] = {
     "usage-route-preview": SupervisorUsageControlOperation.ROUTE_PREVIEW.value,
     "usage-blocked-work": SupervisorUsageControlOperation.BLOCKED_WORK.value,
     "usage-next-eligible": SupervisorUsageControlOperation.NEXT_ELIGIBLE.value,
-    "usage-adapter-capabilities": (
-        SupervisorUsageControlOperation.ADAPTER_CAPABILITIES.value
-    ),
+    "usage-adapter-capabilities": (SupervisorUsageControlOperation.ADAPTER_CAPABILITIES.value),
     "usage-set-budget": SupervisorUsageControlOperation.SET_BUDGET.value,
     "usage-set-policy": SupervisorUsageControlOperation.SET_POLICY.value,
     "usage-correct": SupervisorUsageControlOperation.CORRECT.value,
@@ -217,9 +213,7 @@ def _add_target_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--caller", help="Authenticated caller identity.")
 
 
-def _add_request_arguments(
-    parser: argparse.ArgumentParser, operation: Operation
-) -> None:
+def _add_request_arguments(parser: argparse.ArgumentParser, operation: Operation) -> None:
     source = parser.add_mutually_exclusive_group()
     source.add_argument(
         "--request-json",
@@ -264,9 +258,7 @@ def _add_request_arguments(
         help="Catalog validation replay selector.",
     )
     parser.add_argument("--reason", help="Operator reason for a proposed mutation.")
-    parser.add_argument(
-        "--requested-state", help="Requested lifecycle state, when applicable."
-    )
+    parser.add_argument("--requested-state", help="Requested lifecycle state, when applicable.")
     parser.add_argument(
         "--expected-effects-json",
         help="ExpectedEffect records as a JSON array.",
@@ -353,9 +345,7 @@ def _add_request_arguments(
     parser.set_defaults(agent_operation=operation.value)
 
 
-def _add_prompt_surface_arguments(
-    parser: argparse.ArgumentParser, operation: Operation
-) -> None:
+def _add_prompt_surface_arguments(parser: argparse.ArgumentParser, operation: Operation) -> None:
     """Register thin prompt-workflow / rescue convenience flags."""
 
     if operation is Operation.WORKFLOW_PREVIEW:
@@ -505,15 +495,9 @@ def register_agent_cli(
 def agent_cli_discovery_manifest() -> ControlDiscoveryManifest:
     """Return the static CLI vocabulary without constructing a service."""
 
-    operations = tuple(
-        sorted(COMMAND_OPERATIONS.values(), key=lambda item: item.value)
-    )
-    if len(operations) != len(set(operations)) or set(operations) != set(
-        Operation
-    ):
-        raise AgentCLIError(
-            "agent CLI discovery does not cover the closed operation vocabulary"
-        )
+    operations = tuple(sorted(COMMAND_OPERATIONS.values(), key=lambda item: item.value))
+    if len(operations) != len(set(operations)) or set(operations) != set(Operation):
+        raise AgentCLIError("agent CLI discovery does not cover the closed operation vocabulary")
     return ControlDiscoveryManifest(
         surface=ControlSurface.CLI,
         operations=operations,
@@ -537,28 +521,19 @@ def validate_agent_cli_catalog(
         raise AgentCLIError("agent CLI catalog must be a ControlOperationCatalog")
 
     commands = tuple(COMMAND_OPERATIONS)
-    if (
-        len(commands) != len(set(commands))
-        or any(
-            not isinstance(command, str)
-            or not command
-            or command.strip() != command
-            or any(character.isspace() for character in command)
-            for command in commands
-        )
+    if len(commands) != len(set(commands)) or any(
+        not isinstance(command, str)
+        or not command
+        or command.strip() != command
+        or any(character.isspace() for character in command)
+        for command in commands
     ):
         raise AgentCLIError("agent CLI command vocabulary is invalid")
 
     mapped = tuple(COMMAND_OPERATIONS.values())
     expected = tuple(selected.operations)
-    if (
-        len(mapped) != len(set(mapped))
-        or frozenset(mapped) != frozenset(expected)
-    ):
-        missing = sorted(
-            operation.value
-            for operation in frozenset(expected).difference(mapped)
-        )
+    if len(mapped) != len(set(mapped)) or frozenset(mapped) != frozenset(expected):
+        missing = sorted(operation.value for operation in frozenset(expected).difference(mapped))
         extra = sorted(
             str(getattr(operation, "value", operation))
             for operation in frozenset(mapped).difference(expected)
@@ -577,14 +552,10 @@ def validate_agent_cli_catalog(
     for descriptor in selected:
         operation = descriptor.operation
         if (
-            descriptor.request_schema_id
-            != manifest.request_schema_ids[operation.value]
-            or descriptor.result_schema_id
-            != manifest.result_schema_ids[operation.value]
+            descriptor.request_schema_id != manifest.request_schema_ids[operation.value]
+            or descriptor.result_schema_id != manifest.result_schema_ids[operation.value]
         ):
-            raise AgentCLIError(
-                f"agent CLI schema identity drifted for {operation.value}"
-            )
+            raise AgentCLIError(f"agent CLI schema identity drifted for {operation.value}")
         guarded = (
             descriptor.supports_dry_run,
             descriptor.requires_idempotency,
@@ -598,13 +569,10 @@ def validate_agent_cli_catalog(
             or (not operation.mutating and any(guarded))
             or (
                 operation.mutating
-                and descriptor.degradation
-                is not CapabilityDegradation.FAIL_CLOSED
+                and descriptor.degradation is not CapabilityDegradation.FAIL_CLOSED
             )
         ):
-            raise AgentCLIError(
-                f"agent CLI behavior policy drifted for {operation.value}"
-            )
+            raise AgentCLIError(f"agent CLI behavior policy drifted for {operation.value}")
     return manifest
 
 
@@ -626,8 +594,7 @@ def cli_control_surface_publication(
             for descriptor in selected
         },
         dispatcher_ids={
-            operation: DIRECT_CONTROL_SERVICE_DISPATCHER_ID
-            for operation in selected.operations
+            operation: DIRECT_CONTROL_SERVICE_DISPATCHER_ID for operation in selected.operations
         },
         dispatch_mode="direct_service",
         provider_free=True,
@@ -656,15 +623,11 @@ def build_agent_cli_command(
         raise AgentCLIError("agent CLI executable must be non-empty")
     selected = get_operation_catalog()
     validate_agent_cli_catalog(selected)
-    command_by_operation = {
-        operation: command for command, operation in COMMAND_OPERATIONS.items()
-    }
+    command_by_operation = {operation: command for command, operation in COMMAND_OPERATIONS.items()}
     try:
         command = command_by_operation[request.operation]
     except KeyError as exc:  # defensive after publication validation
-        raise AgentCLIError(
-            f"agent CLI has no command for {request.operation.value}"
-        ) from exc
+        raise AgentCLIError(f"agent CLI has no command for {request.operation.value}") from exc
     return (
         executable,
         "agent",
@@ -807,10 +770,7 @@ def _normalize_prompt_source(value: Any) -> dict[str, str]:
         "content_cid": content_cid.strip(),
     }
     artifact = (
-        value.get("artifact_ref")
-        or value.get("artifact_handle")
-        or value.get("source_path")
-        or ""
+        value.get("artifact_ref") or value.get("artifact_handle") or value.get("source_path") or ""
     )
     if isinstance(artifact, str) and artifact.strip():
         # Reject path escape attempts; keep only a simple relative/opaque ref.
@@ -832,9 +792,7 @@ def _resolve_prompt_source_from_args(
     prompt_file = getattr(args, "prompt_file", None)
     prompt_stdin = bool(getattr(args, "prompt_stdin", False))
     provided = sum(
-        1
-        for item in (prompt is not None, prompt_file is not None, prompt_stdin)
-        if item
+        1 for item in (prompt is not None, prompt_file is not None, prompt_stdin) if item
     )
     if provided == 0:
         return None
@@ -868,9 +826,7 @@ def _resolve_prompt_source_from_args(
         }
     stream = stdin_stream if stdin_stream is not None else sys.stdin
     if stream is None or getattr(stream, "isatty", lambda: False)():
-        raise AgentCLIError(
-            "stdin prompt source requires piped non-empty UTF-8 text"
-        )
+        raise AgentCLIError("stdin prompt source requires piped non-empty UTF-8 text")
     text = stream.read()
     if not text:
         raise AgentCLIError("stdin prompt source must be non-empty")
@@ -888,9 +844,7 @@ def _merge_prompt_convenience_parameters(
 
     def _set(key: str, value: Any) -> None:
         if key in parameters:
-            raise AgentCLIError(
-                f"{key} was supplied both directly and in --parameters-json"
-            )
+            raise AgentCLIError(f"{key} was supplied both directly and in --parameters-json")
         parameters[key] = value
 
     directory = getattr(args, "directory", None)
@@ -924,14 +878,10 @@ def _merge_prompt_convenience_parameters(
                 "deadline_ms",
             }:
                 if key in parameters and parameters[key] != value:
-                    raise AgentCLIError(
-                        f"budget field {key} conflicts with a direct flag"
-                    )
+                    raise AgentCLIError(f"budget field {key} conflicts with a direct flag")
                 parameters.setdefault(key, value)
             else:
-                raise AgentCLIError(
-                    f"budget field {key!r} is not admitted on the control catalog"
-                )
+                raise AgentCLIError(f"budget field {key!r} is not admitted on the control catalog")
     # --start is saga intent for workflow-create; only admit it when the
     # operator also supplies it inside parameters-json for backends that
     # extend the catalog.  Direct injection of non-catalog fields is refused.
@@ -940,20 +890,14 @@ def _merge_prompt_convenience_parameters(
         # with non-catalog keys.
         pass
 
-    prompt_source = _resolve_prompt_source_from_args(
-        args, stdin_stream=stdin_stream
-    )
+    prompt_source = _resolve_prompt_source_from_args(args, stdin_stream=stdin_stream)
     if prompt_source is not None:
         if "prompt_source" in parameters:
-            raise AgentCLIError(
-                "prompt source was supplied both directly and in --parameters-json"
-            )
+            raise AgentCLIError("prompt source was supplied both directly and in --parameters-json")
         parameters["prompt_source"] = prompt_source
 
     if "prompt_source" in parameters:
-        parameters["prompt_source"] = _normalize_prompt_source(
-            parameters["prompt_source"]
-        )
+        parameters["prompt_source"] = _normalize_prompt_source(parameters["prompt_source"])
 
 
 def _human_token(value: Any) -> str:
@@ -973,10 +917,7 @@ def _render_human_summary(record: Mapping[str, Any]) -> str:
     status = _human_token(record.get("status")) or "unknown"
     operation = _human_token(record.get("operation"))
     request_id = _human_token(
-        record.get("request_id")
-        or record.get("request_cid")
-        or record.get("result_id")
-        or ""
+        record.get("request_id") or record.get("request_cid") or record.get("result_id") or ""
     )
     error = record.get("error") or {}
     code = ""
@@ -1022,9 +963,7 @@ def build_agent_request(
         # factory is resolved, so malformed real mutations cannot dispatch.
         request = decode_operation_request(payload)
         if request.operation is not operation:
-            raise AgentCLIError(
-                "request operation does not match the selected CLI command"
-            )
+            raise AgentCLIError("request operation does not match the selected CLI command")
         return request
 
     missing = [
@@ -1033,19 +972,13 @@ def build_agent_request(
         if not str(getattr(args, name, "") or "").strip()
     ]
     if missing:
-        raise AgentCLIError(
-            "explicit target bindings are required: " + ", ".join(missing)
-        )
+        raise AgentCLIError("explicit target bindings are required: " + ", ".join(missing))
     for name in ("repository_root", "state_root"):
         path = Path(str(getattr(args, name)))
         if not path.is_absolute():
-            raise AgentCLIError(
-                "--" + name.replace("_", "-") + " must be absolute"
-            )
+            raise AgentCLIError("--" + name.replace("_", "-") + " must be absolute")
     parameters = _json_value(
-        args.parameters_json
-        if args.parameters_json is not None
-        else "{}",
+        args.parameters_json if args.parameters_json is not None else "{}",
         noun="parameters",
     )
     if not isinstance(parameters, Mapping):
@@ -1056,23 +989,15 @@ def build_agent_request(
         value = getattr(args, argument, None)
         if value is not None:
             if key in parameters:
-                raise AgentCLIError(
-                    f"{key} was supplied both directly and in --parameters-json"
-                )
+                raise AgentCLIError(f"{key} was supplied both directly and in --parameters-json")
             parameters[key] = value
     if operation in _PROMPT_SURFACE_OPERATIONS:
-        _merge_prompt_convenience_parameters(
-            args, parameters, stdin_stream=stdin_stream
-        )
+        _merge_prompt_convenience_parameters(args, parameters, stdin_stream=stdin_stream)
     elif "prompt_source" in parameters:
         # Non-prompt operations must not smuggle prompt bodies through params.
-        parameters["prompt_source"] = _normalize_prompt_source(
-            parameters["prompt_source"]
-        )
+        parameters["prompt_source"] = _normalize_prompt_source(parameters["prompt_source"])
     effects = _json_value(
-        args.expected_effects_json
-        if args.expected_effects_json is not None
-        else "[]",
+        args.expected_effects_json if args.expected_effects_json is not None else "[]",
         noun="expected effects",
     )
     if not isinstance(effects, list):
@@ -1100,10 +1025,7 @@ def build_agent_request(
             args.fencing_epoch,
             effects,
         )
-        if not any(
-            value is not None and value != []
-            for value in direct_guard_arguments
-        ):
+        if not any(value is not None and value != [] for value in direct_guard_arguments):
             raise AgentCLIError(
                 "real mutations require a complete --request-json/"
                 "--request-file or complete direct authorization, "
@@ -1111,31 +1033,19 @@ def build_agent_request(
             )
 
     defaults = ControlBounds()
-    max_items = (
-        args.max_items
-        if args.max_items is not None
-        else defaults.max_items
-    )
+    max_items = args.max_items if args.max_items is not None else defaults.max_items
     bounds = ControlBounds(
         max_items=max_items,
         max_serialized_bytes=(
-            args.max_bytes
-            if args.max_bytes is not None
-            else defaults.max_serialized_bytes
+            args.max_bytes if args.max_bytes is not None else defaults.max_serialized_bytes
         ),
         max_depth=defaults.max_depth,
         max_text_bytes=(
-            args.max_text_bytes
-            if args.max_text_bytes is not None
-            else defaults.max_text_bytes
+            args.max_text_bytes if args.max_text_bytes is not None else defaults.max_text_bytes
         ),
         max_paths=min(defaults.max_paths, max_items),
         max_effects=min(defaults.max_effects, max_items),
-        timeout_ms=(
-            args.timeout_ms
-            if args.timeout_ms is not None
-            else defaults.timeout_ms
-        ),
+        timeout_ms=(args.timeout_ms if args.timeout_ms is not None else defaults.timeout_ms),
     )
     return OperationRequest(
         operation=operation,
@@ -1185,17 +1095,11 @@ def exit_code_for_result(result: OperationResult) -> int:
     return AGENT_CLI_EXIT_FAILED
 
 
-def _write_record(
-    stream: TextIO, record: Mapping[str, Any], *, compact: bool
-) -> None:
+def _write_record(stream: TextIO, record: Mapping[str, Any], *, compact: bool) -> None:
     if compact:
-        encoded = json.dumps(
-            record, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-        )
+        encoded = json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     else:
-        encoded = json.dumps(
-            record, sort_keys=True, indent=2, ensure_ascii=False
-        )
+        encoded = json.dumps(record, sort_keys=True, indent=2, ensure_ascii=False)
     stream.write(encoded + "\n")
 
 
@@ -1207,9 +1111,7 @@ def _usage_authorities_from_args(args: argparse.Namespace) -> list[str]:
         payload = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise AgentCLIError("authorities JSON is invalid") from exc
-    if not isinstance(payload, list) or not all(
-        isinstance(item, str) and item for item in payload
-    ):
+    if not isinstance(payload, list) or not all(isinstance(item, str) and item for item in payload):
         raise AgentCLIError("authorities JSON must be an array of strings")
     return list(payload)
 
@@ -1258,9 +1160,7 @@ def run_usage_cli(
                 parameters.setdefault("limit", int(args.limit))
             if getattr(args, "cursor", None):
                 parameters.setdefault("cursor", args.cursor)
-            record = controller.execute(
-                operation, authorities=authorities, **parameters
-            )
+            record = controller.execute(operation, authorities=authorities, **parameters)
         _write_record(
             stdout,
             record,
@@ -1308,8 +1208,7 @@ def run_agent_cli(
     args: argparse.Namespace,
     *,
     service: SupervisorControlService | None = None,
-    service_factory: Callable[[OperationRequest], SupervisorControlService]
-    | None = None,
+    service_factory: Callable[[OperationRequest], SupervisorControlService] | None = None,
     stdout: TextIO | None = None,
     stderr: TextIO | None = None,
     stdin: TextIO | None = None,
@@ -1320,9 +1219,7 @@ def run_agent_cli(
     stderr = stderr or sys.stderr
     try:
         if service is not None and service_factory is not None:
-            raise AgentCLIError(
-                "service and service_factory are mutually exclusive"
-            )
+            raise AgentCLIError("service and service_factory are mutually exclusive")
         if getattr(args, "agent_usage_operation", None):
             return run_usage_cli(
                 args,
@@ -1334,18 +1231,13 @@ def run_agent_cli(
         count = int(args.watch_count)
         interval_ms = int(args.watch_interval_ms)
         if not 1 <= count <= MAX_WATCH_COUNT:
-            raise AgentCLIError(
-                f"--watch-count must be between 1 and {MAX_WATCH_COUNT}"
-            )
+            raise AgentCLIError(f"--watch-count must be between 1 and {MAX_WATCH_COUNT}")
         if not 0 <= interval_ms <= MAX_WATCH_INTERVAL_MS:
             raise AgentCLIError(
-                "--watch-interval-ms must be between 0 and "
-                f"{MAX_WATCH_INTERVAL_MS}"
+                f"--watch-interval-ms must be between 0 and {MAX_WATCH_INTERVAL_MS}"
             )
         if count == 1 and interval_ms:
-            raise AgentCLIError(
-                "--watch-interval-ms requires --watch-count greater than 1"
-            )
+            raise AgentCLIError("--watch-interval-ms requires --watch-count greater than 1")
         if count > 1 and request.operation not in {
             Operation.STATUS,
             Operation.HEALTH,
@@ -1355,9 +1247,7 @@ def run_agent_cli(
             raise AgentCLIError(
                 "bounded watch is available only for status, health, metrics, and events"
             )
-        selected_service = service or (
-            service_factory or default_agent_control_service
-        )(request)
+        selected_service = service or (service_factory or default_agent_control_service)(request)
         human = bool(getattr(args, "human", False)) and not bool(
             getattr(args, "output_json", False)
         )
@@ -1366,9 +1256,7 @@ def run_agent_cli(
         for index in range(count):
             result = selected_service.execute(request)
             if not isinstance(result, OperationResult):
-                raise TypeError(
-                    "agent control service returned a non-OperationResult value"
-                )
+                raise TypeError("agent control service returned a non-OperationResult value")
             # Keep the adapter fail-closed even for a caller-supplied service.
             # The standard service validates its own output as well, but a
             # custom embedding must not make the CLI emit a canonical-looking
@@ -1386,13 +1274,10 @@ def run_agent_cli(
                 canonical = OperationResult.from_dict(record)
                 canonical.validate_against(request)
                 if canonical.canonical_bytes() != result.canonical_bytes():
-                    raise ControlContractError(
-                        "operation result is not canonically stable"
-                    )
+                    raise ControlContractError("operation result is not canonically stable")
             except ControlContractError as exc:
                 raise TypeError(
-                    "agent control service returned a non-canonical "
-                    "OperationResult"
+                    "agent control service returned a non-canonical OperationResult"
                 ) from exc
             payload = canonical.to_record()
             if human and count == 1:
@@ -1401,14 +1286,10 @@ def run_agent_cli(
                 _write_record(
                     stdout,
                     payload,
-                    compact=count > 1
-                    or bool(getattr(args, "output_json", False)),
+                    compact=count > 1 or bool(getattr(args, "output_json", False)),
                 )
             result_exit_code = exit_code_for_result(result)
-            if (
-                exit_code == AGENT_CLI_EXIT_SUCCESS
-                and result_exit_code != AGENT_CLI_EXIT_SUCCESS
-            ):
+            if exit_code == AGENT_CLI_EXIT_SUCCESS and result_exit_code != AGENT_CLI_EXIT_SUCCESS:
                 exit_code = result_exit_code
             if index + 1 < count and interval_ms:
                 time.sleep(interval_ms / 1000)

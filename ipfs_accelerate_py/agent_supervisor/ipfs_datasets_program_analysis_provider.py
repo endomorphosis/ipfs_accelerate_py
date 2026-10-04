@@ -42,17 +42,13 @@ from typing import Any, Final
 
 
 PROGRAM_ANALYSIS_CAPABILITY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "ipfs-datasets-program-analysis-capability@1"
+    "ipfs_accelerate_py/agent-supervisor/ipfs-datasets-program-analysis-capability@1"
 )
 PROGRAM_ANALYSIS_CAPABILITY_REPORT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/"
-    "ipfs-datasets-program-analysis-capability-report@1"
+    "ipfs_accelerate_py/agent-supervisor/ipfs-datasets-program-analysis-capability-report@1"
 )
 PROGRAM_ANALYSIS_CAPABILITY_REPORT_VERSION: Final = 1
-IPFS_DATASETS_PROGRAM_ANALYSIS_PROVIDER_ID: Final = (
-    "ipfs_datasets_py.program_analysis"
-)
+IPFS_DATASETS_PROGRAM_ANALYSIS_PROVIDER_ID: Final = "ipfs_datasets_py.program_analysis"
 IPFS_DATASETS_PROGRAM_ANALYSIS_PROVIDER_VERSION: Final = "1.0.0"
 
 DEFAULT_OPTIONAL_ROOT: Final = "ipfs_datasets_py"
@@ -231,9 +227,7 @@ def _canonical_json_bytes(value: Any, *, name: str = "value") -> bytes:
             allow_nan=False,
         ).encode("utf-8")
     except (TypeError, ValueError) as exc:
-        raise ProgramAnalysisCapabilityError(
-            f"{name} must be strict JSON-serializable"
-        ) from exc
+        raise ProgramAnalysisCapabilityError(f"{name} must be strict JSON-serializable") from exc
 
 
 def _content_id(value: Any, *, name: str) -> str:
@@ -272,22 +266,13 @@ def _non_negative_number(value: Any, name: str) -> float:
         or not math.isfinite(float(value))
         or float(value) < 0
     ):
-        raise ProgramAnalysisCapabilityError(
-            f"{name} must be finite and non-negative"
-        )
+        raise ProgramAnalysisCapabilityError(f"{name} must be finite and non-negative")
     return float(value)
 
 
 def _positive_int(value: Any, name: str, *, maximum: int = 10_000_000) -> int:
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, int)
-        or value < 1
-        or value > maximum
-    ):
-        raise ProgramAnalysisCapabilityError(
-            f"{name} must be an integer between 1 and {maximum}"
-        )
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1 or value > maximum:
+        raise ProgramAnalysisCapabilityError(f"{name} must be an integer between 1 and {maximum}")
     return value
 
 
@@ -303,9 +288,7 @@ def _bounded_metadata(
     raw = dict(value)
     encoded = _canonical_json_bytes(raw, name="metadata")
     if len(encoded) > max_bytes:
-        raise ProgramAnalysisCapabilityError(
-            f"metadata exceeds {max_bytes} bytes"
-        )
+        raise ProgramAnalysisCapabilityError(f"metadata exceeds {max_bytes} bytes")
     return json.loads(encoded.decode("utf-8"))
 
 
@@ -313,9 +296,7 @@ def _signature_params(func: Any) -> frozenset[str]:
     try:
         signature = inspect.signature(func)
     except (TypeError, ValueError) as exc:
-        raise ProgramAnalysisCapabilityError(
-            f"callable signature is uninspectable: {exc}"
-        ) from exc
+        raise ProgramAnalysisCapabilityError(f"callable signature is uninspectable: {exc}") from exc
     return frozenset(signature.parameters)
 
 
@@ -342,8 +323,7 @@ def _callable_compatible(
     if required_params and not _has_required_params(target, required_params):
         return (
             False,
-            f"{name!r} signature is incompatible; expected parameters "
-            f"{list(required_params)}",
+            f"{name!r} signature is incompatible; expected parameters {list(required_params)}",
         )
     return True, f"{name} signature is compatible"
 
@@ -385,22 +365,15 @@ class ProgramAnalysisProbeConfig:
         root = _text(self.optional_root, "optional_root", max_bytes=256)
         object.__setattr__(self, "optional_root", root)
         if not isinstance(self.allow_simulated_zkp_authority, bool):
-            raise ProgramAnalysisCapabilityError(
-                "allow_simulated_zkp_authority must be a boolean"
-            )
+            raise ProgramAnalysisCapabilityError("allow_simulated_zkp_authority must be a boolean")
         if self.allow_simulated_zkp_authority:
             # Simulated ZKP must never become authority through configuration.
-            raise ProgramAnalysisCapabilityError(
-                "simulated ZKP authority is permanently rejected"
-            )
+            raise ProgramAnalysisCapabilityError("simulated ZKP authority is permanently rejected")
         if not isinstance(self.run_strict_cid_canary, bool):
-            raise ProgramAnalysisCapabilityError(
-                "run_strict_cid_canary must be a boolean"
-            )
+            raise ProgramAnalysisCapabilityError("run_strict_cid_canary must be a boolean")
         try:
             families = tuple(
-                CapabilityFamily(str(getattr(item, "value", item)))
-                for item in self.families
+                CapabilityFamily(str(getattr(item, "value", item))) for item in self.families
             )
         except ValueError as exc:
             raise ProgramAnalysisCapabilityError(
@@ -410,9 +383,7 @@ class ProgramAnalysisProbeConfig:
             raise ProgramAnalysisCapabilityError("at least one family is required")
         unknown = {item.value for item in families} - set(CAPABILITY_FAMILY_ORDER)
         if unknown:
-            raise ProgramAnalysisCapabilityError(
-                f"unknown capability families: {sorted(unknown)}"
-            )
+            raise ProgramAnalysisCapabilityError(f"unknown capability families: {sorted(unknown)}")
         # Preserve closed matrix order and drop duplicates.
         ordered = tuple(
             family
@@ -454,9 +425,7 @@ class CapabilitySurface:
         object.__setattr__(
             self,
             "reason_code",
-            CapabilityReasonCode(
-                str(getattr(self.reason_code, "value", self.reason_code))
-            ),
+            CapabilityReasonCode(str(getattr(self.reason_code, "value", self.reason_code))),
         )
         object.__setattr__(
             self,
@@ -498,13 +467,9 @@ class CapabilitySurface:
             self, "metadata", MappingProxyType(_bounded_metadata(dict(self.metadata)))
         )
         if self.version is not None:
-            object.__setattr__(
-                self, "version", _text(self.version, "version", max_bytes=128)
-            )
+            object.__setattr__(self, "version", _text(self.version, "version", max_bytes=128))
         if self.location is not None:
-            object.__setattr__(
-                self, "location", _text(self.location, "location", max_bytes=1024)
-            )
+            object.__setattr__(self, "location", _text(self.location, "location", max_bytes=1024))
         object.__setattr__(self, "proof_attempted", False)
         object.__setattr__(self, "proof_success", False)
         object.__setattr__(self, "completion_authority", False)
@@ -536,9 +501,7 @@ class CapabilitySurface:
         return cls(
             surface_id=payload.get("surface_id", ""),
             status=payload.get("status", CapabilityProbeStatus.UNAVAILABLE),
-            reason_code=payload.get(
-                "reason_code", CapabilityReasonCode.NOT_PROBED
-            ),
+            reason_code=payload.get("reason_code", CapabilityReasonCode.NOT_PROBED),
             reason=payload.get("reason", "missing reason"),
             authority=payload.get("authority", CapabilityAuthority.NONE),
             required=bool(payload.get("required", False)),
@@ -575,9 +538,7 @@ class CapabilityFamilyReport:
         object.__setattr__(
             self,
             "reason_code",
-            CapabilityReasonCode(
-                str(getattr(self.reason_code, "value", self.reason_code))
-            ),
+            CapabilityReasonCode(str(getattr(self.reason_code, "value", self.reason_code))),
         )
         object.__setattr__(
             self, "reason", _text(self.reason, "reason", max_bytes=DEFAULT_MAX_REASON_BYTES)
@@ -627,9 +588,7 @@ class CapabilityFamilyReport:
         return cls(
             family=payload.get("family", CapabilityFamily.STRICT_CID),
             status=payload.get("status", CapabilityProbeStatus.UNAVAILABLE),
-            reason_code=payload.get(
-                "reason_code", CapabilityReasonCode.NOT_PROBED
-            ),
+            reason_code=payload.get("reason_code", CapabilityReasonCode.NOT_PROBED),
             reason=payload.get("reason", "missing reason"),
             authority=payload.get("authority", CapabilityAuthority.NONE),
             surfaces=tuple(CapabilitySurface.from_dict(item) for item in surfaces),
@@ -657,9 +616,7 @@ class ProgramAnalysisCapabilityMatrix:
 
     def __post_init__(self) -> None:
         if self.schema_version != PROGRAM_ANALYSIS_CAPABILITY_SCHEMA:
-            raise ProgramAnalysisCapabilityError(
-                "unsupported program-analysis capability schema"
-            )
+            raise ProgramAnalysisCapabilityError("unsupported program-analysis capability schema")
         object.__setattr__(
             self,
             "provider_id",
@@ -671,8 +628,7 @@ class ProgramAnalysisCapabilityMatrix:
             _text(self.provider_version, "provider_version", max_bytes=128),
         )
         families = tuple(
-            CapabilityFamily(str(getattr(item, "value", item)))
-            for item in self.families
+            CapabilityFamily(str(getattr(item, "value", item))) for item in self.families
         )
         expected = tuple(CapabilityFamily(item) for item in CAPABILITY_FAMILY_ORDER)
         if families != expected:
@@ -717,12 +673,8 @@ class ProgramAnalysisCapabilityMatrix:
         if not isinstance(payload, Mapping):
             raise ProgramAnalysisCapabilityError("matrix payload must be an object")
         return cls(
-            schema_version=payload.get(
-                "schema_version", PROGRAM_ANALYSIS_CAPABILITY_SCHEMA
-            ),
-            provider_id=payload.get(
-                "provider_id", IPFS_DATASETS_PROGRAM_ANALYSIS_PROVIDER_ID
-            ),
+            schema_version=payload.get("schema_version", PROGRAM_ANALYSIS_CAPABILITY_SCHEMA),
+            provider_id=payload.get("provider_id", IPFS_DATASETS_PROGRAM_ANALYSIS_PROVIDER_ID),
             provider_version=payload.get(
                 "provider_version", IPFS_DATASETS_PROGRAM_ANALYSIS_PROVIDER_VERSION
             ),
@@ -752,9 +704,7 @@ class ProgramAnalysisCapabilityReport:
     overall_status: CapabilityProbeStatus = CapabilityProbeStatus.UNAVAILABLE
     families: tuple[CapabilityFamilyReport, ...] = ()
     diagnostics: Mapping[str, Any] = field(default_factory=dict)
-    matrix: ProgramAnalysisCapabilityMatrix = field(
-        default_factory=ProgramAnalysisCapabilityMatrix
-    )
+    matrix: ProgramAnalysisCapabilityMatrix = field(default_factory=ProgramAnalysisCapabilityMatrix)
     completion_authority: bool = field(default=False, init=False)
     proof_attempted: bool = field(default=False, init=False)
     proof_success: bool = field(default=False, init=False)
@@ -796,18 +746,18 @@ class ProgramAnalysisCapabilityReport:
             "duration_seconds",
             _non_negative_number(self.duration_seconds, "duration_seconds"),
         )
-        if isinstance(self.probe_count, bool) or not isinstance(self.probe_count, int) or self.probe_count < 0:
-            raise ProgramAnalysisCapabilityError(
-                "probe_count must be a non-negative integer"
-            )
+        if (
+            isinstance(self.probe_count, bool)
+            or not isinstance(self.probe_count, int)
+            or self.probe_count < 0
+        ):
+            raise ProgramAnalysisCapabilityError("probe_count must be a non-negative integer")
         if self.bounded is not True:
             raise ProgramAnalysisCapabilityError("capability reports must be bounded")
         object.__setattr__(
             self,
             "overall_status",
-            CapabilityProbeStatus(
-                str(getattr(self.overall_status, "value", self.overall_status))
-            ),
+            CapabilityProbeStatus(str(getattr(self.overall_status, "value", self.overall_status))),
         )
         expected = tuple(CapabilityFamily(item) for item in CAPABILITY_FAMILY_ORDER)
         families = tuple(self.families)
@@ -850,9 +800,7 @@ class ProgramAnalysisCapabilityReport:
             "probe_count": self.probe_count,
             "bounded": True,
             "overall_status": self.overall_status.value,
-            "families": {
-                item.family.value: item.to_dict() for item in self.families
-            },
+            "families": {item.family.value: item.to_dict() for item in self.families},
             "diagnostics": dict(self.diagnostics),
             "matrix": self.matrix.to_dict(),
             "completion_authority": False,
@@ -871,25 +819,17 @@ class ProgramAnalysisCapabilityReport:
                 CapabilityFamilyReport.from_dict(raw_families[name])
                 for name in CAPABILITY_FAMILY_ORDER
             )
-        elif isinstance(raw_families, Sequence) and not isinstance(
-            raw_families, (str, bytes)
-        ):
-            ordered = tuple(
-                CapabilityFamilyReport.from_dict(item) for item in raw_families
-            )
+        elif isinstance(raw_families, Sequence) and not isinstance(raw_families, (str, bytes)):
+            ordered = tuple(CapabilityFamilyReport.from_dict(item) for item in raw_families)
         else:
             raise ProgramAnalysisCapabilityError("families must be a map or sequence")
         matrix_payload = payload.get("matrix") or {}
         return cls(
-            schema_version=payload.get(
-                "schema_version", PROGRAM_ANALYSIS_CAPABILITY_REPORT_SCHEMA
-            ),
+            schema_version=payload.get("schema_version", PROGRAM_ANALYSIS_CAPABILITY_REPORT_SCHEMA),
             report_version=int(
                 payload.get("report_version", PROGRAM_ANALYSIS_CAPABILITY_REPORT_VERSION)
             ),
-            provider_id=payload.get(
-                "provider_id", IPFS_DATASETS_PROGRAM_ANALYSIS_PROVIDER_ID
-            ),
+            provider_id=payload.get("provider_id", IPFS_DATASETS_PROGRAM_ANALYSIS_PROVIDER_ID),
             provider_version=payload.get(
                 "provider_version", IPFS_DATASETS_PROGRAM_ANALYSIS_PROVIDER_VERSION
             ),
@@ -897,9 +837,7 @@ class ProgramAnalysisCapabilityReport:
             duration_seconds=payload.get("duration_seconds", 0.0),
             probe_count=payload.get("probe_count", 0),
             bounded=payload.get("bounded", True),
-            overall_status=payload.get(
-                "overall_status", CapabilityProbeStatus.UNAVAILABLE
-            ),
+            overall_status=payload.get("overall_status", CapabilityProbeStatus.UNAVAILABLE),
             families=ordered,
             diagnostics=payload.get("diagnostics") or {},
             matrix=ProgramAnalysisCapabilityMatrix.from_dict(matrix_payload),
@@ -967,13 +905,9 @@ class ProgramAnalysisCapabilityProbe:
     def matrix(self) -> ProgramAnalysisCapabilityMatrix:
         """Closed matrix declaration; never imports optional packages."""
 
-        return declare_program_analysis_capability_matrix(
-            probed=False, imported=False
-        )
+        return declare_program_analysis_capability_matrix(probed=False, imported=False)
 
-    def probe(
-        self, *, force_refresh: bool = False
-    ) -> ProgramAnalysisCapabilityReport:
+    def probe(self, *, force_refresh: bool = False) -> ProgramAnalysisCapabilityReport:
         """Return a cached snapshot or perform one bounded real probe."""
 
         with self._cache_lock:
@@ -1020,9 +954,7 @@ class ProgramAnalysisCapabilityProbe:
                 "completion_authority": False,
             }
             report = ProgramAnalysisCapabilityReport(
-                generated_at=datetime.fromtimestamp(
-                    self._wall_clock(), tz=timezone.utc
-                )
+                generated_at=datetime.fromtimestamp(self._wall_clock(), tz=timezone.utc)
                 .isoformat()
                 .replace("+00:00", "Z"),
                 duration_seconds=max(0.0, finished - self._started),
@@ -1080,16 +1012,16 @@ class ProgramAnalysisCapabilityProbe:
         worker.start()
         worker.join(remaining)
         if worker.is_alive():
-            return False, None, TimeoutError(
-                f"metadata operation exceeded {remaining:g}s remaining probe budget"
+            return (
+                False,
+                None,
+                TimeoutError(f"metadata operation exceeded {remaining:g}s remaining probe budget"),
             )
         if not outcome:
             return False, None, RuntimeError("metadata operation returned no outcome")
         return outcome[0]
 
-    def _discover_package(
-        self, module: str, *, required: bool = True
-    ) -> CapabilitySurface:
+    def _discover_package(self, module: str, *, required: bool = True) -> CapabilitySurface:
         limited = self._budget_reason()
         if limited is CapabilityReasonCode.PROBE_TIMEOUT:
             return CapabilitySurface(
@@ -1146,8 +1078,7 @@ class ProgramAnalysisCapabilityProbe:
             status=CapabilityProbeStatus.AVAILABLE,
             reason_code=CapabilityReasonCode.PACKAGE_PRESENCE_ONLY,
             reason=(
-                f"package {module!r} is discoverable; presence alone is not a "
-                "capability proof"
+                f"package {module!r} is discoverable; presence alone is not a capability proof"
             ),
             authority=CapabilityAuthority.DIAGNOSTIC,
             required=required,
@@ -1193,10 +1124,7 @@ class ProgramAnalysisCapabilityProbe:
                 surface_id=f"import:{module}",
                 status=CapabilityProbeStatus.UNAVAILABLE,
                 reason_code=CapabilityReasonCode.IMPORT_FAILED,
-                reason=(
-                    f"import of {module!r} failed: "
-                    f"{type(error).__name__}: {error}"
-                ),
+                reason=(f"import of {module!r} failed: {type(error).__name__}: {error}"),
                 required=True,
                 metadata={"module": module},
             )
@@ -1328,9 +1256,7 @@ class ProgramAnalysisCapabilityProbe:
                     reason=f"{schema_attr} is missing or empty",
                     required=True,
                 )
-            if expected_schema_prefix and not schema_value.startswith(
-                expected_schema_prefix
-            ):
+            if expected_schema_prefix and not schema_value.startswith(expected_schema_prefix):
                 return CapabilitySurface(
                     surface_id=surface_id,
                     status=CapabilityProbeStatus.INCOMPATIBLE,
@@ -1350,11 +1276,7 @@ class ProgramAnalysisCapabilityProbe:
             required=True,
             metadata={
                 "callables": [name for name, _ in required],
-                **(
-                    {schema_attr: getattr(owner, schema_attr)}
-                    if schema_attr is not None
-                    else {}
-                ),
+                **({schema_attr: getattr(owner, schema_attr)} if schema_attr is not None else {}),
             },
         )
 
@@ -1373,16 +1295,12 @@ class ProgramAnalysisCapabilityProbe:
             reason_code = CapabilityReasonCode.PROBE_TIMEOUT
             reason = f"{family.value} probe timed out under the configured budget"
             authority_out = CapabilityAuthority.NONE
-        elif any(
-            s.status is CapabilityProbeStatus.INCOMPATIBLE for s in surfaces_t
-        ):
+        elif any(s.status is CapabilityProbeStatus.INCOMPATIBLE for s in surfaces_t):
             status = CapabilityProbeStatus.INCOMPATIBLE
             reason_code = CapabilityReasonCode.SIGNATURE_INCOMPATIBLE
             reason = f"{family.value} has incompatible callables or schemas"
             authority_out = CapabilityAuthority.NONE
-        elif any(
-            s.reason_code is CapabilityReasonCode.UNBOUNDED_OUTPUT for s in surfaces_t
-        ):
+        elif any(s.reason_code is CapabilityReasonCode.UNBOUNDED_OUTPUT for s in surfaces_t):
             status = CapabilityProbeStatus.REJECTED
             reason_code = CapabilityReasonCode.UNBOUNDED_OUTPUT
             reason = f"{family.value} rejected unbounded probe output"
@@ -1452,9 +1370,7 @@ class ProgramAnalysisCapabilityProbe:
             metadata={"family": family.value},
         )
 
-    def _overall_status(
-        self, families: Sequence[CapabilityFamilyReport]
-    ) -> CapabilityProbeStatus:
+    def _overall_status(self, families: Sequence[CapabilityFamilyReport]) -> CapabilityProbeStatus:
         statuses = {item.status for item in families}
         if CapabilityProbeStatus.TIMED_OUT in statuses:
             return CapabilityProbeStatus.TIMED_OUT
@@ -1468,7 +1384,10 @@ class ProgramAnalysisCapabilityProbe:
             return CapabilityProbeStatus.AVAILABLE
         if CapabilityProbeStatus.AVAILABLE in statuses or CapabilityProbeStatus.PARTIAL in statuses:
             return CapabilityProbeStatus.PARTIAL
-        if CapabilityProbeStatus.DEGRADED in statuses or CapabilityProbeStatus.SIMULATED in statuses:
+        if (
+            CapabilityProbeStatus.DEGRADED in statuses
+            or CapabilityProbeStatus.SIMULATED in statuses
+        ):
             return CapabilityProbeStatus.DEGRADED
         return CapabilityProbeStatus.UNAVAILABLE
 
@@ -1607,9 +1526,7 @@ class ProgramAnalysisCapabilityProbe:
                 surface_id="strict_cid.canary",
                 status=CapabilityProbeStatus.UNHEALTHY,
                 reason_code=CapabilityReasonCode.UNHEALTHY_PROVIDER,
-                reason=(
-                    f"strict CID canary failed: {type(error).__name__}: {error}"
-                ),
+                reason=(f"strict CID canary failed: {type(error).__name__}: {error}"),
                 required=True,
             )
         assert isinstance(result, Mapping)
@@ -1675,9 +1592,7 @@ class ProgramAnalysisCapabilityProbe:
                 if target is None:
                     continue
                 if attr_name == "query" and callable(target):
-                    ok, detail = _callable_compatible(
-                        module, "query", required_params=()
-                    )
+                    ok, detail = _callable_compatible(module, "query", required_params=())
                     query_surface = CapabilitySurface(
                         surface_id=f"graphrag.query:{module_name}",
                         status=(
@@ -1692,9 +1607,7 @@ class ProgramAnalysisCapabilityProbe:
                         ),
                         reason=detail if ok else detail,
                         authority=(
-                            CapabilityAuthority.BOUNDED_QUERY
-                            if ok
-                            else CapabilityAuthority.NONE
+                            CapabilityAuthority.BOUNDED_QUERY if ok else CapabilityAuthority.NONE
                         ),
                         required=False,
                         metadata={"module": module_name, "symbol": "query"},
@@ -1772,7 +1685,10 @@ class ProgramAnalysisCapabilityProbe:
                     )
                     surfaces.append(query_surface)
                     break
-            if query_surface is not None and query_surface.status is CapabilityProbeStatus.AVAILABLE:
+            if (
+                query_surface is not None
+                and query_surface.status is CapabilityProbeStatus.AVAILABLE
+            ):
                 break
 
         if not surfaces:
@@ -1834,11 +1750,7 @@ class ProgramAnalysisCapabilityProbe:
         claims_mod, claims_import = self._import_module(claims_name)
         surfaces.append(claims_import)
         if claims_mod is not None:
-            missing = [
-                name
-                for name in _IR_CORE_CLAIM_EXPORTS
-                if not hasattr(claims_mod, name)
-            ]
+            missing = [name for name in _IR_CORE_CLAIM_EXPORTS if not hasattr(claims_mod, name)]
             if missing:
                 surfaces.append(
                     CapabilitySurface(
@@ -1881,9 +1793,7 @@ class ProgramAnalysisCapabilityProbe:
         surfaces.append(protocols_import)
         if protocols_mod is not None:
             missing = [
-                name
-                for name in _IR_CORE_PROTOCOL_EXPORTS
-                if not hasattr(protocols_mod, name)
+                name for name in _IR_CORE_PROTOCOL_EXPORTS if not hasattr(protocols_mod, name)
             ]
             if missing:
                 surfaces.append(
@@ -1899,10 +1809,7 @@ class ProgramAnalysisCapabilityProbe:
                 authority_kind = getattr(protocols_mod, "AuthorityKind", None)
                 # Authority kinds must remain non-hierarchical / closed.
                 try:
-                    values = {
-                        str(getattr(item, "value", item))
-                        for item in authority_kind
-                    }
+                    values = {str(getattr(item, "value", item)) for item in authority_kind}
                 except Exception:
                     values = set()
                 if "theorem_proof" not in values:
@@ -1933,17 +1840,13 @@ class ProgramAnalysisCapabilityProbe:
 
         def available(items: Sequence[CapabilitySurface]) -> bool:
             ids = {
-                item.surface_id
-                for item in items
-                if item.status is CapabilityProbeStatus.AVAILABLE
+                item.surface_id for item in items if item.status is CapabilityProbeStatus.AVAILABLE
             }
             return "ir_core.claims" in ids and "ir_core.protocols" in ids
 
         def partial(items: Sequence[CapabilitySurface]) -> bool:
             ids = {
-                item.surface_id
-                for item in items
-                if item.status is CapabilityProbeStatus.AVAILABLE
+                item.surface_id for item in items if item.status is CapabilityProbeStatus.AVAILABLE
             }
             return bool(ids & {"ir_core.claims", "ir_core.protocols"}) and not (
                 "ir_core.claims" in ids and "ir_core.protocols" in ids
@@ -1999,13 +1902,11 @@ class ProgramAnalysisCapabilityProbe:
                                 status=CapabilityProbeStatus.AVAILABLE,
                                 reason_code=CapabilityReasonCode.CURRENT_DIAGNOSTIC,
                                 reason=(
-                                    f"{binding} Python binding is importable and "
-                                    f"exposes {marker}"
+                                    f"{binding} Python binding is importable and exposes {marker}"
                                 ),
                                 authority=CapabilityAuthority.SOLVER_CANDIDATE,
                                 required=False,
-                                version=str(getattr(mod, "__version__", "") or "")
-                                or None,
+                                version=str(getattr(mod, "__version__", "") or "") or None,
                                 metadata={
                                     "module": module_name,
                                     "api_marker": marker,
@@ -2019,8 +1920,7 @@ class ProgramAnalysisCapabilityProbe:
                     status=package.status,
                     reason_code=(
                         CapabilityReasonCode.BINDING_MISSING
-                        if package.reason_code
-                        is CapabilityReasonCode.PACKAGE_MISSING
+                        if package.reason_code is CapabilityReasonCode.PACKAGE_MISSING
                         else package.reason_code
                     ),
                     reason=f"{binding} Python binding is not available",
@@ -2042,8 +1942,7 @@ class ProgramAnalysisCapabilityProbe:
                     status=exe.status,
                     reason_code=(
                         CapabilityReasonCode.EXECUTABLE_MISSING
-                        if exe.reason_code
-                        is CapabilityReasonCode.EXECUTABLE_MISSING
+                        if exe.reason_code is CapabilityReasonCode.EXECUTABLE_MISSING
                         else exe.reason_code
                     ),
                     reason=exe.reason,
@@ -2092,8 +1991,7 @@ class ProgramAnalysisCapabilityProbe:
                         status=presence.status,
                         reason_code=(
                             CapabilityReasonCode.COMPILER_MISSING
-                            if presence.reason_code
-                            is CapabilityReasonCode.PACKAGE_MISSING
+                            if presence.reason_code is CapabilityReasonCode.PACKAGE_MISSING
                             else presence.reason_code
                         ),
                         reason=f"{bridge_name} is not discoverable",
@@ -2116,9 +2014,7 @@ class ProgramAnalysisCapabilityProbe:
 
         def partial(items: Sequence[CapabilitySurface]) -> bool:
             available_ids = {
-                item.surface_id
-                for item in items
-                if item.status is CapabilityProbeStatus.AVAILABLE
+                item.surface_id for item in items if item.status is CapabilityProbeStatus.AVAILABLE
             }
             # Partial when some but not all of cvc5/z3 binding+executable exist.
             cvc5_ok = any("cvc5" in sid for sid in available_ids)
@@ -2144,8 +2040,7 @@ class ProgramAnalysisCapabilityProbe:
     def _probe_ast_producers(self) -> CapabilityFamilyReport:
         root = self.config.optional_root
         module_name = (
-            f"{root}.logic.security_models.crypto_exchange.extractors."
-            "python_ast_extractor"
+            f"{root}.logic.security_models.crypto_exchange.extractors.python_ast_extractor"
         )
         surfaces: list[CapabilitySurface] = []
         module, import_surface = self._import_module(module_name)
@@ -2247,9 +2142,7 @@ class ProgramAnalysisCapabilityProbe:
             )
 
         def partial(items: Sequence[CapabilitySurface]) -> bool:
-            return any(
-                item.status is CapabilityProbeStatus.PARTIAL for item in items
-            )
+            return any(item.status is CapabilityProbeStatus.PARTIAL for item in items)
 
         return self._family(
             CapabilityFamily.AST_PRODUCERS,
@@ -2315,9 +2208,7 @@ class ProgramAnalysisCapabilityProbe:
                         )
                     else:
                         backend_ids = (
-                            sorted(metadata.keys())
-                            if isinstance(metadata, Mapping)
-                            else []
+                            sorted(metadata.keys()) if isinstance(metadata, Mapping) else []
                         )
                         surfaces.append(
                             CapabilitySurface(
@@ -2528,8 +2419,7 @@ class ProgramAnalysisCapabilityProbe:
         )
         if (
             report.status is CapabilityProbeStatus.REJECTED
-            and report.reason_code
-            is CapabilityReasonCode.SIMULATED_ZKP_AUTHORITY_REJECTED
+            and report.reason_code is CapabilityReasonCode.SIMULATED_ZKP_AUTHORITY_REJECTED
         ):
             # Authority is rejected, but the family itself is a simulated diagnostic.
             return CapabilityFamilyReport(
@@ -2670,9 +2560,7 @@ class IpfsDatasetsProgramAnalysisProvider:
     def capability(self) -> ProgramAnalysisCapabilityMatrix:
         return self.capabilities()
 
-    def probe_capabilities(
-        self, *, force_refresh: bool = False
-    ) -> ProgramAnalysisCapabilityReport:
+    def probe_capabilities(self, *, force_refresh: bool = False) -> ProgramAnalysisCapabilityReport:
         """Run (or reuse) a bounded real capability probe."""
 
         return self._probe.probe(force_refresh=force_refresh)

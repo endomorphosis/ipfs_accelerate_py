@@ -86,9 +86,7 @@ def _authorization(
         verdict=verdict,
         operation=operation,
         granted_authority=(
-            OperationAuthority.MUTATION
-            if verdict is AuthorizationVerdict.PERMIT
-            else None
+            OperationAuthority.MUTATION if verdict is AuthorizationVerdict.PERMIT else None
         ),
         **{**BINDING, "caller": caller},
         lease_id="lease:7",
@@ -198,12 +196,8 @@ def test_context_contracts_are_deeply_immutable_and_identity_stable() -> None:
     with pytest.raises(TypeError):
         capsule.goal["outcome"] = "changed"  # type: ignore[index]
 
-    reordered = _context_capsule(
-        goal={"z": 1, "outcome": "unified typed control", "a": 2}
-    )
-    same_reordered = _context_capsule(
-        goal={"a": 2, "outcome": "unified typed control", "z": 1}
-    )
+    reordered = _context_capsule(goal={"z": 1, "outcome": "unified typed control", "a": 2})
+    same_reordered = _context_capsule(goal={"a": 2, "outcome": "unified typed control", "z": 1})
     assert reordered.content_id == same_reordered.content_id
     assert reordered.to_json() == same_reordered.to_json()
 
@@ -250,11 +244,7 @@ def test_context_rejects_path_escapes_mixed_trees_and_invalid_truncation() -> No
     with pytest.raises(ContextContractError, match="truncated"):
         _context_capsule(truncated=True)
     with pytest.raises(ContextContractError, match="expansion tier"):
-        _context_capsule(
-            expansion_references=(
-                ContextReference("wrong-tier", "source"),
-            )
-        )
+        _context_capsule(expansion_references=(ContextReference("wrong-tier", "source"),))
 
     delta = _context_capsule(
         parent_capsule_id="capsule:previous",
@@ -346,17 +336,11 @@ def test_mutation_bindings_fail_closed_on_scope_or_policy_mismatch() -> None:
     with pytest.raises(MissingIdempotencyError, match="scope"):
         _mutation_request(idempotency=_idempotency(caller="operator:mallory"))
     with pytest.raises(AuthorizationBindingError, match="binding"):
-        _mutation_request(
-            authorization=_authorization(caller="operator:mallory")
-        )
+        _mutation_request(authorization=_authorization(caller="operator:mallory"))
     with pytest.raises(AuthorizationBindingError, match="every expected effect"):
-        _mutation_request(
-            authorization=_authorization(effect_ids=("different-effect",))
-        )
+        _mutation_request(authorization=_authorization(effect_ids=("different-effect",)))
     with pytest.raises(AuthorizationBindingError, match="permit"):
-        _mutation_request(
-            authorization=_authorization(verdict=AuthorizationVerdict.DENY)
-        )
+        _mutation_request(authorization=_authorization(verdict=AuthorizationVerdict.DENY))
 
 
 def test_authorized_mutation_round_trip_retains_nested_contracts() -> None:
@@ -499,9 +483,7 @@ def test_result_validation_rejects_undeclared_or_reshaped_effects() -> None:
 
 def test_applied_mutation_result_requires_and_binds_audit_receipts() -> None:
     request = _mutation_request()
-    with pytest.raises(
-        Exception, match="applied effect claim requires an audit receipt"
-    ):
+    with pytest.raises(Exception, match="applied effect claim requires an audit receipt"):
         EffectClaim(
             "pause-daemon",
             EffectKind.LIFECYCLE_TRANSITION,

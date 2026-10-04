@@ -85,9 +85,7 @@ def _reference(
     metadata: dict[str, object] = {
         "required": required,
         "priority": priority,
-        "coverage_ids": (
-            "criterion:safety" if required else f"criterion:{reference_id}",
-        ),
+        "coverage_ids": ("criterion:safety" if required else f"criterion:{reference_id}",),
         "uncertainty_bps": uncertainty,
         "uncertainty_reduction_bps": uncertainty_reduction,
         "latency_cost": latency,
@@ -114,9 +112,7 @@ def _compiler(*, max_optional_items: int | None = None) -> ContextCompiler:
         _budget(),
         tokenizer=_tokenizer,
         provider_context_window=1_420,
-        value_policy=EvidenceValuePolicy(
-            max_optional_items=max_optional_items
-        ),
+        value_policy=EvidenceValuePolicy(max_optional_items=max_optional_items),
     )
 
 
@@ -195,21 +191,14 @@ def test_required_evidence_bypasses_auction_and_zero_value_is_explicit() -> None
     forged_capsule = replace(
         result.capsule,
         expansion_references=tuple(
-            forged_deferred
-            if item.reference_id == deferred.reference_id
-            else item
+            forged_deferred if item.reference_id == deferred.reference_id else item
             for item in result.capsule.expansion_references
         ),
     )
     forged_witness = replace(
         result.receipt.evidence,
         capsule_id=forged_capsule.capsule_id,
-        artifact_digest=(
-            "sha256:"
-            + hashlib.sha256(
-                forged_capsule.canonical_bytes()
-            ).hexdigest()
-        ),
+        artifact_digest=("sha256:" + hashlib.sha256(forged_capsule.canonical_bytes()).hexdigest()),
     )
     forged_receipt = replace(
         result.receipt,
@@ -349,15 +338,9 @@ def test_question_bound_expansion_requires_named_question_and_hash_handle() -> N
         store,
     )
     expanded = next(
-        item
-        for item in result.delta_capsule.evidence
-        if item.reference_id == "parser-detail"
+        item for item in result.delta_capsule.evidence if item.reference_id == "parser-detail"
     )
-    decision = next(
-        item
-        for item in result.decisions
-        if item.reference_id == "parser-detail"
-    )
+    decision = next(item for item in result.decisions if item.reference_id == "parser-detail")
     assert handle.referenced_content_id.startswith("sha256:")
     assert expanded.referenced_content_id == handle.referenced_content_id
     assert expanded.metadata["expansion_question"] == question
@@ -397,10 +380,7 @@ def test_paired_evidence_proves_40_60_gates_without_coverage_drift() -> None:
 
     assert evidence.requirement_id == VALUE_OF_INFORMATION_REQUIREMENT_ID
     assert evidence.input_token_reduction_bps >= MIN_INPUT_TOKEN_REDUCTION_BPS
-    assert (
-        evidence.retry_input_token_reduction_bps
-        >= MIN_RETRY_INPUT_TOKEN_REDUCTION_BPS
-    )
+    assert evidence.retry_input_token_reduction_bps >= MIN_RETRY_INPUT_TOKEN_REDUCTION_BPS
     assert ValueOfInformationEvidence.from_json(evidence.to_json()) == evidence
     assert evidence.to_dict()["required_coverage_preserved"] is True
     assert evidence.to_dict()["safety_preserved"] is True
@@ -457,9 +437,7 @@ def test_measured_paired_compiler_outputs_clear_40_60_gates() -> None:
             evidence=(required, *optional),
         )
 
-        selected_optional = next(
-            item for item in selected.capsule.evidence if not item.required
-        )
+        selected_optional = next(item for item in selected.capsule.evidence if not item.required)
         changed_selected = tuple(
             replace(
                 item,
@@ -522,9 +500,7 @@ def test_measured_paired_compiler_outputs_clear_40_60_gates() -> None:
         fixtures.append(
             EvidenceValuePairedFixture(
                 fixture_id=f"measured-{fixture_index}",
-                accepted_criterion_ids=(
-                    f"criterion:measured-{fixture_index}",
-                ),
+                accepted_criterion_ids=(f"criterion:measured-{fixture_index}",),
                 baseline_input_tokens=baseline.capsule.input_tokens,
                 selected_input_tokens=selected.capsule.input_tokens,
                 baseline_retry_input_tokens=full_retry.capsule.input_tokens,
@@ -533,15 +509,9 @@ def test_measured_paired_compiler_outputs_clear_40_60_gates() -> None:
                 selected_required_coverage_ids=selected_coverage,
             )
         )
-        base_reductions.append(
-            1
-            - selected.capsule.input_tokens
-            / baseline.capsule.input_tokens
-        )
+        base_reductions.append(1 - selected.capsule.input_tokens / baseline.capsule.input_tokens)
         retry_reductions.append(
-            1
-            - compact_retry.receipt.delta_tokens
-            / full_retry.capsule.input_tokens
+            1 - compact_retry.receipt.delta_tokens / full_retry.capsule.input_tokens
         )
 
     evidence = ValueOfInformationEvidence(
@@ -557,7 +527,4 @@ def test_measured_paired_compiler_outputs_clear_40_60_gates() -> None:
     assert median(base_reductions) >= 0.40
     assert median(retry_reductions) >= 0.60
     assert evidence.input_token_reduction_bps >= MIN_INPUT_TOKEN_REDUCTION_BPS
-    assert (
-        evidence.retry_input_token_reduction_bps
-        >= MIN_RETRY_INPUT_TOKEN_REDUCTION_BPS
-    )
+    assert evidence.retry_input_token_reduction_bps >= MIN_RETRY_INPUT_TOKEN_REDUCTION_BPS

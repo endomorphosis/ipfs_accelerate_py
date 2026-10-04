@@ -20,9 +20,7 @@ __all__: Final[tuple[str, ...]] = (
     "SELF_IMPROVEMENT_FORBIDDEN_DEPENDENTS",
 )
 
-SELF_IMPROVEMENT_PACKAGE_NAME: Final[str] = (
-    "ipfs_accelerate_py.agent_supervisor.self_improvement"
-)
+SELF_IMPROVEMENT_PACKAGE_NAME: Final[str] = "ipfs_accelerate_py.agent_supervisor.self_improvement"
 
 # Stems owned by asref/self-improvement in docs/architecture/asref/move_map.json.
 SELF_IMPROVEMENT_OWNED_MODULES: Final[tuple[str, ...]] = (

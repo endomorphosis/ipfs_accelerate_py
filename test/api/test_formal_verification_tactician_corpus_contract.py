@@ -35,10 +35,7 @@ MANIFEST_PATH: Final = (
     / "manifest.json"
 )
 OBJECTIVES_PATH: Final = (
-    REPO_ROOT
-    / "docs"
-    / "architecture"
-    / "formal_verification_tactician_readiness.objectives.md"
+    REPO_ROOT / "docs" / "architecture" / "formal_verification_tactician_readiness.objectives.md"
 )
 
 INTERFACE: Final = "ProofTacticianCorpus@1"
@@ -164,15 +161,11 @@ PRIVATE_VALUE_PATTERNS: Final = (
     re.compile(r"(?i)(api[_-]?key|password|secret)\s*[:=]\s*\S+"),
 )
 
-EVIDENCE_AUTHORITIES: Final = frozenset(
-    {"independently_checkable", "bounded", "advisory"}
-)
+EVIDENCE_AUTHORITIES: Final = frozenset({"independently_checkable", "bounded", "advisory"})
 MINIMIZATION_GUARANTEES: Final = frozenset(
     {"none", "normalized", "bounded", "locally_minimal", "globally_minimal"}
 )
-EVIDENCE_CLASSES: Final = frozenset(
-    {"synthetic_offline_fixture", "offline", "synthetic"}
-)
+EVIDENCE_CLASSES: Final = frozenset({"synthetic_offline_fixture", "offline", "synthetic"})
 
 
 def _load_manifest() -> dict[str, Any]:
@@ -251,9 +244,7 @@ def test_vocabularies_are_closed_and_cover_required_sets(
 
     assert set(REQUIRED_FAMILIES) <= set(manifest["required_coverage"]["families"])
     assert set(REQUIRED_VARIANTS) <= set(manifest["required_coverage"]["variants"])
-    assert set(REQUIRED_MEASUREMENTS) <= set(
-        manifest["required_coverage"]["measurements"]
-    )
+    assert set(REQUIRED_MEASUREMENTS) <= set(manifest["required_coverage"]["measurements"])
     assert set(PER_FAMILY_MINIMUM_VARIANTS) <= set(
         manifest["required_coverage"]["per_family_minimum_variants"]
     )
@@ -348,9 +339,7 @@ def test_acceptance_flags_match_goal_criteria(manifest: dict[str, Any]) -> None:
 
 def test_evidence_paths_bind_declared_outputs(manifest: dict[str, Any]) -> None:
     paths = set(manifest["evidence_paths"])
-    assert (
-        "ipfs_datasets_py/tests/fixtures/logic/proof_tactician/manifest.json" in paths
-    )
+    assert "ipfs_datasets_py/tests/fixtures/logic/proof_tactician/manifest.json" in paths
     assert "test/api/test_formal_verification_tactician_corpus_contract.py" in paths
     for relative in paths:
         assert (REPO_ROOT / relative).is_file(), relative
@@ -405,8 +394,7 @@ def test_required_families_variants_and_measurements_are_covered(
         for case in cases
     )
     assert any(
-        case["family_id"] == "impossible_target_core"
-        and case["variant"] == "impossible"
+        case["family_id"] == "impossible_target_core" and case["variant"] == "impossible"
         for case in cases
     )
 
@@ -425,9 +413,9 @@ def test_each_case_binds_authority_license_and_measures(
             assert key in case, f"{case.get('case_id')}: missing {key}"
 
         assert case["case_id"] == f"{case['family_id']}.{case['variant']}"
-        assert case["family_id"] in set(REQUIRED_FAMILIES) or case[
-            "family_id"
-        ] in set(manifest["family_vocabulary"])
+        assert case["family_id"] in set(REQUIRED_FAMILIES) or case["family_id"] in set(
+            manifest["family_vocabulary"]
+        )
         assert case["variant"] in set(REQUIRED_VARIANTS)
         assert case["expected_authority"] in authorities
         assert case["evidence_authority_ceiling"] in EVIDENCE_AUTHORITIES
@@ -469,9 +457,7 @@ def test_variant_specific_recipe_hooks(cases: list[dict[str, Any]]) -> None:
         if variant == "unavailable":
             tool = recipe["unavailable_tool"]
             assert tool and tool["tool_id"]
-            assert "unavailable" in tool["policy"].lower() or "absence" in tool[
-                "policy"
-            ].lower()
+            assert "unavailable" in tool["policy"].lower() or "absence" in tool["policy"].lower()
         if variant == "ambiguous":
             ambiguity = recipe["ambiguity"]
             assert ambiguity and ambiguity["requires_material_selection"] is True
@@ -550,9 +536,7 @@ def test_no_private_witness_or_secret_payloads(
 def test_legal_evidence_routing_delegates_without_private_documents(
     cases: list[dict[str, Any]],
 ) -> None:
-    legal_cases = [
-        case for case in cases if case["family_id"] == "legal_evidence_routing"
-    ]
+    legal_cases = [case for case in cases if case["family_id"] == "legal_evidence_routing"]
     assert legal_cases
     for case in legal_cases:
         blob = json.dumps(case, sort_keys=True).lower()
@@ -574,9 +558,11 @@ def test_honest_failure_variants_do_not_claim_proof_success(
         if case["variant"] in {"impossible", "unsupported", "unavailable", "ambiguous"}:
             disposition = case["expected_disposition"].lower()
             outcome = case["expected_outcome_class"].lower()
-            assert "prove" not in disposition or "not" in disposition or "must_not" in json.dumps(
-                case["recipe"]
-            ).lower()
+            assert (
+                "prove" not in disposition
+                or "not" in disposition
+                or "must_not" in json.dumps(case["recipe"]).lower()
+            )
             assert "success" not in outcome or "honest" in outcome
             assert "honest_failure" in case["measures"] or case["variant"] == "ambiguous"
             assert case["evidence_authority_ceiling"] in {"advisory", "bounded"}
@@ -605,9 +591,7 @@ def test_coverage_index_matches_live_case_scan(
     assert set(index["measurements_present"]) == {
         measure for case in cases for measure in case["measures"]
     }
-    assert set(index["authorities_present"]) == {
-        case["expected_authority"] for case in cases
-    }
+    assert set(index["authorities_present"]) == {case["expected_authority"] for case in cases}
 
     rebuilt: dict[str, list[str]] = {}
     for case in cases:

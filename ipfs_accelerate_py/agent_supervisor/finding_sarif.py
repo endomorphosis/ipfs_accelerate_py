@@ -35,13 +35,9 @@ from .security_contract_analysis import (
 
 FINDING_SARIF_VERSION: Final[int] = 1
 SARIF_VERSION: Final[str] = "2.1.0"
-SARIF_SCHEMA_URI: Final[str] = (
-    "https://json.schemastore.org/sarif-2.1.0.json"
-)
+SARIF_SCHEMA_URI: Final[str] = "https://json.schemastore.org/sarif-2.1.0.json"
 TOOL_NAME: Final[str] = "ipfs-accelerate-security-contract-analysis"
-TOOL_INFORMATION_URI: Final[str] = (
-    "https://github.com/endomorphosis/ipfs_accelerate_py"
-)
+TOOL_INFORMATION_URI: Final[str] = "https://github.com/endomorphosis/ipfs_accelerate_py"
 DRIVER_SEMANTIC_VERSION: Final[str] = SECURITY_ANALYZER_VERSION
 
 SARIF_PROJECTION_IS_COMPLETION_EVIDENCE: Final[bool] = False
@@ -61,8 +57,10 @@ _SECRET_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
     re.compile(r"(?i)(password|passwd|pwd)\s*[:=]\s*\S+"),
     re.compile(r"(?i)(api[_-]?key|secret|token)\s*[:=]\s*\S+"),
     re.compile(r"(?i)bearer\s+[a-z0-9\-._~+/]+=*"),
-    re.compile(r"-----BEGIN[A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?"
-               r"-----END[A-Z0-9 ]*PRIVATE KEY-----"),
+    re.compile(
+        r"-----BEGIN[A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?"
+        r"-----END[A-Z0-9 ]*PRIVATE KEY-----"
+    ),
     re.compile(r"(?i)authorization\s*:\s*\S+"),
 )
 
@@ -154,9 +152,7 @@ def _integer(
     if value < minimum:
         raise FindingSarifError(f"{field_name} must be >= {minimum}")
     if maximum is not None and value > maximum:
-        raise FindingSarifBoundsError(
-            f"{field_name} exceeds maximum {maximum}"
-        )
+        raise FindingSarifBoundsError(f"{field_name} exceeds maximum {maximum}")
     return value
 
 
@@ -184,9 +180,7 @@ def redact_text(value: str, *, maximum: int = DEFAULT_MAX_MESSAGE_BYTES) -> str:
 def _reject_body_properties(properties: Mapping[str, Any]) -> None:
     for key in properties:
         if str(key).lower() in _FORBIDDEN_PROPERTY_KEYS:
-            raise SecretLeakageError(
-                f"SARIF properties must not include body/secret field {key!r}"
-            )
+            raise SecretLeakageError(f"SARIF properties must not include body/secret field {key!r}")
 
 
 def _level_for_severity(severity: str) -> str:
@@ -207,9 +201,7 @@ def _finding_from_value(value: Any) -> SecurityFinding:
         return value
     if isinstance(value, Mapping):
         return SecurityFinding.from_dict(value)
-    raise FindingSarifError(
-        "finding must be a SecurityFinding or mapping"
-    )
+    raise FindingSarifError("finding must be a SecurityFinding or mapping")
 
 
 # ---------------------------------------------------------------------------
@@ -226,8 +218,7 @@ def sarif_rules(
     specs = list(security_rule_specs())
     if families is not None:
         wanted = {
-            f if isinstance(f, SecurityRuleFamily) else SecurityRuleFamily(f)
-            for f in families
+            f if isinstance(f, SecurityRuleFamily) else SecurityRuleFamily(f) for f in families
         }
         specs = [s for s in specs if s.family in wanted]
     rules: list[dict[str, Any]] = []
@@ -236,12 +227,8 @@ def sarif_rules(
             {
                 "id": spec.rule_id,
                 "name": spec.name.replace(" ", "").replace("/", ""),
-                "shortDescription": {
-                    "text": redact_text(spec.name, maximum=512)
-                },
-                "fullDescription": {
-                    "text": redact_text(spec.short_description, maximum=1024)
-                },
+                "shortDescription": {"text": redact_text(spec.name, maximum=512)},
+                "fullDescription": {"text": redact_text(spec.short_description, maximum=1024)},
                 "defaultConfiguration": {
                     "level": _level_for_severity(spec.default_severity),
                 },
@@ -408,9 +395,7 @@ class SarifExportConfig:
                 ),
             )
         if not isinstance(self.include_partial_fingerprints, bool):
-            raise FindingSarifError(
-                "include_partial_fingerprints must be a boolean"
-            )
+            raise FindingSarifError("include_partial_fingerprints must be a boolean")
 
 
 # ---------------------------------------------------------------------------
@@ -487,15 +472,9 @@ def finding_to_sarif_result(
             related.append(
                 {
                     "id": len(related) + 1,
-                    "message": {
-                        "text": redact_text(
-                            f"path-node:{node_id}", maximum=256
-                        )
-                    },
+                    "message": {"text": redact_text(f"path-node:{node_id}", maximum=256)},
                     "physicalLocation": {
-                        "artifactLocation": _artifact_location(
-                            uri=f"node:{node_id}"
-                        )
+                        "artifactLocation": _artifact_location(uri=f"node:{node_id}")
                     },
                 }
             )
@@ -523,20 +502,12 @@ def finding_to_sarif_result(
         "evidence_runtime_cids": list(f.evidence.runtime_cids),
         "evidence_graph_slice_cids": list(f.evidence.graph_slice_cids),
         "security_property_id": (
-            f.security_property.property_id
-            if f.security_property is not None
-            else ""
+            f.security_property.property_id if f.security_property is not None else ""
         ),
-        "threat_path_id": (
-            f.threat_path.path_id if f.threat_path is not None else ""
-        ),
-        "threat_path_origin": (
-            f.threat_path.origin.value if f.threat_path is not None else ""
-        ),
+        "threat_path_id": (f.threat_path.path_id if f.threat_path is not None else ""),
+        "threat_path_origin": (f.threat_path.origin.value if f.threat_path is not None else ""),
         "has_unknown_dynamic": (
-            f.threat_path.has_unknown_dynamic
-            if f.threat_path is not None
-            else False
+            f.threat_path.has_unknown_dynamic if f.threat_path is not None else False
         ),
         "is_vulnerability": f.is_vulnerability,
     }
@@ -635,16 +606,10 @@ def findings_to_sarif(
             "location": _artifact_location(
                 uri=uri,
                 uri_base_id=(
-                    cfg.base_uri
-                    if not uri.startswith(("cid:", "node:", "finding:"))
-                    else ""
+                    cfg.base_uri if not uri.startswith(("cid:", "node:", "finding:")) else ""
                 ),
             ),
-            "roles": (
-                ["analysisTarget"]
-                if not uri.startswith("cid:")
-                else ["memoryContents"]
-            ),
+            "roles": (["analysisTarget"] if not uri.startswith("cid:") else ["memoryContents"]),
         }
         # Content reference only — never contents/rendered/text.
         if uri.startswith("cid:"):
@@ -691,23 +656,14 @@ def findings_to_sarif(
         _reject_body_properties(run_properties)
         for key, value in run_properties.items():
             if key in _FORBIDDEN_PROPERTY_KEYS:
-                raise SecretLeakageError(
-                    f"run_properties must not include {key!r}"
-                )
+                raise SecretLeakageError(f"run_properties must not include {key!r}")
             if isinstance(value, str):
-                run_props[key] = redact_text(
-                    value, maximum=cfg.max_message_bytes
-                )
+                run_props[key] = redact_text(value, maximum=cfg.max_message_bytes)
             elif isinstance(value, (int, float, bool)) or value is None:
                 run_props[key] = value
-            elif isinstance(value, Sequence) and not isinstance(
-                value, (str, bytes)
-            ):
+            elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
                 run_props[key] = [
-                    redact_text(str(v), maximum=256)
-                    if isinstance(v, str)
-                    else v
-                    for v in value
+                    redact_text(str(v), maximum=256) if isinstance(v, str) else v for v in value
                 ]
             else:
                 # Drop non-scalar unstructured blobs.
@@ -752,9 +708,7 @@ def findings_to_sarif(
     # Enforce serialized byte bound.
     encoded = sarif_canonical_bytes(log)
     if len(encoded) > MAX_SARIF_BYTES:
-        raise FindingSarifBoundsError(
-            f"SARIF log exceeds {MAX_SARIF_BYTES} bytes"
-        )
+        raise FindingSarifBoundsError(f"SARIF log exceeds {MAX_SARIF_BYTES} bytes")
     return log
 
 
@@ -790,9 +744,7 @@ def assert_no_secret_or_body_leakage(log: Mapping[str, Any]) -> None:
                 if key_s.lower() in _FORBIDDEN_PROPERTY_KEYS:
                     # contents.binary empty is handled; still reject named keys.
                     if key_s.lower() in {"snippet", "source", "source_body", "body", "code"}:
-                        raise SecretLeakageError(
-                            f"forbidden key {key_s!r} at {path}"
-                        )
+                        raise SecretLeakageError(f"forbidden key {key_s!r} at {path}")
                 walk(value, f"{path}.{key_s}")
         elif isinstance(obj, Sequence) and not isinstance(obj, (str, bytes)):
             for index, item in enumerate(obj):
@@ -800,14 +752,10 @@ def assert_no_secret_or_body_leakage(log: Mapping[str, Any]) -> None:
         elif isinstance(obj, str):
             upper = obj.upper()
             if "BEGIN" in upper and "PRIVATE KEY" in upper:
-                raise SecretLeakageError(
-                    f"private key material at {path}"
-                )
+                raise SecretLeakageError(f"private key material at {path}")
             # Long base64-looking blobs that look like embedded bodies.
             if len(obj) > 4096 and re.fullmatch(r"[A-Za-z0-9+/=\s]+", obj or ""):
-                raise SecretLeakageError(
-                    f"oversized opaque blob at {path}"
-                )
+                raise SecretLeakageError(f"oversized opaque blob at {path}")
 
     walk(log, "$")
 
@@ -821,9 +769,7 @@ def export_security_findings_sarif(
 ) -> dict[str, Any]:
     """High-level export: findings → SARIF with optional leakage assertion."""
 
-    log = findings_to_sarif(
-        findings, config=config, run_properties=run_properties
-    )
+    log = findings_to_sarif(findings, config=config, run_properties=run_properties)
     if validate_leakage:
         assert_no_secret_or_body_leakage(log)
     return log
@@ -832,12 +778,8 @@ def export_security_findings_sarif(
 def contract_finding_to_security_like(
     record: Mapping[str, Any],
     *,
-    family: SecurityRuleFamily | str = (
-        SecurityRuleFamily.MCP_SCHEMA_DISPATCH_CONFUSION
-    ),
-    classification: FindingClassification | str = (
-        FindingClassification.CORRECTNESS_DRIFT
-    ),
+    family: SecurityRuleFamily | str = (SecurityRuleFamily.MCP_SCHEMA_DISPATCH_CONFUSION),
+    classification: FindingClassification | str = (FindingClassification.CORRECTNESS_DRIFT),
 ) -> SecurityFinding:
     """Adapt a contract-finding-like mapping into a SecurityFinding shell.
 
@@ -852,30 +794,20 @@ def contract_finding_to_security_like(
         security_rule_spec,
     )
 
-    family_e = (
-        family
-        if isinstance(family, SecurityRuleFamily)
-        else SecurityRuleFamily(family)
-    )
+    family_e = family if isinstance(family, SecurityRuleFamily) else SecurityRuleFamily(family)
     spec = security_rule_spec(family_e)
     evidence_raw = record.get("evidence") or {}
     if isinstance(evidence_raw, Mapping):
         evidence = SecurityEvidence(
             artifact_cids=tuple(evidence_raw.get("artifact_cids") or ()),
-            counterexample_cids=tuple(
-                evidence_raw.get("counterexample_cids") or ()
-            ),
+            counterexample_cids=tuple(evidence_raw.get("counterexample_cids") or ()),
             proof_cids=tuple(evidence_raw.get("proof_cids") or ()),
             runtime_cids=tuple(evidence_raw.get("runtime_cids") or ()),
         )
     else:
         evidence = SecurityEvidence()
 
-    summary = str(
-        record.get("summary")
-        or record.get("root_cause_family")
-        or "contract finding"
-    )
+    summary = str(record.get("summary") or record.get("root_cause_family") or "contract finding")
     return build_security_finding(
         family=family_e,
         classification=classification,
@@ -883,17 +815,13 @@ def contract_finding_to_security_like(
         impact="",
         evidence=evidence,
         severity=str(record.get("severity") or "low"),
-        confidence_millionths=int(
-            record.get("confidence_millionths") or 300_000
-        ),
+        confidence_millionths=int(record.get("confidence_millionths") or 300_000),
         symbols=tuple(record.get("symbols") or ()),
         interfaces=tuple(record.get("interfaces") or ()),
         repositories=tuple(record.get("repositories") or ()),
         tree_id=str(record.get("tree_id") or ""),
         policy_revision=str(record.get("policy_revision") or ""),
-        root_cause_family=str(
-            record.get("root_cause_family") or spec.family.value
-        ),
+        root_cause_family=str(record.get("root_cause_family") or spec.family.value),
         seed_label="contract_projection",
     )
 

@@ -75,9 +75,7 @@ def _sealed_daemon_environment() -> dict[str, str]:
 
 
 def _git(cwd: Path, *args: str) -> str:
-    result = subprocess.run(
-        ["git", *args], cwd=cwd, text=True, capture_output=True, check=True
-    )
+    result = subprocess.run(["git", *args], cwd=cwd, text=True, capture_output=True, check=True)
     return result.stdout.strip()
 
 
@@ -86,7 +84,9 @@ def _repo(path: Path) -> str:
     _git(path, "init", "-q")
     _git(path, "config", "user.name", "Validation Test")
     _git(path, "config", "user.email", "validation@example.invalid")
-    (path / "pyproject.toml").write_text("[project]\nname='fixture'\nversion='1'\n", encoding="utf-8")
+    (path / "pyproject.toml").write_text(
+        "[project]\nname='fixture'\nversion='1'\n", encoding="utf-8"
+    )
     (path / "src").mkdir()
     (path / "src" / "alpha.py").write_text("VALUE = 1\n", encoding="utf-8")
     _git(path, "add", "-A")
@@ -117,9 +117,7 @@ def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
         "RUSTUP_HOME": str(tmp_path / "rustup-home"),
         VALIDATION_NPM_CACHE_ENV: str(approved_npm_cache),
         VALIDATION_PATH_ENV: str(trusted_bin),
-        VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV: str(
-            approved_playwright_browsers
-        ),
+        VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV: str(approved_playwright_browsers),
     }
 
     environment = build_validation_environment(source)
@@ -129,29 +127,17 @@ def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
     assert environment["XDG_CONFIG_HOME"] == environment["HOME"]
     assert environment["PYTHONNOUSERSITE"] == "1"
     assert environment["PYTHON"] == str(Path(sys.executable).resolve())
-    assert environment[VALIDATION_PYTHON_LAUNCHER_MODE_ENV].endswith(
-        ":canonical-direct"
-    )
-    assert (
-        len(environment[VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV])
-        == 64
-    )
+    assert environment[VALIDATION_PYTHON_LAUNCHER_MODE_ENV].endswith(":canonical-direct")
+    assert len(environment[VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV]) == 64
     assert len(environment[VALIDATION_PYTHON_LAUNCHER_SHA256_ENV]) == 64
     assert len(environment[VALIDATION_PYTHON_INTERPRETER_SHA256_ENV]) == 64
-    assert environment[VALIDATION_PYTHON_INTERPRETER_STAT_ENV].startswith(
-        '{"device":'
-    )
+    assert environment[VALIDATION_PYTHON_INTERPRETER_STAT_ENV].startswith('{"device":')
     assert environment["NPM_CONFIG_CACHE"] == str(approved_npm_cache.resolve())
     assert environment["NPM_CONFIG_OFFLINE"] == "true"
-    assert environment["PLAYWRIGHT_BROWSERS_PATH"] == str(
-        approved_playwright_browsers.resolve()
-    )
+    assert environment["PLAYWRIGHT_BROWSERS_PATH"] == str(approved_playwright_browsers.resolve())
     assert environment["NPM_CONFIG_GLOBALCONFIG"] == "/dev/null"
     assert environment["NPM_CONFIG_USERCONFIG"] == "/dev/null/npmrc"
-    assert (
-        environment["NPM_CONFIG_USERCONFIG"]
-        != environment["NPM_CONFIG_GLOBALCONFIG"]
-    )
+    assert environment["NPM_CONFIG_USERCONFIG"] != environment["NPM_CONFIG_GLOBALCONFIG"]
     assert environment["GIT_TERMINAL_PROMPT"] == "0"
     assert environment["PYTHONHASHSEED"] == "0"
     assert not {
@@ -169,8 +155,7 @@ def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
     shell_command = validation_shell_command("test -f artifact")
     assert shell_command[:4] == ["/bin/bash", "--noprofile", "--norc", "-c"]
     assert shell_command[4].endswith(
-        "readonly -f _ipfs_accelerate_validation_python python python3 pytest; "
-        "test -f artifact"
+        "readonly -f _ipfs_accelerate_validation_python python python3 pytest; test -f artifact"
     )
     for nested_shell in (
         "bash -lc 'python -c \"raise SystemExit(0)\"'",
@@ -305,7 +290,7 @@ def test_validation_runtime_reuses_supervisor_python_and_installed_pytest(
     expected_python = str(Path(sys.executable).resolve())
     command = (
         "TASK_PREFIX=works python -c 'import os, sys; "
-        "assert os.environ[\"TASK_PREFIX\"] == \"works\"; print(sys.executable)' "
+        'assert os.environ["TASK_PREFIX"] == "works"; print(sys.executable)\' '
         "&& python -m pytest --version "
         "&& pytest --version"
     )
@@ -333,8 +318,7 @@ def test_validation_runtime_reuses_supervisor_python_and_installed_pytest(
     not sys.platform.startswith("linux"),
     reason="sealed memfd launchers are Linux-specific",
 )
-def test_validation_runtime_seals_nested_python_launcher_and_cleans_descriptor(
-) -> None:
+def test_validation_runtime_seals_nested_python_launcher_and_cleans_descriptor() -> None:
     import fcntl
 
     environment = _sealed_daemon_environment()
@@ -349,16 +333,9 @@ def test_validation_runtime_seals_nested_python_launcher_and_cleans_descriptor(
         descriptor = os.open(launcher_path, os.O_RDONLY)
         try:
             required_seals = (
-                fcntl.F_SEAL_WRITE
-                | fcntl.F_SEAL_GROW
-                | fcntl.F_SEAL_SHRINK
-                | fcntl.F_SEAL_SEAL
+                fcntl.F_SEAL_WRITE | fcntl.F_SEAL_GROW | fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_SEAL
             )
-            assert (
-                fcntl.fcntl(descriptor, fcntl.F_GET_SEALS)
-                & required_seals
-                == required_seals
-            )
+            assert fcntl.fcntl(descriptor, fcntl.F_GET_SEALS) & required_seals == required_seals
         finally:
             os.close(descriptor)
         assert receipt.sealed is True
@@ -366,32 +343,14 @@ def test_validation_runtime_seals_nested_python_launcher_and_cleans_descriptor(
         assert receipt.content_sha256 == hashlib.sha256(payload).hexdigest()
         assert (
             receipt.interpreter_sha256
-            == child_environment[
-                VALIDATION_PYTHON_INTERPRETER_SHA256_ENV
-            ]
+            == child_environment[VALIDATION_PYTHON_INTERPRETER_SHA256_ENV]
         )
+        assert receipt.interpreter_stat == child_environment[VALIDATION_PYTHON_INTERPRETER_STAT_ENV]
+        assert receipt.mode == child_environment[VALIDATION_PYTHON_LAUNCHER_MODE_ENV]
         assert (
-            receipt.interpreter_stat
-            == child_environment[
-                VALIDATION_PYTHON_INTERPRETER_STAT_ENV
-            ]
+            receipt.policy_sha256 == child_environment[VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV]
         )
-        assert (
-            receipt.mode
-            == child_environment[VALIDATION_PYTHON_LAUNCHER_MODE_ENV]
-        )
-        assert (
-            receipt.policy_sha256
-            == child_environment[
-                VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV
-            ]
-        )
-        assert (
-            child_environment[
-                VALIDATION_PYTHON_LAUNCHER_SHA256_ENV
-            ]
-            == receipt.content_sha256
-        )
+        assert child_environment[VALIDATION_PYTHON_LAUNCHER_SHA256_ENV] == receipt.content_sha256
         assert child_environment["PYTHONNOUSERSITE"] == "1"
 
     assert launcher_path
@@ -487,31 +446,20 @@ raise SystemExit(completed.returncode or site_probe.returncode)
     launcher_receipt = result["validation_python_launcher"]
     assert launcher_receipt["sealed"] is True
     environment = _sealed_daemon_environment()
-    assert (
-        launcher_receipt["content_sha256"]
-        == environment[VALIDATION_PYTHON_LAUNCHER_SHA256_ENV]
-    )
-    assert (
-        launcher_receipt["mode"]
-        == environment[VALIDATION_PYTHON_LAUNCHER_MODE_ENV]
-    )
+    assert launcher_receipt["content_sha256"] == environment[VALIDATION_PYTHON_LAUNCHER_SHA256_ENV]
+    assert launcher_receipt["mode"] == environment[VALIDATION_PYTHON_LAUNCHER_MODE_ENV]
     assert (
         launcher_receipt["policy_sha256"]
-        == environment[
-            VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV
-        ]
+        == environment[VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV]
     )
     assert (
         launcher_receipt["interpreter_sha256"]
         == environment[VALIDATION_PYTHON_INTERPRETER_SHA256_ENV]
     )
     assert (
-        launcher_receipt["interpreter_stat"]
-        == environment[VALIDATION_PYTHON_INTERPRETER_STAT_ENV]
+        launcher_receipt["interpreter_stat"] == environment[VALIDATION_PYTHON_INTERPRETER_STAT_ENV]
     )
-    launcher_path = (workspace / "launcher-path.txt").read_text(
-        encoding="utf-8"
-    )
+    launcher_path = (workspace / "launcher-path.txt").read_text(encoding="utf-8")
     assert launcher_path.startswith(f"/proc/{os.getpid()}/fd/")
     assert not Path(launcher_path).exists()
 
@@ -548,14 +496,8 @@ def test_daemon_classifies_python_launcher_failure_as_infrastructure(
 
     assert result["returncode"] == 75
     assert result["infrastructure_failure"] is True
-    assert (
-        result["error"]
-        == "validation_environment_python_launcher_unavailable"
-    )
-    assert (
-        result["reason"]
-        == "sealed_validation_python_launcher_unavailable"
-    )
+    assert result["error"] == "validation_environment_python_launcher_unavailable"
+    assert result["reason"] == "sealed_validation_python_launcher_unavailable"
     assert "kernel sealing unavailable" in str(result["output"])
 
 
@@ -571,10 +513,7 @@ def test_daemon_classifies_child_launcher_exec_denial_as_infrastructure(
         raise PermissionError("procfd execution denied")
 
     monkeypatch.setattr(
-        (
-            "ipfs_accelerate_py.agent_supervisor.todo_daemon."
-            "implementation_daemon.subprocess.run"
-        ),
+        ("ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon.subprocess.run"),
         denied_run,
     )
     spec = SimpleNamespace(command="true", raw_command="true")
@@ -588,38 +527,15 @@ def test_daemon_classifies_child_launcher_exec_denial_as_infrastructure(
 
     assert result["returncode"] == 75
     assert result["infrastructure_failure"] is True
-    assert (
-        result["error"]
-        == "validation_environment_python_launcher_exec_unavailable"
-    )
-    assert (
-        result["reason"]
-        == "sealed_validation_python_launcher_child_probe_failed"
-    )
+    assert result["error"] == "validation_environment_python_launcher_exec_unavailable"
+    assert result["reason"] == "sealed_validation_python_launcher_child_probe_failed"
     assert "procfd execution denied" in str(result["output"])
     receipt = result["validation_python_launcher"]
-    assert (
-        receipt["content_sha256"]
-        == environment[VALIDATION_PYTHON_LAUNCHER_SHA256_ENV]
-    )
-    assert (
-        receipt["interpreter_sha256"]
-        == environment[VALIDATION_PYTHON_INTERPRETER_SHA256_ENV]
-    )
-    assert (
-        receipt["interpreter_stat"]
-        == environment[VALIDATION_PYTHON_INTERPRETER_STAT_ENV]
-    )
-    assert (
-        receipt["mode"]
-        == environment[VALIDATION_PYTHON_LAUNCHER_MODE_ENV]
-    )
-    assert (
-        receipt["policy_sha256"]
-        == environment[
-            VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV
-        ]
-    )
+    assert receipt["content_sha256"] == environment[VALIDATION_PYTHON_LAUNCHER_SHA256_ENV]
+    assert receipt["interpreter_sha256"] == environment[VALIDATION_PYTHON_INTERPRETER_SHA256_ENV]
+    assert receipt["interpreter_stat"] == environment[VALIDATION_PYTHON_INTERPRETER_STAT_ENV]
+    assert receipt["mode"] == environment[VALIDATION_PYTHON_LAUNCHER_MODE_ENV]
+    assert receipt["policy_sha256"] == environment[VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV]
 
 
 @pytest.mark.parametrize(
@@ -643,10 +559,7 @@ def test_daemon_classifies_invalid_shell_command_as_policy_rejection(
 
     assert result["returncode"] == 78
     assert result["error"] == "validation_command_policy_rejected"
-    assert (
-        result["reason"]
-        == "validation_shell_command_policy_violation"
-    )
+    assert result["reason"] == "validation_shell_command_policy_violation"
     assert result["infrastructure_failure"] is False
     assert "validation_python_launcher" not in result
 
@@ -662,7 +575,7 @@ def test_validation_runtime_extends_task_local_pythonpath_with_approved_packages
     )
     command = (
         "PYTHONPATH=. python -c 'import fixture_value, pytest; "
-        "assert fixture_value.VALUE == \"workspace-import\"; "
+        'assert fixture_value.VALUE == "workspace-import"; '
         "print(pytest.__version__)' "
         "&& PYTHONPATH=. pytest --version"
     )
@@ -701,13 +614,11 @@ def test_validation_runtime_canonicalizes_replaceable_python_launcher(
     )
 
     assert report["passed"] is True
-    assert str(report["results"][0]["output"]).strip() == str(
+    assert str(report["results"][0]["output"]).strip() == str(Path(sys.executable).resolve())
+    child_environment = build_validation_environment(environment)
+    assert child_environment["IPFS_ACCELERATE_VALIDATION_PYTHON_EXECUTABLE"] == str(
         Path(sys.executable).resolve()
     )
-    child_environment = build_validation_environment(environment)
-    assert child_environment[
-        "IPFS_ACCELERATE_VALIDATION_PYTHON_EXECUTABLE"
-    ] == str(Path(sys.executable).resolve())
     assert "PYTHONPATH" not in child_environment
     assert child_environment["PYTHONNOUSERSITE"] == "1"
     assert validation_python_executable(environment) != str(interpreter)
@@ -723,13 +634,9 @@ def test_validation_runtime_does_not_reinject_inherited_pythonpath(
 
     environment = build_validation_environment()
 
-    assert str(hostile.resolve()) not in environment.get("PYTHONPATH", "").split(
-        os.pathsep
-    )
+    assert str(hostile.resolve()) not in environment.get("PYTHONPATH", "").split(os.pathsep)
     with pytest.raises(ValidationRuntimeError, match="must not be writable"):
-        build_validation_environment(
-            {VALIDATION_PYTHONPATH_ENV: str(hostile)}
-        )
+        build_validation_environment({VALIDATION_PYTHONPATH_ENV: str(hostile)})
 
 
 def test_legacy_argv_validation_normalizes_login_shell_and_scrubs_bash_env(
@@ -790,9 +697,7 @@ def test_legacy_adapter_forwards_sanitized_validation_environment(
         environment=None,
     ):
         assert environment is not None
-        captured_environment.update(
-            {str(key): str(value) for key, value in environment.items()}
-        )
+        captured_environment.update({str(key): str(value) for key, value in environment.items()})
         completed = subprocess.run(
             list(command),
             cwd=cwd,
@@ -952,19 +857,11 @@ def test_cache_and_result_digests_bind_python_launcher_policy() -> None:
         "returncode": 0,
         "output": "passed",
         "validation_python_launcher": {
-            "content_sha256": environment[
-                VALIDATION_PYTHON_LAUNCHER_SHA256_ENV
-            ],
-            "interpreter_sha256": environment[
-                VALIDATION_PYTHON_INTERPRETER_SHA256_ENV
-            ],
-            "interpreter_stat": environment[
-                VALIDATION_PYTHON_INTERPRETER_STAT_ENV
-            ],
+            "content_sha256": environment[VALIDATION_PYTHON_LAUNCHER_SHA256_ENV],
+            "interpreter_sha256": environment[VALIDATION_PYTHON_INTERPRETER_SHA256_ENV],
+            "interpreter_stat": environment[VALIDATION_PYTHON_INTERPRETER_STAT_ENV],
             "mode": environment[VALIDATION_PYTHON_LAUNCHER_MODE_ENV],
-            "policy_sha256": environment[
-                VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV
-            ],
+            "policy_sha256": environment[VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV],
             "sealed": True,
         },
     }
@@ -979,10 +876,7 @@ def test_cache_and_result_digests_bind_python_launcher_policy() -> None:
             "sealed": False,
         },
     }
-    assert (
-        _validation_result_digest(changed_result, cache_key=base_key)
-        != base_result_digest
-    )
+    assert _validation_result_digest(changed_result, cache_key=base_key) != base_result_digest
 
 
 def test_validation_cache_separates_canonical_and_sealed_runners(
@@ -1002,19 +896,11 @@ def test_validation_cache_separates_canonical_and_sealed_runners(
         calls.append("sealed")
         result = _result(spec)
         result["validation_python_launcher"] = {
-            "content_sha256": environment[
-                VALIDATION_PYTHON_LAUNCHER_SHA256_ENV
-            ],
-            "interpreter_sha256": environment[
-                VALIDATION_PYTHON_INTERPRETER_SHA256_ENV
-            ],
-            "interpreter_stat": environment[
-                VALIDATION_PYTHON_INTERPRETER_STAT_ENV
-            ],
+            "content_sha256": environment[VALIDATION_PYTHON_LAUNCHER_SHA256_ENV],
+            "interpreter_sha256": environment[VALIDATION_PYTHON_INTERPRETER_SHA256_ENV],
+            "interpreter_stat": environment[VALIDATION_PYTHON_INTERPRETER_STAT_ENV],
             "mode": environment[VALIDATION_PYTHON_LAUNCHER_MODE_ENV],
-            "policy_sha256": environment[
-                VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV
-            ],
+            "policy_sha256": environment[VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV],
             "sealed": True,
         }
         return result
@@ -1061,10 +947,7 @@ def test_validation_cache_separates_canonical_and_sealed_runners(
     assert canonical["results"][0]["cache_hit"] is False
     assert first_sealed["results"][0]["cache_hit"] is False
     assert replayed_sealed["results"][0]["cache_hit"] is True
-    assert (
-        canonical["results"][0]["cache_key"]
-        != first_sealed["results"][0]["cache_key"]
-    )
+    assert canonical["results"][0]["cache_key"] != first_sealed["results"][0]["cache_key"]
     assert calls == ["canonical", "sealed"]
 
 
@@ -1089,10 +972,7 @@ def test_fresh_sealed_runner_requires_exact_launcher_receipt(
     result = report["results"][0]
     assert result["returncode"] == 75
     assert result["infrastructure_failure"] is True
-    assert (
-        result["error"]
-        == "validation_environment_python_launcher_receipt_mismatch"
-    )
+    assert result["error"] == "validation_environment_python_launcher_receipt_mismatch"
     assert result["outcome"] == "infrastructure_failure"
     assert result["classification"] == "infrastructure_failure"
     assert result["authoritative"] is False
@@ -1141,13 +1021,8 @@ def test_hermetic_scheduler_rejects_actual_daemon_runner_before_execution(
     assert report["passed"] is False
     result = report["results"][0]
     assert result["returncode"] == 75
-    assert (
-        result["error"]
-        == "hermetic_validation_runner_capability_missing"
-    )
-    assert result["reason"] == (
-        "hermetic_runner_does_not_consume_runtime_context"
-    )
+    assert result["error"] == "hermetic_validation_runner_capability_missing"
+    assert result["reason"] == ("hermetic_runner_does_not_consume_runtime_context")
     assert result["outcome"] == "infrastructure_failure"
     assert result["classification"] == "infrastructure_failure"
     assert result["authoritative"] is False
@@ -1323,10 +1198,7 @@ def test_hermetic_scheduler_rejects_dual_sealed_runner_composition(
     assert report["passed"] is False
     result = report["results"][0]
     assert result["returncode"] == 75
-    assert (
-        result["error"]
-        == "hermetic_sealed_runner_composition_unsupported"
-    )
+    assert result["error"] == "hermetic_sealed_runner_composition_unsupported"
     assert result["outcome"] == "infrastructure_failure"
     assert result["authoritative"] is False
 
@@ -1495,9 +1367,7 @@ def test_pre_merge_escalation_runs_unrelated_targeted_validation(tmp_path: Path)
     assert set(calls) == {"pytest tests/test_alpha.py", "pytest tests/test_beta.py"}
     assert report["passed"] is False
     assert report["selection"]["escalated"] is True
-    beta = next(
-        item for item in report["selection"]["decisions"] if "beta" in item["command"]
-    )
+    beta = next(item for item in report["selection"]["decisions"] if "beta" in item["command"])
     assert beta["reason"] == "pre_merge_broad_escalation"
     assert beta["stage"] == "broad"
 
@@ -1627,9 +1497,7 @@ def test_daemon_binds_task_validation_to_proposal_local_impact_graph(
     assert commands[0].validation_id.startswith("declared:")
     assert graph.graph_version == "declared-validation-plan-v1"
     assert graph.required_validations(
-        graph.affected_paths(
-            ("src/identity.py", "tests/unit/test_identity.py")
-        )
+        graph.affected_paths(("src/identity.py", "tests/unit/test_identity.py"))
     )
     assert report["passed"] is True
     assert report["validation_plan_binding"]["graph_id"] == graph.graph_id

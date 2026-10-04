@@ -26,12 +26,13 @@ from ipfs_accelerate_py.github_cli.cache import get_global_cache
 cache = get_global_cache()
 stats = cache.get_stats()
 
-peer_id = stats.get('peer_id')
+peer_id = stats.get("peer_id")
 print(f"Peer ID: {peer_id}")
 
 # Get your public IP
 import urllib.request
-public_ip = urllib.request.urlopen('https://api.ipify.org').read().decode('utf8')
+
+public_ip = urllib.request.urlopen("https://api.ipify.org").read().decode("utf8")
 print(f"Public IP: {public_ip}")
 
 # P2P cache port (default 9100)

@@ -55,9 +55,7 @@ from .supervisor_v2_contracts import (
 
 TOKEN_LEDGER_CONTRACT_VERSION: Final[int] = 1
 SCHEMA_VERSION: Final[int] = TOKEN_LEDGER_CONTRACT_VERSION
-ACCEPTED_CRITERION_TOKEN_REQUIREMENT_ID: Final[str] = (
-    "121282056926752432472380808295780602698"
-)
+ACCEPTED_CRITERION_TOKEN_REQUIREMENT_ID: Final[str] = "121282056926752432472380808295780602698"
 ACCEPTED_CRITERION_TOKEN_GOAL_ID: Final[str] = "ASI-G210"
 
 # Authority bounds: attribution only.  Never flip these to true.
@@ -93,18 +91,10 @@ PROVIDER_TOKEN_USAGE_SCHEMA: Final[str] = (
 TERMINAL_CRITERION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/terminal-criterion-attribution@1"
 )
-TOKEN_ATTRIBUTION_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/token-attribution@1"
-)
-TOKEN_RATIO_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/token-ledger-exact-ratio@1"
-)
-CRITERION_COST_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/criterion-token-cost@1"
-)
-TOKEN_LEDGER_REPORT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/token-ledger-report@1"
-)
+TOKEN_ATTRIBUTION_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/token-attribution@1"
+TOKEN_RATIO_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/token-ledger-exact-ratio@1"
+CRITERION_COST_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/criterion-token-cost@1"
+TOKEN_LEDGER_REPORT_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/token-ledger-report@1"
 SUPERVISOR_TOKEN_LEDGER_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/supervisor-token-ledger@1"
 )
@@ -176,9 +166,7 @@ def _integer(
     if isinstance(value, bool) or not isinstance(value, int):
         raise TokenLedgerValidationError(f"{name} must be an integer")
     if value < minimum or value > maximum:
-        raise TokenLedgerValidationError(
-            f"{name} must be between {minimum} and {maximum}"
-        )
+        raise TokenLedgerValidationError(f"{name} must be between {minimum} and {maximum}")
     return value
 
 
@@ -189,9 +177,7 @@ def _enum(value: Any, enum_type: type[Enum], name: str) -> Any:
     try:
         return enum_type(raw)
     except (TypeError, ValueError) as exc:
-        raise TokenLedgerValidationError(
-            f"{name} is not a supported {enum_type.__name__}"
-        ) from exc
+        raise TokenLedgerValidationError(f"{name} is not a supported {enum_type.__name__}") from exc
 
 
 def _closed(
@@ -216,9 +202,7 @@ def _claim(payload: Mapping[str, Any], actual: str, *names: str) -> None:
     for name in names:
         claimed = payload.get(name)
         if claimed not in (None, "", actual):
-            raise TokenLedgerValidationError(
-                "content identity does not match canonical contents"
-            )
+            raise TokenLedgerValidationError("content identity does not match canonical contents")
 
 
 def _records(
@@ -228,14 +212,10 @@ def _records(
     field_name: str,
     maximum: int,
 ) -> tuple[Any, ...]:
-    if not isinstance(values, Sequence) or isinstance(
-        values, (str, bytes, bytearray, memoryview)
-    ):
+    if not isinstance(values, Sequence) or isinstance(values, (str, bytes, bytearray, memoryview)):
         raise TokenLedgerValidationError(f"{field_name} must be a sequence")
     if len(values) > maximum:
-        raise TokenLedgerValidationError(
-            f"{field_name} exceeds its {maximum}-item bound"
-        )
+        raise TokenLedgerValidationError(f"{field_name} exceeds its {maximum}-item bound")
     result = []
     for item in values:
         if isinstance(item, record_type):
@@ -262,9 +242,7 @@ def _strict_json(value: str | bytes | bytearray, name: str) -> Mapping[str, Any]
         result: dict[str, Any] = {}
         for key, item in pairs:
             if key in result:
-                raise TokenLedgerValidationError(
-                    f"{name} JSON contains duplicate object keys"
-                )
+                raise TokenLedgerValidationError(f"{name} JSON contains duplicate object keys")
             result[key] = item
         return result
 
@@ -404,9 +382,7 @@ class TokenizerCalibrationSample(_LedgerContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "TokenizerCalibrationSample":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "TokenizerCalibrationSample":
         allowed = {
             "schema",
             "schema_version",
@@ -446,9 +422,7 @@ class FallbackTokenizerCalibration(_LedgerContract):
         if isinstance(envelope, Mapping):
             envelope = ProviderModelEnvelope.from_dict(envelope)
         if not isinstance(envelope, ProviderModelEnvelope):
-            raise TokenLedgerValidationError(
-                "envelope must be a ProviderModelEnvelope"
-            )
+            raise TokenLedgerValidationError("envelope must be a ProviderModelEnvelope")
         object.__setattr__(self, "envelope", envelope)
         object.__setattr__(
             self,
@@ -467,12 +441,8 @@ class FallbackTokenizerCalibration(_LedgerContract):
             )
         sample_ids = [item.sample_id for item in samples]
         if len(sample_ids) != len(set(sample_ids)):
-            raise TokenLedgerValidationError(
-                "fallback calibration contains duplicated samples"
-            )
-        object.__setattr__(
-            self, "samples", tuple(sorted(samples, key=lambda item: item.sample_id))
-        )
+            raise TokenLedgerValidationError("fallback calibration contains duplicated samples")
+        object.__setattr__(self, "samples", tuple(sorted(samples, key=lambda item: item.sample_id)))
 
     @property
     def calibration_id(self) -> str:
@@ -495,19 +465,14 @@ class FallbackTokenizerCalibration(_LedgerContract):
         errors = []
         for item in self.samples:
             estimate = self.estimate_bytes(item.utf8_bytes)
-            errors.append(
-                abs(estimate - item.provider_tokens) * 10_000
-                // item.provider_tokens
-            )
+            errors.append(abs(estimate - item.provider_tokens) * 10_000 // item.provider_tokens)
         return max(errors, default=0)
 
     def estimate_bytes(self, utf8_bytes: int) -> int:
         size = _integer(utf8_bytes, "utf8_bytes")
         if not size:
             return 0
-        return (
-            size * self.token_numerator + self.byte_denominator - 1
-        ) // self.byte_denominator
+        return (size * self.token_numerator + self.byte_denominator - 1) // self.byte_denominator
 
     def estimate_text(self, text: str) -> int:
         if not isinstance(text, str):
@@ -533,9 +498,7 @@ class FallbackTokenizerCalibration(_LedgerContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "FallbackTokenizerCalibration":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "FallbackTokenizerCalibration":
         allowed = {
             "schema",
             "schema_version",
@@ -569,9 +532,7 @@ class FallbackTokenizerCalibration(_LedgerContract):
         }
         for name, actual in claims.items():
             if payload.get(name, actual) != actual:
-                raise TokenLedgerValidationError(
-                    f"{name} does not match calibration samples"
-                )
+                raise TokenLedgerValidationError(f"{name} does not match calibration samples")
         _claim(
             payload,
             result.calibration_id,
@@ -622,20 +583,14 @@ class ProviderTokenUsage(_LedgerContract):
     endpoint_event_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "measurement_id", _text(self.measurement_id, "measurement_id")
-        )
+        object.__setattr__(self, "measurement_id", _text(self.measurement_id, "measurement_id"))
         envelope = self.envelope
         if isinstance(envelope, Mapping):
             envelope = ProviderModelEnvelope.from_dict(envelope)
         if not isinstance(envelope, ProviderModelEnvelope):
-            raise TokenLedgerValidationError(
-                "envelope must be a ProviderModelEnvelope"
-            )
+            raise TokenLedgerValidationError("envelope must be a ProviderModelEnvelope")
         object.__setattr__(self, "envelope", envelope)
-        object.__setattr__(
-            self, "source", _enum(self.source, UsageSource, "source")
-        )
+        object.__setattr__(self, "source", _enum(self.source, UsageSource, "source"))
         for name in (
             "input_tokens",
             "output_tokens",
@@ -645,9 +600,7 @@ class ProviderTokenUsage(_LedgerContract):
             "retry_tokens",
             "failed_attempt_tokens",
         ):
-            object.__setattr__(
-                self, name, _integer(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _integer(getattr(self, name), name))
         object.__setattr__(
             self,
             "cost_microunits",
@@ -676,21 +629,13 @@ class ProviderTokenUsage(_LedgerContract):
             ),
         )
         if self.reused_tokens > self.input_tokens:
-            raise TokenLedgerValidationError(
-                "reused_tokens cannot exceed input_tokens"
-            )
+            raise TokenLedgerValidationError("reused_tokens cannot exceed input_tokens")
         if self.speculative_tokens > self.output_tokens:
-            raise TokenLedgerValidationError(
-                "speculative_tokens cannot exceed output_tokens"
-            )
+            raise TokenLedgerValidationError("speculative_tokens cannot exceed output_tokens")
         if self.retry_tokens > self.total_tokens:
-            raise TokenLedgerValidationError(
-                "retry_tokens cannot exceed total_tokens"
-            )
+            raise TokenLedgerValidationError("retry_tokens cannot exceed total_tokens")
         if self.failed_attempt_tokens > self.total_tokens:
-            raise TokenLedgerValidationError(
-                "failed_attempt_tokens cannot exceed total_tokens"
-            )
+            raise TokenLedgerValidationError("failed_attempt_tokens cannot exceed total_tokens")
         if self.input_tokens > self.envelope.max_context_tokens:
             raise TokenLedgerValidationError(
                 "input_tokens exceed the provider/model context envelope"
@@ -703,24 +648,11 @@ class ProviderTokenUsage(_LedgerContract):
             raise TokenLedgerValidationError(
                 "reconciled endpoint usage cannot cite a fallback calibration"
             )
-        if (
-            self.source is UsageSource.CALIBRATED_FALLBACK
-            and not self.calibration_id
-        ):
-            raise TokenLedgerValidationError(
-                "fallback usage requires a calibration_id"
-            )
-        if (
-            self.source is UsageSource.RECONCILED_ENDPOINT
-            and not self.endpoint_event_id
-        ):
-            raise TokenLedgerValidationError(
-                "reconciled endpoint usage requires endpoint_event_id"
-            )
-        if (
-            self.source is not UsageSource.RECONCILED_ENDPOINT
-            and self.endpoint_event_id
-        ):
+        if self.source is UsageSource.CALIBRATED_FALLBACK and not self.calibration_id:
+            raise TokenLedgerValidationError("fallback usage requires a calibration_id")
+        if self.source is UsageSource.RECONCILED_ENDPOINT and not self.endpoint_event_id:
+            raise TokenLedgerValidationError("reconciled endpoint usage requires endpoint_event_id")
+        if self.source is not UsageSource.RECONCILED_ENDPOINT and self.endpoint_event_id:
             raise TokenLedgerValidationError(
                 "only reconciled endpoint usage may bind endpoint_event_id"
             )
@@ -799,9 +731,7 @@ class ProviderTokenUsage(_LedgerContract):
         )
         for name in ("total_tokens", "fresh_input_tokens"):
             if payload.get(name, getattr(result, name)) != getattr(result, name):
-                raise TokenLedgerValidationError(
-                    f"{name} does not match provider counters"
-                )
+                raise TokenLedgerValidationError(f"{name} does not match provider counters")
         _claim(payload, result.content_id, "content_id")
         return result
 
@@ -853,9 +783,7 @@ class TerminalCriterionAttribution(_LedgerContract):
         )
         if self.disposition.accepted:
             if self.validation_result is not ValidationResult.PASSED:
-                raise TokenLedgerValidationError(
-                    "accepted criterion requires passed validation"
-                )
+                raise TokenLedgerValidationError("accepted criterion requires passed validation")
         else:
             if self.evidence_gain:
                 raise TokenLedgerValidationError(
@@ -893,9 +821,7 @@ class TerminalCriterionAttribution(_LedgerContract):
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "TerminalCriterionAttribution":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "TerminalCriterionAttribution":
         allowed = {
             "schema",
             "schema_version",
@@ -933,9 +859,7 @@ class TerminalCriterionAttribution(_LedgerContract):
             payload.get("accepted_criterion_id", result.accepted_criterion_id)
             != result.accepted_criterion_id
         ):
-            raise TokenLedgerValidationError(
-                "accepted_criterion_id claim is inconsistent"
-            )
+            raise TokenLedgerValidationError("accepted_criterion_id claim is inconsistent")
         _claim(
             payload,
             result.terminal_attribution_id,
@@ -996,17 +920,10 @@ class TokenAttribution(_LedgerContract):
         if isinstance(usage, Mapping):
             usage = ProviderTokenUsage.from_dict(usage)
         if not isinstance(usage, ProviderTokenUsage):
-            raise TokenLedgerValidationError(
-                "usage must be ProviderTokenUsage"
-            )
+            raise TokenLedgerValidationError("usage must be ProviderTokenUsage")
         object.__setattr__(self, "usage", usage)
-        if (
-            usage.reused_tokens
-            and self.cache_decision is not CacheDecision.HIT
-        ):
-            raise TokenLedgerValidationError(
-                "reused tokens require an attributed cache hit"
-            )
+        if usage.reused_tokens and self.cache_decision is not CacheDecision.HIT:
+            raise TokenLedgerValidationError("reused tokens require an attributed cache hit")
         if self.attempt == 1 and usage.retry_tokens:
             raise TokenLedgerValidationError(
                 "first-attempt usage cannot be classified as retry tokens"
@@ -1072,9 +989,7 @@ class TokenAttribution(_LedgerContract):
             context_id=payload.get("context_id", ""),
             cache_decision=payload.get("cache_decision", ""),
             validation_result=payload.get("validation_result", ""),
-            terminal_attribution_id=payload.get(
-                "terminal_attribution_id", ""
-            ),
+            terminal_attribution_id=payload.get("terminal_attribution_id", ""),
             usage=payload.get("usage", {}),
         )
         if payload.get("task_id", result.task_id) != result.task_id:
@@ -1173,9 +1088,7 @@ class CriterionTokenCost(_LedgerContract):
     evidence_gain: int
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "criterion_id", _text(self.criterion_id, "criterion_id")
-        )
+        object.__setattr__(self, "criterion_id", _text(self.criterion_id, "criterion_id"))
         if not isinstance(self.accepted, bool):
             raise TokenLedgerValidationError("accepted must be boolean")
         for name, minimum, maximum in (
@@ -1195,9 +1108,7 @@ class CriterionTokenCost(_LedgerContract):
                 ),
             )
         if self.evidence_gain and not self.accepted:
-            raise TokenLedgerValidationError(
-                "unaccepted criterion cannot claim evidence gain"
-            )
+            raise TokenLedgerValidationError("unaccepted criterion cannot claim evidence gain")
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -1304,9 +1215,7 @@ class TokenLedgerReport(_LedgerContract):
             maximum=MAX_CRITERIA,
         )
         if len({item.criterion_id for item in costs}) != len(costs):
-            raise TokenLedgerValidationError(
-                "criterion_costs contains duplicate criteria"
-            )
+            raise TokenLedgerValidationError("criterion_costs contains duplicate criteria")
         object.__setattr__(
             self, "criterion_costs", tuple(sorted(costs, key=lambda x: x.criterion_id))
         )
@@ -1319,9 +1228,7 @@ class TokenLedgerReport(_LedgerContract):
             if isinstance(value, Mapping):
                 value = ExactTokenRatio.from_dict(value)
             if not isinstance(value, ExactTokenRatio):
-                raise TokenLedgerValidationError(
-                    f"{name} must be ExactTokenRatio"
-                )
+                raise TokenLedgerValidationError(f"{name} must be ExactTokenRatio")
             object.__setattr__(self, name, value)
         if self.lifecycle_event_count != self.attribution_count:
             raise TokenLedgerValidationError(
@@ -1329,25 +1236,19 @@ class TokenLedgerReport(_LedgerContract):
             )
         total_tokens = self.total_tokens
         if self.reused_tokens > self.input_tokens:
-            raise TokenLedgerValidationError(
-                "total reused tokens cannot exceed total input tokens"
-            )
+            raise TokenLedgerValidationError("total reused tokens cannot exceed total input tokens")
         if self.speculative_tokens > self.output_tokens:
             raise TokenLedgerValidationError(
                 "total speculative tokens cannot exceed total output tokens"
             )
         if self.retry_tokens > total_tokens:
-            raise TokenLedgerValidationError(
-                "total retry tokens cannot exceed total tokens"
-            )
+            raise TokenLedgerValidationError("total retry tokens cannot exceed total tokens")
         if self.failed_attempt_tokens > total_tokens:
             raise TokenLedgerValidationError(
                 "total failed-attempt tokens cannot exceed total tokens"
             )
         if self.provider_native_tokens + self.fallback_tokens != self.total_tokens:
-            raise TokenLedgerValidationError(
-                "native and fallback token totals do not reconcile"
-            )
+            raise TokenLedgerValidationError("native and fallback token totals do not reconcile")
         if self.rejected_tokens + self.abandoned_tokens > self.failed_attempt_tokens:
             raise TokenLedgerValidationError(
                 "terminally unsuccessful tokens exceed failed-attempt tokens"
@@ -1361,17 +1262,9 @@ class TokenLedgerReport(_LedgerContract):
             raise TokenLedgerValidationError(
                 "criterion token costs do not reconcile with total tokens"
             )
-        if (
-            sum(item.cost_microunits for item in costs)
-            != self.total_cost_microunits
-        ):
-            raise TokenLedgerValidationError(
-                "criterion costs do not reconcile with total cost"
-            )
-        if (
-            sum(item.evidence_gain for item in accepted_costs)
-            != self.accepted_evidence_gain
-        ):
+        if sum(item.cost_microunits for item in costs) != self.total_cost_microunits:
+            raise TokenLedgerValidationError("criterion costs do not reconcile with total cost")
+        if sum(item.evidence_gain for item in accepted_costs) != self.accepted_evidence_gain:
             raise TokenLedgerValidationError(
                 "criterion evidence does not reconcile with accepted evidence gain"
             )
@@ -1388,9 +1281,7 @@ class TokenLedgerReport(_LedgerContract):
         }
         for name, expected in expected_ratios.items():
             if getattr(self, name) != expected:
-                raise TokenLedgerValidationError(
-                    f"{name} does not reconcile with report totals"
-                )
+                raise TokenLedgerValidationError(f"{name} does not reconcile with report totals")
 
     @property
     def total_tokens(self) -> int:
@@ -1499,9 +1390,7 @@ class TokenLedgerReport(_LedgerContract):
             total_cost_microunits=payload.get("total_cost_microunits", 0),
             accepted_evidence_gain=payload.get("accepted_evidence_gain", 0),
             criterion_costs=payload.get("criterion_costs", ()),
-            cost_per_accepted_criterion_ratio=payload.get(
-                "cost_per_accepted_criterion_ratio", {}
-            ),
+            cost_per_accepted_criterion_ratio=payload.get("cost_per_accepted_criterion_ratio", {}),
             tokens_per_accepted_criterion_ratio=payload.get(
                 "tokens_per_accepted_criterion_ratio", {}
             ),
@@ -1514,18 +1403,12 @@ class TokenLedgerReport(_LedgerContract):
             "cost_per_accepted_criterion_microunits": (
                 result.cost_per_accepted_criterion_microunits
             ),
-            "tokens_per_accepted_criterion": (
-                result.tokens_per_accepted_criterion
-            ),
-            "evidence_gain_per_thousand_tokens": (
-                result.evidence_gain_per_thousand_tokens
-            ),
+            "tokens_per_accepted_criterion": (result.tokens_per_accepted_criterion),
+            "evidence_gain_per_thousand_tokens": (result.evidence_gain_per_thousand_tokens),
         }
         for name, actual in scalar_claims.items():
             if payload.get(name, actual) != actual:
-                raise TokenLedgerValidationError(
-                    f"{name} claim does not match report contents"
-                )
+                raise TokenLedgerValidationError(f"{name} claim does not match report contents")
         _claim(payload, result.content_id, "content_id")
         return result
 
@@ -1575,21 +1458,13 @@ class SupervisorTokenLedger(_LedgerContract):
             )
         event_ids = [item.event_id for item in events]
         if len(event_ids) != len(set(event_ids)):
-            raise TokenLedgerValidationError(
-                "lifecycle event population contains duplicates"
-            )
-        terminal_ids = [
-            item.terminal_attribution_id for item in terminals
-        ]
+            raise TokenLedgerValidationError("lifecycle event population contains duplicates")
+        terminal_ids = [item.terminal_attribution_id for item in terminals]
         if len(terminal_ids) != len(set(terminal_ids)):
-            raise TokenLedgerValidationError(
-                "terminal attribution population contains duplicates"
-            )
+            raise TokenLedgerValidationError("terminal attribution population contains duplicates")
         calibration_ids = [item.calibration_id for item in calibrations]
         if len(calibration_ids) != len(set(calibration_ids)):
-            raise TokenLedgerValidationError(
-                "calibration population contains duplicates"
-            )
+            raise TokenLedgerValidationError("calibration population contains duplicates")
         for collection_name, records in (
             ("lifecycle event", events),
             ("terminal attribution", terminals),
@@ -1597,17 +1472,13 @@ class SupervisorTokenLedger(_LedgerContract):
         ):
             for record in records:
                 if record.binding.binding_id != binding.binding_id:
-                    raise TokenLedgerValidationError(
-                        f"{collection_name} is foreign-bound"
-                    )
+                    raise TokenLedgerValidationError(f"{collection_name} is foreign-bound")
         events_by_id = {item.event_id: item for item in events}
-        terminals_by_id = {
-            item.terminal_attribution_id: item for item in terminals
-        }
+        terminals_by_id = {item.terminal_attribution_id: item for item in terminals}
         event_attribution_ids = [item.event_id for item in attributions]
-        if set(event_attribution_ids) != set(event_ids) or len(
-            event_attribution_ids
-        ) != len(event_ids):
+        if set(event_attribution_ids) != set(event_ids) or len(event_attribution_ids) != len(
+            event_ids
+        ):
             raise TokenLedgerValidationError(
                 "every lifecycle event must be reconciled exactly once"
             )
@@ -1617,9 +1488,7 @@ class SupervisorTokenLedger(_LedgerContract):
                 "provider usage population contains duplicated measurements"
             )
         endpoint_event_ids = [
-            item.usage.endpoint_event_id
-            for item in attributions
-            if item.usage.endpoint_event_id
+            item.usage.endpoint_event_id for item in attributions if item.usage.endpoint_event_id
         ]
         if len(endpoint_event_ids) != len(set(endpoint_event_ids)):
             raise TokenLedgerValidationError(
@@ -1629,9 +1498,7 @@ class SupervisorTokenLedger(_LedgerContract):
         terminal_attempt_pairs: set[tuple[str, int]] = set()
         used_terminal_ids: set[str] = set()
         used_calibration_ids: set[str] = set()
-        calibration_by_id = {
-            item.calibration_id: item for item in calibrations
-        }
+        calibration_by_id = {item.calibration_id: item for item in calibrations}
         for terminal in terminals:
             event = events_by_id.get(terminal.terminal_event_id)
             if event is None or not event.kind.terminal:
@@ -1647,26 +1514,17 @@ class SupervisorTokenLedger(_LedgerContract):
             if terminal.accepted:
                 key = (terminal.binding.task_id, terminal.criterion_id)
                 if key in accepted_pairs:
-                    raise TokenLedgerValidationError(
-                        "criterion has duplicated terminal acceptance"
-                    )
+                    raise TokenLedgerValidationError("criterion has duplicated terminal acceptance")
                 accepted_pairs.add(key)
         for attribution in attributions:
             event = events_by_id[attribution.event_id]
-            if (
-                attribution.stage != event.stage
-                or attribution.attempt != event.attempt
-            ):
+            if attribution.stage != event.stage or attribution.attempt != event.attempt:
                 raise TokenLedgerValidationError(
                     "token attribution stage or attempt is foreign to lifecycle event"
                 )
-            terminal = terminals_by_id.get(
-                attribution.terminal_attribution_id
-            )
+            terminal = terminals_by_id.get(attribution.terminal_attribution_id)
             if terminal is None:
-                raise TokenLedgerValidationError(
-                    "token usage is terminally unattributed"
-                )
+                raise TokenLedgerValidationError("token usage is terminally unattributed")
             used_terminal_ids.add(terminal.terminal_attribution_id)
             terminal_event = events_by_id[terminal.terminal_event_id]
             if attribution.attempt != terminal_event.attempt:
@@ -1677,9 +1535,7 @@ class SupervisorTokenLedger(_LedgerContract):
                 raise TokenLedgerValidationError(
                     "token attribution validation result is inconsistent"
                 )
-            expected_failed = (
-                0 if terminal.accepted else attribution.usage.total_tokens
-            )
+            expected_failed = 0 if terminal.accepted else attribution.usage.total_tokens
             if attribution.usage.failed_attempt_tokens != expected_failed:
                 raise TokenLedgerValidationError(
                     "failed-attempt token classification is incomplete"
@@ -1689,9 +1545,7 @@ class SupervisorTokenLedger(_LedgerContract):
                 used_calibration_ids.add(usage.calibration_id)
                 calibration = calibration_by_id.get(usage.calibration_id)
                 if calibration is None:
-                    raise TokenLedgerValidationError(
-                        "fallback usage cites a missing calibration"
-                    )
+                    raise TokenLedgerValidationError("fallback usage cites a missing calibration")
                 if not calibration.supports(usage.envelope):
                     raise TokenLedgerValidationError(
                         "fallback calibration is foreign to provider/model envelope"
@@ -1701,9 +1555,7 @@ class SupervisorTokenLedger(_LedgerContract):
                 "terminal attribution population contains unused records"
             )
         if set(calibration_ids) != used_calibration_ids:
-            raise TokenLedgerValidationError(
-                "calibration population contains unused records"
-            )
+            raise TokenLedgerValidationError("calibration population contains unused records")
         object.__setattr__(
             self,
             "lifecycle_events",
@@ -1753,9 +1605,7 @@ class SupervisorTokenLedger(_LedgerContract):
             tuple(sorted(calibrations, key=lambda item: item.calibration_id)),
         )
         if len(self.canonical_bytes()) > MAX_SERIALIZED_LEDGER_BYTES:
-            raise TokenLedgerValidationError(
-                "token ledger exceeds its serialized size bound"
-            )
+            raise TokenLedgerValidationError("token ledger exceeds its serialized size bound")
 
     @property
     def ledger_id(self) -> str:
@@ -1766,28 +1616,17 @@ class SupervisorTokenLedger(_LedgerContract):
         return self.build_report()
 
     def build_report(self) -> TokenLedgerReport:
-        terminals = {
-            item.terminal_attribution_id: item
-            for item in self.terminal_attributions
-        }
+        terminals = {item.terminal_attribution_id: item for item in self.terminal_attributions}
         usages = [item.usage for item in self.attributions]
-        criterion_ids = sorted(
-            {item.criterion_id for item in self.terminal_attributions}
-        )
+        criterion_ids = sorted({item.criterion_id for item in self.terminal_attributions})
         costs = []
         for criterion_id in criterion_ids:
             criterion_terminals = [
-                item
-                for item in self.terminal_attributions
-                if item.criterion_id == criterion_id
+                item for item in self.terminal_attributions if item.criterion_id == criterion_id
             ]
-            ids = {
-                item.terminal_attribution_id for item in criterion_terminals
-            }
+            ids = {item.terminal_attribution_id for item in criterion_terminals}
             criterion_usages = [
-                item.usage
-                for item in self.attributions
-                if item.terminal_attribution_id in ids
+                item.usage for item in self.attributions if item.terminal_attribution_id in ids
             ]
             accepted = [item for item in criterion_terminals if item.accepted]
             costs.append(
@@ -1802,9 +1641,7 @@ class SupervisorTokenLedger(_LedgerContract):
                         }
                     ),
                     total_tokens=sum(item.total_tokens for item in criterion_usages),
-                    cost_microunits=sum(
-                        item.cost_microunits for item in criterion_usages
-                    ),
+                    cost_microunits=sum(item.cost_microunits for item in criterion_usages),
                     evidence_gain=sum(item.evidence_gain for item in accepted),
                 )
             )
@@ -1824,9 +1661,7 @@ class SupervisorTokenLedger(_LedgerContract):
             speculative_tokens=sum(item.speculative_tokens for item in usages),
             tool_tokens=sum(item.tool_tokens for item in usages),
             retry_tokens=sum(item.retry_tokens for item in usages),
-            failed_attempt_tokens=sum(
-                item.failed_attempt_tokens for item in usages
-            ),
+            failed_attempt_tokens=sum(item.failed_attempt_tokens for item in usages),
             provider_native_tokens=sum(
                 item.total_tokens
                 for item in usages
@@ -1844,28 +1679,20 @@ class SupervisorTokenLedger(_LedgerContract):
             rejected_tokens=sum(
                 attribution.usage.total_tokens
                 for attribution in self.attributions
-                if terminals[
-                    attribution.terminal_attribution_id
-                ].disposition
+                if terminals[attribution.terminal_attribution_id].disposition
                 is TerminalDisposition.REJECTED
             ),
             abandoned_tokens=sum(
                 attribution.usage.total_tokens
                 for attribution in self.attributions
-                if terminals[
-                    attribution.terminal_attribution_id
-                ].disposition
+                if terminals[attribution.terminal_attribution_id].disposition
                 is TerminalDisposition.ABANDONED
             ),
             total_cost_microunits=total_cost,
             accepted_evidence_gain=evidence_gain,
             criterion_costs=tuple(costs),
-            cost_per_accepted_criterion_ratio=ExactTokenRatio(
-                total_cost, accepted_count
-            ),
-            tokens_per_accepted_criterion_ratio=ExactTokenRatio(
-                total_tokens, accepted_count
-            ),
+            cost_per_accepted_criterion_ratio=ExactTokenRatio(total_cost, accepted_count),
+            tokens_per_accepted_criterion_ratio=ExactTokenRatio(total_tokens, accepted_count),
             evidence_gain_per_thousand_tokens_ratio=ExactTokenRatio(
                 evidence_gain, total_tokens, 1_000
             ),
@@ -1875,18 +1702,10 @@ class SupervisorTokenLedger(_LedgerContract):
         return {
             "contract_version": TOKEN_LEDGER_CONTRACT_VERSION,
             "binding": self.binding.to_record(),
-            "lifecycle_events": tuple(
-                item.to_record() for item in self.lifecycle_events
-            ),
-            "terminal_attributions": tuple(
-                item.to_record() for item in self.terminal_attributions
-            ),
-            "attributions": tuple(
-                item.to_record() for item in self.attributions
-            ),
-            "calibrations": tuple(
-                item.to_record() for item in self.calibrations
-            ),
+            "lifecycle_events": tuple(item.to_record() for item in self.lifecycle_events),
+            "terminal_attributions": tuple(item.to_record() for item in self.terminal_attributions),
+            "attributions": tuple(item.to_record() for item in self.attributions),
+            "calibrations": tuple(item.to_record() for item in self.calibrations),
             "report": self.report.to_record(),
         }
 
@@ -1920,9 +1739,7 @@ class SupervisorTokenLedger(_LedgerContract):
         result = cls(
             binding=payload.get("binding", {}),
             lifecycle_events=payload.get("lifecycle_events", ()),
-            terminal_attributions=payload.get(
-                "terminal_attributions", ()
-            ),
+            terminal_attributions=payload.get("terminal_attributions", ()),
             attributions=payload.get("attributions", ()),
             calibrations=payload.get("calibrations", ()),
         )
@@ -1949,13 +1766,9 @@ def build_token_ledger(
     *,
     binding: ResultBinding,
     lifecycle_events: Sequence[StageEvent | Mapping[str, Any]],
-    terminal_attributions: Sequence[
-        TerminalCriterionAttribution | Mapping[str, Any]
-    ],
+    terminal_attributions: Sequence[TerminalCriterionAttribution | Mapping[str, Any]],
     attributions: Sequence[TokenAttribution | Mapping[str, Any]],
-    calibrations: Sequence[
-        FallbackTokenizerCalibration | Mapping[str, Any]
-    ] = (),
+    calibrations: Sequence[FallbackTokenizerCalibration | Mapping[str, Any]] = (),
 ) -> SupervisorTokenLedger:
     """Construct and reconcile a population-complete supervisor token ledger."""
 
@@ -1969,9 +1782,7 @@ def build_token_ledger(
 
 
 def _v1_validation_result(receipt: Any) -> ValidationResult:
-    raw = str(
-        getattr(getattr(receipt.validation, "status", ""), "value", "")
-    )
+    raw = str(getattr(getattr(receipt.validation, "status", ""), "value", ""))
     return {
         "passed": ValidationResult.PASSED,
         "failed": ValidationResult.FAILED,
@@ -2022,9 +1833,7 @@ def adapt_efficiency_receipt(
     source = _enum(usage_source, UsageSource, "usage_source")
     if source is UsageSource.CALIBRATED_FALLBACK:
         if calibration is None:
-            raise TokenLedgerValidationError(
-                "fallback v1 adaptation requires a calibration"
-            )
+            raise TokenLedgerValidationError("fallback v1 adaptation requires a calibration")
         if not calibration.supports(envelope):
             raise TokenLedgerValidationError(
                 "fallback v1 calibration is foreign to provider/model envelope"
@@ -2042,9 +1851,7 @@ def adapt_efficiency_receipt(
         tokens.reused_tokens - retry_reused,
     )
     if min(initial) < 0:
-        raise TokenLedgerValidationError(
-            "v1 retry tokens exceed aggregate provider usage"
-        )
+        raise TokenLedgerValidationError("v1 retry tokens exceed aggregate provider usage")
     attempt_counts = [initial] + [
         (
             item.tokens.input_tokens,
@@ -2057,9 +1864,7 @@ def adapt_efficiency_receipt(
     terminals: list[TerminalCriterionAttribution] = []
     attributions: list[TokenAttribution] = []
     validation = _v1_validation_result(receipt)
-    for offset, (input_tokens, output_tokens, reused_tokens) in enumerate(
-        attempt_counts, start=1
-    ):
+    for offset, (input_tokens, output_tokens, reused_tokens) in enumerate(attempt_counts, start=1):
         is_final = offset == final_attempt
         disposition = (
             TerminalDisposition.ACCEPTED
@@ -2070,19 +1875,13 @@ def adapt_efficiency_receipt(
                 else TerminalDisposition.REJECTED
             )
         )
-        attempt_validation = (
-            validation if is_final else ValidationResult.FAILED
-        )
+        attempt_validation = validation if is_final else ValidationResult.FAILED
         event = StageEvent(
             binding=binding,
             stage="inference",
             attempt=offset,
             sequence=0,
-            kind=(
-                StageEventKind.COMPLETED
-                if disposition.accepted
-                else StageEventKind.FAILED
-            ),
+            kind=(StageEventKind.COMPLETED if disposition.accepted else StageEventKind.FAILED),
             authority="validation",
             occurred_at=f"1970-01-01T00:00:{offset - 1:02d}.000000Z",
             reason_code="" if disposition.accepted else "v1-attempt-rejected",
@@ -2095,9 +1894,7 @@ def adapt_efficiency_receipt(
             disposition=disposition,
             validation_result=attempt_validation,
             evidence_gain=(
-                int(getattr(receipt, "accepted_evidence_gain", 0))
-                if disposition.accepted
-                else 0
+                int(getattr(receipt, "accepted_evidence_gain", 0)) if disposition.accepted else 0
             ),
             reason_code="" if disposition.accepted else "v1-attempt-rejected",
         )
@@ -2113,11 +1910,7 @@ def adapt_efficiency_receipt(
             retry_tokens=total if offset > 1 else 0,
             failed_attempt_tokens=0 if disposition.accepted else total,
             cost_microunits=total_cost if is_final else 0,
-            calibration_id=(
-                calibration.calibration_id
-                if calibration is not None
-                else ""
-            ),
+            calibration_id=(calibration.calibration_id if calibration is not None else ""),
         )
         attributions.append(
             TokenAttribution(
@@ -2126,11 +1919,7 @@ def adapt_efficiency_receipt(
                 stage=event.stage,
                 attempt=offset,
                 context_id=context,
-                cache_decision=(
-                    CacheDecision.HIT
-                    if reused_tokens
-                    else CacheDecision.MISS
-                ),
+                cache_decision=(CacheDecision.HIT if reused_tokens else CacheDecision.MISS),
                 validation_result=attempt_validation,
                 terminal_attribution_id=terminal.terminal_attribution_id,
                 usage=usage,
@@ -2169,18 +1958,14 @@ def _finite_dimension(
         # Cost entries are currency-tagged; accept the sole cost currency when
         # the caller does not pin one.
         matches = [
-            entry
-            for entry in vector.entries
-            if entry.dimension is UsageDimension.COST_MICROS
+            entry for entry in vector.entries if entry.dimension is UsageDimension.COST_MICROS
         ]
         if not matches:
             return 0
         if len(matches) > 1:
             currencies = {entry.currency for entry in matches}
             if len(currencies) > 1:
-                raise TokenLedgerValidationError(
-                    "endpoint cost_micros mixes currencies"
-                )
+                raise TokenLedgerValidationError("endpoint cost_micros mixes currencies")
         entry = matches[0]
     else:
         entry = vector.get(dimension, currency=currency)
@@ -2188,9 +1973,7 @@ def _finite_dimension(
         return 0
     value = entry.amount.value
     if value is None or value < 0:
-        raise TokenLedgerValidationError(
-            f"endpoint {dimension.value} unit is negative or missing"
-        )
+        raise TokenLedgerValidationError(f"endpoint {dimension.value} unit is negative or missing")
     return int(value)
 
 
@@ -2204,9 +1987,7 @@ def consume_reconciled_endpoint_events_exactly_once(
     if not isinstance(events, Sequence):
         raise TokenLedgerValidationError("endpoint events must be a sequence")
     if len(events) > MAX_EVENTS:
-        raise TokenLedgerValidationError(
-            "endpoint event population exceeds its bound"
-        )
+        raise TokenLedgerValidationError("endpoint event population exceeds its bound")
     parsed: list[UsageEvent] = []
     seen: set[str] = set()
     for item in events:
@@ -2216,18 +1997,12 @@ def consume_reconciled_endpoint_events_exactly_once(
             try:
                 event = UsageEvent.from_dict(item)
             except Exception as exc:
-                raise TokenLedgerValidationError(
-                    "endpoint event is malformed"
-                ) from exc
+                raise TokenLedgerValidationError("endpoint event is malformed") from exc
         else:
-            raise TokenLedgerValidationError(
-                "endpoint events must contain UsageEvent records"
-            )
+            raise TokenLedgerValidationError("endpoint events must contain UsageEvent records")
         event_id = event.event_id or ""
         if not event_id:
-            raise TokenLedgerValidationError(
-                "endpoint event is missing event_id"
-            )
+            raise TokenLedgerValidationError("endpoint event is missing event_id")
         if event_id in seen:
             raise TokenLedgerValidationError(
                 "reconciled endpoint events must be consumed exactly once"
@@ -2239,20 +2014,15 @@ def consume_reconciled_endpoint_events_exactly_once(
             )
         for entry in event.units.entries:
             if entry.amount.kind is QuantityKind.UNLIMITED:
-                raise TokenLedgerValidationError(
-                    "settled endpoint units cannot be unlimited"
-                )
-            if (
-                entry.amount.kind is QuantityKind.FINITE
-                and (entry.amount.value is None or entry.amount.value < 0)
+                raise TokenLedgerValidationError("settled endpoint units cannot be unlimited")
+            if entry.amount.kind is QuantityKind.FINITE and (
+                entry.amount.value is None or entry.amount.value < 0
             ):
                 raise TokenLedgerValidationError(
                     "endpoint event contains negative or overflowing units"
                 )
         parsed.append(event)
-    return tuple(
-        sorted(parsed, key=lambda item: (item.sequence or 0, item.event_id or ""))
-    )
+    return tuple(sorted(parsed, key=lambda item: (item.sequence or 0, item.event_id or "")))
 
 
 def provider_usage_from_reconciled_endpoint_event(
@@ -2278,21 +2048,15 @@ def provider_usage_from_reconciled_endpoint_event(
     output_tokens = _finite_dimension(event.units, UsageDimension.OUTPUT_TOKENS)
     total_tokens = _finite_dimension(event.units, UsageDimension.TOTAL_TOKENS)
     if total_tokens and total_tokens < input_tokens + output_tokens:
-        raise TokenLedgerValidationError(
-            "endpoint total_tokens is less than input plus output"
-        )
+        raise TokenLedgerValidationError("endpoint total_tokens is less than input plus output")
     # Prefer explicit total when present; otherwise compose from parts.
     if not total_tokens:
         total_tokens = input_tokens + output_tokens + tool_tokens
     residual = total_tokens - input_tokens - output_tokens
     if residual < 0:
-        raise TokenLedgerValidationError(
-            "endpoint token dimensions do not reconcile"
-        )
+        raise TokenLedgerValidationError("endpoint token dimensions do not reconcile")
     if tool_tokens and residual and tool_tokens != residual:
-        raise TokenLedgerValidationError(
-            "tool_tokens do not reconcile with endpoint total_tokens"
-        )
+        raise TokenLedgerValidationError("tool_tokens do not reconcile with endpoint total_tokens")
     if not tool_tokens and residual:
         tool_tokens = residual
     cost = _finite_dimension(event.units, UsageDimension.COST_MICROS)
@@ -2300,12 +2064,9 @@ def provider_usage_from_reconciled_endpoint_event(
     if failed_attempt_tokens is None:
         failed_attempt = 0
     else:
-        failed_attempt = _integer(
-            failed_attempt_tokens, "failed_attempt_tokens"
-        )
+        failed_attempt = _integer(failed_attempt_tokens, "failed_attempt_tokens")
     return ProviderTokenUsage(
-        measurement_id=measurement_id
-        or f"endpoint:{event.event_id}",
+        measurement_id=measurement_id or f"endpoint:{event.event_id}",
         envelope=envelope,
         source=UsageSource.RECONCILED_ENDPOINT,
         input_tokens=input_tokens,
@@ -2324,16 +2085,12 @@ def adapt_efficiency_metrics_from_reconciled_events(
     *,
     binding: ResultBinding,
     lifecycle_events: Sequence[StageEvent | Mapping[str, Any]],
-    terminal_attributions: Sequence[
-        TerminalCriterionAttribution | Mapping[str, Any]
-    ],
+    terminal_attributions: Sequence[TerminalCriterionAttribution | Mapping[str, Any]],
     endpoint_events: Sequence[UsageEvent | Mapping[str, Any]],
     envelope: ProviderModelEnvelope,
     context_ids: Sequence[str],
     cache_decisions: Sequence[CacheDecision | str] | None = None,
-    calibrations: Sequence[
-        FallbackTokenizerCalibration | Mapping[str, Any]
-    ] = (),
+    calibrations: Sequence[FallbackTokenizerCalibration | Mapping[str, Any]] = (),
 ) -> SupervisorTokenLedger:
     """Build a ledger by consuming reconciled endpoint events exactly once.
 
@@ -2365,9 +2122,7 @@ def adapt_efficiency_metrics_from_reconciled_events(
             "every lifecycle event must be attributed from exactly one endpoint event"
         )
     if len(context_ids) != len(events):
-        raise TokenLedgerValidationError(
-            "context_ids must match the lifecycle event population"
-        )
+        raise TokenLedgerValidationError("context_ids must match the lifecycle event population")
     decisions: list[CacheDecision]
     if cache_decisions is None:
         decisions = [CacheDecision.NOT_APPLICABLE] * len(events)
@@ -2376,30 +2131,21 @@ def adapt_efficiency_metrics_from_reconciled_events(
             raise TokenLedgerValidationError(
                 "cache_decisions must match the lifecycle event population"
             )
-        decisions = [
-            _enum(item, CacheDecision, "cache_decision")
-            for item in cache_decisions
-        ]
-    terminals_by_event = {
-        item.terminal_event_id: item for item in terminals
-    }
+        decisions = [_enum(item, CacheDecision, "cache_decision") for item in cache_decisions]
+    terminals_by_event = {item.terminal_event_id: item for item in terminals}
     attributions: list[TokenAttribution] = []
     for index, (event, endpoint_event, context_id, decision) in enumerate(
         zip(events, consumed, context_ids, decisions)
     ):
         terminal = terminals_by_event.get(event.event_id)
         if terminal is None:
-            raise TokenLedgerValidationError(
-                "lifecycle event is terminally unattributed"
-            )
+            raise TokenLedgerValidationError("lifecycle event is terminally unattributed")
         usage = provider_usage_from_reconciled_endpoint_event(
             endpoint_event,
             envelope=envelope,
             measurement_id=f"{binding.binding_id}:endpoint:{index + 1}",
             failed_attempt_tokens=(
-                None
-                if terminal.accepted
-                else None  # filled below after construction of base units
+                None if terminal.accepted else None  # filled below after construction of base units
             ),
             retry_tokens=0,
         )
@@ -2497,4 +2243,3 @@ __all__ = [
     "provider_usage_from_reconciled_endpoint_event",
     "token_ledger_authority_bounds",
 ]
-

@@ -166,12 +166,8 @@ def test_finding_taskboard_evidence_term_is_bound() -> None:
 
     assert FINDING_TASKBOARD_EVIDENCE == "vfs/finding-taskboard@1"
     assert FINDING_TASKBOARD_G101_EVIDENCE_TERMS == ("vfs/finding-taskboard@1",)
-    assert finding_taskboard_evidence_terms() == (
-        FINDING_TASKBOARD_EVIDENCE,
-    )
-    assert finding_taskboard_evidence_terms() == (
-        "vfs/finding-taskboard@1",
-    )
+    assert finding_taskboard_evidence_terms() == (FINDING_TASKBOARD_EVIDENCE,)
+    assert finding_taskboard_evidence_terms() == ("vfs/finding-taskboard@1",)
     assert DEFAULT_GOAL_ID == "VFS-G101"
     assert DEFAULT_PARENT_GOAL_ID == "VFS-G100"
     assert DEFAULT_ROOT_GOAL_ID == "VFS-G000"
@@ -203,9 +199,7 @@ def test_ambiguous_finding_produces_review() -> None:
 
 
 def test_broad_finding_produces_review() -> None:
-    many_paths = tuple(
-        f"ipfs_accelerate_py/module_{index}.py" for index in range(20)
-    )
+    many_paths = tuple(f"ipfs_accelerate_py/module_{index}.py" for index in range(20))
     finding = broken_finding(
         remediation_scope=many_paths,
         call_slice=_slice(
@@ -215,9 +209,7 @@ def test_broad_finding_produces_review() -> None:
         symbols=tuple(f"pkg.mod{i}" for i in range(20)),
     )
     policy = FindingTaskSourcePolicy(max_output_paths=4, max_symbols=8)
-    disposition, reasons = classify_finding_for_task(
-        finding, policy=policy, admitted=True
-    )
+    disposition, reasons = classify_finding_for_task(finding, policy=policy, admitted=True)
     assert disposition is TaskDisposition.REVIEW
     assert "broad" in reasons
 
@@ -235,12 +227,8 @@ def test_out_of_root_finding_produces_review() -> None:
             )
         ),
     )
-    policy = FindingTaskSourcePolicy(
-        write_roots=("ipfs_accelerate_py", "test")
-    )
-    disposition, reasons = classify_finding_for_task(
-        finding, policy=policy, admitted=True
-    )
+    policy = FindingTaskSourcePolicy(write_roots=("ipfs_accelerate_py", "test"))
+    disposition, reasons = classify_finding_for_task(finding, policy=policy, admitted=True)
     assert disposition is TaskDisposition.REVIEW
     assert "out_of_root" in reasons
 
@@ -326,9 +314,7 @@ def test_repair_task_binds_required_fields() -> None:
 
 def test_review_record_is_non_executable() -> None:
     finding = ambiguous_finding()
-    review = build_review_record(
-        finding, reasons=("ambiguous",), review_index=1
-    )
+    review = build_review_record(finding, reasons=("ambiguous",), review_index=1)
     assert review.executable is False
     assert review.disposition is TaskDisposition.REVIEW
     assert "ambiguous" in review.reasons
@@ -451,16 +437,12 @@ def test_ledger_admitted_only_path(tmp_path: Path) -> None:
     assert any(good.finding_cid in t.finding_cids for t in snapshot.tasks)
     # Ambiguous may appear only if admitted_only=False; with True it is skipped
     # entirely from ledger.current_findings(admitted_only=True).
-    assert all(
-        bad.finding_cid not in t.finding_cids for t in snapshot.tasks
-    )
+    assert all(bad.finding_cid not in t.finding_cids for t in snapshot.tasks)
 
 
 def test_materialize_finding_tasks_facade(tmp_path: Path) -> None:
     finding = broken_finding()
-    snapshot, receipt = materialize_finding_tasks(
-        [finding], root=tmp_path / "board"
-    )
+    snapshot, receipt = materialize_finding_tasks([finding], root=tmp_path / "board")
     assert receipt.created_task_ids
     assert len(snapshot.tasks) == 1
 
@@ -599,8 +581,7 @@ def test_json_markdown_duckdb_sarif_projections_have_no_authority(
     assert "review" in kinds
     repair_rows = [row for row in rows if row["kind"] == "repair_task"]
     assert all(
-        json.loads(row["goal_lineage_json"]) == list(DEFAULT_GOAL_LINEAGE)
-        for row in repair_rows
+        json.loads(row["goal_lineage_json"]) == list(DEFAULT_GOAL_LINEAGE) for row in repair_rows
     )
 
     sarif_links = project_board_sarif_links(snapshot)
@@ -608,10 +589,7 @@ def test_json_markdown_duckdb_sarif_projections_have_no_authority(
     assert sarif_links["is_completion_evidence"] is False
     assert sarif_links["sarif_is_diagnostic_only"] is True
     assert sarif_links["evidence"] == "vfs/finding-taskboard@1"
-    assert any(
-        finding.finding_cid in link["finding_cids"]
-        for link in sarif_links["links"]
-    )
+    assert any(finding.finding_cid in link["finding_cids"] for link in sarif_links["links"])
 
     # Source helpers match free functions.
     assert source.project_json()["authorizes_repair"] is False
@@ -676,27 +654,19 @@ def test_policy_rejects_invalid_resource_class() -> None:
 def test_one_root_cause_family_per_task() -> None:
     task = build_repair_task(broken_finding())
     assert task.root_cause_family
-    assert " " not in task.root_cause_family or task.root_cause_family.count(
-        "-"
-    ) >= 0
+    assert " " not in task.root_cause_family or task.root_cause_family.count("-") >= 0
     # Exactly one family string (not a list).
     assert isinstance(task.root_cause_family, str)
 
 
 def test_write_roots_allow_in_scope_paths() -> None:
     finding = broken_finding()
-    policy = FindingTaskSourcePolicy(
-        write_roots=("ipfs_accelerate_py", "test")
-    )
-    disposition, reasons = classify_finding_for_task(
-        finding, policy=policy, admitted=True
-    )
+    policy = FindingTaskSourcePolicy(write_roots=("ipfs_accelerate_py", "test"))
+    disposition, reasons = classify_finding_for_task(finding, policy=policy, admitted=True)
     assert disposition is TaskDisposition.EXECUTABLE
     assert reasons == ()
     task = build_repair_task(finding, policy=policy)
-    assert all(
-        path.startswith("ipfs_accelerate_py/") for path in task.outputs
-    )
+    assert all(path.startswith("ipfs_accelerate_py/") for path in task.outputs)
 
 
 def test_dependencies_and_conflict_domain_present() -> None:
@@ -753,9 +723,7 @@ def test_materialization_receipt_binds_finding_taskboard_evidence() -> None:
     receipt = MaterializationReceipt(outcome=MaterializationOutcome.NO_OP)
     payload = receipt.to_dict()
     assert payload["evidence"] == "vfs/finding-taskboard@1"
-    assert payload["evidence_terms"] == list(
-        FINDING_TASKBOARD_G101_EVIDENCE_TERMS
-    )
+    assert payload["evidence_terms"] == list(FINDING_TASKBOARD_G101_EVIDENCE_TERMS)
     assert payload["goal_lineage"] == list(DEFAULT_GOAL_LINEAGE)
     assert payload["authorizes_repair"] is False
     assert payload["is_completion_evidence"] is False
@@ -812,9 +780,7 @@ def test_second_repair_taskboard_does_not_grant_edit_authority(
     """VFS-G101 board materializes work without report-driven edit authority."""
 
     finding = broken_finding()
-    snapshot, receipt = materialize_finding_tasks(
-        [finding], root=tmp_path / "board"
-    )
+    snapshot, receipt = materialize_finding_tasks([finding], root=tmp_path / "board")
     assert receipt.evidence == "vfs/finding-taskboard@1"
     assert snapshot.evidence == "vfs/finding-taskboard@1"
     assert finding_taskboard_evidence_terms() == ("vfs/finding-taskboard@1",)

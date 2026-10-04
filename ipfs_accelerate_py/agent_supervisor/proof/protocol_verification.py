@@ -55,24 +55,16 @@ PROTOCOL_FIXTURE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/protocol-fixture@
 PROTOCOL_CONFORMANCE_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/protocol-conformance-receipt@1"
 )
-PROTOCOL_TOOL_CAPABILITY_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/protocol-tool-capability@1"
-)
+PROTOCOL_TOOL_CAPABILITY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/protocol-tool-capability@1"
 PROTOCOL_ATTACK_COUNTEREXAMPLE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/protocol-attack-counterexample@1"
 )
 PROTOCOL_TOOLCHAIN_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/protocol-toolchain-receipt@1"
 )
-PROTOCOL_QUERY_RESULT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/protocol-query-result@1"
-)
-PROTOCOL_LANE_RESULT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/protocol-lane-result@1"
-)
-PROTOCOL_SUITE_RESULT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/protocol-suite-result@1"
-)
+PROTOCOL_QUERY_RESULT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/protocol-query-result@1"
+PROTOCOL_LANE_RESULT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/protocol-lane-result@1"
+PROTOCOL_SUITE_RESULT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/protocol-suite-result@1"
 
 DEFAULT_PROTOCOL_TIMEOUT_SECONDS = 30.0
 DEFAULT_MAX_PROTOCOL_OUTPUT_BYTES = 256 * 1024
@@ -185,9 +177,7 @@ def _strings(
     else:
         normalized = tuple(_text(item, name) for item in values)
         result = (
-            tuple(dict.fromkeys(normalized))
-            if preserve_order
-            else tuple(sorted(set(normalized)))
+            tuple(dict.fromkeys(normalized)) if preserve_order else tuple(sorted(set(normalized)))
         )
     if required and not result:
         raise ProtocolValidationError(f"{name} must not be empty")
@@ -209,9 +199,7 @@ def _digest(value: str | bytes) -> str:
 def _schema(payload: Mapping[str, Any], expected: str) -> None:
     supplied = payload.get("schema")
     if supplied not in (None, "", expected):
-        raise ProtocolValidationError(
-            f"unsupported schema {supplied!r}; expected {expected}"
-        )
+        raise ProtocolValidationError(f"unsupported schema {supplied!r}; expected {expected}")
 
 
 def _claimed_identity(payload: Mapping[str, Any], actual: str, noun: str) -> None:
@@ -254,15 +242,9 @@ class ProtocolQuery(CanonicalContract):
         if not re.fullmatch(r"[a-z][a-z0-9_.-]*", query_id):
             raise ProtocolValidationError("query_id must be a stable lowercase name")
         object.__setattr__(self, "query_id", query_id)
-        object.__setattr__(
-            self, "property", _enum(self.property, ProtocolProperty, "property")
-        )
-        object.__setattr__(
-            self, "kind", _enum(self.kind, ProtocolQueryKind, "query kind")
-        )
-        object.__setattr__(
-            self, "abstraction", _text(self.abstraction, "abstraction")
-        )
+        object.__setattr__(self, "property", _enum(self.property, ProtocolProperty, "property"))
+        object.__setattr__(self, "kind", _enum(self.kind, ProtocolQueryKind, "query kind"))
+        object.__setattr__(self, "abstraction", _text(self.abstraction, "abstraction"))
         object.__setattr__(
             self,
             "assumptions",
@@ -271,27 +253,19 @@ class ProtocolQuery(CanonicalContract):
         object.__setattr__(
             self,
             "excluded_behaviors",
-            _strings(
-                self.excluded_behaviors, "excluded_behaviors", required=True
-            ),
+            _strings(self.excluded_behaviors, "excluded_behaviors", required=True),
         )
         tamarin_name = _text(self.tamarin_name, "tamarin_name")
         if not _SYMBOL_RE.fullmatch(tamarin_name):
             raise ProtocolValidationError("tamarin_name must be a Tamarin symbol")
         object.__setattr__(self, "tamarin_name", tamarin_name)
-        object.__setattr__(
-            self, "proverif_label", _text(self.proverif_label, "proverif_label")
-        )
+        object.__setattr__(self, "proverif_label", _text(self.proverif_label, "proverif_label"))
         if not isinstance(self.required, bool):
             raise ProtocolValidationError("required must be a boolean")
 
     def symbol_for(self, tool: ProtocolTool | str) -> str:
         selected = _enum(tool, ProtocolTool, "protocol tool")
-        return (
-            self.tamarin_name
-            if selected is ProtocolTool.TAMARIN
-            else self.proverif_label
-        )
+        return self.tamarin_name if selected is ProtocolTool.TAMARIN else self.proverif_label
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -346,9 +320,7 @@ class ProtocolModel(CanonicalContract):
     def __post_init__(self) -> None:
         object.__setattr__(self, "model_id", _text(self.model_id, "model_id"))
         object.__setattr__(self, "version", _text(self.version, "version"))
-        object.__setattr__(
-            self, "description", _text(self.description, "description")
-        )
+        object.__setattr__(self, "description", _text(self.description, "description"))
         try:
             properties = tuple(
                 sorted(
@@ -366,9 +338,7 @@ class ProtocolModel(CanonicalContract):
         object.__setattr__(self, "properties", properties)
         queries = tuple(self.queries)
         if not queries or any(not isinstance(item, ProtocolQuery) for item in queries):
-            raise ProtocolValidationError(
-                "queries must contain at least one ProtocolQuery"
-            )
+            raise ProtocolValidationError("queries must contain at least one ProtocolQuery")
         query_ids = tuple(item.query_id for item in queries)
         if len(query_ids) != len(set(query_ids)):
             raise ProtocolValidationError("query ids must be unique")
@@ -382,13 +352,9 @@ class ProtocolModel(CanonicalContract):
         proverif = _source(self.proverif_source, "proverif_source")
         for query in queries:
             if query.tamarin_name not in tamarin:
-                raise ProtocolValidationError(
-                    f"Tamarin source omits query {query.query_id}"
-                )
+                raise ProtocolValidationError(f"Tamarin source omits query {query.query_id}")
             if query.proverif_label not in proverif:
-                raise ProtocolValidationError(
-                    f"ProVerif source omits query {query.query_id}"
-                )
+                raise ProtocolValidationError(f"ProVerif source omits query {query.query_id}")
         object.__setattr__(self, "tamarin_source", tamarin)
         object.__setattr__(self, "proverif_source", proverif)
         object.__setattr__(
@@ -403,9 +369,7 @@ class ProtocolModel(CanonicalContract):
         )
         if not isinstance(self.optional_attestation, bool):
             raise ProtocolValidationError("optional_attestation must be a boolean")
-        contains_attestation = (
-            ProtocolProperty.ATTESTATION_EXCHANGE in properties
-        )
+        contains_attestation = ProtocolProperty.ATTESTATION_EXCHANGE in properties
         if contains_attestation != self.optional_attestation:
             raise ProtocolValidationError(
                 "attestation property and optional_attestation must agree"
@@ -413,17 +377,11 @@ class ProtocolModel(CanonicalContract):
 
     @property
     def query_set_identity(self) -> str:
-        return content_identity(
-            {"query_ids": [item.content_id for item in self.queries]}
-        )
+        return content_identity({"query_ids": [item.content_id for item in self.queries]})
 
     def source_for(self, tool: ProtocolTool | str) -> str:
         selected = _enum(tool, ProtocolTool, "protocol tool")
-        return (
-            self.tamarin_source
-            if selected is ProtocolTool.TAMARIN
-            else self.proverif_source
-        )
+        return self.tamarin_source if selected is ProtocolTool.TAMARIN else self.proverif_source
 
     def source_identity_for(self, tool: ProtocolTool | str) -> str:
         return _digest(self.source_for(tool))
@@ -438,13 +396,9 @@ class ProtocolModel(CanonicalContract):
             "queries": self.queries,
             "query_set_identity": self.query_set_identity,
             "tamarin_source": self.tamarin_source,
-            "tamarin_source_identity": self.source_identity_for(
-                ProtocolTool.TAMARIN
-            ),
+            "tamarin_source_identity": self.source_identity_for(ProtocolTool.TAMARIN),
             "proverif_source": self.proverif_source,
-            "proverif_source_identity": self.source_identity_for(
-                ProtocolTool.PROVERIF
-            ),
+            "proverif_source_identity": self.source_identity_for(ProtocolTool.PROVERIF),
             "protocol_steps": self.protocol_steps,
             "optional_attestation": self.optional_attestation,
         }
@@ -505,9 +459,7 @@ class ProtocolConformanceFixture(CanonicalContract):
     translator_id: str
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "tool", _enum(self.tool, ProtocolTool, "protocol tool")
-        )
+        object.__setattr__(self, "tool", _enum(self.tool, ProtocolTool, "protocol tool"))
         object.__setattr__(self, "fixture_id", _text(self.fixture_id, "fixture_id"))
         source = _source(self.model_source, "fixture source")
         object.__setattr__(self, "model_source", source)
@@ -529,16 +481,11 @@ class ProtocolConformanceFixture(CanonicalContract):
                 preserve_order=True,
             ),
         )
-        object.__setattr__(
-            self, "attack_marker", _text(self.attack_marker, "attack_marker")
-        )
+        object.__setattr__(self, "attack_marker", _text(self.attack_marker, "attack_marker"))
         try:
             kinds = tuple(
                 sorted(
-                    {
-                        _enum(item, ProtocolQueryKind, "query kind")
-                        for item in self.query_kinds
-                    },
+                    {_enum(item, ProtocolQueryKind, "query kind") for item in self.query_kinds},
                     key=lambda item: item.value,
                 )
             )
@@ -549,9 +496,7 @@ class ProtocolConformanceFixture(CanonicalContract):
                 "end-to-end fixture must exercise every protocol query kind"
             )
         object.__setattr__(self, "query_kinds", kinds)
-        object.__setattr__(
-            self, "translator_id", _text(self.translator_id, "translator_id")
-        )
+        object.__setattr__(self, "translator_id", _text(self.translator_id, "translator_id"))
 
     @property
     def source_identity(self) -> str:
@@ -598,9 +543,7 @@ class ProtocolConformanceFixture(CanonicalContract):
         )
         claimed_source = payload.get("source_identity")
         if claimed_source and claimed_source != result.source_identity:
-            raise ProtocolValidationError(
-                "fixture source_identity does not match model source"
-            )
+            raise ProtocolValidationError("fixture source_identity does not match model source")
         _claimed_identity(payload, result.content_id, "protocol fixture")
         return result
 
@@ -631,9 +574,7 @@ class ProtocolConformanceReceipt(CanonicalContract):
     reason: str
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "tool", _enum(self.tool, ProtocolTool, "protocol tool")
-        )
+        object.__setattr__(self, "tool", _enum(self.tool, ProtocolTool, "protocol tool"))
         object.__setattr__(
             self,
             "status",
@@ -649,17 +590,13 @@ class ProtocolConformanceReceipt(CanonicalContract):
             "output_sha256",
         ):
             object.__setattr__(self, name, _identity(getattr(self, name), name))
-        command = _strings(
-            self.command, "command", required=True, preserve_order=True
-        )
+        command = _strings(self.command, "command", required=True, preserve_order=True)
         object.__setattr__(self, "command", command)
         if self.returncode is not None and (
             isinstance(self.returncode, bool) or not isinstance(self.returncode, int)
         ):
             raise ProtocolValidationError("returncode must be an integer or null")
-        if not isinstance(self.timed_out, bool) or not isinstance(
-            self.output_truncated, bool
-        ):
+        if not isinstance(self.timed_out, bool) or not isinstance(self.output_truncated, bool):
             raise ProtocolValidationError("receipt flags must be booleans")
         object.__setattr__(
             self,
@@ -672,9 +609,7 @@ class ProtocolConformanceReceipt(CanonicalContract):
         )
         if not isinstance(self.attack_marker_matched, bool):
             raise ProtocolValidationError("attack_marker_matched must be a boolean")
-        object.__setattr__(
-            self, "duration_ms", _nonnegative(self.duration_ms, "duration_ms")
-        )
+        object.__setattr__(self, "duration_ms", _nonnegative(self.duration_ms, "duration_ms"))
         if self.command_identity != content_identity({"command": command}):
             raise ProtocolValidationError("command_identity does not match command")
         if self.status is ConformanceStatus.PASSED and (
@@ -740,9 +675,7 @@ class ProtocolConformanceReceipt(CanonicalContract):
             timed_out=payload.get("timed_out", False),
             output_sha256=payload.get("output_sha256", ""),
             output_truncated=payload.get("output_truncated", False),
-            safe_markers_matched=tuple(
-                payload.get("safe_markers_matched") or ()
-            ),
+            safe_markers_matched=tuple(payload.get("safe_markers_matched") or ()),
             attack_marker_matched=payload.get("attack_marker_matched", False),
             duration_ms=payload.get("duration_ms", 0),
             reason=payload.get("reason", ""),
@@ -766,9 +699,7 @@ class ProtocolToolCapability(CanonicalContract):
     conformance_receipt: ProtocolConformanceReceipt | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "tool", _enum(self.tool, ProtocolTool, "protocol tool")
-        )
+        object.__setattr__(self, "tool", _enum(self.tool, ProtocolTool, "protocol tool"))
         object.__setattr__(
             self,
             "status",
@@ -877,9 +808,7 @@ class ProtocolAttackStep(CanonicalContract):
                 _text(getattr(self, name), name).casefold(),
             ).strip("_")
             object.__setattr__(self, name, value or "unknown")
-        object.__setattr__(
-            self, "message_ref", _identity(self.message_ref, "message_ref")
-        )
+        object.__setattr__(self, "message_ref", _identity(self.message_ref, "message_ref"))
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -920,9 +849,7 @@ class ProtocolAttackCounterexample(CanonicalContract):
             "source_output_sha256",
         ):
             object.__setattr__(self, name, _identity(getattr(self, name), name))
-        object.__setattr__(
-            self, "tool", _enum(self.tool, ProtocolTool, "protocol tool")
-        )
+        object.__setattr__(self, "tool", _enum(self.tool, ProtocolTool, "protocol tool"))
         steps = tuple(self.steps)
         if not steps or any(not isinstance(item, ProtocolAttackStep) for item in steps):
             raise ProtocolValidationError("counterexample requires attack steps")
@@ -931,9 +858,7 @@ class ProtocolAttackCounterexample(CanonicalContract):
             raise ProtocolValidationError("counterexample exceeds the canonical bound")
         object.__setattr__(self, "steps", ordered)
         if self.minimized is not True or self.redacted is not True:
-            raise ProtocolValidationError(
-                "protocol counterexamples must be minimized and redacted"
-            )
+            raise ProtocolValidationError("protocol counterexamples must be minimized and redacted")
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -999,18 +924,10 @@ class ProtocolQueryResult(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "query_id", _text(self.query_id, "query_id"))
-        object.__setattr__(
-            self, "query_identity", _identity(self.query_identity, "query_identity")
-        )
-        object.__setattr__(
-            self, "property", _enum(self.property, ProtocolProperty, "property")
-        )
-        object.__setattr__(
-            self, "kind", _enum(self.kind, ProtocolQueryKind, "query kind")
-        )
-        object.__setattr__(
-            self, "verdict", _enum(self.verdict, ProtocolVerdict, "verdict")
-        )
+        object.__setattr__(self, "query_identity", _identity(self.query_identity, "query_identity"))
+        object.__setattr__(self, "property", _enum(self.property, ProtocolProperty, "property"))
+        object.__setattr__(self, "kind", _enum(self.kind, ProtocolQueryKind, "query kind"))
+        object.__setattr__(self, "verdict", _enum(self.verdict, ProtocolVerdict, "verdict"))
         object.__setattr__(
             self,
             "abstraction_identity",
@@ -1019,22 +936,17 @@ class ProtocolQueryResult(CanonicalContract):
         object.__setattr__(self, "reason", _text(self.reason, "reason"))
         if self.counterexample is not None:
             if self.verdict is not ProtocolVerdict.VIOLATED:
-                raise ProtocolValidationError(
-                    "only a violated query may contain a counterexample"
-                )
+                raise ProtocolValidationError("only a violated query may contain a counterexample")
             if (
                 self.counterexample.query_id != self.query_id
                 or self.counterexample.query_identity != self.query_identity
-                or self.counterexample.abstraction_identity
-                != self.abstraction_identity
+                or self.counterexample.abstraction_identity != self.abstraction_identity
             ):
                 raise ProtocolValidationError(
                     "counterexample does not bind the exact query abstraction"
                 )
         elif self.verdict is ProtocolVerdict.VIOLATED:
-            raise ProtocolValidationError(
-                "a violated protocol query requires a counterexample"
-            )
+            raise ProtocolValidationError("a violated protocol query requires a counterexample")
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -1064,9 +976,7 @@ class ProtocolQueryResult(CanonicalContract):
             abstraction_identity=payload.get("abstraction_identity", ""),
             reason=payload.get("reason", ""),
             counterexample=(
-                ProtocolAttackCounterexample.from_dict(raw)
-                if isinstance(raw, Mapping)
-                else None
+                ProtocolAttackCounterexample.from_dict(raw) if isinstance(raw, Mapping) else None
             ),
         )
         _claimed_identity(payload, result.content_id, "protocol query result")
@@ -1101,12 +1011,8 @@ class ProtocolToolchainReceipt(CanonicalContract):
     reason: str
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "tool", _enum(self.tool, ProtocolTool, "protocol tool")
-        )
-        object.__setattr__(
-            self, "status", _enum(self.status, ToolRunStatus, "tool-run status")
-        )
+        object.__setattr__(self, "tool", _enum(self.tool, ProtocolTool, "protocol tool"))
+        object.__setattr__(self, "status", _enum(self.status, ToolRunStatus, "tool-run status"))
         for name in (
             "model_id",
             "executable_path",
@@ -1126,9 +1032,7 @@ class ProtocolToolchainReceipt(CanonicalContract):
             "stderr_sha256",
         ):
             object.__setattr__(self, name, _identity(getattr(self, name), name))
-        command = _strings(
-            self.command, "command", required=True, preserve_order=True
-        )
+        command = _strings(self.command, "command", required=True, preserve_order=True)
         object.__setattr__(self, "command", command)
         if self.command_identity != content_identity({"command": command}):
             raise ProtocolValidationError("toolchain command binding is invalid")
@@ -1136,13 +1040,9 @@ class ProtocolToolchainReceipt(CanonicalContract):
             isinstance(self.returncode, bool) or not isinstance(self.returncode, int)
         ):
             raise ProtocolValidationError("returncode must be an integer or null")
-        if not isinstance(self.timed_out, bool) or not isinstance(
-            self.output_truncated, bool
-        ):
+        if not isinstance(self.timed_out, bool) or not isinstance(self.output_truncated, bool):
             raise ProtocolValidationError("toolchain flags must be booleans")
-        object.__setattr__(
-            self, "duration_ms", _nonnegative(self.duration_ms, "duration_ms")
-        )
+        object.__setattr__(self, "duration_ms", _nonnegative(self.duration_ms, "duration_ms"))
         if self.status in {ToolRunStatus.PASSED, ToolRunStatus.VIOLATED} and (
             self.returncode != 0 or self.timed_out or self.output_truncated
         ):
@@ -1190,9 +1090,7 @@ class ProtocolToolchainReceipt(CanonicalContract):
             model_source_identity=payload.get("model_source_identity", ""),
             query_set_identity=payload.get("query_set_identity", ""),
             capability_identity=payload.get("capability_identity", ""),
-            conformance_receipt_identity=payload.get(
-                "conformance_receipt_identity", ""
-            ),
+            conformance_receipt_identity=payload.get("conformance_receipt_identity", ""),
             executable_path=payload.get("executable_path", ""),
             executable_identity=payload.get("executable_identity", ""),
             executable_version=payload.get("executable_version", ""),
@@ -1228,23 +1126,15 @@ class ProtocolLaneResult(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "model_id", _text(self.model_id, "model_id"))
-        object.__setattr__(
-            self, "model_identity", _identity(self.model_identity, "model_identity")
-        )
-        object.__setattr__(
-            self, "tool", _enum(self.tool, ProtocolTool, "protocol tool")
-        )
-        object.__setattr__(
-            self, "verdict", _enum(self.verdict, ProtocolVerdict, "verdict")
-        )
+        object.__setattr__(self, "model_identity", _identity(self.model_identity, "model_identity"))
+        object.__setattr__(self, "tool", _enum(self.tool, ProtocolTool, "protocol tool"))
+        object.__setattr__(self, "verdict", _enum(self.verdict, ProtocolVerdict, "verdict"))
         if not isinstance(self.authoritative, bool):
             raise ProtocolValidationError("authoritative must be a boolean")
         object.__setattr__(self, "reason", _text(self.reason, "reason"))
         results = tuple(self.query_results)
         if any(not isinstance(item, ProtocolQueryResult) for item in results):
-            raise ProtocolValidationError(
-                "query_results must contain ProtocolQueryResult values"
-            )
+            raise ProtocolValidationError("query_results must contain ProtocolQueryResult values")
         if len({item.query_id for item in results}) != len(results):
             raise ProtocolValidationError("query results must be unique")
         object.__setattr__(self, "query_results", results)
@@ -1255,14 +1145,11 @@ class ProtocolLaneResult(CanonicalContract):
         )
         if self.authoritative:
             if self.toolchain_receipt is None:
-                raise ProtocolValidationError(
-                    "authoritative lane requires a toolchain receipt"
-                )
+                raise ProtocolValidationError("authoritative lane requires a toolchain receipt")
             if (
                 self.toolchain_receipt.model_identity != self.model_identity
                 or self.toolchain_receipt.tool is not self.tool
-                or self.toolchain_receipt.capability_identity
-                != self.capability_identity
+                or self.toolchain_receipt.capability_identity != self.capability_identity
             ):
                 raise ProtocolValidationError(
                     "lane does not bind its exact model, tool, and capability"
@@ -1306,9 +1193,7 @@ class ProtocolLaneResult(CanonicalContract):
             ),
             capability_identity=payload.get("capability_identity", ""),
             toolchain_receipt=(
-                ProtocolToolchainReceipt.from_dict(raw)
-                if isinstance(raw, Mapping)
-                else None
+                ProtocolToolchainReceipt.from_dict(raw) if isinstance(raw, Mapping) else None
             ),
         )
         _claimed_identity(payload, result.content_id, "protocol lane result")
@@ -1329,31 +1214,23 @@ class ProtocolSuiteResult(CanonicalContract):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "model_id", _text(self.model_id, "model_id"))
-        object.__setattr__(
-            self, "model_identity", _identity(self.model_identity, "model_identity")
-        )
+        object.__setattr__(self, "model_identity", _identity(self.model_identity, "model_identity"))
         lanes = tuple(self.lane_results)
         if any(not isinstance(item, ProtocolLaneResult) for item in lanes):
-            raise ProtocolValidationError(
-                "lane_results must contain ProtocolLaneResult values"
-            )
+            raise ProtocolValidationError("lane_results must contain ProtocolLaneResult values")
         if len({item.tool for item in lanes}) != len(lanes):
             raise ProtocolValidationError("suite lanes must be unique")
         if any(
-            item.model_id != self.model_id
-            or item.model_identity != self.model_identity
+            item.model_id != self.model_id or item.model_identity != self.model_identity
             for item in lanes
         ):
             raise ProtocolValidationError("suite contains a different model")
         object.__setattr__(self, "lane_results", lanes)
-        object.__setattr__(
-            self, "verdict", _enum(self.verdict, ProtocolVerdict, "verdict")
-        )
+        object.__setattr__(self, "verdict", _enum(self.verdict, ProtocolVerdict, "verdict"))
         if not isinstance(self.complete, bool):
             raise ProtocolValidationError("complete must be a boolean")
-        actual_complete = (
-            {item.tool for item in lanes} == set(ProtocolTool)
-            and all(item.authoritative for item in lanes)
+        actual_complete = {item.tool for item in lanes} == set(ProtocolTool) and all(
+            item.authoritative for item in lanes
         )
         if self.complete != actual_complete:
             raise ProtocolValidationError("suite completeness is inconsistent")
@@ -1479,9 +1356,7 @@ def canonicalize_attack_trace(
     # Remove duplicate symbolic states and compact indexes deterministically.
     unique: dict[tuple[str, str, str], ProtocolAttackStep] = {}
     for item in sorted(steps, key=lambda step: (step.index, step.content_id)):
-        unique.setdefault(
-            (item.event, item.principal_role, item.message_ref), item
-        )
+        unique.setdefault((item.event, item.principal_role, item.message_ref), item)
     minimized = tuple(
         ProtocolAttackStep(
             index=index,
@@ -1546,10 +1421,10 @@ def _query_outcomes(
                 if symbol.casefold() in body.casefold()
                 or query.query_id.casefold() in body.casefold()
             ]
-            state = matching[0] if matching else (
-                proverif_results[index][1]
-                if index < len(proverif_results)
-                else ""
+            state = (
+                matching[0]
+                if matching
+                else (proverif_results[index][1] if index < len(proverif_results) else "")
             )
             if state.casefold() == "true":
                 verdict = ProtocolVerdict.VERIFIED
@@ -1605,9 +1480,7 @@ class ProtocolToolAdapter:
         self.command_runner = command_runner or _bounded_command_runner
         self.timeout_seconds = float(timeout_seconds)
         self.max_output_bytes = _positive(max_output_bytes, "max_output_bytes")
-        self.max_executable_bytes = _positive(
-            max_executable_bytes, "max_executable_bytes"
-        )
+        self.max_executable_bytes = _positive(max_executable_bytes, "max_executable_bytes")
         self.monotonic = monotonic or time.monotonic
 
     def _run(self, request: CommandRequest) -> CommandResult:
@@ -1634,9 +1507,7 @@ class ProtocolToolAdapter:
                 status=ToolCapabilityStatus.UNAVAILABLE,
                 reason="executable not discovered; no protocol claims were made",
             )
-        executable_id = _executable_identity(
-            Path(executable), self.max_executable_bytes
-        )
+        executable_id = _executable_identity(Path(executable), self.max_executable_bytes)
         if executable_id is None:
             return ProtocolToolCapability(
                 tool=self.tool,
@@ -1653,9 +1524,7 @@ class ProtocolToolAdapter:
                 max_output_bytes=min(8192, self.max_output_bytes),
             )
         )
-        version_text = (
-            version_result.stdout + "\n" + version_result.stderr
-        ).strip()
+        version_text = (version_result.stdout + "\n" + version_result.stderr).strip()
         if (
             version_result.returncode != 0
             or version_result.timed_out
@@ -1678,8 +1547,7 @@ class ProtocolToolAdapter:
                 executable_identity=executable_id,
                 executable_version=version,
                 reason=(
-                    "executable presence is insufficient; end-to-end model "
-                    "fixture was not run"
+                    "executable presence is insufficient; end-to-end model fixture was not run"
                 ),
             )
         receipt = self._run_conformance(executable, executable_id, version)
@@ -1705,14 +1573,11 @@ class ProtocolToolAdapter:
         self, executable: str, executable_id: str, version: str
     ) -> ProtocolConformanceReceipt:
         started = self.monotonic()
-        with tempfile.TemporaryDirectory(
-            prefix=f"{self.tool.value}-protocol-fixture-"
-        ) as raw:
+        with tempfile.TemporaryDirectory(prefix=f"{self.tool.value}-protocol-fixture-") as raw:
             fixture_path = Path(raw) / self.fixture.file_name
             fixture_path.write_text(self.fixture.model_source, encoding="utf-8")
             command = (executable,) + tuple(
-                str(fixture_path) if item == "{fixture}" else item
-                for item in self.fixture.args
+                str(fixture_path) if item == "{fixture}" else item for item in self.fixture.args
             )
             result = self._run(
                 CommandRequest(
@@ -1727,6 +1592,7 @@ class ProtocolToolAdapter:
         output = result.stdout + "\n" + result.stderr
         folded = output.casefold()
         if self.tool is ProtocolTool.TAMARIN:
+
             def tamarin_marker_seen(marker: str) -> bool:
                 name, _, state = marker.partition(":")
                 return bool(
@@ -1739,9 +1605,7 @@ class ProtocolToolAdapter:
                 )
 
             matched = tuple(
-                marker
-                for marker in self.fixture.safe_markers
-                if tamarin_marker_seen(marker)
+                marker for marker in self.fixture.safe_markers if tamarin_marker_seen(marker)
             )
             attack = tamarin_marker_seen(self.fixture.attack_marker)
         else:
@@ -1757,14 +1621,11 @@ class ProtocolToolAdapter:
                 )
             )
             direct = tuple(
-                marker
-                for marker in self.fixture.safe_markers
-                if marker.casefold() in folded
+                marker for marker in self.fixture.safe_markers if marker.casefold() in folded
             )
             matched = (
                 self.fixture.safe_markers
-                if len(states) >= 5
-                and all(state == "true" for state in states[:4])
+                if len(states) >= 5 and all(state == "true" for state in states[:4])
                 else direct
             )
             attack = (
@@ -1780,8 +1641,7 @@ class ProtocolToolAdapter:
         if passed:
             status = ConformanceStatus.PASSED
             reason = (
-                "end-to-end model fixture proved all query classes and "
-                "detected the known attack"
+                "end-to-end model fixture proved all query classes and detected the known attack"
             )
         elif result.timed_out:
             status = ConformanceStatus.TIMED_OUT
@@ -1792,8 +1652,7 @@ class ProtocolToolAdapter:
         else:
             status = ConformanceStatus.FAILED
             reason = (
-                "end-to-end model fixture did not establish safe-query and "
-                "known-attack semantics"
+                "end-to-end model fixture did not establish safe-query and known-attack semantics"
             )
         return ProtocolConformanceReceipt(
             tool=self.tool,
@@ -1838,18 +1697,13 @@ class ProtocolToolAdapter:
                 tool=self.tool,
                 verdict=ProtocolVerdict.UNAVAILABLE,
                 authoritative=False,
-                reason=(
-                    "protocol lane unavailable without a passing end-to-end "
-                    "model fixture"
-                ),
+                reason=("protocol lane unavailable without a passing end-to-end model fixture"),
                 query_results=(),
                 capability_identity=cap.content_id,
             )
         executable = cap.executable_path
         assert executable is not None
-        current_id = _executable_identity(
-            Path(executable), self.max_executable_bytes
-        )
+        current_id = _executable_identity(Path(executable), self.max_executable_bytes)
         if current_id != cap.executable_identity:
             return ProtocolLaneResult(
                 model_id=model.model_id,
@@ -1864,14 +1718,11 @@ class ProtocolToolAdapter:
 
         started = self.monotonic()
         source = self.render_model(model)
-        with tempfile.TemporaryDirectory(
-            prefix=f"{self.tool.value}-protocol-model-"
-        ) as raw:
+        with tempfile.TemporaryDirectory(prefix=f"{self.tool.value}-protocol-model-") as raw:
             model_path = Path(raw) / f"model{self.model_extension}"
             model_path.write_text(source, encoding="utf-8")
             command = (executable,) + tuple(
-                str(model_path) if item == "{model}" else item
-                for item in self.model_args
+                str(model_path) if item == "{model}" else item for item in self.model_args
             )
             run = self._run(
                 CommandRequest(
@@ -1884,25 +1735,16 @@ class ProtocolToolAdapter:
             )
         duration_ms = max(0, round((self.monotonic() - started) * 1000))
         output = run.stdout + "\n" + run.stderr
-        if (
-            run.returncode == 0
-            and not run.timed_out
-            and not run.output_truncated
-            and not run.error
-        ):
+        if run.returncode == 0 and not run.timed_out and not run.output_truncated and not run.error:
             query_results = _query_outcomes(model, self.tool, output)
             required = tuple(
-                result
-                for query, result in zip(model.queries, query_results)
-                if query.required
+                result for query, result in zip(model.queries, query_results) if query.required
             )
             if any(item.verdict is ProtocolVerdict.VIOLATED for item in required):
                 verdict = ProtocolVerdict.VIOLATED
                 run_status = ToolRunStatus.VIOLATED
                 reason = "symbolic tool found a canonical protocol attack"
-            elif required and all(
-                item.verdict is ProtocolVerdict.VERIFIED for item in required
-            ):
+            elif required and all(item.verdict is ProtocolVerdict.VERIFIED for item in required):
                 verdict = ProtocolVerdict.VERIFIED
                 run_status = ToolRunStatus.PASSED
                 reason = "all required symbolic protocol queries were verified"
@@ -2068,9 +1910,7 @@ def probe_protocol_tools(
         if adapters is not None
         else tuple(kind() for kind in DEFAULT_PROTOCOL_ADAPTER_TYPES)
     )
-    capabilities = tuple(
-        adapter.probe(run_conformance=run_conformance) for adapter in selected
-    )
+    capabilities = tuple(adapter.probe(run_conformance=run_conformance) for adapter in selected)
     if len({item.tool for item in capabilities}) != len(capabilities):
         raise ProtocolValidationError("protocol tool adapters must be unique")
     return capabilities
@@ -2079,9 +1919,7 @@ def probe_protocol_tools(
 class ProtocolVerifier:
     """Run exact models through both capability-gated symbolic lanes."""
 
-    def __init__(
-        self, adapters: Sequence[ProtocolToolAdapter] | None = None
-    ) -> None:
+    def __init__(self, adapters: Sequence[ProtocolToolAdapter] | None = None) -> None:
         self.adapters = (
             tuple(adapters)
             if adapters is not None
@@ -2090,12 +1928,8 @@ class ProtocolVerifier:
         if len({item.tool for item in self.adapters}) != len(self.adapters):
             raise ProtocolValidationError("protocol tool adapters must be unique")
 
-    def capabilities(
-        self, *, run_conformance: bool = True
-    ) -> tuple[ProtocolToolCapability, ...]:
-        return probe_protocol_tools(
-            self.adapters, run_conformance=run_conformance
-        )
+    def capabilities(self, *, run_conformance: bool = True) -> tuple[ProtocolToolCapability, ...]:
+        return probe_protocol_tools(self.adapters, run_conformance=run_conformance)
 
     def verify(
         self,
@@ -2105,11 +1939,7 @@ class ProtocolVerifier:
     ) -> ProtocolSuiteResult:
         if not isinstance(model, ProtocolModel):
             raise ProtocolValidationError("model must be a ProtocolModel")
-        caps = (
-            tuple(capabilities)
-            if capabilities is not None
-            else self.capabilities()
-        )
+        caps = tuple(capabilities) if capabilities is not None else self.capabilities()
         by_tool = {item.tool: item for item in caps}
         if len(by_tool) != len(caps):
             raise ProtocolValidationError("capabilities must be unique by tool")
@@ -2124,21 +1954,16 @@ class ProtocolVerifier:
                 )
             lanes.append(adapter.verify(model, cap))
         lane_tuple = tuple(lanes)
-        complete = (
-            {item.tool for item in lane_tuple} == set(ProtocolTool)
-            and all(item.authoritative for item in lane_tuple)
+        complete = {item.tool for item in lane_tuple} == set(ProtocolTool) and all(
+            item.authoritative for item in lane_tuple
         )
         if any(item.verdict is ProtocolVerdict.VIOLATED for item in lane_tuple):
             verdict = ProtocolVerdict.VIOLATED
-        elif complete and all(
-            item.verdict is ProtocolVerdict.VERIFIED for item in lane_tuple
-        ):
+        elif complete and all(item.verdict is ProtocolVerdict.VERIFIED for item in lane_tuple):
             verdict = ProtocolVerdict.VERIFIED
         elif any(item.verdict is ProtocolVerdict.ERROR for item in lane_tuple):
             verdict = ProtocolVerdict.ERROR
-        elif any(
-            item.verdict is ProtocolVerdict.INCONCLUSIVE for item in lane_tuple
-        ):
+        elif any(item.verdict is ProtocolVerdict.INCONCLUSIVE for item in lane_tuple):
             verdict = ProtocolVerdict.INCONCLUSIVE
         else:
             verdict = ProtocolVerdict.UNAVAILABLE
@@ -2157,11 +1982,7 @@ class ProtocolVerifier:
         capabilities: Sequence[ProtocolToolCapability] | None = None,
     ) -> tuple[ProtocolSuiteResult, ...]:
         selected = tuple(models) if models is not None else DEFAULT_PROTOCOL_MODELS
-        caps = (
-            tuple(capabilities)
-            if capabilities is not None
-            else self.capabilities()
-        )
+        caps = tuple(capabilities) if capabilities is not None else self.capabilities()
         return tuple(self.verify(model, capabilities=caps) for model in selected)
 
 

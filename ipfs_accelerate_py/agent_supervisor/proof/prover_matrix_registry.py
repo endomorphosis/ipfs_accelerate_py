@@ -38,15 +38,9 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 
-PROVER_MATRIX_SCHEMA_VERSION = (
-    "ipfs_accelerate_py/agent-supervisor/prover-matrix@1"
-)
-PROVER_SELF_TEST_SCHEMA_VERSION = (
-    "ipfs_accelerate_py/agent-supervisor/prover-self-test@1"
-)
-PROVER_MATRIX_DUCKDB_SCHEMA_VERSION = (
-    "ipfs_accelerate_py/agent-supervisor/prover-matrix-duckdb@1"
-)
+PROVER_MATRIX_SCHEMA_VERSION = "ipfs_accelerate_py/agent-supervisor/prover-matrix@1"
+PROVER_SELF_TEST_SCHEMA_VERSION = "ipfs_accelerate_py/agent-supervisor/prover-self-test@1"
+PROVER_MATRIX_DUCKDB_SCHEMA_VERSION = "ipfs_accelerate_py/agent-supervisor/prover-matrix-duckdb@1"
 PROVER_MATRIX_REPORT_VERSION = 1
 DEFAULT_SELF_TEST_TIMEOUT_SECONDS = 5.0
 DEFAULT_MATRIX_TIMEOUT_SECONDS = 90.0
@@ -104,11 +98,7 @@ def _identity(value: Any) -> str:
 
 
 def _utc_timestamp(clock: Callable[[], float]) -> str:
-    return (
-        datetime.fromtimestamp(clock(), tz=timezone.utc)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
+    return datetime.fromtimestamp(clock(), tz=timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _strict_json_mapping(value: Mapping[str, Any], *, field_name: str) -> dict[str, Any]:
@@ -139,9 +129,7 @@ class BoundIdentity:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "kind", IdentityKind(str(getattr(self.kind, "value", self.kind)))
-        )
+        object.__setattr__(self, "kind", IdentityKind(str(getattr(self.kind, "value", self.kind))))
         name = str(self.name).strip()
         content_identity = str(self.content_identity).strip()
         if not name or not content_identity:
@@ -263,7 +251,9 @@ class ProverFixture:
             raise ValueError("fixture file_name must be a basename")
         if not self.expected_exit_codes:
             raise ValueError("expected_exit_codes must not be empty")
-        if any(isinstance(code, bool) or not isinstance(code, int) for code in self.expected_exit_codes):
+        if any(
+            isinstance(code, bool) or not isinstance(code, int) for code in self.expected_exit_codes
+        ):
             raise ValueError("expected_exit_codes must contain integers")
         object.__setattr__(self, "args", tuple(str(arg) for arg in self.args))
         object.__setattr__(
@@ -284,7 +274,11 @@ class ProverFixture:
         object.__setattr__(
             self,
             "authoritative_for",
-            tuple(sorted({str(value).strip() for value in self.authoritative_for if str(value).strip()})),
+            tuple(
+                sorted(
+                    {str(value).strip() for value in self.authoritative_for if str(value).strip()}
+                )
+            ),
         )
         object.__setattr__(
             self,
@@ -389,17 +383,11 @@ class ProverDefinition:
         if self.package_distributions and (
             len(self.package_distributions) != len(self.package_modules)
         ):
-            raise ValueError(
-                "package_distributions must be empty or align with package_modules"
-            )
+            raise ValueError("package_distributions must be empty or align with package_modules")
         object.__setattr__(self, "prover_id", prover_id)
-        object.__setattr__(
-            self, "executable_candidates", tuple(self.executable_candidates)
-        )
+        object.__setattr__(self, "executable_candidates", tuple(self.executable_candidates))
         object.__setattr__(self, "package_modules", tuple(self.package_modules))
-        object.__setattr__(
-            self, "package_distributions", tuple(self.package_distributions)
-        )
+        object.__setattr__(self, "package_distributions", tuple(self.package_distributions))
         object.__setattr__(self, "version_args", tuple(self.version_args))
         object.__setattr__(
             self,
@@ -480,9 +468,7 @@ class ProverSelfTestReceipt:
             raise ValueError("receipt resource bounds are invalid")
         authorities = tuple(sorted({str(value) for value in self.authoritative_for}))
         if self.status is not SelfTestStatus.PASSED and (
-            self.translation_conformant
-            or self.reconstruction_capable
-            or authorities
+            self.translation_conformant or self.reconstruction_capable or authorities
         ):
             raise ValueError("failed self-tests cannot promote prover capabilities")
         object.__setattr__(self, "command", tuple(self.command))
@@ -579,9 +565,7 @@ class ProverMatrixEntry:
         if self.smoke_tested and not self.versioned:
             raise ValueError("smoke-tested requires a versioned component")
         if (
-            self.translation_conformant
-            or self.reconstruction_capable
-            or self.authoritative_for
+            self.translation_conformant or self.reconstruction_capable or self.authoritative_for
         ) and not self.smoke_tested:
             raise ValueError("advanced states require a passing smoke test")
         if self.smoke_tested and self.receipt is None:
@@ -599,12 +583,8 @@ class ProverMatrixEntry:
                 sorted(self.receipt.authoritative_for)
             ):
                 raise ValueError("authority state must agree with its receipt")
-        object.__setattr__(
-            self, "authoritative_for", tuple(sorted(set(self.authoritative_for)))
-        )
-        object.__setattr__(
-            self, "documentation_claims", tuple(self.documentation_claims)
-        )
+        object.__setattr__(self, "authoritative_for", tuple(sorted(set(self.authoritative_for))))
+        object.__setattr__(self, "documentation_claims", tuple(self.documentation_claims))
 
     @property
     def states(self) -> Mapping[str, Any]:
@@ -651,9 +631,7 @@ class ProverMatrixEntry:
             },
             "reason": self.reason,
             "self_test_receipt": self.receipt.to_dict() if self.receipt else None,
-            "documentation_claims": [
-                claim.to_dict() for claim in self.documentation_claims
-            ],
+            "documentation_claims": [claim.to_dict() for claim in self.documentation_claims],
             "documentation_is_runtime_evidence": False,
         }
 
@@ -718,15 +696,10 @@ class ProverMatrixSnapshot:
             "matrix_timeout_seconds": self.matrix_timeout_seconds,
             "documentation_source": self.documentation_source,
             "documentation_is_runtime_evidence": False,
-            "entries": {
-                entry.prover_id: entry.to_dict() for entry in self.entries
-            },
+            "entries": {entry.prover_id: entry.to_dict() for entry in self.entries},
             "counts": {
                 state.value: (
-                    sum(
-                        bool(entry.states[state.value])
-                        for entry in self.entries
-                    )
+                    sum(bool(entry.states[state.value]) for entry in self.entries)
                     if state is not ProverState.AUTHORITATIVE_FOR
                     else sum(bool(entry.authoritative_for) for entry in self.entries)
                 )
@@ -753,11 +726,7 @@ class ProverMatrixProbeConfig:
             or self.matrix_timeout_seconds <= 0
         ):
             raise ValueError("probe timeouts must be positive")
-        if (
-            self.max_output_bytes < 1
-            or self.max_identity_file_bytes < 1
-            or self.max_self_tests < 1
-        ):
+        if self.max_output_bytes < 1 or self.max_identity_file_bytes < 1 or self.max_self_tests < 1:
             raise ValueError("probe limits must be positive")
 
 
@@ -980,18 +949,14 @@ def load_documentation_claims(path: Path | str) -> tuple[DocumentationClaim, ...
         return ()
     source_identity = "sha256:" + hashlib.sha256(raw).hexdigest()
     claims: list[DocumentationClaim] = []
-    for line_number, line in enumerate(
-        raw.decode("utf-8", errors="replace").splitlines(), start=1
-    ):
+    for line_number, line in enumerate(raw.decode("utf-8", errors="replace").splitlines(), start=1):
         stripped = line.strip()
         if not (stripped.startswith("|") and stripped.endswith("|")):
             continue
         cells = [cell.strip() for cell in stripped.strip("|").split("|")]
         if len(cells) != 3:
             continue
-        if cells[0].lower() == "prover" or all(
-            re.fullmatch(r":?-{3,}:?", cell) for cell in cells
-        ):
+        if cells[0].lower() == "prover" or all(re.fullmatch(r":?-{3,}:?", cell) for cell in cells):
             continue
         claims.append(
             DocumentationClaim(
@@ -1012,9 +977,7 @@ def _claims_for(
 ) -> tuple[DocumentationClaim, ...]:
     labels = tuple(label.casefold() for label in definition.documentation_labels)
     return tuple(
-        claim
-        for claim in claims
-        if any(label in claim.prover_text.casefold() for label in labels)
+        claim for claim in claims if any(label in claim.prover_text.casefold() for label in labels)
     )
 
 
@@ -1056,24 +1019,16 @@ class ProverMatrixRegistry:
     def probe(self, *, run_self_tests: bool | None = None) -> ProverMatrixSnapshot:
         started = self._monotonic()
         deadline = started + self.config.matrix_timeout_seconds
-        execute = (
-            self.config.run_self_tests
-            if run_self_tests is None
-            else bool(run_self_tests)
-        )
+        execute = self.config.run_self_tests if run_self_tests is None else bool(run_self_tests)
         documentation_path = self._documentation_path()
         claims = (
-            load_documentation_claims(documentation_path)
-            if documentation_path is not None
-            else ()
+            load_documentation_claims(documentation_path) if documentation_path is not None else ()
         )
         entries: list[ProverMatrixEntry] = []
         self_tests = 0
         for definition in self._definitions:
             allow_test = (
-                execute
-                and self_tests < self.config.max_self_tests
-                and self._monotonic() < deadline
+                execute and self_tests < self.config.max_self_tests and self._monotonic() < deadline
             )
             entry, attempted = self._probe_definition(
                 definition,
@@ -1107,9 +1062,7 @@ class ProverMatrixRegistry:
         candidate = package_root / DEFAULT_DOCUMENTATION_MATRIX
         return candidate if candidate.is_file() else None
 
-    def _discover_executable(
-        self, definition: ProverDefinition
-    ) -> tuple[str | None, str | None]:
+    def _discover_executable(self, definition: ProverDefinition) -> tuple[str | None, str | None]:
         for candidate in definition.executable_candidates:
             try:
                 found = self._which(candidate)
@@ -1150,21 +1103,15 @@ class ProverMatrixRegistry:
                 returncode=None,
                 error=f"runner {type(exc).__name__}: {exc}",
             )
-        stdout, stdout_cut = _limit_text(
-            raw.stdout, self.config.max_output_bytes
-        )
-        stderr, stderr_cut = _limit_text(
-            raw.stderr, self.config.max_output_bytes
-        )
+        stdout, stdout_cut = _limit_text(raw.stdout, self.config.max_output_bytes)
+        stderr, stderr_cut = _limit_text(raw.stderr, self.config.max_output_bytes)
         return CommandResult(
             returncode=raw.returncode,
             stdout=stdout,
             stderr=stderr,
             timed_out=raw.timed_out,
             error=raw.error,
-            output_truncated=(
-                raw.output_truncated or stdout_cut or stderr_cut
-            ),
+            output_truncated=(raw.output_truncated or stdout_cut or stderr_cut),
         )
 
     def _probe_version(
@@ -1212,21 +1159,14 @@ class ProverMatrixRegistry:
                 executable_version, version_reason = self._probe_version(
                     definition,
                     executable_path,
-                    timeout_seconds=min(
-                        self.config.version_timeout_seconds, remaining
-                    ),
+                    timeout_seconds=min(self.config.version_timeout_seconds, remaining),
                 )
             else:
                 version_reason = "matrix time budget exhausted before version probe"
         versioned = bool(executable_version or package_version)
         receipt: ProverSelfTestReceipt | None = None
         attempted = False
-        if (
-            allow_self_test
-            and versioned
-            and executable_path
-            and definition.fixture is not None
-        ):
+        if allow_self_test and versioned and executable_path and definition.fixture is not None:
             remaining = deadline - self._monotonic()
             if remaining > 0:
                 attempted = True
@@ -1237,9 +1177,7 @@ class ProverMatrixRegistry:
                     package_module=package_module,
                     package_version=package_version,
                     package_origin=package_origin,
-                    timeout_seconds=min(
-                        self.config.self_test_timeout_seconds, remaining
-                    ),
+                    timeout_seconds=min(self.config.self_test_timeout_seconds, remaining),
                 )
         passed = bool(receipt and receipt.status is SelfTestStatus.PASSED)
         translation = bool(passed and receipt and receipt.translation_conformant)
@@ -1258,7 +1196,9 @@ class ProverMatrixRegistry:
         elif definition.fixture is None:
             reason = "versioned; no reviewed executable fixture is registered"
         elif not executable_path:
-            reason = "versioned package discovered; no isolated executable fixture runner is registered"
+            reason = (
+                "versioned package discovered; no isolated executable fixture runner is registered"
+            )
         else:
             reason = "versioned; self-test was not run"
         return (
@@ -1304,9 +1244,7 @@ class ProverMatrixRegistry:
                 executable_path,
                 maximum_bytes=self.config.max_identity_file_bytes,
             ),
-            package=_package_identity(
-                package_module, package_version, package_origin
-            ),
+            package=_package_identity(package_module, package_version, package_origin),
             model=fixture.model_identity,
             translator=fixture.translator_identity,
             semantic_profile=fixture.semantic_profile_identity,
@@ -1340,16 +1278,9 @@ class ProverMatrixRegistry:
             for line in (result.stdout + "\n" + result.stderr).splitlines()
             if line.strip()
         }
-        all_match = all(
-            expected.casefold() in combined
-            for expected in fixture.expected_output_all
-        )
-        any_match = (
-            not fixture.expected_output_any
-            or any(
-                expected.casefold() in combined
-                for expected in fixture.expected_output_any
-            )
+        all_match = all(expected.casefold() in combined for expected in fixture.expected_output_all)
+        any_match = not fixture.expected_output_any or any(
+            expected.casefold() in combined for expected in fixture.expected_output_any
         )
         lines_match = all(
             expected.strip().casefold() in output_lines
@@ -1376,9 +1307,7 @@ class ProverMatrixRegistry:
             reason = "bounded identity-bound fixture passed"
         else:
             status = SelfTestStatus.FAILED
-            reason = (
-                "bounded fixture did not meet its reviewed exit/output expectation"
-            )
+            reason = "bounded fixture did not meet its reviewed exit/output expectation"
         allowed_authorities = set(definition.maximum_authoritative_for)
         authorities = (
             tuple(
@@ -1407,18 +1336,12 @@ class ProverMatrixRegistry:
             timeout_seconds=timeout_seconds,
             max_output_bytes=self.config.max_output_bytes,
             returncode=result.returncode,
-            stdout_sha256="sha256:"
-            + hashlib.sha256(result.stdout.encode("utf-8")).hexdigest(),
-            stderr_sha256="sha256:"
-            + hashlib.sha256(result.stderr.encode("utf-8")).hexdigest(),
+            stdout_sha256="sha256:" + hashlib.sha256(result.stdout.encode("utf-8")).hexdigest(),
+            stderr_sha256="sha256:" + hashlib.sha256(result.stderr.encode("utf-8")).hexdigest(),
             output_truncated=result.output_truncated,
             reason=reason,
-            translation_conformant=(
-                passed and fixture.establishes_translation_conformance
-            ),
-            reconstruction_capable=(
-                passed and fixture.establishes_reconstruction
-            ),
+            translation_conformant=(passed and fixture.establishes_translation_conformance),
+            reconstruction_capable=(passed and fixture.establishes_reconstruction),
             authoritative_for=authorities,
         )
 
@@ -1462,193 +1385,320 @@ _TPTP_MODEL = "fof(matrix_smoke, conjecture, $true).\n"
 
 DEFAULT_PROVER_DEFINITIONS: tuple[ProverDefinition, ...] = (
     ProverDefinition(
-        "z3", "Z3", "smt", ("z3",), ("z3",), ("z3-solver",),
+        "z3",
+        "Z3",
+        "smt",
+        ("z3",),
+        ("z3",),
+        ("z3-solver",),
         fixture=_fixture(
-            "z3-smtlib-smoke@1", _SMT_MODEL, "matrix.smt2", ("-in",),
-            stdin=True, output_lines=("sat",), translator="supervisor-smtlib",
-            semantics="smtlib-qf-uf", conformant=True,
+            "z3-smtlib-smoke@1",
+            _SMT_MODEL,
+            "matrix.smt2",
+            ("-in",),
+            stdin=True,
+            output_lines=("sat",),
+            translator="supervisor-smtlib",
+            semantics="smtlib-qf-uf",
+            conformant=True,
             authority=("finite_constraint_satisfiability",),
         ),
         maximum_authoritative_for=("finite_constraint_satisfiability",),
         documentation_labels=("Z3",),
     ),
     ProverDefinition(
-        "cvc5", "CVC5", "smt", ("cvc5",), ("cvc5",), ("cvc5",),
+        "cvc5",
+        "CVC5",
+        "smt",
+        ("cvc5",),
+        ("cvc5",),
+        ("cvc5",),
         fixture=_fixture(
-            "cvc5-smtlib-smoke@1", _SMT_MODEL, "matrix.smt2",
-            ("--lang=smt2",), stdin=True, output_lines=("sat",),
-            translator="supervisor-smtlib", semantics="smtlib-qf-uf",
-            conformant=True, authority=("finite_constraint_satisfiability",),
+            "cvc5-smtlib-smoke@1",
+            _SMT_MODEL,
+            "matrix.smt2",
+            ("--lang=smt2",),
+            stdin=True,
+            output_lines=("sat",),
+            translator="supervisor-smtlib",
+            semantics="smtlib-qf-uf",
+            conformant=True,
+            authority=("finite_constraint_satisfiability",),
         ),
         maximum_authoritative_for=("finite_constraint_satisfiability",),
         documentation_labels=("CVC5",),
     ),
     ProverDefinition(
-        "tla_tlc", "TLA+/TLC", "state_machine", ("tlc", "tlc2"),
+        "tla_tlc",
+        "TLA+/TLC",
+        "state_machine",
+        ("tlc", "tlc2"),
         fixture=_fixture(
             "tlc-state-smoke@1",
             "---- MODULE MatrixSmoke ----\nVARIABLE x\nInit == x = 0\nNext == x' = 1 - x\nSpec == Init /\\ [][Next]_x\n====\n",
-            "MatrixSmoke.tla", ("{fixture}",), output_any=("model checking completed", "no error"),
-            translator="supervisor-tla", semantics="tla-finite-state",
-            conformant=True, authority=("bounded_state_machine",),
+            "MatrixSmoke.tla",
+            ("{fixture}",),
+            output_any=("model checking completed", "no error"),
+            translator="supervisor-tla",
+            semantics="tla-finite-state",
+            conformant=True,
+            authority=("bounded_state_machine",),
         ),
         maximum_authoritative_for=("bounded_state_machine",),
         documentation_labels=("TLA+", "TLC"),
     ),
     ProverDefinition(
-        "apalache", "Apalache", "state_machine", ("apalache-mc", "apalache"),
+        "apalache",
+        "Apalache",
+        "state_machine",
+        ("apalache-mc", "apalache"),
         version_args=("version",),
         fixture=_fixture(
             "apalache-state-smoke@1",
             "---- MODULE MatrixSmoke ----\nVARIABLE x\nInit == x = 0\nNext == x' = 1\nInv == x \\in {0, 1}\n====\n",
-            "MatrixSmoke.tla", ("check", "--inv=Inv", "{fixture}"),
-            output_any=("checking", "pass", "completed"), translator="supervisor-tla",
-            semantics="apalache-bounded-symbolic", conformant=True,
+            "MatrixSmoke.tla",
+            ("check", "--inv=Inv", "{fixture}"),
+            output_any=("checking", "pass", "completed"),
+            translator="supervisor-tla",
+            semantics="apalache-bounded-symbolic",
+            conformant=True,
             authority=("bounded_state_machine",),
         ),
         maximum_authoritative_for=("bounded_state_machine",),
         documentation_labels=("Apalache",),
     ),
     ProverDefinition(
-        "datalog_secpal", "Datalog/SecPAL", "authorization",
-        ("souffle", "runergo"), ("pyDatalog",), ("pyDatalog",),
+        "datalog_secpal",
+        "Datalog/SecPAL",
+        "authorization",
+        ("souffle", "runergo"),
+        ("pyDatalog",),
+        ("pyDatalog",),
         fixture=_fixture(
             "datalog-authorization-smoke@1",
             '.decl allowed(actor:symbol)\n.output allowed\nallowed("agent").\n',
-            "matrix.dl", ("{fixture}",), translator="supervisor-datalog",
-            semantics="secpal-finite-delegation", conformant=True,
+            "matrix.dl",
+            ("{fixture}",),
+            translator="supervisor-datalog",
+            semantics="secpal-finite-delegation",
+            conformant=True,
             authority=("authorization_policy",),
         ),
         maximum_authoritative_for=("authorization_policy",),
         documentation_labels=("Datalog", "SecPAL"),
     ),
     ProverDefinition(
-        "tamarin", "Tamarin", "protocol", ("tamarin-prover",),
+        "tamarin",
+        "Tamarin",
+        "protocol",
+        ("tamarin-prover",),
         fixture=_fixture(
             "tamarin-protocol-smoke@1",
-            "theory MatrixSmoke begin\nrule Emit: [ Fr(~x) ] --[ Seen(~x) ]-> [ ]\nlemma exists_trace: exists-trace \"Ex x #i. Seen(x) @ i\"\nend\n",
-            "matrix.spthy", ("--prove", "{fixture}"), output_any=("verified",),
-            translator="supervisor-tamarin", semantics="tamarin-trace",
-            conformant=True, authority=("protocol_trace_property",),
+            'theory MatrixSmoke begin\nrule Emit: [ Fr(~x) ] --[ Seen(~x) ]-> [ ]\nlemma exists_trace: exists-trace "Ex x #i. Seen(x) @ i"\nend\n',
+            "matrix.spthy",
+            ("--prove", "{fixture}"),
+            output_any=("verified",),
+            translator="supervisor-tamarin",
+            semantics="tamarin-trace",
+            conformant=True,
+            authority=("protocol_trace_property",),
         ),
         maximum_authoritative_for=("protocol_trace_property",),
         documentation_labels=("Tamarin",),
     ),
     ProverDefinition(
-        "proverif", "ProVerif", "protocol", ("proverif",),
+        "proverif",
+        "ProVerif",
+        "protocol",
+        ("proverif",),
         version_args=("-version",),
         fixture=_fixture(
             "proverif-protocol-smoke@1",
             "free c: channel.\nfree secret: bitstring [private].\nquery attacker(secret).\nprocess 0\n",
-            "matrix.pv", ("{fixture}",), output_any=("result",),
-            translator="supervisor-proverif", semantics="proverif-process",
-            conformant=True, authority=("protocol_reachability",),
+            "matrix.pv",
+            ("{fixture}",),
+            output_any=("result",),
+            translator="supervisor-proverif",
+            semantics="proverif-process",
+            conformant=True,
+            authority=("protocol_reachability",),
         ),
         maximum_authoritative_for=("protocol_reachability",),
         documentation_labels=("ProVerif",),
     ),
     ProverDefinition(
-        "hyperltl_autohyper_mchyper", "HyperLTL/AutoHyper/MCHyper",
-        "hyperproperty", ("autohyper", "mchyper", "hyperltl"),
-        package_modules=("autohyper",), package_distributions=("autohyper",),
-        fixture=None, documentation_labels=("HyperLTL", "AutoHyper", "MCHyper"),
+        "hyperltl_autohyper_mchyper",
+        "HyperLTL/AutoHyper/MCHyper",
+        "hyperproperty",
+        ("autohyper", "mchyper", "hyperltl"),
+        package_modules=("autohyper",),
+        package_distributions=("autohyper",),
+        fixture=None,
+        documentation_labels=("HyperLTL", "AutoHyper", "MCHyper"),
     ),
     ProverDefinition(
-        "lean", "Lean", "kernel", ("lean",),
+        "lean",
+        "Lean",
+        "kernel",
+        ("lean",),
         package_modules=("ipfs_datasets_py.logic.external_provers.interactive.lean_prover_bridge",),
         package_distributions=("",),
         fixture=_fixture(
-            "lean-kernel-smoke@1", "example : True := True.intro\n",
-            "MatrixSmoke.lean", ("{fixture}",), translator="supervisor-lean",
-            semantics="lean-kernel", conformant=True, reconstruction=True,
+            "lean-kernel-smoke@1",
+            "example : True := True.intro\n",
+            "MatrixSmoke.lean",
+            ("{fixture}",),
+            translator="supervisor-lean",
+            semantics="lean-kernel",
+            conformant=True,
+            reconstruction=True,
             authority=("lean_kernel_check",),
         ),
         maximum_authoritative_for=("lean_kernel_check",),
         documentation_labels=("Lean",),
     ),
     ProverDefinition(
-        "coq", "Coq", "kernel", ("coqc", "rocq"),
+        "coq",
+        "Coq",
+        "kernel",
+        ("coqc", "rocq"),
         package_modules=("ipfs_datasets_py.logic.external_provers.interactive.coq_prover_bridge",),
         package_distributions=("",),
         fixture=_fixture(
-            "coq-kernel-smoke@1", "Example matrix_smoke : True. exact I. Qed.\n",
-            "MatrixSmoke.v", ("{fixture}",), translator="supervisor-coq",
-            semantics="coq-kernel", conformant=True, reconstruction=True,
+            "coq-kernel-smoke@1",
+            "Example matrix_smoke : True. exact I. Qed.\n",
+            "MatrixSmoke.v",
+            ("{fixture}",),
+            translator="supervisor-coq",
+            semantics="coq-kernel",
+            conformant=True,
+            reconstruction=True,
             authority=("coq_kernel_check",),
         ),
         maximum_authoritative_for=("coq_kernel_check",),
         documentation_labels=("Coq",),
     ),
     ProverDefinition(
-        "runtime_mtl", "Runtime MTL", "runtime_monitor",
-        ("rtamt",), ("rtamt",), ("rtamt",), fixture=None,
+        "runtime_mtl",
+        "Runtime MTL",
+        "runtime_monitor",
+        ("rtamt",),
+        ("rtamt",),
+        ("rtamt",),
+        fixture=None,
         documentation_labels=("Runtime MTL",),
     ),
     ProverDefinition(
-        "dcec", "DCEC", "temporal_deontic",
-        ("shadow-prover",), ("ipfs_datasets_py.logic.CEC",), ("",),
-        fixture=None, documentation_labels=("DCEC",),
+        "dcec",
+        "DCEC",
+        "temporal_deontic",
+        ("shadow-prover",),
+        ("ipfs_datasets_py.logic.CEC",),
+        ("",),
+        fixture=None,
+        documentation_labels=("DCEC",),
     ),
     ProverDefinition(
-        "tdfol", "TDFOL", "temporal_first_order",
-        ("tdfol",), ("ipfs_datasets_py.logic.TDFOL",), ("",),
-        fixture=None, documentation_labels=("TDFOL",),
+        "tdfol",
+        "TDFOL",
+        "temporal_first_order",
+        ("tdfol",),
+        ("ipfs_datasets_py.logic.TDFOL",),
+        ("",),
+        fixture=None,
+        documentation_labels=("TDFOL",),
     ),
     ProverDefinition(
-        "hammer", "Hammer", "proof_orchestration",
-        ("ipfs-hammer",), ("ipfs_datasets_py.logic.hammers",), ("",),
-        fixture=None, documentation_labels=("Hammer",),
+        "hammer",
+        "Hammer",
+        "proof_orchestration",
+        ("ipfs-hammer",),
+        ("ipfs_datasets_py.logic.hammers",),
+        ("",),
+        fixture=None,
+        documentation_labels=("Hammer",),
     ),
     ProverDefinition(
-        "vampire", "Vampire", "atp", ("vampire",),
+        "vampire",
+        "Vampire",
+        "atp",
+        ("vampire",),
         fixture=_fixture(
-            "vampire-tptp-smoke@1", _TPTP_MODEL, "matrix.p",
-            ("--mode", "casc", "{fixture}"), output_any=("theorem", "refutation"),
-            translator="supervisor-tptp", semantics="tptp-fol", conformant=True,
+            "vampire-tptp-smoke@1",
+            _TPTP_MODEL,
+            "matrix.p",
+            ("--mode", "casc", "{fixture}"),
+            output_any=("theorem", "refutation"),
+            translator="supervisor-tptp",
+            semantics="tptp-fol",
+            conformant=True,
             authority=("first_order_theorem",),
         ),
         maximum_authoritative_for=("first_order_theorem",),
         documentation_labels=("Vampire",),
     ),
     ProverDefinition(
-        "e", "E", "atp", ("eprover",),
+        "e",
+        "E",
+        "atp",
+        ("eprover",),
         fixture=_fixture(
-            "e-tptp-smoke@1", _TPTP_MODEL, "matrix.p",
-            ("--auto", "{fixture}"), output_any=("theorem", "proof found"),
-            translator="supervisor-tptp", semantics="tptp-fol", conformant=True,
+            "e-tptp-smoke@1",
+            _TPTP_MODEL,
+            "matrix.p",
+            ("--auto", "{fixture}"),
+            output_any=("theorem", "proof found"),
+            translator="supervisor-tptp",
+            semantics="tptp-fol",
+            conformant=True,
             authority=("first_order_theorem",),
         ),
         maximum_authoritative_for=("first_order_theorem",),
         documentation_labels=("E prover",),
     ),
     ProverDefinition(
-        "isabelle", "Isabelle", "kernel", ("isabelle",),
+        "isabelle",
+        "Isabelle",
+        "kernel",
+        ("isabelle",),
         package_modules=("ipfs_datasets_py.logic.hammers.isabelle",),
-        package_distributions=("",), fixture=None,
+        package_distributions=("",),
+        fixture=None,
         documentation_labels=("Isabelle",),
     ),
     ProverDefinition(
-        "shadowprover", "ShadowProver", "modal",
+        "shadowprover",
+        "ShadowProver",
+        "modal",
         ("shadow-prover",),
-        ("ipfs_datasets_py.logic.CEC.native.shadow_prover",), ("",),
-        fixture=None, documentation_labels=("ShadowProver",),
+        ("ipfs_datasets_py.logic.CEC.native.shadow_prover",),
+        ("",),
+        fixture=None,
+        documentation_labels=("ShadowProver",),
     ),
     ProverDefinition(
-        "leanstral", "Leanstral", "model_assistant",
-        ("leanstral",), ("ipfs_datasets_py.logic.modal.leanstral",), ("",),
-        fixture=None, documentation_labels=("Leanstral",),
+        "leanstral",
+        "Leanstral",
+        "model_assistant",
+        ("leanstral",),
+        ("ipfs_datasets_py.logic.modal.leanstral",),
+        ("",),
+        fixture=None,
+        documentation_labels=("Leanstral",),
     ),
     ProverDefinition(
-        "zkp_backends", "ZKP backends", "attestation",
+        "zkp_backends",
+        "ZKP backends",
+        "attestation",
         ("groth16", "provekit-cli"),
-        ("ipfs_datasets_py.logic.zkp.backends",), ("",),
-        fixture=None, documentation_labels=("ZKP",),
+        ("ipfs_datasets_py.logic.zkp.backends",),
+        ("",),
+        fixture=None,
+        documentation_labels=("ZKP",),
     ),
 )
 
-EXPECTED_PROVER_IDS = frozenset(
-    definition.prover_id for definition in DEFAULT_PROVER_DEFINITIONS
-)
+EXPECTED_PROVER_IDS = frozenset(definition.prover_id for definition in DEFAULT_PROVER_DEFINITIONS)
 
 
 @dataclass(frozen=True)
@@ -1676,9 +1726,7 @@ def _duckdb_module() -> Any:
 
 def _atomic_write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(
-        f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp"
-    )
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
     try:
         temporary.write_text(text, encoding="utf-8")
         os.replace(temporary, path)
@@ -1744,9 +1792,7 @@ def _write_prover_matrix_duckdb(
 ) -> None:
     duckdb = _duckdb_module()
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(
-        f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp"
-    )
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
     temporary.unlink(missing_ok=True)
     try:
         connection = duckdb.connect(str(temporary))
@@ -1974,7 +2020,9 @@ def query_prover_matrix(
         raise ValueError("at least one query column is required")
     if any(column != "*" and not _QUERY_IDENTIFIER.fullmatch(column) for column in columns):
         raise ValueError("query columns must be simple identifiers")
-    if where and (";" in where or re.search(r"\b(insert|update|delete|drop|attach|copy)\b", where, re.I)):
+    if where and (
+        ";" in where or re.search(r"\b(insert|update|delete|drop|attach|copy)\b", where, re.I)
+    ):
         raise ValueError("matrix query predicate must be read-only")
     paths = prover_matrix_paths(path)
     if not paths.duckdb_path.is_file():
@@ -2000,9 +2048,7 @@ def probe_prover_matrix(
 ) -> ProverMatrixSnapshot:
     """Convenience entry point for the default repository registry."""
 
-    return ProverMatrixRegistry.default(config=config).probe(
-        run_self_tests=run_self_tests
-    )
+    return ProverMatrixRegistry.default(config=config).probe(run_self_tests=run_self_tests)
 
 
 def _main(argv: Sequence[str] | None = None) -> int:

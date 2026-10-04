@@ -13,12 +13,8 @@ from __future__ import annotations
 
 ASI_168_CONSUMER_ID = "task_proposal_router"
 ASI_168_REQUIREMENT_ID = "requirement:complete-provider-callsite.v1"
-ASI_168_LANDED_MODULE = (
-    "ipfs_accelerate_py.agent_supervisor.planning.task_proposal_router"
-)
-ASI_168_LANDED_PATH = (
-    "ipfs_accelerate_py/agent_supervisor/planning/task_proposal_router.py"
-)
+ASI_168_LANDED_MODULE = "ipfs_accelerate_py.agent_supervisor.planning.task_proposal_router"
+ASI_168_LANDED_PATH = "ipfs_accelerate_py/agent_supervisor/planning/task_proposal_router.py"
 ASI_168_MIGRATED = True
 ASI_168_IS_COMPLETION_EVIDENCE = False
 ASI_168_IS_CORRECTNESS_EVIDENCE = False

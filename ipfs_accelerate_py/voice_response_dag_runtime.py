@@ -35,24 +35,16 @@ from .voice_response_dag_sink import (
     _fsync_directory,
 )
 
-RESPONSE_DAG_QUEUE_ROOT_ENV: Final = (
-    "IPFS_ACCELERATE_PY_ABBY_RESPONSE_DAG_QUEUE_ROOT"
-)
-RESPONSE_DAG_AUDIO_ROOT_ENV: Final = (
-    "IPFS_ACCELERATE_PY_ABBY_RESPONSE_DAG_AUDIO_ROOT"
-)
+RESPONSE_DAG_QUEUE_ROOT_ENV: Final = "IPFS_ACCELERATE_PY_ABBY_RESPONSE_DAG_QUEUE_ROOT"
+RESPONSE_DAG_AUDIO_ROOT_ENV: Final = "IPFS_ACCELERATE_PY_ABBY_RESPONSE_DAG_AUDIO_ROOT"
 RESPONSE_DAG_VALIDATOR_PROVIDER_ENV: Final = (
     "IPFS_ACCELERATE_PY_ABBY_RESPONSE_DAG_VALIDATOR_PROVIDER"
 )
-RESPONSE_DAG_VALIDATOR_MODEL_ENV: Final = (
-    "IPFS_ACCELERATE_PY_ABBY_RESPONSE_DAG_VALIDATOR_MODEL"
-)
+RESPONSE_DAG_VALIDATOR_MODEL_ENV: Final = "IPFS_ACCELERATE_PY_ABBY_RESPONSE_DAG_VALIDATOR_MODEL"
 RESPONSE_DAG_VALIDATOR_LANGUAGE_ENV: Final = (
     "IPFS_ACCELERATE_PY_ABBY_RESPONSE_DAG_VALIDATOR_LANGUAGE"
 )
-RESPONSE_DAG_VALIDATOR_DEVICE_ENV: Final = (
-    "IPFS_ACCELERATE_PY_ABBY_RESPONSE_DAG_VALIDATOR_DEVICE"
-)
+RESPONSE_DAG_VALIDATOR_DEVICE_ENV: Final = "IPFS_ACCELERATE_PY_ABBY_RESPONSE_DAG_VALIDATOR_DEVICE"
 RESPONSE_DAG_VALIDATOR_MAX_WER_BP_ENV: Final = (
     "IPFS_ACCELERATE_PY_ABBY_RESPONSE_DAG_VALIDATOR_MAX_WER_BP"
 )
@@ -156,8 +148,7 @@ def _word_error_rate_bp(
         previous = current
     return min(
         10_000,
-        (previous[-1] * 10_000 + len(expected_tokens) // 2)
-        // len(expected_tokens),
+        (previous[-1] * 10_000 + len(expected_tokens) // 2) // len(expected_tokens),
     )
 
 
@@ -175,11 +166,7 @@ def _call_with_supported_keywords(
         selected = (
             kwargs
             if accepts_kwargs
-            else {
-                name: value
-                for name, value in kwargs.items()
-                if name in signature.parameters
-            }
+            else {name: value for name, value in kwargs.items() if name in signature.parameters}
         )
     except (TypeError, ValueError):
         selected = kwargs
@@ -191,9 +178,7 @@ def _require_absolute_local_path(value: object, *, label: str) -> Path:
     if not raw:
         raise LocalResponseDAGQueueError(f"{label} must be configured")
     if "://" in raw:
-        raise LocalResponseDAGQueueError(
-            f"{label} must be a local filesystem path"
-        )
+        raise LocalResponseDAGQueueError(f"{label} must be a local filesystem path")
     requested = Path(raw).expanduser()
     if not requested.is_absolute():
         raise LocalResponseDAGQueueError(f"{label} must be an absolute path")
@@ -218,9 +203,7 @@ class LocalWhisperResponseDAGPostprocessor:
     ) -> None:
         requested_root = Path(audio_root).expanduser()
         if not requested_root.is_absolute():
-            raise LocalResponseDAGQueueError(
-                "response-DAG audio root must be an absolute path"
-            )
+            raise LocalResponseDAGQueueError("response-DAG audio root must be an absolute path")
         self.audio_root = requested_root.resolve()
         _ensure_private_directory(self.audio_root)
         self.provider_name = str(provider_name or "").strip().casefold()
@@ -228,13 +211,9 @@ class LocalWhisperResponseDAGPostprocessor:
         self.language = str(language or "").strip() or "en"
         self.device = str(device or "").strip() or None
         if not self.provider_name:
-            raise LocalResponseDAGQueueError(
-                "response-DAG validator provider must be non-empty"
-            )
+            raise LocalResponseDAGQueueError("response-DAG validator provider must be non-empty")
         if not self.model_name:
-            raise LocalResponseDAGQueueError(
-                "response-DAG validator model must be non-empty"
-            )
+            raise LocalResponseDAGQueueError("response-DAG validator model must be non-empty")
         if (
             isinstance(max_wer_bp, bool)
             or not isinstance(max_wer_bp, int)
@@ -284,32 +263,24 @@ class LocalWhisperResponseDAGPostprocessor:
             )
         transcript = str(result or "").strip()
         if not transcript:
-            raise LocalResponseDAGQueueError(
-                "response-DAG validator returned an empty transcript"
-            )
+            raise LocalResponseDAGQueueError("response-DAG validator returned an empty transcript")
         return transcript
 
     def _persist_audio(self, audio: bytes, *, suffix: str) -> Path:
         digest = sha256(audio).hexdigest()
         target = self.audio_root / f"{digest}{suffix}"
         if target.is_symlink():
-            raise LocalResponseDAGQueueError(
-                "response-DAG audio target must not be a symlink"
-            )
+            raise LocalResponseDAGQueueError("response-DAG audio target must not be a symlink")
         if target.exists():
             if not target.is_file() or target.read_bytes() != audio:
                 raise LocalResponseDAGQueueError(
                     "response-DAG audio target contains conflicting bytes"
                 )
             if target.stat().st_mode & 0o077:
-                raise LocalResponseDAGQueueError(
-                    "response-DAG audio files must be private (0600)"
-                )
+                raise LocalResponseDAGQueueError("response-DAG audio files must be private (0600)")
             return target
 
-        temporary = self.audio_root / (
-            f".{digest}.{os.getpid()}.{uuid.uuid4().hex}.partial"
-        )
+        temporary = self.audio_root / (f".{digest}.{os.getpid()}.{uuid.uuid4().hex}.partial")
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
         flags |= getattr(os, "O_NOFOLLOW", 0)
         descriptor = os.open(temporary, flags, 0o600)
@@ -323,11 +294,7 @@ class LocalWhisperResponseDAGPostprocessor:
                 os.link(temporary, target, follow_symlinks=False)
                 _fsync_directory(self.audio_root)
             except FileExistsError:
-                if (
-                    target.is_symlink()
-                    or not target.is_file()
-                    or target.read_bytes() != audio
-                ):
+                if target.is_symlink() or not target.is_file() or target.read_bytes() != audio:
                     raise LocalResponseDAGQueueError(
                         "response-DAG audio target contains conflicting bytes"
                     )
@@ -349,9 +316,9 @@ class LocalWhisperResponseDAGPostprocessor:
         audio = getattr(result, "audio", None)
         if not response_text or not isinstance(audio, bytes) or not audio:
             return None
-        audio_format = str(
-            getattr(result, "audio_format", "") or "wav"
-        ).strip().casefold().lstrip(".")
+        audio_format = (
+            str(getattr(result, "audio_format", "") or "wav").strip().casefold().lstrip(".")
+        )
         if not re.fullmatch(r"[a-z0-9]{1,16}", audio_format):
             raise LocalResponseDAGQueueError(
                 "response-DAG audio format must be a simple codec name"
@@ -376,11 +343,7 @@ class LocalWhisperResponseDAGPostprocessor:
         self.last_wer_bp = wer_bp
         expected_digits = _spoken_digit_sequence(expected_tokens)
         actual_digits = _spoken_digit_sequence(actual_tokens)
-        if (
-            not expected_tokens
-            or wer_bp > self.max_wer_bp
-            or expected_digits != actual_digits
-        ):
+        if not expected_tokens or wer_bp > self.max_wer_bp or expected_digits != actual_digits:
             self.last_error_code = "asr_round_trip_mismatch"
             return None
 
@@ -391,17 +354,13 @@ class LocalWhisperResponseDAGPostprocessor:
             "audio_sha256": audio_digest,
             "max_wer_bp": self.max_wer_bp,
             "rendered_text_sha256": rendered_digest,
-            "transcript_sha256": sha256(
-                " ".join(actual_tokens).encode("utf-8")
-            ).hexdigest(),
+            "transcript_sha256": sha256(" ".join(actual_tokens).encode("utf-8")).hexdigest(),
             "validator_identity": self.validator_identity,
             "wer_bp": wer_bp,
         }
         validation_digest = sha256(_canonical_bytes(observation)).hexdigest()
         receipt = IndependentVoiceValidationReceipt(
-            validation_receipt_id=(
-                f"abby-voice-runtime-validation:sha256:{validation_digest}"
-            ),
+            validation_receipt_id=(f"abby-voice-runtime-validation:sha256:{validation_digest}"),
             rendered_text_sha256=rendered_digest,
             output_audio_sha256=audio_digest,
             validator_identity=self.validator_identity,
@@ -435,9 +394,7 @@ class LocalVoiceResponseDAGRuntime:
             self.postprocessor,
             LocalWhisperResponseDAGPostprocessor,
         ):
-            raise TypeError(
-                "postprocessor must be a LocalWhisperResponseDAGPostprocessor"
-            )
+            raise TypeError("postprocessor must be a LocalWhisperResponseDAGPostprocessor")
         if self.remote_writes is not False:
             raise LocalResponseDAGQueueError(
                 "local response-DAG runtime cannot perform remote writes"
@@ -468,9 +425,7 @@ def load_local_voice_response_dag_runtime_from_environment(
         if audio_raw
         else queue_root / "validated-audio"
     )
-    raw_max_wer = str(
-        values.get(RESPONSE_DAG_VALIDATOR_MAX_WER_BP_ENV, "0") or "0"
-    ).strip()
+    raw_max_wer = str(values.get(RESPONSE_DAG_VALIDATOR_MAX_WER_BP_ENV, "0") or "0").strip()
     try:
         max_wer_bp = int(raw_max_wer)
     except ValueError as exc:
@@ -496,13 +451,8 @@ def load_local_voice_response_dag_runtime_from_environment(
             )
             or "openai/whisper-base"
         ),
-        language=str(
-            values.get(RESPONSE_DAG_VALIDATOR_LANGUAGE_ENV, "en") or "en"
-        ),
-        device=str(
-            values.get(RESPONSE_DAG_VALIDATOR_DEVICE_ENV, "") or ""
-        )
-        or None,
+        language=str(values.get(RESPONSE_DAG_VALIDATOR_LANGUAGE_ENV, "en") or "en"),
+        device=str(values.get(RESPONSE_DAG_VALIDATOR_DEVICE_ENV, "") or "") or None,
         max_wer_bp=max_wer_bp,
         transcriber=transcriber,
     )

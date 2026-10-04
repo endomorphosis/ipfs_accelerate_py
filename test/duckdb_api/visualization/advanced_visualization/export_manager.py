@@ -25,18 +25,19 @@ from data.duckdb.visualization.advanced_visualization.export_utils import (
     batch_export_visualizations,
     create_export_index,
     SUPPORTED_FORMATS,
-    DEFAULT_EXPORT_SETTINGS
+    DEFAULT_EXPORT_SETTINGS,
 )
 
 # Configure logging
-logging.basicConfig(level=logging.INFO,
-                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger("export_manager")
 
 
 class ExportManager:
     """Manager for exporting visualizations to various formats."""
-    
+
     def __init__(self, output_dir: str = "./exports"):
         """
         Initialize the export manager.
@@ -46,15 +47,15 @@ class ExportManager:
         """
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
-        
+
         # Default export settings
         self.default_settings = DEFAULT_EXPORT_SETTINGS.copy()
-        
+
         # Keep track of exported visualizations
         self.exports = {}
-        
+
         logger.info(f"Export manager initialized with output directory: {output_dir}")
-    
+
     def set_default_settings(self, settings: Dict[str, Any]) -> None:
         """
         Update default export settings.
@@ -64,7 +65,7 @@ class ExportManager:
         """
         self.default_settings.update(settings)
         logger.info(f"Updated default export settings: {settings}")
-    
+
     def export_visualization(
         self,
         visualization_id: str,
@@ -73,7 +74,7 @@ class ExportManager:
         formats: Optional[List[str]] = None,
         settings: Optional[Dict[str, Any]] = None,
         create_manifest: bool = True,
-        subfolder: Optional[str] = None
+        subfolder: Optional[str] = None,
     ) -> Dict[str, str]:
         """
         Export a visualization to multiple formats.
@@ -95,12 +96,12 @@ class ExportManager:
         if subfolder:
             export_dir = os.path.join(export_dir, subfolder)
             os.makedirs(export_dir, exist_ok=True)
-        
+
         # Merge settings with defaults
         merged_settings = self.default_settings.copy()
         if settings:
             merged_settings.update(settings)
-        
+
         # Export the visualization
         exports = export_visualization_component_all_formats(
             component_type=component_type,
@@ -109,19 +110,19 @@ class ExportManager:
             base_name=visualization_id,
             formats=formats,
             settings=merged_settings,
-            create_manifest=create_manifest
+            create_manifest=create_manifest,
         )
-        
+
         # Store export information
         self.exports[visualization_id] = {
             "component_type": component_type,
             "exports": exports,
             "timestamp": datetime.datetime.now().isoformat(),
-            "export_dir": export_dir
+            "export_dir": export_dir,
         }
-        
+
         return exports
-    
+
     def export_multiple_visualizations(
         self,
         visualizations: Dict[str, Dict[str, Any]],
@@ -129,7 +130,7 @@ class ExportManager:
         settings: Optional[Dict[str, Any]] = None,
         create_index: bool = True,
         subfolder: Optional[str] = None,
-        title: str = "Visualization Exports"
+        title: str = "Visualization Exports",
     ) -> Dict[str, Dict[str, str]]:
         """
         Export multiple visualizations to various formats.
@@ -151,12 +152,12 @@ class ExportManager:
         if subfolder:
             export_dir = os.path.join(export_dir, subfolder)
             os.makedirs(export_dir, exist_ok=True)
-        
+
         # Merge settings with defaults
         merged_settings = self.default_settings.copy()
         if settings:
             merged_settings.update(settings)
-        
+
         # Build visualizations dictionary with component types
         typed_visualizations = {}
         for viz_id, viz_data in visualizations.items():
@@ -164,35 +165,35 @@ class ExportManager:
                 logger.warning(f"Skipping visualization {viz_id}: missing component_type")
                 continue
             typed_visualizations[viz_id] = viz_data
-        
+
         # Export the visualizations
         exports = batch_export_visualizations(
             visualizations=typed_visualizations,
             output_dir=export_dir,
             formats=formats,
-            settings=merged_settings
+            settings=merged_settings,
         )
-        
+
         # Create index page if requested
         if create_index and exports:
             index_path = os.path.join(export_dir, "index.html")
             create_export_index(exports, index_path, title)
-            
+
             # Add index to exports
             for viz_id in exports:
                 exports[viz_id]["index"] = index_path
-        
+
         # Store export information
         for viz_id, viz_exports in exports.items():
             self.exports[viz_id] = {
                 "component_type": typed_visualizations[viz_id]["component_type"],
                 "exports": viz_exports,
                 "timestamp": datetime.datetime.now().isoformat(),
-                "export_dir": export_dir
+                "export_dir": export_dir,
             }
-        
+
         return exports
-    
+
     def get_export_history(self) -> Dict[str, Dict[str, Any]]:
         """
         Get the history of exported visualizations.
@@ -201,13 +202,13 @@ class ExportManager:
             Dictionary mapping visualization IDs to export information
         """
         return self.exports
-    
+
     def create_export_report(
         self,
         visualization_ids: Optional[List[str]] = None,
         output_path: Optional[str] = None,
         title: str = "Visualization Export Report",
-        description: str = "Report of exported visualizations"
+        description: str = "Report of exported visualizations",
     ) -> str:
         """
         Create a comprehensive report of exported visualizations.
@@ -224,25 +225,28 @@ class ExportManager:
         if not self.exports:
             logger.warning("No exports available to create report")
             return ""
-        
+
         # Set default output path
         if output_path is None:
             output_path = os.path.join(self.output_dir, "export_report.html")
-        
+
         # Create output directory if it doesn't exist
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        
+
         # Filter exports if visualization_ids provided
         if visualization_ids:
-            exports_to_include = {viz_id: self.exports[viz_id] for viz_id in visualization_ids 
-                                if viz_id in self.exports}
+            exports_to_include = {
+                viz_id: self.exports[viz_id]
+                for viz_id in visualization_ids
+                if viz_id in self.exports
+            }
         else:
             exports_to_include = self.exports
-        
+
         if not exports_to_include:
             logger.warning("No matching exports found to create report")
             return ""
-        
+
         # Build report HTML
         html_content = f"""<!DOCTYPE html>
 <html>
@@ -347,14 +351,14 @@ class ExportManager:
             component_type = viz_info.get("component_type", "unknown")
             exports = viz_info.get("exports", {})
             timestamp = viz_info.get("timestamp", "")
-            
+
             # Format timestamp
             try:
                 timestamp_dt = datetime.datetime.fromisoformat(timestamp)
                 formatted_timestamp = timestamp_dt.strftime("%Y-%m-%d %H:%M:%S")
             except (ValueError, TypeError):
                 formatted_timestamp = timestamp
-            
+
             html_content += f"""
     <div class="visualization">
         <h2>{viz_id}</h2>
@@ -362,24 +366,24 @@ class ExportManager:
         <div class="metadata-item">Type: {component_type}</div>
         <div class="formats">
 """
-            
+
             # Add links to each format
             for format, path in exports.items():
-                if format != 'manifest' and format != 'index':
+                if format != "manifest" and format != "index":
                     rel_path = os.path.relpath(path, os.path.dirname(output_path))
                     html_content += f'            <a class="format-link" href="{rel_path}">{format.upper()}</a>\n'
-            
+
             html_content += "        </div>\n"
-            
+
             # Add preview (PNG if available, otherwise skip)
-            if 'png' in exports:
-                rel_path = os.path.relpath(exports['png'], os.path.dirname(output_path))
+            if "png" in exports:
+                rel_path = os.path.relpath(exports["png"], os.path.dirname(output_path))
                 html_content += f"""
         <div class="preview">
             <img src="{rel_path}" alt="{viz_id} preview">
         </div>
 """
-            
+
             html_content += "    </div>\n"
 
         # Close HTML
@@ -389,19 +393,19 @@ class ExportManager:
 """
 
         # Write the file
-        with open(output_path, 'w', encoding='utf-8') as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             f.write(html_content)
-        
+
         logger.info(f"Created export report at {output_path}")
         return output_path
-    
+
     def export_animation_optimized(
         self,
         visualization_id: str,
         component_data: Dict[str, Any],
         format: str = "mp4",
         settings: Optional[Dict[str, Any]] = None,
-        output_path: Optional[str] = None
+        output_path: Optional[str] = None,
     ) -> str:
         """
         Export an animated visualization with optimized settings for high-quality output.
@@ -416,52 +420,51 @@ class ExportManager:
         Returns:
             Path to the exported file
         """
-        if format not in ['mp4', 'gif']:
+        if format not in ["mp4", "gif"]:
             raise ValueError(f"Unsupported animation format: {format}. Use 'mp4' or 'gif'.")
-        
+
         # Set default output path
         if output_path is None:
             output_path = os.path.join(self.output_dir, f"{visualization_id}.{format}")
-        
+
         # Merge settings with defaults
         merged_settings = self.default_settings.copy()
-        merged_settings.update({
-            'width': 1920,  # HD resolution
-            'height': 1080,
-            'scale': 2,
-            'fps': 30,  # High frame rate
-            'duration': 15000,  # 15 seconds
-            'frame_duration': 50,  # Smooth animation
-            'transition_duration': 100,
-            'redraw': True,
-            'easing': 'cubic-in-out'
-        })
+        merged_settings.update(
+            {
+                "width": 1920,  # HD resolution
+                "height": 1080,
+                "scale": 2,
+                "fps": 30,  # High frame rate
+                "duration": 15000,  # 15 seconds
+                "frame_duration": 50,  # Smooth animation
+                "transition_duration": 100,
+                "redraw": True,
+                "easing": "cubic-in-out",
+            }
+        )
         if settings:
             merged_settings.update(settings)
-        
+
         # Get figure from component data
-        fig = component_data.get('figure')
+        fig = component_data.get("figure")
         if fig is None:
             raise ValueError(f"No figure found in component data")
-        
+
         # Export the animation
         exported_path = export_animation(
-            fig=fig,
-            output_path=output_path,
-            format=format,
-            settings=merged_settings
+            fig=fig, output_path=output_path, format=format, settings=merged_settings
         )
-        
+
         # Store export information
         self.exports[visualization_id] = {
             "component_type": "time-series",
             "exports": {format: exported_path},
             "timestamp": datetime.datetime.now().isoformat(),
-            "export_dir": os.path.dirname(output_path)
+            "export_dir": os.path.dirname(output_path),
         }
-        
+
         return exported_path
-    
+
     def save_export_metadata(self, output_path: Optional[str] = None) -> str:
         """
         Save metadata about all exports to a JSON file.
@@ -475,30 +478,30 @@ class ExportManager:
         # Set default output path
         if output_path is None:
             output_path = os.path.join(self.output_dir, "export_metadata.json")
-        
+
         # Create output directory if it doesn't exist
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        
+
         # Build metadata
         metadata = {
             "timestamp": datetime.datetime.now().isoformat(),
             "export_count": len(self.exports),
             "output_directory": self.output_dir,
-            "exports": {}
+            "exports": {},
         }
-        
+
         # Add metadata for each export
         for viz_id, viz_info in self.exports.items():
             metadata["exports"][viz_id] = {
                 "component_type": viz_info.get("component_type", "unknown"),
                 "timestamp": viz_info.get("timestamp", ""),
                 "export_dir": viz_info.get("export_dir", ""),
-                "formats": list(viz_info.get("exports", {}).keys())
+                "formats": list(viz_info.get("exports", {}).keys()),
             }
-        
+
         # Write the file
-        with open(output_path, 'w', encoding='utf-8') as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2)
-        
+
         logger.info(f"Saved export metadata to {output_path}")
         return output_path

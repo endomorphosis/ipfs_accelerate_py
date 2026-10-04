@@ -104,7 +104,7 @@ validator = MultiModelEmpiricalValidator(
     error_threshold=0.15,
     refinement_interval=10,
     enable_trend_analysis=True,
-    enable_visualization=True
+    enable_visualization=True,
 )
 
 # Validate a prediction
@@ -113,27 +113,23 @@ validation_metrics = validator.validate_prediction(
         "total_metrics": {
             "combined_throughput": 100.0,
             "combined_latency": 50.0,
-            "combined_memory": 2000.0
+            "combined_memory": 2000.0,
         }
     },
-    actual_measurement={
-        "actual_throughput": 95.0,
-        "actual_latency": 55.0,
-        "actual_memory": 2100.0
-    },
+    actual_measurement={"actual_throughput": 95.0, "actual_latency": 55.0, "actual_memory": 2100.0},
     model_configs=[
         {"model_name": "bert-base-uncased", "model_type": "text_embedding", "batch_size": 4},
-        {"model_name": "vit-base-patch16-224", "model_type": "vision", "batch_size": 1}
+        {"model_name": "vit-base-patch16-224", "model_type": "vision", "batch_size": 1},
     ],
     hardware_platform="webgpu",
     execution_strategy="parallel",
-    optimization_goal="latency"
+    optimization_goal="latency",
 )
 
 # Get validation metrics
 metrics = validator.get_validation_metrics()
 print(f"Validation count: {metrics['validation_count']}")
-for metric_name, value in metrics['error_rates'].items():
+for metric_name, value in metrics["error_rates"].items():
     print(f"{metric_name}: {value:.2%}")
 ```
 
@@ -144,31 +140,30 @@ for metric_name, value in metrics['error_rates'].items():
 recommendations = validator.get_refinement_recommendations()
 
 print(f"Refinement needed: {recommendations['refinement_needed']}")
-if recommendations['refinement_needed']:
+if recommendations["refinement_needed"]:
     print(f"Reason: {recommendations['reason']}")
     print(f"Recommended method: {recommendations['recommended_method']}")
-    
+
     # Generate validation dataset for refinement
     dataset = validator.generate_validation_dataset()
-    
+
     if dataset["success"]:
         print(f"Generated dataset with {dataset['record_count']} records")
-        
+
         # Update the predictor with the dataset
         predictor.update_models(
-            dataset=dataset["records"],
-            method=recommendations["recommended_method"]
+            dataset=dataset["records"], method=recommendations["recommended_method"]
         )
-        
+
         # Record the refinement results
         validator.record_model_refinement(
             pre_refinement_errors=recommendations["error_rates"],
             post_refinement_errors={
                 "throughput": recommendations["error_rates"]["throughput"] * 0.8,
-                "latency": recommendations["error_rates"]["latency"] * 0.8, 
-                "memory": recommendations["error_rates"]["memory"] * 0.8
+                "latency": recommendations["error_rates"]["latency"] * 0.8,
+                "memory": recommendations["error_rates"]["memory"] * 0.8,
             },
-            refinement_method=recommendations["recommended_method"]
+            refinement_method=recommendations["recommended_method"],
         )
 ```
 
@@ -202,7 +197,9 @@ if visualization["success"]:
 The Empirical Validation System is designed to work seamlessly with the Multi-Model Resource Pool Integration:
 
 ```python
-from predictive_performance.multi_model_resource_pool_integration import MultiModelResourcePoolIntegration
+from predictive_performance.multi_model_resource_pool_integration import (
+    MultiModelResourcePoolIntegration,
+)
 from predictive_performance.multi_model_empirical_validation import MultiModelEmpiricalValidator
 
 # Create validator with specific settings
@@ -212,14 +209,12 @@ validator = MultiModelEmpiricalValidator(
     error_threshold=0.10,
     refinement_interval=5,
     enable_trend_analysis=True,
-    enable_visualization=True
+    enable_visualization=True,
 )
 
 # Create integration with validator
 integration = MultiModelResourcePoolIntegration(
-    validator=validator,
-    enable_empirical_validation=True,
-    prediction_refinement=True
+    validator=validator, enable_empirical_validation=True, prediction_refinement=True
 )
 
 # Initialize
@@ -230,7 +225,7 @@ result = integration.execute_with_strategy(
     model_configs=model_configs,
     hardware_platform="webgpu",
     execution_strategy="parallel",
-    optimization_goal="latency"
+    optimization_goal="latency",
 )
 ```
 

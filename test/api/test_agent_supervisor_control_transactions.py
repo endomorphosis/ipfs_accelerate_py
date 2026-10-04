@@ -108,9 +108,7 @@ def _request(
 
 def _policy(*requests: OperationRequest) -> ControlMutationPolicy:
     decisions = tuple(
-        request.authorization
-        for request in requests
-        if request.authorization is not None
+        request.authorization for request in requests if request.authorization is not None
     )
     return ControlMutationPolicy(
         policy_id="policy:control",
@@ -150,9 +148,7 @@ class _Backend:
         request: OperationRequest,
         transaction: Any,
     ) -> bool:
-        self.recoveries.append(
-            f"{request.request_id}:{transaction.transaction_id}"
-        )
+        self.recoveries.append(f"{request.request_id}:{transaction.transaction_id}")
         return True
 
     def repair(
@@ -160,9 +156,7 @@ class _Backend:
         request: OperationRequest,
         transaction: Any,
     ) -> bool:
-        self.recoveries.append(
-            f"repair:{request.request_id}:{transaction.transaction_id}"
-        )
+        self.recoveries.append(f"repair:{request.request_id}:{transaction.transaction_id}")
         return True
 
 
@@ -180,18 +174,14 @@ def _service(
         repository_allowlist=(repository_root,),
         state_allowlist=(state_root,),
         backend=backend,
-        authorization_validator=ControlMutationAuthorizer(
-            policy, clock_ms=lambda: NOW
-        ),
+        authorization_validator=ControlMutationAuthorizer(policy, clock_ms=lambda: NOW),
         identity_validator=lambda candidate: (
-            policy.current_tree_ids.get(candidate.repository_id)
-            == candidate.tree_id
+            policy.current_tree_ids.get(candidate.repository_id) == candidate.tree_id
             and policy.current_objective_revisions.get(candidate.objective_id)
             == candidate.objective_revision
         ),
         lease_validator=lambda candidate: (
-            policy.active_lease_fences.get(candidate.lease_id)
-            == candidate.fencing_epoch
+            policy.active_lease_fences.get(candidate.lease_id) == candidate.fencing_epoch
         ),
         state_store=store or InMemoryControlStateStore(),
         clock_ms=lambda: NOW,
@@ -423,9 +413,7 @@ def test_restart_turns_an_unknown_dispatch_outcome_into_typed_repair(
         action=MutationRecoveryAction.REPAIR,
     )
     assert repaired.phase is MutationTransactionPhase.REPAIRED
-    assert backend.recoveries == [
-        f"repair:{request.request_id}:{transaction.transaction_id}"
-    ]
+    assert backend.recoveries == [f"repair:{request.request_id}:{transaction.transaction_id}"]
 
 
 def test_stale_policy_targets_and_lease_loss_reject_before_dispatch(

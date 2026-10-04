@@ -61,7 +61,9 @@ class TestMCPServerUNI136P2PWorkflowTools(unittest.TestCase):
 
     def test_schedule_p2p_workflow_rejects_invalid_priority(self) -> None:
         async def _run() -> None:
-            result = await schedule_p2p_workflow(workflow_id="wf-1", name="workflow", tags=["p2p_eligible"], priority=0)
+            result = await schedule_p2p_workflow(
+                workflow_id="wf-1", name="workflow", tags=["p2p_eligible"], priority=0
+            )
             self.assertEqual(result.get("status"), "error")
             self.assertIn("positive number", str(result.get("message", "")))
 
@@ -93,6 +95,7 @@ class TestMCPServerUNI136P2PWorkflowTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.p2p_workflow_tools.native_p2p_workflow_tools._API"
             ) as mock_api:
+
                 async def _impl(**_: object) -> dict:
                     return {"status": "success"}
 
@@ -120,6 +123,7 @@ class TestMCPServerUNI136P2PWorkflowTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.p2p_workflow_tools.native_p2p_workflow_tools._API"
             ) as mock_api:
+
                 async def _impl() -> dict:
                     return {"status": "success"}
 
@@ -139,6 +143,7 @@ class TestMCPServerUNI136P2PWorkflowTools(unittest.TestCase):
             with patch(
                 "ipfs_accelerate_py.mcp_server.tools.p2p_workflow_tools.native_p2p_workflow_tools._API"
             ) as mock_api:
+
                 async def _impl() -> dict:
                     return {"error": "scheduler unavailable"}
 
@@ -151,7 +156,9 @@ class TestMCPServerUNI136P2PWorkflowTools(unittest.TestCase):
 
         anyio.run(_run)
 
-    def test_p2p_workflow_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+    def test_p2p_workflow_wrappers_infer_error_status_from_contradictory_delegate_payloads(
+        self,
+    ) -> None:
         async def _contradictory_failure(**_: object) -> dict:
             return {"status": "success", "success": False, "error": "delegate failed"}
 

@@ -75,9 +75,7 @@ class FixedProvider:
         output_format: Optional[str] = None,
         **kwargs: object,
     ) -> bytes:
-        self.synthesis_calls.append(
-            (text, voice, model_name, device, output_format, dict(kwargs))
-        )
+        self.synthesis_calls.append((text, voice, model_name, device, output_format, dict(kwargs)))
         return self.audio
 
     def transcribe(
@@ -89,9 +87,7 @@ class FixedProvider:
         device: Optional[str] = None,
         **kwargs: object,
     ) -> str:
-        self.transcription_calls.append(
-            (audio, model_name, language, device, dict(kwargs))
-        )
+        self.transcription_calls.append((audio, model_name, language, device, dict(kwargs)))
         return self.transcript
 
 
@@ -141,9 +137,7 @@ def test_provider_capabilities_are_normalized_serializable_and_queryable() -> No
 def test_provider_info_and_registry_are_canonical_and_introspectable() -> None:
     clear_voice_router_caches()
     provider = FixedProvider("canonical")
-    capabilities = VoiceProviderCapabilities(
-        transcription=False, audio_formats=("wav",)
-    )
+    capabilities = VoiceProviderCapabilities(transcription=False, audio_formats=("wav",))
     register_voice_provider(
         "  Contract-Mixed-Case  ",
         lambda: provider,
@@ -302,12 +296,8 @@ def test_turn_cache_identity_covers_output_affecting_request_fields(
 
 
 def test_turn_cache_identity_ignores_request_id_and_never_embeds_content() -> None:
-    first = VoiceTurnRequest(
-        transcript="sensitive transcript", request_id="request-one"
-    )
-    second = VoiceTurnRequest(
-        transcript="sensitive transcript", request_id="request-two"
-    )
+    first = VoiceTurnRequest(transcript="sensitive transcript", request_id="request-one")
+    second = VoiceTurnRequest(transcript="sensitive transcript", request_id="request-two")
 
     first_key = voice_turn_cache_key(first)
     assert first_key == voice_turn_cache_key(second)
@@ -513,9 +503,7 @@ def test_legacy_entrypoint_signatures_and_provider_injection_remain_compatible(
     assert provider.synthesis_calls == [
         ("hello", "calm", "tts-model", "cpu", "wav", {"speed": 1.0})
     ]
-    assert provider.transcription_calls == [
-        (b"audio", "stt-model", "en", "cpu", {"prompt": "211"})
-    ]
+    assert provider.transcription_calls == [(b"audio", "stt-model", "en", "cpu", {"prompt": "211"})]
 
 
 def test_legacy_cache_identity_separates_provider_instances_and_options(
@@ -532,9 +520,7 @@ def test_legacy_cache_identity_separates_provider_instances_and_options(
     assert text_to_speech("same", provider_instance=first, deps=deps) == first_audio
     assert text_to_speech("same", provider_instance=second, deps=deps) == second_audio
     assert (
-        text_to_speech(
-            "same", provider_instance=first, output_format="mp3", deps=deps
-        )
+        text_to_speech("same", provider_instance=first, output_format="mp3", deps=deps)
         == first_audio
     )
     assert speech_to_text(b"same", provider_instance=first, deps=deps) == "first"

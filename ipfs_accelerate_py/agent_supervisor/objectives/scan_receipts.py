@@ -25,7 +25,18 @@ from datetime import datetime, timezone
 from enum import Enum
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, Callable, Generic, Iterable, Iterator, Mapping, Sequence, TypeVar, Union, overload
+from typing import (
+    Any,
+    Callable,
+    Generic,
+    Iterable,
+    Iterator,
+    Mapping,
+    Sequence,
+    TypeVar,
+    Union,
+    overload,
+)
 
 
 REFILL_SCAN_RESULT_SCHEMA_VERSION = 1
@@ -60,17 +71,13 @@ def _positive_env_int(name: str, default: int) -> int:
     return value if value > 0 else default
 
 
-DEFAULT_EXHAUSTION_QUORUM_SIZE = _positive_env_int(
-    "IPFS_ACCELERATE_AGENT_EXHAUSTION_QUORUM", 2
-)
+DEFAULT_EXHAUSTION_QUORUM_SIZE = _positive_env_int("IPFS_ACCELERATE_AGENT_EXHAUSTION_QUORUM", 2)
 """Independent healthy exhaustive evidence channels required for exhaustion."""
 
 # Concise compatibility spelling used by configuration/status consumers.
 DEFAULT_EXHAUSTION_QUORUM = DEFAULT_EXHAUSTION_QUORUM_SIZE
 
-_HEALTHY_REASONS = frozenset(
-    {"generated", "exhausted", "duplicate_only"}
-)
+_HEALTHY_REASONS = frozenset({"generated", "exhausted", "duplicate_only"})
 _SKIPPED_REASONS = frozenset({"threshold_satisfied", "cooldown", "disabled"})
 
 # Inventory implementations evolved independently before the receipt contract
@@ -84,13 +91,22 @@ _FUNNEL_COUNTER_ALIASES: Mapping[str, tuple[str, ...]] = {
     "parsed_file_count": ("parsed_file_count", "parsed_files_count", "parsed_files"),
     "cache_hit_count": ("cache_hit_count", "cache_hits", "cached_file_count"),
     "excluded_file_count": (
-        "excluded_file_count", "excluded_files_count", "excluded_files", "skipped_file_count"
+        "excluded_file_count",
+        "excluded_files_count",
+        "excluded_files",
+        "skipped_file_count",
     ),
     "parser_failure_count": (
-        "parser_failure_count", "parser_failures_count", "parser_failures", "parse_failure_count"
+        "parser_failure_count",
+        "parser_failures_count",
+        "parser_failures",
+        "parse_failure_count",
     ),
     "raw_candidate_count": (
-        "raw_candidate_count", "raw_candidates_count", "raw_candidates", "detected_count"
+        "raw_candidate_count",
+        "raw_candidates_count",
+        "raw_candidates",
+        "detected_count",
     ),
     "seen_candidate_count": ("seen_candidate_count", "seen_candidates_count", "seen_candidates"),
     "deduplicated_candidate_count": (
@@ -293,10 +309,7 @@ class ScanCoverageCounts:
     def unparsed_eligible_files(self) -> int:
         return max(
             0,
-            self.eligible_files
-            - self.parsed_files
-            - self.cache_hits
-            - self.parser_failures,
+            self.eligible_files - self.parsed_files - self.cache_hits - self.parser_failures,
         )
 
     @property
@@ -446,11 +459,18 @@ class ScanDetailsArtifact:
 
     def __post_init__(self) -> None:
         for name in (
-            "artifact_id", "scan_id", "path", "manifest_path", "content_id", "sha256",
+            "artifact_id",
+            "scan_id",
+            "path",
+            "manifest_path",
+            "content_id",
+            "sha256",
             "dataset_id",
         ):
             object.__setattr__(self, name, str(getattr(self, name) or "").strip())
-        object.__setattr__(self, "detail_count", _count(self.detail_count, field_name="detail_count"))
+        object.__setattr__(
+            self, "detail_count", _count(self.detail_count, field_name="detail_count")
+        )
         object.__setattr__(self, "byte_count", _count(self.byte_count, field_name="byte_count"))
         object.__setattr__(self, "metadata", dict(self.metadata or {}))
         if not (self.path or self.manifest_path or self.content_id):
@@ -486,9 +506,18 @@ class ScanDetailsArtifact:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ScanDetailsArtifact":
         known = {
-            "artifact_id", "scan_id", "path", "jsonl_path", "manifest_path",
-            "detail_count", "row_count", "content_id", "cid", "sha256",
-            "byte_count", "dataset_id",
+            "artifact_id",
+            "scan_id",
+            "path",
+            "jsonl_path",
+            "manifest_path",
+            "detail_count",
+            "row_count",
+            "content_id",
+            "cid",
+            "sha256",
+            "byte_count",
+            "dataset_id",
         }
         return cls(
             artifact_id=str(payload.get("artifact_id") or payload.get("scan_id") or ""),
@@ -545,30 +574,16 @@ class ScanAccounting:
             raise ValueError("exclusions contain a non-exclusion reason code")
         if any(not item.reason_code.is_parser_failure for item in failures):
             raise ValueError("parser_failure_reasons contain an exclusion reason code")
-        if any(
-            not item.reason_code.is_admission_rejection
-            for item in admission_rejections
-        ):
-            raise ValueError(
-                "admission_rejections contain a non-admission reason code"
-            )
+        if any(not item.reason_code.is_admission_rejection for item in admission_rejections):
+            raise ValueError("admission_rejections contain a non-admission reason code")
         if sum(item.count for item in exclusions) != coverage.excluded_files:
             raise ValueError("exclusion reason counts do not match excluded_files")
         if sum(item.count for item in failures) != coverage.parser_failures:
             raise ValueError("parser failure reason counts do not match parser_failures")
         summarized_rejections = sum(item.count for item in admission_rejections)
-        if (
-            admission_rejections
-            and summarized_rejections != candidates.rejected_candidates
-        ):
-            raise ValueError(
-                "admission rejection reason counts do not match rejected_candidates"
-            )
-        issue_count = (
-            coverage.excluded_files
-            + coverage.parser_failures
-            + summarized_rejections
-        )
+        if admission_rejections and summarized_rejections != candidates.rejected_candidates:
+            raise ValueError("admission rejection reason counts do not match rejected_candidates")
+        issue_count = coverage.excluded_files + coverage.parser_failures + summarized_rejections
         if issue_count and artifact is None:
             raise ValueError(
                 "excluded files, parser failures, and admission rejections "
@@ -597,9 +612,7 @@ class ScanAccounting:
             "reason_summaries": {
                 "exclusions": [item.to_dict() for item in self.exclusions],
                 "parser_failures": [item.to_dict() for item in self.parser_failure_reasons],
-                "admission_rejections": [
-                    item.to_dict() for item in self.admission_rejections
-                ],
+                "admission_rejections": [item.to_dict() for item in self.admission_rejections],
             },
             "details_artifact": (
                 self.details_artifact.to_dict() if self.details_artifact is not None else None
@@ -614,14 +627,10 @@ class ScanAccounting:
             candidates=payload.get("candidate_accounting", payload.get("candidates")) or {},
             exclusions=tuple(summaries.get("exclusions") or payload.get("exclusions") or ()),
             parser_failure_reasons=tuple(
-                summaries.get("parser_failures")
-                or payload.get("parser_failure_reasons")
-                or ()
+                summaries.get("parser_failures") or payload.get("parser_failure_reasons") or ()
             ),
             admission_rejections=tuple(
-                summaries.get("admission_rejections")
-                or payload.get("admission_rejections")
-                or ()
+                summaries.get("admission_rejections") or payload.get("admission_rejections") or ()
             ),
             details_artifact=(payload.get("details_artifact") or None),
         )
@@ -717,7 +726,9 @@ class RepositoryTreeIdentity:
     tree_id: str
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "repository_id", _nonempty(self.repository_id, field_name="repository_id"))
+        object.__setattr__(
+            self, "repository_id", _nonempty(self.repository_id, field_name="repository_id")
+        )
         object.__setattr__(self, "tree_id", _nonempty(self.tree_id, field_name="tree_id"))
 
     def to_dict(self) -> dict[str, str]:
@@ -813,7 +824,9 @@ class ExhaustionBinding:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ExhaustionBinding":
         return cls(
-            repository_id=str(payload.get("repository_id") or payload.get("repository_identity") or ""),
+            repository_id=str(
+                payload.get("repository_id") or payload.get("repository_identity") or ""
+            ),
             tree_id=str(payload.get("tree_id") or payload.get("tree_identity") or ""),
             analyzer_version=str(payload.get("analyzer_version") or ""),
             configuration_revision=str(
@@ -910,12 +923,16 @@ class ExhaustionQuorumResult:
         policy = ExhaustionQuorumPolicy(self.required_members)
         object.__setattr__(self, "required_members", policy.required_members)
         normalized = tuple(
-            item if isinstance(item, ExhaustionQuorumMember) else ExhaustionQuorumMember.from_dict(item)
+            item
+            if isinstance(item, ExhaustionQuorumMember)
+            else ExhaustionQuorumMember.from_dict(item)
             for item in self.members
         )
         if len({item.member_id for item in normalized}) != len(normalized):
             raise ValueError("quorum members must have unique member_id values")
-        object.__setattr__(self, "members", tuple(sorted(normalized, key=lambda item: item.member_id)))
+        object.__setattr__(
+            self, "members", tuple(sorted(normalized, key=lambda item: item.member_id))
+        )
         object.__setattr__(self, "duplicates", tuple(dict(item) for item in self.duplicates))
         object.__setattr__(self, "invalidated", tuple(dict(item) for item in self.invalidated))
         object.__setattr__(self, "rejected", tuple(dict(item) for item in self.rejected))
@@ -967,7 +984,9 @@ class ExhaustionQuorumResult:
             schema_version=int(payload.get("schema_version", EXHAUSTION_QUORUM_SCHEMA_VERSION)),
             binding=ExhaustionBinding.from_dict(payload.get("binding") or payload),
             required_members=int(
-                payload.get("required_members", payload.get("required", DEFAULT_EXHAUSTION_QUORUM_SIZE))
+                payload.get(
+                    "required_members", payload.get("required", DEFAULT_EXHAUSTION_QUORUM_SIZE)
+                )
             ),
             members=tuple(payload.get("members") or payload.get("eligible_members") or ()),
             duplicates=tuple(payload.get("duplicates") or ()),
@@ -1025,9 +1044,7 @@ def scan_identity(repo_root: Union[Path, str]) -> RepositoryTreeIdentity:
             digest.update(b"\0status\0")
             digest.update(status)
             digest.update(b"\0diff\0")
-            digest.update(
-                _git_bytes(top_level, "diff", "--binary", "--no-ext-diff", "HEAD", "--")
-            )
+            digest.update(_git_bytes(top_level, "diff", "--binary", "--no-ext-diff", "HEAD", "--"))
             untracked = _git_bytes(
                 top_level,
                 "ls-files",
@@ -1145,16 +1162,17 @@ class RefillScanResult(Generic[T]):
                 "generated or partial"
             )
         if self.safe_for_completion_reasoning and reason is not ScanTerminalReason.EXHAUSTED:
-            raise ValueError(
-                "only an exhausted scan may be marked safe_for_completion_reasoning"
-            )
+            raise ValueError("only an exhausted scan may be marked safe_for_completion_reasoning")
         if accounting is not None and accounting.candidates.appended_tasks != item_count:
             raise ValueError(
                 "candidate accounting appended_tasks does not match generated item count"
             )
 
         normalized_error = str(self.error or "").strip() or None
-        if reason in {ScanTerminalReason.FAILED, ScanTerminalReason.TIMED_OUT} and not normalized_error:
+        if (
+            reason in {ScanTerminalReason.FAILED, ScanTerminalReason.TIMED_OUT}
+            and not normalized_error
+        ):
             raise ValueError(f"{reason.value} scan results must include an error")
         object.__setattr__(self, "error", normalized_error)
 
@@ -1293,12 +1311,10 @@ class RefillScanResult(Generic[T]):
         return iter(self.items)
 
     @overload
-    def __getitem__(self, index: int) -> T:
-        ...
+    def __getitem__(self, index: int) -> T: ...
 
     @overload
-    def __getitem__(self, index: slice) -> tuple[T, ...]:
-        ...
+    def __getitem__(self, index: slice) -> tuple[T, ...]: ...
 
     def __getitem__(self, index: Union[int, slice]) -> Union[T, tuple[T, ...]]:
         return self.items[index]
@@ -1395,9 +1411,7 @@ class RefillScanResult(Generic[T]):
             started_at=payload.get("started_at", ""),
             finished_at=payload.get("finished_at", ""),
             items=tuple(items),
-            safe_for_completion_reasoning=bool(
-                payload.get("safe_for_completion_reasoning", False)
-            ),
+            safe_for_completion_reasoning=bool(payload.get("safe_for_completion_reasoning", False)),
             error=payload.get("error"),
             metadata=payload.get("metadata") or {},
             accounting=(
@@ -1454,7 +1468,9 @@ def canonical_scan_receipt(
         "schema_version": int(
             source.get(
                 "schema_version",
-                source.get("contract_version", source.get("version", REFILL_SCAN_RESULT_SCHEMA_VERSION)),
+                source.get(
+                    "contract_version", source.get("version", REFILL_SCAN_RESULT_SCHEMA_VERSION)
+                ),
             )
         ),
         "terminal_reason": str(reason or ""),
@@ -1464,12 +1480,14 @@ def canonical_scan_receipt(
             source.get("repository_id", source.get("repository_identity", "")) or ""
         ),
         "tree_id": str(source.get("tree_id", source.get("tree_identity", "")) or ""),
-        "started_at": _utc_datetime(source.get("started_at", ""), field_name="started_at").isoformat(),
-        "finished_at": _utc_datetime(source.get("finished_at", ""), field_name="finished_at").isoformat(),
+        "started_at": _utc_datetime(
+            source.get("started_at", ""), field_name="started_at"
+        ).isoformat(),
+        "finished_at": _utc_datetime(
+            source.get("finished_at", ""), field_name="finished_at"
+        ).isoformat(),
         "items": _json_value(items),
-        "safe_for_completion_reasoning": bool(
-            source.get("safe_for_completion_reasoning", False)
-        ),
+        "safe_for_completion_reasoning": bool(source.get("safe_for_completion_reasoning", False)),
         "error": str(source.get("error") or "").strip() or None,
         "metadata": _json_value(source.get("metadata") or {}),
         "accounting": _json_value(source.get("accounting")),
@@ -1539,7 +1557,9 @@ def _receipt_binding(source: Mapping[str, Any], target: ExhaustionBinding) -> Ex
     if isinstance(raw, Mapping):
         return ExhaustionBinding.from_dict(raw)
     return ExhaustionBinding(
-        repository_id=str(source.get("repository_id") or source.get("repository_identity") or target.repository_id),
+        repository_id=str(
+            source.get("repository_id") or source.get("repository_identity") or target.repository_id
+        ),
         tree_id=str(source.get("tree_id") or source.get("tree_identity") or target.tree_id),
         analyzer_version=str(source.get("analyzer_version") or target.analyzer_version),
         configuration_revision=str(
@@ -1602,27 +1622,41 @@ def evaluate_exhaustion_quorum(
 
     materialized = tuple(receipts)
     if binding is not None:
-        target = binding if isinstance(binding, ExhaustionBinding) else ExhaustionBinding.from_dict(binding)
+        target = (
+            binding
+            if isinstance(binding, ExhaustionBinding)
+            else ExhaustionBinding.from_dict(binding)
+        )
     else:
         first: Mapping[str, Any] = {}
         if materialized:
             first = _receipt_mapping(materialized[0])
-        config_id = configuration_revision or configuration_id or scan_configuration_revision(
-            {} if configuration is None else configuration
+        config_id = (
+            configuration_revision
+            or configuration_id
+            or scan_configuration_revision({} if configuration is None else configuration)
         )
         objective_id = objective_revision or globals()["objective_revision"](
             "" if objective is None else objective
         )
         target = ExhaustionBinding(
-            repository_id=repository_id or repository_identity or str(first.get("repository_id") or first.get("repository_identity") or ""),
-            tree_id=tree_id or tree_identity or str(first.get("tree_id") or first.get("tree_identity") or ""),
+            repository_id=repository_id
+            or repository_identity
+            or str(first.get("repository_id") or first.get("repository_identity") or ""),
+            tree_id=tree_id
+            or tree_identity
+            or str(first.get("tree_id") or first.get("tree_identity") or ""),
             analyzer_version=analyzer_version or str(first.get("analyzer_version") or ""),
             configuration_revision=config_id,
             objective_revision=objective_id,
         )
 
     requested = next(
-        (value for value in (required_members, required_quorum, quorum_size, required) if value is not None),
+        (
+            value
+            for value in (required_members, required_quorum, quorum_size, required)
+            if value is not None
+        ),
         DEFAULT_EXHAUSTION_QUORUM_SIZE,
     )
     policy = ExhaustionQuorumPolicy(int(requested))
@@ -1638,7 +1672,12 @@ def evaluate_exhaustion_quorum(
             try:
                 member = ExhaustionQuorumMember.from_dict(source)
             except (TypeError, ValueError) as exc:
-                rejected.append({"receipt_cid": str(source.get("receipt_cid") or ""), "reasons": [f"invalid_member:{exc}"]})
+                rejected.append(
+                    {
+                        "receipt_cid": str(source.get("receipt_cid") or ""),
+                        "reasons": [f"invalid_member:{exc}"],
+                    }
+                )
                 continue
             if member.member_id != quorum_member_id(member.binding, member.evidence_channel):
                 rejected.append(
@@ -1650,7 +1689,13 @@ def evaluate_exhaustion_quorum(
                 continue
             mismatches = _binding_mismatches(member.binding, target)
             if mismatches:
-                invalidated.append({"receipt_cid": member.receipt_cid, "member_id": member.member_id, "reasons": list(mismatches)})
+                invalidated.append(
+                    {
+                        "receipt_cid": member.receipt_cid,
+                        "member_id": member.member_id,
+                        "reasons": list(mismatches),
+                    }
+                )
                 continue
         else:
             metadata = source.get("metadata")
@@ -1675,11 +1720,17 @@ def evaluate_exhaustion_quorum(
             health_ok = declared_health == "healthy" or (
                 not declared_health and bool(source.get("safe_for_completion_reasoning", False))
             )
-            exhaustive = bool(metadata.get("exhaustive", False)) or "exhaustive" in mode or mode == ScanMode.AUDIT.value
+            exhaustive = (
+                bool(metadata.get("exhaustive", False))
+                or "exhaustive" in mode
+                or mode == ScanMode.AUDIT.value
+            )
             coverage_complete = metadata.get("coverage_complete", True) is not False
             audit_summary = metadata.get("audit_summary")
             audit_summary = audit_summary if isinstance(audit_summary, Mapping) else {}
-            actionable = int(audit_summary.get("novel", 0) or 0) + int(audit_summary.get("changed", 0) or 0)
+            actionable = int(audit_summary.get("novel", 0) or 0) + int(
+                audit_summary.get("changed", 0) or 0
+            )
             eligibility_reasons: list[str] = []
             if reason != ScanTerminalReason.EXHAUSTED.value:
                 eligibility_reasons.append("terminal_reason_not_exhausted")
@@ -1959,7 +2010,9 @@ def build_scan_result(
         resolved_identity = identity
     else:
         resolved_identity = RepositoryTreeIdentity(
-            repository_id=str(identity.get("repository_id") or identity.get("repository_identity") or ""),
+            repository_id=str(
+                identity.get("repository_id") or identity.get("repository_identity") or ""
+            ),
             tree_id=str(identity.get("tree_id") or identity.get("tree_identity") or ""),
         )
     return RefillScanResult(

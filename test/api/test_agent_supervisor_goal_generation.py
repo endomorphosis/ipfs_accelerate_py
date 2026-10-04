@@ -262,9 +262,7 @@ def test_llm_router_proposals_preserve_complete_work_metadata() -> None:
 
     assert work.source == "llm_router"
     assert work.parent_objective_terms == ("API evidence",)
-    assert work.expected_evidence_delta == (
-        "API receipt is current and provenance-backed",
-    )
+    assert work.expected_evidence_delta == ("API receipt is current and provenance-backed",)
     assert work.dependencies == ("REF-205",)
     assert work.predicted_files == ("src/api.py",)
     assert work.predicted_symbols == ("ApiClient",)
@@ -310,9 +308,7 @@ def test_daemon_generation_ledger_prevents_cross_cycle_regeneration(tmp_path) ->
         "duplicate_canonical_identity",
         "duplicate_semantic_work",
     }
-    assert load_objective_generation_work(artifact) == tuple(
-        second_artifact["generated_work"]
-    )
+    assert load_objective_generation_work(artifact) == tuple(second_artifact["generated_work"])
     assert json.loads(artifact.read_text(encoding="utf-8"))["cycle_count"] == 2
 
 
@@ -444,16 +440,12 @@ def test_documentation_gate_emits_focused_direct_channel_tasks(tmp_path) -> None
     assert "mcplusplus-status-boundary-verifier" in titles
     assert "repository-validator:DCS-G030" in titles
     flattened_diagnostics = "\n".join(
-        value
-        for item in typed
-        for value in (*item.expected_evidence_delta, item.rationale)
+        value for item in typed for value in (*item.expected_evidence_delta, item.rationale)
     )
     assert "typescript-vectors" in flattened_diagnostics
     assert "go-vectors" in flattened_diagnostics
     assert gate["completion_evidence_records"] == []
-    assert not completion_evidence_records_from_gate_records(
-        {"DCS-G030": gate}
-    ).get("DCS-G030")
+    assert not completion_evidence_records_from_gate_records({"DCS-G030": gate}).get("DCS-G030")
 
 
 def test_documentation_gap_prefers_scoped_row_validation_over_receipt_and_goal(
@@ -467,9 +459,7 @@ def test_documentation_gap_prefers_scoped_row_validation_over_receipt_and_goal(
     gate = _documentation_completion_gate()
     runtime_row = gate["coverage"]["criteria"][0]
     runtime_row["implementation_paths"] = ["scripts/probe_runtime.py"]
-    runtime_row["validation_commands"] = [
-        "python scripts/probe_runtime.py --check-channel runtime"
-    ]
+    runtime_row["validation_commands"] = ["python scripts/probe_runtime.py --check-channel runtime"]
     gate["rejected_receipts"][0].update(
         {
             "producer_channel": "mcplusplus-runtime-conformance-verifier",
@@ -547,42 +537,27 @@ def test_documentation_gap_prefers_explicit_files_and_alignment_diagnostics(
     runtime = next(
         item
         for item in first
-        if "mcplusplus-runtime-conformance-verifier"
-        in item.predicted_symbols
+        if "mcplusplus-runtime-conformance-verifier" in item.predicted_symbols
     )
     repository = next(
-        item
-        for item in first
-        if "repository-validator:DCS-G030" in item.predicted_symbols
+        item for item in first if "repository-validator:DCS-G030" in item.predicted_symbols
     )
 
-    assert runtime.predicted_files == (
-        "Mcp-Plus-Plus/docs/protocol/runtime.md",
-    )
+    assert runtime.predicted_files == ("Mcp-Plus-Plus/docs/protocol/runtime.md",)
     assert set(repository.predicted_files) == {
         "Mcp-Plus-Plus/scripts/validate_documentation_current_state.py",
         "Mcp-Plus-Plus/docs/DOCUMENTATION_INDEX.md",
     }
-    assert "Mcp-Plus-Plus/test-results/runtime-conformance.json" not in (
-        runtime.predicted_files
-    )
-    assert all(
-        "Mcp-Plus-Plus/docs" not in item.predicted_files
-        for item in first
-    )
-    assert all(
-        item.title.startswith("Align documentation evidence")
-        for item in first
-    )
+    assert "Mcp-Plus-Plus/test-results/runtime-conformance.json" not in (runtime.predicted_files)
+    assert all("Mcp-Plus-Plus/docs" not in item.predicted_files for item in first)
+    assert all(item.title.startswith("Align documentation evidence") for item in first)
     assert "Probe outcome" in runtime.rationale
     assert "Documentation alignment" in runtime.rationale
     assert "Documentation debt path" in runtime.rationale
     assert "Evidence path (read-only)" in runtime.rationale
 
     refresh_only = json.loads(json.dumps(gate))
-    refresh_only["coverage"]["criteria"][0]["probe_outcome"][
-        "generated_at"
-    ] = "refresh-b"
+    refresh_only["coverage"]["criteria"][0]["probe_outcome"]["generated_at"] = "refresh-b"
     refreshed = objective_generation_proposals(
         objective_path=objective,
         completion_gate_records={"DCS-G030": refresh_only},
@@ -590,15 +565,14 @@ def test_documentation_gap_prefers_explicit_files_and_alignment_diagnostics(
     refreshed_runtime = next(
         item
         for item in refreshed
-        if "mcplusplus-runtime-conformance-verifier"
-        in item.predicted_symbols
+        if "mcplusplus-runtime-conformance-verifier" in item.predicted_symbols
     )
     assert refreshed_runtime.instance_key == runtime.instance_key
 
     meaningful_change = json.loads(json.dumps(refresh_only))
-    meaningful_change["coverage"]["criteria"][0]["probe_outcome"][
-        "status"
-    ] = "passed-but-documentation-still-drifted"
+    meaningful_change["coverage"]["criteria"][0]["probe_outcome"]["status"] = (
+        "passed-but-documentation-still-drifted"
+    )
     changed = objective_generation_proposals(
         objective_path=objective,
         completion_gate_records={"DCS-G030": meaningful_change},
@@ -606,8 +580,7 @@ def test_documentation_gap_prefers_explicit_files_and_alignment_diagnostics(
     changed_runtime = next(
         item
         for item in changed
-        if "mcplusplus-runtime-conformance-verifier"
-        in item.predicted_symbols
+        if "mcplusplus-runtime-conformance-verifier" in item.predicted_symbols
     )
     assert changed_runtime.family_key == runtime.family_key
     assert changed_runtime.instance_key != runtime.instance_key
@@ -625,9 +598,7 @@ def test_missing_channels_without_coverage_still_emit_typed_tasks(tmp_path) -> N
     )
 
     assert len(proposals) == 3
-    assert {item.source for item in proposals} == {
-        "completion_gate_gap_manual_review"
-    }
+    assert {item.source for item in proposals} == {"completion_gate_gap_manual_review"}
     assert all(not item.predicted_files for item in proposals)
 
 
@@ -637,9 +608,7 @@ def test_rejected_receipt_without_coverage_remains_an_actionable_gap(tmp_path) -
     gate = _documentation_completion_gate()
     gate.pop("coverage")
     gate.pop("missing_producer_channels")
-    gate["rejected_receipts"][0]["producer_channel"] = (
-        "repository-validator:DCS-G030"
-    )
+    gate["rejected_receipts"][0]["producer_channel"] = "repository-validator:DCS-G030"
 
     proposals = objective_generation_proposals(
         objective_path=objective,
@@ -651,9 +620,7 @@ def test_rejected_receipt_without_coverage_remains_an_actionable_gap(tmp_path) -
     assert not proposals[0].predicted_files
     assert "typescript-vectors" in proposals[0].rationale
     assert "Receipt/report path (read-only)" in proposals[0].rationale
-    assert not completion_evidence_records_from_gate_records(
-        {"DCS-G030": gate}
-    ).get("DCS-G030")
+    assert not completion_evidence_records_from_gate_records({"DCS-G030": gate}).get("DCS-G030")
 
 
 def test_gate_coverage_without_channel_never_reuses_raw_goal_outputs(
@@ -959,9 +926,7 @@ def test_gate_loader_requires_repo_root_for_nested_edit_targets(tmp_path) -> Non
                         "coverage": {
                             "criteria": [
                                 {
-                                    "validator_source_path": (
-                                        "Mcp-Plus-Plus/scripts/validator.py"
-                                    ),
+                                    "validator_source_path": ("Mcp-Plus-Plus/scripts/validator.py"),
                                 }
                             ]
                         }
@@ -976,9 +941,10 @@ def test_gate_loader_requires_repo_root_for_nested_edit_targets(tmp_path) -> Non
         load_goal_completion_gate_records(artifact)
 
     records = load_goal_completion_gate_records(artifact, repo_root=repo)
-    assert records["DCS-G030"]["coverage"]["criteria"][0][
-        "validator_source_path"
-    ] == "Mcp-Plus-Plus/scripts/validator.py"
+    assert (
+        records["DCS-G030"]["coverage"]["criteria"][0]["validator_source_path"]
+        == "Mcp-Plus-Plus/scripts/validator.py"
+    )
 
 
 def test_in_memory_gate_rejects_symlink_edit_target_escaping_repo(tmp_path) -> None:
@@ -990,9 +956,7 @@ def test_in_memory_gate_rejects_symlink_edit_target_escaping_repo(tmp_path) -> N
     objective = repo / "objective.md"
     objective.write_text(_documentation_goal_heap(), encoding="utf-8")
     gate = _documentation_completion_gate()
-    gate["coverage"]["criteria"][0]["implementation_paths"] = [
-        "escape/runtime.md"
-    ]
+    gate["coverage"]["criteria"][0]["implementation_paths"] = ["escape/runtime.md"]
 
     proposals = objective_generation_proposals(
         objective_path=objective,
@@ -1017,9 +981,7 @@ def test_documentation_gap_family_ignores_refresh_sha_and_mutable_goal_surfaces(
     first = objective_generation_proposals(
         objective_path=objective,
         completion_gate_records={
-            "DCS-G030": _documentation_completion_gate(
-                receipt_sha256="receipt-generated-at-a"
-            )
+            "DCS-G030": _documentation_completion_gate(receipt_sha256="receipt-generated-at-a")
         },
     )
     objective.write_text(
@@ -1031,18 +993,14 @@ def test_documentation_gap_family_ignores_refresh_sha_and_mutable_goal_surfaces(
     second = objective_generation_proposals(
         objective_path=objective,
         completion_gate_records={
-            "DCS-G030": _documentation_completion_gate(
-                receipt_sha256="receipt-generated-at-b"
-            )
+            "DCS-G030": _documentation_completion_gate(receipt_sha256="receipt-generated-at-b")
         },
     )
 
     first_typed = {item.family_key: item for item in first if item.family_key}
     second_typed = {item.family_key: item for item in second if item.family_key}
     assert set(first_typed) == set(second_typed)
-    assert {
-        key: item.instance_key for key, item in first_typed.items()
-    } == {
+    assert {key: item.instance_key for key, item in first_typed.items()} == {
         key: item.instance_key for key, item in second_typed.items()
     }
 
@@ -1058,9 +1016,7 @@ def test_active_typed_gap_bootstraps_missing_family_state_for_terminal_retry(
         completion_gate_records={"DCS-G030": _documentation_completion_gate()},
     )
     validator = next(
-        item
-        for item in proposals
-        if "repository-validator:DCS-G030" in item.predicted_symbols
+        item for item in proposals if "repository-validator:DCS-G030" in item.predicted_symbols
     )
 
     active, active_payload = materialize_objective_generation_cycle(
@@ -1123,25 +1079,21 @@ def test_typed_gap_lifecycle_dedupes_active_and_allows_reappearance(tmp_path) ->
         active_family_keys=(),
         terminal_family_counts={family: 1 for family in families},
     )
-    repeated_retry, _repeated_retry_artifact = (
-        materialize_objective_generation_cycle(
-            proposals,
-            artifact_path=artifact,
-            limits=ObjectiveGenerationLimits(max_retries=1),
-            current_open_work=0,
-            active_family_keys=(),
-            terminal_family_counts={family: 1 for family in families},
-        )
+    repeated_retry, _repeated_retry_artifact = materialize_objective_generation_cycle(
+        proposals,
+        artifact_path=artifact,
+        limits=ObjectiveGenerationLimits(max_retries=1),
+        current_open_work=0,
+        active_family_keys=(),
+        terminal_family_counts={family: 1 for family in families},
     )
-    active_retry, _active_retry_artifact = (
-        materialize_objective_generation_cycle(
-            proposals,
-            artifact_path=artifact,
-            limits=ObjectiveGenerationLimits(max_retries=1),
-            current_open_work=0,
-            active_family_keys=families,
-            terminal_family_counts={family: 1 for family in families},
-        )
+    active_retry, _active_retry_artifact = materialize_objective_generation_cycle(
+        proposals,
+        artifact_path=artifact,
+        limits=ObjectiveGenerationLimits(max_retries=1),
+        current_open_work=0,
+        active_family_keys=families,
+        terminal_family_counts={family: 1 for family in families},
     )
     review, review_artifact = materialize_objective_generation_cycle(
         proposals,
@@ -1151,15 +1103,13 @@ def test_typed_gap_lifecycle_dedupes_active_and_allows_reappearance(tmp_path) ->
         active_family_keys=(),
         terminal_family_counts={family: 2 for family in families},
     )
-    repeated_review, _repeated_review_artifact = (
-        materialize_objective_generation_cycle(
-            proposals,
-            artifact_path=artifact,
-            limits=ObjectiveGenerationLimits(max_retries=1),
-            current_open_work=0,
-            active_family_keys=(),
-            terminal_family_counts={family: 2 for family in families},
-        )
+    repeated_review, _repeated_review_artifact = materialize_objective_generation_cycle(
+        proposals,
+        artifact_path=artifact,
+        limits=ObjectiveGenerationLimits(max_retries=1),
+        current_open_work=0,
+        active_family_keys=(),
+        terminal_family_counts={family: 2 for family in families},
     )
     blocked, blocked_artifact = materialize_objective_generation_cycle(
         proposals,
@@ -1169,15 +1119,13 @@ def test_typed_gap_lifecycle_dedupes_active_and_allows_reappearance(tmp_path) ->
         active_family_keys=(),
         terminal_family_counts={family: 3 for family in families},
     )
-    repeated_blocked, _repeated_blocked_artifact = (
-        materialize_objective_generation_cycle(
-            proposals,
-            artifact_path=artifact,
-            limits=ObjectiveGenerationLimits(max_retries=1),
-            current_open_work=0,
-            active_family_keys=(),
-            terminal_family_counts={family: 3 for family in families},
-        )
+    repeated_blocked, _repeated_blocked_artifact = materialize_objective_generation_cycle(
+        proposals,
+        artifact_path=artifact,
+        limits=ObjectiveGenerationLimits(max_retries=1),
+        current_open_work=0,
+        active_family_keys=(),
+        terminal_family_counts={family: 3 for family in families},
     )
     resolved, resolved_artifact = materialize_objective_generation_cycle(
         (),
@@ -1200,16 +1148,12 @@ def test_typed_gap_lifecycle_dedupes_active_and_allows_reappearance(tmp_path) ->
     assert len(first.accepted) == 3
     assert not second.accepted
     assert len(retry.accepted) == 3
-    assert {item.source for item in retry.accepted} == {
-        "completion_gate_gap_retry"
-    }
+    assert {item.source for item in retry.accepted} == {"completion_gate_gap_retry"}
     assert {item.retry_count for item in retry.accepted} == {1}
     assert not repeated_retry.accepted
     assert not active_retry.accepted
     assert len(review.accepted) == 3
-    assert {item.source for item in review.accepted} == {
-        "completion_gate_gap_review"
-    }
+    assert {item.source for item in review.accepted} == {"completion_gate_gap_review"}
     assert not repeated_review.accepted
     assert not blocked.accepted
     assert not repeated_blocked.accepted
@@ -1226,14 +1170,10 @@ def test_typed_gap_lifecycle_dedupes_active_and_allows_reappearance(tmp_path) ->
         for state in blocked_artifact["gap_family_states"].values()
     )
     assert not resolved.accepted
-    assert all(
-        state["resolved"]
-        for state in resolved_artifact["gap_family_states"].values()
-    )
+    assert all(state["resolved"] for state in resolved_artifact["gap_family_states"].values())
     assert len(reappeared.accepted) == 3
     assert all(
-        state["occurrence"] == 2
-        for state in reappeared_artifact["gap_family_states"].values()
+        state["occurrence"] == 2 for state in reappeared_artifact["gap_family_states"].values()
     )
     assert first_artifact["generated_work_count"] == 3
     assert second_artifact["generated_work_count"] == 3
@@ -1285,17 +1225,14 @@ def test_blocked_gap_bypasses_retries_for_one_visible_review(tmp_path) -> None:
     )
 
     assert len(review.accepted) == 3
-    assert {item.source for item in review.accepted} == {
-        "completion_gate_gap_review"
-    }
+    assert {item.source for item in review.accepted} == {"completion_gate_gap_review"}
     assert {item.retry_count for item in review.accepted} == {0}
     assert len(findings) == 3
     assert all("manual review" in item.gap_task for item in findings)
     assert not repeated.accepted
     assert not blocked.accepted
     assert all(
-        state["attempt_count"] == 1
-        and state["outcome"] == "blocked_review"
+        state["attempt_count"] == 1 and state["outcome"] == "blocked_review"
         for state in blocked_payload["gap_family_states"].values()
     )
     assert blocked_review_objective_generation_families(
@@ -1320,9 +1257,7 @@ def test_unresolved_diagnostic_changes_do_not_reset_family_retry_budget(
         active_family_keys=(),
     )
     validator = next(
-        item
-        for item in first.accepted
-        if "repository-validator:DCS-G030" in item.predicted_symbols
+        item for item in first.accepted if "repository-validator:DCS-G030" in item.predicted_symbols
     )
 
     changed_gate = _documentation_completion_gate()
@@ -1349,14 +1284,12 @@ def test_unresolved_diagnostic_changes_do_not_reset_family_retry_budget(
         objective_path=objective,
         completion_gate_records={"DCS-G030": changed_again_gate},
     )
-    diagnostic_refresh, diagnostic_refresh_payload = (
-        materialize_objective_generation_cycle(
-            changed_again,
-            artifact_path=artifact,
-            limits=ObjectiveGenerationLimits(max_retries=1),
-            active_family_keys=(),
-            terminal_family_counts={validator.family_key: 1},
-        )
+    diagnostic_refresh, diagnostic_refresh_payload = materialize_objective_generation_cycle(
+        changed_again,
+        artifact_path=artifact,
+        limits=ObjectiveGenerationLimits(max_retries=1),
+        active_family_keys=(),
+        terminal_family_counts={validator.family_key: 1},
     )
     review, review_payload = materialize_objective_generation_cycle(
         changed_again,
@@ -1373,9 +1306,7 @@ def test_unresolved_diagnostic_changes_do_not_reset_family_retry_budget(
     assert len(review.accepted) == 1
     assert review.accepted[0].source == "completion_gate_gap_review"
     retry_state = retry_payload["gap_family_states"][validator.family_key]
-    diagnostic_refresh_state = diagnostic_refresh_payload[
-        "gap_family_states"
-    ][validator.family_key]
+    diagnostic_refresh_state = diagnostic_refresh_payload["gap_family_states"][validator.family_key]
     review_state = review_payload["gap_family_states"][validator.family_key]
     assert retry_state["attempt_count"] == 2
     assert retry_state["occurrence"] == 1
@@ -1384,9 +1315,7 @@ def test_unresolved_diagnostic_changes_do_not_reset_family_retry_budget(
     assert review_state["attempt_count"] == 2
     assert review_state["occurrence"] == 1
     assert review_state["review_emitted"] is True
-    assert first_payload["gap_family_states"][validator.family_key][
-        "attempt_count"
-    ] == 1
+    assert first_payload["gap_family_states"][validator.family_key]["attempt_count"] == 1
 
 
 def test_board_state_distinguishes_completed_and_blocked_families() -> None:
@@ -1433,9 +1362,7 @@ def test_changed_failed_diagnostics_wait_for_terminal_task_before_retry(
         artifact_path=artifact,
         active_family_keys=(),
     )
-    changed_gate = _documentation_completion_gate(
-        receipt_sha256="receipt-refresh-only-change"
-    )
+    changed_gate = _documentation_completion_gate(receipt_sha256="receipt-refresh-only-change")
     changed_gate["rejected_receipts"][0]["errors"][0] = (
         "runtime conformance command typescript-vectors did not pass: exit code 2"
     )
@@ -1471,9 +1398,7 @@ def test_changed_failed_diagnostics_wait_for_terminal_task_before_retry(
     assert retry.accepted[0].family_key == changed_validator.family_key
     assert retry.accepted[0].source == "completion_gate_gap_retry"
     assert "exit code 2" in retry.accepted[0].rationale
-    assert retry_payload["gap_family_states"][changed_validator.family_key][
-        "attempt_count"
-    ] == 2
+    assert retry_payload["gap_family_states"][changed_validator.family_key]["attempt_count"] == 2
 
 
 def test_completed_legacy_generic_work_does_not_suppress_typed_gap(tmp_path) -> None:
@@ -1580,9 +1505,7 @@ def test_task_fingerprint_uses_gap_occurrence_not_per_refresh_receipt(tmp_path) 
 
     assert len(first) == 3
     assert len(second) == 3
-    assert {item.fingerprint for item in first}.isdisjoint(
-        item.fingerprint for item in second
-    )
+    assert {item.fingerprint for item in first}.isdisjoint(item.fingerprint for item in second)
 
 
 def _objective_heap() -> str:
@@ -1655,8 +1578,7 @@ def test_goal_materialization_is_preview_first_lossless_and_transactional(
     assert result.state is ObjectiveMaterializationTransactionState.COMMITTED
     assert result.changed
     materialized = {
-        item.goal_id: item
-        for item in parse_goal_heap(objective_path.read_text(encoding="utf-8"))
+        item.goal_id: item for item in parse_goal_heap(objective_path.read_text(encoding="utf-8"))
     }
     assert materialized[goal.canonical_id].parent_goal_ids == ["ROOT"]
     child = materialized[subgoal.canonical_id]
@@ -1675,9 +1597,7 @@ def test_goal_materialization_is_preview_first_lossless_and_transactional(
         preview=preview,
     )
     assert replay.committed and replay.resumed and not replay.changed
-    assert objective_path.read_text(encoding="utf-8").count(
-        f"## {subgoal.canonical_id} "
-    ) == 1
+    assert objective_path.read_text(encoding="utf-8").count(f"## {subgoal.canonical_id} ") == 1
 
 
 def test_goal_materialization_binds_epoch_revision_and_exact_goal_mapping(
@@ -1710,9 +1630,9 @@ def test_goal_materialization_binds_epoch_revision_and_exact_goal_mapping(
     assert result.committed
     assert result.epoch_id == "refill-epoch:sha256:test"
     assert result.mapped_goal_ids == goal_ids
-    transaction = json.loads(journal_path.read_text(encoding="utf-8"))[
-        "transactions"
-    ][result.transaction_id]
+    transaction = json.loads(journal_path.read_text(encoding="utf-8"))["transactions"][
+        result.transaction_id
+    ]
     assert transaction["epoch_id"] == result.epoch_id
     assert tuple(transaction["mapped_goal_ids"]) == goal_ids
 
@@ -1827,8 +1747,7 @@ def test_goal_materialization_keeps_semantic_and_structural_breadth_bounds() -> 
     assert [item.reason for item in duplicate.rejected] == ["semantic_duplicate"]
 
     terminal_child_heap = (
-        _objective_heap()
-        + "\n## TERMINAL Historical child\n\n"
+        _objective_heap() + "\n## TERMINAL Historical child\n\n"
         "- Status: verified\n"
         "- Goal: Historical bounded branch\n"
         "- Parents: ROOT\n"
@@ -1888,9 +1807,7 @@ def test_stale_heap_and_lease_conflict_fail_closed_and_remain_resumable(
         objective_path=objective_path,
         journal_path=tree_journal,
     ).tree_id
-    (repo_root / "concurrent-source.py").write_text(
-        "CONCURRENT = True\n", encoding="utf-8"
-    )
+    (repo_root / "concurrent-source.py").write_text("CONCURRENT = True\n", encoding="utf-8")
     stale_tree = commit_objective_goal_materialization(
         repo_root=repo_root,
         objective_path=objective_path,
@@ -1930,8 +1847,7 @@ def test_stale_heap_and_lease_conflict_fail_closed_and_remain_resumable(
     )
     assert resumed.committed and resumed.resumed
     assert goal.canonical_id in {
-        item.goal_id
-        for item in parse_goal_heap(objective_path.read_text(encoding="utf-8"))
+        item.goal_id for item in parse_goal_heap(objective_path.read_text(encoding="utf-8"))
     }
 
 
@@ -1951,10 +1867,7 @@ def test_partial_heap_write_remains_prepared_and_resumes_exactly(
     )
     journal = tmp_path / "partial-journal.json"
     partial_text = (
-        _objective_heap().rstrip()
-        + "\n\n"
-        + preview.materialized[0].rendered_block.strip()
-        + "\n"
+        _objective_heap().rstrip() + "\n\n" + preview.materialized[0].rendered_block.strip() + "\n"
     )
     real_rewrite = objective_tracker_module._atomic_rewrite
     monkeypatch.setattr(
@@ -1984,8 +1897,7 @@ def test_partial_heap_write_remains_prepared_and_resumes_exactly(
     )
     assert resumed.committed and resumed.resumed
     materialized_ids = [
-        item.goal_id
-        for item in parse_goal_heap(objective_path.read_text(encoding="utf-8"))
+        item.goal_id for item in parse_goal_heap(objective_path.read_text(encoding="utf-8"))
     ]
     assert materialized_ids.count(goal.canonical_id) == 1
     assert materialized_ids.count(subgoal.canonical_id) == 1
@@ -2099,9 +2011,7 @@ def test_git_objective_admission_lock_is_external_stable_and_tree_neutral(
     )
 
     lock_path = objective_admission_lock_path(objective_path)
-    assert lock_path != objective_path.with_name(
-        f".{objective_path.name}.admission.lock"
-    )
+    assert lock_path != objective_path.with_name(f".{objective_path.name}.admission.lock")
     assert ".git" in lock_path.parts
 
     source_root = Path(__file__).resolve().parents[2]
