@@ -6633,6 +6633,10 @@ class PortalSupervisorConfig:
     task_prefix: str = TASK_HEADER_PREFIX
     state_prefix: str = "portal"
     database_program: DatabaseProgramConfig | None = None
+    state_owner_bootstrap_fd: int = -1
+    state_owner_client_id: str = ""
+    task_context_bundle_artifact: str = ""
+    task_context_bundle_sha256: str = ""
     reconciliation_only: bool = False
     implement: bool = False
     implementation_command: str = ""
@@ -11170,10 +11174,17 @@ class PortalImplementationSupervisor:
                 )
                 if self.config.accepted_control_plane_pin is not None
                 else ()
-            ),
+            ) + ((self.config.state_owner_bootstrap_fd,)
+                 if self.config.state_owner_bootstrap_fd >= 3 else ()),
         )
         loop_env = dict(spec.launch_env)
         loop_env.update(child_env)
+        if self.config.state_owner_bootstrap_fd >= 3:
+            # This child must obtain its own PID-bound owner credential over
+            # the inherited listener. The supervisor's SQL observation token
+            # is not a child grant and must not trigger credential inheritance.
+            from ..runtime.process_security import STATE_AUTHORITY_CREDENTIAL_NAMES
+            loop_env.update({name: "" for name in STATE_AUTHORITY_CREDENTIAL_NAMES})
         overlay = str(os.environ.get("PYTHONPATH") or "").strip()
         if overlay:
             existing = str(loop_env.get("PYTHONPATH") or "")
@@ -11186,6 +11197,7 @@ class PortalImplementationSupervisor:
         return SupervisorLoopConfig(
             spec=spec,
             command=command,
+            log_prefix=f"{prefix}_managed_daemon",
             # The reusable loop launches from child_env; ManagedDaemonSpec's
             # launch_env alone is only consumed by wrapper-based entry points.
             child_env=loop_env,
@@ -21763,6 +21775,26 @@ class PortalImplementationSupervisor:
                     candidate_mode=program.authority_mode,
                 )
                 command.extend(program.daemon_cli_args())
+            bootstrap_fd = self.config.state_owner_bootstrap_fd
+            bootstrap_client = self.config.state_owner_client_id
+            if bootstrap_fd != -1 or bootstrap_client:
+                from ..task_sources.state_owner_bootstrap import validate_state_owner_bootstrap_listener
+                if (bootstrap_fd < 3 or not bootstrap_client
+                        or self.config.database_program is None
+                        or self.config.database_program.authority_mode != "quack"):
+                    raise ValueError("native owner bootstrap requires exact Quack launch scope")
+                validate_state_owner_bootstrap_listener(bootstrap_fd)
+                command.extend(("--state-owner-bootstrap-fd", str(bootstrap_fd),
+                                "--state-owner-client-id", bootstrap_client,
+                                "--state-store-id", program.store_id,
+                                "--state-store-generation", program.store_generation,
+                                "--state-schema-revision", program.schema_revision,
+                                "--endpoint-secret-handle", program.endpoint_secret_handle))
+            if self.config.task_context_bundle_artifact or self.config.task_context_bundle_sha256:
+                if not self.config.task_context_bundle_artifact or not self.config.task_context_bundle_sha256:
+                    raise ValueError("task context bundle requires artifact and digest")
+                command.extend(("--task-context-bundle-artifact", self.config.task_context_bundle_artifact,
+                                "--task-context-bundle-sha256", self.config.task_context_bundle_sha256))
             if self.config.validation_max_workers is not None:
                 command.extend(
                     [
@@ -22226,6 +22258,12 @@ class PortalImplementationSupervisor:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Supervise the portal implementation backlog daemon")
+    parser.add_argument("--state-owner-bootstrap-fd", type=int, default=-1,
+                        help="Inherited private listener forwarded to the native database child")
+    parser.add_argument("--state-owner-client-id", default="",
+                        help="Exact native owner client scope for the managed database child")
+    parser.add_argument("--task-context-bundle-artifact", default="")
+    parser.add_argument("--task-context-bundle-sha256", default="")
     parser.add_argument("--once", action="store_true", help="Run one supervisor check and exit")
     parser.add_argument(
         "--todo-path",
@@ -23153,6 +23191,10 @@ def supervisor_config_from_args(
         task_prefix=args.task_prefix,
         state_prefix=args.state_prefix,
         database_program=database_program,
+        state_owner_bootstrap_fd=getattr(args, "state_owner_bootstrap_fd", -1),
+        state_owner_client_id=str(getattr(args, "state_owner_client_id", "") or ""),
+        task_context_bundle_artifact=str(getattr(args, "task_context_bundle_artifact", "") or ""),
+        task_context_bundle_sha256=str(getattr(args, "task_context_bundle_sha256", "") or ""),
         accepted_control_plane_pin=accepted_control_plane_pin,
         accepted_control_plane_descriptor=control_plane_descriptor,
         native_dependency_launch=native_dependency_launch,

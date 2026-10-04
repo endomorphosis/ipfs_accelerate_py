@@ -137,12 +137,14 @@ def _diagnostics(receipt: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def read_database_attempt_feedback(
-    task_source: Any, attempt: Any, record: Any, *, binding: Mapping, portal_task: Any
+    task_source: Any, attempt: Any, record: Any, *, binding: Mapping, portal_task: Any,
+    board_namespace: str = "",
 ) -> dict | None:
     """Read only the current claim's exact predecessor; no nearby fallback."""
     try:
         return _read_feedback(
-            task_source, attempt, record, binding=binding, portal_task=portal_task
+            task_source, attempt, record, binding=binding, portal_task=portal_task,
+            board_namespace=board_namespace,
         )
     except Exception:  # noqa: BLE001 -- optional diagnostics never grant execution
         # This optional read cannot authorize execution, retries or settlement.
@@ -151,7 +153,8 @@ def read_database_attempt_feedback(
 
 
 def _read_feedback(
-    task_source: Any, attempt: Any, record: Any, *, binding: Mapping, portal_task: Any
+    task_source: Any, attempt: Any, record: Any, *, binding: Mapping, portal_task: Any,
+    board_namespace: str = "",
 ) -> dict:
     from ..task_sources.typed_state_owner import (
         TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
@@ -160,6 +163,8 @@ def _read_feedback(
         _validated_database_claim_process_attestation,
     )
     from .database_portal_bridge import (
+        DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA,
+        DatabasePortalExecutionBridge,
         _TASK_CONTRACT_MUTABLE_FIELDS,
         _canonical_json,
         _sha256_bytes,
@@ -182,17 +187,55 @@ def _read_feedback(
         raise ValueError("current diagnostic task differs")
     bound = dict(binding)
     binding_id = bound.pop("binding_id", None)
-    if (
-        binding_id != _sha256_bytes(_canonical_json(bound))
-        or any(bound.get(name) != value for name, value in current.items())
-        or bound.get("task_cid") != task_cid
-        or bound.get("task_alias") != alias
-        or bound.get("task_revision") != revision
-        or bound.get("task_contract_digest")
-        != database_portal_task_contract_digest(record)
-    ):
+    if binding_id != _sha256_bytes(_canonical_json(bound)):
         raise ValueError("diagnostic attempt binding differs")
-    _text(bound.get("repository_tree_id"))
+    contract_digest = database_portal_task_contract_digest(record)
+    if bound.get("schema") == DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA:
+        # Native @2 seals the complete current task projection and the exact
+        # claim-time control binding. Owner/attempt ordinals live in that
+        # control binding, not as additional fields on the Portal binding.
+        # Reuse its full producer validation; never invent an enriched binding
+        # or replace the on-disk identity with a diagnostic-only digest.
+        attempt_body = getattr(attempt, "body", None)
+        control = (
+            attempt_body.get("control_binding")
+            if isinstance(attempt_body, Mapping) else None
+        )
+        if not isinstance(control, Mapping) or _identity(control) != current:
+            raise ValueError("diagnostic native control claim differs")
+        # Reconstruct the seed with the bridge's execution namespace, not the
+        # parser's filename fallback. The full binding comparison below still
+        # verifies the exact claim and sealed projection bytes.
+        seed = DatabasePortalExecutionBridge._render_projection_seed(
+            attempt, record, board_namespace=board_namespace,
+        )
+        expected = DatabasePortalExecutionBridge._binding(
+            attempt, record, seed, schema=DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA
+        )
+        if dict(binding) != expected:
+            raise ValueError("diagnostic native control binding differs")
+        native_claim = body.get("completion_receipt")
+        route = (
+            native_claim.get("execution_route_binding")
+            if isinstance(native_claim, Mapping) else None
+        )
+        route_validator = getattr(task_source, "validate_execution_route_binding", None)
+        if not isinstance(route, Mapping) or not callable(route_validator):
+            raise ValueError("diagnostic native route authority is unavailable")
+        validated_route = route_validator(route, task=record, allow_claim_revision=True)
+        if not isinstance(validated_route, Mapping) or dict(validated_route) != dict(route):
+            raise ValueError("diagnostic native route differs")
+        repository_tree_id = _text(validated_route.get("repository_tree_id"))
+    else:
+        if (
+            any(bound.get(name) != value for name, value in current.items())
+            or bound.get("task_cid") != task_cid
+            or bound.get("task_alias") != alias
+            or bound.get("task_revision") != revision
+            or bound.get("task_contract_digest") != contract_digest
+        ):
+            raise ValueError("diagnostic attempt binding differs")
+        repository_tree_id = _text(bound.get("repository_tree_id"))
     admitted_revision = getattr(attempt, "task_revision", None)
     if admitted_revision is not None and (
         type(admitted_revision) is not int or admitted_revision != revision
@@ -349,7 +392,7 @@ def _read_feedback(
         or getattr(fresh, "revision", None) != revision
         or getattr(fresh, "status", None) != "in_progress"
         or getattr(fresh, "body", None) != body
-        or database_portal_task_contract_digest(fresh) != bound["task_contract_digest"]
+        or database_portal_task_contract_digest(fresh) != contract_digest
     ):
         raise ValueError("diagnostic current claim changed during observation")
     result = {
@@ -360,8 +403,8 @@ def _read_feedback(
             "task_alias": alias,
             **current,
             "task_revision": revision,
-            "task_contract_digest": bound["task_contract_digest"],
-            "repository_tree_id": bound["repository_tree_id"],
+            "task_contract_digest": contract_digest,
+            "repository_tree_id": repository_tree_id,
         },
         "predecessor": {
             **predecessor,

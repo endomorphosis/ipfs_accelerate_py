@@ -6204,6 +6204,12 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
             )
             timeout = float(kwargs.get("timeout", 180))
 
+            reasoning_effort = kwargs.get("reasoning_effort")
+            if reasoning_effort is not None and reasoning_effort not in {
+                "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"
+            }:
+                raise ValueError("unsupported Codex reasoning_effort")
+
             trace_jsonl_path = kwargs.pop("trace_jsonl_path", None)
             trace_dir = kwargs.pop("trace_dir", None)
             trace_enabled = bool(kwargs.pop("trace", False) or trace_jsonl_path or trace_dir)
@@ -6226,6 +6232,8 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
                 cmd.extend(["--sandbox", sandbox])
             if model:
                 cmd.extend(["-m", model])
+            if reasoning_effort is not None:
+                cmd.extend(["-c", "model_reasoning_effort=" + reasoning_effort])
             cmd.extend(["--output-last-message", last_msg_path])
             if json_mode:
                 cmd.append("--json")
@@ -6241,7 +6249,33 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
                     timeout=timeout,
                 )
             except FileNotFoundError as exc:
+                try:
+                    os.unlink(last_msg_path)
+                except OSError:
+                    pass
                 raise LLMRouterError("codex CLI not found on PATH") from exc
+            except subprocess.TimeoutExpired as exc:
+                # A timed-out CLI may already have incurred usage. Preserve
+                # its native thread identity/partial accounting for the
+                # caller; do not turn a timeout into an observed exit code.
+                from .cli_runtime.cli_metadata import remember_cli_run
+
+                def partial_text(value):
+                    return value.decode("utf-8", errors="replace") if isinstance(value, bytes) else str(value or "")
+
+                try:
+                    remember_cli_run(
+                        "codex_cli", partial_text(exc.stdout), partial_text(exc.stderr),
+                        extra={"model_id": model, "timed_out": True,
+                               "session_id": resume_session_id,
+                               "reasoning_effort": reasoning_effort},
+                    )
+                finally:
+                    try:
+                        os.unlink(last_msg_path)
+                    except OSError:
+                        pass
+                raise
 
             try:
                 with open(last_msg_path, "r", encoding="utf-8", errors="replace") as handle:
@@ -6265,6 +6299,7 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
                         "model_id": model,
                         "exit_code": proc.returncode,
                         "session_id": resume_session_id,
+                        "reasoning_effort": reasoning_effort,
                     },
                 )
             except Exception:

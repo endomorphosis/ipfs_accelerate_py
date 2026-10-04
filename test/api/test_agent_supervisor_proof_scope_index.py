@@ -4,9 +4,13 @@ from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.task_sources.dataset_store import ObjectiveDatasetStore
 from ipfs_accelerate_py.agent_supervisor.proof.proof_scope_index import (
+    IndexedObligation,
+    IndexedReceipt,
     ProofInputKind,
+    ProofScopeKey,
     ProofScopeIndex,
     build_proof_scope_index,
+    update_proof_scope_index,
 )
 
 
@@ -142,6 +146,48 @@ def test_explicit_template_toolchain_and_policy_changes_invalidate_dependents() 
     )
     assert toolchain_changed.active_obligation_ids == ()
     assert policy_changed.active_receipt_ids == ()
+
+
+def test_canonical_scope_keys_survive_typed_and_serialized_index_rebuilds() -> None:
+    keys = tuple(ProofScopeKey(kind, value) for kind, value in (
+        (ProofInputKind.FILE, "src/contract.py"),
+        (ProofInputKind.POLICY, "policy:reviewed-v1"),
+        (ProofInputKind.PREMISE, "contract:source-bound"),
+        (ProofInputKind.TEMPLATE, "template:guard-v1"),
+        (ProofInputKind.TOOLCHAIN, "toolchain:actual-kernel"),
+        (ProofInputKind.PROGRAM_SNAPSHOT, "candidate:exact-bytes"),
+    ))
+    obligation = IndexedObligation("obligation:guard", (), keys, ())
+    receipt = IndexedReceipt("receipt:checked", obligation.obligation_id, (), keys)
+    original = build_proof_scope_index(obligations=(obligation,), receipts=(receipt,))
+    hydrated = ProofScopeIndex.from_json(original.to_json())
+    typed_rebuild = update_proof_scope_index(hydrated, obligations=hydrated.obligations,
+        receipts=hydrated.receipts)
+    serialized_rebuild = build_proof_scope_index(
+        obligations=(item.to_dict() for item in hydrated.obligations),
+        receipts=(item.to_dict() for item in hydrated.receipts),
+    )
+    for index in (original, hydrated, typed_rebuild, serialized_rebuild):
+        assert set(index.obligations[0].scope_keys) == set(keys)
+        assert set(index.receipts[0].scope_keys) == set(keys)
+        assert index.active_receipt_ids == (receipt.receipt_id,)
+        for key in keys:
+            invalidated = index.invalidate((key,))
+            assert invalidated.active_receipt_ids == (), key
+            assert invalidated.active_obligation_ids == (), key
+            assert invalidated.receipts == index.receipts  # retained for audit
+
+
+def test_receipt_only_canonical_dependency_is_retained_alongside_aliases() -> None:
+    key = ProofScopeKey(ProofInputKind.TOOLCHAIN, "toolchain:receipt-only")
+    index = build_proof_scope_index(
+        obligations=({"obligation_id": "obligation:guard", "policy_id": "policy:declared"},),
+        receipts=({"receipt_id": "receipt:guard", "obligation_id": "obligation:guard",
+                   "scope_keys": [key.to_dict()]},),
+    )
+    assert key in index.receipts[0].scope_keys
+    assert ProofScopeKey(ProofInputKind.POLICY, "policy:declared") in index.receipts[0].scope_keys
+    assert index.invalidate((key,)).active_receipt_ids == ()
 
 
 def test_blob_cache_reuses_unchanged_content_and_rename_invalidates_old_path() -> None:

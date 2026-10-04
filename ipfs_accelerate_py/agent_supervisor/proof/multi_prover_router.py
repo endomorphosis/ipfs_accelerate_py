@@ -20,7 +20,7 @@ import threading
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Any, Protocol
 
@@ -53,6 +53,11 @@ from .prover_conformance import (
     gate_prover_path,
 )
 from .prover_matrix_registry import ProverMatrixEntry, ProverMatrixSnapshot
+from .multi_prover_resources import (
+    MultiProverResourceLease,
+    admit_portfolio_lane,
+    portfolio_lane_resource_request,
+)
 
 MULTI_PROVER_ROUTER_VERSION = 1
 PROPERTY_OBLIGATION_SCHEMA = (
@@ -663,6 +668,7 @@ class AttemptRequest:
     lane: ProverLane
     prior_attempts: tuple[Mapping[str, Any], ...]
     timeout_seconds: float
+    resource_lease: Any = field(default=None, repr=False, compare=False)
 
     @property
     def prover_id(self) -> str:
@@ -992,7 +998,14 @@ class _LaneGate:
 
 
 class MultiProverRouter:
-    """Plan and execute reviewed multi-prover portfolios."""
+    """Plan and execute reviewed multi-prover portfolios.
+
+    An optional supervisor lease accounts each running lane; explicit
+    ``resource_memory_bytes`` adds a per-lane memory reservation. This is not
+    a datasets scheduler bridge or a native memory limit. Runners retain
+    responsibility for bounded execution, cancellation and joining their
+    children before returning.
+    """
 
     def __init__(
         self,
@@ -1003,6 +1016,8 @@ class MultiProverRouter:
         quarantine_registry: ProverQuarantineRegistry | None = None,
         maximum_evidence_bytes: int = DEFAULT_MAX_EVIDENCE_BYTES,
         monotonic: Callable[[], float] | None = None,
+        resource_lease: MultiProverResourceLease | None = None,
+        resource_memory_bytes: int = 0,
     ) -> None:
         source = policies or DEFAULT_PROPERTY_POLICIES
         normalized: dict[PropertyKind, PropertyPolicy] = {}
@@ -1038,6 +1053,14 @@ class MultiProverRouter:
             raise ContractValidationError("maximum_evidence_bytes must be positive")
         self._maximum_evidence_bytes = maximum_evidence_bytes
         self._monotonic = monotonic or time.monotonic
+        if resource_lease is not None and not isinstance(resource_lease, MultiProverResourceLease):
+            raise ContractValidationError("resource_lease must be a supervisor MultiProverResourceLease")
+        if type(resource_memory_bytes) is not int or resource_memory_bytes < 0:
+            raise ContractValidationError("resource_memory_bytes must be a nonnegative integer")
+        if resource_memory_bytes and resource_lease is None:
+            raise ContractValidationError("resource_memory_bytes requires resource_lease")
+        self._resource_lease = resource_lease
+        self._resource_memory_bytes = resource_memory_bytes
 
     @property
     def policies(self) -> Mapping[PropertyKind, PropertyPolicy]:
@@ -1184,11 +1207,39 @@ class MultiProverRouter:
         cancellation: threading.Event,
     ) -> tuple[ProverOutput, int]:
         started = self._monotonic()
+        child, execution_held = None, False
         try:
-            raw = runner(request, cancellation)
-            output = ProverOutput.from_value(
-                raw, maximum_evidence_bytes=self._maximum_evidence_bytes
-            )
+            if self._resource_lease is not None:
+                admission, child = admit_portfolio_lane(
+                    self._resource_lease,
+                    portfolio_lane_resource_request(
+                        plan_id=request.plan_id, prover_id=request.prover_id,
+                        role=request.lane.role, memory_bytes=self._resource_memory_bytes,
+                    ),
+                    cancellation=cancellation,
+                    deadline_monotonic=started + request.timeout_seconds,
+                )
+                if not admission.admitted:
+                    return ProverOutput(
+                        AttemptOutcome.BLOCKED,
+                        "resource policy denied: " + ", ".join(admission.reasons),
+                    ), max(0, round((self._monotonic() - started) * 1000))
+                assert child is not None
+                execution_held = child._hold_execution()
+                if not execution_held:
+                    cancellation.set()
+                child.set_terminator(cancellation.set)
+                request = replace(request, resource_lease=child,
+                    timeout_seconds=max(0, request.timeout_seconds - (self._monotonic() - started)))
+            if cancellation.is_set():
+                output = ProverOutput(AttemptOutcome.CANCELLED, "cancelled before prover runner")
+            elif request.timeout_seconds <= 0:
+                output = ProverOutput(AttemptOutcome.TIMEOUT, "deadline elapsed during prover admission")
+            else:
+                raw = runner(request, cancellation)
+                output = ProverOutput.from_value(
+                    raw, maximum_evidence_bytes=self._maximum_evidence_bytes
+                )
         except ContractValidationError as exc:
             output = ProverOutput(
                 AttemptOutcome.MALFORMED,
@@ -1205,6 +1256,14 @@ class MultiProverRouter:
                 AttemptOutcome.ERROR,
                 f"prover runner {type(exc).__name__}: {exc}",
             )
+        finally:
+            if child is not None:
+                # The runner owns and joins its native children. Portfolio
+                # timeout can return first, but root close cannot reclaim this
+                # grant until the runner has really returned.
+                child.release()
+                if execution_held:
+                    child._finish_execution()
         return output, max(0, round((self._monotonic() - started) * 1000))
 
     @staticmethod
@@ -1228,6 +1287,7 @@ class MultiProverRouter:
         output: ProverOutput,
         duration_ms: int,
         *,
+        obligation: PropertyObligation,
         cancellation_requested: bool = False,
     ) -> PortfolioAttempt:
         reported = output.outcome
@@ -1237,7 +1297,28 @@ class MultiProverRouter:
         # marks it conclusive it is sufficient to reject the universal claim,
         # even when produced by an ATP/SMT candidate lane.
         conclusive = output.conclusive
-        if cancellation_requested and reported is not AttemptOutcome.COUNTEREXAMPLE:
+        evidence, detail, failure = dict(output.evidence), output.detail, ""
+        try:
+            if reported is AttemptOutcome.COUNTEREXAMPLE:
+                evidence, failure = project_counterexample_evidence(obligation, evidence)
+            if reported in (AttemptOutcome.CANDIDATE, AttemptOutcome.VERIFIED, AttemptOutcome.COUNTEREXAMPLE):
+                failure = failure or _binding_version_failure(obligation, evidence)
+            evidence = _strict_json_size(evidence, self._maximum_evidence_bytes)
+        except (ContractValidationError, TypeError, ValueError) as exc:
+            failure = f"malformed prover binding: {exc}"
+            effective = AttemptOutcome.MALFORMED
+            evidence = dict(output.evidence)
+        if failure:
+            if effective is not AttemptOutcome.MALFORMED:
+                effective = (AttemptOutcome.UNKNOWN if reported is AttemptOutcome.COUNTEREXAMPLE
+                             else AttemptOutcome.MALFORMED)
+            conclusive = False
+            detail = "; ".join(value for value in (detail, failure) if value)
+        elif (reported in (AttemptOutcome.CANDIDATE, AttemptOutcome.VERIFIED, AttemptOutcome.COUNTEREXAMPLE)
+              and self._resource_lease is not None and (
+            self._resource_lease.cancellation.is_set()
+            or self._resource_lease.remaining_wall_time_seconds == 0
+        )) or (cancellation_requested and reported is not AttemptOutcome.COUNTEREXAMPLE):
             effective = AttemptOutcome.CANCELLED
             conclusive = False
         elif reported is AttemptOutcome.VERIFIED and not gate.authoritative:
@@ -1253,8 +1334,8 @@ class MultiProverRouter:
             effective_outcome=effective,
             authoritative=gate.authoritative,
             conclusive=conclusive,
-            detail=output.detail,
-            evidence=output.evidence,
+            detail=detail,
+            evidence=evidence,
             duration_ms=duration_ms,
             capability_receipt_id=gate.receipt_id,
             conformance_gate_id=(
@@ -1278,6 +1359,10 @@ class MultiProverRouter:
         policy = self.policy_for(plan.obligation.property_kind)
         started = self._monotonic()
         deadline = started + policy.timeout_seconds
+        if self._resource_lease is not None:
+            remaining_root = self._resource_lease.remaining_wall_time_seconds
+            if remaining_root is not None:
+                deadline = min(deadline, started + remaining_root)
         gates = {lane.prover_id: self._lane_gate(lane, policy) for lane in plan.lanes}
         records: dict[str, PortfolioAttempt] = {}
         global_cancel = threading.Event()
@@ -1306,7 +1391,8 @@ class MultiProverRouter:
                     if not gate.runnable:
                         outcome = gate.outcome or AttemptOutcome.UNSUPPORTED
                         records[lane.prover_id] = self._attempt_from_output(
-                            lane, gate, ProverOutput(outcome, gate.detail), 0
+                            lane, gate, ProverOutput(outcome, gate.detail), 0,
+                            obligation=plan.obligation,
                         )
                         continue
                     if lane.requires_candidate and not has_candidate:
@@ -1318,6 +1404,7 @@ class MultiProverRouter:
                                 "reconstruction requires a successful solver candidate",
                             ),
                             0,
+                            obligation=plan.obligation,
                         )
                         continue
                     remaining = deadline - self._monotonic()
@@ -1326,6 +1413,7 @@ class MultiProverRouter:
                             lane, gate,
                             ProverOutput(AttemptOutcome.TIMEOUT, "portfolio deadline expired"),
                             0,
+                            obligation=plan.obligation,
                         )
                         continue
                     request = AttemptRequest(
@@ -1358,7 +1446,9 @@ class MultiProverRouter:
                         lane = futures[future]
                         output, duration_ms = future.result()
                         attempt = self._attempt_from_output(
-                            lane, gates[lane.prover_id], output, duration_ms
+                            lane, gates[lane.prover_id], output, duration_ms,
+                            obligation=plan.obligation,
+                            cancellation_requested=cancellation[lane.prover_id].is_set(),
                         )
                         records[lane.prover_id] = attempt
                         if attempt.conclusive:
@@ -1391,6 +1481,7 @@ class MultiProverRouter:
                             gates[lane.prover_id],
                             ProverOutput(outcome, detail),
                             0,
+                            obligation=plan.obligation,
                             cancellation_requested=True,
                         )
                     else:
@@ -1400,7 +1491,9 @@ class MultiProverRouter:
                             gates[lane.prover_id],
                             output,
                             duration_ms,
-                            cancellation_requested=global_cancel.is_set(),
+                            obligation=plan.obligation,
+                            cancellation_requested=(global_cancel.is_set()
+                                                    or cancellation[lane.prover_id].is_set()),
                         )
         finally:
             executor.shutdown(wait=False, cancel_futures=True)
@@ -1417,6 +1510,7 @@ class MultiProverRouter:
                         "cancelled after conclusive counterexample",
                     ),
                     0,
+                    obligation=plan.obligation,
                     cancellation_requested=True,
                 )
         attempts = tuple(records[lane.prover_id] for lane in plan.lanes)
@@ -2080,7 +2174,7 @@ def project_counterexample_evidence(
         bounds = expected_bounds
     else:
         bounds = _mapping(supplied_bounds, "finite_bounds")
-        if expected_bounds and bounds != expected_bounds:
+        if expected_bounds and content_identity(bounds) != content_identity(expected_bounds):
             return projected, "counterexample_bounds_disagree_with_obligation"
     projected["ast_scope_ids"] = list(scope)
     projected["finite_bounds"] = dict(bounds)
@@ -2092,27 +2186,19 @@ def _binding_version_failure(
 ) -> str:
     """Reject stale environment or version certificates on a claimed success."""
 
-    metadata = obligation.metadata
-    expected_lock = str(
-        metadata.get("environment_lock_id") or metadata.get("toolchain_id") or ""
-    ).strip()
-    claimed_lock = str(
-        evidence.get("environment_lock_id") or evidence.get("toolchain_id") or ""
-    ).strip()
-    if expected_lock and claimed_lock and expected_lock != claimed_lock:
-        return "stale_environment_lock"
-    expected_version = str(
-        metadata.get("kernel_version") or metadata.get("itp_version") or ""
-    ).strip()
-    claimed_version = str(
-        evidence.get("kernel_version") or evidence.get("itp_version") or ""
-    ).strip()
-    if expected_version and claimed_version and expected_version != claimed_version:
-        return "stale_kernel_version"
-    expected_statement = str(metadata.get("statement_digest") or "").strip()
-    claimed_statement = str(evidence.get("statement_digest") or "").strip()
-    if expected_statement and claimed_statement and expected_statement != claimed_statement:
-        return "stale_statement_receipt"
+    for fields, failure in (
+        (("environment_lock_id", "toolchain_id"), "stale_environment_lock"),
+        (("kernel_version", "itp_version"), "stale_kernel_version"),
+        (("statement_digest",), "stale_statement_receipt"),
+    ):
+        expected = {_text(obligation.metadata[key], key, required=False)
+                    for key in fields if obligation.metadata.get(key) is not None}
+        claimed = {_text(evidence[key], key, required=False)
+                   for key in fields if evidence.get(key) is not None}
+        expected.discard("")
+        claimed.discard("")
+        if len(expected) > 1 or len(claimed) > 1 or (expected and claimed and expected != claimed):
+            return failure
     return ""
 
 
@@ -2439,4 +2525,3 @@ def derive_authoritative_disposition(result: PortfolioResult) -> AuthoritativeDi
         checker_trace_ids=tuple(item.content_id for item in checkers),
         counterexample_trace_ids=tuple(item.content_id for item in counterexamples),
     )
-

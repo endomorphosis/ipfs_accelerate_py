@@ -115,7 +115,11 @@ def _to_millionths(value: int | float | Decimal) -> int:
 
 @dataclass(frozen=True)
 class PlanBranch:
-    """One schema-validated candidate implementation for a subgoal."""
+    """One schema-validated candidate implementation for a subgoal.
+
+    Empty proof references retain candidate status; a policy requiring proof
+    rejects them during evidence-aware evaluation.
+    """
 
     branch_id: str
     summary: str
@@ -161,7 +165,7 @@ class PlanBranch:
         object.__setattr__(
             self,
             "validation_proof",
-            _string_tuple(self.validation_proof, "validation_proof"),
+            _string_tuple(self.validation_proof, "validation_proof", allow_empty=True),
         )
         object.__setattr__(
             self,
@@ -324,7 +328,6 @@ PLAN_BRANCH_JSON_SCHEMA: dict[str, Any] = {
                     },
                     "validation_proof": {
                         "type": "array",
-                        "minItems": 1,
                         "items": {"type": "string"},
                     },
                     "estimated_cost": {"type": "number", "minimum": 0},
@@ -1295,6 +1298,10 @@ class EvidenceAwarePlanCandidate:
     to evidence the caller has already inspected; evaluation still intersects
     them with the frozen policy's trusted sets rather than treating a model's
     self-report as authority.
+
+    ``dependencies`` and ``critical_path`` identify prerequisites that must
+    already be externally observed. Internal task ordering remains in the
+    branch declaration and the symbolic planner's checked schedule.
     """
 
     branch: PlanBranch
@@ -1981,7 +1988,9 @@ def _assess_evidence_aware_plan(
     validation_failures: tuple[str, ...] = ()
     if policy.require_validation and not candidate.validation_feasible:
         validation_failures += ("validation commands are not feasible",)
-    if policy.require_proof and not candidate.proof_feasible:
+    if policy.require_proof and (
+        not candidate.proof_feasible or not candidate.branch.validation_proof
+    ):
         validation_failures += ("required proof is not feasible",)
 
     novelty_failures = (

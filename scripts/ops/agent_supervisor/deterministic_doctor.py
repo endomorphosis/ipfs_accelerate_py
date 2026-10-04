@@ -73,6 +73,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Exact repository checkout root for runtime-backed operations",
     )
     parser.add_argument(
+        "--runtime-contracts-only", action="store_true",
+        help="Inspect bounded intent exports and adapter methods without importing target code",
+    )
+    parser.add_argument(
         "--policy-json",
         default=None,
         help="Path to a deterministic-doctor policy JSON object (body-free)",
@@ -251,6 +255,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_USAGE
 
     try:
+        if args.runtime_contracts_only:
+            if args.command != "inspect" or not args.checkout_root:
+                print("error: --runtime-contracts-only requires inspect and --checkout-root", file=sys.stderr)
+                return EXIT_USAGE
+            from ipfs_accelerate_py.agent_supervisor.analysis.doctor_runtime_contracts import inspect_runtime_contracts
+            payload = inspect_runtime_contracts(args.checkout_root)
+            sys.stdout.write(json.dumps(payload, sort_keys=True, indent=2) + "\n")
+            return EXIT_SUCCESS if payload["status"] == "passed" else EXIT_FAILURE
         policy_payload = _load_json_object(args.policy_json, "policy")
         if args.command == "discovery":
             service = _bootstrap_service(policy_payload)

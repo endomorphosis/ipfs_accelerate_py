@@ -51,6 +51,7 @@ class Operation(str, Enum):
     TEXT_GENERATE = "text.generate"
     TEXT_CHAT = "text.chat"
     EMBEDDING_GENERATE = "embedding.generate"
+    SECURITY_ADVISE = "security.advise"
     VISION_GENERATE = "vision.generate"
     AUDIO_TRANSCRIBE = "audio.transcribe"
     AUDIO_SYNTHESIZE = "audio.synthesize"

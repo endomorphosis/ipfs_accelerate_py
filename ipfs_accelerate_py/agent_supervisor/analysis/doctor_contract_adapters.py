@@ -770,7 +770,16 @@ def adapt_diagnostic_finding_to_deterministic(
         open_frontier_refs=finding.open_frontier_refs,
         diagnostic_ref=finding.finding_cid,
         reason_codes=reason_codes,
-        affected_symbol_refs=(finding.symbol,) if finding.symbol else (),
+        # Diagnostic symbols may be expressions rather than identifiers. Keep
+        # their exact text in the diagnostic overlay, and bind a compact CID
+        # at the deterministic contract boundary. Existing compact refs survive.
+        affected_symbol_refs=(
+            (
+                content_identity({"schema": "doctor-symbol-ref@1", "symbol": finding.symbol})
+                if any(char.isspace() for char in finding.symbol)
+                else finding.symbol
+            ),
+        ) if finding.symbol else (),
         change_ref=finding.path or "",
         evidence_role=det.DoctorEvidenceRole.OBSERVED_FACT,
         invalidation_refs=(det_roots.tree_id,),
@@ -1252,6 +1261,39 @@ def adapt_diagnostic_snapshot_to_deterministic(
         invalidation_refs=invalidation,
         clean_rebuild_equivalence_receipt_id="",
     )
+
+
+def materialize_runtime_diagnostics(
+    snapshot: diag.DoctorEvidenceSnapshot, *, require_repository_id: str = ""
+) -> tuple[det.DoctorEvidenceSnapshot, tuple[det.DeterministicDoctorFinding, ...], str]:
+    """Materialize bounded finding records without duplicating their payloads.
+
+    The live diagnostic snapshot retains the lossless source representation.
+    Runtime composition binds a compact manifest to that exact snapshot and to
+    each individually validated FindingBridge. Portable SnapshotBridge callers
+    retain their existing serialization contract and size limits.
+    """
+    projected = adapt_diagnostic_snapshot_to_deterministic(
+        snapshot, require_repository_id=require_repository_id
+    )
+    findings = []
+    bridge_ids = []
+    for finding in snapshot.findings:
+        bridge = FindingBridge.bridge(
+            finding, roots=projected.roots, snapshot_id=projected.snapshot_id,
+            require_repository_id=require_repository_id,
+        )
+        findings.append(bridge.materialize_deterministic())
+        bridge_ids.append(bridge.content_id)
+    manifest = {
+        "schema": "ipfs-accelerate.doctor-runtime-diagnostic-manifest@1",
+        "repository_id": projected.roots.repository_id,
+        "diagnostic_snapshot_cid": snapshot.snapshot_cid,
+        "deterministic_snapshot_cid": projected.content_id,
+        "finding_bridge_cids": bridge_ids,
+    }
+    _bounded_dict(manifest, "runtime diagnostic manifest")
+    return projected, tuple(findings), content_identity(manifest)
 
 
 def portable_diagnostic_snapshot_projection(

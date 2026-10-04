@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import importlib
 import json
@@ -309,6 +310,7 @@ def launch_process_child(
     start_new_session: bool = True,
     text: bool = False,
     pass_fds: Sequence[int] = (),
+    dispatch_binding: Mapping[str, object] | None = None,
 ) -> subprocess.Popen[Any]:
     """Launch a supervisor-owned child process with normalized runtime defaults."""
 
@@ -333,7 +335,35 @@ def launch_process_child(
         _rewind_inherited_pass_fds(normalized_pass_fds)
     if text:
         kwargs["text"] = True
-    return subprocess.Popen([str(part) for part in command], **kwargs)
+    literal = [str(part) for part in command]
+    proof_flags = ("--finite-proof-query-context", "--finite-proof-query-sha256", "--finite-proof-query-context-cid")
+    if not any(part == flag or part.startswith(flag + "=") for part in literal for flag in proof_flags):
+        return subprocess.Popen(literal, **kwargs)
+    from ..runtime.finite_proof_query_worker_dispatch import require_finite_proof_query_worker_dispatch
+    guard = require_finite_proof_query_worker_dispatch(command=literal, worktree=cwd,
+        environment=child_env, dispatch_binding=dispatch_binding)
+    # The owner grants one exact wrapper birth, then a separate isolated-worker
+    # fence. A missing broker must fail before the native provider is spawned.
+    kwargs["env"] = {**child_env, **guard.child_environment()}
+    process = None
+    try:
+        process = subprocess.Popen(literal, **kwargs)
+        guard.note_spawned(process)
+        return process
+    except BaseException:
+        if process is not None:
+            # Birth succeeded: fence and reap this actual group even when ACK
+            # fails before the caller can install its on_started callback.
+            birth = read_process_birth(process.pid)
+            fenced = terminate_pid_tree(process.pid, grace_seconds=5.0,
+                freeze_first=True, require_gone=True,
+                owned_process_group_id=process.pid if start_new_session else None,
+                expected_root_start_time_ticks=birth.start_time_ticks if birth is not None else None)
+            process.wait(timeout=5.0)
+            if not fenced:
+                raise RuntimeError("proof-query dispatch ACK failure could not be fenced")
+        guard.abort()
+        raise
 
 
 class SupervisorRuntimeEnsureCallback(Protocol):
@@ -998,6 +1028,13 @@ class ProcessGroupCancelled(RuntimeError):
         super().__init__(self.reason)
 
 
+class ProcessGroupCleanupUnverified(RuntimeError):
+    """The owned process group has not been proved absent after cleanup."""
+
+    def __init__(self) -> None:
+        super().__init__("process group cleanup unverified")
+
+
 def run_process_group_capture(
     command: Sequence[str],
     *,
@@ -1098,6 +1135,7 @@ def run_process_group_stream(
     termination_grace_seconds: float = 5.0,
     text: bool = True,
     pass_fds: Sequence[int] = (),
+    dispatch_binding: Mapping[str, object] | None = None,
 ) -> subprocess.CompletedProcess[Any]:
     """Run a streamed child in an owned process group and fence it on timeout.
 
@@ -1177,6 +1215,7 @@ def run_process_group_stream(
         start_new_session=True,
         text=text,
         pass_fds=pass_fds,
+        **({"dispatch_binding": dispatch_binding} if dispatch_binding is not None else {}),
     )
     callback_failure_cleaned = False
     try:
@@ -1400,24 +1439,34 @@ def run_process_group_stream(
         try:
             os.killpg(process.pid, 0)
             return True
-        except ProcessLookupError:
-            return False
-        except OSError:
-            return False
+        except OSError as error:
+            if error.errno == errno.ESRCH:
+                return False
+            raise ProcessGroupCleanupUnverified() from None
+
+    def signal_group(signum: int) -> bool:
+        try:
+            os.killpg(process.pid, signum)
+            return True
+        except OSError as error:
+            if error.errno == errno.ESRCH:
+                return False
+            raise ProcessGroupCleanupUnverified() from None
+
+    def wait_for_group_absence(wait_seconds: float) -> bool:
+        deadline = time.monotonic() + wait_seconds
+        while group_alive():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            time.sleep(min(0.02, remaining))
+        return True
 
     if group_alive():
-        try:
-            os.killpg(process.pid, signal.SIGTERM)
-        except OSError:
-            pass
-        deadline = time.monotonic() + max(0.0, float(termination_grace_seconds))
-        while group_alive() and time.monotonic() < deadline:
-            time.sleep(0.02)
-        if group_alive():
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except OSError:
-                pass
+        grace = max(0.0, float(termination_grace_seconds))
+        if signal_group(signal.SIGTERM) and not wait_for_group_absence(grace):
+            if signal_group(signal.SIGKILL) and not wait_for_group_absence(max(0.1, grace)):
+                raise ProcessGroupCleanupUnverified()
     return subprocess.CompletedProcess(
         args=list(command),
         returncode=int(process.returncode or 0),

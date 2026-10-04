@@ -101,10 +101,11 @@ def _text(
     *,
     required: bool = True,
     max_bytes: int = ABSOLUTE_MAX_TEXT_BYTES,
+    preserve_whitespace: bool = False,
 ) -> str:
     if not isinstance(value, str):
         raise ContextContractError(f"{name} must be a string")
-    result = value.strip()
+    result = value if preserve_whitespace else value.strip()
     if required and not result:
         raise ContextContractError(f"{name} must not be empty")
     if "\x00" in result:
@@ -611,7 +612,11 @@ class ContextReference(_ContextCanonicalContract):
             object.__setattr__(
                 self,
                 name,
-                _text(values[name], name, required=required),
+                # Evidence summaries can be adjoining chunks of source or
+                # serialized JSON. Boundary whitespace is part of their
+                # content identity, not identifier normalization.
+                _text(values[name], name, required=required,
+                      preserve_whitespace=name == "summary"),
             )
         object.__setattr__(self, "tier", _enum(tier, ContextTier, "tier"))
         object.__setattr__(self, "path", _relative_path(path, "path", required=False))

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import subprocess
 from pathlib import Path
@@ -65,6 +66,23 @@ def _repo(tmp_path: Path, files: dict[str, bytes]) -> Path:
 
 def _hash(body: bytes) -> str:
     return "sha256:" + hashlib.sha256(body).hexdigest()
+
+
+def _validate_python_candidate(session, plan, step):
+    """The live durability fixtures require candidate syntax validation."""
+    from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import content_identity
+
+    hashes = {}
+    for path in plan.permitted_read_paths:
+        body = (session.worktree_root / path).read_bytes()
+        ast.parse(body, filename=path)
+        hashes[path] = _hash(body)
+    return DoctorStepApplyResult(
+        disposition=DoctorStepDisposition.PASSED,
+        diagnostic_refs=(content_identity({"validation": "python-ast", "step_id": step.step_id,
+                                          "validation_refs": list(step.validation_refs), "source_hashes": hashes}),),
+        static_replay=True,
+    )
 
 
 def _roots() -> DoctorAuthorityRoots:
@@ -260,6 +278,7 @@ def test_live_transaction_owns_checkpoint_complete_scc_and_ref_cas(
     )
     report = DeterministicDoctorTransaction().execute_live(
         plan,
+        step_validator=_validate_python_candidate,
         worktree_adapter=_adapter(
             root, tmp_path / "state", tuple(before)
         ),
@@ -301,6 +320,7 @@ def test_incomplete_scc_edit_set_is_rejected_before_worktree_creation(
     with pytest.raises(Exception, match="cover.*complete|complete exact"):
         DeterministicDoctorTransaction().execute_live(
             plan,
+            step_validator=_validate_python_candidate,
             worktree_adapter=adapter,
             edits=(
                 DoctorExactEdit(
@@ -331,6 +351,7 @@ def test_failure_inside_atomic_scc_restores_all_candidate_bytes_and_ref(
     with pytest.raises(DoctorWorktreeTamperError, match="before_hash"):
         DeterministicDoctorTransaction().execute_live(
             plan,
+            step_validator=_validate_python_candidate,
             worktree_adapter=adapter,
             edits=edits,
             target_ref="refs/heads/main",
@@ -355,6 +376,7 @@ def test_crash_after_ref_cas_restores_exact_ref_and_bytes(tmp_path: Path) -> Non
     plan = _plan(before)
     report = DeterministicDoctorTransaction().execute_live(
         plan,
+        step_validator=_validate_python_candidate,
         worktree_adapter=_adapter(
             root, tmp_path / "state", tuple(before), fault=crash
         ),
@@ -393,6 +415,7 @@ def test_tamper_after_durable_group_is_detected_and_restored(tmp_path: Path) -> 
     adapter_holder["adapter"] = adapter
     report = DeterministicDoctorTransaction().execute_live(
         _plan(before),
+        step_validator=_validate_python_candidate,
         worktree_adapter=adapter,
         edits=(
             DoctorExactEdit(

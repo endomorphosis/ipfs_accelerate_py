@@ -116,6 +116,23 @@ def test_interface_constant() -> None:
     assert DIAGNOSIS_OBLIGATION_BRIDGE_INTERFACE == "DiagnosisObligationBridge@1"
 
 
+@pytest.mark.parametrize("symbol", ["left + right", "left\tright", "left\u2003right"])
+def test_expression_symbols_have_compact_refs_and_lossless_overlay(symbol):
+    finding = _diag_finding(symbol=symbol)
+    projected = adapt_diagnostic_finding_to_deterministic(
+        finding, roots=_diag_roots(), snapshot_id="snapshot:expression"
+    )
+    assert len(projected.affected_symbol_refs) == 1
+    assert not any(c.isspace() for c in projected.affected_symbol_refs[0])
+    restored = adapt_deterministic_finding_to_diagnostic(
+        projected, diagnostic_overlay=finding._payload()
+    )
+    assert restored.finding_cid == finding.finding_cid
+    assert restored.symbol == symbol
+    assert projected.observed_fact_refs == finding.observation_refs
+    assert projected.expected_behavior_refs == (finding.expectation_ref,)
+
+
 def test_authority_root_bridge_round_trip() -> None:
     diag = _diag_roots()
     det = adapt_diagnostic_roots_to_deterministic(diag)
@@ -462,3 +479,29 @@ def test_schemas_are_not_silently_aliased() -> None:
         "deterministic-doctor/finding@1"
     )
     assert finding.to_dict()["schema"] != det_finding.to_dict()["schema"]
+
+
+def test_runtime_manifest_preserves_all_findings_beyond_portable_bridge_bound():
+    from ipfs_accelerate_py.agent_supervisor.analysis.doctor_contract_adapters import (
+        DoctorContractAdapterBoundsError,
+        materialize_runtime_diagnostics,
+    )
+    from dataclasses import replace
+    # A real parsed snapshot plus many individually valid diagnostic records.
+    snapshot = diagnose_repository(
+        [DoctorSourceUnit(path="src/service.py", source_bytes=b"def f(): return 1\n", language="python")],
+        authority_roots=_diag_roots(),
+    )
+    snapshot = replace(snapshot, findings=tuple(
+        _diag_finding(symbol=f"dispatch_{i}", path=f"src/unit_{i}.py")
+        for i in range(100)
+    ))
+    with pytest.raises(DoctorContractAdapterBoundsError):
+        round_trip_diagnostic_snapshot(snapshot)
+    projected, findings, manifest = materialize_runtime_diagnostics(snapshot)
+    assert len(findings) == len(snapshot.findings) > 0
+    assert tuple(f.diagnostic_ref for f in findings) == tuple(f.finding_cid for f in snapshot.findings)
+    assert all(f.roots == projected.roots for f in findings)
+    assert materialize_runtime_diagnostics(snapshot)[2] == manifest
+    with pytest.raises(Exception, match='repository'):
+        materialize_runtime_diagnostics(snapshot, require_repository_id='repository:wrong')

@@ -326,6 +326,7 @@ def _record_id(record: Mapping[str, Any], fallback: str = "") -> str:
         "constraint_id",
         "assumption_id",
         "obligation_id",
+        "refinement_id",
         "consumer_id",
         "step_id",
         "task_id",
@@ -354,6 +355,7 @@ def _record_values(value: Any) -> tuple[dict[str, Any], ...]:
                 "effect_id",
                 "assumption_id",
                 "obligation_id",
+                "refinement_id",
                 "consumer_id",
                 "candidate_id",
                 "step_id",
@@ -1863,68 +1865,145 @@ class PlanCritic:
                     (unknown,),
                     core=True,
                 )
-            if graph_candidates:
-                for false_claim in sorted(
-                    claimed_symbolic_coverage - independently_covered
-                ):
-                    collector.add(
-                        PlanDefectKind.UNCOVERED_GOAL,
-                        f"candidate claims unproduced obligation {false_claim!r}",
-                        (false_claim,),
-                        witness={
-                            "claimed": false_claim,
-                            "independently_covered": sorted(
-                                independently_covered
-                            ),
-                        },
-                        core=True,
-                    )
-                covered.difference_update(claimed_symbolic_coverage)
-                covered.update(independently_covered)
-
             nodes = {
                 _record_id(item): item
                 for item in _record_values(graph.get("nodes"))
             }
-            refinements = {
-                _record_id(item): item
-                for item in _record_values(graph.get("refinements"))
-            }
             by_parent: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
-            for refinement in refinements.values():
-                by_parent[
-                    str(refinement.get("parent_obligation_id") or "")
-                ].append(refinement)
+            for refinement in _record_values(graph.get("refinements")):
+                by_parent[str(refinement.get("parent_obligation_id") or "")].append(refinement)
+            producers = {
+                str(item.get("producer_id") or ""): item
+                for item in _record_values(graph.get("producers"))
+            }
+            predicate_nodes: dict[str, set[str]] = defaultdict(set)
+            for node_id, node in nodes.items():
+                if str(node.get("kind") or "").casefold() != "producer":
+                    predicate_nodes[str(node.get("predicate_id") or "")].add(node_id)
 
-            def satisfied(obligation_id: str, visiting: frozenset[str]) -> bool:
-                if obligation_id in visiting:
-                    return False
-                node = nodes.get(obligation_id, {})
-                if str(node.get("status") or "").casefold() == "discharged":
-                    return True
-                next_visiting = visiting | {obligation_id}
-                records = by_parent.get(obligation_id, ())
-                for refinement in records:
-                    children = _ids(
-                        refinement.get("child_obligation_ids"),
-                        "child obligation id",
+            # A discharged label is a conclusion, not evidence. Replay the
+            # graph's typed fact semantics, truth, authority and source root.
+            from .obligation_graph_compiler import ObservedFact, TypedPredicate
+
+            predicates = {}
+            facts = []
+            try:
+                predicates = {item.predicate_id: item for item in (
+                    TypedPredicate.from_dict(row)
+                    for row in _record_values(graph.get("predicates"))
+                )}
+                facts = [ObservedFact.from_dict(row)
+                         for row in _record_values(graph.get("facts"))]
+            except (TypeError, ValueError, KeyError):
+                # Canonical schema replay reports malformed graph records;
+                # compact inspection mappings do not confer fact authority.
+                predicates, facts = {}, []
+            root_id = str(graph.get("current_root_id") or "")
+            authoritative = [fact for fact in facts if fact.authority.may_discharge
+                             and (not root_id or not fact.current_root_id
+                                  or fact.current_root_id == root_id)]
+            observed = set()
+            for predicate_id, predicate in predicates.items():
+                matching = [fact for fact in authoritative
+                            if fact.predicate.signed_key == predicate.signed_key]
+                refuted = any(fact.truth.value == "false" for fact in matching) or any(
+                    fact.truth.value == "true" and fact.predicate.is_opposite(predicate)
+                    for fact in authoritative
+                )
+                if not refuted and any(fact.truth.value == "true" for fact in matching):
+                    observed.update(predicate_nodes.get(predicate_id, ()))
+
+            for task_id in sorted(selected_task_ids & set(graph_candidates)):
+                declared_dependencies = set(_ids(
+                    graph_candidates[task_id].get("depends_on_candidate_ids"),
+                    "candidate dependency id",
+                ))
+                actual_dependencies = set(_ids(_field(
+                    tasks[task_id], "depends_on", "dependency_ids", "dependencies",
+                    "predecessor_ids", "requires", default=(),
+                ), "dependency id"))
+                for missing in sorted(declared_dependencies - actual_dependencies):
+                    collector.add(
+                        PlanDefectKind.ORPHAN_RECORD,
+                        f"selected task {task_id!r} drops declared dependency {missing!r}",
+                        (task_id, missing), core=True,
                     )
-                    kind = str(refinement.get("kind") or "").casefold()
-                    if kind == "or" and any(
-                        satisfied(child, next_visiting) for child in children
-                    ):
-                        return True
-                    if kind == "and" and all(
-                        satisfied(child, next_visiting) for child in children
-                    ):
-                        return obligation_id in independently_covered
-                return obligation_id in independently_covered
 
-            covered.update(
-                root
-                for root in graph_roots
-                if satisfied(root, frozenset())
-            )
+            # Compute the least closure iteratively. Cycles cannot discharge
+            # themselves, and selected producers cannot skip an AND premise.
+            independently_satisfied = set(observed)
+            if len(nodes) > self.bounds.max_records:
+                collector.add(PlanDefectKind.BOUND_EXCEEDED,
+                              "obligation coverage population exceeds critique bound",
+                              tuple(sorted(graph_roots)), core=True)
+            else:
+                for _ in range(len(nodes) + 1):
+                    additions = set()
+                    for node_id, node in nodes.items():
+                        if node_id in independently_satisfied:
+                            continue
+                        if str(node.get("status") or "").casefold() in {
+                            "blocked", "contradicted", "review",
+                        }:
+                            continue
+                        refinements = by_parent.get(node_id, ())
+                        kind = str(node.get("kind") or "").casefold()
+                        if kind == "producer":
+                            producer = producers.get(str(node.get("producer_id") or ""))
+                            if producer is None or str(node.get("predicate_id") or "") not in _ids(
+                                producer.get("effect_predicate_ids"), "effect predicate id",
+                            ):
+                                continue
+                            base = (node_id in independently_covered
+                                    or producer.get("executable") is False)
+                            requirements = _ids(producer.get("required_predicate_ids"),
+                                                "required predicate id")
+                            premises = all(
+                                bool(predicate_nodes.get(predicate_id))
+                                and bool(predicate_nodes[predicate_id] & independently_satisfied)
+                                for predicate_id in requirements
+                            )
+                            valid_refinements = all(
+                                str(refinement.get("kind") or "").casefold() == "and"
+                                and bool(_ids(refinement.get("child_obligation_ids"), "child obligation id"))
+                                and set(_ids(refinement.get("child_obligation_ids"), "child obligation id"))
+                                <= independently_satisfied
+                                for refinement in refinements
+                            )
+                            if base and premises and valid_refinements:
+                                additions.add(node_id)
+                        elif not refinements and node_id in independently_covered:
+                            additions.add(node_id)
+                        else:
+                            for refinement in refinements:
+                                children = set(_ids(refinement.get("child_obligation_ids"),
+                                                    "child obligation id"))
+                                refinement_kind = str(refinement.get("kind") or "").casefold()
+                                if children and (
+                                    refinement_kind == "or" and bool(children & independently_satisfied)
+                                    or refinement_kind == "and" and children <= independently_satisfied
+                                ):
+                                    additions.add(node_id)
+                                    break
+                    if not additions:
+                        break
+                    independently_satisfied.update(additions)
+
+            # Remove every graph-bound convenience claim before installing the
+            # closure derived from selected tasks and primitive evidence.
+            covered.difference_update(nodes)
+            covered.difference_update(graph_roots)
+            covered.difference_update(claimed_symbolic_coverage)
+            covered.update(independently_satisfied)
+            for false_claim in sorted(claimed_symbolic_coverage - independently_satisfied):
+                collector.add(
+                    PlanDefectKind.UNCOVERED_GOAL,
+                    f"candidate claims unproduced obligation {false_claim!r}",
+                    (false_claim,),
+                    witness={"claimed": false_claim,
+                             "independently_covered": sorted(independently_satisfied)},
+                    core=True,
+                )
         for item in sorted(required - covered):
             collector.add(
                 PlanDefectKind.UNCOVERED_GOAL,

@@ -19,6 +19,8 @@ Prompt workflow surfaces: directory scanning, goal planning hooks, plan admissio
 | --- | --- |
 | `prompt_directory_scanner` | `prompt/prompt_directory_scanner.py` |
 | `prompt_goal_planner` | `prompt/prompt_goal_planner.py` |
+| `intent_plan_coverage` | `prompt/intent_plan_coverage.py` |
+| `plan_create_service` | `prompt/plan_create_service.py` |
 | `prompt_plan_admission` | `prompt/prompt_plan_admission.py` |
 | `prompt_workflow` | `prompt/prompt_workflow.py` |
 
@@ -29,6 +31,22 @@ from ipfs_accelerate_py.agent_supervisor.prompt.<module> import ...
 ```
 
 Relative imports stay package-local (`from .<module> import ...`).
+
+`intent_plan_coverage` wraps the existing planner request with a source requirement
+ledger and independently authored output, validation, and dependency groundings.
+Its candidate coverage receipt binds the unchanged graph and canonical task CIDs.
+The receipt compares declared obligations; source translation, exact validation
+commands, execution authorization, and completion remain checked by their owners.
+Rich compounds, native action/control context, and native statement roles other
+than goals remain explicit unsupported execution scopes in this first bounded
+integration.
+
+Requirement contract version 2 additionally requires exact reviewed native
+operation bindings and selects the existing symbolic planner. Version 1 keeps
+the provider graph-plus-bindings route. `plan_create_service` snapshots complete
+supplied semantic materials in version 2 identities, checks mutation before
+cache reuse or persistence, and disables reuse for opaque live dependencies.
+Request-only snapshot version 1 stays compatible.
 
 ## Extending
 

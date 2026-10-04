@@ -2303,10 +2303,19 @@ class QuackStateClient:
         idempotency_key: str,
         command_id: str | None = None,
         body: Mapping[str, Any] | None = None,
+        expected_task_body_cid: str | None = None,
         expected_control_receipt: Mapping[str, Any] | None = None,
         evidence_digests: Sequence[str] | None = None,
     ) -> CASResult:
-        """Convenience CAS for task status using the closed template set."""
+        """CAS status with a full body or an owner-resolved receipt-only patch.
+
+        ``expected_task_body_cid`` opts a remote typed client into the bounded
+        patch contract: ``body`` then contains only ``completion_receipt`` (or
+        is empty to retain the current receipt). The owner verifies the exact
+        revision and prior body CID before applying its existing authority
+        checks to the resolved full body. Embedded callers retain full-body
+        semantics and cannot opt into this owner-only mode.
+        """
 
         requested_status = str(new_status or "").strip().lower()
         completing = body is not None and requested_status in _COMPLETED_TASK_STATUSES
@@ -2365,6 +2374,22 @@ class QuackStateClient:
             list(normalized_evidence_digests)
         ).decode("utf-8")
         session = self._require_session()
+        if expected_task_body_cid is not None:
+            if (
+                session.transport_mode is not TransportMode.QUACK
+                or type(expected_task_body_cid) is not str
+                or not expected_task_body_cid
+                or len(expected_task_body_cid) > 256
+                or body is None
+                or set(body_snapshot) - {"completion_receipt"}
+                or (
+                    "completion_receipt" in body_snapshot
+                    and not isinstance(body_snapshot["completion_receipt"], Mapping)
+                )
+            ):
+                raise QuackClientError(
+                    "receipt patch requires a typed owner, prior body CID and receipt-only body"
+                )
         live = self.load_generation()
         expected_control_receipt_json = (
             canonical_json_bytes(dict(expected_control_receipt)).decode("utf-8")
@@ -2393,6 +2418,14 @@ class QuackStateClient:
                 "expected_task_revision": expected_task_revision,
                 "status": requested_status,
                 **({"body_json": body_json} if body is not None else {}),
+                **(
+                    {
+                        "body_patch_schema": "task-completion-receipt-patch@1",
+                        "expected_task_body_cid": expected_task_body_cid,
+                    }
+                    if expected_task_body_cid is not None
+                    else {}
+                ),
                 **(
                     {
                         "goal_cid": normalized_goal_cid,

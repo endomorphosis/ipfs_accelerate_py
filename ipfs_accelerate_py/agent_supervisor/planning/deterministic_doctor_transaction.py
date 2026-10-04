@@ -2927,6 +2927,7 @@ class DeterministicDoctorTransaction:
         requires_target_execution: bool = False,
         cache_binding_refs: Sequence[str] = (),
         commit_message: str = "deterministic doctor transaction",
+        step_validator: Callable[[Any, DeterministicDoctorPlan, DoctorPlanStep], DoctorStepApplyResult] | None = None,
     ) -> DoctorTransactionReport:
         """Own a real lease/checkpoint/SCC apply/ref-CAS/rollback lifecycle.
 
@@ -2936,6 +2937,12 @@ class DeterministicDoctorTransaction:
         transaction validator is allowed to construct a provisional report.
         The report is returned as COMMITTED only after the adapter's durable
         Git ref CAS succeeds.
+
+        Validation obligations require an explicit local read-only validator.
+        It receives the candidate session, exact plan and step after edits;
+        its diagnostic references are retained in the transaction receipt.
+        Every validation reference and validation-kind step must be checked
+        before the target ref can move, including refs also used to group SCCs.
         """
 
         from ..runtime.doctor_worktree_adapter import (  # local trust boundary
@@ -2950,6 +2957,24 @@ class DeterministicDoctorTransaction:
         if not isinstance(worktree_adapter, DoctorWorktreeAdapter):
             raise DeterministicDoctorTransactionError(
                 "execute_live requires DoctorWorktreeAdapter"
+            )
+        assigned_validation_refs = {
+            ref for step in plan.steps for ref in step.validation_refs
+        }
+        if set(plan.validation_refs) - assigned_validation_refs:
+            raise DeterministicDoctorTransactionError(
+                "live plan has unassigned validation obligations"
+            )
+        needs_validator = any(
+            step.validation_refs
+            or "validation" in step.kind.casefold()
+            for step in plan.steps
+        )
+        if step_validator is not None and not callable(step_validator):
+            raise DeterministicDoctorTransactionError("step_validator must be callable")
+        if needs_validator and step_validator is None:
+            raise DeterministicDoctorTransactionError(
+                "live validation obligations require an explicit step_validator"
             )
         if isinstance(edits, (str, bytes, bytearray)) or not isinstance(
             edits, Sequence
@@ -3035,6 +3060,60 @@ class DeterministicDoctorTransaction:
             baseline = session.baseline
             groups = _build_doctor_execution_groups(plan)
             result_by_step: dict[str, DoctorStepApplyResult] = {}
+
+            def validate_steps(step_ids: Sequence[str]) -> bool:
+                if step_validator is None:
+                    return True
+                for step_id in step_ids:
+                    step = steps_by_id[step_id]
+                    validation_before = worktree_adapter.snapshot(session)
+                    try:
+                        checked = step_validator(session, plan, step)
+                    except Exception as exc:
+                        checked = DoctorStepApplyResult(
+                            disposition=DoctorStepDisposition.FAILED,
+                            reason_codes=("validation_callback_failed",),
+                            diagnostic_refs=(content_identity({
+                                "schema": "doctor-validation-exception@1",
+                                "step_id": step.step_id,
+                                "exception_type": type(exc).__name__,
+                            }),),
+                        )
+                    validation_after = worktree_adapter.snapshot(session)
+                    if validation_after.content_id != validation_before.content_id:
+                        raise DeterministicDoctorTransactionError(
+                            "step validator mutated the candidate worktree"
+                        )
+                    if not isinstance(checked, DoctorStepApplyResult):
+                        checked = DoctorStepApplyResult(
+                            disposition=DoctorStepDisposition.FAILED,
+                            reason_codes=("validation_result_malformed",),
+                        )
+                    if any((checked.written_paths, checked.observed_before_hashes,
+                            checked.observed_after_hashes, checked.changed_blob_cids,
+                            checked.observed_tree_cid, checked.observed_forest_cid,
+                            checked.durable_effect_ref)):
+                        checked = DoctorStepApplyResult(
+                            disposition=DoctorStepDisposition.FAILED,
+                            reason_codes=("validation_result_claimed_mutation",),
+                        )
+                    if checked.disposition is DoctorStepDisposition.PASSED and not checked.diagnostic_refs:
+                        checked = DoctorStepApplyResult(
+                            disposition=DoctorStepDisposition.FAILED,
+                            reason_codes=("validation_evidence_missing",),
+                        )
+                    applied = result_by_step[step.step_id]
+                    result_by_step[step.step_id] = replace(
+                        applied,
+                        disposition=checked.disposition,
+                        reason_codes=tuple(dict.fromkeys((*applied.reason_codes, *checked.reason_codes))),
+                        diagnostic_refs=tuple(dict.fromkeys((*applied.diagnostic_refs, *checked.diagnostic_refs))),
+                        static_replay=checked.static_replay,
+                    )
+                    if checked.disposition is not DoctorStepDisposition.PASSED:
+                        return False
+                return True
+
             for group_id, _scc_id, step_ids in groups:
                 group_edits = tuple(
                     edit
@@ -3046,6 +3125,8 @@ class DeterministicDoctorTransaction:
                         result_by_step[step_id] = DoctorStepApplyResult(
                             disposition=DoctorStepDisposition.PASSED,
                         )
+                    if not validate_steps(step_ids):
+                        break
                     continue
                 receipt = session.apply_group(group_edits, group_id=group_id)
                 effects_by_step: dict[str, list[Any]] = {
@@ -3090,6 +3171,8 @@ class DeterministicDoctorTransaction:
                         ),
                         static_replay=not requires_target_execution,
                     )
+                if not validate_steps(step_ids):
+                    break
 
             final_snapshot = worktree_adapter.snapshot(session)
             path_hashes = tuple(

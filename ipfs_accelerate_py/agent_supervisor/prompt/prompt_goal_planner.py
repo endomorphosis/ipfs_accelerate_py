@@ -20,6 +20,7 @@ from typing import Any, Callable, Mapping, Sequence
 from .prompt_workflow import (
     DirectoryScanReceipt,
     EvidenceAuthority,
+    LocalFallbackPolicy,
     PromptAcceptanceRecord,
     PromptEvidenceRecord,
     PromptGoalGraph,
@@ -505,7 +506,29 @@ def _frozen_summary_map(
                 )
             return item
         if isinstance(item, str):
-            if len(item.encode("utf-8")) > maximum_bytes or _INSTRUCTION_RE.search(item):
+            if len(item.encode("utf-8")) > maximum_bytes:
+                raise PromptGoalProviderRequestError(
+                    f"{noun} contains unsafe or overlong text",
+                    reason_code="invalid_request_context",
+                )
+            suspicious = _INSTRUCTION_RE.search(item)
+            if suspicious:
+                # A base32 content digest may coincidentally contain e.g.
+                # "sudo". Exempt only the complete canonical native CID,
+                # never natural-language text or an identifier with a suffix.
+                try:
+                    from multiformats import CID
+                    parsed = CID.decode(item)
+                    suspicious = not (
+                        type(item) is str and parsed.version == 1
+                        and parsed.codec.name in {"raw", "dag-json"}
+                        and parsed.hashfun.name == "sha2-256"
+                        and len(parsed.raw_digest) == 32
+                        and parsed.encode("base32") == item
+                    )
+                except (ImportError, TypeError, ValueError, KeyError):
+                    suspicious = True
+            if suspicious:
                 raise PromptGoalProviderRequestError(
                     f"{noun} contains unsafe or overlong text",
                     reason_code="invalid_request_context",
@@ -1939,7 +1962,7 @@ def deterministic_prompt_goal_graph(
         title="Plan the immutable prompt request",
         objective=objective,
         rationale="A deterministic plan preserves progress without provider authority.",
-        scope_paths=(scope_path,),
+        scope_paths=(scope_path,) if scope_path != "." else output_paths,
         acceptance=(acceptance,),
         evidence_cids=(prompt_item.evidence_cid,),
         risks=("Repository semantics may require later admission-time refinement.",),
@@ -2193,6 +2216,8 @@ def _generate_prompt_goal_graph_single(
     except PromptGoalProviderRequestError as exc:
         if exc.reason_code != "request_over_budget":
             raise
+        if request.planning_policy.fallback_policy is LocalFallbackPolicy.DISABLED:
+            raise
         graph = deterministic_prompt_goal_graph(
             request,
             scan,
@@ -2246,6 +2271,8 @@ def _generate_prompt_goal_graph_single(
     request_data = provider_prompt.encode("utf-8")
     request_hash = _sha256(request_data)
     if not request.planning_policy.allow_model:
+        if request.planning_policy.fallback_policy is LocalFallbackPolicy.DISABLED:
+            raise PromptGoalPlannerError("model and local fallback are disabled", reason_code="policy_disabled")
         graph = deterministic_prompt_goal_graph(
             request, scan, config=resolved, reason_code="policy_disabled"
         )
@@ -2287,6 +2314,8 @@ def _generate_prompt_goal_graph_single(
             ),
         )
     if isinstance(capabilities, Mapping) and capabilities.get("available") is False:
+        if request.planning_policy.fallback_policy is LocalFallbackPolicy.DISABLED:
+            raise PromptGoalPlannerError("provider unavailable and local fallback disabled", reason_code="capability_unavailable")
         graph = deterministic_prompt_goal_graph(
             request,
             scan,
@@ -2402,9 +2431,6 @@ def _generate_prompt_goal_graph_single(
         reason = str(getattr(exc, "reason_code", "") or failure)
         response_bytes, response_hash = _response_fingerprint(response)
         latency_ms = max(0, int((time.monotonic() - started) * 1_000))
-        graph = deterministic_prompt_goal_graph(
-            request, scan, config=resolved, reason_code=reason
-        )
         provider_receipt = PromptGoalProviderReceipt(
             attempted=True,
             status=failure,
@@ -2418,6 +2444,16 @@ def _generate_prompt_goal_graph_single(
             timeout_ms=timeout_ms,
             max_new_tokens=tokens,
             latency_ms=latency_ms,
+        )
+        if request.planning_policy.fallback_policy is LocalFallbackPolicy.DISABLED:
+            error = PromptGoalPlannerError(
+                "provider proposal failed and local fallback is disabled: " + str(exc),
+                reason_code=reason,
+            )
+            error.provider_receipt = provider_receipt.to_dict()
+            raise error from exc
+        graph = deterministic_prompt_goal_graph(
+            request, scan, config=resolved, reason_code=reason
         )
         parse_attempted = response is not None
         parse_receipt = PromptGoalParseReceipt(

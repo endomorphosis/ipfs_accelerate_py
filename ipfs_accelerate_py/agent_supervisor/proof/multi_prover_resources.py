@@ -33,7 +33,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import asdict, dataclass, field, replace
 from enum import Enum
 from pathlib import Path
@@ -216,11 +216,15 @@ def portfolio_lane_resource_request(
 def admit_portfolio_lane(
     lease: "MultiProverResourceLease | None",
     request: "ProverResourceRequest",
+    *, cancellation=None, deadline_monotonic=None,
 ) -> tuple["ResourceAdmission", "ChildResourceLease | None"]:
     """Admit one portfolio lane against the current shared resource lease."""
 
     if lease is None:
         admission, child = ResourceAdmission(True, request.task_id), None
+    elif cancellation is not None:
+        admission, child = lease.acquire_for_execution(request,
+            cancellation=cancellation, deadline_monotonic=deadline_monotonic)
     else:
         admission, child = lease.try_acquire(request)
     try:
@@ -697,6 +701,19 @@ class ProverExecutionReceipt:
         }
 
 
+class ProverTaskFailure(RuntimeError):
+    """An adapter failure with a bounded diagnostic ledger, never task success."""
+
+    def __init__(self, message: str, *, result: Any = None, reasons: Iterable[str] = ()) -> None:
+        super().__init__(message)
+        values = tuple(reasons)
+        if len(values) > 32 or any(not isinstance(value, str) or not value
+                                   or len(value.encode("utf-8")) > 256 for value in values):
+            raise ValueError("failure reasons must contain at most 32 bounded nonempty strings")
+        self.result = result
+        self.reasons = values
+
+
 class ProverCallable(Protocol):
     def __call__(self, context: "ProverExecutionContext") -> Any: ...
 
@@ -840,6 +857,8 @@ class ChildResourceLease:
         self.request = request
         self.acquired_at_ms = int(time.time() * 1000)
         self._released = False
+        self._release_requested = False
+        self._execution_holds = 0
         self._lock = threading.Lock()
         self._terminator: Callable[[], None] | None = None
 
@@ -869,9 +888,33 @@ class ChildResourceLease:
         with self._lock:
             if self._released:
                 return False
+            self._release_requested = True
+            if self._execution_holds:
+                return False
             self._released = True
             self._terminator = None
         return self.owner._release(self)
+
+    def _hold_execution(self) -> bool:
+        """Prevent reclamation until the executor has joined its callable."""
+
+        with self._lock:
+            if self._released or self._release_requested:
+                return False
+            self._execution_holds += 1
+            return True
+
+    def _finish_execution(self) -> None:
+        with self._lock:
+            if self._execution_holds <= 0:
+                raise RuntimeError("execution hold already released")
+            self._execution_holds -= 1
+            release = self._release_requested and not self._execution_holds
+            if release:
+                self._released = True
+                self._terminator = None
+        if release:
+            self.owner._release(self)
 
     def child_environment(self) -> dict[str, str]:
         """Limits inherited by native libraries, JVMs, and common provers."""
@@ -922,7 +965,8 @@ class ProverExecutionContext:
 
     @property
     def cancelled(self) -> bool:
-        return self.cancellation.is_set() or self.root_cancellation.is_set()
+        return (self.cancellation.is_set() or self.root_cancellation.is_set()
+                or bool(getattr(self.lease, "cancelled", False)))
 
     @property
     def remaining_seconds(self) -> float | None:
@@ -1144,19 +1188,71 @@ class MultiProverResourceLease:
             reasons.append("provider_unavailable")
         return tuple(dict.fromkeys(reasons))
 
+    def normalized_request(self, request: ProverResourceRequest) -> ProverResourceRequest:
+        """Expose the owner's actual admission cost to readiness scheduling."""
+        if not isinstance(request, ProverResourceRequest):
+            raise TypeError("request must be ProverResourceRequest")
+        return request
+
+    def ready_tasks(self, candidates: Sequence[ProverTask], *, limit: int,
+                    pending_requests: Sequence[ProverResourceRequest] = ()) -> tuple[ProverTask, ...]:
+        """Suggest a fitting ready subset without granting resource authority.
+
+        Costs are packed against a fresh local snapshot. Admission still
+        independently checks this owner and any native pressure policy. This
+        avoids rejecting a larger task merely because a sibling is finishing.
+        """
+        chosen: list[ProverTask] = []
+        with self._condition:
+            available = self.available()
+            provider_active = dict(self._provider_active)
+            provider_quota = dict(self._provider_quota)
+            # Submission precedes admission in a pool thread. Keep that queued
+            # demand in this local forecast until its real admission finishes.
+            # During native admission it can conservatively overlap actual
+            # usage; it must never disappear before the grant exists.
+            for pending_request in pending_requests:
+                request = self.normalized_request(pending_request)
+                available = available.minus(ResourceUsage.from_request(request))
+                if request.provider_id:
+                    provider_active[request.provider_id] = provider_active.get(request.provider_id, 0) + request.model_slots
+                    provider_quota[request.provider_id] = provider_quota.get(request.provider_id, 0) + request.provider_quota
+            dimensions = ["cpu_slots", "process_slots", "thread_slots", "model_slots", "artifact_slots"]
+            dimensions.extend(name for name in ("memory_bytes", "disk_bytes", "provider_quota")
+                              if getattr(self.budget, name))
+            for task in candidates:
+                if len(chosen) >= limit:
+                    break
+                request = self.normalized_request(task.resources)
+                usage = ResourceUsage.from_request(request)
+                if self._reasons(request) or any(getattr(usage, name) > getattr(available, name)
+                                               for name in dimensions):
+                    continue
+                provider = self.providers.get(request.provider_id)
+                if provider is not None:
+                    active = provider_active.get(request.provider_id, 0) + request.model_slots
+                    quota = provider_quota.get(request.provider_id, 0) + request.provider_quota
+                    if active > provider.available_concurrency or (provider.quota_remaining >= 0
+                            and quota > provider.quota_remaining):
+                        continue
+                    provider_active[request.provider_id] = active
+                    provider_quota[request.provider_id] = quota
+                chosen.append(task)
+                available = available.minus(usage)
+        return tuple(chosen)
+
     def try_acquire(
         self, request: ProverResourceRequest
     ) -> tuple[ResourceAdmission, ChildResourceLease | None]:
         """Atomically reserve a child without blocking a ready bundle slice."""
 
-        if not isinstance(request, ProverResourceRequest):
-            raise TypeError("request must be ProverResourceRequest")
+        request = self.normalized_request(request)
         with self._condition:
             reasons = self._reasons(request)
             if reasons:
                 return ResourceAdmission(False, request.task_id, reasons, self.lease_id), None
             child_id = f"{self.lease_id}:child:{uuid.uuid4().hex}"
-            child = ChildResourceLease(self, child_id, request)
+            child = self._new_child(child_id, request)
             self._children[child_id] = child
             self._usage = self._usage.plus(ResourceUsage.from_request(request))
             if request.provider_id:
@@ -1175,6 +1271,16 @@ class MultiProverResourceLease:
             ), child
 
     acquire = try_acquire
+
+    def acquire_for_execution(self, request, *, cancellation, deadline_monotonic=None):
+        """Admission hook for owners that may wait on external capacity."""
+        if cancellation.is_set():
+            return ResourceAdmission(False, request.task_id, ("cancelled",), self.lease_id), None
+        return self.try_acquire(request)
+
+    def _new_child(self, child_id: str, request: ProverResourceRequest) -> ChildResourceLease:
+        """Construction hook for resource-authority adapters under the owner lock."""
+        return ChildResourceLease(self, child_id, request)
 
     def _release(self, child: ChildResourceLease) -> bool:
         with self._condition:
@@ -1251,7 +1357,7 @@ SharedResourceLease = MultiProverResourceLease
 
 
 class MultiProverResourceManager:
-    """Factory retaining root leases for process-wide supervisor sharing."""
+    """Retain roots, including closed roots with callable cleanup outstanding."""
 
     def __init__(self) -> None:
         self._lock = threading.RLock()
@@ -1274,22 +1380,33 @@ class MultiProverResourceManager:
 
     def get(self, lease_id: str) -> MultiProverResourceLease | None:
         with self._lock:
+            self._prune_drained_leases()
             return self._leases.get(str(lease_id))
 
     def close(self, lease: MultiProverResourceLease | str) -> bool:
         lease_id = lease.lease_id if isinstance(lease, MultiProverResourceLease) else str(lease)
         with self._lock:
-            existing = self._leases.pop(lease_id, None)
+            existing = self._leases.get(lease_id)
         if existing is None:
             return False
         existing.close()
+        with self._lock:
+            self._prune_drained_leases()
         return True
+
+    def _prune_drained_leases(self) -> None:
+        # A closed root may still own a timed-out callable. Keep that capacity
+        # visible until its execution hold has actually drained.
+        for lease_id, lease in tuple(self._leases.items()):
+            if lease.closed and not lease.active_children:
+                self._leases.pop(lease_id, None)
 
     @property
     def active_leases(self) -> tuple[MultiProverResourceLease, ...]:
         with self._lock:
+            self._prune_drained_leases()
             return tuple(
-                self._leases[key] for key in sorted(self._leases) if not self._leases[key].closed
+                self._leases[key] for key in sorted(self._leases)
             )
 
 
@@ -1387,17 +1504,33 @@ class ProverTaskExecutor:
         task: ProverTask,
         *,
         cancellation: threading.Event | None = None,
+        _admission_complete: threading.Event | None = None,
     ) -> ProverExecutionReceipt:
         cancel = cancellation or threading.Event()
         cached = self.cache_receipt(task)
         if cached is not None:
+            if _admission_complete is not None:
+                _admission_complete.set()
             return cached
         started_ms = int(time.time() * 1000)
-        admission, child = self.lease.try_acquire(task.resources)
+        deadline_candidates: list[float] = []
+        if task.timeout_ms:
+            deadline_candidates.append(self._monotonic() + task.timeout_ms / 1000)
+        remaining_root = self.lease.remaining_wall_time_seconds
+        if remaining_root is not None:
+            deadline_candidates.append(self._monotonic() + remaining_root)
+        deadline = min(deadline_candidates) if deadline_candidates else None
+        try:
+            admission, child = self.lease.acquire_for_execution(task.resources,
+                cancellation=cancel, deadline_monotonic=deadline)
+        finally:
+            if _admission_complete is not None:
+                _admission_complete.set()
         if child is None:
             status = (
                 ExecutionStatus.CANCELLED
                 if any("cancel" in reason for reason in admission.reasons)
+                else ExecutionStatus.TIMED_OUT if "task_deadline" in admission.reasons
                 else ExecutionStatus.ADMISSION_REJECTED
             )
             return ProverExecutionReceipt(
@@ -1410,16 +1543,10 @@ class ProverTaskExecutor:
                 top_level_lease_id=self.lease.lease_id,
                 partial=True,
             )
-        deadline_candidates: list[float] = []
-        if task.timeout_ms:
-            deadline_candidates.append(self._monotonic() + task.timeout_ms / 1000)
-        remaining_root = self.lease.remaining_wall_time_seconds
-        if remaining_root is not None:
-            deadline_candidates.append(self._monotonic() + remaining_root)
-        deadline = min(deadline_candidates) if deadline_candidates else None
         context = ProverExecutionContext(task, child, cancel, self.lease.cancellation, deadline)
+        execution_held = child._hold_execution()
         try:
-            if context.cancelled:
+            if not execution_held or context.cancelled:
                 receipt = self._base_receipt(
                     task,
                     child,
@@ -1428,12 +1555,17 @@ class ProverTaskExecutor:
                     diagnostics="cancelled before execution",
                     partial=True,
                 )
+            elif context.remaining_seconds == 0:
+                receipt = self._base_receipt(task, child, started_ms, ExecutionStatus.TIMED_OUT,
+                    diagnostics="deadline elapsed during admission", reasons=("task_deadline",), partial=True)
             elif task.command:
                 receipt = self._execute_command(task, context, started_ms)
             else:
                 receipt = self._execute_callable(task, context, started_ms)
         finally:
             child.release()
+            if execution_held:
+                child._finish_execution()
         self.cache.put(task, receipt)
         return receipt
 
@@ -1468,7 +1600,7 @@ class ProverTaskExecutor:
             cache_key=task.cache_key,
             deterministic_identity=task.deterministic_identity,
             partial=partial,
-            usage=ResourceUsage.from_request(task.resources),
+            usage=ResourceUsage.from_request(child.request),
         )
 
     def _execute_command(
@@ -1569,9 +1701,18 @@ class ProverTaskExecutor:
             stdout = bytes(stdout_buffer)
             stderr = bytes(stderr_buffer)
             if status is None:
-                status = (
-                    ExecutionStatus.SUCCEEDED if process.returncode == 0 else ExecutionStatus.FAILED
-                )
+                # An ancestor's terminator can finish the process before the
+                # polling loop observes cancellation. Completion can likewise
+                # race the deadline; neither case may publish a normal result.
+                remaining = context.remaining_seconds
+                if context.cancelled:
+                    status = ExecutionStatus.CANCELLED
+                elif remaining is not None and remaining <= 0:
+                    status = ExecutionStatus.TIMED_OUT
+                else:
+                    status = (
+                        ExecutionStatus.SUCCEEDED if process.returncode == 0 else ExecutionStatus.FAILED
+                    )
             diagnostic = (
                 stdout.decode("utf-8", errors="replace")
                 + ("\n" if stdout and stderr else "")
@@ -1630,25 +1771,38 @@ class ProverTaskExecutor:
         context: ProverExecutionContext,
         started_ms: int,
     ) -> ProverExecutionReceipt:
+        """Return promptly on interruption while retaining live worker capacity.
+
+        Python callables must cooperate with cancellation and join any work
+        they spawn before returning. An uncooperative callable retains its
+        child reservation indefinitely, including after root closure; this
+        executor does not attempt to kill a Python thread.
+        """
         outcomes: queue.Queue[tuple[bool, Any]] = queue.Queue(maxsize=1)
 
         def invoke() -> None:
             try:
+                if context.cancelled or context.remaining_seconds == 0:
+                    return
                 outcomes.put((True, _invoke_runner(task.runner, context)))  # type: ignore[arg-type]
             except BaseException as exc:
                 outcomes.put((False, exc))
 
         thread = threading.Thread(target=invoke, name=f"prover-{task.task_id}", daemon=True)
-        thread.start()
-        while thread.is_alive():
+
+        def interrupted() -> ProverExecutionReceipt | None:
+            pending = thread.is_alive()
+            retained = ("callable_cleanup_pending",) if pending else ()
+            diagnostic = "; lease retained until callable exits" if pending else ""
             if context.cancelled:
+                context.cancellation.set()
                 return self._base_receipt(
                     task,
                     context.lease,
                     started_ms,
                     ExecutionStatus.CANCELLED,
-                    diagnostics="callable cancellation requested",
-                    reasons=("cancelled",),
+                    diagnostics="callable cancellation requested" + diagnostic,
+                    reasons=("cancelled", *retained),
                     partial=True,
                 )
             remaining = context.remaining_seconds
@@ -1659,32 +1813,70 @@ class ProverTaskExecutor:
                     context.lease,
                     started_ms,
                     ExecutionStatus.TIMED_OUT,
-                    diagnostics="callable exceeded its wall-time limit",
-                    reasons=("timeout",),
+                    diagnostics="callable exceeded its wall-time limit" + diagnostic,
+                    reasons=("timeout", *retained),
                     partial=True,
                 )
-            thread.join(0.02 if remaining is None else min(0.02, remaining))
-        try:
-            ok, value = outcomes.get_nowait()
-        except queue.Empty:  # pragma: no cover - defensive thread failure
-            ok, value = False, RuntimeError("callable exited without a result")
-        if not ok:
+            return None
+
+        if not context.lease._hold_execution():
             return self._base_receipt(
                 task,
                 context.lease,
                 started_ms,
-                ExecutionStatus.FAILED,
-                diagnostics=f"{type(value).__name__}: {value}",
-                reasons=("runner_error",),
+                ExecutionStatus.CANCELLED,
+                diagnostics="callable lease released before worker start",
+                reasons=("child_lease_released",),
                 partial=True,
             )
-        return self._base_receipt(
-            task,
-            context.lease,
-            started_ms,
-            ExecutionStatus.SUCCEEDED,
-            result=value,
-        )
+        started = False
+        try:
+            thread.start()
+            started = True
+            while thread.is_alive():
+                receipt = interrupted()
+                if receipt is not None:
+                    return receipt
+                remaining = context.remaining_seconds
+                thread.join(0.02 if remaining is None else min(0.02, remaining))
+            # Cancellation or expiry can coincide with worker completion. Do
+            # not let that race turn a late result into a successful cache row.
+            receipt = interrupted()
+            if receipt is not None:
+                return receipt
+            try:
+                ok, value = outcomes.get_nowait()
+            except queue.Empty:  # pragma: no cover - defensive thread failure
+                ok, value = False, RuntimeError("callable exited without a result")
+            if not ok:
+                return self._base_receipt(
+                    task,
+                    context.lease,
+                    started_ms,
+                    ExecutionStatus.FAILED,
+                    result=value.result if isinstance(value, ProverTaskFailure) else None,
+                    diagnostics=f"{type(value).__name__}: {value}",
+                    reasons=value.reasons if isinstance(value, ProverTaskFailure) else ("runner_error",),
+                    partial=True,
+                )
+            return self._base_receipt(
+                task,
+                context.lease,
+                started_ms,
+                ExecutionStatus.SUCCEEDED,
+                result=value,
+            )
+        finally:
+            if started and thread.is_alive():
+                def finish() -> None:
+                    thread.join()
+                    context.lease._finish_execution()
+
+                threading.Thread(
+                    target=finish, name=f"prover-cleanup-{task.task_id}", daemon=True,
+                ).start()
+            else:
+                context.lease._finish_execution()
 
 
 def dependency_closed_ready_slice(
@@ -1814,7 +2006,7 @@ class SerialProverSupervisor:
 
 
 class BundleProverSupervisor:
-    """Run dependency-closed ready slices without nested executor pools."""
+    """Refill a bounded pool as individual dependency-ready tasks complete."""
 
     def __init__(
         self,
@@ -1842,98 +2034,107 @@ class BundleProverSupervisor:
         pending = dict(by_id)
         receipts: dict[str, ProverExecutionReceipt] = {}
 
-        while pending:
-            if cancel.is_set() or self.lease.cancellation.is_set():
-                for task in pending.values():
-                    now = int(time.time() * 1000)
-                    receipts[task.task_id] = ProverExecutionReceipt(
-                        task.task_id,
-                        task.resources.family,
-                        ExecutionStatus.CANCELLED,
-                        now,
-                        now,
-                        reasons=("cancelled",),
-                        top_level_lease_id=self.lease.lease_id,
-                        partial=True,
-                    )
-                break
-
-            ready_all = dependency_closed_ready_slice(pending.values(), completed)
-            if not ready_all:
-                for task in pending.values():
-                    now = int(time.time() * 1000)
-                    missing = sorted(set(task.dependencies) - completed)
-                    receipts[task.task_id] = ProverExecutionReceipt(
-                        task.task_id,
-                        task.resources.family,
-                        ExecutionStatus.BLOCKED,
-                        now,
-                        now,
-                        diagnostics="no dependency-closed ready path remains",
-                        reasons=tuple(f"dependency:{item}" for item in missing),
-                        top_level_lease_id=self.lease.lease_id,
-                        partial=True,
-                    )
-                break
-
-            # Exact cache hits are completed before width calculation and never
-            # consume host/provider capacity.
-            uncached: list[ProverTask] = []
-            for task in ready_all:
-                cached = self.executor.cache_receipt(task)
-                if cached is None:
-                    uncached.append(task)
-                else:
-                    receipts[task.task_id] = cached
-                    completed.add(task.task_id)
-                    pending.pop(task.task_id, None)
-            if not uncached:
-                continue
-
-            width = self.lease.portfolio_width(uncached)
-            if width <= 0:
-                # A zero width can mean measured host pressure or capacity
-                # currently held by another supervisor sharing this lease.
-                # Ask normal admission for one member so the durable receipt
-                # retains the exact hard constraint rather than mislabelling
-                # all zero-width cases as host pressure.
-                task = uncached[0]
-                receipts[task.task_id] = self.executor.execute(task, cancellation=cancel)
-                pending.pop(task.task_id, None)
-                if receipts[task.task_id].successful:
-                    completed.add(task.task_id)
-                continue
-
-            ready = uncached[:width]
-            with ThreadPoolExecutor(max_workers=width, thread_name_prefix="shared-prover") as pool:
-                futures: dict[Future[ProverExecutionReceipt], ProverTask] = {
-                    pool.submit(self.executor.execute, task, cancellation=cancel): task
-                    for task in ready
-                }
-                for future in as_completed(futures):
-                    task = futures[future]
-                    try:
-                        receipt = future.result()
-                    except BaseException as exc:  # pragma: no cover - executor guard
+        # Bound submitted work as well as running native children. Reuse one
+        # pool and refill after each completion; a slow unrelated task must not
+        # impose a barrier on a newly dependency-ready critical path.
+        worker_limit = min(self.lease.budget.max_portfolio_width,
+                           self.lease.budget.cpu_slots, self.lease.budget.thread_slots)
+        futures: dict[Future[ProverExecutionReceipt], ProverTask] = {}
+        admissions: dict[Future[ProverExecutionReceipt], threading.Event] = {}
+        with ThreadPoolExecutor(max_workers=worker_limit, thread_name_prefix="shared-prover") as pool:
+            while pending or futures:
+                reconsider_admission = False
+                if cancel.is_set() or self.lease.cancellation.is_set():
+                    for task in pending.values():
                         now = int(time.time() * 1000)
-                        receipt = ProverExecutionReceipt(
-                            task.task_id,
-                            task.resources.family,
-                            ExecutionStatus.FAILED,
-                            now,
-                            now,
-                            diagnostics=_bounded_text(
-                                f"{type(exc).__name__}: {exc}",
-                                self.lease.budget.max_diagnostic_bytes,
-                            ),
-                            reasons=("supervisor_error",),
-                            top_level_lease_id=self.lease.lease_id,
-                            partial=True,
+                        receipts[task.task_id] = ProverExecutionReceipt(
+                            task.task_id, task.resources.family, ExecutionStatus.CANCELLED,
+                            now, now, reasons=("cancelled",),
+                            top_level_lease_id=self.lease.lease_id, partial=True,
                         )
-                    receipts[task.task_id] = receipt
-                    pending.pop(task.task_id, None)
-                    if receipt.successful:
-                        completed.add(task.task_id)
+                    pending.clear()
+                else:
+                    ready_all = dependency_closed_ready_slice(pending.values(), completed)
+                    uncached: list[ProverTask] = []
+                    cache_progress = False
+                    for task in ready_all:
+                        cached = self.executor.cache_receipt(task)
+                        if cached is None:
+                            uncached.append(task)
+                        else:
+                            receipts[task.task_id] = cached
+                            completed.add(task.task_id)
+                            pending.pop(task.task_id)
+                            cache_progress = True
+                    if cache_progress:
+                        # Cache completion may expose another ready node and
+                        # consumes no live native capacity.
+                        continue
+                    in_process = [task for task in uncached if task.resources.process_slots == 0]
+                    width = self.lease.portfolio_width(uncached)
+                    if in_process:
+                        width = max(width, self.lease.portfolio_width(in_process))
+                    width = min(worker_limit - len(futures), width)
+                    waiting_admission = [task.resources for future, task in futures.items()
+                                         if not admissions[future].is_set()]
+                    # Keep the state used by this forecast. An admission may
+                    # finish while ready_tasks conservatively counts both its
+                    # local reservation and queued demand. Checking its event
+                    # only at wait() would lose the transition and could stall
+                    # a runnable sibling until the admitted task completes.
+                    reconsider_admission = bool(waiting_admission)
+                    ready = self.lease.ready_tasks(uncached, limit=max(0, width),
+                        pending_requests=waiting_admission)
+                    for task in ready:
+                        admitted = threading.Event()
+                        future = pool.submit(self.executor.execute, task, cancellation=cancel,
+                            _admission_complete=admitted)
+                        futures[future] = task
+                        admissions[future] = admitted
+                        pending.pop(task.task_id)
+                        reconsider_admission = True
+                    if not futures and uncached:
+                        # Intrinsically denied work, pressure or another owner's
+                        # capacity gets a real admission result, not an invented
+                        # dependency failure or an unbounded local retry loop.
+                        task = uncached[0]
+                        receipt = self.executor.execute(task, cancellation=cancel)
+                        receipts[task.task_id] = receipt
+                        pending.pop(task.task_id)
+                        if receipt.successful:
+                            completed.add(task.task_id)
+                        continue
+                    if not futures and pending:
+                        for task in pending.values():
+                            now = int(time.time() * 1000)
+                            missing = sorted(set(task.dependencies) - completed)
+                            receipts[task.task_id] = ProverExecutionReceipt(
+                                task.task_id, task.resources.family, ExecutionStatus.BLOCKED,
+                                now, now, diagnostics="no dependency-closed ready path remains",
+                                reasons=tuple(f"dependency:{item}" for item in missing),
+                                top_level_lease_id=self.lease.lease_id, partial=True,
+                            )
+                        pending.clear()
+                if futures:
+                    done, _ = wait(futures, return_when=FIRST_COMPLETED,
+                                   timeout=.02 if reconsider_admission else None)
+                    for future in done:
+                        task = futures.pop(future)
+                        admissions.pop(future)
+                        try:
+                            receipt = future.result()
+                        except BaseException as exc:  # pragma: no cover - executor guard
+                            now = int(time.time() * 1000)
+                            receipt = ProverExecutionReceipt(
+                                task.task_id, task.resources.family, ExecutionStatus.FAILED,
+                                now, now, diagnostics=_bounded_text(f"{type(exc).__name__}: {exc}",
+                                    self.lease.budget.max_diagnostic_bytes),
+                                reasons=("supervisor_error",), top_level_lease_id=self.lease.lease_id,
+                                partial=True,
+                            )
+                        receipts[task.task_id] = receipt
+                        if receipt.successful:
+                            completed.add(task.task_id)
 
         ordered = tuple(receipts[task.task_id] for task in task_list)
         return BundleExecutionReceipt(
@@ -1952,6 +2153,7 @@ MultiProverSerialSupervisor = SerialProverSupervisor
 
 
 __all__ = [
+    "ProverTaskFailure",
     "BundleExecutionReceipt",
     "BundleProverSupervisor",
     "ChildResourceLease",

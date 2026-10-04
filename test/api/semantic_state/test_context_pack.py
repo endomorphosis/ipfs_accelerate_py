@@ -433,3 +433,16 @@ def test_pack_result_interface_marker() -> None:
     result = pack_context(**_base_kwargs())
     assert result.to_dict()["interface"] == CONTEXT_PACK_INTERFACE
     assert result.to_dict()["pack_cid"] == result.pack_cid
+
+
+@pytest.mark.parametrize('admission', [ADMISSION_CONSERVATIVE, ADMISSION_RAW])
+def test_multiple_capsules_preserve_shared_caveats_once(admission):
+    dependencies = [_admit(label=label, confidence='conservative',
+                           assessment_admission=admission) for label in ('first', 'second')]
+    from dataclasses import replace
+    dependencies = [replace(item, caveats=(*item.caveats, 'shared-caveat')) for item in dependencies]
+    result = pack_context(**_base_kwargs(dependency_admissions=dependencies))
+    assumptions = result.pack.to_dict()['assumptions']
+    assert assumptions.count('caveat:shared-caveat') == 1
+    assert len(assumptions) == len(set(assumptions))
+    assert len([d for d in result.decisions if d.startswith(('substitute:capsule:', 'raw_source:'))]) == 2

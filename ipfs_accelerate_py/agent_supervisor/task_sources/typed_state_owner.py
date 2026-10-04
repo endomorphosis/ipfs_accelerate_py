@@ -441,6 +441,7 @@ _STATUS_SESSION_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
 )
 _ISSUABLE_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
     {
+        "local.task.validation.run",
         "derived.coordination.read",
         "derived.coordination.write",
         *("legacy.merge_recovery." + operation for operation in (
@@ -5471,6 +5472,9 @@ class TypedStateOwnerGateway:
         self._event_wait_cancel_handler: Any | None = None
         self._event_wait_clear_handler: Any | None = None
         self._database_task_command_handler: Any | None = None
+        self._local_task_validation_handler: Any | None = None
+        self._local_task_validation_binding: object | None = None
+        self._local_task_validation_active = 0
         self._commit_observer: Any | None = None
         self._last_observer_error_type = ""
         self._eaaef_service_bind_lock = threading.Lock()
@@ -7005,16 +7009,17 @@ class TypedStateOwnerGateway:
                                     grant=grant,
                                 )
                                 semantic_authority_captured = True
-                            # A typed database claim carries a request, not
-                            # authority to author its virgin-transfer binding.
-                            # The exclusive owner derives that binding from
-                            # the transaction-stable ready frontier.  Rewrite
-                            # only the effective CAS parameters; the admitted
-                            # caller command and its idempotency identity stay
-                            # bound to the original canonical request.
+                            # The owner expands receipt-only patches and
+                            # derives typed claim bindings from its stable
+                            # state. Rewrite only effective CAS parameters;
+                            # the original command and idempotency identity
+                            # remain bound to the exact canonical request.
                             if (
-                                semantic_authority.get("operation")
-                                == "task.database.claim.phase"
+                                (
+                                    semantic_authority.get("operation") == "task.database.claim.phase"
+                                    or semantic_authority.get("body_patch_schema")
+                                    == "task-completion-receipt-patch@1"
+                                )
                                 and operation.name
                                 in {
                                     "executor_cas_task_status_receipt",
@@ -7314,6 +7319,22 @@ class TypedStateOwnerGateway:
                                 "database-task command handler returned an invalid result"
                             )
                         response = {"ok": True, "result": dict(command_result)}
+                    elif action == "local.task.validation.run":
+                        self._reject_unknown(
+                            request, {"schema", "action", "request_id", "task_cid", "attempt_id", "expected_revision"},
+                            "local task validation request",
+                        )
+                        if transaction_active or action not in grant.allowed_operations:
+                            raise TypedStateOwnerAuthorizationError("local validation is outside the client grant")
+                        task_cid = _completion_progress_identity(request.get("task_cid"), noun="task_cid")
+                        attempt_id = _completion_progress_identity(request.get("attempt_id"), noun="attempt_id")
+                        revision = request.get("expected_revision")
+                        if type(revision) is not int or revision < 1:
+                            raise TypedStateOwnerProtocolError("local validation revision is invalid")
+                        with self._transaction_lock:
+                            grant = self._require_active_grant(grant, peer_identity=peer_identity, session_id=session_id)
+                            result = self._invoke_local_task_validation_handler_locked(task_cid, attempt_id, revision, grant)
+                        response = {"ok": True, "result": dict(result)}
                     elif action == "wait_events":
                         self._reject_unknown(
                             request,
@@ -7877,6 +7898,10 @@ class TypedStateOwnerGateway:
                         }
                     ),
                 }
+                patch_fields = {"body_patch_schema", "expected_task_body_cid"}
+                admitted_fields |= {
+                    frozenset({*fields, *patch_fields}) for fields in admitted_fields
+                }
                 if supplied_receipt_fields not in admitted_fields:
                     raise TypedStateOwnerAuthorizationError(
                         "task status receipt command differs from its closed schema"
@@ -7885,6 +7910,22 @@ class TypedStateOwnerGateway:
                     command.parameters.get("body_json"),
                     noun="task status receipt body",
                 )
+                if "body_patch_schema" in command.parameters:
+                    if (
+                        command.parameters["body_patch_schema"]
+                        != "task-completion-receipt-patch@1"
+                        or type(command.parameters["expected_task_body_cid"]) is not str
+                        or not command.parameters["expected_task_body_cid"]
+                        or len(command.parameters["expected_task_body_cid"]) > 256
+                        or set(receipt_body) - {"completion_receipt"}
+                        or (
+                            "completion_receipt" in receipt_body
+                            and not isinstance(receipt_body["completion_receipt"], Mapping)
+                        )
+                    ):
+                        raise TypedStateOwnerAuthorizationError(
+                            "task receipt patch differs from its closed schema"
+                        )
                 if requested_status in _COMPLETED_TASK_STATUSES:
                     _completion_progress_identity(
                         command.parameters.get("goal_cid"),
@@ -8146,6 +8187,58 @@ class TypedStateOwnerGateway:
         *,
         grant: OwnerClientGrant,
     ) -> dict[str, Any]:
+        """Resolve a bounded receipt patch from transaction-stable owner state.
+
+        The request and idempotency key stay bound to the small wire command.
+        All existing authority checks and mutation manifests instead see the
+        owner's resolved body, preserving the task's other fields exactly.
+        """
+        body_json = command.parameters.get("body_json")
+        patch = "body_patch_schema" in command.parameters
+        if patch:
+            if (
+                command.parameters.get("operation") != "task.status.cas.receipt"
+                or command.parameters["body_patch_schema"]
+                != "task-completion-receipt-patch@1"
+            ):
+                raise TypedStateOwnerAuthorizationError("unsupported task receipt patch")
+            delta, _ = _closed_canonical_json_object(body_json, noun="task receipt patch")
+            if set(delta) - {"completion_receipt"} or (
+                "completion_receipt" in delta
+                and not isinstance(delta["completion_receipt"], Mapping)
+            ):
+                raise TypedStateOwnerAuthorizationError("task receipt patch has non-receipt fields")
+            rows = self._connection.execute(
+                "SELECT revision, body_json FROM tasks WHERE task_cid = ? LIMIT 2",
+                [command.parameters.get("task_cid")],
+            ).fetchall()
+            revision = command.parameters.get("expected_task_revision")
+            if len(rows) != 1 or type(revision) is not int or rows[0][0] != revision:
+                raise TypedStateOwnerAuthorizationError("task receipt patch revision CAS is stale")
+            prior, _ = _closed_canonical_json_object(rows[0][1], noun="task receipt patch prior body")
+            if command.parameters.get("expected_task_body_cid") != content_identity(prior):
+                raise TypedStateOwnerAuthorizationError("task receipt patch body CID CAS is stale")
+            prior.update(delta)
+            body_json = canonical_json_bytes(prior).decode("utf-8")
+            if len(body_json.encode("utf-8")) > MAX_BODY_BYTES:
+                raise TypedStateOwnerAuthorizationError("resolved task receipt body exceeds bounds")
+        authority = self._capture_semantic_authority_with_body(
+            command, grant=grant, requested_body_json=body_json,
+        )
+        if patch:
+            authority.setdefault("operation", "task.status.receipt.patch")
+            authority["body_patch_schema"] = "task-completion-receipt-patch@1"
+            # Native claim normalization may add its own owner-derived receipt.
+            authority.setdefault("body_json", body_json)
+        return authority
+
+    def _capture_semantic_authority_with_body(
+        self,
+        command: StateCommand,
+        *,
+        grant: OwnerClientGrant,
+        requested_body_json: Any,
+    ) -> dict[str, Any]:
         """Resolve pre-mutation authority for child-executable commands.
 
         Client-side registry checks remain defense in depth. This snapshot is
@@ -8156,6 +8249,47 @@ class TypedStateOwnerGateway:
         """
 
         operation = str(command.parameters.get("operation") or "")
+        if _COMMAND_MUTATION_CATALOG.get(operation, frozenset()) & {
+            "txn_cas_task_status", "executor_cas_task_status_receipt",
+        }:
+            # This check belongs to the exclusive owner, before any effect.
+            # Generic validation evidence and alternate completion commands
+            # cannot bypass an opt-in local task's signed pending acceptance.
+            task_cid = str(command.parameters.get("task_cid") or "").strip()
+            local_rows = self._connection.execute(
+                "SELECT revision, body_json FROM tasks WHERE task_cid = ? LIMIT 2",
+                [task_cid],
+            ).fetchall()
+            if len(local_rows) == 1:
+                prior_local_body, _ = _closed_canonical_json_object(
+                    local_rows[0][1], noun="local contract prior task body",
+                )
+                from ..runtime.local_planning_admission import (
+                    CONTRACT_KEY, local_completion_missing,
+                )
+
+                next_local_body = prior_local_body
+                if "body_json" in command.parameters:
+                    next_local_body, _ = _closed_canonical_json_object(
+                        requested_body_json,
+                        noun="local contract requested task body",
+                    )
+                if CONTRACT_KEY in prior_local_body or CONTRACT_KEY in next_local_body:
+                    if (
+                        CONTRACT_KEY not in prior_local_body
+                        or next_local_body.get(CONTRACT_KEY) != prior_local_body[CONTRACT_KEY]
+                    ):
+                        raise TypedStateOwnerAuthorizationError(
+                            "local pending contract cannot be injected, removed or replaced"
+                        )
+                    if command.parameters.get("status") in _COMPLETED_TASK_STATUSES:
+                        local_missing = local_completion_missing(
+                            self._connection, task_cid, prior_local_body, local_rows[0][0],
+                        )
+                        if local_missing:
+                            raise TypedStateOwnerAuthorizationError(
+                                "local pending completion refused: " + ", ".join(local_missing)
+                            )
         if operation in {"task.status.cas", "task.status.cas.receipt"}:
             task_cid = str(command.parameters.get("task_cid") or "").strip()
             requested_status = str(
@@ -8163,7 +8297,7 @@ class TypedStateOwnerGateway:
             ).strip().lower()
             try:
                 requested_body = json.loads(
-                    str(command.parameters.get("body_json") or "{}")
+                    str(requested_body_json or "{}")
                 )
             except (TypeError, ValueError, json.JSONDecodeError) as exc:
                 raise TypedStateOwnerAuthorizationError(
@@ -8271,7 +8405,7 @@ class TypedStateOwnerGateway:
                     == TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
                 ):
                     new_receipt = None
-                    body_json = command.parameters.get("body_json")
+                    body_json = requested_body_json
                     if isinstance(body_json, str) and body_json:
                         try:
                             next_body = json.loads(body_json)
@@ -8489,7 +8623,7 @@ class TypedStateOwnerGateway:
             )
             if (
                 recovery["body"] != expected_body
-                or command.parameters.get("body_json")
+                or requested_body_json
                 != expected_body_json
             ):
                 raise TypedStateOwnerAuthorizationError(
@@ -9128,7 +9262,7 @@ class TypedStateOwnerGateway:
             expected_body_json = canonical_json_bytes(expected_body).decode("utf-8")
             if (
                 recovery["body"] != expected_body
-                or command.parameters.get("body_json") != expected_body_json
+                or requested_body_json != expected_body_json
             ):
                 raise TypedStateOwnerAuthorizationError(
                     "blocked retry recovery receipt differs from owner-derived authority"
@@ -9321,7 +9455,7 @@ class TypedStateOwnerGateway:
             }
         if operation == "task.status.cas.receipt":
             try:
-                next_body = json.loads(str(command.parameters.get("body_json") or ""))
+                next_body = json.loads(str(requested_body_json or ""))
             except (TypeError, ValueError, json.JSONDecodeError) as exc:
                 raise TypedStateOwnerAuthorizationError(
                     "task status receipt body is malformed"
@@ -9550,7 +9684,7 @@ class TypedStateOwnerGateway:
                     "task_cid": task_cid,
                     "status": expected_status,
                     "expected_revision": expected_revision,
-                    "body_json": str(command.parameters["body_json"]),
+                    "body_json": str(requested_body_json),
                     "receipt": rejection,
                 }
             if typed_executor_claim and phase_schema not in {
@@ -10040,7 +10174,7 @@ class TypedStateOwnerGateway:
                     "prior_status": prior_status,
                     "expected_revision": expected_revision,
                     "revision": revision,
-                    "body_json": str(command.parameters["body_json"]),
+                    "body_json": str(requested_body_json),
                     "receipt": receipt_map,
                     "evidence_digests": list(evidence_digests),
                     "evidence_digest": evidence_digest,
@@ -10732,7 +10866,10 @@ class TypedStateOwnerGateway:
         if (
             operation.name == "executor_cas_task_status_receipt"
             and semantic_authority
-            and semantic_authority.get("operation") == "task.database.claim.phase"
+            and (
+                semantic_authority.get("operation") == "task.database.claim.phase"
+                or semantic_authority.get("body_patch_schema") == "task-completion-receipt-patch@1"
+            )
             and bound.get("body_json") != semantic_authority.get("body_json")
         ):
             raise TypedStateOwnerAuthorizationError(
@@ -10928,7 +11065,12 @@ class TypedStateOwnerGateway:
             expected_task_revision = command.parameters.get(
                 "expected_task_revision"
             )
-            expected_body_json = command.parameters.get("body_json")
+            expected_body_json = (
+                semantic_authority.get("body_json")
+                if semantic_authority and semantic_authority.get("body_patch_schema")
+                == "task-completion-receipt-patch@1"
+                else command.parameters.get("body_json")
+            )
             if (
                 semantic_authority
                 and semantic_authority.get("operation")
@@ -10966,7 +11108,12 @@ class TypedStateOwnerGateway:
             expected_task_revision = command.parameters.get(
                 "expected_task_revision"
             )
-            expected_body_json = command.parameters.get("body_json")
+            expected_body_json = (
+                semantic_authority.get("body_json")
+                if semantic_authority and semantic_authority.get("body_patch_schema")
+                == "task-completion-receipt-patch@1"
+                else command.parameters.get("body_json")
+            )
             if (
                 semantic_authority
                 and semantic_authority.get("operation")
@@ -11669,6 +11816,19 @@ class TypedStateOwnerGateway:
                 raise TypedStateOwnerAuthorizationError(
                     "semantic mutation differs from owner-resolved authority"
                 )
+
+        if operation == "task.status.receipt.patch":
+            if (
+                command.parameters.get("operation") != "task.status.cas.receipt"
+                or authority.get("body_patch_schema") != "task-completion-receipt-patch@1"
+            ):
+                raise TypedStateOwnerAuthorizationError("invalid receipt patch authority")
+            # The common manifest checks already bind task, revision, status,
+            # contiguous history and exact authoritative post-state. Retain
+            # the owner's resolved full body in both mutations as well.
+            exact(one("executor_cas_task_status_receipt"), {"body_json": authority["body_json"]})
+            exact(one("executor_insert_task_revision"), {"body_json": authority["body_json"]})
+            return
 
         if operation == "task.database.completion":
             status_mutation = one("executor_cas_task_status_receipt")
@@ -13046,6 +13206,56 @@ class TypedStateOwnerGateway:
                 self._database_task_command_handler = handler
         _mirror_owner_binding("database_task_command_handler_binding")
 
+    def bind_local_task_validation_handler(self, handler: Any, *, retirable: bool = False) -> object | None:
+        """Bind one trusted fixed-scope owner validation service exactly once."""
+        if not callable(handler):
+            raise TypedStateOwnerProtocolError("local validation handler must be callable")
+        if type(retirable) is not bool:
+            raise TypedStateOwnerProtocolError("local validation retirement opt-in must be boolean")
+        with self._grants_lock:
+            if self._local_task_validation_handler is not None:
+                raise TypedStateOwnerProtocolError("local validation handler is already bound")
+            self._local_task_validation_handler = handler
+            self._local_task_validation_binding = object() if retirable else None
+            return self._local_task_validation_binding
+
+    def _invoke_local_task_validation_handler(self, *args: Any) -> Any:
+        """Select and execute under owner custody, with explicit callback lifetime."""
+        with self._transaction_lock:
+            return self._invoke_local_task_validation_handler_locked(*args)
+
+    def _invoke_local_task_validation_handler_locked(self, *args: Any) -> Any:
+        """The native RPC already owns its transaction lock when selecting."""
+        with self._grants_lock:
+            handler = self._local_task_validation_handler
+            if not callable(handler):
+                raise TypedStateOwnerProtocolError("owner local validation service is unavailable")
+            self._local_task_validation_active += 1
+        try:
+            return handler(*args)
+        finally:
+            with self._grants_lock:
+                self._local_task_validation_active -= 1
+
+    def unbind_local_task_validation_handler(self, handler: Any, binding: object) -> bool:
+        """Retire only the exact live binding; never detach an active or foreign handler."""
+        if not callable(handler) or binding is None:
+            return False
+        if not self._transaction_lock.acquire(blocking=False):
+            raise TypedStateOwnerProtocolError("owner validation callback custody is active")
+        try:
+            with self._grants_lock:
+                if self._local_task_validation_active:
+                    raise TypedStateOwnerProtocolError("owner validation callback is active")
+                if (self._local_task_validation_handler is not handler
+                        or self._local_task_validation_binding is not binding):
+                    return False
+                self._local_task_validation_handler = None
+                self._local_task_validation_binding = None
+                return True
+        finally:
+            self._transaction_lock.release()
+
     def _admit_open_grant(
         self,
         *,
@@ -13773,6 +13983,7 @@ DATABASE_TASK_COMMANDS: Final[frozenset[str]] = frozenset(
 
 _SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
     {
+        "local.task.validation.run",
         "event.wait",
         "event.wait.cancel",
         "event.wait.clear_cancellation",

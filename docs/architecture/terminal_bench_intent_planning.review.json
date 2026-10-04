@@ -1,0 +1,195 @@
+{
+  "schema": "terminal-bench-intent-planning-source-review@1",
+  "environment_context_date": "2026-10-01",
+  "snapshot_captured_at_utc": "2026-10-01T16:58:50.130492+00:00",
+  "status": "proposed_plan_all_implementation_tasks_open",
+  "repositories": {
+    "ipfs_accelerate": {
+      "head": "18e0f79e56def8ba426cafdfad568fe6bf7440b7",
+      "working_tree_dirty": true,
+      "source_identity": "exact_local_file_digests_not_head_alone"
+    },
+    "ipfs_datasets": {
+      "head": "037839c18e5a7784cb22f0aecd320105b071e6e4",
+      "working_tree_dirty": true,
+      "source_identity": "exact_local_file_digests_not_head_alone"
+    }
+  },
+  "source_files": [
+    {
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "sha256": "50a61910e922b499f286a2c62e774bde6014376971dfd399c0fb1f04868a5b87",
+      "bytes": 7631
+    },
+    {
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "sha256": "ec83509da40010fb3100fcd4a1564b5bc70ca7638fa97d6f40db72b808e10fa0",
+      "bytes": 18751
+    },
+    {
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/native_codex_baseline.py",
+      "sha256": "d7becb29e7ecce76c3e7d99208527c7f820c05c3c524cc76b16f66cbd0779c6a",
+      "bytes": 20481
+    },
+    {
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "sha256": "0d09e32f9e35ff387f3512cf883417d86ea91d91a96179418af8a2948309470b",
+      "bytes": 34692
+    },
+    {
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "sha256": "ecd66d84ab160ba8faa485e40e5ba0a0296b8d62cfcc49df28a6136cea63c0c5",
+      "bytes": 39375
+    },
+    {
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/terminal_source_unit_advice.py",
+      "sha256": "f06f6ede7a13b6fc7d424ec3d18d89a087defe3d5fbf0c918e8840ed2ac186cf",
+      "bytes": 14053
+    },
+    {
+      "path": "external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/INDEXED_ABLATIONS.md",
+      "sha256": "9932202d1db323fb4aaac28f44d8f4deb6c6e69c93446a09c4bd24382e0b0b4d",
+      "bytes": 14728
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+      "sha256": "09168760a63d32b3305191e72501d9776f7c967212c9e9beb33791c499003811",
+      "bytes": 115722
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/prompt/prompt_workflow.py",
+      "sha256": "884a7f5c83bb3214f4df9e4c40b54553b3ee69d38d5c71ec029de1df269188f9",
+      "bytes": 240435
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/prompt/plan_create_service.py",
+      "sha256": "1f5ec81b35271092d6a8776e0e41ef1c1b9c57511bb4c096defc9df5b4c7ee41",
+      "bytes": 95224
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/obligation_graph_compiler.py",
+      "sha256": "8a17f0fe2f756f75d4b49c358b77d9edba1f57fe8d85fea968ca7de628a8f9be",
+      "bytes": 135680
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/symbolic_candidate_planner.py",
+      "sha256": "644a5d9ea848769ec442a152eebee9ab90bd971834aec64f5f45812b31734df6",
+      "bytes": 76736
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/planning/plan_critic.py",
+      "sha256": "f3ae05a3f53a8d8f904a6b8f1fb50c2a580785b163067e7fbef4b20e6e53f465",
+      "bytes": 99473
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+      "sha256": "7a7740dab0f33d706ff5030b8c5beb5490a1020d22fd67a263b731bc483e1356",
+      "bytes": 55814
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py",
+      "sha256": "6db8469d17fcf367611974603b05a0151841837f972a7fa930220d64255cd528",
+      "bytes": 25425
+    },
+    {
+      "path": "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/router_public_instruction.py",
+      "sha256": "acfd1134981477787ea00642a6b19077e09cd03c147a8ca1fe5115f373e63446",
+      "bytes": 11757
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/intent_ir/schema.py",
+      "sha256": "93d38e4724c5f34aab7f39f050742e98ef0c8d80e2ff70459d2401541505fc56",
+      "bytes": 27163
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/intent_ir/decoder.py",
+      "sha256": "7bab5781c07e00b54b0283d3a2962926f75935caedc80eceb23264cb388be257",
+      "bytes": 24220
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/intent_ir/canonicalize.py",
+      "sha256": "3609047cc8c99437d77461b4f7ea0e05d193a31bf0d20a7e80b7b0c10a8cff87",
+      "bytes": 1495
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/intent_ir/source_adapters/prompt.py",
+      "sha256": "5f7a3019acc578b563390b82824e500d040281e41939614bb78ccab8976050ce",
+      "bytes": 31453
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/intent_ir/formalize/preplanning.py",
+      "sha256": "47c166154f9f3500f8f5b153572e71005696e53ae078fa3b149bd26ce756d040",
+      "bytes": 25738
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/intent_ir/formalize/rich_document.py",
+      "sha256": "89ead19cd0018a09a0bdf7f52866f2d9ab7ae00657c28bc87b07f9e5e3f48dfe",
+      "bytes": 12225
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/intent_ir/formalize/rich_logic.py",
+      "sha256": "3b97b839f5a2afa451f76a9c330f9e485e47ed1f62d80e568a424a92ec5433eb",
+      "bytes": 19832
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/intent_ir/formalize/source_family_bridge.py",
+      "sha256": "3fac8ebe6cbb56b72ceaf17b0b6732ff0db88f4ddefe4821fad642a4cde1782d",
+      "bytes": 15753
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/intent_ir/formalize/compiler.py",
+      "sha256": "b9eb0aeab9fef143609a09860713548fa617d53de800c8c82643aac4390f2d9b",
+      "bytes": 59085
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/intent_ir/formalize/typed_compiler.py",
+      "sha256": "e7b361f0e03b97995e4665c051d32d8635ac7445b7893bf3a5eb4ae30a507c3b",
+      "bytes": 83760
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/intent_ir/formalize/obligations.py",
+      "sha256": "9e6eb5d55da25964bb5fbef5ff7d7c4ca092a75f09c075d573cd558fd441d43f",
+      "bytes": 30394
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/intent_ir/formalize/guarded_workflow.py",
+      "sha256": "27f57fe52c30c59d24386acf7e66785270ed33351791ad72b9d6f55d8df08b57",
+      "bytes": 22461
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/formalization/typed_slots.py",
+      "sha256": "12bc865d038238e43caa0d2f61f0a81e8e9cb44bc8876479fbecffc4155747cf",
+      "bytes": 17623
+    },
+    {
+      "path": "external/ipfs_datasets/ipfs_datasets_py/logic/formalization/autoencoder/source_document.py",
+      "sha256": "ca14c73abe5116e076d71a496dd14b49402ed666d248672a7afc2d433b807191",
+      "bytes": 17390
+    }
+  ],
+  "validation": {
+    "fresh_behavioral_pass_claimed": false,
+    "provider_calls": 0,
+    "live_benchmark_executed": false,
+    "attempts": [
+      {
+        "environment": ".venvs/ipfs-datasets-duckdb-quack",
+        "outcome": "pytest_unavailable"
+      },
+      {
+        "environment": "/home/barberb/HACC/.venv",
+        "test_group": "terminal_intent_autoencoder_selected",
+        "outcome": "collection_blocked_missing_harbor"
+      },
+      {
+        "environment": "/home/barberb/HACC/.venv",
+        "tests": [
+          "test_terminal_indexed_preparation.py::test_prepare_preserves_original_dirty_bytes_and_signs_absent_report",
+          "test_terminal_indexed_preparation.py::test_public_smoke_is_structural_and_not_an_oracle"
+        ],
+        "outcome": "two_skipped_matching_pytest_ast_seal",
+        "exit_code": 0
+      }
+    ]
+  }
+}
