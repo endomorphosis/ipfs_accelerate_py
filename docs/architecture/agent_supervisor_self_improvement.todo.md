@@ -16,7 +16,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-001 Establish end-to-end supervisor efficiency baselines
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: measurement
@@ -34,7 +34,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-002 Define shared context, control, and operation contracts
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: contracts
@@ -52,7 +52,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-003 Integrate the existing analysis cache, AST index, and retrieval layer
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: analysis
@@ -70,7 +70,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-004 Add a capability-negotiated ipfs_datasets_py analysis provider
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: datasets-offload
@@ -88,7 +88,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-005 Build a token-budgeted evidence context compiler
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: token-efficiency
@@ -106,7 +106,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-006 Add progressive disclosure and delta retry contexts
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: token-efficiency
@@ -124,7 +124,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-007 Coordinate analysis, context, plan, proof, and validation caches
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: caching
@@ -142,7 +142,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-008 Add cost- and evidence-aware adaptive planning
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: planning
@@ -160,7 +160,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-009 Make goal refinement responsive to typed runtime evidence
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: goal-refinement
@@ -178,7 +178,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-010 Enforce a strict implementation proposal and patch validation envelope
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: output-validation
@@ -196,7 +196,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-011 Build impact-selected fail-fast validation DAGs
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: output-validation
@@ -214,7 +214,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-012 Bind semantic, legal/logic, and proof validation to changed code
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: output-validation
@@ -232,7 +232,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-013 Improve task sizing, quality, and semantic deduplication
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: task-generation
@@ -250,7 +250,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-014 Optimize bundles for context reuse, conflicts, and critical path
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: bundling
@@ -268,7 +268,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-015 Make resource admission adaptive across supervisor stages
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: parallelism
@@ -286,7 +286,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-016 Add shared inference batching and single-flight provider work
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: parallelism
@@ -304,7 +304,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-017 Parallelize validation and merge flow without weakening gates
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: parallelism
@@ -322,7 +322,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-018 Add a shared Python supervisor control service
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: control
@@ -340,7 +340,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-019 Add an ipfs-accelerate agent CLI group
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: control
@@ -358,7 +358,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-020 Add policy-controlled agent-supervisor MCP tools
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: control
@@ -376,7 +376,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-021 Unify lifecycle, health, events, and idempotent control
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: control
@@ -394,7 +394,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-022 Implement benchmark-driven bounded self-refill
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: self-refill
@@ -412,7 +412,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-023 Build the paired end-to-end self-improvement rollout gate
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: rollout
@@ -430,7 +430,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-024 Publish stable exports, migration guidance, and operating profiles
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P2
 - Track: rollout
@@ -448,7 +448,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-025 Close objective gap: Prove 208290439421789408250562066350459701853 for Token-efficient context and end-to-end measurement
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: token-efficiency
@@ -492,7 +492,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-026 Close objective gap: Prove 306437607356117177048620815571362227127 for Token-efficient context and end-to-end measurement
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: token-efficiency
@@ -536,7 +536,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-027 Close objective gap: Prove 189057730455837902155591890661235220962 for Integrated analysis, caching, and ipfs_datasets_py offload
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: analysis
@@ -580,7 +580,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-028 Close objective gap: Prove 184801846437522667882915494501685213497 for Integrated analysis, caching, and ipfs_datasets_py offload
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: analysis
@@ -624,7 +624,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-029 Close objective gap: Prove 173075880069453142914839090434430341799 for Evidence-aware planning and responsive goal refinement
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: planning
@@ -668,7 +668,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-030 Close objective gap: Prove 003778425160038348524906247302938706902 for Evidence-aware planning and responsive goal refinement
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: planning
@@ -712,7 +712,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-031 Close objective gap: Prove 314133036252270790078901745919131980427 for Strict output, code, test, semantic, and proof validation
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: validation
@@ -756,7 +756,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-032 Close objective gap: Prove 266404049326363900535699811645710804440 for Strict output, code, test, semantic, and proof validation
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: validation
@@ -800,7 +800,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-033 Close objective gap: Prove 031486194157679117987393491870400400279 for Unified Python, CLI, and MCP supervisor control
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: control
@@ -844,7 +844,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-034 Close objective gap: Prove 127990245919649912156052660092678945998 for High-quality task generation and conflict-aware bundling
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: task-generation
@@ -888,7 +888,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-035 Close objective gap: Prove 061582446926920746660485801841658333166 for High-quality task generation and conflict-aware bundling
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: task-generation
@@ -932,7 +932,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-038 Close objective gap: Prove 020061024173618462922348580596364003627 for Benchmark-driven bounded self-refill
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: self-refill
@@ -976,7 +976,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-039 Close objective gap: Prove 065313778069923158401871898168782520190 for Benchmark-driven bounded self-refill
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: self-refill
@@ -1020,7 +1020,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-040 Close objective gap: Prove 109590900757783560279417463762322084165 for Paired rollout, stable exports, and operator adoption
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P2
 - Track: rollout
@@ -1064,7 +1064,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-041 Close objective gap: Prove 146189916032404266364029134505159070240 for Paired rollout, stable exports, and operator adoption
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P2
 - Track: rollout
@@ -1108,7 +1108,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-042 Close objective gap: Adaptive parallel execution and acceptance throughput
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: parallelism
@@ -1153,7 +1153,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-043 Close objective gap: Prove 248026856102230635452423769994290240744 for Token-efficient context and end-to-end measurement
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: token-efficiency
@@ -1197,7 +1197,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-044 Close objective gap: Prove 206259342916458424196977899134352826879 for Integrated analysis, caching, and ipfs_datasets_py offload
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: analysis
@@ -1241,7 +1241,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-045 Close objective gap: Prove 312819945606360295782005228058369235550 for Evidence-aware planning and responsive goal refinement
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: planning
@@ -1285,7 +1285,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-046 Close objective gap: Prove 006818797857632260116084792540150258746 for Strict output, code, test, semantic, and proof validation
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: validation
@@ -1329,7 +1329,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-047 Close objective gap: Prove 186773143401179107362964063059661378722 for Unified Python, CLI, and MCP supervisor control
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: control
@@ -1373,7 +1373,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-048 Close objective gap: Prove 184125100306462690646212311073240043804 for Goal packet aggregate for ASI-G104, ASI-G105
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: control
@@ -1417,7 +1417,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-049 Close objective gap: Prove 186773143401179107362964063059661378722 for Prove 186773143401179107362964063059661378722 for Unified Python, CLI, and MCP supervisor control
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: control
@@ -1461,7 +1461,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-050 Close objective gap: Prove 248026856102230635452423769994290240744 for Prove 248026856102230635452423769994290240744 for Token-efficient context and end-to-end measurement
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: token-efficiency
@@ -1505,7 +1505,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-051 Close objective gap: High-quality task generation and conflict-aware bundling
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: task-generation
@@ -1549,7 +1549,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-052 Close objective gap: Prove 119294002389522221490347364495731444366 for Benchmark-driven bounded self-refill
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: self-refill
@@ -1593,7 +1593,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-053 Close objective gap: Prove 300500866741873729474343907613893393545 for Paired rollout, stable exports, and operator adoption
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P2
 - Track: rollout
@@ -1637,7 +1637,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-054 Close objective gap: Prove 173075880069453142914839090434430341799 for Evidence-aware planning and responsive goal refinement
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: planning
@@ -1681,7 +1681,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-055 Close objective gap: Prove 003778425160038348524906247302938706902 for Evidence-aware planning and responsive goal refinement
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: planning
@@ -1725,7 +1725,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-056 Close objective gap: Prove 208290439421789408250562066350459701853 for Token-efficient context and end-to-end measurement
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: token-efficiency
@@ -1769,7 +1769,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-057 Close objective gap: Prove 306437607356117177048620815571362227127 for Token-efficient context and end-to-end measurement
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: token-efficiency
@@ -1813,7 +1813,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-058 Produce completion evidence for Prove 003778425160038348524906247302938706902 for Evidence-aware planning and responsive goal refinement
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: planning
@@ -1857,7 +1857,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-059 Produce completion evidence for Prove 173075880069453142914839090434430341799 for Evidence-aware planning and responsive goal refinement
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: planning
@@ -1901,7 +1901,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-060 Produce completion evidence for Prove 306437607356117177048620815571362227127 for Token-efficient context and end-to-end measurement
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: token-efficiency
@@ -1945,7 +1945,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-061 Produce completion evidence for Prove 208290439421789408250562066350459701853 for Token-efficient context and end-to-end measurement
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: token-efficiency
@@ -1989,7 +1989,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-062 Close objective gap: Prove 189057730455837902155591890661235220962 for Integrated analysis, caching, and ipfs_datasets_py offload
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: analysis
@@ -2033,7 +2033,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-063 Close objective gap: Prove 184801846437522667882915494501685213497 for Integrated analysis, caching, and ipfs_datasets_py offload
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: analysis
@@ -2077,7 +2077,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-064 Close objective gap: Prove 266404049326363900535699811645710804440 for Strict output, code, test, semantic, and proof validation
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: validation
@@ -2121,7 +2121,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-065 Produce completion evidence for Prove 189057730455837902155591890661235220962 for Integrated analysis, caching, and ipfs_datasets_py offload
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: analysis
@@ -2165,7 +2165,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-066 Produce completion evidence for Prove 184801846437522667882915494501685213497 for Integrated analysis, caching, and ipfs_datasets_py offload
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: analysis
@@ -2209,7 +2209,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-067 Close objective gap: Prove 031486194157679117987393491870400400279 for Unified Python, CLI, and MCP supervisor control
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: control
@@ -2253,7 +2253,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-068 Close objective gap: Prove 248026856102230635452423769994290240744 for Token-efficient context and end-to-end measurement
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: token-efficiency
@@ -2297,7 +2297,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-069 Close objective gap: Prove 206259342916458424196977899134352826879 for Integrated analysis, caching, and ipfs_datasets_py offload
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: analysis
@@ -2341,7 +2341,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-070 Close objective gap: Prove 006818797857632260116084792540150258746 for Strict output, code, test, semantic, and proof validation
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: validation
@@ -2385,7 +2385,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-071 Close objective gap: Prove 184125100306462690646212311073240043804 for Unified Python, CLI, and MCP supervisor control
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: control
@@ -2429,7 +2429,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-072 Close objective gap: Prove 186773143401179107362964063059661378722 for Unified Python, CLI, and MCP supervisor control
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: control
@@ -2473,7 +2473,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-073 Produce completion evidence for Prove 003778425160038348524906247302938706902 for Evidence-aware planning and responsive goal refinement
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: planning
@@ -2518,7 +2518,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-074 Produce completion evidence for Prove 248026856102230635452423769994290240744 for Token-efficient context and end-to-end measurement
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: token-efficiency
@@ -2563,7 +2563,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-075 Produce completion evidence for Prove 266404049326363900535699811645710804440 for Strict output, code, test, semantic, and proof validation
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: validation
@@ -2608,7 +2608,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-076 Produce completion evidence for Prove 186773143401179107362964063059661378722 for Unified Python, CLI, and MCP supervisor control
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: control
@@ -2653,7 +2653,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-077 Produce completion evidence for Prove 184125100306462690646212311073240043804 for Unified Python, CLI, and MCP supervisor control
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: control
@@ -2698,7 +2698,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-078 Produce completion evidence for Prove 031486194157679117987393491870400400279 for Unified Python, CLI, and MCP supervisor control
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: control
@@ -2743,7 +2743,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-079 Produce completion evidence for Integrated analysis, caching, and ipfs_datasets_py offload
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: analysis
@@ -2788,7 +2788,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-080 Produce completion evidence for Evidence-aware planning and responsive goal refinement
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: planning
@@ -2833,7 +2833,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-081 Close objective gap packet: ASI-G109, ASI-G110, ASI-G111
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: self-refill
@@ -2878,7 +2878,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-082 Produce completion evidence for Efficient and trustworthy supervisor control loop
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: self-improvement
@@ -2925,7 +2925,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-083 Produce completion evidence for Adaptive parallel execution and acceptance throughput
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: parallelism
@@ -2970,7 +2970,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-084 Produce completion evidence for High-quality task generation and conflict-aware bundling
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: task-generation
@@ -3015,7 +3015,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-085 Produce completion evidence for Unified Python, CLI, and MCP supervisor control
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: control
@@ -3060,7 +3060,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-086 Produce completion evidence for Benchmark-driven bounded self-refill
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: self-refill
@@ -3105,7 +3105,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-087 Produce completion evidence for Benchmark-driven bounded self-refill
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: self-refill
@@ -3150,7 +3150,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-088 Produce completion evidence for Token-efficient context and end-to-end measurement
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: token-efficiency
@@ -3195,7 +3195,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-089 Produce completion evidence for Strict output, code, test, semantic, and proof validation
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: validation
@@ -3240,7 +3240,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-090 Produce completion evidence for Paired rollout, stable exports, and operator adoption
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P2
 - Track: rollout
@@ -3285,7 +3285,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-091 Produce completion evidence for Prove 314133036252270790078901745919131980427 for Strict output, code, test, semantic, and proof validation
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: validation
@@ -3330,7 +3330,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-092 Freeze the generation-2 benchmark and causal baseline
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: measurement
@@ -3348,7 +3348,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-093 Define generation-2 identity, receipt, policy, and promotion contracts
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: contracts
@@ -3366,7 +3366,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-094 Add provider-native token and accepted-criterion attribution
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: token-efficiency
@@ -3384,7 +3384,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-095 Build prefix-stable context capsules and prompt-cache reuse
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: token-efficiency
@@ -3402,7 +3402,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-096 Add value-of-information evidence selection and bounded expansion
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: token-efficiency
@@ -3420,7 +3420,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-097 Add an asynchronous capability-negotiated analysis transport
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: datasets-offload
@@ -3438,7 +3438,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-098 Route AST, GraphRAG, premise, logic, and proof-candidate analysis through one registry
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: datasets-offload
@@ -3456,7 +3456,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-099 Normalize provenance, disagreement, and fallback receipts
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: analysis
@@ -3474,7 +3474,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-100 Build a tiered dependency-aware content-addressed runtime store
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: caching
@@ -3492,7 +3492,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-101 Generalize cross-process and distributed single-flight coordination
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: caching
@@ -3510,7 +3510,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-102 Bound persistence, retention, compaction, and payload projection
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: persistence
@@ -3528,7 +3528,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-103 Add a typed goal grammar, quality linter, and uncertainty debt
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: goal-refinement
@@ -3546,7 +3546,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-104 Add bounded AND/OR plan search with hard-constraint pruning
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: planning
@@ -3564,7 +3564,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-105 Add counterexample-driven delta replanning and branch-failure memory
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: planning
@@ -3582,7 +3582,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-106 Make goal refinement event-driven and information-gain-aware
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: goal-refinement
@@ -3600,7 +3600,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-107 Harden the output, patch, authority, and untrusted-repository envelope
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: validation
@@ -3618,7 +3618,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-108 Add hermetic impact, differential, mutation, and flaky validation
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: validation
@@ -3636,7 +3636,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-109 Assemble authoritative post-merge semantic and proof evidence
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: validation
@@ -3654,7 +3654,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-110 Calibrate task split and coalesce decisions from measured cost
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: task-generation
@@ -3672,7 +3672,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-111 Build conflict, resource, context, and validation-aware bundle planning
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: task-generation
@@ -3690,7 +3690,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-112 Add adaptive stage scheduling, fair work stealing, batching, and backpressure
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: parallelism
@@ -3708,7 +3708,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-113 Add distributed lane execution and merge-train fencing
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: parallelism
@@ -3726,7 +3726,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-114 Define one versioned control capability catalog and event cursor
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: control
@@ -3744,7 +3744,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-115 Enforce Python, CLI, and MCP operation-schema conformance
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: control
@@ -3762,7 +3762,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-116 Add policy authorization, dry-run effects, idempotency, and transactions to every mutation
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: control
@@ -3780,7 +3780,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-117 Replace idle polling and full-state rewrites with event-driven delta checkpoints
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: reliability
@@ -3798,7 +3798,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-118 Add bounded crash recovery, fault injection, and state repair evidence
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: reliability
@@ -3816,7 +3816,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-119 Build reward-hacking-resistant multi-objective self-evaluation
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: self-refill
@@ -3834,7 +3834,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-120 Generate successor goals only from typed residuals
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: self-refill
@@ -3852,7 +3852,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-121 Materialize refill epochs transactionally with healthy-exhaustion quorum
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: self-refill
@@ -3870,7 +3870,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-122 Add the generation-2 paired rollout and automatic rollback gate
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: rollout
@@ -3888,7 +3888,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-123 Publish stable v2 APIs, controls, operating profiles, and migration guidance
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: rollout
@@ -3906,7 +3906,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-124 Define the canonical decision envelope and pinned artifact references
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: proof-runtime-ir
@@ -3924,7 +3924,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-125 Add a lazy pinned IntentIR, LegalIR, and SecurityIR registry
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: proof-runtime-ir
@@ -3942,7 +3942,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-126 Compile IntentIR action contracts into supervisor constraints
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: proof-runtime-constraints
@@ -3960,7 +3960,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-127 Compile LegalIR applicability, norms, exceptions, and conflicts
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: proof-runtime-constraints
@@ -3978,7 +3978,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-128 Compile SecurityIR declarations into exact authorization decisions
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: proof-runtime-constraints
@@ -3996,7 +3996,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-129 Bind dirty worktree bytes, AST behavior, tools, and proposed effects
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: proof-runtime-graph
@@ -4014,7 +4014,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-130 Build the cross-domain semantic proof dependency graph
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: proof-runtime-graph
@@ -4032,7 +4032,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-131 Generalize proof scope to cross-domain reverse invalidation
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: proof-runtime-graph
@@ -4050,7 +4050,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-132 Add retrieval-seed receipts and authoritative proof closure
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: proof-runtime-context
@@ -4068,7 +4068,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-133 Compile minimal decision contexts with completeness witnesses
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: proof-runtime-context
@@ -4086,7 +4086,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-134 Bind progressive expansion and retries to changed dependencies
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: proof-runtime-context
@@ -4104,7 +4104,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-135 Integrate all IR domains into hard-constrained plan admission
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: proof-runtime-constraints
@@ -4122,7 +4122,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-136 Issue and verify exact short-lived execution permits
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: proof-runtime-enforcement
@@ -4140,7 +4140,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-137 Wire the proof-directed runtime through every live supervisor path
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: proof-runtime-enforcement
@@ -4158,7 +4158,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-138 Add dependency-local invalidation, re-proof, and recovery
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: proof-runtime-enforcement
@@ -4176,7 +4176,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-139 Benchmark proof-dependency context scaling and gate rollout
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P0
 - Track: proof-runtime-rollout
@@ -4194,7 +4194,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-140 Resolve validation retry-budget failure for ASI-115
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -4205,7 +4205,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-141 Resolve validation retry-budget failure for ASI-137
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -4216,7 +4216,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-142 Define canonical prompt-workflow, graph, projection, run, and rescue contracts
 
-- Status: completed
+- Status: todo
 - Priority: P0
 - Track: prompt-workflow-contracts
 - Depends on: ASI-124
@@ -4233,7 +4233,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-143 Build a bounded content-addressed prompt directory scanner
 
-- Status: completed
+- Status: todo
 - Priority: P0
 - Track: prompt-workflow-contracts
 - Depends on: ASI-142
@@ -4250,7 +4250,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-144 Generate a strict goal/subgoal/task graph through llm_router with deterministic fallback
 
-- Status: completed
+- Status: todo
 - Priority: P0
 - Track: prompt-goal-planning
 - Depends on: ASI-103, ASI-104, ASI-142, ASI-143
@@ -4267,7 +4267,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-145 Admit prompt-generated plans through quality, formal, IR, proof, and validation gates
 
-- Status: completed
+- Status: todo
 - Priority: P0
 - Track: prompt-goal-planning
 - Depends on: ASI-135, ASI-144
@@ -4284,7 +4284,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-146 Add a canonical Markdown task-source projection
 
-- Status: completed
+- Status: todo
 - Priority: P0
 - Track: prompt-task-storage
 - Depends on: ASI-145
@@ -4301,7 +4301,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-147 Add a transactional DuckDB task-source projection
 
-- Status: completed
+- Status: todo
 - Priority: P0
 - Track: prompt-task-storage
 - Depends on: ASI-145
@@ -4318,7 +4318,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-148 Make implementation daemons consume Markdown or DuckDB through one task-source protocol
 
-- Status: completed
+- Status: todo
 - Priority: P0
 - Track: prompt-task-storage
 - Depends on: ASI-146, ASI-147
@@ -4335,7 +4335,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-149 Prove dual-projection equivalence, migration, and replay safety
 
-- Status: completed
+- Status: todo
 - Priority: P0
 - Track: prompt-task-storage
 - Depends on: ASI-148
@@ -4352,7 +4352,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-150 Extend the shared control catalog with workflow, restart, and rescue operations
 
-- Status: completed
+- Status: todo
 - Priority: P0
 - Track: prompt-control-surfaces
 - Depends on: ASI-116, ASI-142
@@ -4369,7 +4369,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-151 Build the canonical Python prompt-to-supervisor workflow service
 
-- Status: completed
+- Status: todo
 - Priority: P0
 - Track: prompt-control-surfaces
 - Depends on: ASI-145, ASI-148, ASI-150
@@ -4386,7 +4386,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-152 Expose prompt workflow and lifecycle rescue through CLI and Python entry points
 
-- Status: completed
+- Status: todo
 - Priority: P1
 - Track: prompt-control-surfaces
 - Depends on: ASI-151
@@ -4403,7 +4403,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-153 Expose exact prompt workflow and rescue parity through lazy MCP tools
 
-- Status: completed
+- Status: todo
 - Priority: P1
 - Track: prompt-control-surfaces
 - Depends on: ASI-151
@@ -4420,7 +4420,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-154 Implement fenced start, stop, and restart lifecycle orchestration
 
-- Status: completed
+- Status: todo
 - Priority: P0
 - Track: prompt-lifecycle-recovery
 - Depends on: ASI-118, ASI-150
@@ -4437,7 +4437,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-155 Unify incident diagnosis and bounded programmatic recovery
 
-- Status: completed
+- Status: todo
 - Priority: P0
 - Track: prompt-lifecycle-recovery
 - Depends on: ASI-154
@@ -4454,7 +4454,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-156 Add an exhaustion-gated closed llm_router rescue planner
 
-- Status: completed
+- Status: todo
 - Priority: P0
 - Track: prompt-rescue
 - Depends on: ASI-143, ASI-144, ASI-155
@@ -4471,7 +4471,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-157 Validate, permit, and execute bounded rescue plans one action at a time
 
-- Status: completed
+- Status: todo
 - Priority: P0
 - Track: prompt-rescue
 - Depends on: ASI-136, ASI-150, ASI-155, ASI-156
@@ -4488,7 +4488,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-158 Wire bounded autonomous unstalling into the watchdog and implementation supervisor
 
-- Status: completed
+- Status: todo
 - Priority: P0
 - Track: prompt-rescue
 - Depends on: ASI-157
@@ -4505,7 +4505,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-159 Gate prompt bootstrap and rescue with paired E2E, adversarial, chaos, rollout, and documentation
 
-- Status: completed
+- Status: todo
 - Priority: P0
 - Track: prompt-workflow-rollout
 - Depends on: ASI-149, ASI-152, ASI-153, ASI-158
@@ -4522,7 +4522,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-160 Resolve validation retry-budget failure for ASI-143
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -4533,7 +4533,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-161 Resolve validation retry-budget failure for ASI-146
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -4544,7 +4544,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-162 Resolve implementation retry-budget failure for ASI-152
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -4555,7 +4555,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-163 Resolve implementation retry-budget failure for ASI-153
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Priority: P1
 - Track: ops
@@ -4566,7 +4566,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-164 Resolve dirty main checkout blocking 1 worktree merges
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: false
 - Review only: true
@@ -4582,7 +4582,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-165 Define hierarchical supervisor usage envelopes and accounting bridge
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -4604,7 +4604,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-166 Add one reservation-aware supervisor provider execution gateway
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -4626,7 +4626,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-167 Project endpoint usage into fair resource and batch admission
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -4649,7 +4649,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-168 Migrate and prove every supervisor provider consumer
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -4672,7 +4672,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-169 Add usage-governance controls and event-derived metrics
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -4695,7 +4695,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-170 Gate endpoint-aware supervisor rollout with paired E2E and chaos evidence
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -4717,7 +4717,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-171 Fence cross-lane worktree ownership before cleanup
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -4739,7 +4739,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-172 Resolve implementation retry-budget failure for ASI-165
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: false
 - Review only: true
@@ -4752,7 +4752,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-173 Resolve implementation retry-budget failure for ASI-165 after checkpoint cutover
 
-- Status: completed
+- Status: todo
 - Completion: manual
 - Is schedulable: false
 - Review only: true
