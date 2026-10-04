@@ -328,7 +328,7 @@ class IntentPlanningMaterials:
         return value
 
 
-def build_intent_planning_materials(contract, *, manifest, applicability_timeout_seconds=45.,
+def build_intent_planning_materials(contract, *, manifest, applicability_timeout_seconds=None,
                                     source_applicability_nomination=None):
     """Build pure proposal-tier compiler inputs from a supplied manifest envelope.
 

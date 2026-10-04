@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 from collections import deque
+from contextlib import ExitStack
 import hashlib
 import json
 import math
@@ -490,7 +491,11 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
         return {"text": text, "observation": receipt.get("usage", {}), "execution_receipt": receipt}
 
     phase = "prepare"
+    replay_scope = ExitStack()
     try:
+        if selected_admission.get("IPFS_DATASETS_PROOF_RESOURCE_PROFILE") == "local-benchmark@1":
+            from ipfs_accelerate_py.agent_supervisor.runtime.header_intent_applicability import local_benchmark_applicability_budget
+            replay_scope.enter_context(local_benchmark_applicability_budget(deadline_monotonic=work_deadline))
         before = time.monotonic()
         try:
             prepared = preparation.prepare(repository=Path("/app"), instruction=instruction, state=state,
@@ -661,6 +666,7 @@ def run(*, instruction: Path, state: Path, arm: str, timeout_seconds=None,
             # prevent the existing cleanup and durable result publication.
             report["failure_diagnostics_error"] = type(diagnostic_error).__name__[:128]
     finally:
+        replay_scope.close()
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, previous_alarm)
         signal.signal(signal.SIGTERM, previous_term)

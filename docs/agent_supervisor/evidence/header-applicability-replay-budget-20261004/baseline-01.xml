@@ -1,0 +1,2 @@
+<?xml version='1.0' encoding='utf-8'?>
+<testsuites><testsuite tests="1" failures="1" errors="0" skipped="0"><testcase classname="api.test_header_applicability_recovery_budget" name="test_extended_replay_requires_explicit_scope_not_environment_alone" time="0.002"><failure type="AttributeError" message="missing applicability_replay_timeout API" /></testcase></testsuite></testsuites>

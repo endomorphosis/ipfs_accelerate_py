@@ -303,6 +303,12 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                published_retrieval_policy: str | None = None,
                published_learned_artifacts: dict | None = None,
                finite_execution_scope=None, inventory_execution_scope=None):
+        from ..runtime.header_intent_applicability import capture_applicability_budget
+        # Capture the enclosing work scope, not a transient constructor replay
+        # ceiling: later START and its bootstrap thread receive fresh ceilings
+        # bounded by this same original deadline and the native run lifetime.
+        replay_work_scope = capture_applicability_budget()
+        creation_started = time.monotonic()
         if finite_execution_scope is not None and inventory_execution_scope is not None:
             raise ValueError("finite and inventory execution scopes are mutually exclusive")
         if type(refresh_context_on_completion) is not bool or (refresh_context_on_completion and context_bundle is None):
@@ -391,6 +397,9 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
         directory.mkdir(parents=True, mode=0o700)
         runtime = cls()
         try:
+            runtime._replay_work_scope = replay_work_scope
+            runtime._replay_lifetime_deadline = creation_started + lifetime_seconds
+            runtime._replay_start_deadline = None
             runtime.directory, runtime.state, runtime.repository = directory, directory / "state", repository
             runtime.state.mkdir(mode=0o700)
             (runtime.state / "run").mkdir(mode=0o700)
@@ -615,7 +624,22 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             runtime.process.owner_identity = runtime.owner_identity
             runtime.process.route_policy_id = runtime.route_policy.policy_id
             runtime.process.client_id = runtime.client_id
-            runtime.orchestrator = LifecycleOrchestrator(
+            orchestrator_type = LifecycleOrchestrator
+            if replay_work_scope is not None:
+                class ReplayBoundLifecycleOrchestrator(LifecycleOrchestrator):
+                    def _start_new(self, state, profile, deadline):
+                        # The control policy performs fresh checks after issuing
+                        # its request. Charge that time before native health
+                        # polling without rewriting the signed request or saga.
+                        fixed = runtime._replay_start_deadline
+                        if fixed is None:
+                            raise TimeoutError("admitted START lacks its fixed replay deadline")
+                        bounded = min(deadline, fixed, runtime._replay_lifetime_deadline,
+                                      runtime._replay_work_scope.deadline_monotonic)
+                        return super()._start_new(state, profile, bounded)
+
+                orchestrator_type = ReplayBoundLifecycleOrchestrator
+            runtime.orchestrator = orchestrator_type(
                 state_root=runtime.state, profiles=(runtime.profile,), process_adapter=runtime.process,
                 poll_interval_ms=50, stop_grace_ms=1_000,
             )
@@ -761,6 +785,12 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             }, sort_keys=True) + "\n")
 
     def _bounded_lifecycle_response(self, request):
+        if request.operation is Operation.START and self._replay_work_scope is not None:
+            if self._replay_start_deadline is None:
+                raise TimeoutError("admitted START lacks its fixed replay deadline")
+            # Refuse exhausted validation time before creating a lifecycle
+            # reservation; a new rejection must not strand a PREPARED saga.
+            self._operation_timeout_ms(Operation.START)
         response = self.orchestrator(request)
         worker_cleanup = None
         if request.operation is Operation.STOP and self.manifest.get('candidate_runner') is not None:
@@ -889,10 +919,26 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
         return observations
 
     def _verify_observation(self):
-        observations = self._verify(completed_observation=True)
+        from ..runtime.header_intent_applicability import resume_applicability_budget, require_applicability_budget
+        with resume_applicability_budget(self._replay_work_scope,
+                deadline_monotonic=self._replay_lifetime_deadline):
+            observations = self._verify(completed_observation=True)
+            require_applicability_budget()
         return {"source384": observations} if observations else None
 
     def _operation_timeout_ms(self, operation):
+        configured = self._configured_operation_timeout_ms(operation)
+        if operation is Operation.START and self._replay_work_scope is not None:
+            deadline = min(self._replay_work_scope.deadline_monotonic, self._replay_lifetime_deadline)
+            if self._replay_start_deadline is not None:
+                deadline = min(deadline, self._replay_start_deadline)
+            remaining_ms = int((deadline - time.monotonic()) * 1000)
+            if remaining_ms < 2_000:
+                raise TimeoutError("admitted START has insufficient remaining replay budget")
+            return min(configured, remaining_ms)
+        return configured
+
+    def _configured_operation_timeout_ms(self, operation):
         if operation is Operation.START and self.start_timeout_ms is not None:
             if (type(self.start_timeout_ms) is not int
                     or not 2_000 <= self.start_timeout_ms <= 120_000
@@ -913,7 +959,15 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                 self._startup_trace_truncated = True
         status = "failed"
         try:
-            result = self._verify()
+            from ..runtime.header_intent_applicability import resume_applicability_budget, require_applicability_budget
+            deadline = self._replay_lifetime_deadline
+            if self._replay_start_deadline is not None:
+                deadline = min(deadline, self._replay_start_deadline)
+            # Explicit handoff is required in the bootstrap thread. ContextVars
+            # from the driver or control thread are not inherited there.
+            with resume_applicability_budget(self._replay_work_scope, deadline_monotonic=deadline):
+                result = self._verify()
+                require_applicability_budget()
             status = "completed"
             return result
         finally:
@@ -1070,6 +1124,24 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                     self.bootstrap_errors.append({"type": type(exc).__name__, "message": str(exc)[:512]})
 
     def start(self):
+        from ..runtime.header_intent_applicability import resume_applicability_budget, require_applicability_budget
+        if self._replay_work_scope is None:
+            return self._start_in_replay_scope()
+        deadline = min(self._replay_lifetime_deadline, self._replay_work_scope.deadline_monotonic,
+                       time.monotonic() + self._configured_operation_timeout_ms(Operation.START) / 1000)
+        # Keep the fixed deadline available to the independent bootstrap
+        # thread even if the control call times out while it is unwinding.
+        self._replay_start_deadline = deadline
+        with resume_applicability_budget(self._replay_work_scope, deadline_monotonic=deadline):
+            result = self._start_in_replay_scope()
+            if result.succeeded:
+                require_applicability_budget()
+                # Later replacement daemon births use the remaining work/run
+                # lifetime. In-flight or failed START retains its fixed cap.
+                self._replay_start_deadline = None
+            return result
+
+    def _start_in_replay_scope(self):
         if self.finite_execution_scope is not None and self.finite_execution_scope._uses_paired_receiving():
             from ..runtime.finite_proof_query_execution import _ProofQueryStartRefused, FiniteProofQueryExecutionError
             try:

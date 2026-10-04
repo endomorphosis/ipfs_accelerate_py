@@ -1,0 +1,77 @@
+{
+  "baseline-01-command.json": {
+    "bytes": 2085,
+    "raw_body_exported": false,
+    "sha256": "2b2f36c8c12a6ce5533f1fe70294ac1989b41dd37186759b61e5187677825208"
+  },
+  "baseline-01-exit.json": {
+    "bytes": 1260,
+    "raw_body_exported": false,
+    "sha256": "50af2e7cd9f5c05e78c3c872d707dd3789f68a7159a3f264ff60fe1dec3ce787"
+  },
+  "baseline-01.xml": {
+    "bytes": 1173,
+    "raw_body_exported": false,
+    "sha256": "1b7885ee94f6dd819929c55814aaab4bb0bf7048574be5a7bee4deaf7a84ab1b"
+  },
+  "fast-01-command.json": {
+    "bytes": 3936,
+    "raw_body_exported": false,
+    "sha256": "887f44b606122459959bf6946c618d2dcd487894bc89295cf12f5e6c714f3d9b"
+  },
+  "fast-01-exit.json": {
+    "bytes": 2915,
+    "raw_body_exported": false,
+    "sha256": "4e5e9d40d79af021d0d35c0923bd283892a1c159169d391f8ba020577b9b892b"
+  },
+  "fast-01.xml": {
+    "bytes": 5384,
+    "raw_body_exported": false,
+    "sha256": "4f2d41799fe738144691fb952caacef2a2c5e7b97bff6454edd0f679bd41d671"
+  },
+  "fast-02-command.json": {
+    "bytes": 3965,
+    "raw_body_exported": false,
+    "sha256": "8ec89a13549dc2ea289fa413348c783263121590060f23c1cd36b21fbe730d92"
+  },
+  "fast-02-exit.json": {
+    "bytes": 2915,
+    "raw_body_exported": false,
+    "sha256": "f15184fdb8981b09f0a57f1051533fc79497d40774e21d6015a293e3a69b932a"
+  },
+  "fast-02.xml": {
+    "bytes": 5872,
+    "raw_body_exported": false,
+    "sha256": "a133fc677aef42f230a756581912a14512a882edaf7a4795fbcc88c15d206825"
+  },
+  "fast-03-command.json": {
+    "bytes": 3965,
+    "raw_body_exported": false,
+    "sha256": "e7f42b0dd4cf3958c983ea57719b673de012b3bfc4da93123443bdf1f23706e7"
+  },
+  "fast-03-exit.json": {
+    "bytes": 2916,
+    "raw_body_exported": false,
+    "sha256": "b74474a84b84362d7ab1f6f627216fbc6fd7e48610fd50caf9849e17ff891b9b"
+  },
+  "fast-03.xml": {
+    "bytes": 6338,
+    "raw_body_exported": false,
+    "sha256": "ea65dffa0489fe1d9aa33aa7106bc0afca199b7d98d2bcb3c7ed319e153c85ad"
+  },
+  "native-01-command.json": {
+    "bytes": 3960,
+    "raw_body_exported": false,
+    "sha256": "177a8e01e24c19739b0e9c541af8317e15ef3404db22b89679f8f47aa254adbf"
+  },
+  "native-01-exit.json": {
+    "bytes": 2914,
+    "raw_body_exported": false,
+    "sha256": "2d9397d0d60e9f5ded1f7d670f94aed55b4c88673207a33b36850a98899f7e39"
+  },
+  "native-01.xml": {
+    "bytes": 2485,
+    "raw_body_exported": false,
+    "sha256": "c3140d22fc3e317448e883eeb91e4bcca9d4622aa004090f47cfadb05d46ee60"
+  }
+}

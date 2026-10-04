@@ -8,7 +8,7 @@ allowed outputs and publication transitions independently.
 """
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from contextlib import contextmanager
 from contextvars import ContextVar
 import hashlib
@@ -30,9 +30,83 @@ CONTRACT_SCHEMA = "intent-plan-requirement-contract@3"
 PREDICATE = "reviewed_guard_has_checked_local_model_counterexample"
 OPERATOR = "reviewed-http-header-control-guard@1"
 _DEADLINE = ContextVar("reviewed_header_applicability_deadline", default=None)
+_LOCAL_BUDGET = ContextVar("local_benchmark_applicability_budget", default=None)
 FALSE = dict(proof_authority=False, execution_authority=False,
              mutation_authority=False, completion_authority=False,
              source_semantics_verified=False, security_goal_satisfied=False)
+
+
+@dataclass(frozen=True)
+class _LocalReplayBudget:
+    deadline_monotonic: float
+
+
+def applicability_replay_timeout(timeout_seconds=None):
+    """Select a replay ceiling; an inherited deadline can only shorten it."""
+    maximum = 120. if _LOCAL_BUDGET.get() is not None else 45.
+    value = maximum if timeout_seconds is None else timeout_seconds
+    if (type(value) not in (int, float) or not math.isfinite(value)
+            or not 0 < value <= maximum):
+        raise ValueError("bounded applicability deadline required")
+    return float(value)
+
+
+@contextmanager
+def local_benchmark_applicability_budget(*, deadline_monotonic):
+    """Explicit local-profile work deadline, carrying no proof authority."""
+    now = time.monotonic()
+    if (type(deadline_monotonic) not in (int, float)
+            or not math.isfinite(deadline_monotonic)
+            or not 0 < deadline_monotonic - now <= 900):
+        raise ValueError("bounded local applicability work deadline required")
+    with resume_applicability_budget(_LocalReplayBudget(float(deadline_monotonic))) as scope:
+        yield scope
+
+
+def capture_applicability_budget():
+    """Capture the remaining local work scope for an explicit thread handoff."""
+    scope = _LOCAL_BUDGET.get()
+    if scope is None:
+        return None
+    inherited = _DEADLINE.get()
+    return _LocalReplayBudget(min(scope.deadline_monotonic,
+                                 inherited if inherited is not None else scope.deadline_monotonic))
+
+
+@contextmanager
+def resume_applicability_budget(scope, *, deadline_monotonic=None):
+    """Resume a captured scope without renewing it, including across threads."""
+    if scope is None:
+        yield None
+        return
+    if type(scope) is not _LocalReplayBudget:
+        raise ValueError("an exact captured applicability budget is required")
+    if os.environ.get("IPFS_DATASETS_PROOF_RESOURCE_PROFILE") != "local-benchmark@1":
+        raise ValueError("explicit local benchmark resource profile required")
+    deadline = scope.deadline_monotonic
+    if (type(deadline) not in (int, float) or not math.isfinite(deadline)
+            or deadline - time.monotonic() > 900):
+        raise ValueError("bounded captured applicability deadline required")
+    if deadline_monotonic is not None:
+        if type(deadline_monotonic) not in (int, float) or not math.isfinite(deadline_monotonic):
+            raise ValueError("finite enclosing applicability deadline required")
+        deadline = min(deadline, deadline_monotonic)
+    previous = _DEADLINE.get()
+    local = _LOCAL_BUDGET.get()
+    if previous is not None:
+        deadline = min(deadline, previous)
+    if local is not None:
+        deadline = min(deadline, local.deadline_monotonic)
+    if deadline <= time.monotonic():
+        raise TimeoutError("aggregate applicability deadline expired before replay")
+    captured = _LocalReplayBudget(deadline)
+    deadline_token = _DEADLINE.set(deadline)
+    local_token = _LOCAL_BUDGET.set(captured)
+    try:
+        yield captured
+    finally:
+        _LOCAL_BUDGET.reset(local_token)
+        _DEADLINE.reset(deadline_token)
 
 
 @contextmanager
@@ -301,7 +375,7 @@ def _store(nomination, repository):
     return root, database, artifacts
 
 
-def checked_applicability(selection, *, nomination, manifest, timeout_seconds=45.,
+def checked_applicability(selection, *, nomination, manifest, timeout_seconds=None,
                           scheduler=None, parent_lease=None, cancel_event=None):
     """Replay immutable source and real solver before returning a narrow fact.
 
@@ -310,8 +384,7 @@ def checked_applicability(selection, *, nomination, manifest, timeout_seconds=45
     checks happen again even when a prior checker report exists.
     """
     started = time.monotonic()
-    _require(type(timeout_seconds) in (int, float) and math.isfinite(timeout_seconds)
-             and 0 < timeout_seconds <= 45., "bounded applicability deadline required")
+    timeout_seconds = applicability_replay_timeout(timeout_seconds)
     deadline = started + timeout_seconds
     inherited = _DEADLINE.get()
     if inherited is not None:
@@ -444,7 +517,7 @@ def checked_applicability(selection, *, nomination, manifest, timeout_seconds=45
         return evidence
 
 
-def ground_materials(materials, *, selection, nomination, manifest, timeout_seconds=45.):
+def ground_materials(materials, *, selection, nomination, manifest, timeout_seconds=None):
     """Execute the checker; then attach only an operation applicability atom."""
     from ..planning.obligation_graph_compiler import (
         TypedPredicate, ObservedFact, FactTruth, FactAuthority,

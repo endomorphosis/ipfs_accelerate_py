@@ -901,9 +901,30 @@ def _graph_contract(graph: PromptGoalGraph, manifest: dict, tree_id: str) -> tup
 
 def admit_local_benchmark_plan(
     *, graph: PromptGoalGraph, manifest: Mapping, requirement_bindings: Sequence[Mapping] | None = None,
-    applicability_timeout_seconds: float = 45., source_applicability_nomination=None,
+    applicability_timeout_seconds: float | None = None, source_applicability_nomination=None,
 ) -> dict:
     """Verify bounded planning permission; future task acceptance remains pending."""
+    from .header_intent_applicability import capture_applicability_budget
+    if capture_applicability_budget() is not None and _has_header_contract(manifest.get("payload", {})):
+        from .header_intent_applicability import (
+            applicability_budget, applicability_replay_timeout, require_applicability_budget,
+        )
+        with applicability_budget(applicability_replay_timeout(applicability_timeout_seconds)):
+            require_applicability_budget()
+            result = _admit_local_benchmark_plan(graph=graph, manifest=manifest,
+                requirement_bindings=requirement_bindings,
+                applicability_timeout_seconds=applicability_timeout_seconds,
+                source_applicability_nomination=source_applicability_nomination)
+            require_applicability_budget()
+            return result
+    return _admit_local_benchmark_plan(graph=graph, manifest=manifest,
+        requirement_bindings=requirement_bindings,
+        applicability_timeout_seconds=applicability_timeout_seconds,
+        source_applicability_nomination=source_applicability_nomination)
+
+
+def _admit_local_benchmark_plan(*, graph, manifest, requirement_bindings,
+                              applicability_timeout_seconds, source_applicability_nomination):
     declared, profile, current = _manifest(manifest, initial=True)
     graph = PromptGoalGraph.from_dict(graph.to_dict())
     payload = _planning_payload(graph, manifest, declared, profile, current, requirement_bindings,
@@ -917,7 +938,7 @@ def admit_local_benchmark_plan(
 
 
 def _planning_payload(graph, manifest, declared, profile, sources, requirement_bindings=None,
-                      *, requirement_source_text=None, applicability_timeout_seconds=45.,
+                      *, requirement_source_text=None, applicability_timeout_seconds=None,
                       source_applicability_nomination=None) -> dict:
     if source_applicability_nomination is not None and not _has_header_contract(declared):
         raise LocalPlanningError("runtime nomination requires explicit header intent contract")
@@ -983,7 +1004,7 @@ def _planning_payload(graph, manifest, declared, profile, sources, requirement_b
     return payload
 
 
-def _replay_intent_symbolic_plan(requirements, manifest, *, applicability_timeout_seconds=45.,
+def _replay_intent_symbolic_plan(requirements, manifest, *, applicability_timeout_seconds=None,
                                  source_applicability_nomination=None):
     """Replay proposals against verified signed baseline inputs, without a provider."""
     from ..planning.intent_symbolic_planning import build_intent_symbolic_plan
@@ -1032,6 +1053,23 @@ def _require_admission_fields(admission: Mapping) -> None:
 
 def verify_local_benchmark_admission(admission: Mapping, *, initial: bool = True) -> dict:
     """Revalidate an existing local admission without signing or materializing."""
+    from .header_intent_applicability import capture_applicability_budget
+    declared = admission.get("manifest", {}).get("payload", {})
+    if capture_applicability_budget() is not None and _has_header_contract(declared):
+        from .header_intent_applicability import (
+            applicability_budget, applicability_replay_timeout, require_applicability_budget,
+        )
+        # Include both source inventories and receipt comparison in this replay
+        # ceiling; nested checks inherit the same shrinking work deadline.
+        with applicability_budget(applicability_replay_timeout()):
+            require_applicability_budget()
+            result = _verify_local_benchmark_admission(admission, initial=initial)
+            require_applicability_budget()
+            return result
+    return _verify_local_benchmark_admission(admission, initial=initial)
+
+
+def _verify_local_benchmark_admission(admission: Mapping, *, initial: bool) -> dict:
     _require_admission_fields(admission)
     manifest, profile, current = _manifest(admission["manifest"], initial=initial)
     graph = PromptGoalGraph.from_dict(admission["graph"])
@@ -1336,10 +1374,12 @@ def materialize_local_benchmark_plan(*, admission: Mapping, intent) -> dict:
     declared = admission.get("manifest", {}).get("payload", {})
     if (declared.get("schema") == INTENT_MANIFEST_SCHEMA
             and decode_intent_requirement_contract(declared)["schema"] == "intent-plan-requirement-contract@3"):
-        from .header_intent_applicability import applicability_budget, require_applicability_budget
+        from .header_intent_applicability import (
+            applicability_budget, applicability_replay_timeout, require_applicability_budget,
+        )
         # One bound covers verification and stored-receipt replay. When called
         # by the planner this can only tighten its inherited remaining budget.
-        with applicability_budget(45.):
+        with applicability_budget(applicability_replay_timeout()):
             require_applicability_budget()
             return _materialize_local_transaction(admission=admission, intent=intent)
     return _materialize_local_transaction(admission=admission, intent=intent)

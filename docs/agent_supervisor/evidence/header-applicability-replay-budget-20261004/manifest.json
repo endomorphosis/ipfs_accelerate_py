@@ -1,0 +1,83 @@
+{
+  "files": [
+    {
+      "bytes": 2525,
+      "path": "README.md",
+      "sha256": "102e19c04d9cdf8cfb2908bb44dc50960688a7bcedd1e0238cfc66229d7e0a23"
+    },
+    {
+      "bytes": 1845,
+      "path": "baseline-01-command.json",
+      "sha256": "975c415e64a82b1755e77e0e587c44c4b48c7f9d2db300e6e20258021d30237e"
+    },
+    {
+      "bytes": 1352,
+      "path": "baseline-01-exit.json",
+      "sha256": "93e074f75a1d32a5b74e01aa4e20a9f0773562a588dcbed72841056f94cb67aa"
+    },
+    {
+      "bytes": 384,
+      "path": "baseline-01.xml",
+      "sha256": "2f6b0ca6de837986184f9b90a612320addc7212f25c8b1777ea803be2abb3a49"
+    },
+    {
+      "bytes": 775,
+      "path": "earlier-control-outcomes.json",
+      "sha256": "3db394de965432a23293965284468e60e9f3b331c774bbb69dca655eb76d61f1"
+    },
+    {
+      "bytes": 3728,
+      "path": "fast-03-command.json",
+      "sha256": "1c08c776428d0446217c32d3da6d0f815311770b66c3b89cc6163fd5b729f29f"
+    },
+    {
+      "bytes": 2916,
+      "path": "fast-03-exit.json",
+      "sha256": "aa109a36c4e63727c7a4db4b8f0347f00e82966c6e34b61c4ddf0de9e06c1bd4"
+    },
+    {
+      "bytes": 6225,
+      "path": "fast-03.xml",
+      "sha256": "9a14ee5946abe6e13334cfbe27222b2599ca139cd6b02bcea9babc335f47b04f"
+    },
+    {
+      "bytes": 3721,
+      "path": "native-01-command.json",
+      "sha256": "a0c7162a272249a93f339f9776b95c867431187bfbbe12ae534d0a9e28e1f110"
+    },
+    {
+      "bytes": 2914,
+      "path": "native-01-exit.json",
+      "sha256": "27968ce65e8d746833dab93c0fee2c7fceca6a033890b86da6d681eaac127cf6"
+    },
+    {
+      "bytes": 2372,
+      "path": "native-01.xml",
+      "sha256": "c4b42bc2afa404f7044f57f65319cdb4994eb9eb37cde0a407fa66b8a52a795f"
+    },
+    {
+      "bytes": 1747,
+      "path": "native-observations.json",
+      "sha256": "164c03ec947e3193f2db7448a142881873cbe802d7b43ae85d09af4bad1a658e"
+    },
+    {
+      "bytes": 2436,
+      "path": "retained-record-digests.json",
+      "sha256": "1f514fc19607d14a179f0d12dcbdba1c44c05f128c295d8216e602bee9aea97d"
+    },
+    {
+      "bytes": 3034,
+      "path": "source-pins.json",
+      "sha256": "b7a7d58d733b63d41b7cc22b955b6fd1ea4ff88839e609663fde8a0a7a33ec10"
+    },
+    {
+      "bytes": 847,
+      "path": "validation-scope.json",
+      "sha256": "cc6affee3a564ccad4e9e8d3fe67a43ae95138cb03d66a3b9e63924c4acc8df0"
+    }
+  ],
+  "manifest_excludes_itself": true,
+  "member_bytes": 36821,
+  "member_count": 15,
+  "schema": "bounded-component-manifest@1"
+}

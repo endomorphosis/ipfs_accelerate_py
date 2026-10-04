@@ -150,7 +150,7 @@ def _project_graph(materials, selected, manifest, requirements):
     return graph, sorted(bindings, key=lambda row: row["requirement_id"])
 
 
-def build_intent_symbolic_plan(contract, *, manifest, applicability_timeout_seconds=45.,
+def build_intent_symbolic_plan(contract, *, manifest, applicability_timeout_seconds=None,
                                source_applicability_nomination=None):
     """Produce a deterministic graph and replayable nomination receipt.
 

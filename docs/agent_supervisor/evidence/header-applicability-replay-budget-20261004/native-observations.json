@@ -1,0 +1,56 @@
+{
+  "controlled_captured_replay_contention": {
+    "admission_wait_limits_seconds": [
+      54.948408045995166,
+      8.285979244014015
+    ],
+    "authored_captured_source": true,
+    "child_admission_wait_limits_seconds": [
+      8.789824300009059,
+      8.716866827002377,
+      8.66729967801075,
+      8.618647906012484,
+      8.570364947008784,
+      8.522180968007888
+    ],
+    "enclosing_deadline_seconds": 55.0,
+    "expired_after_seconds": 55.014671455006464,
+    "first_process_after_seconds": 46.218134647002444,
+    "host_pressure_recovery_claimed": false,
+    "observed_processes_gone": 7,
+    "query_execution_limits_seconds": [
+      4.999422779001179,
+      4.9762032449943945,
+      4.999581089010462,
+      4.999584577002679,
+      4.999567248989479,
+      4.9995759049925255,
+      4.999575088993879
+    ],
+    "real_scheduler": true,
+    "real_z3": true,
+    "recovery_elapsed_seconds": 46.66486493400589,
+    "remaining_leases": 0,
+    "remaining_waiters": 0,
+    "scheduled_release_seconds": 46.0,
+    "simulated_clock": false,
+    "solver_calls": 6
+  },
+  "native_runtime_replay_scope": {
+    "actual_native_bootstrap": true,
+    "actual_native_start": true,
+    "actual_native_stop": true,
+    "actual_pre_request_delay_seconds": 2.1,
+    "all_child_processes_reaped": true,
+    "bootstrap_thread_scope_observed": true,
+    "constructor_scope_captured_before_verification": true,
+    "default_replay_cap_outside_scope": 45.0,
+    "expired_caller_scope_did_not_block_stop": true,
+    "header_solver_run_in_this_control": false,
+    "lifecycle_uses_original_start_deadline": true,
+    "model_or_provider_calls": 0,
+    "selected_replay_cap": 120.0,
+    "start_request_timeout_ms": 117822,
+    "stop_timeout_ms": 20000
+  }
+}

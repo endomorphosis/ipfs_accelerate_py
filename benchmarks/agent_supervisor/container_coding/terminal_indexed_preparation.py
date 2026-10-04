@@ -412,6 +412,7 @@ def _plan_symbolic(*, state, prepared, initial, timeout_seconds):
 
 
 def _plan_symbolic_in_budget(*, state, prepared, initial, timeout_seconds):
+    from ipfs_accelerate_py.agent_supervisor.runtime.header_intent_applicability import applicability_replay_timeout
     """Select checked operations and admit them through the existing local gate."""
     from ipfs_accelerate_py.agent_supervisor.planning.intent_symbolic_planning import build_intent_symbolic_plan
 
@@ -444,7 +445,7 @@ def _plan_symbolic_in_budget(*, state, prepared, initial, timeout_seconds):
                 raise ValueError("header planning requires the runtime captured initial context")
             header_kwargs["source_applicability_nomination"] = current_initial["descriptor"]["source384_context"]["source_applicability_nomination"]
             require_remaining_budget()
-            header_kwargs["applicability_timeout_seconds"] = min(45., timeout_seconds - (time.monotonic() - started))
+            header_kwargs["applicability_timeout_seconds"] = min(applicability_replay_timeout(), timeout_seconds - (time.monotonic() - started))
         planned = build_intent_symbolic_plan(prepared["intent_requirement_contract"],
             manifest=prepared["manifest"], **header_kwargs)
         require_remaining_budget()
@@ -456,7 +457,7 @@ def _plan_symbolic_in_budget(*, state, prepared, initial, timeout_seconds):
             require_remaining_budget()
         if header_kwargs:
             require_remaining_budget()
-            header_kwargs["applicability_timeout_seconds"] = min(45., timeout_seconds - (time.monotonic() - started))
+            header_kwargs["applicability_timeout_seconds"] = min(applicability_replay_timeout(), timeout_seconds - (time.monotonic() - started))
         admission = local.admit_local_benchmark_plan(graph=planned["graph"], manifest=prepared["manifest"],
             requirement_bindings=planned["requirement_bindings"], **header_kwargs)
         require_remaining_budget()

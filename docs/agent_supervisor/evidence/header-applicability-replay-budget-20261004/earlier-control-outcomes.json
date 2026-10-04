@@ -1,0 +1,38 @@
+{
+  "baseline-01": {
+    "final_unique_count_contribution": 0,
+    "returncode": 1,
+    "seconds": 13.504614474004484,
+    "source_pins_unchanged": true,
+    "xml_counts": {
+      "errors": 0,
+      "failures": 1,
+      "skipped": 0,
+      "tests": 1
+    }
+  },
+  "fast-01": {
+    "final_unique_count_contribution": 0,
+    "returncode": 0,
+    "seconds": 19.47647472099925,
+    "source_pins_unchanged": true,
+    "xml_counts": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 32
+    }
+  },
+  "fast-02": {
+    "final_unique_count_contribution": 0,
+    "returncode": 0,
+    "seconds": 19.55995467399771,
+    "source_pins_unchanged": true,
+    "xml_counts": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 35
+    }
+  }
+}

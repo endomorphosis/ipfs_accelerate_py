@@ -1,0 +1,53 @@
+{
+  "files": [
+    {
+      "bytes": 2516,
+      "path": "README.md",
+      "sha256": "8eb14acf603135c857a30d08305aff03f05292ed8704a7a475755577227daf66"
+    },
+    {
+      "bytes": 2486,
+      "path": "completion-scope-audit.json",
+      "sha256": "ba21452c68ec0201672beb27325b282c345aa1f60fd8cbb6b793ec9d49473b3e"
+    },
+    {
+      "bytes": 1042,
+      "path": "implementation-pins.json",
+      "sha256": "fbac9b38a37d437a58c505769c656c6481a360ad6dbbee12f59b18a820d60628"
+    },
+    {
+      "bytes": 254,
+      "path": "new-controls-closure-audit.json",
+      "sha256": "2be8908a1365a53e13a749370fd87bdc4fa89423cf7b5cadb5612512fb336742"
+    },
+    {
+      "bytes": 1042,
+      "path": "original-pins.json",
+      "sha256": "e095f1b5d22c5e7b64a5d40b30cf303fcc4033c376f5c360d1b02519368aee94"
+    },
+    {
+      "bytes": 5995,
+      "path": "regression-01-command.json",
+      "sha256": "b4e0aaf5739d5d4122d4f8dd189656412c853eee7558e499d6a1a70cad40fb6c"
+    },
+    {
+      "bytes": 4115,
+      "path": "regression-01-exit.json",
+      "sha256": "7a8727aec0f20384a58b6c5bdeae20e29efa4b267b2ded4225a6b75fd7d53873"
+    },
+    {
+      "bytes": 31084,
+      "path": "regression-01.xml",
+      "sha256": "0c5935c3463fafba555f3002bebbe97668034600190a6c6c10b5a2afc0fefa83"
+    },
+    {
+      "bytes": 3444,
+      "path": "run_regression.py",
+      "sha256": "373c160f6668a83481600bd8c0c54af28d5573a7d0e1ad1180cf2bbe1331206c"
+    }
+  ],
+  "manifest_excludes_itself": true,
+  "member_bytes": 51978,
+  "member_count": 9,
+  "schema": "bounded-component-manifest@1"
+}

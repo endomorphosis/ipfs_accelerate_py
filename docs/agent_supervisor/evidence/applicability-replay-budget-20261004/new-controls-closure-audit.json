@@ -1,0 +1,8 @@
+{
+  "all_hashes_match": true,
+  "all_members_enumerated": true,
+  "manifest_sha256": "dd8a2c6711f47144cf83f04b49a826c47ce705e25c7d01fa3d0239a6ee94ce11",
+  "member_bytes": 36821,
+  "members_verified": 15,
+  "schema": "bounded-component-closure-audit@1"
+}

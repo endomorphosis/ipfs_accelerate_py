@@ -1,0 +1,53 @@
+{
+  "callback": "bind_owner_local_completion_service.handler",
+  "decision": "retain explicit limitation for the next qualified benchmark generation; thin scope forwarding alone is insufficient",
+  "existing_publication_gates": [
+    "exact native task/attempt/revision/claim custody",
+    "current source and signed manifest checks",
+    "result signature and native record write"
+  ],
+  "existing_validation_per_command_seconds": 60,
+  "native_failure_at_this_boundary_observed": false,
+  "observed_by_source_inspection": true,
+  "proposed_followup_not_implemented": [
+    "optional captured applicability scope plus absolute lifetime at owner-selected binder",
+    "explicit resume around the exact callback without altering binding/retirement identity",
+    "selected local-only replay wrapper for _contract including pre/post manifest currentness",
+    "remaining-work cap within existing60-second validation-command maximum",
+    "deadline check before result publication plus cross-thread timeout and retirement cleanup controls"
+  ],
+  "raw_bodies_exported": false,
+  "remaining_deadline_gap": "run_local_task_validations does not check an inherited replay/work deadline after command/current-source checks immediately before signing and recording results",
+  "replay_paths": [
+    [
+      "handler",
+      "authorize_owner_portal_source_transition",
+      "local._contract",
+      "local._planning_payload",
+      "checked_applicability"
+    ],
+    [
+      "handler",
+      "run_owner_local_task_validations",
+      "local._contract",
+      "local._planning_payload",
+      "checked_applicability"
+    ],
+    [
+      "handler",
+      "run_owner_local_task_validations",
+      "local.run_local_task_validations",
+      "local._contract",
+      "local._planning_payload",
+      "checked_applicability"
+    ]
+  ],
+  "schema": "bounded-completion-budget-source-audit@1",
+  "scope_absent_checker_seconds": 45,
+  "source_pins": {
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "47e6bc0f16171ddd53ac28c7fc2ec45bb8e46c604db836a5f05c34c82c7f195f",
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py": "a5d15cade2892f62b7852191bbe21e4c08601066f13d0f74f0ad0855cbef6d27",
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py": "fc9a8696a127b0a6c0dfca24d49aaf0f03b13387a543a5f3a5cb5f1a61329c3f"
+  },
+  "thread_handoff": "typed owner RPC callback has no explicit captured applicability scope argument"
+}
