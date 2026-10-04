@@ -2181,7 +2181,8 @@ def _validation_python_launcher_source(
         "launcher_fd=int(match.group(2))\n"
         "entries=[int(entry) for entry in os.listdir(directory) if entry.isdecimal()]\n"
         "if len(entries)>512: sys.exit(75)\n"
-        "required=fcntl.F_SEAL_WRITE|fcntl.F_SEAL_GROW|fcntl.F_SEAL_SHRINK|fcntl.F_SEAL_SEAL\n"
+        "if not sys.platform.startswith('linux'): sys.exit(75)\n"
+        "required=getattr(fcntl,'F_SEAL_WRITE',8)|getattr(fcntl,'F_SEAL_GROW',4)|getattr(fcntl,'F_SEAL_SHRINK',2)|getattr(fcntl,'F_SEAL_SEAL',1)\n"
         "fd=-1\n"
         "for candidate in sorted(entries):\n"
         " if candidate==launcher_fd: continue\n"
@@ -2190,7 +2191,7 @@ def _validation_python_launcher_source(
         "  opened=os.open(directory+'/'+str(candidate),os.O_RDONLY|os.O_CLOEXEC)\n"
         "  before=os.fstat(opened)\n"
         "  if not stat.S_ISREG(before.st_mode) or not before.st_mode&0o111: continue\n"
-        "  if fcntl.fcntl(opened,fcntl.F_GET_SEALS)&required != required: continue\n"
+        "  if fcntl.fcntl(opened,getattr(fcntl,'F_GET_SEALS',1034))&required != required: continue\n"
         "  digest=hashlib.sha256()\n"
         "  while chunk:=os.read(opened,1024*1024): digest.update(chunk)\n"
         "  after=os.fstat(opened)\n"
@@ -2300,6 +2301,32 @@ def _write_all(fd: int, payload: bytes) -> None:
         offset += written
 
 
+def _validation_memfd_create(name: str, flags: int) -> int:
+    """Call the real Linux API when a portable Python build omits its wrapper.
+
+    Some standalone CPython builds target older libc headers despite running
+    on a modern Linux kernel. No unsealed file fallback is permitted: callers
+    must still acquire and inspect the kernel seals and verify exact bytes.
+    """
+    if not sys.platform.startswith("linux"):
+        raise ValidationRuntimeError("sealed validation memfd requires Linux")
+    native = getattr(os, "memfd_create", None)
+    if callable(native):
+        return native(name, flags)
+    import ctypes
+    try:
+        create = ctypes.CDLL(None, use_errno=True).memfd_create
+    except AttributeError as exc:
+        raise ValidationRuntimeError("native libc memfd_create is unavailable") from exc
+    create.argtypes = (ctypes.c_char_p, ctypes.c_uint)
+    create.restype = ctypes.c_int
+    descriptor = create(name.encode("utf-8"), flags)
+    if descriptor < 0:
+        code = ctypes.get_errno()
+        raise OSError(code, os.strerror(code))
+    return descriptor
+
+
 def _sealed_executable_memfd(
     *,
     name: str,
@@ -2312,12 +2339,12 @@ def _sealed_executable_memfd(
 
     fd = -1
     try:
-        fd = os.memfd_create(name, creation_flags)
+        fd = _validation_memfd_create(name, creation_flags)
         _write_all(fd, payload)
         os.fchmod(fd, 0o500)
-        fcntl_module.fcntl(fd, fcntl_module.F_ADD_SEALS, required_seals)
+        fcntl_module.fcntl(fd, getattr(fcntl_module, "F_ADD_SEALS", 1033), required_seals)
         actual_seals = int(
-            fcntl_module.fcntl(fd, fcntl_module.F_GET_SEALS)
+            fcntl_module.fcntl(fd, getattr(fcntl_module, "F_GET_SEALS", 1034))
         )
         if actual_seals & required_seals != required_seals:
             raise ValidationRuntimeError(
@@ -2519,12 +2546,12 @@ def validation_python_launcher_environment(
         import fcntl
 
         required_seals = (
-            fcntl.F_SEAL_WRITE
-            | fcntl.F_SEAL_GROW
-            | fcntl.F_SEAL_SHRINK
-            | fcntl.F_SEAL_SEAL
+            getattr(fcntl, "F_SEAL_WRITE", 0x0008)
+            | getattr(fcntl, "F_SEAL_GROW", 0x0004)
+            | getattr(fcntl, "F_SEAL_SHRINK", 0x0002)
+            | getattr(fcntl, "F_SEAL_SEAL", 0x0001)
         )
-        creation_flags = os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING
+        creation_flags = getattr(os, "MFD_CLOEXEC", 0x0001) | getattr(os, "MFD_ALLOW_SEALING", 0x0002)
     except (AttributeError, ImportError) as exc:
         raise ValidationRuntimeError(
             "sealed validation Python launcher is unavailable on Linux"

@@ -126,6 +126,10 @@ class DuckDBConnectionPolicyError(RuntimeError):
     """A DuckDB connection did not enforce the supervisor's sealed policy."""
 
 
+class DuckDBOwnerRetiredError(DuckDBConnectionPolicyError):
+    """The owner binding was permanently retired and cannot be reused."""
+
+
 def _connection_tuning(
     configuration: Mapping[str, Any] | None,
 ) -> dict[str, str]:
@@ -449,7 +453,7 @@ def resolve_duckdb_path(
 
 
 class DuckDBConnection:
-    """Lock-owning compatibility adapter for existing SQLite-style code."""
+    """Serialized native connection with explicit transaction ownership."""
 
     def __init__(
         self,
@@ -471,6 +475,20 @@ class DuckDBConnection:
         if is_sqlite_database(self.path):
             raise ValueError(f"legacy SQLite database must be migrated before opening: {self.path}")
         self._transaction_active = False
+        self._execution_lock = threading.RLock()
+        self._execution_condition = threading.Condition(self._execution_lock)
+        self._transaction_lock_owner = 0
+        self._context_owner = 0
+        self._context_finalizing = False
+        self._closing_owner = 0
+        self._poisoned = False
+        self._owner_binding_retired = False
+        self._reconnect_epoch = 0
+        self._pooled = False
+        self._raw_wrapper_key = 0
+        self._threads = threads
+        self._memory_limit = memory_limit
+        self._owner_extension_load = owner_extension_load
         self._transaction_on_context = bool(transaction_on_context)
         self._context_depth = 0
         self._closed = False
@@ -502,6 +520,7 @@ class DuckDBConnection:
             self._lock_context.__exit__(None, None, None)
             raise
 
+
     @classmethod
     def wrap(
         cls,
@@ -511,10 +530,23 @@ class DuckDBConnection:
     ) -> DuckDBConnection:
         """Wrap an already configured connection without taking another lock."""
 
+        if isinstance(connection, cls):
+            return connection
         instance = cls.__new__(cls)
         instance.path = None
         instance._connection = connection
         instance._transaction_active = False
+        instance._execution_lock = threading.RLock()
+        instance._execution_condition = threading.Condition(instance._execution_lock)
+        instance._transaction_lock_owner = 0
+        instance._context_owner = 0
+        instance._context_finalizing = False
+        instance._closing_owner = 0
+        instance._poisoned = False
+        instance._owner_binding_retired = False
+        instance._reconnect_epoch = 0
+        instance._pooled = False
+        instance._raw_wrapper_key = 0
         instance._transaction_on_context = bool(transaction_on_context)
         instance._context_depth = 0
         instance._closed = False
@@ -526,13 +558,11 @@ class DuckDBConnection:
         instance._quack_pending_mutations = []
         instance._quack_uri = ""
         instance._quack_extension_seal = None
+        _register_duckdb_wrapper(instance, connection)
         return instance
 
-    @property
-    def in_transaction(self) -> bool:
-        return self._transaction_active
 
-    def execute(
+    def _execute_statement(
         self,
         sql: str,
         parameters: Iterable[Any] | Mapping[str, Any] | None = None,
@@ -617,42 +647,6 @@ class DuckDBConnection:
         dml = normalized.startswith(("INSERT ", "UPDATE ", "DELETE "))
         return DuckDBCursor(self._connection, dml=dml)
 
-    def executemany(
-        self,
-        sql: str,
-        parameters: Iterable[Iterable[Any]],
-    ) -> DuckDBCursor:
-        if getattr(self, "_default_catalog", None):
-            raise DuckDBConnectionPolicyError(
-                "quack transport does not admit executemany"
-            )
-        self._connection.executemany(sql, parameters)
-        return DuckDBCursor(self._connection, dml=True)
-
-    def executescript(self, sql: str) -> DuckDBCursor:
-        if getattr(self, "_default_catalog", None):
-            raise DuckDBConnectionPolicyError(
-                "quack transport does not admit scripts"
-            )
-        self._connection.execute(sql)
-        return DuckDBCursor(self._connection)
-
-    def commit(self) -> None:
-        if self._quack_pending_mutations and not self._transaction_active:
-            raise DuckDBConnectionPolicyError(
-                "quack mutation bundle exists outside an active transaction"
-            )
-        if self._transaction_active:
-            self.execute("COMMIT")
-
-    def rollback(self) -> None:
-        self._quack_pending_mutations = []
-        if self._transaction_active:
-            if getattr(self, "_quack_session_queries", False):
-                self.execute("ROLLBACK")
-            else:
-                self._connection.rollback()
-            self._transaction_active = False
 
     def _reattach_quack_transport(self) -> None:
         uri = str(self._quack_uri or "")
@@ -660,16 +654,18 @@ class DuckDBConnection:
             raise DuckDBConnectionPolicyError("quack transport URI is unavailable")
         old_seal = self._quack_extension_seal
         self._quack_extension_seal = None
+        old_raw = self._connection
         try:
-            self._connection.close()
-        except Exception:
-            pass
+            old_raw.close()
+            _unregister_duckdb_wrapper(self, old_raw)
         finally:
             if old_seal is not None:
                 old_seal.close()
         fresh = open_quack_transport_connection(
             uri, token=self._quack_mutation_token
         )
+        _unregister_duckdb_wrapper(fresh, fresh._connection)
+        _register_duckdb_wrapper(self, fresh._connection)
         self._connection = fresh._connection
         self._default_catalog = fresh._default_catalog
         self._quack_mutation_binding = fresh._quack_mutation_binding
@@ -681,36 +677,375 @@ class DuckDBConnection:
         fresh._quack_extension_seal = None
         fresh._closed = True
 
-    def close(self) -> None:
-        if self._closed:
+
+    @property
+    def in_transaction(self) -> bool:
+        with self._execution_condition:
+            return self._transaction_active
+
+
+    def _wait_for_transaction_turn_locked(self) -> int:
+        """Wait until this thread may use the shared native connection."""
+
+        thread_id = threading.get_ident()
+        while (
+            (
+                self._transaction_active
+                and self._transaction_lock_owner != thread_id
+            )
+            or (
+                self._context_finalizing
+                and self._context_owner != thread_id
+            )
+        ):
+            self._execution_condition.wait()
+        return thread_id
+
+
+    def _transaction_finished_locked(self) -> None:
+        self._transaction_active = False
+        self._transaction_lock_owner = 0
+        self._execution_condition.notify_all()
+
+
+    def _require_usable_locked(self) -> None:
+        if self._owner_binding_retired:
+            raise DuckDBOwnerRetiredError("DuckDB owner binding is retired")
+        thread_id = threading.get_ident()
+        if (
+            self._closed
+            or (
+                self._closing_owner
+                and self._closing_owner != thread_id
+            )
+            or self._poisoned
+            or self._connection is None
+        ):
+            raise DuckDBConnectionPolicyError(
+                "DuckDB connection is unusable after an uncertain transaction"
+            )
+
+
+    def _poison_locked(self) -> str:
+        """Close an uncertain native handle and wake every excluded peer."""
+
+        pooled = bool(self._pooled)
+        uri = str(self._quack_uri or "") if pooled else ""
+        raw = self._connection
+        self._connection = None
+        self._quack_pending_mutations = []
+        self._poisoned = True
+        self._pooled = False
+        if pooled:
+            self._closed = True
+        self._transaction_finished_locked()
+        if raw is not None:
+            try:
+                raw.close()
+            except Exception:
+                pass
+            else:
+                _unregister_duckdb_wrapper(self, raw)
+        return uri
+
+
+    def _evict_poisoned_pool_entry(self, uri: str) -> None:
+        if not uri:
             return
-        self._closed = True
+        with _QUACK_ATTACH_LOCK:
+            if _QUACK_TRANSPORT_CACHE.get(uri) is self:
+                _QUACK_TRANSPORT_CACHE.pop(uri, None)
+
+
+    def _discard_pooled_connection(self) -> None:
+        """Administratively invalidate a cached handle regardless of API owner."""
+
+        with self._execution_condition:
+            uri = self._poison_locked()
+            self._closed = True
+            self._closing_owner = 0
+            self._context_depth = 0
+            self._context_owner = 0
+            self._context_finalizing = False
+            self._execution_condition.notify_all()
+        self._evict_poisoned_pool_entry(uri)
+
+
+    def execute(
+        self,
+        sql: str,
+        parameters: Iterable[Any] | Mapping[str, Any] | None = None,
+    ) -> DuckDBCursor:
+        with self._execution_condition:
+            if self._owner_binding_retired:
+                raise DuckDBOwnerRetiredError("DuckDB owner binding is retired")
+            recover = self._poisoned and not self._closed and self.path is not None
+        if recover:
+            self.reconnect_exclusive_owner()
+        statement = str(sql)
+        transaction_kind, canonical = _classify_transaction_sql(statement)
+        if transaction_kind:
+            statement = canonical
+        normalized = " ".join(statement.strip().upper().split())
+        begins_transaction = transaction_kind == "begin"
+        ends_transaction = transaction_kind in {"commit", "rollback"}
+        evict_uri = ""
         try:
-            self.rollback()
-            self._connection.close()
+            with self._execution_condition:
+                thread_id = threading.get_ident()
+                if ends_transaction:
+                    if (
+                        self._transaction_active
+                        and self._transaction_lock_owner != thread_id
+                    ):
+                        raise DuckDBConnectionPolicyError(
+                            "transaction termination is owned by another thread"
+                        )
+                    if not self._transaction_active:
+                        raise DuckDBConnectionPolicyError(
+                            "transaction termination requires an active transaction"
+                        )
+                else:
+                    thread_id = self._wait_for_transaction_turn_locked()
+                self._require_usable_locked()
+                if begins_transaction and self._transaction_active:
+                    raise DuckDBConnectionPolicyError(
+                        "transaction is already active on this connection"
+                    )
+                try:
+                    result = self._execute_locked(statement, normalized, parameters)
+                except BaseException:
+                    if begins_transaction:
+                        self._quack_pending_mutations = []
+                        try:
+                            self._connection.rollback()
+                        except Exception:
+                            evict_uri = self._poison_locked()
+                        else:
+                            self._transaction_finished_locked()
+                    elif ends_transaction:
+                        evict_uri = self._poison_locked()
+                    raise
+                if begins_transaction and self._transaction_active:
+                    self._transaction_lock_owner = thread_id
+                elif ends_transaction and not self._transaction_active:
+                    self._transaction_finished_locked()
+                return result
+        except BaseException:
+            self._evict_poisoned_pool_entry(evict_uri)
+            raise
+
+
+    def executemany(
+        self,
+        sql: str,
+        parameters: Iterable[Iterable[Any]],
+    ) -> DuckDBCursor:
+        transaction_kind, _canonical = _classify_transaction_sql(sql)
+        if transaction_kind:
+            raise DuckDBConnectionPolicyError(
+                "executemany does not admit transaction control"
+            )
+        with self._execution_condition:
+            self._wait_for_transaction_turn_locked()
+            self._require_usable_locked()
+            if getattr(self, "_default_catalog", None):
+                raise DuckDBConnectionPolicyError(
+                    "quack transport does not admit executemany"
+                )
+            self._connection.executemany(sql, parameters)
+            return DuckDBCursor(self._connection, dml=True)
+
+
+    def executescript(self, sql: str) -> DuckDBCursor:
+        transaction_kind, _canonical = _classify_transaction_sql(sql)
+        if transaction_kind:
+            raise DuckDBConnectionPolicyError(
+                "executescript does not admit transaction control"
+            )
+        with self._execution_condition:
+            self._wait_for_transaction_turn_locked()
+            self._require_usable_locked()
+            if getattr(self, "_default_catalog", None):
+                raise DuckDBConnectionPolicyError(
+                    "quack transport does not admit scripts"
+                )
+            self._connection.execute(sql)
+            return DuckDBCursor(self._connection)
+
+
+    def commit(self) -> None:
+        with self._execution_condition:
+            thread_id = threading.get_ident()
+            if self._context_depth and self._context_owner != thread_id:
+                raise DuckDBConnectionPolicyError(
+                    "DuckDB connection context is owned by another thread"
+                )
+            if (
+                self._transaction_active
+                and self._transaction_lock_owner != thread_id
+            ):
+                raise DuckDBConnectionPolicyError(
+                    "transaction termination is owned by another thread"
+                )
+            self._require_usable_locked()
+            if self._quack_pending_mutations and not self._transaction_active:
+                raise DuckDBConnectionPolicyError(
+                    "quack owner mutation bundle exists outside an active transaction"
+                )
+            if self._transaction_active:
+                # Keep the method API and SQL API on the same path.  For a Quack
+                # attachment this ends the read-only snapshot and dispatches the
+                # authenticated owner-side bundle; it must never silently commit
+                # the attached snapshot while dropping buffered mutations.
+                self.execute("COMMIT")
+
+
+    def rollback(self) -> None:
+        evict_uri = ""
+        try:
+            with self._execution_condition:
+                thread_id = threading.get_ident()
+                if self._context_depth and self._context_owner != thread_id:
+                    raise DuckDBConnectionPolicyError(
+                        "DuckDB connection context is owned by another thread"
+                    )
+                if (
+                    self._transaction_active
+                    and self._transaction_lock_owner != thread_id
+                ):
+                    raise DuckDBConnectionPolicyError(
+                        "transaction termination is owned by another thread"
+                    )
+                self._require_usable_locked()
+                self._quack_pending_mutations = []
+                if self._transaction_active:
+                    try:
+                        self._connection.rollback()
+                    except BaseException:
+                        evict_uri = self._poison_locked()
+                        raise
+                self._transaction_finished_locked()
+        except BaseException:
+            self._evict_poisoned_pool_entry(evict_uri)
+            raise
+
+
+    def close(self) -> None:
+        with self._execution_condition:
+            thread_id = threading.get_ident()
+            if self._closed:
+                return
+            if self._closing_owner:
+                if self._closing_owner == thread_id:
+                    return
+                raise DuckDBConnectionPolicyError(
+                    "DuckDB connection is being closed by another thread"
+                )
+            if self._context_depth and self._context_owner != thread_id:
+                raise DuckDBConnectionPolicyError(
+                    "DuckDB connection context is owned by another thread"
+                )
+            if (
+                self._transaction_active
+                and self._transaction_lock_owner != thread_id
+            ):
+                raise DuckDBConnectionPolicyError(
+                    "DuckDB transaction is owned by another thread"
+                )
+            if getattr(self, "_pooled", False):
+                if self._transaction_active:
+                    try:
+                        self.rollback()
+                    except Exception:
+                        pass
+                return
+            self._closing_owner = thread_id
+        try:
+            try:
+                self.rollback()
+            except Exception:
+                pass
+            with self._execution_condition:
+                raw = self._connection
+                self._connection = None
+                self._quack_pending_mutations = []
+                self._transaction_finished_locked()
+            if raw is not None:
+                try:
+                    raw.close()
+                except Exception:
+                    self._poisoned = True
+                else:
+                    _unregister_duckdb_wrapper(self, raw)
         finally:
             try:
                 if self._quack_extension_seal is not None:
                     self._quack_extension_seal.close()
                     self._quack_extension_seal = None
-            finally:
                 if self._lock_context is not None:
-                    self._lock_context.__exit__(None, None, None)
+                    lock_context = self._lock_context
+                    self._lock_context = None
+                    lock_context.__exit__(None, None, None)
+            finally:
+                with self._execution_condition:
+                    self._closed = True
+                    self._closing_owner = 0
+                    self._execution_condition.notify_all()
+
+
+    def _release_quack_attach_session(self) -> None:
+        raise DuckDBConnectionPolicyError(
+            "transferring a live Quack session out of its synchronized wrapper "
+            "is not admitted"
+        )
+
+
+    def _restore_quack_attach_session(self, uri: str) -> None:
+        del uri
+        raise DuckDBConnectionPolicyError(
+            "transplanting a Quack session between synchronized wrappers is not admitted"
+        )
+
 
     def __enter__(self) -> DuckDBConnection:
-        if (
-            self._transaction_on_context
-            and self._context_depth == 0
-            and not self._transaction_active
-        ):
-            self.execute("BEGIN TRANSACTION")
-        self._context_depth += 1
-        return self
+        with self._execution_condition:
+            self._require_usable_locked()
+            thread_id = threading.get_ident()
+            if self._context_depth and self._context_owner != thread_id:
+                raise DuckDBConnectionPolicyError(
+                    "DuckDB connection context is owned by another thread"
+                )
+            if (
+                self._transaction_active
+                and self._transaction_lock_owner != thread_id
+            ):
+                raise DuckDBConnectionPolicyError(
+                    "DuckDB transaction context is owned by another thread"
+                )
+            if self._context_depth == 0:
+                self._context_owner = thread_id
+                if self._transaction_on_context and not self._transaction_active:
+                    try:
+                        self.execute("BEGIN TRANSACTION")
+                    except BaseException:
+                        self._context_owner = 0
+                        raise
+            self._context_depth += 1
+            return self
+
 
     def __exit__(self, exc_type: Any, _exc: Any, _traceback: Any) -> None:
-        self._context_depth = max(0, self._context_depth - 1)
-        if self._context_depth:
-            return
+        with self._execution_condition:
+            thread_id = threading.get_ident()
+            if self._context_depth <= 0 or self._context_owner != thread_id:
+                raise DuckDBConnectionPolicyError(
+                    "DuckDB connection context exit is owned by another thread"
+                )
+            if self._context_depth > 1:
+                self._context_depth -= 1
+                return
+            self._context_finalizing = True
         try:
             if self._transaction_active:
                 if exc_type is None:
@@ -718,8 +1053,57 @@ class DuckDBConnection:
                 else:
                     self.rollback()
         finally:
-            if self._lock_context is not None:
-                self.close()
+            try:
+                if self._lock_context is not None:
+                    self.close()
+            finally:
+                with self._execution_condition:
+                    self._context_depth = 0
+                    self._context_owner = 0
+                    self._context_finalizing = False
+                    self._execution_condition.notify_all()
+
+
+    def retire_owner_binding(self) -> None:
+        """Fence this owner permanently, including an in-flight reconnect."""
+        with self._execution_condition:
+            self._owner_binding_retired = True
+            self._reconnect_epoch += 1
+            self._poison_locked()
+
+    def reconnect_exclusive_owner(self) -> None:
+        """Replace a failed native handle while retaining its exclusive lock."""
+        import duckdb
+
+        with self._execution_condition:
+            if self._owner_binding_retired:
+                raise DuckDBOwnerRetiredError("DuckDB owner binding is retired")
+            if self._closed or self.path is None or self._lock_context is None:
+                raise DuckDBConnectionPolicyError("reconnect requires a live file-owning handle")
+            if self._transaction_active and self._transaction_lock_owner != threading.get_ident():
+                raise DuckDBConnectionPolicyError("transaction is owned by another thread")
+            self._poison_locked()
+            self._reconnect_epoch += 1
+            epoch = self._reconnect_epoch
+        candidate = connect_duckdb_with_policy(
+            duckdb, self.path,
+            configuration={"threads": self._threads, "memory_limit": self._memory_limit},
+            owner_extension_load=self._owner_extension_load,
+        )
+        with self._execution_condition:
+            if self._owner_binding_retired or self._closed or epoch != self._reconnect_epoch:
+                candidate.close()
+                if self._owner_binding_retired:
+                    raise DuckDBOwnerRetiredError("DuckDB owner binding is retired")
+                raise DuckDBConnectionPolicyError("owner changed during reconnect")
+            self._connection = candidate
+            _register_duckdb_wrapper(self, candidate)
+            self._poisoned = False
+            self._execution_condition.notify_all()
+
+    def _execute_locked(self, statement, normalized, parameters):
+        return self._execute_statement(statement, parameters)
+
 
 
 def quack_transport_uri(target: object) -> str:
@@ -1739,3 +2123,337 @@ from .quack_owner_command import (  # noqa: E402
     validate_quack_owner_command,
     validate_quack_owner_command_request,
 )
+
+
+from datetime import timezone
+
+from datetime import datetime
+
+def _parse_task_updated_at(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def unstall_stale_in_progress_tasks(
+    connection: Any,
+    *,
+    now: datetime | None = None,
+    stale_seconds: int = STALE_IN_PROGRESS_UNSTALL_SECONDS,
+    canonical_transition: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None,
+    allow_projection_only: bool = False,
+    orphan_previous_generation: bool = False,
+) -> dict[str, Any]:
+    """Return in_progress tasks that have been idle longer than a live attempt.
+
+    Used by the exclusive Quack owner so a dead gate (attach contention,
+    crashed implementer, leftover CAS) cannot freeze the rest of the board.
+    Live implementations heartbeat ``updated_at`` on claim; a run still under
+    ``implementation_max_timeout`` is left alone.
+
+    ``orphan_previous_generation`` is for exclusive-owner restart only: the
+    previous implementers died with the owner, so leftover ``in_progress``
+    rows are orphans even when they are still inside the live-attempt window.
+    """
+
+    if stale_seconds <= 0:
+        raise ValueError("stale_seconds must be positive")
+    clock = now or datetime.now(timezone.utc)
+    if clock.tzinfo is None:
+        clock = clock.replace(tzinfo=timezone.utc)
+    rows = connection.execute(
+        "SELECT task_cid, task_alias, status, revision, updated_at "
+        "FROM tasks WHERE status = 'in_progress' "
+        "ORDER BY task_alias, task_cid"
+    ).fetchall()
+    unstalled: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    pending: list[tuple[Any, ...]] = []
+    for row in rows:
+        task_cid, task_alias, status, revision, updated_at = _row_tuple(row)[:5]
+        updated = _parse_task_updated_at(updated_at)
+        if updated is None:
+            skipped.append(
+                {
+                    "task_cid": str(task_cid),
+                    "task_alias": str(task_alias),
+                    "reason": "updated_at_unparseable",
+                }
+            )
+            continue
+        age = (clock - updated).total_seconds()
+        if not orphan_previous_generation and age < float(stale_seconds):
+            skipped.append(
+                {
+                    "task_cid": str(task_cid),
+                    "task_alias": str(task_alias),
+                    "reason": "still_within_live_attempt_window",
+                    "age_seconds": int(age),
+                }
+            )
+            continue
+        pending.append((task_cid, task_alias, status, revision, int(age)))
+    if pending and canonical_transition is None and allow_projection_only is not True:
+        raise DuckDBConnectionPolicyError(
+            "stale-task recovery requires the IntentRepository transition authority; "
+            "projection-only mutation is permitted only by an explicit hermetic fixture"
+        )
+    index_sql: list[str] = []
+    if pending:
+        index_sql = _drop_task_status_indexes(connection)
+    try:
+        for task_cid, task_alias, status, revision, age in pending:
+            new_revision = int(revision) + 1
+            stamp = clock.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            transition_input = {
+                "task_cid": str(task_cid),
+                "task_alias": str(task_alias),
+                "previous_revision": int(revision),
+                "revision": new_revision,
+                "previous_status": str(status),
+                "status": "retrying",
+                "age_seconds": int(age),
+                "recorded_at": stamp,
+                "reason": (
+                    "orphaned_previous_owner_generation"
+                    if orphan_previous_generation
+                    else "stale_idle_in_progress"
+                ),
+            }
+            if canonical_transition is None:
+                updated = connection.execute(
+                    "UPDATE tasks SET status = ?, revision = ?, updated_at = ? "
+                    "WHERE task_cid = ? AND revision = ? AND status = 'in_progress' "
+                    "RETURNING revision",
+                    ["retrying", new_revision, stamp, str(task_cid), int(revision)],
+                ).fetchone()
+                if updated is None or int(_row_tuple(updated)[0]) != new_revision:
+                    raise DuckDBConnectionPolicyError(
+                        "stale-task recovery lost its exact task revision CAS"
+                    )
+                transition_result: Mapping[str, Any] = transition_input
+            else:
+                transition_result = canonical_transition(transition_input)
+                if not isinstance(transition_result, Mapping):
+                    raise DuckDBConnectionPolicyError(
+                        "canonical stale-task transition returned no typed result"
+                    )
+                try:
+                    result_sequence = int(
+                        transition_result.get("event_global_sequence") or 0
+                    )
+                    result_previous_revision = int(
+                        transition_result.get("previous_revision") or -1
+                    )
+                    result_revision = int(transition_result.get("revision") or -1)
+                except (TypeError, ValueError) as exc:
+                    raise DuckDBConnectionPolicyError(
+                        "canonical stale-task transition returned malformed evidence"
+                    ) from exc
+                if (
+                    transition_result.get("changed") is not True
+                    or str(transition_result.get("task_cid") or "") != str(task_cid)
+                    or str(transition_result.get("task_alias") or "") != str(task_alias)
+                    or str(transition_result.get("previous_status") or "")
+                    != "in_progress"
+                    or str(transition_result.get("status") or "") != "retrying"
+                    or result_previous_revision != int(revision)
+                    or result_revision != new_revision
+                    or not str(transition_result.get("event_id") or "").startswith("bag")
+                    or result_sequence < 1
+                    or not str(transition_result.get("receipt_cid") or "").startswith(
+                        "bag"
+                    )
+                ):
+                    raise DuckDBConnectionPolicyError(
+                        "canonical stale-task transition did not prove the exact CAS"
+                    )
+            unstalled.append({**transition_input, **dict(transition_result)})
+    finally:
+        if index_sql:
+            _restore_task_status_indexes(connection, index_sql)
+    return {
+        "unstalled": unstalled,
+        "skipped": skipped,
+        "stale_seconds": int(stale_seconds),
+        "status_indexes_rebuilt": list(index_sql),
+    }
+
+
+
+
+
+def _sql_statement_token_shapes(sql: str) -> tuple[tuple[str, ...], ...]:
+    """Tokenize statement shapes without confusing comments or string literals."""
+
+    import duckdb
+
+    text = str(sql)
+    encoded = text.encode("utf-8")
+    statements: list[tuple[str, ...]] = []
+    current: list[str] = []
+    for offset, token_type in duckdb.tokenize(text):
+        if token_type.name == "operator" and encoded[offset : offset + 1] == b";":
+            if current:
+                statements.append(tuple(current))
+                current = []
+            continue
+        if len(current) >= 6:
+            continue
+        if token_type.name == "keyword":
+            match = re.match(rb"[A-Za-z_][A-Za-z0-9_]*", encoded[offset:])
+            current.append(
+                match.group(0).decode("ascii").upper()
+                if match is not None
+                else "<TOKEN>"
+            )
+        else:
+            current.append("<TOKEN>")
+    if current:
+        statements.append(tuple(current))
+    return tuple(statements)
+
+
+def _classify_transaction_sql(sql: str) -> tuple[str, str]:
+    """Classify one admitted transaction statement and reject ambiguous forms."""
+
+    statements = _sql_statement_token_shapes(sql)
+    transaction_prefixes = {
+        "ABORT",
+        "BEGIN",
+        "COMMIT",
+        "END",
+        "RELEASE",
+        "ROLLBACK",
+        "SAVEPOINT",
+        "START",
+    }
+    transaction_statements = [
+        statement
+        for statement in statements
+        if statement and statement[0] in transaction_prefixes
+    ]
+    if transaction_statements and len(statements) != 1:
+        raise DuckDBConnectionPolicyError(
+            "transaction control must be one standalone SQL statement"
+        )
+    if not transaction_statements:
+        return "", ""
+    words = transaction_statements[0]
+    if words in {
+        ("BEGIN",),
+        ("BEGIN", "TRANSACTION"),
+        ("BEGIN", "DEFERRED"),
+        ("BEGIN", "DEFERRED", "TRANSACTION"),
+        ("BEGIN", "EXCLUSIVE"),
+        ("BEGIN", "EXCLUSIVE", "TRANSACTION"),
+        ("BEGIN", "IMMEDIATE"),
+        ("BEGIN", "IMMEDIATE", "TRANSACTION"),
+        ("START", "TRANSACTION"),
+    }:
+        return "begin", "BEGIN TRANSACTION"
+    if words in {
+        ("COMMIT",),
+        ("COMMIT", "TRANSACTION"),
+        ("COMMIT", "WORK"),
+        ("END",),
+        ("END", "TRANSACTION"),
+        ("END", "WORK"),
+    }:
+        return "commit", "COMMIT"
+    if words in {
+        ("ABORT",),
+        ("ABORT", "TRANSACTION"),
+        ("ABORT", "WORK"),
+        ("ROLLBACK",),
+        ("ROLLBACK", "TRANSACTION"),
+        ("ROLLBACK", "WORK"),
+    }:
+        return "rollback", "ROLLBACK"
+    raise DuckDBConnectionPolicyError(
+        "unsupported or ambiguous transaction control statement"
+    )
+
+
+
+import weakref
+
+_RAW_WRAPPER_GUARD = threading.Lock()
+
+
+_RAW_WRAPPERS: dict[
+    int,
+    tuple[Any, weakref.ReferenceType[DuckDBConnection]],
+] = {}
+
+
+def _register_duckdb_wrapper(wrapper: DuckDBConnection, raw: Any) -> None:
+    """Fail closed instead of assigning independent locks to one raw handle."""
+
+    key = id(raw)
+    with _RAW_WRAPPER_GUARD:
+        existing = _RAW_WRAPPERS.get(key)
+        if existing is not None:
+            raise DuckDBConnectionPolicyError(
+                "native DuckDB connection is already owned by a synchronized wrapper"
+            )
+
+        def close_abandoned(
+            reference: weakref.ReferenceType[DuckDBConnection],
+        ) -> None:
+            with _RAW_WRAPPER_GUARD:
+                registered = _RAW_WRAPPERS.get(key)
+                if (
+                    registered is None
+                    or registered[0] is not raw
+                    or registered[1] is not reference
+                ):
+                    return
+            close = getattr(raw, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    return
+            with _RAW_WRAPPER_GUARD:
+                registered = _RAW_WRAPPERS.get(key)
+                if (
+                    registered is not None
+                    and registered[0] is raw
+                    and registered[1] is reference
+                ):
+                    _RAW_WRAPPERS.pop(key, None)
+
+        reference = weakref.ref(wrapper, close_abandoned)
+        _RAW_WRAPPERS[key] = (raw, reference)
+        wrapper._raw_wrapper_key = key
+
+
+def _unregister_duckdb_wrapper(wrapper: DuckDBConnection, raw: Any) -> None:
+    key = int(getattr(wrapper, "_raw_wrapper_key", 0) or 0)
+    if not key:
+        return
+    with _RAW_WRAPPER_GUARD:
+        existing = _RAW_WRAPPERS.get(key)
+        if (
+            existing is not None
+            and existing[0] is raw
+            and existing[1]() is wrapper
+        ):
+            _RAW_WRAPPERS.pop(key, None)
+    wrapper._raw_wrapper_key = 0
+
+
+_QUACK_ATTACH_LOCK = threading.RLock()
+
+
+_QUACK_TRANSPORT_CACHE: dict[str, DuckDBConnection] = {}

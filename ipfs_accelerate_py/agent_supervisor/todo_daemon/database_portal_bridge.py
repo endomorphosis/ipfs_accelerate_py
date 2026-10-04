@@ -102,6 +102,61 @@ class DatabasePortalBridgeError(RuntimeError):
 class DatabasePortalBridgeDeferred(DatabasePortalBridgeError):
     """Portal execution made bounded progress but is not yet acceptable."""
 
+    def __init__(
+        self,
+        reason: str,
+        *,
+        backoff_seconds: int = 300,
+        result: Mapping[str, Any] | None = None,
+    ) -> None:
+        if (
+            isinstance(backoff_seconds, bool)
+            or not isinstance(backoff_seconds, int)
+            or backoff_seconds < 0
+            or backoff_seconds > _MAX_DATABASE_PORTAL_BACKOFF_SECONDS
+        ):
+            raise ValueError(
+                "backoff_seconds must be an integer in "
+                f"[0, {_MAX_DATABASE_PORTAL_BACKOFF_SECONDS}]"
+            )
+        reason_text = str(reason or "portal_execution_deferred").strip()
+        super().__init__(reason_text or "portal_execution_deferred", result=result)
+        self.reason = reason_text or "portal_execution_deferred"
+        self.backoff_seconds = int(backoff_seconds)
+        # A typed deferral occurs before the provider is admitted.  These
+        # fields deliberately mirror the Portal result contract so the outer
+        # database authority need not infer retry semantics from prose.
+        self.attempt_consumed = False
+        self.provider_dispatched = False
+
+
+class DatabasePortalCandidateRetry(DatabasePortalBridgeError):
+    """A dispatched candidate failed a closed gate while retry budget remains.
+
+    This is diagnostic retry intent only. It grants no authority to settle a
+    provider callback, release a claim, or dispatch a replacement provider.
+    """
+
+    def __init__(
+        self,
+        reason: str,
+        *,
+        backoff_seconds: int = 0,
+        result: Mapping[str, Any] | None = None,
+    ) -> None:
+        if type(reason) is not str or reason not in DATABASE_PORTAL_CANDIDATE_RETRY_REASONS:
+            raise ValueError("candidate retry requires a closed candidate failure reason")
+        if (
+            type(backoff_seconds) is not int
+            or not 0 <= backoff_seconds <= _MAX_DATABASE_PORTAL_BACKOFF_SECONDS
+        ):
+            raise ValueError("candidate retry backoff_seconds is outside its bound")
+        super().__init__(reason, result=result)
+        self.reason = reason
+        self.backoff_seconds = backoff_seconds
+        self.attempt_consumed = True
+        self.provider_dispatched = True
+
 
 @dataclass(frozen=True)
 class DatabasePortalAttemptPaths:
@@ -1644,6 +1699,38 @@ def _bounded_portal_result(result: Mapping[str, Any]) -> dict[str, Any]:
             )
             if key in implementation
         }
+        validation = implementation.get("validation_result")
+        if isinstance(validation, Mapping) and validation.get("passed") is False:
+            from ..validation.proposal_validation import ProposalFindingCode
+
+            allowed_findings = {item.value for item in ProposalFindingCode} | {
+                "validation_channel_tampering_forbidden"
+            }
+            gate = validation.get("proposal_gate")
+            codes = gate.get("reason_codes") if isinstance(gate, Mapping) else None
+            findings = (
+                sorted({
+                    code for code in codes
+                    if type(code) is str and code in allowed_findings
+                })[:16]
+                if isinstance(codes, (list, tuple)) and len(codes) <= 256
+                else []
+            )
+            bounded_validation = {
+                key: validation[key]
+                for key in ("attempted", "passed")
+                if type(validation.get(key)) is bool
+            }
+            for key in ("reason", "error"):
+                value = validation.get(key)
+                if (
+                    type(value) is str
+                    and value in DATABASE_PORTAL_CANDIDATE_RETRY_REASONS
+                ):
+                    bounded_validation[key] = value
+            if findings:
+                bounded_validation["proposal_gate"] = {"reason_codes": findings}
+            summary["implementation"]["validation_result"] = bounded_validation
     reconciliation = result.get("merge_reconciliation")
     if isinstance(reconciliation, Sequence) and not isinstance(
         reconciliation, (str, bytes, bytearray, memoryview)
@@ -1669,7 +1756,13 @@ def _bounded_portal_result(result: Mapping[str, Any]) -> dict[str, Any]:
 
 
 class DatabasePortalExecutionBridge:
-    """Run one database claim through a private Portal execution projection."""
+    """Run one database claim through a private Portal execution projection.
+
+    ``max_task_attempts`` bounds candidate retry intent by coordination and
+    Portal ordinals. It is a conservative safety cap, not a count of model
+    calls or tokens: pre-dispatch claim deferrals can advance the database
+    ordinal. Actual provider accounting requires the durable owner ledger.
+    """
 
     INTERFACE = DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE
     RECEIPT_SCHEMA = DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA
@@ -1687,12 +1780,21 @@ class DatabasePortalExecutionBridge:
         merge_target_branch: str = "",
         task_header_prefix: str = "## ",
         max_passes: int = 4,
+        max_task_attempts: int = 0,
         prior_attempt_authority: PriorAttemptAuthority | None = None,
     ) -> None:
         if not callable(portal_factory):
             raise TypeError("portal_factory must be callable")
         if isinstance(max_passes, bool) or not isinstance(max_passes, int) or max_passes < 1:
             raise ValueError("max_passes must be a positive integer")
+        if (
+            type(max_task_attempts) is not int
+            or not 0 <= max_task_attempts <= _MAX_DATABASE_PORTAL_TASK_ATTEMPTS
+        ):
+            raise ValueError(
+                "max_task_attempts must be an integer in "
+                f"[0, {_MAX_DATABASE_PORTAL_TASK_ATTEMPTS}]"
+            )
         self.task_source = task_source
         self.attempt_root = Path(attempt_root).absolute()
         self.repo_root = Path(repo_root).resolve() if repo_root is not None else None
@@ -1743,6 +1845,9 @@ class DatabasePortalExecutionBridge:
         self.portal_factory = portal_factory
         self.task_header_prefix = str(task_header_prefix or "## ")
         self.max_passes = max_passes
+        # Zero preserves the no-automatic-candidate-retry default. The outer
+        # database owner remains responsible for admitting successor claims.
+        self.max_task_attempts = max_task_attempts
         if prior_attempt_authority is not None and not callable(
             prior_attempt_authority
         ):
@@ -1873,8 +1978,9 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError("database task alias changed")
         return record
 
+    @classmethod
     def _binding(
-        self,
+        cls,
         attempt: Any,
         record: Any,
         seed: str,
@@ -1993,7 +2099,7 @@ class DatabasePortalExecutionBridge:
             )
         payload = {
             "schema": selected_schema,
-            "interface": self.INTERFACE,
+            "interface": cls.INTERFACE,
             "attempt_id": str(attempt.attempt_id),
             "claim_id": str(attempt.claim_id),
             "task_cid": str(attempt.task_cid),
@@ -2057,7 +2163,30 @@ class DatabasePortalExecutionBridge:
         return payload
 
     def _render_projection(self, attempt: Any, record: Any) -> str:
+        return self._render_projection_seed(
+            attempt, record, board_namespace=self.board_namespace
+        )
+
+    @staticmethod
+    def _render_projection_seed(
+        attempt: Any, record: Any, *, board_namespace: str = ""
+    ) -> str:
         body = dict(getattr(record, "body", {}) or {})
+        # A private projection filename is not the execution board identity.
+        # Seal the configured namespace into the same immutable bytes as the
+        # task contract so the parser, native queue and completion owner agree.
+        if board_namespace:
+            if _line_value(board_namespace) != board_namespace:
+                raise DatabasePortalBridgeError(
+                    "database board namespace is not projection-safe"
+                )
+            for key, value in body.items():
+                label = " ".join(str(key).lower().replace("_", " ").split())
+                if label == "board namespace":
+                    if type(value) is not str or value != board_namespace:
+                        raise DatabasePortalBridgeError(
+                            "database task board namespace conflicts with execution board"
+                        )
         alias = _line_value(
             getattr(record, "task_alias", "")
             or getattr(attempt, "task_alias", "")
@@ -2086,7 +2215,15 @@ class DatabasePortalExecutionBridge:
             "validations",
             "validation_commands",
             "acceptance",
+            "database lease id",
+            "database owner session id",
+            "database fencing token",
+            "database fence epoch",
+            "local planning contract",
+            "local planning contract cid",
         }
+        if board_namespace:
+            reserved.add("board namespace")
         lines = [
             "# Database attempt projection (non-authoritative)",
             "",
@@ -2104,11 +2241,26 @@ class DatabasePortalExecutionBridge:
             f"- Database attempt ID: {_line_value(attempt.attempt_id)}",
             f"- Database claim ID: {_line_value(attempt.claim_id)}",
             f"- Database attempt number: {int(attempt.attempt_number)}",
+            f"- Database lease ID: {_line_value(attempt.lease_id)}",
+            f"- Database owner session ID: {_line_value(attempt.owner_session_id)}",
+            f"- Database fencing token: {int(attempt.fencing_token)}",
+            f"- Database fence epoch: {int(attempt.fence_epoch)}",
             f"- Database dependency CIDs: {_line_value(getattr(record, 'dependencies', ()))}",
             "- Projection authority: false",
         ]
+        if board_namespace:
+            lines.append(f"- Board namespace: {board_namespace}")
+        if "local_planning_contract" in body:
+            # Keep the complete signed contract in the authoritative task body
+            # and its binding digest; prompts only need its exact identity.
+            lines.append(
+                "- Local planning contract CID: "
+                + content_identity(body["local_planning_contract"])
+            )
         for key in sorted(body):
             normalized = str(key).strip().lower().replace("_", " ")
+            if board_namespace and " ".join(normalized.split()) == "board namespace":
+                continue
             if not normalized or normalized in reserved:
                 continue
             if "credential" in normalized or "secret" in normalized:
@@ -2368,7 +2520,7 @@ class DatabasePortalExecutionBridge:
             tasks = parse_task_text(
                 projection,
                 path=paths.task_projection,
-                task_header_prefix=self.task_header_prefix,
+                task_header_prefix=f"## {binding['task_alias']}",
             )
         except Exception as exc:
             raise DatabasePortalBridgeDeferred(
@@ -2424,7 +2576,7 @@ class DatabasePortalExecutionBridge:
             tasks = parse_task_text(
                 projection,
                 path=paths.task_projection,
-                task_header_prefix=self.task_header_prefix,
+                task_header_prefix=f"## {binding['task_alias']}",
             )
         except Exception as exc:
             raise DatabasePortalBridgeDeferred(
@@ -10074,7 +10226,9 @@ class DatabasePortalExecutionBridge:
             parsed_tasks = parse_task_text(
                 projection_text,
                 path=paths.task_projection,
-                task_header_prefix=self.task_header_prefix,
+                # The sealed projection contains exactly this admitted task.
+                # A lane-wide prefix may normalize to an unrelated default.
+                task_header_prefix=f"## {binding['task_alias']}",
             )
             if len(parsed_tasks) != 1 or parsed_tasks[0].task_id != task_alias:
                 raise DatabasePortalBridgeError(
@@ -10620,6 +10774,68 @@ class DatabasePortalExecutionBridge:
         return transition
 
     @staticmethod
+    def _candidate_retry_reason(implementation: Mapping[str, Any]) -> str:
+        """Recognize consumed candidates without using free-text heuristics."""
+
+        if (
+            type(implementation.get("returncode")) is not int
+            or implementation["returncode"] == 0
+            or implementation.get("attempt_consumed") is not True
+            or implementation.get("provider_dispatched") is not True
+        ):
+            return ""
+        validation = implementation.get("validation_result")
+        validation_reason = (
+            validation.get("reason") if isinstance(validation, Mapping) else None
+        )
+        if isinstance(validation, Mapping) and (
+            validation.get("passed") is True
+            or (type(validation_reason) is str and validation_reason in {
+                "declared_validation_failed",
+                "validation_command_failed",
+                "scoped_test_secret_remediation_proposal_unchanged",
+                "scoped_test_secret_remediation_proposal_rejected",
+                "scoped_test_secret_remediation_test_semantics_not_preserved",
+            })
+        ):
+            # Declared validation and protected-scope recovery have separate
+            # native evidence requirements; candidate diagnostics cannot
+            # substitute for those receipts.
+            return ""
+        commit_result = implementation.get("commit_result")
+        observed = (
+            implementation.get("reason"),
+            validation.get("reason") if isinstance(validation, Mapping) else None,
+            validation.get("error") if isinstance(validation, Mapping) else None,
+            commit_result.get("reason") if isinstance(commit_result, Mapping) else None,
+        )
+        return next(
+            (value for value in observed
+             if type(value) is str and value in DATABASE_PORTAL_CANDIDATE_RETRY_REASONS),
+            "",
+        )
+
+    @staticmethod
+    def _pre_dispatch_deferral(implementation: Mapping[str, Any]) -> bool:
+        """Only an explicit no-dispatch result may avoid consuming an attempt."""
+
+        return bool(
+            implementation.get("deferred") is True
+            and implementation.get("attempt_consumed") is False
+            and (
+                implementation.get("provider_dispatched") is False
+                or (
+                    implementation.get("provider_dispatched") is None
+                    and implementation.get("provider_call_allowed") is False
+                )
+            )
+            and (
+                implementation.get("provider_call_allowed") is None
+                or implementation.get("provider_call_allowed") is False
+            )
+        )
+
+    @staticmethod
     def _terminal_failure(result: Mapping[str, Any]) -> str:
         if result.get("blocked") is True:
             return str(result.get("reason") or "portal_execution_blocked")
@@ -10842,6 +11058,46 @@ class DatabasePortalExecutionBridge:
                 binding=binding,
                 daemon=daemon,
             )
+            if attempt_number > 1:
+                from .database_attempt_feedback import read_database_attempt_feedback
+                from .implementation_daemon import parse_task_text
+
+                # Observe only the exact current sealed task and its bounded
+                # native revision history. The reader returns None when the
+                # predecessor, admission or contract cannot be reverified;
+                # no nearby attempt or free-text history is substituted.
+                projected_tasks = parse_task_text(
+                    self._verify_projection(paths, binding),
+                    path=paths.task_projection,
+                    task_header_prefix=f"## {binding['task_alias']}",
+                )
+                if (
+                    len(projected_tasks) != 1
+                    or projected_tasks[0].task_id != binding["task_alias"]
+                ):
+                    raise DatabasePortalBridgeError(
+                        "database diagnostic projection is not the exact bound task"
+                    )
+                feedback = read_database_attempt_feedback(
+                    self.task_source,
+                    attempt,
+                    record,
+                    binding=binding,
+                    portal_task=projected_tasks[0],
+                    board_namespace=self.board_namespace,
+                )
+                if feedback is not None:
+                    feedback_binder = getattr(daemon, "bind_database_attempt_feedback", None)
+                    if not callable(feedback_binder):
+                        raise DatabasePortalBridgeError(
+                            "Portal daemon does not expose database diagnostic binding"
+                        )
+                    try:
+                        feedback_binder(feedback)
+                    except Exception as exc:
+                        raise DatabasePortalBridgeError(
+                            "Portal daemon rejected database diagnostic binding"
+                        ) from exc
             for _pass_index in range(self.max_passes):
                 projection = self._verify_projection(paths, binding)
                 if _projection_status(
@@ -10865,44 +11121,63 @@ class DatabasePortalExecutionBridge:
                 implementation = raw_result.get("implementation_result")
                 if (
                     isinstance(implementation, Mapping)
-                    and implementation.get("deferred") is True
+                    and self._pre_dispatch_deferral(implementation)
                 ):
+                    backoff_seconds = implementation.get("backoff_seconds", 300)
+                    if (
+                        type(backoff_seconds) is not int
+                        or not 0 <= backoff_seconds <= _MAX_DATABASE_PORTAL_BACKOFF_SECONDS
+                    ):
+                        raise DatabasePortalBridgeError(
+                            "Portal deferral backoff is outside its closed bound",
+                            result=summary,
+                        )
                     raise DatabasePortalBridgeDeferred(
                         str(
                             implementation.get("reason")
                             or "portal_execution_deferred"
-                        )
+                        ),
+                        backoff_seconds=backoff_seconds,
+                        result=summary,
                     )
                 if self._is_external_protected_recovery_deferral(raw_result):
                     raise DatabasePortalBridgeDeferred(
-                        "external_protected_checkout_recovery_required"
+                        "external_protected_checkout_recovery_required", result=summary
                     )
+                if isinstance(implementation, Mapping):
+                    candidate_reason = self._candidate_retry_reason(implementation)
+                    if candidate_reason:
+                        local_attempt = implementation.get("attempt")
+                        if (
+                            type(local_attempt) is not int
+                            or not 1 <= local_attempt < _DATABASE_LIFECYCLE_PORTAL_ATTEMPT_LIMIT
+                        ):
+                            raise DatabasePortalBridgeError(
+                                "candidate retry has an invalid Portal attempt ordinal",
+                                result=summary,
+                            )
+                        # Attempt-local Portal counters restart on each new
+                        # database projection. They cannot reset the durable
+                        # database retry ceiling.
+                        bounded_attempt = max(attempt_number, local_attempt)
+                        retry_allowed = 0 < bounded_attempt < self.max_task_attempts
+                        summary["attempt_budget"] = {
+                            "budget_kind": "coordination_attempt_safety_cap",
+                            "database_attempt_number": attempt_number,
+                            "portal_attempt_number": local_attempt,
+                            "bounded_attempt_ordinal": bounded_attempt,
+                            "max_task_attempts": self.max_task_attempts,
+                            "retry_allowed": retry_allowed,
+                            "completion_authority": False,
+                            "claim_release_authority": False,
+                        }
+                        if retry_allowed:
+                            raise DatabasePortalCandidateRetry(
+                                candidate_reason, result=summary
+                            )
+                        raise DatabasePortalBridgeError(candidate_reason, result=summary)
                 failure = self._terminal_failure(raw_result)
                 if failure:
-                    implementation = summary.get("implementation", {})
-                    setup_deferred = (
-                        implementation.get("failure_kind") == "lifecycle_setup"
-                        and implementation.get("attempt_consumed") is False
-                        and (implementation.get("provider_dispatched") is False
-                             or (implementation.get("provider_dispatched") is None
-                                 and implementation.get("provider_call_allowed") is False))
-                    )
-                    if (
-                        not setup_deferred
-                        and (
-                        "deferred" in failure
-                        or "backoff" in failure
-                        or "capacity" in failure
-                        or "resource_claim" in failure
-                        or failure
-                        in {
-                            "inflight_process",
-                            "inflight_process_missing",
-                            "worktree_lifecycle_claim_exists",
-                        }
-                        )
-                    ):
-                        raise DatabasePortalBridgeDeferred(failure, result=summary)
                     raise DatabasePortalBridgeError(failure, result=summary)
             return self._acceptance_receipt(
                 attempt=attempt,
@@ -11083,6 +11358,100 @@ __all__ = (
     "DatabasePortalAttemptPaths",
     "DatabasePortalBridgeDeferred",
     "DatabasePortalBridgeError",
+    "DatabasePortalCandidateRetry",
     "DatabasePortalExecutionBridge",
     "PortalDaemonFactory",
+)
+
+
+_TASK_CONTRACT_MUTABLE_FIELDS: Final[frozenset[str]] = frozenset(
+    {"completion_receipt", "status"}
+)
+
+
+def database_portal_task_contract_digest(record: Any) -> str:
+    """Commit to the complete status-independent Portal task contract.
+
+    ``TaskRecord.body`` is only one part of the execution contract.  The
+    Portal projection also consumes the task's graph identity, ordering,
+    declared outputs, acceptance policy, and validation commands.  Keep the
+    mutable lifecycle fields (status, revision, and completion receipts) out
+    of this digest so the same contract remains verifiable after quarantine.
+    """
+
+    def value(name: str, default: Any = None) -> Any:
+        if isinstance(record, Mapping):
+            return record.get(name, default)
+        return getattr(record, name, default)
+
+    raw_body = value("body", {})
+    body = dict(raw_body) if isinstance(raw_body, Mapping) else {}
+    contract_body = {
+        str(key): item
+        for key, item in body.items()
+        if str(key) not in _TASK_CONTRACT_MUTABLE_FIELDS
+    }
+
+    raw_dependencies = value("dependencies", ()) or ()
+    dependencies = [str(item) for item in raw_dependencies]
+
+    def mappings(name: str) -> list[dict[str, Any]]:
+        raw_items = value(name, ()) or ()
+        return [dict(item) for item in raw_items if isinstance(item, Mapping)]
+
+    contract = {
+        "task_cid": str(value("task_cid", "") or ""),
+        "task_alias": str(value("task_alias", "") or ""),
+        "goal_cid": str(value("goal_cid", "") or ""),
+        "plan_cid": str(value("plan_cid", "") or ""),
+        "objective_id": str(value("objective_id", "") or ""),
+        "priority": str(value("priority", "") or ""),
+        "ordinal": int(value("ordinal", 0) or 0),
+        "dependencies": dependencies,
+        "outputs": mappings("outputs"),
+        "acceptance": mappings("acceptance"),
+        "validations": mappings("validations"),
+        "body": contract_body,
+    }
+    if not contract["task_cid"]:
+        raise DatabasePortalBridgeError("task contract has no canonical CID")
+    return _sha256_bytes(_canonical_json(contract))
+
+
+
+_MAX_DATABASE_PORTAL_BACKOFF_SECONDS: Final[int] = 86_400
+_MAX_DATABASE_PORTAL_TASK_ATTEMPTS: Final[int] = 10_000
+
+
+DATABASE_PORTAL_CANDIDATE_RETRY_REASONS: Final[frozenset[str]] = frozenset(
+    {
+        "proposal_gate_failed",
+        "proposal_validation_failed",
+        "no_change_completion_not_allowed",
+        "incomplete_expected_outputs",
+        "expected_output_ignored_or_unstaged",
+        "empty_or_no_change",
+        "empty_patch_reserved_for_no_change_gate",
+        "no_changes",
+    }
+)
+
+
+DATABASE_PORTAL_CHECKOUT_CONTENTION_REASONS: Final[frozenset[str]] = frozenset(
+    {
+        "external_protected_checkout_recovery_required",
+        "protected_recovery_owner_active",
+        "supervisor_protected_recovery_owner_active",
+        "protected_recovery_adoption_raced",
+        "checkout_mutation_lock_exists",
+    }
+)
+
+
+DATABASE_PORTAL_SKIP_CONTENTION_REASONS: Final[frozenset[str]] = frozenset(
+    {
+        "inflight_process",
+        "provider_capacity_backoff",
+        "task_claim_lock_exists",
+    }
 )

@@ -220,6 +220,8 @@ class Supervisor:
         *,
         repository: Path | str | None = None,
         consent: bool = False,
+        profile_dir: Path | None = None,
+        lifecycle_dir: Path | None = None,
     ) -> Mapping[str, Any]:
         """One-time local profile bootstrap (explicit consent required).
 
@@ -236,8 +238,21 @@ class Supervisor:
         # Prefer the reviewed local_profile initializer when available.
         try:
             from .local_profile import initialize_local_profile
+            from .service_factory import observe_production_bindings
 
-            profile = initialize_local_profile(repository_root=str(git_root))
+            # Observe real Git bindings before creating any local authority.
+            # Bootstrap does not require an activated scheduler and does not
+            # grant activation, merge, or worker-start authority.
+            composition = resolve_production_composition(
+                repository_root=git_root, require_activation=False
+            )
+            bindings = observe_production_bindings(composition)
+            profile = initialize_local_profile(
+                repository_cid=bindings.repository_root_cid,
+                baseline_commit=bindings.head_commit,
+                profile_dir=profile_dir,
+                lifecycle_dir=lifecycle_dir,
+            )
             receipt = {
                 "schema": "ipfs_accelerate_py.agent_supervisor.supervisor-init-local@1",
                 "repository_root": str(git_root),

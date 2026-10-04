@@ -29,6 +29,9 @@ Adaptive and formal planning: compile, validate, replan, metrics, and rollout he
 | `formal_planning_rollout` | `planning/formal_planning_rollout.py` |
 | `formal_replanner` | `planning/formal_replanner.py` |
 | `ir_learning_campaign_planner` | `planning/ir_learning_campaign_planner.py` |
+| `intent_requirement_adapter` | `planning/intent_requirement_adapter.py` |
+| `intent_requirement_repair` | `planning/intent_requirement_repair.py` |
+| `intent_symbolic_planning` | `planning/intent_symbolic_planning.py` |
 | `plan_evaluator` | `planning/plan_evaluator.py` |
 | `plan_failure_memory` | `planning/plan_failure_memory.py` |
 | `proof_carrying_planner` | `planning/proof_carrying_planner.py` |
@@ -42,6 +45,20 @@ from ipfs_accelerate_py.agent_supervisor.planning.<module> import ...
 ```
 
 Relative imports stay package-local (`from .<module> import ...`).
+
+`intent_requirement_adapter` checks reviewed native atom matchers and exact
+signed task operations, then supplies administrative coverage predicates and
+producer rules to existing symbolic stages. `intent_symbolic_planning` joins
+obligation compilation, candidate selection, critique, exact task projection,
+coverage and formal output checking. Both produce proposals; callers verify
+source and manifest authority independently. They supply no observed source
+facts and grant no semantic, execution or completion authority.
+
+`intent_requirement_repair` consumes a bounded, identified public-check
+observation and nominates validation or repairs using `ResidualLlmPacket`.
+Repairs retain signed output paths, validation commands and intent revision;
+dependent tasks are nominated for revalidation. No nomination dispatches work,
+admits a task, changes source interpretation or grants write/completion authority.
 
 ## Extending
 

@@ -2058,11 +2058,13 @@ def _dimension_values(record: Mapping[str, Any]) -> dict[ProofInputKind, set[str
 
 def _keys(record: Mapping[str, Any]) -> tuple[ProofScopeKey, ...]:
     values = _dimension_values(record)
-    return tuple(
-        sorted(
-            ProofScopeKey(kind, value) for kind in ProofInputKind for value in values[kind] if value
-        )
-    )
+    # IndexedObligation/IndexedReceipt serialize their dependencies using the
+    # canonical scope_keys field.  Rebuilding those typed records must retain
+    # it as well as the legacy alias fields, or non-file invalidation silently
+    # loses policies, premises, toolchains, and candidate identities.
+    keys = {ProofScopeKey(kind, value) for kind in ProofInputKind for value in values[kind] if value}
+    keys.update(_scope_key(item) for item in record.get("scope_keys", ()))
+    return tuple(sorted(keys))
 
 
 def _scope_key(value: Any) -> ProofScopeKey:

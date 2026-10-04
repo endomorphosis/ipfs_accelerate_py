@@ -378,7 +378,10 @@ def test_plan_wires_analytical_stages_lazily_and_abstains_actionably(
     )
     assert "transaction" not in runtime.backend_factory.loaded_stages
     assert "fixed_point" not in runtime.backend_factory.loaded_stages
-    for stage in ("retrieve", "tactician", "proof", "synthesis_preview", "impact"):
+    assert report.stage_receipts["tactician"]["status"] == "executed"
+    assert report.stage_receipts["tactician"]["reason_code"] == "no_findings"
+    assert report.stage_receipts["tactician"]["model_invocation_count"] == 0
+    for stage in ("retrieve", "proof", "synthesis_preview", "impact"):
         receipt = report.stage_receipts[stage]
         assert receipt["status"] == "wired"
         assert receipt["reason_code"] == "awaiting_typed_stage_inputs"
@@ -547,3 +550,39 @@ def test_cli_consumes_checkout_root_and_emits_runtime_evidence(
         "evidence",
         "diagnose",
     ]
+
+
+def test_plan_executes_tactician_for_every_observed_finding(tmp_path):
+    repo = _repository(tmp_path / 'repo', {
+        'service.py': 'def dispatch(value: str) -> str:\n    return value\n',
+        'consumer.py': 'from service import dispatch\ndef consume():\n    return dispatch()\n',
+    })
+    runtime = create_deterministic_doctor_runtime(repo,
+        policy={'enabled': True, 'default_mode': DoctorMode.PLAN.value})
+    evidence = runtime.build_evidence()
+    assert evidence.findings
+    report = runtime.plan(mode=DoctorMode.PLAN.value)
+    stage = report.stage_receipts['tactician']
+    assert stage['status'] == 'executed'
+    assert stage['finding_count'] == len(evidence.findings)
+    assert {p['finding_id'] for p in stage['plans']} == {f.finding_id for f in evidence.findings}
+    assert all(p['receipt_id'] and p['reason_codes'] for p in stage['plans'])
+    assert stage['model_invocation_count'] == 0
+    assert not report.result.changed
+
+
+def test_large_runtime_keeps_findings_in_evidence_without_request_annotation_overflow(tmp_path):
+    consumer = 'from service import dispatch\n' + '\n'.join(
+        f'def consume_{i}():\n    return dispatch()\n' for i in range(140)
+    )
+    repo = _repository(tmp_path / 'repo', {
+        'service.py': 'def dispatch(value: str) -> str:\n    return value\n',
+        'consumer.py': consumer,
+    })
+    runtime = create_deterministic_doctor_runtime(repo,
+        policy={'enabled': True, 'default_mode': DoctorMode.PLAN.value})
+    report = runtime.plan(mode=DoctorMode.PLAN.value)
+    assert len(runtime.evidence.findings) > 256
+    assert report.stage_receipts['tactician']['finding_count'] == len(runtime.evidence.findings)
+    assert len(report.stage_receipts['tactician']['plans']) == len(runtime.evidence.findings)
+    assert not report.result.changed

@@ -212,7 +212,7 @@ _DAEMON_ADMITTED_OWNER_COMMAND_PROFILES: Final[
 def daemon_required_owner_operations() -> tuple[str, ...]:
     """Return the exact typed query/mutation grant required by one daemon."""
 
-    return tuple(sorted(_DAEMON_REQUIRED_OWNER_OPERATIONS))
+    return tuple(sorted({*_DAEMON_REQUIRED_OWNER_OPERATIONS, "local.task.validation.run"}))
 
 
 def daemon_required_owner_command_operations() -> tuple[str, ...]:
@@ -738,7 +738,10 @@ class TypedDatabaseTaskSource:
             or not isinstance(grant, Mapping)
             or grant.get("client_id") != client.owner_id
             or grant.get("process_birth_id") != process_instance_id
-            or grant_operations != _DAEMON_REQUIRED_OWNER_OPERATIONS
+            or grant_operations not in {
+                _DAEMON_REQUIRED_OWNER_OPERATIONS,
+                frozenset({*_DAEMON_REQUIRED_OWNER_OPERATIONS, "local.task.validation.run"}),
+            }
             or grant_command_operations
             not in _DAEMON_ADMITTED_OWNER_COMMAND_PROFILES
             or str(grant.get("tenant_id") or "").strip()
@@ -2326,12 +2329,19 @@ class TypedDatabaseTaskSource:
             raise TaskSourceConflictError(
                 "protected typed-deferral task cannot be reopened by generic CAS"
             )
-        merged_body = dict(prior.body)
-        if receipt is not None:
-            merged_body["completion_receipt"] = dict(receipt)
+        # The exclusive owner already holds the full immutable task body.
+        # Bind its exact prior identity and send only this operation's receipt.
+        expected_task_body_cid = content_identity(dict(prior.body))
+        receipt_patch = (
+            {"completion_receipt": dict(receipt)} if receipt is not None else {}
+        )
+        if receipt is None and requested_status in _COMPLETED_STATUSES:
+            if isinstance(prior_receipt, Mapping):
+                receipt_patch["completion_receipt"] = dict(prior_receipt)
         material = {
             "task_cid": prior.task_cid,
             "expected_revision": expected_revision,
+            "expected_task_body_cid": expected_task_body_cid,
             "status": requested_status,
             "receipt": dict(receipt or {}),
             "expected_control_receipt": (
@@ -2349,7 +2359,8 @@ class TypedDatabaseTaskSource:
             new_status=requested_status,
             idempotency_key=f"executor-cas:{digest}",
             command_id=f"executor-cas:{digest}",
-            body=merged_body,
+            body=receipt_patch,
+            expected_task_body_cid=expected_task_body_cid,
             expected_control_receipt=expected_control_receipt,
             evidence_digests=evidence_digests,
         )
@@ -2560,6 +2571,25 @@ class TypedDatabaseTaskSource:
         attempt_id: str = "",
         body: Mapping[str, Any] | None = None,
     ) -> IntentReceipt:
+        task = self.get_task(task_cid)
+        if outcome == "passed" and task is not None and "local_planning_contract" in task.body:
+            from .typed_state_owner import TypedStateOwnerConnection
+
+            connection = getattr(getattr(self._client, "_adapter", None), "raw", None)
+            if type(connection) is not TypedStateOwnerConnection:
+                raise TaskSourceIntegrityError("local completion requires its authenticated typed owner")
+            observed = connection._request(
+                "local.task.validation.run", task_cid=task.task_cid,
+                attempt_id=attempt_id, expected_revision=task.revision,
+            ).get("result")
+            if (
+                not isinstance(observed, Mapping) or observed.get("passed") is not True
+                or observed.get("task_cid") != task.task_cid
+                or observed.get("attempt_id") != attempt_id
+                or observed.get("task_revision") != task.revision
+                or not observed.get("results")
+            ):
+                raise TaskSourceConflictError("owner local declared validation did not pass")
         material = {
             "task_cid": str(task_cid),
             "outcome": str(outcome),

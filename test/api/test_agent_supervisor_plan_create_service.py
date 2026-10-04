@@ -335,11 +335,11 @@ def test_stale_root_or_policy_fails_rather_than_regenerating() -> None:
         )
 
 
-def test_deterministic_and_model_assisted_share_exact_inputs_and_bounds() -> None:
+def test_deterministic_and_model_assisted_bind_materials_and_share_bounds() -> None:
     service = PlanCreateService()
     request = _create_request()
     materials = _obligation_materials()
-    snapshot = freeze_plan_create_input_snapshot(request)
+    snapshot = freeze_plan_create_input_snapshot(request, materials=materials)
 
     model_calls: list[object] = []
 
@@ -369,8 +369,9 @@ def test_deterministic_and_model_assisted_share_exact_inputs_and_bounds() -> Non
     )
 
     assert deterministic.input_snapshot_cid == snapshot.snapshot_cid
-    assert assisted.input_snapshot_cid == snapshot.snapshot_cid
-    assert deterministic.input_snapshot_cid == assisted.input_snapshot_cid
+    # An opaque live provider has no reusable complete content identity. Its
+    # distinct snapshot must still retain the same frozen request bounds.
+    assert assisted.input_snapshot_cid != snapshot.snapshot_cid
     assert deterministic.mode is PlanCreateMode.DETERMINISTIC
     assert assisted.mode is PlanCreateMode.MODEL_ASSISTED
     # Mode must not invent a second bounds surface.
@@ -387,7 +388,7 @@ def test_deterministic_and_model_assisted_share_exact_inputs_and_bounds() -> Non
     assert snapshot.bounds_digest in det_candidate.detail_ids
     assert snapshot.bounds_digest in asst_candidate.detail_ids
     assert snapshot.snapshot_cid in det_candidate.detail_ids
-    assert snapshot.snapshot_cid in asst_candidate.detail_ids
+    assert assisted.input_snapshot_cid in asst_candidate.detail_ids
 
 
 def test_workflow_preview_is_canonical_compatibility_alias() -> None:

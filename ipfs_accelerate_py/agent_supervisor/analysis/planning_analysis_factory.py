@@ -30,6 +30,13 @@ from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Any, Final
 
+from ipfs_datasets_py.logic.formalization.autoencoder.source_screening import (
+    SourceScreeningError as PlanningAnalysisFactoryError,
+    SourceSecretError as PlanningAnalysisSecretError,
+    _SECRET_PATTERNS, _CREDENTIAL_FILENAMES, _CREDENTIAL_SUFFIXES,
+    _contains_secret, _credential_path_reason,
+)
+
 from .repository_indexer import (
     PLANNING_OPEN_FRONTIER_KINDS,
     PLANNING_PATH_CATEGORIES,
@@ -90,39 +97,7 @@ DEFAULT_OPEN_FRONTIERS: Final[tuple[str, ...]] = tuple(
     f"frontier:{kind}" for kind in PLANNING_OPEN_FRONTIER_KINDS
 )
 
-_SECRET_PATTERNS: Final[tuple[re.Pattern[bytes], ...]] = (
-    re.compile(rb"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
-    re.compile(rb"\bAKIA[0-9A-Z]{16}\b"),
-    re.compile(rb"\bgh[pousr]_[A-Za-z0-9]{20,}\b"),
-    re.compile(rb"\bsk-[A-Za-z0-9_-]{20,}\b"),
-    re.compile(rb"\bxox[baprs]-[A-Za-z0-9-]{16,}\b"),
-    re.compile(
-        rb"(?i)\b(?:api[_-]?key|password|private[_-]?key|secret|token)"
-        rb"\s*[:=]\s*[\"'][^\"'\r\n]{12,}[\"']"
-    ),
-)
 
-_CREDENTIAL_FILENAMES: Final[frozenset[str]] = frozenset(
-    {
-        ".env",
-        ".netrc",
-        "_netrc",
-        "credentials",
-        "credentials.json",
-        "credentials.yaml",
-        "credentials.yml",
-        "id_dsa",
-        "id_ecdsa",
-        "id_ed25519",
-        "id_rsa",
-        "secrets.json",
-        "secrets.yaml",
-        "secrets.yml",
-    }
-)
-_CREDENTIAL_SUFFIXES: Final[frozenset[str]] = frozenset(
-    {".der", ".jks", ".key", ".keystore", ".p12", ".pem", ".pfx", ".pkcs12"}
-)
 
 _MAX_SECRET_SCREEN_BYTES: Final[int] = 256 * 1024
 _MAX_SCREENED_PATHS: Final[int] = 4_096
@@ -133,17 +108,6 @@ _MAX_SCREENED_PATHS: Final[int] = 4_096
 # ---------------------------------------------------------------------------
 
 
-class PlanningAnalysisFactoryError(RuntimeError):
-    """Fail-closed rejection for an unsafe or incomplete analysis factory run."""
-
-    def __init__(
-        self,
-        message: str,
-        *,
-        reason_code: str = "planning_analysis_factory_error",
-    ) -> None:
-        super().__init__(message)
-        self.reason_code = str(reason_code or "planning_analysis_factory_error")
 
 
 class PlanningAnalysisAllowlistError(PlanningAnalysisFactoryError, ValueError):
@@ -156,9 +120,6 @@ class PlanningAnalysisStabilityError(PlanningAnalysisFactoryError):
         super().__init__(message, reason_code="instability")
 
 
-class PlanningAnalysisSecretError(PlanningAnalysisFactoryError):
-    def __init__(self, message: str) -> None:
-        super().__init__(message, reason_code="secret_material")
 
 
 class PlanningAnalysisSymlinkError(PlanningAnalysisFactoryError, ValueError):
@@ -477,18 +438,8 @@ def _canonical_directory(path: str | os.PathLike[str]) -> str:
     return text
 
 
-def _contains_secret(payload: bytes) -> bool:
-    return any(pattern.search(payload) for pattern in _SECRET_PATTERNS)
 
 
-def _credential_path_reason(path: str) -> str:
-    pure = PurePosixPath(path)
-    name = pure.name.casefold()
-    if name in _CREDENTIAL_FILENAMES or pure.suffix.casefold() in _CREDENTIAL_SUFFIXES:
-        return "credential_path"
-    if name.startswith(".env"):
-        return "credential_path"
-    return ""
 
 
 def _default_scope_policy_mapping() -> dict[str, Any]:

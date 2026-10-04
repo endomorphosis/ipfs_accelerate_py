@@ -201,15 +201,19 @@ def ed25519_public_key_from_did(identity_did: str) -> Ed25519PublicKey:
 
 
 def verify_did_key_signature(
-    *, identity_did: str, payload: Mapping[str, Any], signature: str
+    *, identity_did: str, payload: Mapping[str, Any], signature: str, mirror: bool = True
 ) -> None:
     """Verify a canonical-JSON Ed25519 signature against a ``did:key``."""
 
+    if type(mirror) is not bool:
+        raise LocalProfileTampered("exact signature metadata mirroring control required")
     try:
         encoded = base64.b64decode(str(signature).encode("ascii"), validate=True)
         ed25519_public_key_from_did(identity_did).verify(encoded, _canonical(payload))
     except (InvalidSignature, UnicodeError, ValueError, LocalProfileTampered) as exc:
         raise LocalProfileTampered("Ed25519 did:key signature is invalid") from exc
+    if not mirror:
+        return
     try:
         from ipfs_accelerate_py.agent_supervisor.runtime.supervisor_meta_index import (
             mirror_work_record,

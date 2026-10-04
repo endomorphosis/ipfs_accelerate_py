@@ -2895,6 +2895,14 @@ class FormalPlanCompiler:
                 _text(record, "goal_cid", "content_id", "cid", "canonical_goal_id", "goal_id", "id")
             ]
             for ordinal, criterion in enumerate(_values(record.get("acceptance_criteria"))):
+                # Preserve the declared goal-level check/scope bindings just
+                # as task acceptance does. These are possible future evidence
+                # producers, never observations that a check has passed.
+                criterion_record = criterion if isinstance(criterion, Mapping) else {}
+                goal_check_ids = _strings(
+                    criterion_record.get("check_ids")
+                    or criterion_record.get("validation_commands")
+                )
                 requirement_id = content_identity(
                     {
                         "goal_id": goal_id,
@@ -2906,9 +2914,12 @@ class FormalPlanCompiler:
                     requirement_id=requirement_id,
                     kind=EvidenceRequirementKind.REVIEW,
                     subject_ids=(goal_id,),
+                    source_scope_ids=_strings(criterion_record.get("source_scope_ids")),
                     minimum_code_assurance=policy_defaults["minimum_assurance"],
                     freshness_seconds=policy_defaults["freshness_seconds"],
-                    fallback_check_ids=policy_defaults["fallback_checks"],
+                    fallback_check_ids=tuple(sorted({
+                        *goal_check_ids, *policy_defaults["fallback_checks"],
+                    })),
                     metadata={
                         "criterion": _canonical_safe(criterion),
                         "policy_ids": list(policy_ids),

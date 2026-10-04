@@ -10,6 +10,7 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     InProcessQuackTransport,
+    QuackStateServerCapabilityError,
     _allocate_loopback_port,
 )
 
@@ -39,7 +40,8 @@ def test_native_transport_uses_parameter_bound_table_serve_and_targeted_stop():
     token = secrets.token_urlsafe(32)
     observed = transport.start(connection, host="127.0.0.1", port=23456,
                                token=token, identity=_identity())
-    serve_sql, parameters = connection.calls[1]
+    assert connection.calls[:2] == [("LOAD httpfs", None), ("LOAD quack", None)]
+    serve_sql, parameters = connection.calls[2]
     assert serve_sql.startswith("SELECT * FROM quack_serve(")
     assert parameters == ["quack:127.0.0.1:23456", token, True]
     assert token not in serve_sql
@@ -56,17 +58,38 @@ def test_native_transport_keeps_tls_for_non_loopback_host():
     transport = InProcessQuackTransport()
     transport.start(connection, host="192.0.2.1", port=23456,
                     token=secrets.token_urlsafe(32), identity=_identity())
-    assert connection.calls[1][1][-1] is False
+    assert connection.calls[2][1][-1] is False
     transport.stop(connection)
+
+
+@pytest.mark.parametrize("unavailable", ["httpfs", "quack"])
+def test_native_transport_missing_installed_dependency_refuses_to_serve(unavailable):
+    class MissingDependency(_Connection):
+        def execute(self, sql, parameters=None):
+            super().execute(sql, parameters)
+            if sql == f"LOAD {unavailable}":
+                raise RuntimeError("required installed extension unavailable")
+            return self
+
+    connection = MissingDependency()
+    transport = InProcessQuackTransport()
+    with pytest.raises(QuackStateServerCapabilityError, match=f"failed to LOAD {unavailable}"):
+        transport.start(connection, host="127.0.0.1", port=23456,
+                        token=secrets.token_urlsafe(32), identity=_identity())
+    assert all(sql.startswith("LOAD ") for sql, _ in connection.calls)
+    assert not transport._started
 
 
 @pytest.mark.skipif(os.environ.get("IPFS_ACCELERATE_RUN_LIVE_QUACK") != "1",
                     reason="explicit opt-in for temporary authenticated loopback listener")
 def test_live_installed_quack_serves_authenticated_temp_database_and_stops(tmp_path):
     duckdb = pytest.importorskip("duckdb")
-    owner = duckdb.connect(str(tmp_path / "transport-smoke.duckdb"),
-                           config={"autoinstall_known_extensions": False,
-                                   "autoload_known_extensions": True})
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        connect_duckdb_with_policy,
+    )
+    owner = connect_duckdb_with_policy(
+        duckdb, tmp_path / "transport-smoke.duckdb", owner_extension_load=True,
+    )
     client = unauthorized = None
     transport = InProcessQuackTransport()
     port = _allocate_loopback_port()

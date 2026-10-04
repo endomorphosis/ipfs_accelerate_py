@@ -1151,6 +1151,8 @@ def test_cas_task_status_refuses_a_stale_control_receipt(tmp_path: Path) -> None
             "wrote_compiler": False, "imported": False,
             "admitted": False, "formalized": False,
         }
+        repo.rebuild_projections_from_events()
+        assert repo.get_task(ids["task_a"])["body"] == preserved
 
 
 def test_plan_revision_repository_supersession_and_continuation(

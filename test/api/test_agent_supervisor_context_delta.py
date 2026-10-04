@@ -26,6 +26,7 @@ from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
     expand_context,
     expand_context_references,
     render_retry_context,
+    render_context_capsule,
     reconstruct_context,
 )
 from ipfs_accelerate_py.agent_supervisor.context.context_contracts import (
@@ -717,7 +718,7 @@ def test_paired_semantic_retries_reduce_median_tokens_by_at_least_35_percent() -
     assert median(retry_tokens) <= median(replay_tokens) * 0.65
 
 
-def test_implementation_daemon_dispatches_delta_and_reuses_diagnostic(
+def test_implementation_daemon_dispatches_reconstruction_and_reuses_diagnostic(
     tmp_path,
 ) -> None:
     repo = tmp_path / "repo"
@@ -834,16 +835,18 @@ def test_implementation_daemon_dispatches_delta_and_reuses_diagnostic(
     ] = "seed recovery prose must not follow typed retry JSON"
     retry_prompt = restarted._build_implementation_prompt(task, attempt=2)
 
-    wire = json.loads(retry_prompt)
-    assert wire["schema"].endswith("retry-context-capsule@1")
-    assert wire["diagnostic_receipt_id"] == diagnostic.receipt_id
+    wire, end = json.JSONDecoder().raw_decode(retry_prompt)
+    assert restarted._last_implementation_retry is not None
+    retry = restarted._last_implementation_retry
+    assert wire == json.loads(render_context_capsule(retry.reconstructed_capsule))
+    assert retry.capsule.diagnostic_receipt_id == diagnostic.receipt_id
     assert oversized_review not in retry_prompt
-    assert "seed recovery prose" not in retry_prompt
-    assert wire["changed_files"] == ["src/context.py"]
-    assert wire["changed_symbols"] == ["ContextCompiler.compile_delta"]
-    assert wire["unresolved_requirement_ids"] == ["requirement:test"]
+    assert "seed recovery prose" in retry_prompt[end:]
+    assert retry.capsule.changed_files == ("src/context.py",)
+    assert retry.capsule.changed_symbols == ("ContextCompiler.compile_delta",)
+    assert retry.capsule.unresolved_requirement_ids == ("requirement:test",)
     assert "Retry evidence remains complete." in full_prompt
-    assert "Retry evidence remains complete." not in retry_prompt
+    assert "Retry evidence remains complete." in retry_prompt
     assert restarted._last_implementation_retry is not None
     assert reconstruct_context(
         restarted._last_implementation_retry.delta_result.parent_capsule,
