@@ -1,0 +1,311 @@
+{
+  "admitted": true,
+  "allow_honest_nonpromotion": true,
+  "arms": [
+    "direct_minimal_orchestration_baseline",
+    "sealed_current_supervisor_baseline",
+    "candidate_optimized_supervisor"
+  ],
+  "audit_overhead": {
+    "includes_audit_in_quality_adjusted_cost": true,
+    "total_microusd": 10170,
+    "unit": "microusd"
+  },
+  "authority": false,
+  "behavior_coverage": {
+    "context_pack": {
+      "complete": true,
+      "present_counts": {
+        "context_pack_build": 6
+      },
+      "required_classes": [
+        "context_pack_build"
+      ]
+    },
+    "planning": {
+      "complete": true,
+      "present_counts": {
+        "proof_obligation": 6
+      },
+      "required_classes": [
+        "proof_obligation"
+      ]
+    },
+    "rapid_iteration": {
+      "complete": true,
+      "present_counts": {
+        "bug_repair": 6,
+        "feature_addition": 6,
+        "schema_change": 6
+      },
+      "required_classes": [
+        "schema_change",
+        "bug_repair",
+        "feature_addition"
+      ]
+    },
+    "routing": {
+      "complete": true,
+      "present_counts": {
+        "routing_policy": 6
+      },
+      "required_classes": [
+        "routing_policy"
+      ]
+    },
+    "safety_seeds": {
+      "complete": true,
+      "present_counts": {
+        "human_escalation": 6,
+        "merge_conflict": 6,
+        "recovery_replay": 6
+      },
+      "required_classes": [
+        "human_escalation",
+        "merge_conflict",
+        "recovery_replay"
+      ]
+    },
+    "selected_test_false_negatives": {
+      "complete": true,
+      "present_counts": {
+        "test_selection": 6
+      },
+      "required_classes": [
+        "test_selection"
+      ]
+    },
+    "state": {
+      "complete": true,
+      "present_counts": {
+        "recovery_replay": 6,
+        "state_migration": 6
+      },
+      "required_classes": [
+        "state_migration",
+        "recovery_replay"
+      ]
+    },
+    "synthesis": {
+      "complete": true,
+      "present_counts": {
+        "feature_addition": 6,
+        "proof_obligation": 6,
+        "schema_change": 6
+      },
+      "required_classes": [
+        "feature_addition",
+        "proof_obligation",
+        "schema_change"
+      ]
+    }
+  },
+  "bootstrap_confidence_intervals": {
+    "candidate_vs_sealed_current": {
+      "fixture_id": "aseh-hermetic-corpus",
+      "lower": {
+        "reason_code": "not_reported",
+        "truth_state": "unavailable"
+      },
+      "reason_code": "fixture_only",
+      "resamples": 199,
+      "seed": 13,
+      "truth_state": "simulated",
+      "unit": "microusd",
+      "upper": {
+        "reason_code": "not_reported",
+        "truth_state": "unavailable"
+      },
+      "width": 150
+    }
+  },
+  "canary_admitted": false,
+  "cohort": "hermetic",
+  "controls": {
+    "acceptance_tests": "baguqeerajtjx2uf5nnpmyj5njj7nmtg5lsgecfabalz3o53kgv3jpu3vacia",
+    "available_providers_and_models": "baguqeera5wehcqr5rbuwrcgskjdhpt7d4oz32ks7oalbqa5iimevjpjstrha",
+    "human_intervention_policy": "baguqeeraijx5uvhi35valu2yfdtvrhq4oqxbzkjkxziwwsrgo7dmugi2sc7q",
+    "maximum_retries": 3,
+    "objective": "ASEH-G020",
+    "price_accounting": "baguqeera3nas3dp546nrxqg3nr6qdalxzbld2wlbhxzrdt5bz5disttd3w6a",
+    "repository_revision": "729da9f8293ecfa046a0136381a3d3808f9ed140",
+    "resource_limits": "baguqeera3ndxb76ndwpggkigqukxf7grvanwyolsuq6w4ujwayucts6c2hka",
+    "task_inputs": "baguqeera2iqng4k6ldr75hhg2h6mhwbiv3ahn3j4kgojuwlzzafdua2nv5ma"
+  },
+  "disposition": "evidence_qualified",
+  "equal_control_fields": [
+    "repository_revision",
+    "objective",
+    "task_inputs",
+    "acceptance_tests",
+    "available_providers_and_models",
+    "price_accounting",
+    "resource_limits",
+    "maximum_retries",
+    "human_intervention_policy"
+  ],
+  "escaped_seeds": [],
+  "explicit_unavailable_fields": [
+    "bootstrap_confidence_intervals.candidate_vs_sealed_current.lower",
+    "bootstrap_confidence_intervals.candidate_vs_sealed_current.upper",
+    "safety.live_cohort",
+    "safety.promotion_corpus_selected_test_false_negatives"
+  ],
+  "hermetic_sufficient_for_production_promotion": false,
+  "interface": "AsehHermeticQualification@1",
+  "live": false,
+  "minimum_tasks": 60,
+  "objective_id": "ASEH-G080",
+  "objective_revision": "baguqeera6ss2nrqlc5xtnivseglhfoa6mdtdtkxkop3f7rjnaxtmkurrbv7q",
+  "pair_count": {
+    "sensor_id": "aseh-070-hermetic-qualification",
+    "truth_state": "measured",
+    "unit": "count",
+    "value": 72
+  },
+  "policy_identity": "ipfs_accelerate_py/agent-supervisor/aseh-supervisor-policy@1",
+  "population_kind": "hermetic_development",
+  "production_qualified": false,
+  "program_id": "agent-supervisor-efficiency-and-state-hardening-v1",
+  "promotion_authorized": false,
+  "qualification": true,
+  "quality": {
+    "accepted_patch_rate": {
+      "sensor_id": "aseh-013-paired-harness",
+      "truth_state": "measured",
+      "unit": "ratio_millionths",
+      "value": 500000
+    },
+    "false_negatives": {
+      "sensor_id": "aseh-070-hermetic-qualification",
+      "truth_state": "measured",
+      "unit": "count",
+      "value": 1
+    },
+    "quality_adjusted_cost": {
+      "sensor_id": "aseh-013-paired-harness",
+      "truth_state": "measured",
+      "unit": "microusd",
+      "value": 2760
+    },
+    "selected_test_false_negatives": {
+      "escaped_count": {
+        "sensor_id": "aseh-070-hermetic-qualification",
+        "truth_state": "measured",
+        "unit": "count",
+        "value": 0
+      },
+      "escaped_fixture_ids": [],
+      "observed_count": {
+        "sensor_id": "aseh-070-hermetic-qualification",
+        "truth_state": "measured",
+        "unit": "count",
+        "value": 1
+      },
+      "observed_fixture_ids": [
+        "aseh-h26"
+      ]
+    }
+  },
+  "reasons": [],
+  "repository_commit": "755f45475cc2d13dacd8b330036c1d597afeddde",
+  "repository_tree": "729da9f8293ecfa046a0136381a3d3808f9ed140",
+  "results_identity": "baguqeeranymtdwei4y7guw2ttbwhdajpebrskxk4qtest5hfto4trs5hpsuq",
+  "safety": {
+    "escaped_critical_seeded_defects": {
+      "sensor_id": "aseh-070-hermetic-qualification",
+      "truth_state": "measured",
+      "unit": "count",
+      "value": 0
+    },
+    "live_cohort": {
+      "reason_code": "fixture_only",
+      "truth_state": "unavailable"
+    },
+    "promotion_corpus_selected_test_false_negatives": {
+      "reason_code": "not_applicable",
+      "truth_state": "unavailable"
+    },
+    "self_authorized_policy_promotions": {
+      "sensor_id": "aseh-070-hermetic-qualification",
+      "truth_state": "measured",
+      "unit": "count",
+      "value": 0
+    },
+    "simulated_as_live_outcomes": {
+      "sensor_id": "aseh-070-hermetic-qualification",
+      "truth_state": "measured",
+      "unit": "count",
+      "value": 0
+    }
+  },
+  "schema": "ipfs_accelerate_py/agent-supervisor/aseh-hermetic-qualification@1",
+  "schema_version": 1,
+  "statistics": {
+    "accepted_patch_rate": {
+      "sensor_id": "aseh-013-paired-harness",
+      "truth_state": "measured",
+      "unit": "ratio_millionths",
+      "value": 500000
+    },
+    "bootstrap_confidence_intervals": {
+      "sensor_id": "aseh-013-paired-harness",
+      "truth_state": "measured",
+      "unit": "microusd",
+      "value": 150
+    },
+    "distribution_by_task_class": {
+      "bug_repair": 6,
+      "context_pack_build": 6,
+      "feature_addition": 6,
+      "human_escalation": 6,
+      "merge_conflict": 6,
+      "proof_obligation": 6,
+      "recovery_replay": 6,
+      "retry_rescue": 6,
+      "routing_policy": 6,
+      "schema_change": 6,
+      "state_migration": 6,
+      "test_selection": 6
+    },
+    "mean_difference": {
+      "unsigned_cost_microusd": 991
+    },
+    "median_difference": {
+      "unsigned_cost_microusd": 605
+    },
+    "outlier_analysis": {
+      "count": 1,
+      "fixture_ids": [
+        "aseh-h68"
+      ],
+      "method": "tukey_iqr_150"
+    },
+    "per_task_ratios": {
+      "median_ratio_millionths": 784742
+    },
+    "quality_adjusted_cost": {
+      "includes_audit_overhead": true,
+      "median_candidate_microusd": 2760
+    },
+    "time_to_terminal_outcome": {
+      "median_us": 92962,
+      "unit": "seconds_millionths"
+    }
+  },
+  "task_id": "ASEH-070",
+  "validator_command": [
+    "python3",
+    "benchmarks/agent_supervisor/efficiency_state_hardening/paired_harness.py",
+    "--cohort",
+    "hermetic",
+    "--minimum-tasks",
+    "60",
+    "--output",
+    "benchmarks/agent_supervisor/efficiency_state_hardening/results/hermetic.json",
+    "--qualification-output",
+    "docs/architecture/agent_supervisor_efficiency_state_hardening_inventory/hermetic_qualification.json",
+    "--allow-honest-nonpromotion"
+  ],
+  "vectors_identity": "baguqeera2iqng4k6ldr75hhg2h6mhwbiv3ahn3j4kgojuwlzzafdua2nv5ma"
+}
