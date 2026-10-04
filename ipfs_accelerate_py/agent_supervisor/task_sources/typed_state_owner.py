@@ -235,6 +235,42 @@ _DATABASE_POST_MERGE_CLAIM_VERIFICATION_RECOVERY_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-post-merge-completion-claim-verification-recovery@1"
 )
+_DATABASE_POST_MERGE_CLAIM_VERIFICATION_RECOVERY_SCHEMA_V2: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-post-merge-completion-claim-verification-recovery@2"
+)
+_DATABASE_POST_MERGE_COMPLETION_TARGET_REQUALIFICATION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-post-merge-completion-target-requalification@1"
+)
+_DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-post-merge-callback-integration-recovery@1"
+)
+_POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "post-merge-callback-integration-requalification@1"
+)
+_POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V2_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "post-merge-callback-integration-requalification@2"
+)
+_POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V3_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "post-merge-callback-integration-requalification@3"
+)
+_POST_MERGE_SETTLED_CALLBACK_INTEGRATION_SOURCE_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "post-merge-settled-callback-integration-source@2"
+)
+_POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "post-merge-reconciled-callback-transport-source@1"
+)
+_POST_MERGE_CALLBACK_VALIDATION_WORKSPACE_HYGIENE_SCHEMA: Final = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "post-merge-callback-validation-workspace-hygiene@1"
+)
 _DATABASE_POST_MERGE_CLAIM_VERIFICATION_RECOVERY_REASON: Final = (
     "post-merge completion recovery seed failed claim verification"
 )
@@ -251,6 +287,35 @@ _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA: Final = (
 _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-post-merge-completion-recovery-seed@2"
+)
+_DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-post-merge-completion-recovery-seed@3"
+)
+# Process loss is external and can recur, so the exact zero-provider recovery
+# has an owner-fixed convergence bound.  The fourth dead raw reservation is
+# terminalized through the canonical receipt-bearing CAS instead of creating
+# an unbounded retry/revision loop.
+POST_MERGE_COMPLETION_DEAD_CLAIM_RECOVERY_LIMIT: Final[int] = 3
+POST_MERGE_COMPLETION_DEAD_CLAIM_NONCONVERGENCE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-post-merge-dead-claim-nonconvergence@1"
+)
+POST_MERGE_COMPLETION_DEAD_CLAIM_NONCONVERGENCE_OPERATION: Final = (
+    "database_post_merge_completion_recovery_nonconvergence_quarantine"
+)
+POST_MERGE_COMPLETION_DEAD_CLAIM_NONCONVERGENCE_REASON: Final = (
+    "post_merge_completion_dead_claim_recovery_limit_exhausted"
+)
+POST_MERGE_COMPLETION_UNREPLAYABLE_DEAD_CLAIM_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-post-merge-unreplayable-dead-claim@1"
+)
+POST_MERGE_COMPLETION_UNREPLAYABLE_DEAD_CLAIM_OPERATION: Final = (
+    "database_post_merge_completion_unreplayable_dead_claim_quarantine"
+)
+POST_MERGE_COMPLETION_UNREPLAYABLE_DEAD_CLAIM_REASON: Final = (
+    "post_merge_completion_dead_claim_lineage_unreplayable"
 )
 _DATABASE_POST_MERGE_CLAIM_VERIFICATION_CONTEXT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -352,6 +417,84 @@ _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_V2_FIELDS: Final = frozenset(
     {
         *_DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_FIELDS,
         "recovery_control_revision",
+    }
+)
+_DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_V3_FIELDS: Final = frozenset(
+    {
+        *_DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_V2_FIELDS,
+        "historical_source_seed_id",
+        "historical_rebased_seed_id",
+        "target_requalification_witness_id",
+    }
+)
+_POST_MERGE_SETTLED_CALLBACK_INTEGRATION_SOURCE_FIELDS: Final = frozenset(
+    {
+        "schema",
+        "source_shape",
+        "settlement_receipt_id",
+        "quarantine_receipt_id",
+        "quarantine_receipt",
+        "revival_id",
+        "revival",
+        "enqueue_event_id",
+        "enqueue_event_digest",
+        "projected_source_event_id",
+        "projected_source_event_digest",
+        "reconciliation_event_id",
+        "reconciliation_event_digest",
+        "terminal_event_id",
+        "terminal_event_digest",
+        "status_event_id",
+        "status_event_digest",
+        "completion_event_id",
+        "completion_event_digest",
+        "source_id",
+    }
+)
+_POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_FIELDS: Final = frozenset(
+    {
+        "schema",
+        "source_shape",
+        "settlement_receipt_id",
+        "quarantine_receipt_id",
+        "quarantine_receipt",
+        "revival_id",
+        "revival",
+        "enqueue_event_id",
+        "enqueue_event_digest",
+        "transport_event_id",
+        "transport_event_digest",
+        "projected_source_event_id",
+        "projected_source_event_digest",
+        "reconciliation_event_id",
+        "reconciliation_event_digest",
+        "status_event_id",
+        "status_event_digest",
+        "source_id",
+    }
+)
+_POST_MERGE_CALLBACK_VALIDATION_WORKSPACE_HYGIENE_FIELDS: Final = frozenset(
+    {
+        "schema",
+        "target_commit",
+        "target_tree",
+        "declared_entries",
+        "pre_validation_identities",
+        "generated_identities",
+        "restored_identities",
+        "generated_dirty_paths",
+        "restoration_performed",
+        "final_clean",
+        "hygiene_id",
+    }
+)
+_POST_MERGE_CALLBACK_VALIDATION_OUTPUT_IDENTITY_FIELDS: Final = frozenset(
+    {
+        "path",
+        "index_mode",
+        "index_object_id",
+        "worktree_mode",
+        "worktree_object_id",
     }
 )
 
@@ -3729,6 +3872,458 @@ def _post_commit_route_recovery_material(
     }
 
 
+def _closed_callback_workspace_hygiene(
+    raw: Any,
+    *,
+    qualification: Mapping[str, Any],
+) -> bool:
+    """Validate the complete V3 declared-output restoration witness."""
+
+    if not isinstance(raw, Mapping):
+        return False
+    value = dict(raw)
+    hygiene_id = value.pop("hygiene_id", None)
+    entries = qualification.get("entries")
+    dirty_paths = value.get("generated_dirty_paths")
+    pre = value.get("pre_validation_identities")
+    generated = value.get("generated_identities")
+    restored = value.get("restored_identities")
+    if (
+        set(raw) != _POST_MERGE_CALLBACK_VALIDATION_WORKSPACE_HYGIENE_FIELDS
+        or value.get("schema")
+        != _POST_MERGE_CALLBACK_VALIDATION_WORKSPACE_HYGIENE_SCHEMA
+        or value.get("target_commit")
+        != qualification.get("current_target_commit")
+        or value.get("target_tree") != qualification.get("current_target_tree")
+        or value.get("declared_entries") != entries
+        or qualification.get("task_ids") != ["VRIF-032"]
+        or not isinstance(entries, list)
+        or not isinstance(dirty_paths, list)
+        or not dirty_paths
+        or any(type(path) is not str for path in dirty_paths)
+        or dirty_paths != sorted(set(dirty_paths))
+        or not set(dirty_paths).issubset(
+            {
+                (
+                    "docs/architecture/residual_intelligence_inventory/"
+                    "final_release_report.json"
+                ),
+                (
+                    "docs/architecture/residual_intelligence_inventory/"
+                    "final_release_report.md"
+                ),
+            }
+        )
+        or value.get("restoration_performed") is not True
+        or value.get("final_clean") is not True
+        or hygiene_id != content_identity(value)
+        or any(not isinstance(items, list) for items in (pre, generated, restored))
+        or not (len(pre) == len(generated) == len(restored) == len(entries))
+    ):
+        return False
+    entries_by_path = {
+        str(entry.get("path") if isinstance(entry, Mapping) else ""): entry
+        for entry in entries
+    }
+    if (
+        len(entries_by_path) != len(entries)
+        or any(path not in entries_by_path for path in dirty_paths)
+    ):
+        return False
+    observed_dirty: list[str] = []
+    git_id = r"[0-9a-f]{40}(?:[0-9a-f]{24})?"
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, Mapping):
+            return False
+        path = str(entry.get("path") or "")
+        expected = {
+            "path": path,
+            "index_mode": str(entry.get("mode") or ""),
+            "index_object_id": str(entry.get("object_id") or ""),
+            "worktree_mode": str(entry.get("mode") or ""),
+            "worktree_object_id": str(entry.get("object_id") or ""),
+        }
+        before = pre[index]
+        during = generated[index]
+        after = restored[index]
+        if (
+            not isinstance(before, Mapping)
+            or not isinstance(during, Mapping)
+            or not isinstance(after, Mapping)
+            or set(before)
+            != _POST_MERGE_CALLBACK_VALIDATION_OUTPUT_IDENTITY_FIELDS
+            or set(during)
+            != _POST_MERGE_CALLBACK_VALIDATION_OUTPUT_IDENTITY_FIELDS
+            or set(after)
+            != _POST_MERGE_CALLBACK_VALIDATION_OUTPUT_IDENTITY_FIELDS
+            or dict(before) != expected
+            or dict(after) != expected
+            or during.get("path") != path
+            or during.get("index_mode") != expected["index_mode"]
+            or during.get("index_object_id") != expected["index_object_id"]
+            or during.get("worktree_mode") != expected["worktree_mode"]
+        ):
+            return False
+        if during.get("worktree_object_id") != entry.get("object_id"):
+            observed_dirty.append(path)
+            if re.fullmatch(
+                git_id,
+                str(during.get("worktree_object_id") or ""),
+            ) is None:
+                return False
+    return sorted(observed_dirty) == dirty_paths
+
+
+def _closed_callback_settled_source_kind(
+    raw: Any,
+    *,
+    qualification: Mapping[str, Any],
+    train_receipt_id: str,
+) -> str:
+    """Return the exact admitted settled-source class, or an empty string."""
+
+    if not isinstance(raw, Mapping):
+        return ""
+    value = dict(raw)
+    source_id = value.pop("source_id", None)
+    reconciled = (
+        value.get("schema")
+        == _POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_SCHEMA
+    )
+    fields = (
+        _POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_FIELDS
+        if reconciled
+        else _POST_MERGE_SETTLED_CALLBACK_INTEGRATION_SOURCE_FIELDS
+    )
+    schema = (
+        _POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_SCHEMA
+        if reconciled
+        else _POST_MERGE_SETTLED_CALLBACK_INTEGRATION_SOURCE_SCHEMA
+    )
+    shape = (
+        "settled_reconciled_candidate_transport"
+        if reconciled
+        else "settled_integrated_quarantine"
+    )
+    event_fields = (
+        (
+            "enqueue_event_id",
+            "enqueue_event_digest",
+            "transport_event_id",
+            "transport_event_digest",
+            "projected_source_event_id",
+            "projected_source_event_digest",
+            "reconciliation_event_id",
+            "reconciliation_event_digest",
+            "status_event_id",
+            "status_event_digest",
+        )
+        if reconciled
+        else (
+            "enqueue_event_id",
+            "enqueue_event_digest",
+            "projected_source_event_id",
+            "projected_source_event_digest",
+            "reconciliation_event_id",
+            "reconciliation_event_digest",
+            "terminal_event_id",
+            "terminal_event_digest",
+            "status_event_id",
+            "status_event_digest",
+            "completion_event_id",
+            "completion_event_digest",
+        )
+    )
+    embedded: dict[str, Mapping[str, Any]] = {}
+    for json_field, identity_field in (
+        ("quarantine_receipt", "quarantine_receipt_id"),
+        ("revival", "revival_id"),
+    ):
+        serialized = value.get(json_field)
+        if (
+            not isinstance(serialized, str)
+            or not serialized
+            or len(serialized.encode("utf-8", errors="surrogatepass"))
+            > 1024 * 1024
+        ):
+            return ""
+        try:
+            parsed = json.loads(serialized)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return ""
+        if (
+            not isinstance(parsed, Mapping)
+            or canonical_json_bytes(parsed).decode("utf-8") != serialized
+            or "sha256:"
+            + hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+            != value.get(identity_field)
+        ):
+            return ""
+        embedded[json_field] = dict(parsed)
+    quarantine = embedded["quarantine_receipt"]
+    revival = embedded["revival"]
+    quarantine_fields = {
+        "acceptance_pending",
+        "accepted",
+        "canonical_task_id",
+        "commit_sha",
+        "failure_count",
+        "finished_at",
+        "integrated",
+        "max_attempts",
+        "merge_result",
+        "merged",
+        "reason",
+        "request_id",
+        "retryable",
+        "started_at",
+        "status",
+        "target_branch",
+        "task_id",
+    }
+    revival_fields = {
+        "at",
+        "previous_enqueued_at",
+        "previous_failure_count",
+        "previous_failure_reason",
+        "reason",
+    }
+    expected_failure_reason = (
+        "merge_queue_reconciliation_projection_conflict"
+        if reconciled
+        else "merge_completion_receipt_invalid"
+    )
+    task_ids = qualification.get("task_ids")
+    task_alias = (
+        task_ids[0]
+        if isinstance(task_ids, list)
+        and len(task_ids) == 1
+        and isinstance(task_ids[0], str)
+        else None
+    )
+    times = (
+        quarantine.get("started_at"),
+        quarantine.get("finished_at"),
+        revival.get("previous_enqueued_at"),
+        revival.get("at"),
+    )
+    if (
+        set(raw) != fields
+        or value.get("schema") != schema
+        or value.get("source_shape") != shape
+        or value.get("settlement_receipt_id") != train_receipt_id
+        or value.get("projected_source_event_id")
+        != qualification.get("source_event_id")
+        or source_id != content_identity(value)
+        or any(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", str(value.get(field) or ""))
+            is None
+            for field in (
+                "settlement_receipt_id",
+                "quarantine_receipt_id",
+                "revival_id",
+                *event_fields,
+            )
+        )
+        or set(quarantine) != quarantine_fields
+        or quarantine.get("status") != "quarantined"
+        or quarantine.get("reason") != expected_failure_reason
+        or quarantine.get("accepted") is not False
+        or quarantine.get("integrated") is not False
+        or quarantine.get("merged") is not False
+        or quarantine.get("acceptance_pending") is not False
+        or quarantine.get("retryable") is not False
+        or quarantine.get("failure_count") != (2 if reconciled else 1)
+        or type(quarantine.get("max_attempts")) is not int
+        or quarantine["max_attempts"] < 1
+        or quarantine.get("request_id") != qualification.get("request_id")
+        or task_alias is None
+        or quarantine.get("task_id") != task_alias
+        or quarantine.get("commit_sha") != qualification.get("candidate_commit")
+        or not isinstance(quarantine.get("merge_result"), Mapping)
+        or set(revival) != revival_fields
+        or revival.get("previous_failure_count") != (2 if reconciled else 1)
+        or revival.get("previous_failure_reason") != expected_failure_reason
+        or revival.get("reason")
+        != (
+            "merge train proved quarantined candidate already integrated into "
+            "exact target"
+        )
+        or any(
+            isinstance(item, bool)
+            or not isinstance(item, (int, float))
+            or not math.isfinite(float(item))
+            for item in times
+        )
+        or float(revival["previous_enqueued_at"])
+        > float(quarantine["started_at"])
+        or float(quarantine["started_at"])
+        > float(quarantine["finished_at"])
+        or float(quarantine["finished_at"]) >= float(revival["at"])
+    ):
+        return ""
+    return "reconciled_transport" if reconciled else "settled"
+
+
+def _closed_callback_train_receipt(
+    train_receipt: Any,
+    *,
+    qualification: Mapping[str, Any],
+    settled_kind: str,
+) -> bool:
+    """Validate the closed train-receipt alternatives used by callbacks."""
+
+    if not isinstance(train_receipt, Mapping):
+        return False
+    task_ids = qualification.get("task_ids")
+    if (
+        not isinstance(task_ids, list)
+        or len(task_ids) != 1
+        or type(task_ids[0]) is not str
+        or not task_ids[0]
+    ):
+        return False
+    task_alias = task_ids[0]
+    admission = train_receipt.get("distributed_publication_admission")
+    started = train_receipt.get("started_at")
+    finished = train_receipt.get("finished_at")
+    common = bool(
+        train_receipt.get("request_id") == qualification.get("request_id")
+        and train_receipt.get("task_id") == task_alias
+        and train_receipt.get("commit_sha")
+        == qualification.get("candidate_commit")
+        and train_receipt.get("target_commit")
+        == qualification.get("integration_commit")
+        and train_receipt.get("merge_commit")
+        == qualification.get("integration_commit")
+        and isinstance(started, (int, float))
+        and not isinstance(started, bool)
+        and isinstance(finished, (int, float))
+        and not isinstance(finished, bool)
+        and math.isfinite(float(started))
+        and math.isfinite(float(finished))
+        and float(started) <= float(finished)
+        and isinstance(admission, Mapping)
+        and set(admission)
+        == {"schema", "admitted", "distributed", "request_id", "status"}
+        and admission.get("schema")
+        == (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "distributed-lane-admission@1"
+        )
+        and admission.get("admitted") is True
+        and admission.get("distributed") is False
+        and admission.get("request_id") == qualification.get("request_id")
+        and admission.get("status") == "local"
+    )
+    if not common:
+        return False
+    settlement_fields = {
+        "already_merged",
+        "canonical_task_id",
+        "commit_sha",
+        "distributed_publication_admission",
+        "finished_at",
+        "integrated",
+        "merge_commit",
+        "merged",
+        "mutation_short_circuited",
+        "reason",
+        "request_id",
+        "started_at",
+        "status",
+        "target_branch",
+        "target_commit",
+        "task_id",
+    }
+    if settled_kind == "settled":
+        return bool(
+            set(train_receipt) == settlement_fields
+            and train_receipt.get("status") == "already_merged"
+            and train_receipt.get("reason") == "declared_outputs_already_on_target"
+            and train_receipt.get("already_merged") is True
+            and train_receipt.get("integrated") is True
+            and train_receipt.get("merged") is False
+            and train_receipt.get("mutation_short_circuited") is True
+        )
+    callback_fields = {
+        "acceptance_pending",
+        "accepted",
+        "callback_owned_integration",
+        "canonical_task_id",
+        "commit_sha",
+        "distributed_publication_admission",
+        "finished_at",
+        "integrated",
+        "merge_commit",
+        "merge_result",
+        "merged",
+        "request_id",
+        "started_at",
+        "status",
+        "target_branch",
+        "target_commit",
+        "task_id",
+    }
+    if set(train_receipt) != callback_fields:
+        return False
+    merge_result = train_receipt.get("merge_result")
+    todo = (
+        merge_result.get("todo_update_result")
+        if isinstance(merge_result, Mapping)
+        else None
+    )
+    completions = (
+        todo.get("completion_receipts") if isinstance(todo, Mapping) else None
+    )
+    member = (
+        completions[0]
+        if isinstance(completions, list)
+        and len(completions) == 1
+        and isinstance(completions[0], Mapping)
+        else None
+    )
+    callback_common = bool(
+        train_receipt.get("accepted") is True
+        and train_receipt.get("integrated") is True
+        and train_receipt.get("callback_owned_integration") is True
+        and train_receipt.get("acceptance_pending") is False
+        and isinstance(merge_result, Mapping)
+        and isinstance(member, Mapping)
+        and member.get("task_id") == task_alias
+        and bool(str(member.get("canonical_task_cid") or ""))
+        and member.get("canonical_task_key")
+        == train_receipt.get("canonical_task_id")
+    )
+    if settled_kind == "reconciled_transport":
+        return bool(
+            callback_common
+            and train_receipt.get("status") == "already_merged"
+            and train_receipt.get("merged") is False
+            and merge_result.get("attempted") is False
+            and merge_result.get("merged") is True
+            and merge_result.get("already_merged") is True
+            and merge_result.get("returncode") == 0
+            and merge_result.get("reason")
+            == "implementation_commit_already_merged"
+            and merge_result.get("mutation_short_circuited") is True
+            and merge_result.get("merge_commit")
+            == qualification.get("integration_commit")
+            and merge_result.get("target_commit")
+            == qualification.get("integration_commit")
+        )
+    return bool(
+        not settled_kind
+        and callback_common
+        and train_receipt.get("status") == "merged"
+        and train_receipt.get("merged") is True
+        and merge_result.get("returncode") == 0
+        and merge_result.get("merged") is True
+        and merge_result.get("merge_commit")
+        == qualification.get("integration_commit")
+    )
+
+
 def _post_merge_claim_verification_recovery_material(
     *,
     task_cid: str,
@@ -4592,7 +5187,7 @@ def _post_merge_claim_verification_recovery_material(
         if isinstance(evidence, Mapping)
         else None
     )
-    evidence_fields = {
+    evidence_fields_v1 = {
         "schema",
         "disposition",
         "reason",
@@ -4625,11 +5220,377 @@ def _post_merge_claim_verification_recovery_material(
         "attempt_consumed",
         "receipt_id",
     }
+    evidence_fields_v2 = (
+        evidence_fields_v1
+        - {"target_generation_unchanged"}
+        | {
+            "source_qualified_target_commit",
+            "source_qualification_receipt_id",
+            "source_recovery_evidence_id",
+            "successor_seed_id",
+            "target_generation_advanced",
+            "target_requalification",
+        }
+    )
     evidence_value = dict(evidence) if isinstance(evidence, Mapping) else {}
     evidence_body = dict(evidence_value)
     evidence_id = evidence_body.pop("receipt_id", None)
+    evidence_schema = evidence_body.get("schema")
+    advanced = evidence_schema == (
+        _DATABASE_POST_MERGE_CLAIM_VERIFICATION_RECOVERY_SCHEMA_V2
+    )
+    witness_raw = evidence_body.get("target_requalification")
+    witness = dict(witness_raw) if isinstance(witness_raw, Mapping) else {}
+    witness_body = dict(witness)
+    witness_id = witness_body.pop("witness_id", None)
+    current_evidence_raw = witness.get("current_requalification_evidence")
+    current_evidence = (
+        dict(current_evidence_raw)
+        if isinstance(current_evidence_raw, Mapping)
+        else {}
+    )
+    current_evidence_body = dict(current_evidence)
+    current_evidence_id = current_evidence_body.pop("evidence_id", None)
+    qualification_raw = current_evidence.get(
+        "callback_requalification_receipt"
+    )
+    qualification = (
+        dict(qualification_raw) if isinstance(qualification_raw, Mapping) else {}
+    )
+    qualification_body = dict(qualification)
+    qualification_id = qualification_body.pop("receipt_id", None)
+    qualified_entries_raw = witness.get("qualified_output_entries")
+    qualified_entries = (
+        [dict(entry) for entry in qualified_entries_raw]
+        if isinstance(qualified_entries_raw, list)
+        and all(isinstance(entry, Mapping) for entry in qualified_entries_raw)
+        else []
+    )
+    qualification_schema = qualification.get("schema")
+    qualification_base_fields = {
+        "schema",
+        "task_ids",
+        "task_cid",
+        "request_id",
+        "candidate_commit",
+        "baseline_commit",
+        "integration_commit",
+        "source_event_id",
+        "source_event_digest",
+        "source_validation_result_digest",
+        "queue_validation_proof_digest",
+        "train_dedupe_key",
+        "train_receipt_id",
+        "train_receipt",
+        "current_target_commit",
+        "current_target_tree",
+        "entries",
+        "validation",
+        "receipt_id",
+    }
+    qualification_expected_fields = (
+        qualification_base_fields
+        | {"settled_integration_source", "workspace_hygiene"}
+        if qualification_schema
+        == _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V3_SCHEMA
+        else qualification_base_fields | {"settled_integration_source"}
+        if qualification_schema
+        == _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V2_SCHEMA
+        else qualification_base_fields
+    )
+    qualification_validation = qualification.get("validation")
+    validation = (
+        qualification_validation[0]
+        if isinstance(qualification_validation, list)
+        and len(qualification_validation) == 1
+        and isinstance(qualification_validation[0], Mapping)
+        else {}
+    )
+    validation_digests = validation.get("validation_result_digests")
+    command_count = validation.get("command_count")
+    train_receipt_text = qualification.get("train_receipt")
+    try:
+        train_receipt = (
+            json.loads(train_receipt_text)
+            if isinstance(train_receipt_text, str)
+            and len(train_receipt_text.encode("utf-8", errors="surrogatepass"))
+            <= 1024 * 1024
+            else None
+        )
+    except (TypeError, ValueError, json.JSONDecodeError):
+        train_receipt = None
+    canonical_train_receipt = (
+        canonical_json_bytes(train_receipt).decode("utf-8")
+        if isinstance(train_receipt, Mapping)
+        else ""
+    )
+    settled_kind = (
+        _closed_callback_settled_source_kind(
+            qualification.get("settled_integration_source"),
+            qualification=qualification,
+            train_receipt_id=str(qualification.get("train_receipt_id") or ""),
+        )
+        if qualification_schema
+        in {
+            _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V2_SCHEMA,
+            _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V3_SCHEMA,
+        }
+        else ""
+    )
+    train_receipt_closed = _closed_callback_train_receipt(
+        train_receipt,
+        qualification=qualification,
+        settled_kind=settled_kind,
+    )
+    hygiene_closed = bool(
+        qualification_schema
+        != _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V3_SCHEMA
+        or _closed_callback_workspace_hygiene(
+            qualification.get("workspace_hygiene"),
+            qualification=qualification,
+        )
+    )
+    witness_fields = {
+        "schema",
+        "source_qualified_target_commit",
+        "current_qualified_target_commit",
+        "source_qualification_receipt_id",
+        "current_qualification_receipt_id",
+        "source_recovery_evidence_id",
+        "current_recovery_evidence_id",
+        "candidate_commit",
+        "integration_commit",
+        "train_receipt_id",
+        "current_requalification_evidence",
+        "qualified_output_entries",
+        "qualified_output_entries_digest",
+        "source_target_ancestor",
+        "candidate_integration_reverified",
+        "qualified_output_entries_reverified",
+        "validation_passed",
+        "witness_id",
+    }
+    current_evidence_fields = {
+        "schema",
+        "request_id",
+        "task_cid",
+        "task_alias",
+        "candidate_commit",
+        "source_attempt_id",
+        "source_claim_id",
+        "source_lease_id",
+        "source_fencing_token",
+        "source_fence_epoch",
+        "source_binding_id",
+        "source_projection_immutable_digest",
+        "qualified_target_commit",
+        "callback_requalification_receipt_id",
+        "callback_requalification_receipt",
+        "evidence_id",
+    }
+    advanced_witness_valid = bool(
+        advanced
+        and set(witness) == witness_fields
+        and witness.get("schema")
+        == _DATABASE_POST_MERGE_COMPLETION_TARGET_REQUALIFICATION_SCHEMA
+        and witness_id
+        == "sha256:"
+        + hashlib.sha256(canonical_json_bytes(witness_body)).hexdigest()
+        and set(current_evidence) == current_evidence_fields
+        and current_evidence.get("schema")
+        == _DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_SCHEMA
+        and current_evidence_id
+        == "sha256:"
+        + hashlib.sha256(canonical_json_bytes(current_evidence_body)).hexdigest()
+        and set(qualification) == qualification_expected_fields
+        and qualification_schema
+        in {
+            _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_SCHEMA,
+            _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V2_SCHEMA,
+            _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_V3_SCHEMA,
+        }
+        and (
+            qualification_schema
+            == _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_SCHEMA
+            or bool(settled_kind)
+        )
+        and train_receipt_closed
+        and hygiene_closed
+        and qualification_id == content_identity(qualification_body)
+        and qualification.get("task_ids") == [task_alias]
+        and qualification.get("task_cid") == task_cid
+        and qualification.get("request_id") == source_seed["request_id"]
+        and qualification.get("candidate_commit") == source_seed["candidate_commit"]
+        and all(
+            re.fullmatch(
+                r"[0-9a-f]{40}(?:[0-9a-f]{24})?",
+                str(qualification.get(field) or ""),
+            )
+            is not None
+            for field in (
+                "candidate_commit",
+                "baseline_commit",
+                "integration_commit",
+                "current_target_commit",
+                "current_target_tree",
+            )
+        )
+        and all(
+            re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(qualification.get(field) or ""),
+            )
+            is not None
+            for field in (
+                "source_event_id",
+                "source_event_digest",
+                "source_validation_result_digest",
+                "queue_validation_proof_digest",
+                "train_receipt_id",
+            )
+        )
+        and re.fullmatch(
+            r"[0-9a-f]{64}",
+            str(qualification.get("train_dedupe_key") or ""),
+        )
+        is not None
+        and qualification.get("current_target_commit")
+        == witness.get("current_qualified_target_commit")
+        and qualification.get("integration_commit")
+        == witness.get("integration_commit")
+        and qualification.get("train_receipt_id")
+        == witness.get("train_receipt_id")
+        and qualification.get("entries") == qualified_entries
+        and qualified_entries
+        and len(qualified_entries) <= 512
+        and len({str(entry.get("path") or "") for entry in qualified_entries})
+        == len(qualified_entries)
+        and all(
+            set(entry) == {"mode", "object_id", "object_type", "path"}
+            and entry.get("mode") in {"100644", "100755"}
+            and entry.get("object_type") == "blob"
+            and re.fullmatch(
+                r"[0-9a-f]{40}(?:[0-9a-f]{24})?",
+                str(entry.get("object_id") or ""),
+            )
+            is not None
+            and type(entry.get("path")) is str
+            and bool(entry["path"])
+            and not entry["path"].startswith("/")
+            and "\0" not in entry["path"]
+            and ".." not in Path(entry["path"]).parts
+            for entry in qualified_entries
+        )
+        and witness.get("qualified_output_entries_digest")
+        == "sha256:"
+        + hashlib.sha256(
+            canonical_json_bytes({"entries": qualified_entries})
+        ).hexdigest()
+        and set(validation)
+        == {
+            "task_id",
+            "passed",
+            "returncode",
+            "validation_result_digests",
+            "command_count",
+            "log_sha256",
+        }
+        and validation.get("task_id") == task_alias
+        and validation.get("passed") is True
+        and validation.get("returncode") == 0
+        and type(command_count) is int
+        and command_count >= 1
+        and isinstance(validation_digests, list)
+        and len(validation_digests) == command_count
+        and all(
+            re.fullmatch(r"(?:sha256:)?[0-9a-f]{64}", str(item)) is not None
+            for item in validation_digests
+        )
+        and re.fullmatch(
+            r"[0-9a-f]{64}", str(validation.get("log_sha256") or "")
+        )
+        is not None
+        and isinstance(train_receipt, Mapping)
+        and canonical_train_receipt == train_receipt_text
+        and qualification.get("train_receipt_id")
+        == "sha256:"
+        + hashlib.sha256(canonical_train_receipt.encode("utf-8")).hexdigest()
+        and witness.get("source_qualified_target_commit")
+        == source_seed["qualified_target_commit"]
+        and witness.get("source_qualification_receipt_id")
+        == source_seed["qualification_receipt_id"]
+        and witness.get("source_recovery_evidence_id")
+        == source_seed["recovery_evidence_id"]
+        and witness.get("current_qualification_receipt_id") == qualification_id
+        and witness.get("current_recovery_evidence_id") == current_evidence_id
+        and witness.get("candidate_commit") == source_seed["candidate_commit"]
+        and current_evidence.get("request_id") == source_seed["request_id"]
+        and current_evidence.get("task_cid") == task_cid
+        and current_evidence.get("task_alias") == task_alias
+        and current_evidence.get("candidate_commit") == source_seed["candidate_commit"]
+        and current_evidence.get("source_attempt_id")
+        == source_seed["queue_source_attempt_id"]
+        and current_evidence.get("source_claim_id")
+        == source_seed["queue_source_claim_id"]
+        and current_evidence.get("source_lease_id")
+        == source_seed["queue_source_lease_id"]
+        and current_evidence.get("source_fencing_token")
+        == source_seed["queue_source_fencing_token"]
+        and current_evidence.get("source_fence_epoch")
+        == source_seed["queue_source_fence_epoch"]
+        and current_evidence.get("source_binding_id")
+        == source_seed["queue_source_binding_id"]
+        and current_evidence.get("source_projection_immutable_digest")
+        == source_seed["queue_source_projection_immutable_digest"]
+        and current_evidence.get("qualified_target_commit")
+        == witness.get("current_qualified_target_commit")
+        and current_evidence.get("callback_requalification_receipt_id")
+        == qualification_id
+        and current_evidence.get("callback_requalification_receipt")
+        == qualification
+        and witness.get("source_target_ancestor") is True
+        and witness.get("candidate_integration_reverified") is True
+        and witness.get("qualified_output_entries_reverified") is True
+        and witness.get("validation_passed") is True
+        and witness.get("current_qualified_target_commit")
+        != source_seed["qualified_target_commit"]
+        and witness.get("current_qualification_receipt_id")
+        != source_seed["qualification_receipt_id"]
+        and witness.get("current_recovery_evidence_id")
+        != source_seed["recovery_evidence_id"]
+    )
+    successor_seed = rebased_seed
+    if advanced_witness_valid:
+        successor_seed_body = dict(source_seed_body)
+        successor_seed_body.update(
+            schema=_DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3,
+            recovery_control_revision=current_revision,
+            qualified_target_commit=witness["current_qualified_target_commit"],
+            qualification_receipt_id=witness[
+                "current_qualification_receipt_id"
+            ],
+            recovery_evidence_id=witness["current_recovery_evidence_id"],
+            historical_source_seed_id=source_seed_id,
+            historical_rebased_seed_id=rebased_seed["seed_id"],
+            target_requalification_witness_id=witness_id,
+        )
+        successor_seed = {
+            **successor_seed_body,
+            "seed_id": "sha256:"
+            + hashlib.sha256(canonical_json_bytes(successor_seed_body)).hexdigest(),
+        }
+        if set(successor_seed) != (
+            _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_V3_FIELDS
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "post-merge claim-verification successor seed is invalid"
+            )
     expected_evidence = {
-        "schema": _DATABASE_POST_MERGE_CLAIM_VERIFICATION_RECOVERY_SCHEMA,
+        "schema": (
+            _DATABASE_POST_MERGE_CLAIM_VERIFICATION_RECOVERY_SCHEMA_V2
+            if advanced
+            else _DATABASE_POST_MERGE_CLAIM_VERIFICATION_RECOVERY_SCHEMA
+        ),
         "disposition": _DATABASE_POST_MERGE_CLAIM_VERIFICATION_RECOVERY_DISPOSITION,
         "reason": _DATABASE_POST_MERGE_CLAIM_VERIFICATION_RECOVERY_REASON,
         "task_cid": task_cid,
@@ -4641,10 +5602,22 @@ def _post_merge_claim_verification_recovery_material(
         "rebased_seed_id": rebased_seed["seed_id"],
         "request_id": source_seed["request_id"],
         "candidate_commit": source_seed["candidate_commit"],
-        "qualified_target_commit": source_seed["qualified_target_commit"],
+        "qualified_target_commit": (
+            witness.get("current_qualified_target_commit")
+            if advanced
+            else source_seed["qualified_target_commit"]
+        ),
         "qualification_kind": source_seed["qualification_kind"],
-        "qualification_receipt_id": source_seed["qualification_receipt_id"],
-        "recovery_evidence_id": source_seed["recovery_evidence_id"],
+        "qualification_receipt_id": (
+            witness.get("current_qualification_receipt_id")
+            if advanced
+            else source_seed["qualification_receipt_id"]
+        ),
+        "recovery_evidence_id": (
+            witness.get("current_recovery_evidence_id")
+            if advanced
+            else source_seed["recovery_evidence_id"]
+        ),
         "queue_source_binding_id": source_seed["queue_source_binding_id"],
         "queue_source_projection_immutable_digest": source_seed[
             "queue_source_projection_immutable_digest"
@@ -4653,13 +5626,34 @@ def _post_merge_claim_verification_recovery_material(
             {"task_execution_route_binding": route}
         ),
         "candidate_preserved": True,
-        "target_generation_unchanged": True,
         "provider_dispatched": False,
         "attempt_consumed": False,
     }
+    if advanced:
+        expected_evidence.update(
+            source_qualified_target_commit=source_seed[
+                "qualified_target_commit"
+            ],
+            source_qualification_receipt_id=source_seed[
+                "qualification_receipt_id"
+            ],
+            source_recovery_evidence_id=source_seed["recovery_evidence_id"],
+            successor_seed_id=successor_seed["seed_id"],
+            target_generation_advanced=True,
+            target_requalification=witness,
+        )
+    else:
+        expected_evidence["target_generation_unchanged"] = True
     history_context_id = evidence_body.get("history_context_id")
     if (
-        set(evidence_value) != evidence_fields
+        set(evidence_value)
+        != (evidence_fields_v2 if advanced else evidence_fields_v1)
+        or evidence_schema
+        not in {
+            _DATABASE_POST_MERGE_CLAIM_VERIFICATION_RECOVERY_SCHEMA,
+            _DATABASE_POST_MERGE_CLAIM_VERIFICATION_RECOVERY_SCHEMA_V2,
+        }
+        or (advanced and not advanced_witness_valid)
         or history_context_id != expected_history_context_id
         or any(
             not _strict_scalar_equal(evidence_body.get(name), value)
@@ -4741,7 +5735,8 @@ def _post_merge_claim_verification_recovery_material(
         or coordination.get("attempt_id") != claim_identity["attempt_id"]
         or coordination.get("claim_id") != claim_identity["claim_id"]
         or coordination.get("attempt_number") != claim_identity["attempt_number"]
-        or next_receipt.get("post_merge_completion_recovery_seed") != rebased_seed
+        or next_receipt.get("post_merge_completion_recovery_seed")
+        != successor_seed
         or next_receipt.get("post_merge_completion_claim_verification_recovery")
         != evidence_value
         or next_receipt.get("recovery_process_attestation")
@@ -4776,7 +5771,739 @@ def _post_merge_claim_verification_recovery_material(
         "history_projection_cid": history_projection_cid,
         "recovery_process_attestation": dict(recovery_process_attestation),
         "source_seed": source_seed,
+        "successor_seed": successor_seed,
         "source_recovery_receipt": source_recovery_receipt,
+    }
+
+
+def _post_merge_special_dead_claim_chain_material(
+    *,
+    task_cid: str,
+    current_revision: int,
+    current_body: Mapping[str, Any],
+    history_rows: Sequence[Sequence[Any]],
+) -> dict[str, Any]:
+    """Reproduce the bounded raw-claim/dead-process suffix rooted at r25.
+
+    This helper consumes only transaction-bound task history.  It deliberately
+    rederives the original r24 -> r25 successor and then requires every later
+    revision to alternate between a raw, zero-provider reservation and the
+    owner's dead-process recovery.  The seed, route, semantic task contract,
+    reservation CID, and process lineage remain exact across the suffix.
+    """
+
+    if (
+        type(task_cid) is not str
+        or not task_cid.strip()
+        or task_cid != task_cid.strip()
+        or type(current_revision) is not int
+        or not 26 <= current_revision <= 10_000
+        or not isinstance(current_body, Mapping)
+        or len(history_rows) != current_revision
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge dead claim history identity is invalid"
+        )
+    entries: list[dict[str, Any]] = []
+    for expected_revision, row in enumerate(history_rows, start=1):
+        if isinstance(row, Mapping):
+            if set(row) != {"revision", "status", "body_json"}:
+                raise TypedStateOwnerAuthorizationError(
+                    "post-merge dead claim history is malformed"
+                )
+            revision, status, body_json = (
+                row["revision"],
+                row["status"],
+                row["body_json"],
+            )
+        elif isinstance(row, (str, bytes, bytearray)):
+            raise TypedStateOwnerAuthorizationError(
+                "post-merge dead claim history is malformed"
+            )
+        else:
+            try:
+                revision, status, body_json = row
+            except (TypeError, ValueError) as exc:
+                raise TypedStateOwnerAuthorizationError(
+                    "post-merge dead claim history is malformed"
+                ) from exc
+        body, canonical_body = _closed_canonical_json_object(
+            body_json,
+            noun="post-merge dead claim history body",
+        )
+        if type(revision) is not int or revision != expected_revision:
+            raise TypedStateOwnerAuthorizationError(
+                "post-merge dead claim history is not contiguous"
+            )
+        entries.append(
+            {
+                "revision": revision,
+                "status": str(status or "").strip().lower(),
+                "body": body,
+                "body_json": canonical_body,
+            }
+        )
+    if (
+        entries[-1]["status"] != "in_progress"
+        or entries[-1]["body"] != dict(current_body)
+        or len(entries) < 26
+        or entries[23]["status"] != "blocked"
+        or entries[24]["status"] != "retrying"
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge dead claim history head is stale"
+        )
+    current_receipt_raw = current_body.get("completion_receipt")
+    current_receipt = (
+        dict(current_receipt_raw)
+        if isinstance(current_receipt_raw, Mapping)
+        else {}
+    )
+    current_seed_raw = current_receipt.get(
+        "post_merge_completion_recovery_seed"
+    )
+    task_alias = (
+        str(current_seed_raw.get("task_alias") or "")
+        if isinstance(current_seed_raw, Mapping)
+        else ""
+    )
+    root_recovery_receipt = entries[24]["body"].get("completion_receipt")
+    root_recovery_attestation = (
+        root_recovery_receipt.get("recovery_process_attestation")
+        if isinstance(root_recovery_receipt, Mapping)
+        else None
+    )
+    if not isinstance(root_recovery_attestation, Mapping):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge dead claim root recovery is unattested"
+        )
+    root_material = _post_merge_claim_verification_recovery_material(
+        task_cid=task_cid,
+        task_alias=task_alias,
+        current_revision=24,
+        current_body=entries[23]["body"],
+        history_rows=history_rows[:24],
+        next_body=entries[24]["body"],
+        recovery_process_attestation=root_recovery_attestation,
+    )
+    successor_seed = dict(root_material["successor_seed"])
+    if successor_seed.get("schema") not in {
+        _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2,
+        _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3,
+    }:
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge dead claim root seed is not replayable"
+        )
+
+    root_semantic_body = dict(entries[24]["body"])
+    root_semantic_body.pop("completion_receipt", None)
+    suffix = entries[25:]
+    expected_statuses = [
+        status
+        for pair_index in range((len(suffix) + 1) // 2)
+        for status in (
+            ("in_progress", "retrying")
+            if pair_index < len(suffix) // 2
+            else ("in_progress",)
+        )
+    ]
+    if (
+        len(suffix) % 2 != 1
+        or [entry["status"] for entry in suffix] != expected_statuses
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge dead claim suffix does not alternate"
+        )
+    for entry in suffix:
+        semantic_body = dict(entry["body"])
+        if not isinstance(semantic_body.pop("completion_receipt", None), Mapping):
+            raise TypedStateOwnerAuthorizationError(
+                "post-merge dead claim suffix has no receipt"
+            )
+        if canonical_json_bytes(semantic_body) != canonical_json_bytes(
+            root_semantic_body
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "post-merge dead claim suffix changed the task contract"
+            )
+
+    claim_base_fields = {
+        "operation",
+        "claim_id",
+        "attempt_id",
+        "attempt_number",
+        "owner_session_id",
+        "lease_id",
+        "fencing_token",
+        "fence_epoch",
+        "claimed_from_revision",
+        "task_shard_count",
+        "task_shard_index",
+        "strict_task_sharding",
+        "idle_lane_work_stealing",
+        "task_prefix",
+        "claim_phase_schema",
+        "claim_process_attestation",
+        "execution_route_binding",
+        "execution_route_policy_id",
+        "execution_route_origin_revision",
+        "post_merge_completion_recovery_source_attempt_id",
+        "post_merge_completion_recovery_seed",
+    }
+    optional_transfer_fields = {
+        "virgin_task_transfer",
+        "virgin_task_transfer_claim_cursor",
+    }
+    optional_owner_fields = {"unknown_callback_reopen_count"}
+    recovery_fields = {
+        "schema",
+        "operation",
+        "claim_id",
+        "attempt_id",
+        "attempt_number",
+        "lease_id",
+        "owner_session_id",
+        "fencing_token",
+        "fence_epoch",
+        "recovered_claim_phase_schema",
+        "recovered_claimed_from_revision",
+        "recovered_reservation_cid",
+        "recovered_claim_process_attestation",
+        "recovery_process_attestation",
+        "recovered_from_revision",
+        "queue_reason",
+        "backoff_ms",
+        "retry_not_before_ms",
+        "control_expected_revision",
+        "execution_route_binding",
+        "execution_route_policy_id",
+        "execution_route_origin_revision",
+        "post_merge_completion_recovery_source_attempt_id",
+        "post_merge_completion_recovery_seed",
+    }
+    identity_fields = (
+        "attempt_id",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+        "attempt_number",
+        "fencing_token",
+        "fence_epoch",
+    )
+    route = root_material["receipt"].get("execution_route_binding")
+    root_reopen_count = root_material["receipt"].get(
+        "unknown_callback_reopen_count"
+    )
+    try:
+        canonical_route = TaskExecutionRouteBinding.from_dict(route).to_dict()
+    except (TypeError, ValueError, TaskSourceIntegrityError) as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge dead claim root route is malformed"
+        ) from exc
+    if type(root_reopen_count) is not int or root_reopen_count < 0:
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge dead claim root reopen count is invalid"
+        )
+    prior_attempt_number = 0
+    prior_fencing_token = 0
+    identities: set[tuple[Any, ...]] = set()
+    for offset in range(0, len(suffix), 2):
+        claim_entry = suffix[offset]
+        claim = dict(claim_entry["body"]["completion_receipt"])
+        extras = frozenset(set(claim) - claim_base_fields)
+        if extras not in {
+            frozenset(),
+            frozenset(optional_transfer_fields),
+            frozenset(optional_owner_fields),
+            frozenset(optional_transfer_fields | optional_owner_fields),
+        }:
+            raise TypedStateOwnerAuthorizationError(
+                "post-merge dead claim reservation schema changed"
+            )
+        claim_identity = _validated_database_claim_identity(claim)
+        claim_attestation = _validated_database_claim_process_attestation(claim)
+        try:
+            claim_route = TaskExecutionRouteBinding.from_dict(
+                claim.get("execution_route_binding")
+            ).to_dict()
+        except (TypeError, ValueError, TaskSourceIntegrityError) as exc:
+            raise TypedStateOwnerAuthorizationError(
+                "post-merge dead claim reservation route is malformed"
+            ) from exc
+        claim_tuple = tuple(claim_identity.get(field) for field in identity_fields)
+        carried_transfer_fields = set(claim) & optional_transfer_fields
+        if (
+            not claim_base_fields <= set(claim)
+            or claim.get("operation") != "database_claim"
+            or claim.get("claim_phase_schema")
+            != TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+            or claim.get("claimed_from_revision")
+            != claim_entry["revision"] - 1
+            or claim.get("post_merge_completion_recovery_source_attempt_id")
+            != successor_seed["attempt_id"]
+            or claim.get("post_merge_completion_recovery_seed") != successor_seed
+            or claim_route != canonical_route
+            or claim.get("execution_route_policy_id")
+            != canonical_route["policy_id"]
+            or claim.get("execution_route_origin_revision")
+            != canonical_route["task_revision"]
+            or type(claim.get("task_shard_count")) is not int
+            or claim["task_shard_count"] < 1
+            or type(claim.get("task_shard_index")) is not int
+            or not 0 <= claim["task_shard_index"] < claim["task_shard_count"]
+            or type(claim.get("strict_task_sharding")) is not bool
+            or type(claim.get("idle_lane_work_stealing")) is not str
+            or claim["idle_lane_work_stealing"] not in {
+                "",
+                DATABASE_VIRGIN_TASK_TRANSFER_MODE,
+            }
+            or type(claim.get("task_prefix")) is not str
+            or type(claim.get("unknown_callback_reopen_count")) is not int
+            or claim["unknown_callback_reopen_count"] != root_reopen_count
+            or (
+                carried_transfer_fields
+                and claim["idle_lane_work_stealing"]
+                != DATABASE_VIRGIN_TASK_TRANSFER_MODE
+            )
+            or not str(claim_attestation.get("client_id") or "").startswith(
+                "database-implementation-daemon:"
+            )
+            or claim_identity["attempt_number"] <= prior_attempt_number
+            or claim_identity["fencing_token"] <= prior_fencing_token
+            or claim_tuple in identities
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "post-merge dead claim reservation lineage changed"
+            )
+        if carried_transfer_fields:
+            historical_claim_task = {
+                "task_cid": task_cid,
+                "task_alias": task_alias,
+                "status": "in_progress",
+                "revision": claim_entry["revision"],
+                "body": claim_entry["body"],
+            }
+            try:
+                transfer_binding = database_virgin_transfer_binding_for_task(
+                    historical_claim_task,
+                    shard_count=claim["task_shard_count"],
+                )
+                transfer_cursor = _database_virgin_transfer_claim_cursor(
+                    receipt=claim,
+                    binding=transfer_binding or {},
+                )
+            except (IntentRepositoryError, KeyError, TypeError, ValueError) as exc:
+                raise TypedStateOwnerAuthorizationError(
+                    "post-merge dead claim transfer lineage is invalid"
+                ) from exc
+            if (
+                transfer_binding is None
+                or dict(transfer_binding)
+                != dict(claim["virgin_task_transfer"])
+                or dict(transfer_cursor)
+                != dict(claim["virgin_task_transfer_claim_cursor"])
+                or transfer_binding.get("recipient_shard_index")
+                != claim["task_shard_index"]
+                or any(
+                    transfer_cursor.get(field) != claim.get(field)
+                    for field in (
+                        "claim_id",
+                        "attempt_id",
+                        "owner_session_id",
+                        "lease_id",
+                        "fencing_token",
+                        "fence_epoch",
+                        "claimed_from_revision",
+                    )
+                )
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "post-merge dead claim transfer lineage changed"
+                )
+        identities.add(claim_tuple)
+        prior_attempt_number = int(claim_identity["attempt_number"])
+        prior_fencing_token = int(claim_identity["fencing_token"])
+        if offset + 1 >= len(suffix):
+            continue
+        recovery_entry = suffix[offset + 1]
+        recovery = dict(recovery_entry["body"]["completion_receipt"])
+        recovered_attestation = _validated_database_claim_process_attestation(
+            {
+                "claim_process_attestation": recovery.get(
+                    "recovered_claim_process_attestation"
+                )
+            }
+        )
+        recovery_attestation = _validated_database_claim_process_attestation(
+            {
+                "claim_process_attestation": recovery.get(
+                    "recovery_process_attestation"
+                )
+            }
+        )
+        recovery_owner_fields = set(recovery) & (
+            optional_transfer_fields | optional_owner_fields
+        )
+        if (
+            set(recovery) != recovery_fields | recovery_owner_fields
+            or recovery_owner_fields != extras
+            or recovery.get("schema") != TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA
+            or recovery.get("operation") != TYPED_DATABASE_CLAIM_RECOVERY_OPERATION
+            or recovery.get("recovered_claim_phase_schema")
+            != TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+            or recovery.get("recovered_claimed_from_revision")
+            != claim_entry["revision"] - 1
+            or recovery.get("recovered_from_revision")
+            != claim_entry["revision"]
+            or recovery.get("control_expected_revision")
+            != claim_entry["revision"]
+            or recovery.get("queue_reason") != TYPED_DATABASE_CLAIM_RECOVERY_REASON
+            or recovery.get("backoff_ms") != 0
+            or type(recovery.get("retry_not_before_ms")) is not int
+            or recovery["retry_not_before_ms"] < 0
+            or recovery.get("recovered_reservation_cid")
+            != content_identity(
+                {"typed_database_claim_reservation": dict(claim)}
+            )
+            or recovered_attestation != claim_attestation
+            or recovery_attestation.get("client_id")
+            != claim_attestation.get("client_id")
+            or recovery_attestation.get("process_birth_id")
+            == claim_attestation.get("process_birth_id")
+            or any(
+                not _strict_scalar_equal(recovery.get(field), claim.get(field))
+                for field in identity_fields
+            )
+            or recovery.get("execution_route_binding") != canonical_route
+            or recovery.get("execution_route_policy_id")
+            != canonical_route["policy_id"]
+            or recovery.get("execution_route_origin_revision")
+            != canonical_route["task_revision"]
+            or recovery.get("post_merge_completion_recovery_source_attempt_id")
+            != successor_seed["attempt_id"]
+            or recovery.get("post_merge_completion_recovery_seed")
+            != successor_seed
+            or any(
+                recovery.get(field) != claim.get(field)
+                for field in recovery_owner_fields
+            )
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "post-merge dead claim recovery lineage changed"
+            )
+    return {
+        "root_material": root_material,
+        "successor_seed": successor_seed,
+        "current_receipt": current_receipt,
+        "semantic_body": root_semantic_body,
+        "recovery_count": len(suffix) // 2,
+        "claim_count": (len(suffix) + 1) // 2,
+        "history_entries": entries,
+    }
+
+
+def _post_merge_dead_claim_nonconvergence_receipt(
+    *,
+    task_cid: str,
+    task_alias: str,
+    source_task_revision: int,
+    source_control_receipt: Mapping[str, Any],
+    recovery_count: int,
+    quarantine_process_attestation: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build the closed terminal receipt for bounded raw-claim recovery."""
+
+    source = dict(source_control_receipt)
+    identity = _validated_database_claim_identity(source)
+    historic_attestation = _validated_database_claim_process_attestation(source)
+    current_attestation = _validated_database_claim_process_attestation(
+        {"claim_process_attestation": quarantine_process_attestation}
+    )
+    try:
+        route = TaskExecutionRouteBinding.from_dict(
+            source.get("execution_route_binding")
+        ).to_dict()
+    except (TypeError, ValueError, TaskSourceIntegrityError) as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge dead claim nonconvergence route is malformed"
+        ) from exc
+    seed = source.get("post_merge_completion_recovery_seed")
+    source_attempt_id = source.get(
+        "post_merge_completion_recovery_source_attempt_id"
+    )
+    if (
+        type(task_cid) is not str
+        or not task_cid.strip()
+        or type(task_alias) is not str
+        or not task_alias.strip()
+        or type(source_task_revision) is not int
+        or source_task_revision < 26
+        or type(recovery_count) is not int
+        or recovery_count != POST_MERGE_COMPLETION_DEAD_CLAIM_RECOVERY_LIMIT
+        or source.get("operation") != "database_claim"
+        or source.get("claim_phase_schema")
+        != TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+        or source.get("claimed_from_revision") != source_task_revision - 1
+        or not isinstance(seed, Mapping)
+        or seed.get("schema")
+        not in {
+            _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2,
+            _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3,
+        }
+        or source_attempt_id != seed.get("attempt_id")
+        or seed.get("task_cid") != task_cid
+        or seed.get("task_alias") != task_alias
+        or route.get("task_cid") != task_cid
+        or source.get("execution_route_policy_id") != route.get("policy_id")
+        or source.get("execution_route_origin_revision")
+        != route.get("task_revision")
+        or historic_attestation.get("client_id")
+        != current_attestation.get("client_id")
+        or historic_attestation.get("process_birth_id")
+        == current_attestation.get("process_birth_id")
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge dead claim nonconvergence authority is invalid"
+        )
+    body = {
+        "schema": POST_MERGE_COMPLETION_DEAD_CLAIM_NONCONVERGENCE_SCHEMA,
+        "operation": POST_MERGE_COMPLETION_DEAD_CLAIM_NONCONVERGENCE_OPERATION,
+        "reason": POST_MERGE_COMPLETION_DEAD_CLAIM_NONCONVERGENCE_REASON,
+        "task_cid": task_cid,
+        "task_alias": task_alias,
+        "source_task_revision": source_task_revision,
+        "recovery_count": recovery_count,
+        "recovery_limit": POST_MERGE_COMPLETION_DEAD_CLAIM_RECOVERY_LIMIT,
+        **identity,
+        "recovered_reservation_cid": content_identity(
+            {"typed_database_claim_reservation": source}
+        ),
+        "recovered_claim_process_attestation": historic_attestation,
+        "quarantine_process_attestation": current_attestation,
+        "execution_route_binding": route,
+        "execution_route_policy_id": route["policy_id"],
+        "execution_route_origin_revision": int(route["task_revision"]),
+        "post_merge_completion_recovery_source_attempt_id": source_attempt_id,
+        "post_merge_completion_recovery_seed": dict(seed),
+        "provider_dispatched": False,
+        "attempt_consumed": False,
+        "retry_suppressed": True,
+        "control_expected_status": "in_progress",
+        "control_expected_revision": source_task_revision,
+    }
+    return {**body, "receipt_id": content_identity(body)}
+
+
+def _post_merge_unreplayable_dead_claim_receipt(
+    *,
+    task_cid: str,
+    task_alias: str,
+    source_task_revision: int,
+    source_control_receipt: Mapping[str, Any],
+    quarantine_process_attestation: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build a closed fail-safe receipt for an owner-unreplayable marker.
+
+    The receipt does not assert that the carried seed is semantically valid.
+    It binds the exact raw reservation by CID and records only its marker
+    shape.  The exclusive owner separately proves the historic claimant dead
+    and proves that the marker cannot enter the supported V2/V3 continuation
+    before admitting this terminal transition.
+    """
+
+    source = dict(source_control_receipt)
+    identity = _validated_database_claim_identity(source)
+    historic_attestation = _validated_database_claim_process_attestation(source)
+    current_attestation = _validated_database_claim_process_attestation(
+        {"claim_process_attestation": quarantine_process_attestation}
+    )
+    try:
+        route = TaskExecutionRouteBinding.from_dict(
+            source.get("execution_route_binding")
+        ).to_dict()
+    except (TypeError, ValueError, TaskSourceIntegrityError) as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge unreplayable dead claim route is malformed"
+        ) from exc
+    source_marker_present = (
+        "post_merge_completion_recovery_source_attempt_id" in source
+    )
+    seed_marker_present = "post_merge_completion_recovery_seed" in source
+    seed = source.get("post_merge_completion_recovery_seed")
+    seed_schema = (
+        str(seed.get("schema") or "") if isinstance(seed, Mapping) else ""
+    )
+    if (
+        type(task_cid) is not str
+        or not task_cid.strip()
+        or task_cid != task_cid.strip()
+        or type(task_alias) is not str
+        or not task_alias.strip()
+        or task_alias != task_alias.strip()
+        or type(source_task_revision) is not int
+        or source_task_revision < 2
+        or source.get("operation") != "database_claim"
+        or source.get("claim_phase_schema")
+        != TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+        or source.get("claimed_from_revision") != source_task_revision - 1
+        or not (source_marker_present or seed_marker_present)
+        or route.get("task_cid") != task_cid
+        or route.get("task_alias") != task_alias
+        or source.get("execution_route_policy_id") != route.get("policy_id")
+        or source.get("execution_route_origin_revision")
+        != route.get("task_revision")
+        or historic_attestation.get("client_id")
+        != current_attestation.get("client_id")
+        or historic_attestation.get("process_birth_id")
+        == current_attestation.get("process_birth_id")
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge unreplayable dead claim authority is invalid"
+        )
+    body = {
+        "schema": POST_MERGE_COMPLETION_UNREPLAYABLE_DEAD_CLAIM_SCHEMA,
+        "operation": POST_MERGE_COMPLETION_UNREPLAYABLE_DEAD_CLAIM_OPERATION,
+        "reason": POST_MERGE_COMPLETION_UNREPLAYABLE_DEAD_CLAIM_REASON,
+        "task_cid": task_cid,
+        "task_alias": task_alias,
+        "source_task_revision": source_task_revision,
+        **identity,
+        "source_control_receipt_cid": content_identity(
+            {"typed_database_claim_reservation": source}
+        ),
+        "source_marker_present": source_marker_present,
+        "seed_marker_present": seed_marker_present,
+        "seed_marker_schema": seed_schema,
+        "recovered_claim_process_attestation": historic_attestation,
+        "quarantine_process_attestation": current_attestation,
+        "execution_route_binding": route,
+        "execution_route_policy_id": route["policy_id"],
+        "execution_route_origin_revision": int(route["task_revision"]),
+        "provider_dispatched": False,
+        "attempt_consumed": False,
+        "retry_suppressed": True,
+        "control_expected_status": "in_progress",
+        "control_expected_revision": source_task_revision,
+    }
+    return {**body, "receipt_id": content_identity(body)}
+
+
+def _post_merge_special_claim_admission_chain_material(
+    *,
+    task_cid: str,
+    current_revision: int,
+    current_body: Mapping[str, Any],
+    history_rows: Sequence[Any],
+) -> dict[str, Any]:
+    """Validate one typed admission after a bounded special recovery suffix."""
+
+    if (
+        type(current_revision) is not int
+        or current_revision < 27
+        or len(history_rows) != current_revision
+        or not isinstance(current_body, Mapping)
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge special admission history identity is invalid"
+        )
+    normalized_rows: list[tuple[Any, Any, Any]] = []
+    normalized_bodies: list[dict[str, Any]] = []
+    normalized_statuses: list[str] = []
+    for row in history_rows:
+        if isinstance(row, Mapping):
+            if set(row) == {"revision", "status", "body"}:
+                revision = row["revision"]
+                status = row["status"]
+                raw_body = row["body"]
+                if not isinstance(raw_body, Mapping):
+                    raise TypedStateOwnerAuthorizationError(
+                        "post-merge special admission history is malformed"
+                    )
+                body = dict(raw_body)
+                body_json = canonical_json_bytes(body).decode("utf-8")
+            elif set(row) == {"revision", "status", "body_json"}:
+                revision = row["revision"]
+                status = row["status"]
+                body, body_json = _closed_canonical_json_object(
+                    row["body_json"],
+                    noun="post-merge special admission history body",
+                )
+            else:
+                raise TypedStateOwnerAuthorizationError(
+                    "post-merge special admission history is malformed"
+                )
+        else:
+            try:
+                revision, status, raw_body_json = row
+            except (TypeError, ValueError) as exc:
+                raise TypedStateOwnerAuthorizationError(
+                    "post-merge special admission history is malformed"
+                ) from exc
+            body, body_json = _closed_canonical_json_object(
+                raw_body_json,
+                noun="post-merge special admission history body",
+            )
+        normalized_rows.append((revision, status, body_json))
+        normalized_bodies.append(dict(body))
+        normalized_statuses.append(str(status or "").strip().lower())
+    if (
+        normalized_rows[-1][0] != current_revision
+        or normalized_statuses[-2:] != ["in_progress", "in_progress"]
+        or normalized_bodies[-1] != dict(current_body)
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge special admission history head is stale"
+        )
+    claim_body = normalized_bodies[-2]
+    claim_receipt_raw = claim_body.get("completion_receipt")
+    admission_receipt_raw = current_body.get("completion_receipt")
+    if not isinstance(claim_receipt_raw, Mapping) or not isinstance(
+        admission_receipt_raw, Mapping
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge special admission receipt is absent"
+        )
+    claim_receipt = dict(claim_receipt_raw)
+    admission_receipt = dict(admission_receipt_raw)
+    expected_admission = {
+        **claim_receipt,
+        "operation": "database_attempt_admitted",
+        "claim_phase_schema": TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+        "admitted_from_revision": current_revision - 1,
+        "attempt_execution_phase": "claimed",
+        "attempt_execution_revision": 1,
+    }
+    claim_semantic = dict(claim_body)
+    claim_semantic.pop("completion_receipt", None)
+    admission_semantic = dict(current_body)
+    admission_semantic.pop("completion_receipt", None)
+    if (
+        admission_receipt != expected_admission
+        or canonical_json_bytes(claim_semantic)
+        != canonical_json_bytes(admission_semantic)
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge special admission overlay changed"
+        )
+    material = _post_merge_special_dead_claim_chain_material(
+        task_cid=task_cid,
+        current_revision=current_revision - 1,
+        current_body=claim_body,
+        history_rows=normalized_rows[:-1],
+    )
+    if (
+        material.get("current_receipt") != claim_receipt
+        or material.get("recovery_count")
+        > POST_MERGE_COMPLETION_DEAD_CLAIM_RECOVERY_LIMIT
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "post-merge special admission claim lineage changed"
+        )
+    return {
+        **material,
+        "claim_receipt": claim_receipt,
+        "admission_receipt": admission_receipt,
+        "admission_revision": current_revision,
     }
 
 
@@ -5142,8 +6869,6 @@ def _validated_dead_claim_recovery_parameters(
         or parameters.get("delay_ms") != 0
         or parameters.get("selection_penalty") != 0
         or parameters.get("reason") != TYPED_DATABASE_CLAIM_RECOVERY_REASON
-        or parameters.get("expected_queue_revision") != -1
-        or parameters.get("expected_queue_attempt") != 0
     ):
         raise TypedStateOwnerAuthorizationError(
             "dead claim recovery command is outside its closed transition"
@@ -6674,6 +8399,7 @@ _COMMAND_MUTATION_CATALOG: Final[Mapping[str, frozenset[str]]] = MappingProxyTyp
                 "executor_insert_completion_receipt",
                 "executor_insert_task_revision",
                 "executor_update_retry_cooldown",
+                "executor_delete_retry_cooldown",
             }
         ),
         "task.retry.cooldown.record": frozenset(
@@ -6687,6 +8413,7 @@ _COMMAND_MUTATION_CATALOG: Final[Mapping[str, frozenset[str]]] = MappingProxyTyp
                 "executor_cas_task_status_receipt",
                 "executor_insert_task_revision",
                 "executor_insert_retry_cooldown",
+                "executor_update_retry_cooldown",
             }
         ),
         TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND: frozenset(
@@ -6831,9 +8558,12 @@ _COMMAND_REQUIRED_DOMAIN_MUTATIONS: Final[Mapping[str, frozenset[str]]] = (
                 }
             ),
             TYPED_DATABASE_CLAIM_RECOVERY_COMMAND: (
-                _COMMAND_MUTATION_CATALOG[
-                    TYPED_DATABASE_CLAIM_RECOVERY_COMMAND
-                ]
+                frozenset(
+                    {
+                        "executor_cas_task_status_receipt",
+                        "executor_insert_task_revision",
+                    }
+                )
             ),
             TYPED_DATABASE_LEGACY_UNSTALL_RECOVERY_COMMAND: frozenset(
                 {
@@ -9431,12 +11161,137 @@ class TypedStateOwnerGateway:
                     "dead claim recovery requires a provably dead historic process"
                 )
             queue_rows = self._connection.execute(
-                "SELECT task_cid FROM leases WHERE task_cid = ? LIMIT 2",
+                "SELECT task_cid, claim_cid, resolution_cid, claimant_did, "
+                "logical_epoch, fencing_token, expires_at_ms, attempt, "
+                "state, started_at_ms, release_reason, retry_not_before_ms, "
+                "owner_session_id, fence_epoch, revision, extension_schema, "
+                "extension_json FROM leases WHERE task_cid = ? LIMIT 2",
                 [values["task_cid"]],
             ).fetchall()
-            if queue_rows:
+            carried_seed_raw = prior_receipt.get(
+                "post_merge_completion_recovery_seed"
+            )
+            carried_source_present = (
+                "post_merge_completion_recovery_source_attempt_id"
+                in prior_receipt
+            )
+            carried_seed_present = (
+                "post_merge_completion_recovery_seed" in prior_receipt
+            )
+            preserve_post_merge_seed = bool(
+                carried_source_present
+                and carried_seed_present
+                and
+                isinstance(carried_seed_raw, Mapping)
+                and carried_seed_raw.get("schema")
+                in {
+                    _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2,
+                    _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3,
+                }
+            )
+            if (carried_source_present or carried_seed_present) and not (
+                preserve_post_merge_seed
+            ):
                 raise TypedStateOwnerAuthorizationError(
-                    "dead claim recovery requires exact cooldown absence"
+                    "dead claim recovery cannot drop a partial or unsupported "
+                    "post-merge marker"
+                )
+            preserved_post_merge_fields: dict[str, Any] = {}
+            prior_queue: dict[str, Any] = {}
+            if preserve_post_merge_seed:
+                history_rows = self._connection.execute(
+                    "SELECT revision, status, body_json FROM task_revisions "
+                    "WHERE task_cid = ? AND revision <= ? ORDER BY revision",
+                    [values["task_cid"], values["expected_task_revision"]],
+                ).fetchall()
+                material = _post_merge_special_dead_claim_chain_material(
+                    task_cid=values["task_cid"],
+                    current_revision=values["expected_task_revision"],
+                    current_body=prior_body,
+                    history_rows=history_rows,
+                )
+                carried_seed = dict(carried_seed_raw)
+                prior_source_attempt_id = prior_receipt.get(
+                    "post_merge_completion_recovery_source_attempt_id"
+                )
+                if (
+                    material.get("successor_seed") != carried_seed
+                    or prior_source_attempt_id != carried_seed.get("attempt_id")
+                    or prior_receipt.get(
+                        "post_merge_completion_recovery_seed"
+                    )
+                    != carried_seed
+                    or material.get("current_receipt") != dict(prior_receipt)
+                    or material.get("recovery_count")
+                    >= POST_MERGE_COMPLETION_DEAD_CLAIM_RECOVERY_LIMIT
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "post-merge completion dead claim predecessor lineage changed"
+                    )
+                if len(queue_rows) != 1:
+                    raise TypedStateOwnerAuthorizationError(
+                        "post-merge completion dead claim requires one prior cooldown"
+                    )
+                prior_queue = _validated_stored_retry_cooldown(
+                    queue_rows[0], task_cid=values["task_cid"]
+                )
+                prior_retry_entry = material["history_entries"][-2]
+                prior_retry_receipt = prior_retry_entry["body"].get(
+                    "completion_receipt"
+                )
+                prior_extension = dict(prior_queue["extension"])
+                prior_identity_fields = (
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                    "attempt_number",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+                if (
+                    prior_retry_entry.get("status") != "retrying"
+                    or not isinstance(prior_retry_receipt, Mapping)
+                    or values["expected_queue_revision"]
+                    != prior_queue["revision"]
+                    or values["expected_queue_attempt"]
+                    != prior_queue["attempt"]
+                    or prior_queue["attempt"] >= values["attempt_number"]
+                    or prior_extension.get("expected_task_revision")
+                    != values["expected_task_revision"] - 2
+                    or any(
+                        not _strict_scalar_equal(
+                            prior_extension.get(field),
+                            prior_retry_receipt.get(field),
+                        )
+                        for field in prior_identity_fields
+                    )
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "post-merge completion dead claim prior cooldown changed"
+                    )
+                preserved_post_merge_fields = {
+                    "post_merge_completion_recovery_source_attempt_id": (
+                        carried_seed["attempt_id"]
+                    ),
+                    "post_merge_completion_recovery_seed": carried_seed,
+                    **{
+                        field: prior_receipt[field]
+                        for field in (
+                            "virgin_task_transfer",
+                            "virgin_task_transfer_claim_cursor",
+                            "unknown_callback_reopen_count",
+                        )
+                        if field in prior_receipt
+                    },
+                }
+            elif (
+                queue_rows
+                or values["expected_queue_revision"] != -1
+                or values["expected_queue_attempt"] != 0
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "ordinary dead claim recovery requires exact cooldown absence"
                 )
             reservation_cid = content_identity(
                 {"typed_database_claim_reservation": dict(prior_receipt)}
@@ -9468,6 +11323,7 @@ class TypedStateOwnerGateway:
                 "execution_route_origin_revision": int(
                     execution_route["task_revision"]
                 ),
+                **preserved_post_merge_fields,
             }
             expected_body = dict(prior_body)
             expected_body["completion_receipt"] = recovery_receipt
@@ -9488,6 +11344,7 @@ class TypedStateOwnerGateway:
                 "expected_revision": values["expected_task_revision"],
                 "body_json": expected_body_json,
                 "cooldown_parameters": values,
+                "prior_queue": prior_queue,
                 "recovery_receipt": recovery_receipt,
                 "historic_liveness": liveness.value,
             }
@@ -10220,6 +12077,447 @@ class TypedStateOwnerGateway:
                 if isinstance(next_body, Mapping)
                 else None
             )
+            post_merge_unreplayable_dead_claim = bool(
+                isinstance(next_receipt, Mapping)
+                and (
+                    next_receipt.get("schema")
+                    == POST_MERGE_COMPLETION_UNREPLAYABLE_DEAD_CLAIM_SCHEMA
+                    or next_receipt.get("operation")
+                    == POST_MERGE_COMPLETION_UNREPLAYABLE_DEAD_CLAIM_OPERATION
+                )
+            )
+            if post_merge_unreplayable_dead_claim:
+                task_cid = str(command.parameters.get("task_cid") or "").strip()
+                expected_revision = command.parameters.get(
+                    "expected_task_revision"
+                )
+                requested_status = str(
+                    command.parameters.get("status") or ""
+                ).strip().lower()
+                if (
+                    not grant.client_id.startswith(
+                        "database-implementation-daemon:"
+                    )
+                    or not task_cid
+                    or type(expected_revision) is not int
+                    or not 2 <= expected_revision <= 10_000
+                    or requested_status != "quarantined"
+                    or expected_control_receipt is None
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "post-merge unreplayable dead claim command is invalid"
+                    )
+                task_rows = self._connection.execute(
+                    "SELECT status, revision, task_alias, body_json FROM tasks "
+                    "WHERE task_cid = ? LIMIT 2",
+                    [task_cid],
+                ).fetchall()
+                if len(task_rows) != 1:
+                    raise TypedStateOwnerAuthorizationError(
+                        "post-merge unreplayable dead claim task is absent"
+                    )
+                task_row = task_rows[0]
+                task_alias = str(task_row[2] or "")
+                current_body, current_body_json = _closed_canonical_json_object(
+                    task_row[3],
+                    noun="post-merge unreplayable dead claim task body",
+                )
+                current_receipt = current_body.get("completion_receipt")
+                if (
+                    str(task_row[0] or "").strip().lower() != "in_progress"
+                    or task_row[1] != expected_revision
+                    or not task_alias
+                    or not isinstance(current_receipt, Mapping)
+                    or canonical_json_bytes(dict(current_receipt))
+                    != canonical_json_bytes(expected_control_receipt)
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "post-merge unreplayable dead claim authority is stale"
+                    )
+                current_identity = _validated_database_claim_identity(
+                    current_receipt
+                )
+                historic_attestation = (
+                    _validated_database_claim_process_attestation(
+                        current_receipt
+                    )
+                )
+                try:
+                    route = TaskExecutionRouteBinding.from_dict(
+                        current_receipt.get("execution_route_binding")
+                    ).to_dict()
+                except (TypeError, ValueError, TaskSourceIntegrityError) as exc:
+                    raise TypedStateOwnerAuthorizationError(
+                        "post-merge unreplayable dead claim route is malformed"
+                    ) from exc
+                source_marker_present = (
+                    "post_merge_completion_recovery_source_attempt_id"
+                    in current_receipt
+                )
+                seed_marker_present = (
+                    "post_merge_completion_recovery_seed" in current_receipt
+                )
+                carried_seed_raw = current_receipt.get(
+                    "post_merge_completion_recovery_seed"
+                )
+                carried_source_attempt_id = current_receipt.get(
+                    "post_merge_completion_recovery_source_attempt_id"
+                )
+                supported_outer_shape = bool(
+                    source_marker_present
+                    and seed_marker_present
+                    and isinstance(carried_seed_raw, Mapping)
+                    and carried_seed_raw.get("schema")
+                    in {
+                        _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2,
+                        _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3,
+                    }
+                    and type(carried_source_attempt_id) is str
+                    and carried_source_attempt_id
+                    == carried_seed_raw.get("attempt_id")
+                )
+                if (
+                    current_receipt.get("operation") != "database_claim"
+                    or current_receipt.get("claim_phase_schema")
+                    != TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+                    or current_receipt.get("claimed_from_revision")
+                    != expected_revision - 1
+                    or not (source_marker_present or seed_marker_present)
+                    or route.get("task_cid") != task_cid
+                    or route.get("task_alias") != task_alias
+                    or current_receipt.get("execution_route_policy_id")
+                    != route.get("policy_id")
+                    or current_receipt.get("execution_route_origin_revision")
+                    != route.get("task_revision")
+                    or historic_attestation.get("client_id") != grant.client_id
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "post-merge unreplayable dead claim reservation changed"
+                    )
+                history_rows = self._connection.execute(
+                    "SELECT revision, status, body_json FROM task_revisions "
+                    "WHERE task_cid = ? AND revision <= ? ORDER BY revision",
+                    [task_cid, expected_revision],
+                ).fetchall()
+                if (
+                    len(history_rows) != expected_revision
+                    or [row[0] for row in history_rows]
+                    != list(range(1, expected_revision + 1))
+                    or str(history_rows[-1][1] or "").strip().lower()
+                    != "in_progress"
+                    or str(history_rows[-2][1] or "").strip().lower()
+                    != "retrying"
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "post-merge unreplayable dead claim history is malformed"
+                    )
+                if supported_outer_shape:
+                    try:
+                        replayable_material = (
+                            _post_merge_special_dead_claim_chain_material(
+                                task_cid=task_cid,
+                                current_revision=expected_revision,
+                                current_body=current_body,
+                                history_rows=history_rows,
+                            )
+                        )
+                    except TypedStateOwnerAuthorizationError:
+                        replayable_material = None
+                    if (
+                        replayable_material is not None
+                        and replayable_material.get("current_receipt")
+                        == dict(current_receipt)
+                        and replayable_material.get("successor_seed")
+                        == dict(carried_seed_raw)
+                    ):
+                        raise TypedStateOwnerAuthorizationError(
+                            "post-merge dead claim remains exactly replayable"
+                        )
+                current_attestation = _claim_process_attestation(grant)
+                historic_birth = ProcessBirthIdentity(
+                    pid=int(historic_attestation["pid"]),
+                    start_time_ticks=int(
+                        historic_attestation["start_time_ticks"]
+                    ),
+                    boot_id=str(historic_attestation["boot_id"]),
+                    parent_pid=int(historic_attestation["parent_pid"]),
+                )
+                try:
+                    historic_liveness = OwnerLiveness(
+                        self._owner_liveness_probe(historic_birth)
+                    )
+                except BaseException:
+                    historic_liveness = OwnerLiveness.UNKNOWN
+                if (
+                    historic_liveness is not OwnerLiveness.DEAD
+                    or historic_attestation.get("process_birth_id")
+                    == current_attestation.get("process_birth_id")
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "post-merge unreplayable claim is not provably dead"
+                    )
+                queue_rows = self._connection.execute(
+                    "SELECT task_cid, claim_cid, resolution_cid, claimant_did, "
+                    "logical_epoch, fencing_token, expires_at_ms, attempt, "
+                    "state, started_at_ms, release_reason, retry_not_before_ms, "
+                    "owner_session_id, fence_epoch, revision, extension_schema, "
+                    "extension_json FROM leases WHERE task_cid = ? LIMIT 2",
+                    [task_cid],
+                ).fetchall()
+                if len(queue_rows) != 1:
+                    raise TypedStateOwnerAuthorizationError(
+                        "post-merge unreplayable dead claim requires one cooldown"
+                    )
+                prior_queue = _validated_stored_retry_cooldown(
+                    queue_rows[0], task_cid=task_cid
+                )
+                prior_retry_body, _ = _closed_canonical_json_object(
+                    history_rows[-2][2],
+                    noun="post-merge unreplayable predecessor body",
+                )
+                prior_retry_receipt = prior_retry_body.get(
+                    "completion_receipt"
+                )
+                prior_extension = dict(prior_queue["extension"])
+                queue_identity_fields = (
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                    "attempt_number",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+                if (
+                    not isinstance(prior_retry_receipt, Mapping)
+                    or prior_queue["attempt"]
+                    >= current_identity["attempt_number"]
+                    or prior_extension.get("expected_task_revision")
+                    != expected_revision - 2
+                    or any(
+                        not _strict_scalar_equal(
+                            prior_extension.get(field),
+                            prior_retry_receipt.get(field),
+                        )
+                        for field in queue_identity_fields
+                    )
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "post-merge unreplayable dead claim cooldown changed"
+                    )
+                expected_receipt = _post_merge_unreplayable_dead_claim_receipt(
+                    task_cid=task_cid,
+                    task_alias=task_alias,
+                    source_task_revision=expected_revision,
+                    source_control_receipt=current_receipt,
+                    quarantine_process_attestation=current_attestation,
+                )
+                expected_body = dict(current_body)
+                expected_body["completion_receipt"] = expected_receipt
+                expected_body_json = canonical_json_bytes(expected_body).decode(
+                    "utf-8"
+                )
+                if (
+                    current_body_json
+                    != canonical_json_bytes(current_body).decode("utf-8")
+                    or next_receipt != expected_receipt
+                    or str(command.parameters.get("body_json") or "")
+                    != expected_body_json
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "post-merge unreplayable dead claim receipt changed"
+                    )
+                return {
+                    "operation": (
+                        "task.database.post_merge_unreplayable_dead_claim"
+                    ),
+                    "task_cid": task_cid,
+                    "status": "quarantined",
+                    "expected_revision": expected_revision,
+                    "body_json": expected_body_json,
+                    "receipt": expected_receipt,
+                    "prior_queue": prior_queue,
+                }
+            post_merge_dead_claim_nonconvergence = bool(
+                isinstance(next_receipt, Mapping)
+                and (
+                    next_receipt.get("schema")
+                    == POST_MERGE_COMPLETION_DEAD_CLAIM_NONCONVERGENCE_SCHEMA
+                    or next_receipt.get("operation")
+                    == POST_MERGE_COMPLETION_DEAD_CLAIM_NONCONVERGENCE_OPERATION
+                )
+            )
+            if post_merge_dead_claim_nonconvergence:
+                task_cid = str(command.parameters.get("task_cid") or "").strip()
+                expected_revision = command.parameters.get(
+                    "expected_task_revision"
+                )
+                requested_status = str(
+                    command.parameters.get("status") or ""
+                ).strip().lower()
+                if (
+                    not grant.client_id.startswith(
+                        "database-implementation-daemon:"
+                    )
+                    or not task_cid
+                    or type(expected_revision) is not int
+                    or not 26 <= expected_revision <= 10_000
+                    or requested_status != "quarantined"
+                    or expected_control_receipt is None
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "post-merge dead claim nonconvergence command is invalid"
+                    )
+                task_rows = self._connection.execute(
+                    "SELECT status, revision, task_alias, body_json FROM tasks "
+                    "WHERE task_cid = ? LIMIT 2",
+                    [task_cid],
+                ).fetchall()
+                if len(task_rows) != 1:
+                    raise TypedStateOwnerAuthorizationError(
+                        "post-merge dead claim nonconvergence task is absent"
+                    )
+                task_row = task_rows[0]
+                current_body, current_body_json = _closed_canonical_json_object(
+                    task_row[3],
+                    noun="post-merge dead claim nonconvergence task body",
+                )
+                current_receipt = current_body.get("completion_receipt")
+                if (
+                    str(task_row[0] or "").strip().lower() != "in_progress"
+                    or task_row[1] != expected_revision
+                    or not isinstance(current_receipt, Mapping)
+                    or canonical_json_bytes(dict(current_receipt))
+                    != canonical_json_bytes(expected_control_receipt)
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "post-merge dead claim nonconvergence authority is stale"
+                    )
+                history_rows = self._connection.execute(
+                    "SELECT revision, status, body_json FROM task_revisions "
+                    "WHERE task_cid = ? AND revision <= ? ORDER BY revision",
+                    [task_cid, expected_revision],
+                ).fetchall()
+                material = _post_merge_special_dead_claim_chain_material(
+                    task_cid=task_cid,
+                    current_revision=expected_revision,
+                    current_body=current_body,
+                    history_rows=history_rows,
+                )
+                historic_attestation = (
+                    _validated_database_claim_process_attestation(current_receipt)
+                )
+                if historic_attestation.get("client_id") != grant.client_id:
+                    raise TypedStateOwnerAuthorizationError(
+                        "post-merge dead claim nonconvergence client changed"
+                    )
+                historic_birth = ProcessBirthIdentity(
+                    pid=int(historic_attestation["pid"]),
+                    start_time_ticks=int(
+                        historic_attestation["start_time_ticks"]
+                    ),
+                    boot_id=str(historic_attestation["boot_id"]),
+                    parent_pid=int(historic_attestation["parent_pid"]),
+                )
+                try:
+                    historic_liveness = OwnerLiveness(
+                        self._owner_liveness_probe(historic_birth)
+                    )
+                except BaseException:
+                    historic_liveness = OwnerLiveness.UNKNOWN
+                if (
+                    historic_liveness is not OwnerLiveness.DEAD
+                    or material.get("recovery_count")
+                    != POST_MERGE_COMPLETION_DEAD_CLAIM_RECOVERY_LIMIT
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "post-merge dead claim nonconvergence is not terminal"
+                    )
+                queue_rows = self._connection.execute(
+                    "SELECT task_cid, claim_cid, resolution_cid, claimant_did, "
+                    "logical_epoch, fencing_token, expires_at_ms, attempt, "
+                    "state, started_at_ms, release_reason, retry_not_before_ms, "
+                    "owner_session_id, fence_epoch, revision, extension_schema, "
+                    "extension_json FROM leases WHERE task_cid = ? LIMIT 2",
+                    [task_cid],
+                ).fetchall()
+                if len(queue_rows) != 1:
+                    raise TypedStateOwnerAuthorizationError(
+                        "post-merge dead claim nonconvergence requires one cooldown"
+                    )
+                prior_queue = _validated_stored_retry_cooldown(
+                    queue_rows[0], task_cid=task_cid
+                )
+                prior_retry_entry = material["history_entries"][-2]
+                prior_retry_receipt = prior_retry_entry["body"].get(
+                    "completion_receipt"
+                )
+                prior_extension = dict(prior_queue["extension"])
+                prior_identity_fields = (
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                    "attempt_number",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+                if (
+                    prior_retry_entry.get("status") != "retrying"
+                    or not isinstance(prior_retry_receipt, Mapping)
+                    or prior_queue["attempt"] >= current_receipt.get(
+                        "attempt_number", 0
+                    )
+                    or prior_extension.get("expected_task_revision")
+                    != expected_revision - 2
+                    or any(
+                        not _strict_scalar_equal(
+                            prior_extension.get(field),
+                            prior_retry_receipt.get(field),
+                        )
+                        for field in prior_identity_fields
+                    )
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "post-merge dead claim nonconvergence cooldown changed"
+                    )
+                expected_receipt = _post_merge_dead_claim_nonconvergence_receipt(
+                    task_cid=task_cid,
+                    task_alias=str(task_row[2] or ""),
+                    source_task_revision=expected_revision,
+                    source_control_receipt=current_receipt,
+                    recovery_count=int(material["recovery_count"]),
+                    quarantine_process_attestation=_claim_process_attestation(
+                        grant
+                    ),
+                )
+                expected_body = dict(current_body)
+                expected_body["completion_receipt"] = expected_receipt
+                expected_body_json = canonical_json_bytes(expected_body).decode(
+                    "utf-8"
+                )
+                if (
+                    current_body_json
+                    != canonical_json_bytes(current_body).decode("utf-8")
+                    or next_receipt != expected_receipt
+                    or str(command.parameters.get("body_json") or "")
+                    != expected_body_json
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "post-merge dead claim nonconvergence receipt changed"
+                    )
+                return {
+                    "operation": (
+                        "task.database.post_merge_dead_claim_nonconvergence"
+                    ),
+                    "task_cid": task_cid,
+                    "status": "quarantined",
+                    "expected_revision": expected_revision,
+                    "body_json": expected_body_json,
+                    "receipt": expected_receipt,
+                    "recovery_count": int(material["recovery_count"]),
+                    "prior_queue": prior_queue,
+                }
             dead_admitted_outcome_unknown = bool(
                 isinstance(next_receipt, Mapping)
                 and (
@@ -12878,6 +15176,31 @@ class TypedStateOwnerGateway:
                 raise TypedStateOwnerAuthorizationError(
                     "validation evidence mutation differs from the admitted command"
                 )
+        elif name == "executor_delete_retry_cooldown":
+            if (
+                not semantic_authority
+                or semantic_authority.get("operation")
+                not in {
+                    "task.database.post_merge_dead_claim_nonconvergence",
+                    "task.database.post_merge_unreplayable_dead_claim",
+                }
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown deletion lacks terminal owner authority"
+                )
+            prior_queue = dict(semantic_authority.get("prior_queue") or {})
+            expected = {
+                "task_cid": semantic_authority.get("task_cid"),
+                "expected_queue_revision": prior_queue.get("revision"),
+                "expected_queue_attempt": prior_queue.get("attempt"),
+                "expected_existing_extension_schema": (
+                    TYPED_RETRY_COOLDOWN_SCHEMA
+                ),
+            }
+            if any(bound.get(field) != value for field, value in expected.items()):
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown deletion differs from terminal authority"
+                )
         elif name in {
             "executor_insert_retry_cooldown",
             "executor_update_retry_cooldown",
@@ -13661,10 +15984,21 @@ class TypedStateOwnerGateway:
         }:
             values = dict(authority["cooldown_parameters"])
             expected_revision = int(authority["expected_revision"])
-            cooldown_mutation = one("executor_insert_retry_cooldown")
-            if by_name.get("executor_update_retry_cooldown"):
+            prior_queue = dict(authority.get("prior_queue") or {})
+            expected_cooldown_mutation = (
+                "executor_update_retry_cooldown"
+                if prior_queue
+                else "executor_insert_retry_cooldown"
+            )
+            alternate_cooldown_mutation = (
+                "executor_insert_retry_cooldown"
+                if prior_queue
+                else "executor_update_retry_cooldown"
+            )
+            cooldown_mutation = one(expected_cooldown_mutation)
+            if by_name.get(alternate_cooldown_mutation):
                 raise TypedStateOwnerAuthorizationError(
-                    "atomic retry recovery cannot replace a cooldown row"
+                    "atomic retry recovery contains both cooldown mutation roles"
                 )
             exact(
                 one("executor_cas_task_status_receipt"),
@@ -13685,9 +16019,7 @@ class TypedStateOwnerGateway:
                     "body_json": authority["body_json"],
                 },
             )
-            exact(
-                cooldown_mutation,
-                {
+            cooldown_expected = {
                     "task_cid": values["task_cid"],
                     "claim_id": values["claim_id"],
                     "resolution_cid": values["resolution_cid"],
@@ -13704,11 +16036,34 @@ class TypedStateOwnerGateway:
                     ],
                     "owner_session_id": values["owner_session_id"],
                     "fence_epoch": values["fence_epoch"],
-                    "new_queue_revision": 1,
+                    "new_queue_revision": (
+                        int(values["expected_queue_revision"]) + 1
+                        if prior_queue
+                        else 1
+                    ),
                     "extension_schema": TYPED_RETRY_COOLDOWN_SCHEMA,
                     "extension_json": values["extension_json"],
-                    "expected_queue_revision_for_insert": -1,
-                },
+            }
+            if prior_queue:
+                cooldown_expected.update(
+                    {
+                        "expected_queue_revision": values[
+                            "expected_queue_revision"
+                        ],
+                        "expected_queue_attempt": values[
+                            "expected_queue_attempt"
+                        ],
+                        "new_attempt_guard": values["attempt_number"],
+                        "expected_existing_extension_schema": (
+                            TYPED_RETRY_COOLDOWN_SCHEMA
+                        ),
+                    }
+                )
+            else:
+                cooldown_expected["expected_queue_revision_for_insert"] = -1
+            exact(
+                cooldown_mutation,
+                cooldown_expected,
             )
             task_rows = self._connection.execute(
                 """
@@ -13756,7 +16111,11 @@ class TypedStateOwnerGateway:
                 values["retry_not_before_ms"],
                 values["owner_session_id"],
                 values["fence_epoch"],
-                1,
+                (
+                    int(values["expected_queue_revision"]) + 1
+                    if prior_queue
+                    else 1
+                ),
                 TYPED_RETRY_COOLDOWN_SCHEMA,
                 values["extension_json"],
             )
@@ -14150,6 +16509,103 @@ class TypedStateOwnerGateway:
             ):
                 raise TypedStateOwnerAuthorizationError(
                     "post-merge claim-verification recovery post-state differs"
+                )
+            return
+
+        if operation in {
+            "task.database.post_merge_dead_claim_nonconvergence",
+            "task.database.post_merge_unreplayable_dead_claim",
+        }:
+            if set(by_name) != {
+                "executor_cas_task_status_receipt",
+                "executor_insert_task_revision",
+                "executor_delete_retry_cooldown",
+                "txn_advance_store_revision",
+                "txn_record_idempotency",
+            }:
+                raise TypedStateOwnerAuthorizationError(
+                    "post-merge dead claim quarantine has an unexpected "
+                    "mutation role"
+                )
+            mutation = one("executor_cas_task_status_receipt")
+            history = one("executor_insert_task_revision")
+            cooldown = one("executor_delete_retry_cooldown")
+            prior_queue = dict(authority.get("prior_queue") or {})
+            expected_revision = int(authority["expected_revision"])
+            next_revision = expected_revision + 1
+            exact(
+                mutation,
+                {
+                    "task_cid": authority["task_cid"],
+                    "expected_task_revision": expected_revision,
+                    "new_revision": next_revision,
+                    "status": "quarantined",
+                    "body_json": authority["body_json"],
+                },
+            )
+            exact(
+                history,
+                {
+                    "task_cid": authority["task_cid"],
+                    "revision": next_revision,
+                    "status": "quarantined",
+                    "body_json": authority["body_json"],
+                    "recorded_at": mutation.get("updated_at"),
+                },
+            )
+            exact(
+                cooldown,
+                {
+                    "task_cid": authority["task_cid"],
+                    "expected_queue_revision": prior_queue.get("revision"),
+                    "expected_queue_attempt": prior_queue.get("attempt"),
+                    "expected_existing_extension_schema": (
+                        TYPED_RETRY_COOLDOWN_SCHEMA
+                    ),
+                },
+            )
+            task_rows = self._connection.execute(
+                "SELECT status, revision, body_json, updated_at FROM tasks "
+                "WHERE task_cid = ? LIMIT 2",
+                [authority["task_cid"]],
+            ).fetchall()
+            history_rows = self._connection.execute(
+                "SELECT status, body_json, recorded_at FROM task_revisions "
+                "WHERE task_cid = ? AND revision = ? LIMIT 2",
+                [authority["task_cid"], next_revision],
+            ).fetchall()
+            queue_rows = self._connection.execute(
+                "SELECT task_cid FROM leases WHERE task_cid = ? LIMIT 2",
+                [authority["task_cid"]],
+            ).fetchall()
+            expected_post_state = (
+                "quarantined",
+                next_revision,
+                authority["body_json"],
+                mutation.get("updated_at"),
+            )
+            observed_task = (
+                tuple(task_rows[0][index] for index in range(4))
+                if len(task_rows) == 1
+                else ()
+            )
+            observed_history = (
+                tuple(history_rows[0][index] for index in range(3))
+                if len(history_rows) == 1
+                else ()
+            )
+            if (
+                observed_task != expected_post_state
+                or observed_history
+                != (
+                    "quarantined",
+                    authority["body_json"],
+                    mutation.get("updated_at"),
+                )
+                or queue_rows
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "post-merge dead claim quarantine post-state differs"
                 )
             return
 

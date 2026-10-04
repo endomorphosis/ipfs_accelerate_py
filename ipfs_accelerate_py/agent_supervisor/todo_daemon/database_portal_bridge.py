@@ -349,9 +349,23 @@ DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-post-merge-completion-recovery-seed@2"
 )
+DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-post-merge-completion-recovery-seed@3"
+)
 DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-post-merge-completion-claim-verification-recovery@1"
+)
+DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_SCHEMA_V2: Final[
+    str
+] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-post-merge-completion-claim-verification-recovery@2"
+)
+DATABASE_POST_MERGE_COMPLETION_TARGET_REQUALIFICATION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-post-merge-completion-target-requalification@1"
 )
 DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_REASON: Final[str] = (
     "post-merge completion recovery seed failed claim verification"
@@ -1314,6 +1328,16 @@ _POST_MERGE_COMPLETION_RECOVERY_SEED_FIELDS: Final[frozenset[str]] = frozenset(
 _POST_MERGE_COMPLETION_RECOVERY_SEED_V2_FIELDS: Final[frozenset[str]] = (
     frozenset(
         {*_POST_MERGE_COMPLETION_RECOVERY_SEED_FIELDS, "recovery_control_revision"}
+    )
+)
+_POST_MERGE_COMPLETION_RECOVERY_SEED_V3_FIELDS: Final[frozenset[str]] = (
+    frozenset(
+        {
+            *_POST_MERGE_COMPLETION_RECOVERY_SEED_V2_FIELDS,
+            "historical_source_seed_id",
+            "historical_rebased_seed_id",
+            "target_requalification_witness_id",
+        }
     )
 )
 _POST_MERGE_COMPLETION_CLAIM_FIELDS: Final[frozenset[str]] = frozenset(
@@ -11992,29 +12016,50 @@ class DatabasePortalExecutionBridge:
             evidence_digest=lambda value: _sha256_bytes(_canonical_json(value)),
             revalidate_authority=authority_is_current,
         )
+        immutable_evidence_matches = bool(
+            isinstance(evidence, Mapping)
+            and evidence.get("schema")
+            == _DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_SCHEMA
+            and evidence.get("request_id") == request_id
+            and evidence.get("task_cid") == source["task_cid"]
+            and evidence.get("task_alias") == source["task_alias"]
+            and evidence.get("candidate_commit") == source["candidate_commit"]
+            and evidence.get("source_attempt_id")
+            == source["queue_source_attempt_id"]
+            and evidence.get("source_claim_id") == source["queue_source_claim_id"]
+            and evidence.get("source_lease_id") == source["queue_source_lease_id"]
+            and evidence.get("source_fencing_token")
+            == source["queue_source_fencing_token"]
+            and evidence.get("source_fence_epoch")
+            == source["queue_source_fence_epoch"]
+            and evidence.get("source_binding_id")
+            == source["queue_source_binding_id"]
+            and evidence.get("source_projection_immutable_digest")
+            == source["queue_source_projection_immutable_digest"]
+        )
         if (
             isinstance(evidence, _PostMergeRecoveryDisposition)
             or not isinstance(evidence, Mapping)
             or not authority_is_current()
-            or evidence.get("schema")
-            != _DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_SCHEMA
-            or evidence.get("evidence_id") != source["recovery_evidence_id"]
-            or evidence.get("request_id") != request_id
-            or evidence.get("task_cid") != source["task_cid"]
-            or evidence.get("task_alias") != source["task_alias"]
-            or evidence.get("candidate_commit") != source["candidate_commit"]
-            or evidence.get("qualified_target_commit")
-            != source["qualified_target_commit"]
-            or evidence.get("callback_requalification_receipt_id")
-            != source["qualification_receipt_id"]
-            or evidence.get("source_binding_id")
-            != source["queue_source_binding_id"]
-            or evidence.get("source_projection_immutable_digest")
-            != source["queue_source_projection_immutable_digest"]
+            or not immutable_evidence_matches
         ):
             raise DatabasePortalBridgeError(
                 "post-merge claim-verification evidence changed"
             )
+
+        current_target_commit = str(
+            evidence.get("qualified_target_commit") or ""
+        )
+        current_qualification_receipt_id = str(
+            evidence.get("callback_requalification_receipt_id") or ""
+        )
+        current_recovery_evidence_id = str(evidence.get("evidence_id") or "")
+        source_generation_current = bool(
+            current_target_commit == source["qualified_target_commit"]
+            and current_qualification_receipt_id
+            == source["qualification_receipt_id"]
+            and current_recovery_evidence_id == source["recovery_evidence_id"]
+        )
         target = subprocess.run(
             [
                 "git",
@@ -12030,14 +12075,357 @@ class DatabasePortalExecutionBridge:
         )
         if (
             target.returncode != 0
-            or target.stdout.strip() != source["qualified_target_commit"]
+            or target.stdout.strip() != current_target_commit
         ):
             raise DatabasePortalBridgeError(
                 "post-merge claim-verification target generation changed"
             )
 
+        target_requalification: dict[str, Any] | None = None
+        successor_seed_body = dict(source)
+        successor_seed_body["schema"] = (
+            DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+        )
+        successor_seed_body["recovery_control_revision"] = int(
+            context["blocked_task_revision"]
+        )
+        if not source_generation_current:
+            evidence_fields = {
+                "schema",
+                "request_id",
+                "task_cid",
+                "task_alias",
+                "candidate_commit",
+                "source_attempt_id",
+                "source_claim_id",
+                "source_lease_id",
+                "source_fencing_token",
+                "source_fence_epoch",
+                "source_binding_id",
+                "source_projection_immutable_digest",
+                "qualified_target_commit",
+                "callback_requalification_receipt_id",
+                "callback_requalification_receipt",
+                "evidence_id",
+            }
+            qualification = evidence.get("callback_requalification_receipt")
+            qualification_entries = (
+                qualification.get("entries")
+                if isinstance(qualification, Mapping)
+                else None
+            )
+            qualification_validation = (
+                qualification.get("validation")
+                if isinstance(qualification, Mapping)
+                else None
+            )
+            integration_commit = str(
+                qualification.get("integration_commit") or ""
+            ) if isinstance(qualification, Mapping) else ""
+            train_receipt_id = str(
+                qualification.get("train_receipt_id") or ""
+            ) if isinstance(qualification, Mapping) else ""
+            evidence_body = dict(evidence)
+            evidence_id = evidence_body.pop("evidence_id", None)
+            entries = (
+                [dict(entry) for entry in qualification_entries]
+                if isinstance(qualification_entries, list)
+                and all(isinstance(entry, Mapping) for entry in qualification_entries)
+                else []
+            )
+            entry_paths = [str(entry.get("path") or "") for entry in entries]
+            safe_entry_paths = bool(
+                entries
+                and len(entries) <= 512
+                and sum(len(path.encode("utf-8")) for path in entry_paths)
+                <= 65_536
+                and len(entry_paths) == len(set(entry_paths))
+                and all(
+                    set(entry) == {"mode", "object_id", "object_type", "path"}
+                    and entry.get("object_type") == "blob"
+                    and re.fullmatch(r"[0-7]{6}", str(entry.get("mode") or ""))
+                    is not None
+                    and re.fullmatch(
+                        r"[0-9a-f]{40}", str(entry.get("object_id") or "")
+                    )
+                    is not None
+                    and path
+                    and not PurePosixPath(path).is_absolute()
+                    and ".." not in PurePosixPath(path).parts
+                    for entry, path in zip(entries, entry_paths, strict=True)
+                )
+            )
+            validation_passed = bool(
+                isinstance(qualification_validation, list)
+                and qualification_validation
+                and all(
+                    isinstance(result, Mapping)
+                    and result.get("passed") is True
+                    and result.get("returncode") == 0
+                    for result in qualification_validation
+                )
+            )
+            if (
+                set(evidence) != evidence_fields
+                or evidence_id != _sha256_bytes(_canonical_json(evidence_body))
+                or re.fullmatch(r"[0-9a-f]{40}", current_target_commit) is None
+                or current_target_commit == source["qualified_target_commit"]
+                or not current_qualification_receipt_id
+                or current_qualification_receipt_id
+                == source["qualification_receipt_id"]
+                or re.fullmatch(
+                    r"sha256:[0-9a-f]{64}", current_recovery_evidence_id
+                )
+                is None
+                or current_recovery_evidence_id == source["recovery_evidence_id"]
+                or not isinstance(qualification, Mapping)
+                or qualification.get("receipt_id")
+                != current_qualification_receipt_id
+                or qualification.get("current_target_commit")
+                != current_target_commit
+                or qualification.get("candidate_commit")
+                != source["candidate_commit"]
+                or qualification.get("request_id") != request_id
+                or qualification.get("task_cid") != source["task_cid"]
+                or re.fullmatch(r"[0-9a-f]{40}", integration_commit) is None
+                or re.fullmatch(r"sha256:[0-9a-f]{64}", train_receipt_id)
+                is None
+                or not safe_entry_paths
+                or not validation_passed
+            ):
+                raise DatabasePortalBridgeError(
+                    "post-merge claim-verification current-target "
+                    "requalification is invalid"
+                )
+
+            def run_git(*arguments: str) -> subprocess.CompletedProcess[str]:
+                return subprocess.run(
+                    ["git", *arguments],
+                    cwd=repository_root,
+                    capture_output=True,
+                    check=False,
+                    text=True,
+                    timeout=10,
+                )
+
+            source_target_ancestor = run_git(
+                "merge-base",
+                "--is-ancestor",
+                str(source["qualified_target_commit"]),
+                current_target_commit,
+            )
+            target_after = run_git(
+                "rev-parse",
+                "--verify",
+                f"refs/heads/{branch}^{{commit}}",
+            )
+            if (
+                source_target_ancestor.returncode != 0
+                or target_after.returncode != 0
+                or target_after.stdout.strip() != current_target_commit
+                or not authority_is_current()
+            ):
+                raise DatabasePortalBridgeError(
+                    "post-merge claim-verification current-target "
+                    "supersession is invalid"
+                )
+
+            # The qualification receipt is content addressed, but it is still
+            # caller-provided evidence at this boundary.  Re-read every
+            # declared entry from the exact current target so a freshly
+            # rehashed receipt cannot bless output drift.  Nested outputs are
+            # resolved through the target tree's gitlink, exactly as the
+            # ordinary callback-integration verifier resolves them.
+            observed_current_entries: list[dict[str, str]] = []
+            for entry in entries:
+                safe_path = _safe_output_path(str(entry["path"]))
+                root_entry = run_git(
+                    "ls-tree",
+                    "-z",
+                    "--full-tree",
+                    current_target_commit,
+                    "--",
+                    safe_path,
+                )
+                root_match = re.fullmatch(
+                    r"([0-9]{6}) (blob) "
+                    r"([0-9a-f]{40}(?:[0-9a-f]{24})?)\t"
+                    + re.escape(safe_path)
+                    + "\x00",
+                    root_entry.stdout,
+                )
+                if root_entry.returncode == 0 and root_match is not None:
+                    observed_current_entries.append(
+                        {
+                            "path": safe_path,
+                            "mode": root_match.group(1),
+                            "object_type": root_match.group(2),
+                            "object_id": root_match.group(3),
+                        }
+                    )
+                    continue
+
+                nested_owners = [
+                    _safe_repository_path(owner)
+                    for owner in self.worktree_submodule_paths
+                    if safe_path.startswith(
+                        _safe_repository_path(owner) + "/"
+                    )
+                ]
+                if len(nested_owners) != 1:
+                    raise DatabasePortalBridgeError(
+                        "post-merge claim-verification current-target output "
+                        "repository is ambiguous"
+                    )
+                nested_owner = nested_owners[0]
+                nested_path = _safe_output_path(
+                    safe_path[len(nested_owner) + 1 :]
+                )
+                gitlink = run_git(
+                    "ls-tree",
+                    "-z",
+                    "--full-tree",
+                    current_target_commit,
+                    "--",
+                    nested_owner,
+                )
+                gitlink_match = re.fullmatch(
+                    r"160000 commit "
+                    r"([0-9a-f]{40}(?:[0-9a-f]{24})?)\t"
+                    + re.escape(nested_owner)
+                    + "\x00",
+                    gitlink.stdout,
+                )
+                try:
+                    nested_root = (repository_root / nested_owner).resolve(
+                        strict=True
+                    )
+                    nested_root.relative_to(repository_root)
+                    nested_entry = subprocess.run(
+                        [
+                            "git",
+                            "ls-tree",
+                            "-z",
+                            "--full-tree",
+                            (
+                                gitlink_match.group(1)
+                                if gitlink_match is not None
+                                else ""
+                            ),
+                            "--",
+                            nested_path,
+                        ],
+                        cwd=nested_root,
+                        capture_output=True,
+                        check=False,
+                        text=True,
+                        timeout=10,
+                    )
+                except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
+                    raise DatabasePortalBridgeError(
+                        "post-merge claim-verification current-target output "
+                        "repository is unavailable"
+                    ) from exc
+                nested_match = re.fullmatch(
+                    r"([0-9]{6}) (blob) "
+                    r"([0-9a-f]{40}(?:[0-9a-f]{24})?)\t"
+                    + re.escape(nested_path)
+                    + "\x00",
+                    nested_entry.stdout,
+                )
+                if (
+                    gitlink.returncode != 0
+                    or gitlink_match is None
+                    or nested_entry.returncode != 0
+                    or nested_match is None
+                ):
+                    raise DatabasePortalBridgeError(
+                        "post-merge claim-verification current-target output "
+                        "is absent"
+                    )
+                observed_current_entries.append(
+                    {
+                        "path": safe_path,
+                        "mode": nested_match.group(1),
+                        "object_type": nested_match.group(2),
+                        "object_id": nested_match.group(3),
+                    }
+                )
+            target_final = run_git(
+                "rev-parse",
+                "--verify",
+                f"refs/heads/{branch}^{{commit}}",
+            )
+            if (
+                observed_current_entries != entries
+                or target_final.returncode != 0
+                or target_final.stdout.strip() != current_target_commit
+                or not authority_is_current()
+            ):
+                raise DatabasePortalBridgeError(
+                    "post-merge claim-verification current-target declared "
+                    "outputs changed"
+                )
+
+            target_requalification_body: dict[str, Any] = {
+                "schema": (
+                    DATABASE_POST_MERGE_COMPLETION_TARGET_REQUALIFICATION_SCHEMA
+                ),
+                "source_qualified_target_commit": str(
+                    source["qualified_target_commit"]
+                ),
+                "current_qualified_target_commit": current_target_commit,
+                "source_qualification_receipt_id": str(
+                    source["qualification_receipt_id"]
+                ),
+                "current_qualification_receipt_id": (
+                    current_qualification_receipt_id
+                ),
+                "source_recovery_evidence_id": str(
+                    source["recovery_evidence_id"]
+                ),
+                "current_recovery_evidence_id": current_recovery_evidence_id,
+                "candidate_commit": str(source["candidate_commit"]),
+                "integration_commit": integration_commit,
+                "train_receipt_id": train_receipt_id,
+                "current_requalification_evidence": dict(evidence),
+                "qualified_output_entries": entries,
+                "qualified_output_entries_digest": _sha256_bytes(
+                    _canonical_json({"entries": entries})
+                ),
+                "source_target_ancestor": True,
+                "candidate_integration_reverified": True,
+                "qualified_output_entries_reverified": True,
+                "validation_passed": True,
+            }
+            target_requalification = {
+                **target_requalification_body,
+                "witness_id": _sha256_bytes(
+                    _canonical_json(target_requalification_body)
+                ),
+            }
+            successor_seed_body.update(
+                schema=DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3,
+                qualified_target_commit=current_target_commit,
+                qualification_receipt_id=current_qualification_receipt_id,
+                recovery_evidence_id=current_recovery_evidence_id,
+                historical_source_seed_id=str(source_id),
+                historical_rebased_seed_id=str(rebased_id),
+                target_requalification_witness_id=str(
+                    target_requalification["witness_id"]
+                ),
+            )
+
+        successor_seed_id = _sha256_bytes(_canonical_json(successor_seed_body))
+
         receipt: dict[str, Any] = {
-            "schema": DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_SCHEMA,
+            "schema": (
+                DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_SCHEMA
+                if source_generation_current
+                else (
+                    DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_SCHEMA_V2
+                )
+            ),
             "disposition": "retry_exact_post_merge_completion_seed",
             "reason": DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_REASON,
             "task_cid": str(attempt.task_cid),
@@ -12056,10 +12444,10 @@ class DatabasePortalExecutionBridge:
             "rebased_seed_id": str(rebased_id),
             "request_id": request_id,
             "candidate_commit": str(source["candidate_commit"]),
-            "qualified_target_commit": str(source["qualified_target_commit"]),
+            "qualified_target_commit": current_target_commit,
             "qualification_kind": "callback_integration",
-            "qualification_receipt_id": str(source["qualification_receipt_id"]),
-            "recovery_evidence_id": str(source["recovery_evidence_id"]),
+            "qualification_receipt_id": current_qualification_receipt_id,
+            "recovery_evidence_id": current_recovery_evidence_id,
             "queue_source_binding_id": str(source["queue_source_binding_id"]),
             "queue_source_projection_immutable_digest": str(
                 source["queue_source_projection_immutable_digest"]
@@ -12068,10 +12456,27 @@ class DatabasePortalExecutionBridge:
                 context["execution_route_binding_id"]
             ),
             "candidate_preserved": True,
-            "target_generation_unchanged": True,
             "provider_dispatched": False,
             "attempt_consumed": False,
         }
+        if source_generation_current:
+            receipt["target_generation_unchanged"] = True
+        else:
+            assert target_requalification is not None
+            receipt.update(
+                source_qualified_target_commit=str(
+                    source["qualified_target_commit"]
+                ),
+                source_qualification_receipt_id=str(
+                    source["qualification_receipt_id"]
+                ),
+                source_recovery_evidence_id=str(
+                    source["recovery_evidence_id"]
+                ),
+                successor_seed_id=successor_seed_id,
+                target_generation_advanced=True,
+                target_requalification=target_requalification,
+            )
         receipt["receipt_id"] = _sha256_bytes(_canonical_json(receipt))
         return receipt
 
@@ -27871,6 +28276,7 @@ class DatabasePortalExecutionBridge:
             TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION,
             TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_SCHEMA,
             TypedStateOwnerAuthorizationError,
+            _post_merge_special_claim_admission_chain_material,
             _validated_database_claim_process_attestation,
         )
 
@@ -27991,8 +28397,13 @@ class DatabasePortalExecutionBridge:
                 return None
             if admission_attestation != claim_raw["claim_process_attestation"]:
                 return None
-            if seed.get("schema") == (
-                DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+            if (
+                recovery_control_revision + 2 == claim_revision
+                and seed.get("schema")
+                in {
+                    DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2,
+                    DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3,
+                }
             ):
                 recovery_evidence = predecessor_receipt.get(
                     "post_merge_completion_claim_verification_recovery"
@@ -28070,7 +28481,7 @@ class DatabasePortalExecutionBridge:
                     ValueError,
                 ):
                     return None
-                recovery_evidence_fields = {
+                recovery_evidence_fields_v1 = {
                     "schema",
                     "disposition",
                     "reason",
@@ -28103,13 +28514,176 @@ class DatabasePortalExecutionBridge:
                     "attempt_consumed",
                     "receipt_id",
                 }
-                source_seed_body = dict(seed)
-                source_seed_body.pop("seed_id", None)
-                source_seed_body.pop("recovery_control_revision", None)
-                source_seed_body["schema"] = (
-                    DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA
+                recovery_evidence_fields_v2 = (
+                    recovery_evidence_fields_v1
+                    - {"target_generation_unchanged"}
+                    | {
+                        "source_qualified_target_commit",
+                        "source_qualification_receipt_id",
+                        "source_recovery_evidence_id",
+                        "successor_seed_id",
+                        "target_generation_advanced",
+                        "target_requalification",
+                    }
                 )
-                source_seed_id = _sha256_bytes(_canonical_json(source_seed_body))
+                v3 = seed.get("schema") == (
+                    DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3
+                )
+                historical_seed: Mapping[str, Any] | None = None
+                if v3:
+                    historical_candidates = [
+                        entry
+                        for entry in revisions
+                        if isinstance(entry, Mapping)
+                        and entry.get("revision")
+                        == int(seed.get("source_task_revision") or 0) + 1
+                        and entry.get("status") == "retrying"
+                    ]
+                    historical_body = (
+                        historical_candidates[0].get("body")
+                        if len(historical_candidates) == 1
+                        else None
+                    )
+                    historical_receipt = (
+                        historical_body.get("completion_receipt")
+                        if isinstance(historical_body, Mapping)
+                        else None
+                    )
+                    historical_seed_raw = (
+                        historical_receipt.get(
+                            "post_merge_completion_recovery_seed"
+                        )
+                        if isinstance(historical_receipt, Mapping)
+                        else None
+                    )
+                    historical_seed = (
+                        dict(historical_seed_raw)
+                        if isinstance(historical_seed_raw, Mapping)
+                        else None
+                    )
+                    historical_seed_body = (
+                        dict(historical_seed)
+                        if isinstance(historical_seed, Mapping)
+                        else {}
+                    )
+                    historical_seed_id = historical_seed_body.pop(
+                        "seed_id", None
+                    )
+                    historical_rebased_body = dict(historical_seed_body)
+                    historical_rebased_body["schema"] = (
+                        DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+                    )
+                    historical_rebased_body["recovery_control_revision"] = (
+                        recovery_control_revision
+                    )
+                    source_seed_id = str(seed.get("historical_source_seed_id") or "")
+                    witness = recovery_evidence.get("target_requalification")
+                    witness_body = (
+                        dict(witness) if isinstance(witness, Mapping) else {}
+                    )
+                    witness_id = witness_body.pop("witness_id", None)
+                    current_evidence = witness.get(
+                        "current_requalification_evidence"
+                    ) if isinstance(witness, Mapping) else None
+                    current_evidence_body = (
+                        dict(current_evidence)
+                        if isinstance(current_evidence, Mapping)
+                        else {}
+                    )
+                    current_evidence_id = current_evidence_body.pop(
+                        "evidence_id", None
+                    )
+                    v3_lineage_valid = bool(
+                        isinstance(historical_seed, Mapping)
+                        and set(historical_seed)
+                        == _POST_MERGE_COMPLETION_RECOVERY_SEED_FIELDS
+                        and historical_seed.get("schema")
+                        == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA
+                        and historical_seed_id == source_seed_id
+                        and historical_seed_id
+                        == _sha256_bytes(_canonical_json(historical_seed_body))
+                        and seed.get("historical_rebased_seed_id")
+                        == _sha256_bytes(_canonical_json(historical_rebased_body))
+                        and isinstance(witness, Mapping)
+                        and witness_id == seed.get(
+                            "target_requalification_witness_id"
+                        )
+                        and witness_id
+                        == _sha256_bytes(_canonical_json(witness_body))
+                        and witness.get("schema")
+                        == DATABASE_POST_MERGE_COMPLETION_TARGET_REQUALIFICATION_SCHEMA
+                        and witness.get("source_qualified_target_commit")
+                        == historical_seed.get("qualified_target_commit")
+                        and witness.get("source_qualification_receipt_id")
+                        == historical_seed.get("qualification_receipt_id")
+                        and witness.get("source_recovery_evidence_id")
+                        == historical_seed.get("recovery_evidence_id")
+                        and witness.get("current_qualified_target_commit")
+                        == seed.get("qualified_target_commit")
+                        and witness.get("current_qualification_receipt_id")
+                        == seed.get("qualification_receipt_id")
+                        and witness.get("current_recovery_evidence_id")
+                        == seed.get("recovery_evidence_id")
+                        and witness.get("source_target_ancestor") is True
+                        and witness.get("candidate_integration_reverified") is True
+                        and witness.get("qualified_output_entries_reverified")
+                        is True
+                        and witness.get("validation_passed") is True
+                        and isinstance(current_evidence, Mapping)
+                        and current_evidence.get("schema")
+                        == _DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_SCHEMA
+                        and current_evidence_id == seed.get("recovery_evidence_id")
+                        and current_evidence_id
+                        == _sha256_bytes(_canonical_json(current_evidence_body))
+                        and all(
+                            seed.get(field) == historical_seed.get(field)
+                            for field in (
+                                "task_cid",
+                                "task_alias",
+                                "attempt_id",
+                                "attempt_number",
+                                "claim_id",
+                                "lease_id",
+                                "owner_session_id",
+                                "fencing_token",
+                                "fence_epoch",
+                                "source_task_revision",
+                                "request_id",
+                                "candidate_commit",
+                                "queue_source_attempt_id",
+                                "queue_source_claim_id",
+                                "queue_source_lease_id",
+                                "queue_source_fencing_token",
+                                "queue_source_fence_epoch",
+                                "queue_source_binding_id",
+                                "queue_source_projection_immutable_digest",
+                                "terminal_reason",
+                            )
+                        )
+                        and recovery_evidence.get(
+                            "source_qualified_target_commit"
+                        )
+                        == historical_seed.get("qualified_target_commit")
+                        and recovery_evidence.get(
+                            "source_qualification_receipt_id"
+                        )
+                        == historical_seed.get("qualification_receipt_id")
+                        and recovery_evidence.get("source_recovery_evidence_id")
+                        == historical_seed.get("recovery_evidence_id")
+                        and recovery_evidence.get("target_requalification")
+                        == witness
+                    )
+                else:
+                    source_seed_body = dict(seed)
+                    source_seed_body.pop("seed_id", None)
+                    source_seed_body.pop("recovery_control_revision", None)
+                    source_seed_body["schema"] = (
+                        DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA
+                    )
+                    source_seed_id = _sha256_bytes(
+                        _canonical_json(source_seed_body)
+                    )
+                    v3_lineage_valid = True
                 if (
                     recovery_control_revision
                     != seed.get("recovery_control_revision")
@@ -28132,7 +28706,12 @@ class DatabasePortalExecutionBridge:
                     )
                     != _canonical_json(dict(seed))
                     or not isinstance(recovery_evidence, Mapping)
-                    or set(recovery_evidence) != recovery_evidence_fields
+                    or set(recovery_evidence)
+                    != (
+                        recovery_evidence_fields_v2
+                        if v3
+                        else recovery_evidence_fields_v1
+                    )
                     or any(
                         predecessor_receipt.get(field)
                         != recovery_evidence.get(field)
@@ -28148,7 +28727,11 @@ class DatabasePortalExecutionBridge:
                         )
                     )
                     or recovery_evidence.get("schema")
-                    != DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_SCHEMA
+                    != (
+                        DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_SCHEMA_V2
+                        if v3
+                        else DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_SCHEMA
+                    )
                     or recovery_evidence.get("disposition")
                     != "retry_exact_post_merge_completion_seed"
                     or recovery_evidence.get("reason")
@@ -28159,7 +28742,11 @@ class DatabasePortalExecutionBridge:
                     or recovery_evidence.get("blocked_task_revision")
                     != recovery_control_revision
                     or recovery_evidence.get("rebased_seed_id")
-                    != seed.get("seed_id")
+                    != (
+                        seed.get("historical_rebased_seed_id")
+                        if v3
+                        else seed.get("seed_id")
+                    )
                     or recovery_evidence.get("source_seed_id") != source_seed_id
                     or recovery_evidence.get("request_id")
                     != seed.get("request_id")
@@ -28184,8 +28771,20 @@ class DatabasePortalExecutionBridge:
                         {"task_execution_route_binding": dict(route)}
                     )
                     or recovery_evidence.get("candidate_preserved") is not True
-                    or recovery_evidence.get("target_generation_unchanged")
-                    is not True
+                    or (
+                        recovery_evidence.get("target_generation_advanced")
+                        is not True
+                        if v3
+                        else recovery_evidence.get("target_generation_unchanged")
+                        is not True
+                    )
+                    or (
+                        recovery_evidence.get("successor_seed_id")
+                        != seed.get("seed_id")
+                        if v3
+                        else False
+                    )
+                    or not v3_lineage_valid
                     or recovery_evidence.get("provider_dispatched") is not False
                     or recovery_evidence.get("attempt_consumed") is not False
                     or not str(
@@ -28212,6 +28811,35 @@ class DatabasePortalExecutionBridge:
                 return None
             claim_receipt = dict(claim_raw)
 
+        if (
+            claim_revision > recovery_control_revision + 3
+            and status_receipt.get("operation") == "database_attempt_admitted"
+            and record_revision == claim_revision + 1
+            and seed.get("schema")
+            in {
+                DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2,
+                DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3,
+            }
+            and isinstance(revisions, list)
+        ):
+            try:
+                special_chain = (
+                    _post_merge_special_claim_admission_chain_material(
+                        task_cid=str(attempt.task_cid),
+                        current_revision=record_revision,
+                        current_body=dict(getattr(record, "body", {}) or {}),
+                        history_rows=revisions,
+                    )
+                )
+            except (TypedStateOwnerAuthorizationError, TypeError, ValueError):
+                return None
+            if (
+                special_chain.get("claim_receipt") == claim_receipt
+                and special_chain.get("successor_seed") == dict(seed)
+            ):
+                return claim_receipt
+            return None
+
         # Typed admission is only a closed overlay on the underlying claim.
         # Once removed, the ordinary recovery edge remains the original +2.
         if (
@@ -28224,7 +28852,10 @@ class DatabasePortalExecutionBridge:
                 return claim_receipt
             if (
                 seed.get("schema")
-                == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+                in {
+                    DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2,
+                    DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3,
+                }
                 and status_receipt.get("operation")
                 == "database_attempt_admitted"
                 and record_revision == claim_revision + 1
@@ -28236,7 +28867,11 @@ class DatabasePortalExecutionBridge:
             or record_revision != claim_revision + 1
             or status_receipt.get("operation") != "database_attempt_admitted"
             or seed.get("schema")
-            != DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA
+            not in {
+                DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA,
+                DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2,
+                DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3,
+            }
             or seed.get("qualification_kind") != "callback_integration"
             or seed.get("terminal_reason")
             != DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON
@@ -28616,16 +29251,21 @@ class DatabasePortalExecutionBridge:
         )
         schema = value.get("schema")
         expected_fields = (
-            _POST_MERGE_COMPLETION_RECOVERY_SEED_V2_FIELDS
+            _POST_MERGE_COMPLETION_RECOVERY_SEED_V3_FIELDS
             if schema
-            == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+            == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3
+            else _POST_MERGE_COMPLETION_RECOVERY_SEED_V2_FIELDS
+            if schema == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
             else _POST_MERGE_COMPLETION_RECOVERY_SEED_FIELDS
         )
         recovery_control_revision = value.get(
             "recovery_control_revision",
             value.get("source_task_revision"),
         )
-        if schema == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2:
+        if schema in {
+            DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2,
+            DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3,
+        }:
             integer_fields = (*integer_fields, "recovery_control_revision")
         claim_receipt = self._post_merge_completion_claim_receipt(
             attempt=attempt,
@@ -28640,6 +29280,7 @@ class DatabasePortalExecutionBridge:
             not in {
                 DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA,
                 DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2,
+                DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3,
             }
             or seed_id != _sha256_bytes(_canonical_json(value))
             or any(
@@ -28671,6 +29312,27 @@ class DatabasePortalExecutionBridge:
                 )
             )
             or not seed_id
+            or (
+                schema
+                == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3
+                and (
+                    value.get("qualification_kind") != "callback_integration"
+                    or value.get("terminal_reason")
+                    != DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON
+                    or any(
+                        re.fullmatch(
+                            r"sha256:[0-9a-f]{64}",
+                            str(value.get(field) or ""),
+                        )
+                        is None
+                        for field in (
+                            "historical_source_seed_id",
+                            "historical_rebased_seed_id",
+                            "target_requalification_witness_id",
+                        )
+                    )
+                )
+            )
             or not isinstance(claim_receipt, Mapping)
             or claim_receipt.get("operation") != "database_claim"
             or claim_receipt.get("post_merge_completion_recovery_source_attempt_id")
@@ -28695,7 +29357,10 @@ class DatabasePortalExecutionBridge:
             or value.get("lease_id") == str(attempt.lease_id)
             or (
                 schema
-                == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+                in {
+                    DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2,
+                    DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3,
+                }
                 and int(recovery_control_revision)
                 <= int(value["source_task_revision"])
             )

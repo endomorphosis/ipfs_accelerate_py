@@ -18038,10 +18038,18 @@ def test_claim_verification_recovery_reproves_without_provider_dispatch(
         "task_cid": source_seed["task_cid"],
         "task_alias": source_seed["task_alias"],
         "candidate_commit": source_seed["candidate_commit"],
+        "source_attempt_id": source_seed["queue_source_attempt_id"],
+        "source_claim_id": source_seed["queue_source_claim_id"],
+        "source_lease_id": source_seed["queue_source_lease_id"],
+        "source_fencing_token": source_seed["queue_source_fencing_token"],
+        "source_fence_epoch": source_seed["queue_source_fence_epoch"],
         "qualified_target_commit": source_seed["qualified_target_commit"],
         "callback_requalification_receipt_id": source_seed[
             "qualification_receipt_id"
         ],
+        "callback_requalification_receipt": {
+            "receipt_id": source_seed["qualification_receipt_id"],
+        },
         "source_binding_id": source_seed["queue_source_binding_id"],
         "source_projection_immutable_digest": source_seed[
             "queue_source_projection_immutable_digest"
@@ -18317,6 +18325,349 @@ def test_claim_verification_recovery_reproves_without_provider_dispatch(
         seed=rebased_seed,
         recovery_control_revision=24,
     ) == claim_receipt
+
+
+def _claim_verification_target_drift_context(
+    source_seed: Mapping[str, object],
+) -> tuple[
+    DatabasePortalExecutionBridge,
+    DatabaseTaskAttempt,
+    dict[str, object],
+]:
+    """Project the exact r24 bridge inputs around one caller-supplied seed."""
+
+    bridge, claimed, _record_value, _fixture_seed = (
+        _route_repaired_typed_completion_claim_fixture()
+    )
+    failed = replace(
+        claimed,
+        committed_phase="failed",
+        status="failed",
+        revision=2,
+        finished_at_ms=123,
+    )
+    route_history = bridge.task_source.task_revision_history_projection(
+        failed.task_cid
+    )
+    revisions = list(route_history["revisions"])
+    semantic_body = dict(revisions[-1]["body"])
+    semantic_body.pop("completion_receipt")
+    route = revisions[2]["body"]["completion_receipt"][
+        "execution_route_binding"
+    ]
+    terminal = {
+        "operation": "database_portal_terminal_failure",
+        "attempt_id": failed.attempt_id,
+        "attempt_number": failed.attempt_number,
+        "claim_id": failed.claim_id,
+        "lease_id": failed.lease_id,
+        "owner_session_id": failed.owner_session_id,
+        "fencing_token": failed.fencing_token,
+        "fence_epoch": failed.fence_epoch,
+        "execution_phase": "failed",
+        "execution_revision": failed.revision,
+        "execution_finished_at_ms": failed.finished_at_ms,
+        "reason": (
+            "post-merge completion recovery seed failed claim verification"
+        ),
+        "retryable": False,
+        "coordination": {},
+        "control_expected_status": "in_progress",
+        "control_expected_revision": 23,
+        "execution_route_binding": route,
+        "execution_route_policy_id": route["policy_id"],
+        "execution_route_origin_revision": route["task_revision"],
+    }
+    revisions.append(
+        {
+            "revision": 24,
+            "status": "blocked",
+            "body": {**semantic_body, "completion_receipt": terminal},
+        }
+    )
+    history_body = {
+        "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+        "task_cid": failed.task_cid,
+        "revisions": revisions,
+    }
+    history = {
+        **history_body,
+        "projection_cid": content_identity(history_body),
+    }
+    record = SimpleNamespace(
+        task_cid=failed.task_cid,
+        task_alias=failed.task_alias,
+        status="blocked",
+        revision=24,
+        body=revisions[-1]["body"],
+    )
+    bridge.task_source = SimpleNamespace(
+        get=lambda _task_cid: record,
+        task_revision_history_projection=lambda _task_cid: history,
+    )
+    rebased_body = dict(source_seed)
+    rebased_body.pop("seed_id")
+    rebased_body["schema"] = (
+        database_portal_bridge_module
+        .DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+    )
+    rebased_body["recovery_control_revision"] = 24
+    rebased_seed = {
+        **rebased_body,
+        "seed_id": database_portal_bridge_module._sha256_bytes(
+            database_portal_bridge_module._canonical_json(rebased_body)
+        ),
+    }
+    blocked_attempt = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-post-merge-completion-claim-verification-attempt@1"
+        ),
+        "attempt_id": failed.attempt_id,
+        "claim_id": failed.claim_id,
+        "task_cid": failed.task_cid,
+        "task_alias": failed.task_alias,
+        "attempt_number": failed.attempt_number,
+        "owner_session_id": failed.owner_session_id,
+        "fencing_token": failed.fencing_token,
+        "fence_epoch": failed.fence_epoch,
+        "lease_id": failed.lease_id,
+        "committed_phase": terminal["execution_phase"],
+        "status": terminal["execution_phase"],
+        "finished_at_ms": terminal["execution_finished_at_ms"],
+        "revision": terminal["execution_revision"],
+        "post_merge_completion_recovery_source_attempt_id": source_seed[
+            "attempt_id"
+        ],
+        "post_merge_completion_recovery_seed": dict(source_seed),
+        "execution_route_binding": route,
+    }
+    context_body: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-post-merge-completion-claim-verification-context@2"
+        ),
+        "task_cid": failed.task_cid,
+        "task_alias": failed.task_alias,
+        "source_task_revision": 19,
+        "recovery_task_revision": 20,
+        "route_recovery_task_revision": 21,
+        "claim_task_revision": 22,
+        "admission_task_revision": 23,
+        "blocked_task_revision": 24,
+        "unknown_callback_reopen_count": 0,
+        "history_projection_cid": history["projection_cid"],
+        "semantic_body_id": content_identity(semantic_body),
+        "source_seed": dict(source_seed),
+        "rebased_seed": rebased_seed,
+        "execution_route_binding": route,
+        "execution_route_binding_id": content_identity(
+            {"task_execution_route_binding": route}
+        ),
+        "blocked_attempt": blocked_attempt,
+        "blocked_receipt_id": content_identity(
+            {"post_merge_claim_verification_terminal": terminal}
+        ),
+    }
+    return (
+        bridge,
+        failed,
+        {**context_body, "context_id": content_identity(context_body)},
+    )
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["descendant", "non-descendant", "declared-output-mutated", "validation-failed"],
+)
+def test_claim_verification_recovery_requalifies_only_safe_descendant_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+) -> None:
+    repo = tmp_path / "claim-verification-target-drift"
+    repo.mkdir()
+
+    def git(*argv: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(repo), *argv],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    git("init", "-q", "-b", "main")
+    git("config", "user.name", "Target Drift Test")
+    git("config", "user.email", "target-drift@example.invalid")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    git("add", "base.txt")
+    git("commit", "-q", "-m", "base")
+    base = git("rev-parse", "HEAD")
+    output = repo / "output.py"
+    output.write_text("RESULT = True\n", encoding="utf-8")
+    git("add", "output.py")
+    git("commit", "-q", "-m", "qualified target A")
+    source_target = git("rev-parse", "HEAD")
+    source_entry = git("ls-tree", source_target, "--", "output.py").split()
+    assert len(source_entry) == 4
+    if case == "non-descendant":
+        git("reset", "--hard", base)
+        output.write_text("RESULT = True\n", encoding="utf-8")
+        (repo / "sibling.md").write_text("sibling\n", encoding="utf-8")
+        git("add", "output.py", "sibling.md")
+        git("commit", "-q", "-m", "sibling target B")
+    elif case == "declared-output-mutated":
+        output.write_text("RESULT = False\n", encoding="utf-8")
+        git("add", "output.py")
+        git("commit", "-q", "-m", "mutated output target B")
+    else:
+        (repo / "notes.md").write_text("unrelated\n", encoding="utf-8")
+        git("add", "notes.md")
+        git("commit", "-q", "-m", "descendant target B")
+    current_target = git("rev-parse", "HEAD")
+    current_tree = git("rev-parse", "HEAD^{tree}")
+
+    _seed_bridge, _claimed, _record, fixture_seed = (
+        _route_repaired_typed_completion_claim_fixture()
+    )
+    seed_body = dict(fixture_seed)
+    seed_body.pop("seed_id")
+    seed_body["qualified_target_commit"] = source_target
+    source_seed = {
+        **seed_body,
+        "seed_id": database_portal_bridge_module._sha256_bytes(
+            database_portal_bridge_module._canonical_json(seed_body)
+        ),
+    }
+    bridge, failed, context = _claim_verification_target_drift_context(
+        source_seed
+    )
+    train = {
+        "request_id": source_seed["request_id"],
+        "task_id": failed.task_alias,
+        "commit_sha": source_seed["candidate_commit"],
+        "merge_commit": "b" * 40,
+        "target_commit": "b" * 40,
+    }
+    train_text = database_portal_bridge_module._canonical_json(train).decode("utf-8")
+    train_id = "sha256:" + hashlib.sha256(train_text.encode("utf-8")).hexdigest()
+    entries = [
+        {
+            "path": "output.py",
+            "mode": source_entry[0],
+            "object_type": source_entry[1],
+            # Deliberately retain A's object identity.  The mutation case must
+            # not turn a freshly rehashed but false receipt into B authority.
+            "object_id": source_entry[2],
+        }
+    ]
+    validation = [
+        {
+            "task_id": failed.task_alias,
+            "passed": case != "validation-failed",
+            "returncode": 1 if case == "validation-failed" else 0,
+            "validation_result_digests": ["sha256:" + "7" * 64],
+            "command_count": 1,
+            "log_sha256": "8" * 64,
+        }
+    ]
+    qualification_body: dict[str, object] = {
+        "schema": (
+            database_portal_bridge_module
+            ._POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_SCHEMA
+        ),
+        "task_ids": [failed.task_alias],
+        "task_cid": failed.task_cid,
+        "request_id": source_seed["request_id"],
+        "candidate_commit": source_seed["candidate_commit"],
+        "baseline_commit": "9" * 40,
+        "integration_commit": "b" * 40,
+        "source_event_id": "event:target-drift",
+        "source_event_digest": "sha256:" + "a" * 64,
+        "source_validation_result_digest": "sha256:" + "b" * 64,
+        "queue_validation_proof_digest": "sha256:" + "c" * 64,
+        "train_dedupe_key": "target-drift",
+        "train_receipt_id": train_id,
+        "train_receipt": train_text,
+        "current_target_commit": current_target,
+        "current_target_tree": current_tree,
+        "entries": entries,
+        "validation": validation,
+    }
+    qualification = {
+        **qualification_body,
+        "receipt_id": content_identity(qualification_body),
+    }
+    evidence_body: dict[str, object] = {
+        "schema": database_portal_bridge_module._DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_SCHEMA,
+        "request_id": source_seed["request_id"],
+        "task_cid": source_seed["task_cid"],
+        "task_alias": source_seed["task_alias"],
+        "candidate_commit": source_seed["candidate_commit"],
+        "source_attempt_id": source_seed["queue_source_attempt_id"],
+        "source_claim_id": source_seed["queue_source_claim_id"],
+        "source_lease_id": source_seed["queue_source_lease_id"],
+        "source_fencing_token": source_seed["queue_source_fencing_token"],
+        "source_fence_epoch": source_seed["queue_source_fence_epoch"],
+        "source_binding_id": source_seed["queue_source_binding_id"],
+        "source_projection_immutable_digest": source_seed[
+            "queue_source_projection_immutable_digest"
+        ],
+        "qualified_target_commit": current_target,
+        "callback_requalification_receipt_id": qualification["receipt_id"],
+        "callback_requalification_receipt": qualification,
+    }
+    evidence = {
+        **evidence_body,
+        "evidence_id": database_portal_bridge_module._sha256_bytes(
+            database_portal_bridge_module._canonical_json(evidence_body)
+        ),
+    }
+    request = SimpleNamespace(request_id=source_seed["request_id"])
+    projection = SimpleNamespace(binding={"task_cid": failed.task_cid})
+    bridge.merge_queue = SimpleNamespace(get=lambda _request_id: request)
+    bridge.repository_root = repo
+    bridge.merge_target_branch = "main"
+    monkeypatch.setattr(
+        bridge,
+        "_owned_post_merge_recovery_projection",
+        lambda *_args, **_kwargs: projection,
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_post_merge_recovery_evidence",
+        lambda *_args, **_kwargs: evidence,
+    )
+    provider_calls: list[str] = []
+    bridge.run_provider = lambda attempt: provider_calls.append(
+        attempt.attempt_id
+    )
+
+    if case != "descendant":
+        with pytest.raises(DatabasePortalBridgeError):
+            bridge.recover_post_merge_completion_claim_verification(
+                failed,
+                context,
+            )
+        assert provider_calls == []
+        return
+
+    receipt = bridge.recover_post_merge_completion_claim_verification(
+        failed,
+        context,
+    )
+    assert receipt["schema"] == (
+        database_portal_bridge_module
+        .DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_SCHEMA_V2
+    )
+    assert receipt["target_generation_advanced"] is True
+    assert receipt["qualified_target_commit"] == current_target
+    assert receipt["source_qualified_target_commit"] == source_target
+    assert receipt["target_requalification"]["source_target_ancestor"] is True
+    assert receipt["target_requalification"]["qualified_output_entries"] == entries
+    assert receipt["provider_dispatched"] is False
+    assert receipt["attempt_consumed"] is False
+    assert provider_calls == []
 
 
 def test_post_merge_completion_recovery_seed_closes_without_portal_dispatch(

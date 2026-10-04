@@ -76,7 +76,11 @@ from .database_task_source import TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
 from .duckdb_state import open_duckdb_connection
 from .typed_state_owner import (
     _DATABASE_POST_MERGE_CLAIM_VERIFICATION_RECOVERY_OPERATION,
+    _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2,
+    _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3,
     COMPLETION_PROGRESS_SNAPSHOT_OPERATION,
+    POST_MERGE_COMPLETION_DEAD_CLAIM_NONCONVERGENCE_OPERATION,
+    POST_MERGE_COMPLETION_UNREPLAYABLE_DEAD_CLAIM_OPERATION,
     TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND,
     TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_OPERATION,
     TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_REASON,
@@ -665,6 +669,24 @@ def _default_templates() -> dict[str, StatementTemplate]:
             kind=StatementKind.MUTATION,
             description=(
                 "Replace one older typed cooldown by exact lease revision"
+            ),
+        ),
+        "executor_delete_retry_cooldown": StatementTemplate(
+            name="executor_delete_retry_cooldown",
+            sql=(
+                "DELETE FROM leases WHERE task_cid = ? AND revision = ? AND "
+                "attempt = ? AND extension_schema = ? RETURNING task_cid, "
+                "revision, attempt, extension_schema"
+            ),
+            parameter_names=(
+                "task_cid",
+                "expected_queue_revision",
+                "expected_queue_attempt",
+                "expected_existing_extension_schema",
+            ),
+            kind=StatementKind.MUTATION,
+            description=(
+                "Delete one exact typed cooldown during terminalization"
             ),
         ),
         "executor_rebind_retry_cooldown_task_revision": StatementTemplate(
@@ -2365,6 +2387,7 @@ class QuackStateClient:
                 else None
             )
             atomic_recovery_cooldown: dict[str, Any] = {}
+            atomic_terminal_cooldown: dict[str, Any] = {}
             if (
                 isinstance(control_receipt, Mapping)
                 and control_receipt.get("operation")
@@ -2404,6 +2427,40 @@ class QuackStateClient:
                 except TypedStateOwnerError as exc:
                     raise QuackClientError(
                         "post-merge claim-verification cooldown is invalid"
+                    ) from exc
+            if (
+                isinstance(control_receipt, Mapping)
+                and control_receipt.get("operation")
+                in {
+                    POST_MERGE_COMPLETION_DEAD_CLAIM_NONCONVERGENCE_OPERATION,
+                    POST_MERGE_COMPLETION_UNREPLAYABLE_DEAD_CLAIM_OPERATION,
+                }
+            ):
+                if session.transport_mode is not TransportMode.QUACK:
+                    raise QuackClientError(
+                        "post-merge dead claim quarantine requires the exclusive "
+                        "remote typed owner"
+                    )
+                observed_result = txn.execute_named_operation(
+                    "executor_retry_cooldown_by_task",
+                    (str(parameters["task_cid"]),),
+                )
+                observed_rows = _fetch_all(observed_result)
+                if len(observed_rows) != 1:
+                    raise OptimisticConflictError(
+                        "post-merge dead claim quarantine cooldown is absent or "
+                        "ambiguous"
+                    )
+                try:
+                    atomic_terminal_cooldown = _validated_stored_retry_cooldown(
+                        _row_mapping(
+                            _result_columns(observed_result), observed_rows[0]
+                        ),
+                        task_cid=str(parameters["task_cid"]),
+                    )
+                except TypedStateOwnerError as exc:
+                    raise QuackClientError(
+                        "post-merge dead claim quarantine cooldown is malformed"
                     ) from exc
             # The remote typed owner performs this semantic check at its
             # transaction boundary.  Embedded mode has no separate owner, so
@@ -2651,6 +2708,21 @@ class QuackStateClient:
                     raise OptimisticConflictError(
                         "post-merge claim-verification cooldown CAS failed"
                     )
+            if atomic_terminal_cooldown:
+                queue_result = txn.execute_named_operation(
+                    "executor_delete_retry_cooldown",
+                    (
+                        str(parameters["task_cid"]),
+                        int(atomic_terminal_cooldown["revision"]),
+                        int(atomic_terminal_cooldown["attempt"]),
+                        TYPED_RETRY_COOLDOWN_SCHEMA,
+                    ),
+                )
+                queue_row = _fetch_one(queue_result)
+                if queue_row is None:
+                    raise OptimisticConflictError(
+                        "post-merge dead claim quarantine cooldown CAS failed"
+                    )
             completion_receipt_cid = ""
             completion_evidence_digest = ""
             if completing_status:
@@ -2745,6 +2817,19 @@ class QuackStateClient:
                         ),
                     }
                     if atomic_recovery_cooldown
+                    else {}
+                ),
+                **(
+                    {
+                        "retry_cooldown_deleted": True,
+                        "retry_queue_revision": int(
+                            atomic_terminal_cooldown["revision"]
+                        ),
+                        "retry_attempt_number": int(
+                            atomic_terminal_cooldown["attempt"]
+                        ),
+                    }
+                    if atomic_terminal_cooldown
                     else {}
                 ),
             }
@@ -2902,6 +2987,101 @@ class QuackStateClient:
             )
         current_attestation = dict(self.claim_process_attestation())
         exact_identity = {**text_identity, **integer_identity}
+        carried_post_merge_seed = prior.get(
+            "post_merge_completion_recovery_seed"
+        )
+        carried_post_merge_source_attempt_id = prior.get(
+            "post_merge_completion_recovery_source_attempt_id"
+        )
+        post_merge_source_present = (
+            "post_merge_completion_recovery_source_attempt_id" in prior
+        )
+        post_merge_seed_present = (
+            "post_merge_completion_recovery_seed" in prior
+        )
+        preserve_post_merge_seed = bool(
+            post_merge_source_present
+            and post_merge_seed_present
+            and type(carried_post_merge_source_attempt_id) is str
+            and carried_post_merge_source_attempt_id.strip()
+            and
+            isinstance(carried_post_merge_seed, Mapping)
+            and carried_post_merge_seed.get("schema")
+            in {
+                _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2,
+                _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3,
+            }
+            and carried_post_merge_source_attempt_id
+            == carried_post_merge_seed.get("attempt_id")
+        )
+        if (post_merge_source_present or post_merge_seed_present) and not (
+            preserve_post_merge_seed
+        ):
+            raise QuackClientError(
+                "dead claim recovery cannot drop a partial or unsupported "
+                "post-merge marker"
+            )
+        preserved_post_merge_owner_fields: dict[str, Any] = {}
+        if preserve_post_merge_seed:
+            transfer_fields = {
+                "virgin_task_transfer",
+                "virgin_task_transfer_claim_cursor",
+            }
+            present_transfer_fields = transfer_fields & set(prior)
+            reopen_count = prior.get("unknown_callback_reopen_count")
+            if (
+                present_transfer_fields not in (set(), transfer_fields)
+                or type(reopen_count) is not int
+                or reopen_count < 0
+            ):
+                raise QuackClientError(
+                    "post-merge dead claim recovery owner fields are invalid"
+                )
+            if present_transfer_fields:
+                if not all(
+                    isinstance(prior.get(field), Mapping)
+                    for field in transfer_fields
+                ):
+                    raise QuackClientError(
+                        "post-merge dead claim recovery transfer fields are invalid"
+                    )
+                preserved_post_merge_owner_fields.update(
+                    {
+                        field: dict(prior[field])
+                        for field in transfer_fields
+                    }
+                )
+            preserved_post_merge_owner_fields[
+                "unknown_callback_reopen_count"
+            ] = reopen_count
+        prior_queue: dict[str, Any] = {}
+        if preserve_post_merge_seed:
+            prior_rows = self.execute(
+                "executor_retry_cooldown_by_task",
+                {"task_cid": task},
+            )
+            if len(prior_rows) != 1:
+                raise QuackClientError(
+                    "post-merge dead claim recovery requires one exact prior "
+                    "cooldown"
+                )
+            try:
+                prior_queue = _validated_stored_retry_cooldown(
+                    prior_rows[0],
+                    task_cid=task,
+                )
+            except TypedStateOwnerError as exc:
+                raise QuackClientError(
+                    "post-merge dead claim recovery prior cooldown is malformed"
+                ) from exc
+            if (
+                int(prior_queue["attempt"])
+                >= integer_identity["attempt_number"]
+                or int(prior_queue["revision"]) < 1
+            ):
+                raise QuackClientError(
+                    "post-merge dead claim recovery prior cooldown is not older"
+                )
         reason = TYPED_DATABASE_CLAIM_RECOVERY_REASON
         started_at_ms = int(time.time() * 1_000) if now_ms is None else now_ms
         if (
@@ -2936,6 +3116,19 @@ class QuackStateClient:
             "execution_route_origin_revision": int(
                 execution_route["task_revision"]
             ),
+            **(
+                {
+                    "post_merge_completion_recovery_source_attempt_id": (
+                        carried_post_merge_source_attempt_id
+                    ),
+                    "post_merge_completion_recovery_seed": dict(
+                        carried_post_merge_seed
+                    ),
+                    **preserved_post_merge_owner_fields,
+                }
+                if preserve_post_merge_seed
+                else {}
+            ),
         }
         body["completion_receipt"] = recovery_receipt
         body_json = canonical_json_bytes(body).decode("utf-8")
@@ -2950,8 +3143,12 @@ class QuackStateClient:
             "selection_penalty": 0,
             "consecutive_failures": integer_identity["attempt_number"],
             "reason": reason,
-            "expected_queue_revision": -1,
-            "expected_queue_attempt": 0,
+            "expected_queue_revision": (
+                int(prior_queue["revision"]) if prior_queue else -1
+            ),
+            "expected_queue_attempt": (
+                int(prior_queue["attempt"]) if prior_queue else 0
+            ),
         }
         extension_json = canonical_json_bytes(extension).decode("utf-8")
         resolution_cid = content_identity(
@@ -2974,6 +3171,14 @@ class QuackStateClient:
             canonical_json_bytes(parameters)
         ).hexdigest()
         session = self._require_session()
+        if (
+            preserve_post_merge_seed
+            and session.transport_mode is not TransportMode.QUACK
+        ):
+            raise QuackClientError(
+                "post-merge completion dead claim recovery requires the "
+                "exclusive remote typed owner"
+            )
         live = self.load_generation()
         command = StateCommand(
             command_id=f"cmd:dead-claim-recovery:{command_digest}",
@@ -2996,42 +3201,89 @@ class QuackStateClient:
             generation: StoreGeneration,
         ) -> Mapping[str, Any]:
             values = dict(active.parameters)
-            observed = _fetch_all(
-                txn.execute_named_operation(
-                    "executor_retry_cooldown_by_task",
-                    (values["task_cid"],),
-                )
+            observed_result = txn.execute_named_operation(
+                "executor_retry_cooldown_by_task",
+                (values["task_cid"],),
             )
-            if observed:
+            observed_rows = _fetch_all(observed_result)
+            expected_queue_revision = int(values["expected_queue_revision"])
+            expected_queue_attempt = int(values["expected_queue_attempt"])
+            if len(observed_rows) > 1:
                 raise OptimisticConflictError(
-                    "dead claim recovery cooldown absence became stale"
+                    "dead claim recovery cooldown became ambiguous"
+                )
+            observed = (
+                _row_mapping(
+                    _result_columns(observed_result), observed_rows[0]
+                )
+                if observed_rows
+                else {}
+            )
+            if (
+                (expected_queue_revision == -1 and observed)
+                or (expected_queue_revision >= 0 and not observed)
+                or (
+                    observed
+                    and (
+                        int(observed.get("revision") or -1)
+                        != expected_queue_revision
+                        or int(observed.get("attempt") or -1)
+                        != expected_queue_attempt
+                        or str(observed.get("extension_schema") or "")
+                        != TYPED_RETRY_COOLDOWN_SCHEMA
+                    )
+                )
+            ):
+                raise OptimisticConflictError(
+                    "dead claim recovery expected cooldown became stale"
+                )
+            new_queue_revision = (
+                1
+                if expected_queue_revision == -1
+                else expected_queue_revision + 1
+            )
+            common_values = (
+                values["claim_id"],
+                values["resolution_cid"],
+                values["owner_session_id"],
+                values["fence_epoch"],
+                values["fencing_token"],
+                0,
+                values["attempt_number"],
+                "released",
+                values["started_at_ms"],
+                values["reason"],
+                values["retry_not_before_ms"],
+                values["owner_session_id"],
+                values["fence_epoch"],
+                new_queue_revision,
+                values["extension_schema"],
+                values["extension_json"],
+            )
+            if expected_queue_revision == -1:
+                queue_operation = "executor_insert_retry_cooldown"
+                queue_parameters = (
+                    values["task_cid"],
+                    *common_values,
+                    -1,
+                )
+            else:
+                queue_operation = "executor_update_retry_cooldown"
+                queue_parameters = (
+                    *common_values,
+                    values["task_cid"],
+                    expected_queue_revision,
+                    expected_queue_attempt,
+                    values["attempt_number"],
+                    TYPED_RETRY_COOLDOWN_SCHEMA,
                 )
             queue_result = txn.execute_named_operation(
-                "executor_insert_retry_cooldown",
-                (
-                    values["task_cid"],
-                    values["claim_id"],
-                    values["resolution_cid"],
-                    values["owner_session_id"],
-                    values["fence_epoch"],
-                    values["fencing_token"],
-                    0,
-                    values["attempt_number"],
-                    "released",
-                    values["started_at_ms"],
-                    values["reason"],
-                    values["retry_not_before_ms"],
-                    values["owner_session_id"],
-                    values["fence_epoch"],
-                    1,
-                    values["extension_schema"],
-                    values["extension_json"],
-                    -1,
-                ),
+                queue_operation,
+                queue_parameters,
             )
             if _fetch_one(queue_result) is None:
                 raise OptimisticConflictError(
-                    "dead claim recovery cooldown absence CAS failed"
+                    "dead claim recovery cooldown CAS failed"
                 )
             expected = int(values["expected_task_revision"])
             recorded_at = self._clock()
@@ -3072,7 +3324,7 @@ class QuackStateClient:
                 "attempt_id": values["attempt_id"],
                 "attempt_number": values["attempt_number"],
                 "task_revision": expected + 1,
-                "queue_revision": 1,
+                "queue_revision": new_queue_revision,
                 "retry_not_before_ms": values["retry_not_before_ms"],
                 "historic_liveness": "dead",
                 "store_revision_before": generation.revision,

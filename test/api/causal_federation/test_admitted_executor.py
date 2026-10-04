@@ -85,6 +85,13 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source
     daemon_required_owner_operations,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+    POST_MERGE_COMPLETION_DEAD_CLAIM_NONCONVERGENCE_OPERATION,
+    POST_MERGE_COMPLETION_DEAD_CLAIM_NONCONVERGENCE_REASON,
+    POST_MERGE_COMPLETION_DEAD_CLAIM_NONCONVERGENCE_SCHEMA,
+    POST_MERGE_COMPLETION_DEAD_CLAIM_RECOVERY_LIMIT,
+    POST_MERGE_COMPLETION_UNREPLAYABLE_DEAD_CLAIM_OPERATION,
+    POST_MERGE_COMPLETION_UNREPLAYABLE_DEAD_CLAIM_REASON,
+    POST_MERGE_COMPLETION_UNREPLAYABLE_DEAD_CLAIM_SCHEMA,
     TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
     TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND,
     TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_OPERATION,
@@ -105,6 +112,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TypedStateOwnerConnection,
     TypedStateOwnerError,
     _process_birth_content_id,
+    _process_runtime_facts,
     _validated_database_strict_resume_rejection_receipt,
     build_control_plane_operation_catalog,
     typed_database_blocked_retry_revalidation_requirement,
@@ -1971,12 +1979,8 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
     token, grant = server.issue_typed_client_grant_record(
         client_id=client_id,
         process_birth_id=identity.process_birth_id,
-        allowed_operations=tuple(
-            sorted(operator.EXECUTOR_OWNER_ALLOWED_OPERATIONS)
-        ),
-        allowed_command_operations=tuple(
-            sorted(operator.EXECUTOR_OWNER_COMMAND_OPERATIONS)
-        ),
+        allowed_operations=daemon_required_owner_operations(),
+        allowed_command_operations=daemon_required_owner_command_operations(),
         peer_pid=os.getpid(),
     )
     monkeypatch.setenv(
@@ -4029,6 +4033,12 @@ def test_dead_typed_reservation_recovers_atomically_to_fresh_attempt_two(
                     "goal_cid": "goal:typed-dead-recovery",
                     "status": "ready",
                 },
+                {
+                    "task_cid": "task:typed-malformed-post-merge",
+                    "task_id": "CASF-TYPED-MALFORMED-POST-MERGE",
+                    "goal_cid": "goal:typed-dead-recovery",
+                    "status": "ready",
+                },
             ],
         }
     )
@@ -4125,6 +4135,40 @@ def test_dead_typed_reservation_recovers_atomically_to_fresh_attempt_two(
         "in_progress",
         cooldown_claim,
     )
+    malformed_task = by_alias["CASF-TYPED-MALFORMED-POST-MERGE"]
+    malformed_route = route_policy.binding_for_task(malformed_task).to_dict()
+    malformed_seed = {
+        "schema": (
+            implementation_daemon_module
+            .DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+        ),
+        # This closes marker pairing but intentionally cannot reproduce any
+        # historic semantic seed.  The remote owner must reject continuation
+        # and terminalize through its explicit unreplayable-marker receipt.
+        "attempt_id": "attempt:typed-malformed-historical-source",
+    }
+    malformed_claim = {
+        **old_claim,
+        "claim_id": "claim:typed-malformed-post-merge",
+        "attempt_id": "attempt:typed-malformed-post-merge",
+        "lease_id": "lease:typed-malformed-post-merge",
+        "claimed_from_revision": int(malformed_task.revision),
+        "execution_route_binding": malformed_route,
+        "execution_route_policy_id": malformed_route["policy_id"],
+        "execution_route_origin_revision": int(
+            malformed_route["task_revision"]
+        ),
+        "post_merge_completion_recovery_source_attempt_id": (
+            malformed_seed["attempt_id"]
+        ),
+        "post_merge_completion_recovery_seed": malformed_seed,
+    }
+    source.compare_and_set_status(
+        malformed_task,
+        int(malformed_task.revision),
+        "in_progress",
+        malformed_claim,
+    )
     source.close()
     historic_liveness: dict[str, Any] = {
         "result": OwnerLiveness.DEAD,
@@ -4152,12 +4196,8 @@ def test_dead_typed_reservation_recovers_atomically_to_fresh_attempt_two(
     token, grant = server.issue_typed_client_grant_record(
         client_id=client_id,
         process_birth_id=identity.process_birth_id,
-        allowed_operations=tuple(
-            sorted(operator.EXECUTOR_OWNER_ALLOWED_OPERATIONS)
-        ),
-        allowed_command_operations=tuple(
-            sorted(operator.EXECUTOR_OWNER_COMMAND_OPERATIONS)
-        ),
+        allowed_operations=daemon_required_owner_operations(),
+        allowed_command_operations=daemon_required_owner_command_operations(),
         peer_pid=os.getpid(),
     )
     monkeypatch.setenv(
@@ -4208,6 +4248,60 @@ def test_dead_typed_reservation_recovers_atomically_to_fresh_attempt_two(
             },
             require_real_execution=True,
         ).open()
+
+        malformed = adapter.get("CASF-TYPED-MALFORMED-POST-MERGE")
+        assert malformed is not None
+        malformed_history_before = adapter.task_revision_history_projection(
+            malformed.task_cid
+        )
+        malformed_recovery = adapter.recover_dead_claim_reservation(
+            malformed.task_cid,
+            expected_task_revision=malformed.revision,
+            now_ms=2_000,
+        )
+        assert malformed_recovery.changed is True
+        assert malformed_recovery.event_type == (
+            "TASK_POST_MERGE_UNREPLAYABLE_DEAD_CLAIM_QUARANTINED"
+        )
+        malformed_terminal = adapter.get(malformed.task_cid)
+        assert malformed_terminal is not None
+        assert (
+            malformed_terminal.revision,
+            malformed_terminal.status,
+        ) == (malformed.revision + 1, "quarantined")
+        malformed_receipt = malformed_terminal.body["completion_receipt"]
+        assert malformed_receipt["schema"] == (
+            POST_MERGE_COMPLETION_UNREPLAYABLE_DEAD_CLAIM_SCHEMA
+        )
+        assert malformed_receipt["operation"] == (
+            POST_MERGE_COMPLETION_UNREPLAYABLE_DEAD_CLAIM_OPERATION
+        )
+        assert malformed_receipt["reason"] == (
+            POST_MERGE_COMPLETION_UNREPLAYABLE_DEAD_CLAIM_REASON
+        )
+        assert malformed_receipt["source_control_receipt_cid"] == (
+            content_identity(
+                {"typed_database_claim_reservation": malformed_claim}
+            )
+        )
+        assert malformed_receipt["source_marker_present"] is True
+        assert malformed_receipt["seed_marker_present"] is True
+        assert malformed_receipt["seed_marker_schema"] == malformed_seed[
+            "schema"
+        ]
+        assert malformed_receipt["provider_dispatched"] is False
+        assert malformed_receipt["attempt_consumed"] is False
+        assert malformed_receipt["retry_suppressed"] is True
+        assert adapter._retry_cooldown_row(malformed.task_cid) is None
+        malformed_history_after = adapter.task_revision_history_projection(
+            malformed.task_cid
+        )
+        assert malformed_history_after["revisions"][:-1] == (
+            malformed_history_before["revisions"]
+        )
+        assert malformed_history_after["revisions"][-1]["status"] == (
+            "quarantined"
+        )
 
         legacy = adapter.get("CASF-TYPED-LEGACY-CLAIM")
         assert legacy is not None
@@ -8105,16 +8199,278 @@ def test_typed_quack_run_once_recovers_owner_relative_gitlink_lossy_retry_once(
         server.stop()
 
 
-def test_typed_quack_claim_verification_r19_rearms_and_admits_r27_successor(
+def _typed_quack_advanced_claim_verification_evidence(
+    daemon: DatabaseImplementationDaemon,
+    failed: DatabaseTaskAttempt,
+    context: Mapping[str, Any],
+    *,
+    repository: Path,
+) -> dict[str, Any]:
+    """Build complete target-B evidence for the real typed-owner fixture."""
+
+    def git(*argv: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(repository), *argv],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    source = dict(context["source_seed"])
+    rebased = dict(context["rebased_seed"])
+    current_target_commit = git("rev-parse", "HEAD")
+    current_target_tree = git("rev-parse", "HEAD^{tree}")
+    entry_parts = git(
+        "ls-tree",
+        current_target_commit,
+        "--",
+        "result.json",
+    ).split()
+    assert len(entry_parts) == 4
+    entries = [
+        {
+            "path": "result.json",
+            "mode": entry_parts[0],
+            "object_type": entry_parts[1],
+            "object_id": entry_parts[2],
+        }
+    ]
+    canonical_task_key = "task/v1/doep-r19-r31"
+    integration_commit = "b" * 40
+    train = {
+        "acceptance_pending": False,
+        "accepted": True,
+        "callback_owned_integration": True,
+        "canonical_task_id": canonical_task_key,
+        "request_id": source["request_id"],
+        "task_id": failed.task_alias,
+        "commit_sha": source["candidate_commit"],
+        "distributed_publication_admission": {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "distributed-lane-admission@1"
+            ),
+            "admitted": True,
+            "distributed": False,
+            "request_id": source["request_id"],
+            "status": "local",
+        },
+        "finished_at": 2,
+        "integrated": True,
+        "merge_commit": integration_commit,
+        "merge_result": {
+            "merged": True,
+            "returncode": 0,
+            "merge_commit": integration_commit,
+            "todo_update_result": {
+                "completion_receipts": [
+                    {
+                        "task_id": failed.task_alias,
+                        "canonical_task_cid": failed.task_cid,
+                        "canonical_task_key": canonical_task_key,
+                    }
+                ]
+            },
+        },
+        "merged": True,
+        "started_at": 1,
+        "status": "merged",
+        "target_branch": "main",
+        "target_commit": integration_commit,
+    }
+    train_text = canonical_json_bytes(train).decode("utf-8")
+    train_id = "sha256:" + hashlib.sha256(train_text.encode("utf-8")).hexdigest()
+    validation = [
+        {
+            "task_id": failed.task_alias,
+            "passed": True,
+            "returncode": 0,
+            "validation_result_digests": ["sha256:" + "7" * 64],
+            "command_count": 1,
+            "log_sha256": "8" * 64,
+        }
+    ]
+    qualification_body: dict[str, Any] = {
+        "schema": (
+            implementation_daemon_module
+            .POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_SCHEMA
+        ),
+        "task_ids": [failed.task_alias],
+        "task_cid": failed.task_cid,
+        "request_id": source["request_id"],
+        "candidate_commit": source["candidate_commit"],
+        "baseline_commit": "9" * 40,
+        "integration_commit": integration_commit,
+        "source_event_id": "sha256:" + "9" * 64,
+        "source_event_digest": "sha256:" + "a" * 64,
+        "source_validation_result_digest": "sha256:" + "b" * 64,
+        "queue_validation_proof_digest": "sha256:" + "c" * 64,
+        "train_dedupe_key": "d" * 64,
+        "train_receipt_id": train_id,
+        "train_receipt": train_text,
+        "current_target_commit": current_target_commit,
+        "current_target_tree": current_target_tree,
+        "entries": entries,
+        "validation": validation,
+    }
+    qualification = {
+        **qualification_body,
+        "receipt_id": content_identity(qualification_body),
+    }
+    current_evidence_body: dict[str, Any] = {
+        "schema": (
+            implementation_daemon_module
+            .DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_SCHEMA
+        ),
+        "request_id": source["request_id"],
+        "task_cid": failed.task_cid,
+        "task_alias": failed.task_alias,
+        "candidate_commit": source["candidate_commit"],
+        "source_attempt_id": source["queue_source_attempt_id"],
+        "source_claim_id": source["queue_source_claim_id"],
+        "source_lease_id": source["queue_source_lease_id"],
+        "source_fencing_token": source["queue_source_fencing_token"],
+        "source_fence_epoch": source["queue_source_fence_epoch"],
+        "source_binding_id": source["queue_source_binding_id"],
+        "source_projection_immutable_digest": source[
+            "queue_source_projection_immutable_digest"
+        ],
+        "qualified_target_commit": current_target_commit,
+        "callback_requalification_receipt_id": qualification["receipt_id"],
+        "callback_requalification_receipt": qualification,
+    }
+    current_evidence = {
+        **current_evidence_body,
+        "evidence_id": daemon._database_portal_evidence_digest(
+            current_evidence_body
+        ),
+    }
+    witness_body: dict[str, Any] = {
+        "schema": (
+            implementation_daemon_module
+            .DATABASE_POST_MERGE_COMPLETION_TARGET_REQUALIFICATION_SCHEMA
+        ),
+        "source_qualified_target_commit": source["qualified_target_commit"],
+        "current_qualified_target_commit": current_target_commit,
+        "source_qualification_receipt_id": source["qualification_receipt_id"],
+        "current_qualification_receipt_id": qualification["receipt_id"],
+        "source_recovery_evidence_id": source["recovery_evidence_id"],
+        "current_recovery_evidence_id": current_evidence["evidence_id"],
+        "candidate_commit": source["candidate_commit"],
+        "integration_commit": qualification["integration_commit"],
+        "train_receipt_id": train_id,
+        "current_requalification_evidence": current_evidence,
+        "qualified_output_entries": entries,
+        "qualified_output_entries_digest": daemon._database_portal_evidence_digest(
+            {"entries": entries}
+        ),
+        "source_target_ancestor": True,
+        "candidate_integration_reverified": True,
+        "qualified_output_entries_reverified": True,
+        "validation_passed": True,
+    }
+    witness = {
+        **witness_body,
+        "witness_id": daemon._database_portal_evidence_digest(witness_body),
+    }
+    successor_body = dict(source)
+    successor_body.pop("seed_id")
+    successor_body.update(
+        schema=(
+            implementation_daemon_module
+            .DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3
+        ),
+        recovery_control_revision=24,
+        qualified_target_commit=current_target_commit,
+        qualification_receipt_id=qualification["receipt_id"],
+        recovery_evidence_id=current_evidence["evidence_id"],
+        historical_source_seed_id=source["seed_id"],
+        historical_rebased_seed_id=rebased["seed_id"],
+        target_requalification_witness_id=witness["witness_id"],
+    )
+    evidence_body: dict[str, Any] = {
+        "schema": (
+            implementation_daemon_module
+            .DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_SCHEMA_V2
+        ),
+        "disposition": "retry_exact_post_merge_completion_seed",
+        "reason": (
+            implementation_daemon_module
+            .DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_REASON
+        ),
+        "task_cid": failed.task_cid,
+        "task_alias": failed.task_alias,
+        "attempt_id": failed.attempt_id,
+        "claim_id": failed.claim_id,
+        "lease_id": failed.lease_id,
+        "owner_session_id": failed.owner_session_id,
+        "attempt_number": failed.attempt_number,
+        "fencing_token": failed.fencing_token,
+        "fence_epoch": failed.fence_epoch,
+        "blocked_task_revision": 24,
+        "history_context_id": context["context_id"],
+        "history_projection_cid": context["history_projection_cid"],
+        "source_seed_id": source["seed_id"],
+        "rebased_seed_id": rebased["seed_id"],
+        "request_id": source["request_id"],
+        "candidate_commit": source["candidate_commit"],
+        "qualified_target_commit": current_target_commit,
+        "qualification_kind": source["qualification_kind"],
+        "qualification_receipt_id": qualification["receipt_id"],
+        "recovery_evidence_id": current_evidence["evidence_id"],
+        "queue_source_binding_id": source["queue_source_binding_id"],
+        "queue_source_projection_immutable_digest": source[
+            "queue_source_projection_immutable_digest"
+        ],
+        "execution_route_binding_id": context["execution_route_binding_id"],
+        "candidate_preserved": True,
+        "provider_dispatched": False,
+        "attempt_consumed": False,
+        "source_qualified_target_commit": source["qualified_target_commit"],
+        "source_qualification_receipt_id": source["qualification_receipt_id"],
+        "source_recovery_evidence_id": source["recovery_evidence_id"],
+        "successor_seed_id": daemon._database_portal_evidence_digest(
+            successor_body
+        ),
+        "target_generation_advanced": True,
+        "target_requalification": witness,
+    }
+    return {
+        **evidence_body,
+        "receipt_id": daemon._database_portal_evidence_digest(evidence_body),
+    }
+
+
+@pytest.mark.parametrize(
+    ("target_drift", "fourth_claim_dies", "early_unreplayable"),
+    [
+        (False, False, False),
+        (True, False, False),
+        (False, True, False),
+        (True, True, False),
+        (False, False, True),
+    ],
+    ids=[
+        "unchanged-v2-alive-fourth",
+        "descendant-v3-alive-fourth",
+        "unchanged-v2-dead-fourth",
+        "descendant-v3-dead-fourth",
+        "legacy-v1-dead-claim",
+    ],
+)
+def test_typed_quack_claim_verification_r19_rearms_and_admits_r31_successor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    target_drift: bool,
+    fourth_claim_dies: bool,
+    early_unreplayable: bool,
 ) -> None:
-    """Prove the historical r19-r27 suffix through the real typed owner.
+    """Prove bounded r19-r33 dead-claim recovery through the typed owner.
 
     Only the retired r20 route omission and the two expensive Portal proof
     callbacks are fixtures.  Claiming, typed admission, callback recovery,
-    route repair, terminalization, V2 rearm, and successor admission all pass
-    through FakeQuackTransport into the embedded DuckDB state owner.
+    route repair, terminalization, V2/V3 rearm, and successor admission all
+    pass through FakeQuackTransport into the embedded DuckDB state owner.
     """
 
     class SimulatedProcessCrash(BaseException):
@@ -8123,11 +8479,35 @@ def test_typed_quack_claim_verification_r19_rearms_and_admits_r27_successor(
     class CapturedHistoricalTransition(BaseException):
         pass
 
-    class CapturedSuccessorReservation(BaseException):
-        pass
-
     repository = tmp_path / "repository"
     repository.mkdir()
+
+    def git(*argv: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(repository), *argv],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    # The historical r20 authority is sealed against target A.  Runtime state
+    # remains inside the repository for this fixture, but is ignored so the
+    # V3 descendant check observes a clean worktree rather than test state.
+    git("init", "-q", "-b", "main")
+    git("config", "user.name", "Typed Quack Target Drift Test")
+    git("config", "user.email", "typed-quack-drift@example.invalid")
+    (repository / ".gitignore").write_text(
+        ".agent-state/\n",
+        encoding="utf-8",
+    )
+    (repository / "result.json").write_text(
+        '{"accepted": true}\n',
+        encoding="utf-8",
+    )
+    git("add", ".gitignore", "result.json")
+    git("commit", "-q", "-m", "qualified target A")
+    source_target_commit = git("rev-parse", "HEAD")
+
     database = repository / ".agent-state" / "doep-r19-r27.duckdb"
     database.parent.mkdir()
     database.parent.chmod(0o700)
@@ -8237,7 +8617,10 @@ def test_typed_quack_claim_verification_r19_rearms_and_admits_r27_successor(
         owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
     )
     identity = server.start()
-    client_id = "database-implementation-daemon:doep-r19-r27"
+    operator = _operator()
+    client_id = (
+        f"database-implementation-daemon:{operator.EXECUTOR_OWNER_SESSION_ID}"
+    )
     token, grant = server.issue_typed_client_grant_record(
         client_id=client_id,
         process_birth_id=identity.process_birth_id,
@@ -8261,6 +8644,9 @@ def test_typed_quack_claim_verification_r19_rearms_and_admits_r27_successor(
     daemon: DatabaseImplementationDaemon | None = None
     clock = {"now_ms": 1_000}
     provider_calls: list[str] = []
+    recovery_children: list[subprocess.Popen[bytes]] = []
+    bootstrap_listener: socket.socket | None = None
+    bootstrap_broker: Any | None = None
 
     def crash_after_provider_started(
         attempt: DatabaseTaskAttempt,
@@ -8278,7 +8664,7 @@ def test_typed_quack_claim_verification_r19_rearms_and_admits_r27_successor(
                 repository / ".agent-state" / "lane-execution.duckdb"
             ),
             owner_session_id="session:doep-r19-r27",
-            process_instance_id=identity.process_birth_id,
+            process_instance_id=credentials.process_birth_id,
             authority_mode="quack",
             task_source_kind="duckdb",
             quack_uri=identity.listen_uri,
@@ -8340,7 +8726,7 @@ def test_typed_quack_claim_verification_r19_rearms_and_admits_r27_successor(
         assert provider_calls == [source.attempt_id]
 
         candidate_commit = "a" * 40
-        target_commit = "c" * 40
+        target_commit = source_target_commit
         qualification: dict[str, Any] = {
             "schema": (
                 implementation_daemon_module
@@ -8549,6 +8935,194 @@ def test_typed_quack_claim_verification_r19_rearms_and_admits_r27_successor(
             .TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION
         )
 
+        def start_recovery_broker() -> None:
+            nonlocal bootstrap_listener, bootstrap_broker
+            assert bootstrap_listener is None
+            assert bootstrap_broker is None
+            bootstrap_listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            bootstrap_listener.bind(
+                "\0doep-r19-r33-" + os.urandom(8).hex()
+            )
+            bootstrap_listener.listen(4)
+            bootstrap_state = (
+                repository / ".agent-state" / "recovery-bootstrap"
+            )
+            bootstrap_state.mkdir(mode=0o700, exist_ok=True)
+            program = SimpleNamespace(
+                quack_endpoint=identity.listen_uri,
+                store_generation=identity.store_id,
+            )
+            board = SimpleNamespace(resolved_database_program=lambda: program)
+            operator.EXECUTOR_OWNER_ALLOWED_OPERATIONS = frozenset(
+                daemon_required_owner_operations()
+            )
+            operator.EXECUTOR_OWNER_COMMAND_OPERATIONS = frozenset(
+                daemon_required_owner_command_operations()
+            )
+            bootstrap_broker = operator._ExecutorBootstrapBroker(
+                channel=bootstrap_listener,
+                server=server,
+                board=board,
+                paths={
+                    "owner_socket": server.typed_command_socket_path(),
+                    "executor_current": bootstrap_state / "current.json",
+                    "executor_history": bootstrap_state / "history.json",
+                    "executor_state": bootstrap_state,
+                    "executor_supervisor_status": (
+                        bootstrap_state / "supervisor.json"
+                    ),
+                },
+                supervisor_birth=operator._process_birth(os.getpid()),
+                execution_route_policy=route_policy,
+            )
+            bootstrap_broker.start()
+
+        def run_child(action: str, ordinal: int) -> tuple[
+            subprocess.Popen[bytes], dict[str, Any]
+        ]:
+            assert bootstrap_listener is not None
+            assert bootstrap_broker is not None
+            bootstrap_state = (
+                repository / ".agent-state" / "recovery-bootstrap"
+            )
+            output = bootstrap_state / f"{ordinal:02d}-{action}.json"
+            child = subprocess.Popen(
+                [
+                    sys.executable,
+                    str(CHILD),
+                    "--bootstrap-fd",
+                    str(bootstrap_listener.fileno()),
+                    "--client-id",
+                    client_id,
+                    "--store-id",
+                    identity.store_id,
+                    "--output",
+                    str(output),
+                    "--daemon-action",
+                    action,
+                    "--database",
+                    str(database),
+                    "--coordination-path",
+                    str(repository / ".agent-state/lane-coordination.duckdb"),
+                    "--execution-path",
+                    str(repository / ".agent-state/lane-execution.duckdb"),
+                    "--repo-root",
+                    str(repository),
+                    "--owner-session-id",
+                    "session:doep-r19-r27",
+                    "--task-prefix",
+                    "DOEP-",
+                    "--task-cid",
+                    source.task_cid,
+                    "--clock-offset-ms",
+                    str((ordinal - 1) * 6_000),
+                    *(
+                        ["--accept-fixture-callback-proof"]
+                        if target_drift
+                        else []
+                    ),
+                    "--hold-seconds",
+                    "30",
+                ],
+                cwd=ROOT,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                pass_fds=(bootstrap_listener.fileno(),),
+                start_new_session=True,
+            )
+            recovery_children.append(child)
+            result = _eventually(output, child)
+            assert bootstrap_broker.failure == ""
+            assert result["provider_calls"] == []
+            return child, result
+
+        def stop_child(child: subprocess.Popen[bytes]) -> None:
+            child.terminate()
+            child.wait(timeout=10)
+            assert child.poll() is not None
+
+        if early_unreplayable:
+            daemon.close()
+            daemon = None
+            adapter.close()
+            adapter = None
+            if client.attached:
+                client.close()
+            server.revoke_typed_client_grant(grant.grant_id)
+            grant_active = False
+            start_recovery_broker()
+
+            legacy_claim_child, legacy_claim_result = run_child("reserve", 1)
+            r22_projection = legacy_claim_result["daemon_record"]
+            assert (r22_projection["revision"], r22_projection["status"]) == (
+                22,
+                "in_progress",
+            ), legacy_claim_result.get("reserve_probe")
+            r22_claim = r22_projection["body"]["completion_receipt"]
+            legacy_seed = r22_claim["post_merge_completion_recovery_seed"]
+            assert legacy_seed["schema"] == (
+                implementation_daemon_module
+                .DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA
+            )
+            assert r22_claim[
+                "post_merge_completion_recovery_source_attempt_id"
+            ] == legacy_seed["attempt_id"]
+            r22_reservation_cid = content_identity(
+                {"typed_database_claim_reservation": r22_claim}
+            )
+            r22_process_attestation = dict(
+                r22_claim["claim_process_attestation"]
+            )
+            assert r22_process_attestation["pid"] == legacy_claim_child.pid
+            stop_child(legacy_claim_child)
+
+            quarantine_child, quarantine_result = run_child("recover", 2)
+            assert quarantine_result["dead_recoveries"]
+            r23_projection = quarantine_result["daemon_record"]
+            assert (r23_projection["revision"], r23_projection["status"]) == (
+                23,
+                "quarantined",
+            ), quarantine_result
+            receipt = r23_projection["body"]["completion_receipt"]
+            assert receipt["schema"] == (
+                POST_MERGE_COMPLETION_UNREPLAYABLE_DEAD_CLAIM_SCHEMA
+            )
+            assert receipt["operation"] == (
+                POST_MERGE_COMPLETION_UNREPLAYABLE_DEAD_CLAIM_OPERATION
+            )
+            assert receipt["reason"] == (
+                POST_MERGE_COMPLETION_UNREPLAYABLE_DEAD_CLAIM_REASON
+            )
+            assert receipt["source_task_revision"] == 22
+            assert receipt["source_control_receipt_cid"] == r22_reservation_cid
+            assert receipt["source_marker_present"] is True
+            assert receipt["seed_marker_present"] is True
+            assert receipt["seed_marker_schema"] == legacy_seed["schema"]
+            assert receipt["recovered_claim_process_attestation"] == (
+                r22_process_attestation
+            )
+            assert receipt["provider_dispatched"] is False
+            assert receipt["attempt_consumed"] is False
+            assert receipt["retry_suppressed"] is True
+            assert quarantine_result["daemon_queue_entry"] is None
+            terminal_history = quarantine_result["daemon_history"]["revisions"]
+            assert [entry["revision"] for entry in terminal_history[-3:]] == [
+                21,
+                22,
+                23,
+            ]
+            assert [entry["status"] for entry in terminal_history[-3:]] == [
+                "retrying",
+                "in_progress",
+                "quarantined",
+            ]
+            assert provider_calls == [source.attempt_id]
+            stop_child(quarantine_child)
+            bootstrap_broker.stop()
+            bootstrap_broker = None
+            bootstrap_listener = None
+            return
+
         failed = daemon.claim_next()
         assert failed is not None and failed.attempt_number == 2
         r23 = adapter.get_task(failed.task_cid)
@@ -8586,10 +9160,32 @@ def test_typed_quack_claim_verification_r19_rearms_and_admits_r27_successor(
         )
         assert provider_calls == [source.attempt_id]
 
+        if target_drift:
+            (repository / "unrelated.md").write_text(
+                "target B advances without changing the declared output\n",
+                encoding="utf-8",
+            )
+            git("add", "unrelated.md")
+            git("commit", "-q", "-m", "advance target to B")
+            assert git("merge-base", "--is-ancestor", source_target_commit, "HEAD") == ""
+            assert git("status", "--porcelain=v1", "--untracked-files=all") == ""
+            # This is daemon-side Git observation only.  The typed owner below
+            # still reconstructs r20 from canonical DuckDB history and owns
+            # the single r24 -> r25 transaction.
+            daemon._merge_repo_root = repository
+            daemon._merge_target_branch = "main"
+
         def claim_verification_proof(
             attempt: DatabaseTaskAttempt,
             context: Mapping[str, Any],
         ) -> dict[str, Any]:
+            if target_drift:
+                return _typed_quack_advanced_claim_verification_evidence(
+                    daemon,
+                    attempt,
+                    context,
+                    repository=repository,
+                )
             source_seed = context["source_seed"]
             rebased_seed = context["rebased_seed"]
             receipt: dict[str, Any] = {
@@ -8645,6 +9241,16 @@ def test_typed_quack_claim_verification_r19_rearms_and_admits_r27_successor(
         daemon._post_merge_completion_claim_verification_recovery_fn = (
             claim_verification_proof
         )
+        if target_drift:
+            # The fixture owns only the expensive Portal callback proof.  The
+            # daemon still checks Git A -> B and the exclusive typed owner
+            # independently reconstructs/validates the full nested evidence
+            # against canonical r20/r24 history before its atomic write.
+            monkeypatch.setattr(
+                daemon,
+                "_verified_post_merge_callback_integration_receipt",
+                lambda raw, **_kwargs: dict(raw),
+            )
 
         # Capture the exact daemon-generated r24 -> r25 proposal before it
         # reaches the owner.  Each adversarial replay below remains a valid
@@ -8664,8 +9270,17 @@ def test_typed_quack_claim_verification_r19_rearms_and_admits_r27_successor(
                 "record_queue_backoff_and_cas_status",
                 capture_recovery_transition,
             )
-            with pytest.raises(CapturedHistoricalTransition):
-                daemon.reconcile_terminal_portal_failures()
+            try:
+                recovery_observations = (
+                    daemon.reconcile_terminal_portal_failures()
+                )
+            except CapturedHistoricalTransition:
+                pass
+            else:
+                pytest.fail(
+                    "claim-verification recovery did not reach its owner CAS: "
+                    f"{recovery_observations!r}"
+                )
         assert captured_recovery_arguments["expected_revision"] == 24
         assert captured_recovery_arguments["status"] == "retrying"
         proposed_receipt = captured_recovery_arguments["receipt"]
@@ -8740,6 +9355,73 @@ def test_typed_quack_claim_verification_r19_rearms_and_admits_r27_successor(
         def install_nonzero_recovery_deadline(receipt: dict[str, Any]) -> None:
             receipt["retry_not_before_ms"] = 1
 
+        def tamper_v3_nested_schema(receipt: dict[str, Any]) -> None:
+            evidence = dict(
+                receipt[
+                    "post_merge_completion_claim_verification_recovery"
+                ]
+            )
+            witness = dict(evidence["target_requalification"])
+            witness["schema"] = (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-post-merge-completion-target-requalification@999"
+            )
+            witness_body = dict(witness)
+            witness_body.pop("witness_id")
+            witness["witness_id"] = "sha256:" + hashlib.sha256(
+                canonical_json_bytes(witness_body)
+            ).hexdigest()
+            seed = dict(receipt["post_merge_completion_recovery_seed"])
+            seed["target_requalification_witness_id"] = witness["witness_id"]
+            seed_body = dict(seed)
+            seed_body.pop("seed_id")
+            seed["seed_id"] = "sha256:" + hashlib.sha256(
+                canonical_json_bytes(seed_body)
+            ).hexdigest()
+            evidence["target_requalification"] = witness
+            evidence["successor_seed_id"] = seed["seed_id"]
+            evidence_body = dict(evidence)
+            evidence_body.pop("receipt_id")
+            evidence["receipt_id"] = "sha256:" + hashlib.sha256(
+                canonical_json_bytes(evidence_body)
+            ).hexdigest()
+            receipt["post_merge_completion_recovery_seed"] = seed
+            receipt[
+                "post_merge_completion_claim_verification_recovery"
+            ] = evidence
+            receipt["evidence_source"] = (
+                "typed_post_merge_completion_claim_verification_recovery:"
+                + evidence["receipt_id"]
+            )
+
+        def tamper_v3_historical_source(receipt: dict[str, Any]) -> None:
+            evidence = dict(
+                receipt[
+                    "post_merge_completion_claim_verification_recovery"
+                ]
+            )
+            seed = dict(receipt["post_merge_completion_recovery_seed"])
+            seed["historical_source_seed_id"] = "sha256:" + "e" * 64
+            seed_body = dict(seed)
+            seed_body.pop("seed_id")
+            seed["seed_id"] = "sha256:" + hashlib.sha256(
+                canonical_json_bytes(seed_body)
+            ).hexdigest()
+            evidence["successor_seed_id"] = seed["seed_id"]
+            evidence_body = dict(evidence)
+            evidence_body.pop("receipt_id")
+            evidence["receipt_id"] = "sha256:" + hashlib.sha256(
+                canonical_json_bytes(evidence_body)
+            ).hexdigest()
+            receipt["post_merge_completion_recovery_seed"] = seed
+            receipt[
+                "post_merge_completion_claim_verification_recovery"
+            ] = evidence
+            receipt["evidence_source"] = (
+                "typed_post_merge_completion_claim_verification_recovery:"
+                + evidence["receipt_id"]
+            )
+
         recovery_forgeries: tuple[
             tuple[str, Callable[[dict[str, Any]], None]], ...
         ] = (
@@ -8749,6 +9431,11 @@ def test_typed_quack_claim_verification_r19_rearms_and_admits_r27_successor(
             ("tampered-attestation", tamper_recovery_attestation),
             ("nonzero-deadline", install_nonzero_recovery_deadline),
         )
+        if target_drift:
+            recovery_forgeries += (
+                ("v3-nested-schema", tamper_v3_nested_schema),
+                ("v3-historical-source", tamper_v3_historical_source),
+            )
         for label, mutate in recovery_forgeries:
             forged_receipt = json.loads(
                 canonical_json_bytes(dict(proposed_receipt)).decode("utf-8")
@@ -8797,6 +9484,23 @@ def test_typed_quack_claim_verification_r19_rearms_and_admits_r27_successor(
         owner_gateway = server._command_gateway
         assert owner_gateway is not None
         owner_execute = owner_gateway._execute
+        owner_capture_semantic_authority = (
+            owner_gateway._capture_semantic_authority
+        )
+        owner_authorization_errors: list[str] = []
+
+        def capture_owner_authorization_error(*args: Any, **kwargs: Any) -> Any:
+            try:
+                return owner_capture_semantic_authority(*args, **kwargs)
+            except BaseException as exc:
+                owner_authorization_errors.append(f"{type(exc).__name__}: {exc}")
+                raise
+
+        monkeypatch.setattr(
+            owner_gateway,
+            "_capture_semantic_authority",
+            capture_owner_authorization_error,
+        )
         r24_idempotency_projection = owner_gateway._connection.execute(
             "SELECT idempotency_key, command_kind, command_id, store_id, "
             "session_id, result_digest, created_at, expires_at, body_json "
@@ -8819,10 +9523,13 @@ def test_typed_quack_claim_verification_r19_rearms_and_admits_r27_successor(
                 "_execute",
                 fail_atomic_cooldown,
             )
-            with pytest.raises(TransactionError, match="operation_failed"):
+            with pytest.raises(TransactionError) as atomic_failure_error:
                 adapter.record_queue_backoff_and_cas_status(
                     **captured_recovery_arguments
                 )
+        assert "operation_failed" in str(
+            atomic_failure_error.value
+        ), owner_authorization_errors
         assert failed_atomic_operations == [
             "executor_update_retry_cooldown"
         ]
@@ -8898,77 +9605,63 @@ def test_typed_quack_claim_verification_r19_rearms_and_admits_r27_successor(
         assert recovered[0]["queue_receipt"]["reason"] == (
             r25_receipt["queue_reason"]
         )
-        v2_seed = r25_receipt["post_merge_completion_recovery_seed"]
-        assert v2_seed["schema"] == (
+        successor_seed = r25_receipt["post_merge_completion_recovery_seed"]
+        expected_seed_schema = (
             implementation_daemon_module
+            .DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3
+            if target_drift
+            else implementation_daemon_module
             .DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
         )
-        assert v2_seed["source_task_revision"] == 19
-        assert v2_seed["recovery_control_revision"] == 24
-        v2_body = dict(v2_seed)
-        v2_id = v2_body.pop("seed_id")
-        assert v2_id == daemon._database_portal_evidence_digest(v2_body)
-        assert provider_calls == [source.attempt_id]
-
-        # Stop after the shared r26 reservation and prove that a raw V2
-        # `database_claim` is not bridge execution authority.  Only the
-        # canonical r27 typed admission may release the provider path.
-        promote_successor = daemon._promote_typed_attempt_admission
-        captured_successor: dict[str, Any] = {}
-
-        def capture_successor_reservation(
-            attempt: DatabaseTaskAttempt,
-            *,
-            reservation_receipt: Mapping[str, Any],
-        ) -> None:
-            captured_successor["attempt"] = attempt
-            captured_successor["reservation_receipt"] = dict(
-                reservation_receipt
-            )
-            raise CapturedSuccessorReservation
-
-        with monkeypatch.context() as reservation_capture:
-            reservation_capture.setattr(
-                daemon,
-                "_promote_typed_attempt_admission",
-                capture_successor_reservation,
-            )
-            with pytest.raises(CapturedSuccessorReservation):
-                daemon.claim_next()
-        successor = captured_successor["attempt"]
-        assert isinstance(successor, DatabaseTaskAttempt)
-        assert successor.attempt_number == failed.attempt_number + 1
-        assert successor.body["post_merge_completion_recovery_seed"] == v2_seed
-        r26 = adapter.get_task(successor.task_cid)
-        assert r26 is not None and (r26.revision, r26.status) == (
-            26,
-            "in_progress",
+        assert successor_seed["schema"] == expected_seed_schema
+        assert successor_seed["source_task_revision"] == 19
+        assert successor_seed["recovery_control_revision"] == 24
+        successor_body = dict(successor_seed)
+        successor_id = successor_body.pop("seed_id")
+        assert successor_id == daemon._database_portal_evidence_digest(
+            successor_body
         )
-        r26_claim = r26.body["completion_receipt"]
-        assert r26_claim["operation"] == "database_claim"
-        bridge = object.__new__(DatabasePortalExecutionBridge)
-        bridge.task_source = adapter
-        assert bridge._post_merge_completion_claim_receipt(
-            attempt=successor,
-            record=r26,
-            status_receipt=r26_claim,
-            seed=v2_seed,
-            recovery_control_revision=24,
-        ) is None
+        if target_drift:
+            recovery_evidence = r25_receipt[
+                "post_merge_completion_claim_verification_recovery"
+            ]
+            historical_source_seed = r20_receipt[
+                "post_merge_completion_recovery_seed"
+            ]
+            historical_source_body = dict(historical_source_seed)
+            historical_source_id = historical_source_body.pop("seed_id")
+            historical_rebased_body = dict(historical_source_body)
+            historical_rebased_body["schema"] = (
+                implementation_daemon_module
+                .DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+            )
+            historical_rebased_body["recovery_control_revision"] = 24
+            assert successor_seed["historical_source_seed_id"] == (
+                historical_source_id
+            )
+            assert successor_seed["historical_rebased_seed_id"] == (
+                daemon._database_portal_evidence_digest(
+                    historical_rebased_body
+                )
+            )
+            assert successor_seed["target_requalification_witness_id"] == (
+                recovery_evidence["target_requalification"]["witness_id"]
+            )
+            assert successor_seed["qualified_target_commit"] == git(
+                "rev-parse",
+                "HEAD",
+            )
         assert provider_calls == [source.attempt_id]
 
-        # Model a lost r25 response discovered only after the successor was
-        # reserved at r26.  Replaying the exact public task-source request on
-        # the same owner/client must resolve through owner idempotency: it may
-        # report the already committed r25 receipt, but cannot rewind r26,
-        # append history, rewrite cooldown, or dispatch the provider.
-        before_lost_response_replay = adapter.get_task(successor.task_cid)
+        # Replaying a lost r25 response resolves through owner idempotency and
+        # cannot append history, rewrite cooldown, or dispatch the provider.
+        before_lost_response_replay = adapter.get_task(failed.task_cid)
         before_lost_response_history = (
-            adapter.task_revision_history_projection(successor.task_cid)
+            adapter.task_revision_history_projection(failed.task_cid)
         )
         before_lost_response_generation = client.load_generation()
         before_lost_response_cooldown = adapter._retry_cooldown_row(
-            successor.task_cid
+            failed.task_cid
         )
         assert before_lost_response_replay is not None
         assert before_lost_response_cooldown is not None
@@ -9008,17 +9701,17 @@ def test_typed_quack_claim_verification_r19_rearms_and_admits_r27_successor(
             r25_cooldown["revision"]
         )
         assert second_cooldown_calls == []
-        after_lost_response_replay = adapter.get_task(successor.task_cid)
+        after_lost_response_replay = adapter.get_task(failed.task_cid)
         assert after_lost_response_replay is not None
         assert after_lost_response_replay.to_dict() == (
             before_lost_response_replay.to_dict()
         )
         assert client.load_generation() == before_lost_response_generation
         assert adapter.task_revision_history_projection(
-            successor.task_cid
+            failed.task_cid
         ) == before_lost_response_history
         after_lost_response_cooldown = adapter._retry_cooldown_row(
-            successor.task_cid
+            failed.task_cid
         )
         assert after_lost_response_cooldown is not None
         assert json.loads(
@@ -9028,22 +9721,234 @@ def test_typed_quack_claim_verification_r19_rearms_and_admits_r27_successor(
         ) == lost_response_cooldown_projection
         assert provider_calls == [source.attempt_id]
 
-        promote_successor(
-            successor,
-            reservation_receipt=captured_successor["reservation_receipt"],
-        )
-        r27 = adapter.get_task(successor.task_cid)
-        assert r27 is not None and (r27.revision, r27.status) == (
-            27,
+        # Every transition below runs in a separately authenticated OS child.
+        # This proves the owner does not confuse a stable daemon client
+        # namespace with a stale process birth.  The children block in sleep,
+        # not a work loop, so they consume no meaningful CPU while inspected.
+        daemon.close()
+        daemon = None
+        adapter.close()
+        adapter = None
+        if client.attached:
+            client.close()
+        server.revoke_typed_client_grant(grant.grant_id)
+        grant_active = False
+
+        start_recovery_broker()
+
+        reserve_one, reserve_one_result = run_child("reserve", 1)
+        r26_projection = reserve_one_result["daemon_record"]
+        assert (r26_projection["revision"], r26_projection["status"]) == (
+            26,
             "in_progress",
         )
-        admission = r27.body["completion_receipt"]
-        assert admission["operation"] == "database_attempt_admitted"
-        assert admission["admitted_from_revision"] == 26
-        assert admission["attempt_execution_phase"] == ATTEMPT_PHASE_CLAIMED
-        assert admission["attempt_execution_revision"] == 1
+        r26_claim = r26_projection["body"]["completion_receipt"]
+        assert r26_claim["operation"] == "database_claim"
+        assert r26_claim["post_merge_completion_recovery_seed"] == successor_seed
+        r26_reservation_cid = content_identity(
+            {"typed_database_claim_reservation": r26_claim}
+        )
+        r26_process_attestation = dict(r26_claim["claim_process_attestation"])
+        assert r26_process_attestation["pid"] == reserve_one.pid
+        stop_child(reserve_one)
 
-        history = adapter.task_revision_history_projection(successor.task_cid)
+        recover_one, recover_one_result = run_child("recover", 2)
+        assert recover_one_result["dead_recoveries"]
+        r27_projection = recover_one_result["daemon_record"]
+        assert (r27_projection["revision"], r27_projection["status"]) == (
+            27,
+            "retrying",
+        ), owner_authorization_errors
+        r27_dead_receipt = r27_projection["body"]["completion_receipt"]
+        assert r27_dead_receipt["operation"] == TYPED_DATABASE_CLAIM_RECOVERY_OPERATION
+        assert r27_dead_receipt["recovered_from_revision"] == 26
+        assert r27_dead_receipt["recovered_claimed_from_revision"] == 25
+        assert r27_dead_receipt["recovered_reservation_cid"] == r26_reservation_cid
+        assert r27_dead_receipt["recovered_claim_process_attestation"] == (
+            r26_process_attestation
+        )
+        assert r27_dead_receipt["post_merge_completion_recovery_seed"] == (
+            successor_seed
+        )
+        stop_child(recover_one)
+
+        reserve_two, reserve_two_result = run_child("reserve", 3)
+        r28_projection = reserve_two_result["daemon_record"]
+        assert (r28_projection["revision"], r28_projection["status"]) == (
+            28,
+            "in_progress",
+        ), reserve_two_result.get("reserve_probe")
+        r28_claim = r28_projection["body"]["completion_receipt"]
+        assert r28_claim["post_merge_completion_recovery_seed"] == successor_seed
+        r28_reservation_cid = content_identity(
+            {"typed_database_claim_reservation": r28_claim}
+        )
+        r28_process_attestation = dict(r28_claim["claim_process_attestation"])
+        assert r28_process_attestation["pid"] == reserve_two.pid
+        stop_child(reserve_two)
+
+        recover_two, recover_two_result = run_child("recover", 4)
+        assert recover_two_result["dead_recoveries"]
+        r29_projection = recover_two_result["daemon_record"]
+        assert (r29_projection["revision"], r29_projection["status"]) == (
+            29,
+            "retrying",
+        )
+        r29_dead_receipt = r29_projection["body"]["completion_receipt"]
+        assert r29_dead_receipt["operation"] == TYPED_DATABASE_CLAIM_RECOVERY_OPERATION
+        assert r29_dead_receipt["recovered_from_revision"] == 28
+        assert r29_dead_receipt["recovered_claimed_from_revision"] == 27
+        assert r29_dead_receipt["recovered_reservation_cid"] == r28_reservation_cid
+        assert r29_dead_receipt["recovered_claim_process_attestation"] == (
+            r28_process_attestation
+        )
+        assert r29_dead_receipt["post_merge_completion_recovery_seed"] == (
+            successor_seed
+        )
+        stop_child(recover_two)
+
+        reserve_three, reserve_three_result = run_child("reserve", 5)
+        r30_projection = reserve_three_result["daemon_record"]
+        assert (r30_projection["revision"], r30_projection["status"]) == (
+            30,
+            "in_progress",
+        ), reserve_three_result.get("reserve_probe")
+        r30_claim = r30_projection["body"]["completion_receipt"]
+        assert r30_claim["post_merge_completion_recovery_seed"] == successor_seed
+        r30_reservation_cid = content_identity(
+            {"typed_database_claim_reservation": r30_claim}
+        )
+        r30_process_attestation = dict(r30_claim["claim_process_attestation"])
+        assert r30_process_attestation["pid"] == reserve_three.pid
+        stop_child(reserve_three)
+
+        recover_three, recover_three_result = run_child("recover", 6)
+        assert recover_three_result["dead_recoveries"]
+        r31_projection = recover_three_result["daemon_record"]
+        assert (r31_projection["revision"], r31_projection["status"]) == (
+            31,
+            "retrying",
+        )
+        r31_dead_receipt = r31_projection["body"]["completion_receipt"]
+        assert r31_dead_receipt["operation"] == TYPED_DATABASE_CLAIM_RECOVERY_OPERATION
+        assert r31_dead_receipt["recovered_from_revision"] == 30
+        assert r31_dead_receipt["recovered_claimed_from_revision"] == 29
+        assert r31_dead_receipt["recovered_reservation_cid"] == r30_reservation_cid
+        assert r31_dead_receipt["recovered_claim_process_attestation"] == (
+            r30_process_attestation
+        )
+        assert r31_dead_receipt["post_merge_completion_recovery_seed"] == (
+            successor_seed
+        )
+        stop_child(recover_three)
+
+        admitted_attempt: Mapping[str, Any] | None = None
+        if fourth_claim_dies:
+            reserve_four, reserve_four_result = run_child("reserve", 7)
+            r32_projection = reserve_four_result["daemon_record"]
+            assert (r32_projection["revision"], r32_projection["status"]) == (
+                32,
+                "in_progress",
+            ), reserve_four_result.get("reserve_probe")
+            r32_claim = r32_projection["body"]["completion_receipt"]
+            assert r32_claim["post_merge_completion_recovery_seed"] == successor_seed
+            r32_reservation_cid = content_identity(
+                {"typed_database_claim_reservation": r32_claim}
+            )
+            r32_process_attestation = dict(
+                r32_claim["claim_process_attestation"]
+            )
+            assert r32_process_attestation["pid"] == reserve_four.pid
+            stop_child(reserve_four)
+
+            quarantine_child, quarantine_result = run_child("recover", 8)
+            assert quarantine_result["dead_recoveries"]
+            r33_projection = quarantine_result["daemon_record"]
+            assert (r33_projection["revision"], r33_projection["status"]) == (
+                33,
+                "quarantined",
+            ), quarantine_result
+            terminal_receipt = r33_projection["body"]["completion_receipt"]
+            assert terminal_receipt["schema"] == (
+                POST_MERGE_COMPLETION_DEAD_CLAIM_NONCONVERGENCE_SCHEMA
+            )
+            assert terminal_receipt["operation"] == (
+                POST_MERGE_COMPLETION_DEAD_CLAIM_NONCONVERGENCE_OPERATION
+            )
+            assert terminal_receipt["reason"] == (
+                POST_MERGE_COMPLETION_DEAD_CLAIM_NONCONVERGENCE_REASON
+            )
+            assert terminal_receipt["source_task_revision"] == 32
+            assert terminal_receipt["recovery_count"] == (
+                POST_MERGE_COMPLETION_DEAD_CLAIM_RECOVERY_LIMIT
+            )
+            assert terminal_receipt["recovery_limit"] == (
+                POST_MERGE_COMPLETION_DEAD_CLAIM_RECOVERY_LIMIT
+            )
+            assert terminal_receipt["recovered_reservation_cid"] == (
+                r32_reservation_cid
+            )
+            assert terminal_receipt["recovered_claim_process_attestation"] == (
+                r32_process_attestation
+            )
+            assert terminal_receipt[
+                "post_merge_completion_recovery_seed"
+            ] == successor_seed
+            assert terminal_receipt["provider_dispatched"] is False
+            assert terminal_receipt["attempt_consumed"] is False
+            assert terminal_receipt["retry_suppressed"] is True
+            stop_child(quarantine_child)
+        else:
+            admitting_child, admitting_result = run_child("claim", 7)
+            admitted_attempt = admitting_result["daemon_attempt"]
+            r33_projection = admitting_result["daemon_record"]
+            assert (r33_projection["revision"], r33_projection["status"]) == (
+                33,
+                "in_progress",
+            )
+            assert admitted_attempt["attempt_number"] == failed.attempt_number + 4
+            assert admitted_attempt["body"][
+                "post_merge_completion_recovery_seed"
+            ] == successor_seed
+            stop_child(admitting_child)
+        bootstrap_broker.stop()
+        bootstrap_broker = None
+        bootstrap_listener = None
+
+        # Reattach only for read-side verification and replay after all three
+        # effect-free rotations have durably completed.
+        token, grant = server.issue_typed_client_grant_record(
+            client_id=client_id,
+            process_birth_id=identity.process_birth_id,
+            allowed_operations=daemon_required_owner_operations(),
+            allowed_command_operations=daemon_required_owner_command_operations(),
+            peer_pid=os.getpid(),
+        )
+        grant_active = True
+        monkeypatch.setenv(TYPED_STATE_OWNER_TOKEN_ENV, token)
+        client = QuackStateClient(
+            owner_id=client_id,
+            store_id=identity.store_id,
+            process_birth_id=identity.process_birth_id,
+        )
+        client.attach(identity.listen_uri, server_id=identity.server_id)
+        monkeypatch.delenv(TYPED_STATE_OWNER_TOKEN_ENV, raising=False)
+        adapter = TypedDatabaseTaskSource(client, execution_route_policy=route_policy)
+        credentials = _typed_bootstrap_credentials(
+            server=server,
+            identity=identity,
+            client_id=client_id,
+            token=token,
+            route_policy=route_policy,
+        )
+        daemon = open_lane()
+        daemon._merge_repo_root = repository
+        daemon._merge_target_branch = "main"
+        bridge = object.__new__(DatabasePortalExecutionBridge)
+        bridge.task_source = adapter
+        current = adapter.get_task(failed.task_cid)
+        assert current is not None
+        history = adapter.task_revision_history_projection(failed.task_cid)
         r26_entry = next(
             item for item in history["revisions"] if item["revision"] == 26
         )
@@ -9052,32 +9957,50 @@ def test_typed_quack_claim_verification_r19_rearms_and_admits_r27_successor(
             database_portal_bridge_module
             ._validated_post_merge_completion_claim_receipt(
                 r26_claim,
-                task_cid=successor.task_cid,
-                task_alias=successor.task_alias,
+                task_cid=failed.task_cid,
+                task_alias=failed.task_alias,
                 receipt_body=r26_entry["body"],
                 predecessor_receipt=r25_receipt,
             )
         )
         assert validated_r26_claim is not None
 
-        claim = bridge._post_merge_completion_claim_receipt(
-            attempt=successor,
-            record=r27,
-            status_receipt=admission,
-            seed=v2_seed,
-            recovery_control_revision=24,
-        )
-        assert claim is not None
-        assert claim["operation"] == "database_claim"
-        assert claim["claimed_from_revision"] == 25
-        assert claim["attempt_id"] == successor.attempt_id
-        assert claim["attempt_number"] == failed.attempt_number + 1
-        assert claim["post_merge_completion_recovery_seed"] == v2_seed
+        if fourth_claim_dies:
+            assert current.status == "quarantined"
+            assert current.revision == 33
+            assert current.body["completion_receipt"] == terminal_receipt
+        else:
+            assert admitted_attempt is not None
+            attempt_fields = {
+                name: value
+                for name, value in admitted_attempt.items()
+                if name not in {"schema", "interface"}
+            }
+            successor = DatabaseTaskAttempt(**attempt_fields)
+            assert (current.revision, current.status) == (33, "in_progress")
+            admission = current.body["completion_receipt"]
+            assert admission["operation"] == "database_attempt_admitted"
+            assert admission["admitted_from_revision"] == 32
+            assert admission["attempt_execution_phase"] == ATTEMPT_PHASE_CLAIMED
+            assert admission["attempt_execution_revision"] == 1
+            claim = bridge._post_merge_completion_claim_receipt(
+                attempt=successor,
+                record=current,
+                status_receipt=admission,
+                seed=successor_seed,
+                recovery_control_revision=24,
+            )
+            assert claim is not None
+            assert claim["operation"] == "database_claim"
+            assert claim["claimed_from_revision"] == 31
+            assert claim["attempt_id"] == successor.attempt_id
+            assert claim["attempt_number"] == failed.attempt_number + 4
+            assert claim["post_merge_completion_recovery_seed"] == successor_seed
         assert provider_calls == [source.attempt_id]
 
         revisions = history["revisions"]
-        suffix = revisions[18:27]
-        assert [item["revision"] for item in suffix] == list(range(19, 28))
+        suffix = revisions[18:33]
+        assert [item["revision"] for item in suffix] == list(range(19, 34))
         assert [item["status"] for item in suffix] == [
             "quarantined",
             "retrying",
@@ -9087,7 +10010,13 @@ def test_typed_quack_claim_verification_r19_rearms_and_admits_r27_successor(
             "blocked",
             "retrying",
             "in_progress",
+            "retrying",
             "in_progress",
+            "retrying",
+            "in_progress",
+            "retrying",
+            "in_progress",
+            "quarantined" if fourth_claim_dies else "in_progress",
         ]
         assert [
             item["body"]["completion_receipt"]["operation"] for item in suffix
@@ -9106,28 +10035,39 @@ def test_typed_quack_claim_verification_r19_rearms_and_admits_r27_successor(
             "database_portal_terminal_failure",
             "database_portal_post_merge_declared_output_recovery",
             "database_claim",
-            "database_attempt_admitted",
+            TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
+            "database_claim",
+            TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
+            "database_claim",
+            TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
+            "database_claim",
+            (
+                POST_MERGE_COMPLETION_DEAD_CLAIM_NONCONVERGENCE_OPERATION
+                if fourth_claim_dies
+                else "database_attempt_admitted"
+            ),
         ]
 
         # Replaying maintenance and bridge verification is read-only once the
         # successor is admitted: no revision, dispatch, or claim is duplicated.
-        before_replay = adapter.get_task(successor.task_cid)
+        before_replay = adapter.get_task(failed.task_cid)
         before_history = adapter.task_revision_history_projection(
-            successor.task_cid
+            failed.task_cid
         )
         assert daemon.reconcile_terminal_portal_failures() == []
-        assert bridge._post_merge_completion_claim_receipt(
-            attempt=successor,
-            record=r27,
-            status_receipt=admission,
-            seed=v2_seed,
-            recovery_control_revision=24,
-        ) == claim
-        after_replay = adapter.get_task(successor.task_cid)
+        if not fourth_claim_dies:
+            assert bridge._post_merge_completion_claim_receipt(
+                attempt=successor,
+                record=current,
+                status_receipt=admission,
+                seed=successor_seed,
+                recovery_control_revision=24,
+            ) == claim
+        after_replay = adapter.get_task(failed.task_cid)
         assert before_replay is not None and after_replay is not None
         assert after_replay.to_dict() == before_replay.to_dict()
         assert adapter.task_revision_history_projection(
-            successor.task_cid
+            failed.task_cid
         ) == before_history
         assert provider_calls == [source.attempt_id]
     finally:
@@ -9138,6 +10078,18 @@ def test_typed_quack_claim_verification_r19_rearms_and_admits_r27_successor(
             adapter.close()
         elif client.attached:
             client.close()
+        for child in recovery_children:
+            if child.poll() is None:
+                child.terminate()
+                try:
+                    child.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.wait(timeout=10)
+        if bootstrap_broker is not None:
+            bootstrap_broker.stop()
+        elif bootstrap_listener is not None:
+            bootstrap_listener.close()
         if grant_active and owner_running:
             server.revoke_typed_client_grant(grant.grant_id)
         if owner_running:

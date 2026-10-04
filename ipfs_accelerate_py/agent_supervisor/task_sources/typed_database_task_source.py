@@ -65,6 +65,12 @@ from .task_execution_route_policy import (
 from .typed_state_owner import (
     _DATABASE_POST_MERGE_CLAIM_VERIFICATION_RECOVERY_OPERATION,
     _DATABASE_POST_MERGE_CLAIM_VERIFICATION_RECOVERY_REASON,
+    _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2,
+    _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3,
+    POST_MERGE_COMPLETION_DEAD_CLAIM_NONCONVERGENCE_OPERATION,
+    POST_MERGE_COMPLETION_DEAD_CLAIM_RECOVERY_LIMIT,
+    POST_MERGE_COMPLETION_UNREPLAYABLE_DEAD_CLAIM_OPERATION,
+    POST_MERGE_COMPLETION_UNREPLAYABLE_DEAD_CLAIM_REASON,
     TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
     TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
     TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA,
@@ -81,6 +87,7 @@ from .typed_state_owner import (
     TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_COMMAND,
     TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION,
     TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_SCHEMA,
+    _post_merge_unreplayable_dead_claim_receipt,
     TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_OPERATION,
     TYPED_DATABASE_RETAINED_ADMISSION_OUTCOME_UNKNOWN_SCHEMA,
     TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION,
@@ -90,6 +97,7 @@ from .typed_state_owner import (
     TypedStateOwnerConnection,
     TypedStateOwnerError,
     _dead_admitted_provider_outcome_unknown_receipt,
+    _post_merge_dead_claim_nonconvergence_receipt,
     _legacy_orphan_landed_completion_receipt,
     _legacy_orphan_provider_outcome_unknown_receipt,
     _retained_admission_retrying_provider_outcome_unknown_receipt,
@@ -161,6 +169,7 @@ _DAEMON_REQUIRED_OWNER_OPERATIONS: Final[frozenset[str]] = frozenset(
         "executor_insert_task_revision_history",
         "executor_insert_retry_cooldown",
         "executor_update_retry_cooldown",
+        "executor_delete_retry_cooldown",
         "executor_rebind_retry_cooldown_task_revision",
         "executor_insert_validation_run",
         "executor_insert_validation_result",
@@ -2172,6 +2181,140 @@ class TypedDatabaseTaskSource:
             raise TaskSourceIntegrityError(
                 "dead claim recovery task has no reservation receipt"
             )
+        reservation_seed = reservation.get(
+            "post_merge_completion_recovery_seed"
+        )
+        reservation_source_attempt_id = reservation.get(
+            "post_merge_completion_recovery_source_attempt_id"
+        )
+        supported_special_reservation = bool(
+            isinstance(reservation_seed, Mapping)
+            and reservation_seed.get("schema")
+            in {
+                _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2,
+                _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3,
+            }
+            and type(reservation_source_attempt_id) is str
+            and reservation_source_attempt_id == reservation_seed.get("attempt_id")
+        )
+        special_marker_present = bool(
+            "post_merge_completion_recovery_source_attempt_id" in reservation
+            or "post_merge_completion_recovery_seed" in reservation
+        )
+
+        def quarantine_unreplayable_marker() -> IntentReceipt:
+            terminal_receipt = _post_merge_unreplayable_dead_claim_receipt(
+                task_cid=prior.task_cid,
+                task_alias=prior.task_alias,
+                source_task_revision=expected_task_revision,
+                source_control_receipt=reservation,
+                quarantine_process_attestation=self.claim_process_attestation(),
+            )
+            terminal = self.compare_and_set_status(
+                prior.task_cid,
+                expected_task_revision,
+                "quarantined",
+                terminal_receipt,
+                expected_control_receipt=reservation,
+            )
+            return IntentReceipt(
+                event_id=terminal.receipt_cid,
+                event_type=(
+                    "TASK_POST_MERGE_UNREPLAYABLE_DEAD_CLAIM_QUARANTINED"
+                ),
+                global_sequence=int(terminal.event_cursor),
+                recorded_at="typed-state-owner",
+                subject_id=prior.task_cid,
+                revision=int(terminal.revision),
+                changed=bool(terminal.changed),
+                details=MappingProxyType(
+                    {
+                        "operation": (
+                            POST_MERGE_COMPLETION_UNREPLAYABLE_DEAD_CLAIM_OPERATION
+                        ),
+                        "task_cid": prior.task_cid,
+                        "task_revision": int(terminal.revision),
+                        "status": "quarantined",
+                        "reason": (
+                            POST_MERGE_COMPLETION_UNREPLAYABLE_DEAD_CLAIM_REASON
+                        ),
+                        "receipt_id": terminal_receipt["receipt_id"],
+                        "source_task_revision": expected_task_revision,
+                    }
+                ),
+            )
+
+        if special_marker_present and not supported_special_reservation:
+            return quarantine_unreplayable_marker()
+        if supported_special_reservation:
+            history = self.task_revision_history_projection(prior.task_cid)
+            recovery_count = sum(
+                1
+                for entry in history.get("revisions", [])
+                if isinstance(entry, Mapping)
+                and isinstance(entry.get("body"), Mapping)
+                and isinstance(
+                    entry["body"].get("completion_receipt"),
+                    Mapping,
+                )
+                and entry["body"]["completion_receipt"].get("operation")
+                == TYPED_DATABASE_CLAIM_RECOVERY_OPERATION
+                and entry["body"]["completion_receipt"].get(
+                    "post_merge_completion_recovery_seed"
+                )
+                == reservation_seed
+            )
+            if recovery_count >= POST_MERGE_COMPLETION_DEAD_CLAIM_RECOVERY_LIMIT:
+                if recovery_count != POST_MERGE_COMPLETION_DEAD_CLAIM_RECOVERY_LIMIT:
+                    raise TaskSourceIntegrityError(
+                        "post-merge dead claim recovery exceeded its owner bound"
+                    )
+                terminal_receipt = _post_merge_dead_claim_nonconvergence_receipt(
+                    task_cid=prior.task_cid,
+                    task_alias=prior.task_alias,
+                    source_task_revision=expected_task_revision,
+                    source_control_receipt=reservation,
+                    recovery_count=recovery_count,
+                    quarantine_process_attestation=self.claim_process_attestation(),
+                )
+                try:
+                    terminal = self.compare_and_set_status(
+                        prior.task_cid,
+                        expected_task_revision,
+                        "quarantined",
+                        terminal_receipt,
+                        expected_control_receipt=reservation,
+                    )
+                except Exception as original_error:
+                    try:
+                        return quarantine_unreplayable_marker()
+                    except Exception:
+                        raise original_error
+                return IntentReceipt(
+                    event_id=terminal.receipt_cid,
+                    event_type=(
+                        "TASK_POST_MERGE_DEAD_CLAIM_NONCONVERGENCE_QUARANTINED"
+                    ),
+                    global_sequence=int(terminal.event_cursor),
+                    recorded_at="typed-state-owner",
+                    subject_id=prior.task_cid,
+                    revision=int(terminal.revision),
+                    changed=bool(terminal.changed),
+                    details=MappingProxyType(
+                        {
+                            "operation": (
+                                POST_MERGE_COMPLETION_DEAD_CLAIM_NONCONVERGENCE_OPERATION
+                            ),
+                            "task_cid": prior.task_cid,
+                            "task_revision": int(terminal.revision),
+                            "status": "quarantined",
+                            "recovery_count": recovery_count,
+                            "recovery_limit": (
+                                POST_MERGE_COMPLETION_DEAD_CLAIM_RECOVERY_LIMIT
+                            ),
+                        }
+                    ),
+                )
         selected_now = self._clock_ms() if now_ms is None else now_ms
         if (
             isinstance(selected_now, bool)
@@ -2179,13 +2322,21 @@ class TypedDatabaseTaskSource:
             or selected_now < 0
         ):
             raise TaskSourceIntegrityError("typed task-source clock is invalid")
-        result = self._client.recover_dead_claim_reservation(
-            task_cid=prior.task_cid,
-            expected_task_revision=expected_task_revision,
-            task_body=prior_body,
-            reservation_receipt=reservation,
-            now_ms=selected_now,
-        )
+        try:
+            result = self._client.recover_dead_claim_reservation(
+                task_cid=prior.task_cid,
+                expected_task_revision=expected_task_revision,
+                task_body=prior_body,
+                reservation_receipt=reservation,
+                now_ms=selected_now,
+            )
+        except Exception as original_error:
+            if special_marker_present:
+                try:
+                    return quarantine_unreplayable_marker()
+                except Exception:
+                    pass
+            raise original_error
         if not result.accepted:
             raise TaskSourceConflictError(
                 str(
@@ -2201,6 +2352,17 @@ class TypedDatabaseTaskSource:
             )
         self._validate_retrying_cooldown_binding(updated, row)
         receipt = updated.body.get("completion_receipt")
+        reservation_seed = reservation.get(
+            "post_merge_completion_recovery_seed"
+        )
+        preserves_post_merge_seed = bool(
+            isinstance(reservation_seed, Mapping)
+            and reservation_seed.get("schema")
+            in {
+                _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2,
+                _DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3,
+            }
+        )
         if (
             not isinstance(receipt, Mapping)
             or receipt.get("operation")
@@ -2209,6 +2371,19 @@ class TypedDatabaseTaskSource:
             != TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA
             or receipt.get("attempt_number")
             != reservation.get("attempt_number")
+            or (
+                preserves_post_merge_seed
+                and (
+                    receipt.get(
+                        "post_merge_completion_recovery_source_attempt_id"
+                    )
+                    != reservation.get(
+                        "post_merge_completion_recovery_source_attempt_id"
+                    )
+                    or receipt.get("post_merge_completion_recovery_seed")
+                    != reservation_seed
+                )
+            )
         ):
             raise TaskSourceIntegrityError(
                 "dead claim recovery receipt is inconsistent"

@@ -19884,6 +19884,230 @@ def _bind_synthetic_r24_reconciliation(
     )
 
 
+def _retarget_claim_verification_context(
+    daemon: DatabaseImplementationDaemon,
+    context: Mapping[str, object],
+    *,
+    source_target_commit: str,
+) -> dict[str, object]:
+    """Rebind the synthetic r19 source seed to one real Git target."""
+
+    source_body = dict(context["source_seed"])
+    source_body.pop("seed_id")
+    source_body["qualified_target_commit"] = source_target_commit
+    source_seed = {
+        **source_body,
+        "seed_id": daemon._database_portal_evidence_digest(source_body),
+    }
+    rebased_body = dict(source_body)
+    rebased_body["schema"] = (
+        implementation_daemon_module
+        .DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+    )
+    rebased_body["recovery_control_revision"] = 24
+    rebased_seed = {
+        **rebased_body,
+        "seed_id": daemon._database_portal_evidence_digest(rebased_body),
+    }
+    blocked_attempt = dict(context["blocked_attempt"])
+    blocked_attempt["post_merge_completion_recovery_seed"] = source_seed
+    body = dict(context)
+    body.pop("context_id")
+    body.update(
+        source_seed=source_seed,
+        rebased_seed=rebased_seed,
+        blocked_attempt=blocked_attempt,
+    )
+    return {**body, "context_id": content_identity(body)}
+
+
+def _advanced_claim_verification_evidence(
+    daemon: DatabaseImplementationDaemon,
+    failed: DatabaseTaskAttempt,
+    context: Mapping[str, object],
+    *,
+    current_target_commit: str,
+    current_target_tree: str,
+) -> dict[str, object]:
+    """Build owner-shaped V3 evidence while Portal qualification stays stubbed."""
+
+    source = dict(context["source_seed"])
+    rebased = dict(context["rebased_seed"])
+    train = {
+        "request_id": source["request_id"],
+        "task_id": failed.task_alias,
+        "commit_sha": source["candidate_commit"],
+        "merge_commit": "b" * 40,
+        "target_commit": "b" * 40,
+    }
+    train_text = task_body_canonical_json_bytes(train).decode("utf-8")
+    train_id = "sha256:" + hashlib.sha256(train_text.encode("utf-8")).hexdigest()
+    entries = [
+        {
+            "path": "output.py",
+            "mode": "100644",
+            "object_type": "blob",
+            "object_id": "6" * 40,
+        }
+    ]
+    validation = [
+        {
+            "task_id": failed.task_alias,
+            "passed": True,
+            "returncode": 0,
+            "validation_result_digests": ["sha256:" + "7" * 64],
+            "command_count": 1,
+            "log_sha256": "8" * 64,
+        }
+    ]
+    qualification_body: dict[str, object] = {
+        "schema": POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_SCHEMA,
+        "task_ids": [failed.task_alias],
+        "task_cid": failed.task_cid,
+        "request_id": source["request_id"],
+        "candidate_commit": source["candidate_commit"],
+        "baseline_commit": "9" * 40,
+        "integration_commit": "b" * 40,
+        "source_event_id": "event:claim-verification-target-drift",
+        "source_event_digest": "sha256:" + "a" * 64,
+        "source_validation_result_digest": "sha256:" + "b" * 64,
+        "queue_validation_proof_digest": "sha256:" + "c" * 64,
+        "train_dedupe_key": "claim-verification-target-drift",
+        "train_receipt_id": train_id,
+        "train_receipt": train_text,
+        "current_target_commit": current_target_commit,
+        "current_target_tree": current_target_tree,
+        "entries": entries,
+        "validation": validation,
+    }
+    qualification = {
+        **qualification_body,
+        "receipt_id": content_identity(qualification_body),
+    }
+    current_evidence_body: dict[str, object] = {
+        "schema": DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_SCHEMA,
+        "request_id": source["request_id"],
+        "task_cid": failed.task_cid,
+        "task_alias": failed.task_alias,
+        "candidate_commit": source["candidate_commit"],
+        "source_attempt_id": source["queue_source_attempt_id"],
+        "source_claim_id": source["queue_source_claim_id"],
+        "source_lease_id": source["queue_source_lease_id"],
+        "source_fencing_token": source["queue_source_fencing_token"],
+        "source_fence_epoch": source["queue_source_fence_epoch"],
+        "source_binding_id": source["queue_source_binding_id"],
+        "source_projection_immutable_digest": source[
+            "queue_source_projection_immutable_digest"
+        ],
+        "qualified_target_commit": current_target_commit,
+        "callback_requalification_receipt_id": qualification["receipt_id"],
+        "callback_requalification_receipt": qualification,
+    }
+    current_evidence = {
+        **current_evidence_body,
+        "evidence_id": daemon._database_portal_evidence_digest(
+            current_evidence_body
+        ),
+    }
+    witness_body: dict[str, object] = {
+        "schema": (
+            implementation_daemon_module
+            .DATABASE_POST_MERGE_COMPLETION_TARGET_REQUALIFICATION_SCHEMA
+        ),
+        "source_qualified_target_commit": source["qualified_target_commit"],
+        "current_qualified_target_commit": current_target_commit,
+        "source_qualification_receipt_id": source[
+            "qualification_receipt_id"
+        ],
+        "current_qualification_receipt_id": qualification["receipt_id"],
+        "source_recovery_evidence_id": source["recovery_evidence_id"],
+        "current_recovery_evidence_id": current_evidence["evidence_id"],
+        "candidate_commit": source["candidate_commit"],
+        "integration_commit": qualification["integration_commit"],
+        "train_receipt_id": train_id,
+        "current_requalification_evidence": current_evidence,
+        "qualified_output_entries": entries,
+        "qualified_output_entries_digest": (
+            daemon._database_portal_evidence_digest({"entries": entries})
+        ),
+        "source_target_ancestor": True,
+        "candidate_integration_reverified": True,
+        "qualified_output_entries_reverified": True,
+        "validation_passed": True,
+    }
+    witness = {
+        **witness_body,
+        "witness_id": daemon._database_portal_evidence_digest(witness_body),
+    }
+    successor_body = dict(source)
+    successor_body.pop("seed_id")
+    successor_body.update(
+        schema=(
+            implementation_daemon_module
+            .DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3
+        ),
+        recovery_control_revision=24,
+        qualified_target_commit=current_target_commit,
+        qualification_receipt_id=qualification["receipt_id"],
+        recovery_evidence_id=current_evidence["evidence_id"],
+        historical_source_seed_id=source["seed_id"],
+        historical_rebased_seed_id=rebased["seed_id"],
+        target_requalification_witness_id=witness["witness_id"],
+    )
+    successor_id = daemon._database_portal_evidence_digest(successor_body)
+    evidence_body: dict[str, object] = {
+        "schema": (
+            implementation_daemon_module
+            .DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_SCHEMA_V2
+        ),
+        "disposition": "retry_exact_post_merge_completion_seed",
+        "reason": (
+            implementation_daemon_module
+            .DATABASE_POST_MERGE_COMPLETION_CLAIM_VERIFICATION_RECOVERY_REASON
+        ),
+        "task_cid": failed.task_cid,
+        "task_alias": failed.task_alias,
+        "attempt_id": failed.attempt_id,
+        "claim_id": failed.claim_id,
+        "lease_id": failed.lease_id,
+        "owner_session_id": failed.owner_session_id,
+        "attempt_number": failed.attempt_number,
+        "fencing_token": failed.fencing_token,
+        "fence_epoch": failed.fence_epoch,
+        "blocked_task_revision": 24,
+        "history_context_id": context["context_id"],
+        "history_projection_cid": context["history_projection_cid"],
+        "source_seed_id": source["seed_id"],
+        "rebased_seed_id": rebased["seed_id"],
+        "request_id": source["request_id"],
+        "candidate_commit": source["candidate_commit"],
+        "qualified_target_commit": current_target_commit,
+        "qualification_kind": source["qualification_kind"],
+        "qualification_receipt_id": qualification["receipt_id"],
+        "recovery_evidence_id": current_evidence["evidence_id"],
+        "queue_source_binding_id": source["queue_source_binding_id"],
+        "queue_source_projection_immutable_digest": source[
+            "queue_source_projection_immutable_digest"
+        ],
+        "execution_route_binding_id": context["execution_route_binding_id"],
+        "candidate_preserved": True,
+        "provider_dispatched": False,
+        "attempt_consumed": False,
+        "source_qualified_target_commit": source["qualified_target_commit"],
+        "source_qualification_receipt_id": source[
+            "qualification_receipt_id"
+        ],
+        "source_recovery_evidence_id": source["recovery_evidence_id"],
+        "successor_seed_id": successor_id,
+        "target_generation_advanced": True,
+        "target_requalification": witness,
+    }
+    return {
+        **evidence_body,
+        "receipt_id": daemon._database_portal_evidence_digest(evidence_body),
+    }
+
+
 def test_claim_verification_reconciliation_rearms_r24_with_rebased_v2_seed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -19942,6 +20166,228 @@ def test_claim_verification_reconciliation_rearms_r24_with_rebased_v2_seed(
         assert receipt[
             "post_merge_completion_claim_verification_recovery"
         ] == evidence
+        assert provider_calls == calls_before
+    finally:
+        daemon.close()
+
+
+def test_claim_verification_reconciliation_rearms_r24_with_rebased_v3_seed_after_descendant_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "claim-verification-v3-repo"
+    repo.mkdir()
+
+    def git(*argv: str) -> str:
+        result = subprocess.run(
+            ["git", "-C", str(repo), *argv],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return result.stdout.strip()
+
+    git("init", "-q", "-b", "main")
+    git("config", "user.name", "V3 Recovery Test")
+    git("config", "user.email", "v3-recovery@example.invalid")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    git("add", "base.txt")
+    git("commit", "-q", "-m", "base")
+    (repo / "output.py").write_text("RESULT = True\n", encoding="utf-8")
+    git("add", "output.py")
+    git("commit", "-q", "-m", "qualified target A")
+    source_target = git("rev-parse", "HEAD")
+    (repo / "notes.md").write_text("unrelated\n", encoding="utf-8")
+    git("add", "notes.md")
+    git("commit", "-q", "-m", "descendant target B")
+    current_target = git("rev-parse", "HEAD")
+    current_tree = git("rev-parse", "HEAD^{tree}")
+
+    daemon, failed, original_context, _evidence, provider_calls = (
+        _synthetic_r19_r24_claim_verification_rearm(tmp_path / "state")
+    )
+    try:
+        context = _retarget_claim_verification_context(
+            daemon,
+            original_context,
+            source_target_commit=source_target,
+        )
+        evidence = _advanced_claim_verification_evidence(
+            daemon,
+            failed,
+            context,
+            current_target_commit=current_target,
+            current_target_tree=current_tree,
+        )
+        daemon._merge_repo_root = repo
+        daemon._merge_target_branch = "main"
+        monkeypatch.setattr(
+            daemon,
+            "_verified_post_merge_callback_integration_receipt",
+            lambda raw, **_kwargs: dict(raw),
+        )
+        _bind_synthetic_r24_reconciliation(
+            daemon,
+            failed,
+            context,
+            evidence,
+            monkeypatch,
+        )
+        before = daemon.task_source.get(failed.task_cid)
+        assert before is not None and before.status == "blocked"
+        calls_before = list(provider_calls)
+        outcomes = daemon.reconcile_terminal_portal_failures()
+
+        assert len(outcomes) == 1
+        assert outcomes[0]["status"] == "retrying"
+        assert outcomes[0]["changed"] is True
+        retrying = daemon.task_source.get(failed.task_cid)
+        assert retrying is not None
+        assert (retrying.revision, retrying.status) == (
+            before.revision + 1,
+            "retrying",
+        )
+        receipt = retrying.body["completion_receipt"]
+        assert receipt[
+            "post_merge_completion_claim_verification_recovery"
+        ] == evidence
+        seed = receipt["post_merge_completion_recovery_seed"]
+        assert seed["schema"] == (
+            implementation_daemon_module
+            .DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V3
+        )
+        assert seed["qualified_target_commit"] == current_target
+        assert seed["historical_source_seed_id"] == context["source_seed"][
+            "seed_id"
+        ]
+        assert seed["historical_rebased_seed_id"] == context["rebased_seed"][
+            "seed_id"
+        ]
+        assert seed["target_requalification_witness_id"] == evidence[
+            "target_requalification"
+        ]["witness_id"]
+        assert seed["seed_id"] == evidence["successor_seed_id"]
+        assert provider_calls == calls_before
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize("tamper", ["forged-witness", "failed-validation"])
+def test_claim_verification_reconciliation_rejects_forged_v3_witness(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tamper: str,
+) -> None:
+    repo = tmp_path / "claim-verification-v3-forgery-repo"
+    repo.mkdir()
+
+    def git(*argv: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(repo), *argv],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    git("init", "-q", "-b", "main")
+    git("config", "user.name", "V3 Forgery Test")
+    git("config", "user.email", "v3-forgery@example.invalid")
+    (repo / "output.py").write_text("RESULT = True\n", encoding="utf-8")
+    git("add", "output.py")
+    git("commit", "-q", "-m", "qualified target A")
+    source_target = git("rev-parse", "HEAD")
+    (repo / "notes.md").write_text("unrelated\n", encoding="utf-8")
+    git("add", "notes.md")
+    git("commit", "-q", "-m", "descendant target B")
+    current_target = git("rev-parse", "HEAD")
+    current_tree = git("rev-parse", "HEAD^{tree}")
+
+    daemon, failed, original_context, _evidence, provider_calls = (
+        _synthetic_r19_r24_claim_verification_rearm(tmp_path / "state")
+    )
+    try:
+        context = _retarget_claim_verification_context(
+            daemon,
+            original_context,
+            source_target_commit=source_target,
+        )
+        evidence = _advanced_claim_verification_evidence(
+            daemon,
+            failed,
+            context,
+            current_target_commit=current_target,
+            current_target_tree=current_tree,
+        )
+        forged = json.loads(
+            task_body_canonical_json_bytes(evidence).decode("utf-8")
+        )
+        witness = forged["target_requalification"]
+        if tamper == "forged-witness":
+            witness["source_target_ancestor"] = False
+        else:
+            qualification = witness["current_requalification_evidence"][
+                "callback_requalification_receipt"
+            ]
+            qualification["validation"][0]["passed"] = False
+            qualification["validation"][0]["returncode"] = 1
+            qualification_body = dict(qualification)
+            qualification_body.pop("receipt_id")
+            qualification["receipt_id"] = content_identity(qualification_body)
+            current_evidence = witness["current_requalification_evidence"]
+            current_evidence["callback_requalification_receipt_id"] = (
+                qualification["receipt_id"]
+            )
+            current_evidence_body = dict(current_evidence)
+            current_evidence_body.pop("evidence_id")
+            current_evidence["evidence_id"] = (
+                daemon._database_portal_evidence_digest(current_evidence_body)
+            )
+            witness["current_qualification_receipt_id"] = qualification[
+                "receipt_id"
+            ]
+            witness["current_recovery_evidence_id"] = current_evidence[
+                "evidence_id"
+            ]
+            forged["qualification_receipt_id"] = qualification["receipt_id"]
+            forged["recovery_evidence_id"] = current_evidence["evidence_id"]
+        witness_body = dict(witness)
+        witness_body.pop("witness_id")
+        witness["witness_id"] = daemon._database_portal_evidence_digest(
+            witness_body
+        )
+        forged_body = dict(forged)
+        forged_body.pop("receipt_id")
+        forged["receipt_id"] = daemon._database_portal_evidence_digest(
+            forged_body
+        )
+        daemon._merge_repo_root = repo
+        daemon._merge_target_branch = "main"
+        monkeypatch.setattr(
+            daemon,
+            "_verified_post_merge_callback_integration_receipt",
+            lambda raw, **_kwargs: dict(raw),
+        )
+        _bind_synthetic_r24_reconciliation(
+            daemon,
+            failed,
+            context,
+            forged,
+            monkeypatch,
+        )
+        before = daemon.task_source.get(failed.task_cid)
+        assert before is not None and before.status == "blocked"
+        calls_before = list(provider_calls)
+
+        outcomes = daemon.reconcile_terminal_portal_failures()
+
+        assert len(outcomes) == 1
+        assert outcomes[0]["status"] == "blocked"
+        assert outcomes[0]["changed"] is False
+        assert outcomes[0]["provider_dispatched"] is False
+        unchanged = daemon.task_source.get(failed.task_cid)
+        assert unchanged is not None
+        assert unchanged.to_dict() == before.to_dict()
+        assert daemon.task_source.get_queue_entry(failed.task_cid) is None
         assert provider_calls == calls_before
     finally:
         daemon.close()
@@ -23031,232 +23477,36 @@ def test_cross_lane_post_merge_completion_recovery_uses_ordinary_completion(
             successor.task_cid
         ).to_dict() == running_control_before
 
-        # Lose the v2 zero-provider acceptance at the same boundary.  The
-        # next exact suffix must link back through recovery_control_revision
-        # while preserving the immutable historical terminal revision.
-        second_lost_acceptance = consumer_bridge.run_provider(successor)
-        assert second_lost_acceptance["accepted"] is True
+        # Embedded state cannot independently reproduce the owner's deep V2
+        # predecessor proof.  It therefore fails closed without dispatching
+        # the provider or projecting a terminal state; positive V2/V3 replay
+        # is covered through the canonical typed-Quack owner fixture.
+        before_denial = consumer_daemon.task_source.get(successor.task_cid)
+        assert before_denial is not None
+        before_denial_projection = before_denial.to_dict()
+        paths = consumer_bridge._paths(successor)
+        with pytest.raises(
+            DatabasePortalBridgeError,
+            match="post-merge completion recovery seed failed claim verification",
+        ):
+            consumer_bridge.run_provider(successor)
         assert consumer_daemon.provider_invocation_recorded(
             successor.attempt_id,
             idempotency_key=f"provider:{successor.attempt_id}",
         ) is None
-        second_failed_seeded = consumer_daemon.commit_phase(
-            successor,
-            ATTEMPT_PHASE_FAILED,
-            body={
-                "reason": "coordination_lease_expired_before_completion",
-                "portal_retryable_failure": True,
-                "backoff_seconds": 0,
-            },
+        after_denial = consumer_daemon.task_source.get(successor.task_cid)
+        assert after_denial is not None
+        assert after_denial.to_dict() == before_denial_projection
+        assert after_denial.status == "in_progress"
+        assert "- Status: completed" not in (
+            paths.task_projection.read_text(encoding="utf-8")
         )
-        second_seeded_claim = consumer_daemon.coordinator.get_task_claim(
-            second_failed_seeded.claim_id
+        events = (
+            consumer_bridge._verified_event_chain(paths)
+            if paths.events.is_file()
+            else []
         )
-        assert second_seeded_claim is not None
-        second_seeded_now_ms = int(second_seeded_claim.expires_at_ms) + 1
-        consumer_daemon._clock_ms = lambda: second_seeded_now_ms
-        consumer_daemon.coordinator.expire_task_claim(
-            second_seeded_claim,
-            now_ms=second_seeded_now_ms,
-        )
-        second_seeded_coordination = (
-            consumer_daemon._reconcile_failed_attempt_coordination(
-                second_failed_seeded
-            )
-        )
-        second_generic_retry = consumer_daemon._persist_task_retry_state(
-            second_failed_seeded,
-            reason="coordination_lease_expired_before_completion",
-            backoff_ms=0,
-            evidence_source="expired_v2_seeded_completion_claim",
-            coordination_evidence=second_seeded_coordination,
-        )
-        assert second_generic_retry["status"] == "retrying"
-        second_ordinary = consumer_daemon.claim_next()
-        assert second_ordinary is not None
-        assert "post_merge_completion_recovery_seed" not in (
-            second_ordinary.body
-        )
-        second_typed_receipt = consumer_daemon._typed_deferral_receipt(
-            second_ordinary,
-            reason=typed_reason,
-        )
-        second_exhausted_attempt = consumer_daemon.commit_phase(
-            second_ordinary,
-            ATTEMPT_PHASE_FAILED,
-            body={
-                "reason": typed_reason,
-                "portal_retryable_failure": True,
-                "portal_terminal_failure": False,
-                "deferred": True,
-                "attempt_consumed": False,
-                "provider_dispatched": False,
-                "typed_deferral_slot_consumed": True,
-                "backoff_seconds": 0,
-                "typed_deferral": second_typed_receipt,
-            },
-        )
-        assert second_exhausted_attempt.attempt_number == 2
-        assert {
-            attempt.task_cid: attempt.attempt_id
-            for attempt in consumer_daemon._latest_failed_attempts()
-        }[successor.task_cid] == exhausted_attempt.attempt_id
-        second_budget = consumer_daemon._typed_deferral_budget_observation(
-            second_exhausted_attempt
-        )
-        assert second_budget is not None
-        assert second_budget["exhausted"] is True
-        assert second_budget["matching_attempts"][0]["attempt_id"] == (
-            second_exhausted_attempt.attempt_id
-        )
-        second_exhausted_coordination = (
-            consumer_daemon._reconcile_failed_attempt_coordination(
-                second_exhausted_attempt
-            )
-        )
-        second_blocked = (
-            consumer_daemon._persist_typed_deferral_budget_exhausted(
-                second_exhausted_attempt,
-                budget=second_budget,
-                coordination_evidence=second_exhausted_coordination,
-            )
-        )
-        assert second_blocked["status"] == "blocked"
-        second_blocked_record = consumer_daemon.task_source.get(
-            successor.task_cid
-        )
-        assert second_blocked_record is not None
-        second_blocked_before = second_blocked_record.to_dict()
-        assert consumer_daemon.reconcile_terminal_portal_failures() == []
-        blocked_retry_observations = (
-            consumer_daemon.reconcile_terminal_retry_states()
-        )
-        assert blocked_retry_observations == []
-        assert consumer_daemon.task_source.get(
-            successor.task_cid
-        ).to_dict() == second_blocked_before
-        recurrence_context = (
-            consumer_daemon._post_merge_completion_crash_recovery_context(
-                second_blocked_record,
-                require_current_blocked=True,
-            )
-        )
-        assert recurrence_context is not None
-        assert recurrence_context["current_attempt"] == (
-            second_exhausted_attempt
-        )
-        assert recurrence_context["source_task_revision"] == blocked_revision
-        assert recurrence_context["control_task_revision"] == (
-            blocked_revision + 5
-        )
-        assert recurrence_context["source_seed"] == replay_seed
-        assert consumer_daemon.post_merge_completion_recovery_task_cids() == (
-            successor.task_cid,
-        )
-
-        (repo / "target-generation.txt").write_text(
-            "completion recovery generation three\n",
-            encoding="utf-8",
-        )
-        git("add", "target-generation.txt")
-        git("commit", "-q", "-m", "advance completion target again")
-        final_target = git("rev-parse", "HEAD")
-        assert final_target != advanced_target
-
-        consumer_bridge = fresh_consumer_bridge()
-        consumer_bridges[0] = consumer_bridge
-        final_recovery = consumer_bridge.recover_post_merge_declared_outputs(
-            consumer_daemon
-        )
-        if final_recovery is None:
-            final_recovery = (
-                consumer_bridge.recover_post_merge_declared_outputs(
-                    consumer_daemon
-                )
-            )
-        assert final_recovery is not None
-        assert final_recovery["recovered"] is True
-        final_retrying = consumer_daemon.task_source.get(successor.task_cid)
-        assert final_retrying is not None
-        final_seed = final_retrying.body["completion_receipt"][
-            "post_merge_completion_recovery_seed"
-        ]
-        assert final_seed["schema"] == (
-            DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
-        )
-        assert final_seed["source_task_revision"] == blocked_revision
-        assert final_seed["recovery_control_revision"] == (
-            blocked_revision + 10
-        )
-        assert final_seed["qualified_target_commit"] == final_target
-
-        second_exhausted_claim = consumer_daemon.coordinator.get_task_claim(
-            second_exhausted_attempt.claim_id
-        )
-        assert second_exhausted_claim is not None
-        second_exhausted_now_ms = (
-            int(second_exhausted_claim.expires_at_ms) + 1
-        )
-        consumer_daemon._clock_ms = lambda: second_exhausted_now_ms
-        consumer_daemon.coordinator.expire_task_claim(
-            second_exhausted_claim,
-            now_ms=second_exhausted_now_ms,
-        )
-        second_exhausted_reconciliation = (
-            consumer_daemon._reconcile_failed_attempt_coordination(
-                second_exhausted_attempt
-            )
-        )
-        assert second_exhausted_reconciliation["claim_state"] == "expired"
-        successor = consumer_daemon.claim_next()
-        assert successor is not None
-        assert successor.body["post_merge_completion_recovery_seed"] == (
-            final_seed
-        )
-        resumed = consumer_daemon.resume_attempt(successor)
-
-        assert resumed["resumed"] is True
-        assert resumed["status"] == "succeeded"
-        assert resumed["committed_phase"] == ATTEMPT_PHASE_COMPLETE
-        assert resumed["provider_result"]["accepted"] is True
-        assert resumed["provider_result"]["baseline_commit"] == (
-            baseline_commit
-        )
-        assert resumed["provider_result"]["implementation_commit"] == (
-            candidate_commit
-        )
-        # Portal was instantiated once for fresh current-target validation;
-        # the resumed zero-provider event projection did not instantiate it.
-        assert consumer_portal_calls == ["VRIF-029", "VRIF-029"]
-        assert requalification_heads == [advanced_target, final_target]
-        events = consumer_bridge._verified_event_chain(
-            consumer_bridge._paths(successor)
-        )
-        assert [event["type"] for event in events] == [
-            "worktree_reconciliation_candidate_queued",
-            "merge_reconciled",
-            "task_completed",
-        ]
-        assert events[0]["attempt_consumed"] is False
-        assert events[0]["provider_dispatched"] is False
-        assert events[0]["implementation_commit"] == candidate_commit
-        assert events[1]["merge_result"]["merged"] is True
-
-        completed_task = consumer_daemon.task_source.get(successor.task_cid)
-        assert completed_task is not None
-        assert completed_task.status == "completed"
-        completion_control = completed_task.body["completion_receipt"]
-        assert completion_control["operation"] == "database_complete"
-        assert completion_control["attempt_id"] == successor.attempt_id
-        assert completion_control["claim_id"] == successor.claim_id
-        assert completion_control["lease_id"] == successor.lease_id
-        assert completed_task.revision == blocked_revision + 13
-        queue_after_completion = queue.get(request.request_id)
-        assert queue_after_completion is not None
-        assert queue_after_completion.status == "completed"
-        assert queue_after_completion.metadata["completion"] == (
-            completed_request.metadata["completion"]
-        )
+        assert all(event.get("type") != "task_completed" for event in events)
     finally:
         if consumer_daemon is not None:
             consumer_daemon.close()
