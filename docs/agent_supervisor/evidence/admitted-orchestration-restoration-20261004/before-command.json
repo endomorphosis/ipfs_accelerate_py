@@ -1,0 +1,45 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "-o",
+    "addopts=",
+    "test/integration/test_admitted_benchmark_runtime.py::test_signed_run_owns_orchestration_path_without_legacy_account_scan",
+    "--junitxml=/home/barberb/lift_coding/artifacts/admitted-orchestration-restoration-20261004/before.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "environment_overrides": {
+    "CUDA_VISIBLE_DEVICES": "",
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/admitted-orchestration-restoration-20261004/private-controls-state/before/seal.duckdb",
+    "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "/home/barberb/lift_coding/artifacts/admitted-orchestration-restoration-20261004/private-controls-state/before/keys.db",
+    "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": "/home/barberb/lift_coding/artifacts/admitted-orchestration-restoration-20261004/private-controls-state/before/scheduler.sqlite3",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_MAX_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "hidden_verifier_used": false,
+  "production_scheduler_ledger_mutated": false,
+  "provider_calls": 0,
+  "source_pins": {
+    "/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004/ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py": "3655923785cb99409171caaba8c523354f03dbe8d82b6deb45a7b46db8394633",
+    "/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py": "1267e7342a3eafc54a9c7e81252bc98fc849eebbc6594e81186a530a32ea0485",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/local_planning_qualification.py": "55d11cc41883ece427a1050237871b3c5ccd008c08b8e428527b0ffcca942b8c",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/benchmarks/agent_supervisor/container_coding/native_quack_qualification.py": "43d4ab90baa364014b6f4543a6aa2fa383aaba045612524336a4aa5474346e0e",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py": "c714d9c4c285635470c22a65226b8d59823b04a838f3d7d149c271c0fcc96d6e",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/ipfs_accelerate_py/agent_supervisor/entrypoints/isolated_benchmark_runtime.py": "3c31ecff80baf3cb96324041a721d23ffc597da9aaa4841833f16c5799097fcc",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/ipfs_accelerate_py/agent_supervisor/runtime/local_completion_bridge.py": "45da53b7321f7a475fd3be125dd337a52ad509f72e865ee3be8e5e3cf7cb3209",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py": "836aedb3de761d45429218e3296c87a743ad68174361e1e66b2959af9dda26a3",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py": "e59250cbbe89a1a78ca024d109f4afc719e9e4d3885e0ba3e67a02c81b3b993c",
+    "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002/test/integration/test_admitted_benchmark_runtime.py": "bb0b80fcccb2d555bd05e16d4c49ef404865f542f7a317c3ca8bde7e6bbc9f79"
+  }
+}

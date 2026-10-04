@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="7" time="41.890" timestamp="2026-10-04T06:33:59.313243+00:00" hostname="spark-b271"><testcase classname="tests.integration.logic.software_contracts.test_codebase_source_units_384" name="test_preparation_keeps_full_inventory_and_bounded_selection" time="0.902" /><testcase classname="tests.integration.logic.software_contracts.test_codebase_source_units_384" name="test_prepared_source_map_replay_refuses_tampering[target]" time="0.019" /><testcase classname="tests.integration.logic.software_contracts.test_codebase_source_units_384" name="test_prepared_source_map_replay_refuses_tampering[map]" time="0.019" /><testcase classname="tests.integration.logic.software_contracts.test_codebase_source_units_384" name="test_prepared_source_map_replay_refuses_tampering[head]" time="0.010" /><testcase classname="tests.integration.logic.software_contracts.test_codebase_source_units_384" name="test_prepared_source_map_replay_refuses_tampering[omit]" time="0.019" /><testcase classname="tests.integration.logic.software_contracts.test_codebase_source_units_384" name="test_prepared_source_map_replay_refuses_tampering[selection]" time="0.018" /><testcase classname="tests.integration.logic.software_contracts.test_codebase_source_units_384" name="test_actual_pinned_parent_units_defer_long_tokens_and_replay_without_models" time="40.258"><failure message="ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.LeaseTimeoutError: timed out waiting for a resource lease">tests/integration/logic/software_contracts/test_codebase_source_units_384.py:123: in test_actual_pinned_parent_units_defer_long_tokens_and_replay_without_models
+    cold=owner.infer_shared_parent_units(captured.index,captured.repo,**args)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py:270: in infer_shared_parent_units
+    observe();remaining()
+    ^^^^^^^^^
+ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py:240: in observe
+    index.observe_current(repository,expected_head=expected_head,parent_lease=lease,cancel_event=signal,
+ipfs_datasets_py/logic/software_contracts/codebase_ir.py:991: in observe_current
+    with acquire_codebase_resources(
+/usr/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+ipfs_datasets_py/logic/software_contracts/codebase_resources.py:75: in acquire_codebase_resources
+    lease = parent_lease.acquire_child(**request)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py:741: in acquire_child
+    return self._scheduler.acquire(
+ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py:1660: in acquire
+    raise error
+E   ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler.LeaseTimeoutError: timed out waiting for a resource lease</failure></testcase></testsuite></testsuites>

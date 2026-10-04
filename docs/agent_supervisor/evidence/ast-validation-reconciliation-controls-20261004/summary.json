@@ -1,0 +1,321 @@
+{
+  "schema": "ast-printability-reconciled-component-summary@2",
+  "base_source_heads": {
+    "accelerate": "d2de765bc5307cd728a9c9099759e812ee092381",
+    "datasets": "da853fa837b89a4ef01fa981127cfc446158371e"
+  },
+  "tested_uncommitted_overlays": [
+    "benchmarks/agent_supervisor/container_coding/terminal_resource_diagnostics.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_admission_observation.py",
+    "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py",
+    "test/integration/test_admitted_benchmark_runtime.py"
+  ],
+  "passing_unique_cases": 756,
+  "passing_groups": [
+    {
+      "group": "source-04",
+      "tests": 224,
+      "failure": 0,
+      "error": 0,
+      "skipped": 0,
+      "passed": 224,
+      "seconds": 186.41544343400165,
+      "source_pins_unchanged": true,
+      "records": [
+        {
+          "path": "groups/source-04/command.json",
+          "bytes": 20663,
+          "sha256": "a077770d3c86c2668616bbc153f67021c6e34ad9723c0880e5dbd58eda558a29"
+        },
+        {
+          "path": "groups/source-04/exit.json",
+          "bytes": 150,
+          "sha256": "97b0d02e5a51ab99c044cb9f3919b9b9d2c5f1630dd7b7e7e018349a158a7bbe"
+        },
+        {
+          "path": "groups/source-04/tests.xml",
+          "bytes": 42362,
+          "sha256": "4c639be0a2711e67f22ec667da3f3d4825b627325eb08e6b5191823d252a16fc"
+        }
+      ],
+      "retained_local_logs": [
+        {
+          "name": "source-04.stdout",
+          "sha256": "473aee9e46487486346906b91b201414e296fe36bf3648ccb78ea75b930486af",
+          "exported": false
+        },
+        {
+          "name": "source-04.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "exported": false
+        }
+      ]
+    },
+    {
+      "group": "integration-03",
+      "tests": 142,
+      "failure": 0,
+      "error": 0,
+      "skipped": 0,
+      "passed": 142,
+      "seconds": 65.44627261700225,
+      "source_pins_unchanged": true,
+      "records": [
+        {
+          "path": "groups/integration-03/command.json",
+          "bytes": 18875,
+          "sha256": "e7d362d94557d02f2f341bdff4ca3487371d1c6115858cf67283327b60ae577d"
+        },
+        {
+          "path": "groups/integration-03/exit.json",
+          "bytes": 149,
+          "sha256": "92ea71582003973fea63cc3b42f6dde3edc21fc057e89997dd96198664361115"
+        },
+        {
+          "path": "groups/integration-03/tests.xml",
+          "bytes": 25500,
+          "sha256": "7a96f8ed136b19a15598728967c9800a105987b5488881ac0436f4eedf131c79"
+        }
+      ],
+      "retained_local_logs": [
+        {
+          "name": "integration-03.stdout",
+          "sha256": "428c48d763c860798b86d47ed884f8c1904a7d097e40d25ac111ec0099982e3e",
+          "exported": false
+        },
+        {
+          "name": "integration-03.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "exported": false
+        }
+      ]
+    },
+    {
+      "group": "focused-03",
+      "tests": 153,
+      "failure": 0,
+      "error": 0,
+      "skipped": 0,
+      "passed": 153,
+      "seconds": 33.831742023001425,
+      "source_pins_unchanged": true,
+      "records": [
+        {
+          "path": "groups/focused-03/command.json",
+          "bytes": 17062,
+          "sha256": "eac7d6d007e32d0d321a496bf3c2999538067d26256bc43a80a5c228dc9e767f"
+        },
+        {
+          "path": "groups/focused-03/exit.json",
+          "bytes": 150,
+          "sha256": "fbe5b678d711777a4d5f8bf799e6e252ec7d2afbd9dcf2106f85dc503aa53dfc"
+        },
+        {
+          "path": "groups/focused-03/tests.xml",
+          "bytes": 26181,
+          "sha256": "f1d1d0389844a83531bc9517037b618eb3fe7625637a2c7ae692a6f9469fed08"
+        }
+      ],
+      "retained_local_logs": [
+        {
+          "name": "focused-03.stdout",
+          "sha256": "a4eea269eac701861b4442ac7d04b42f66eca6741ff91c5b5ab4d814f5f497be",
+          "exported": false
+        },
+        {
+          "name": "focused-03.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "exported": false
+        }
+      ]
+    },
+    {
+      "group": "ast-focused-03",
+      "tests": 237,
+      "failure": 0,
+      "error": 0,
+      "skipped": 0,
+      "passed": 237,
+      "seconds": 8.180903303000377,
+      "source_pins_unchanged": true,
+      "records": [
+        {
+          "path": "groups/ast-focused-03/command.json",
+          "bytes": 3681,
+          "sha256": "210d2737dc0077cb82275a923e67e093483544833aad765f27c4214ee1c0a8ae"
+        },
+        {
+          "path": "groups/ast-focused-03/exit.json",
+          "bytes": 1929,
+          "sha256": "6fa97af0f3e634ec56d18492a92ee134cee7d14c14304a8b1ff6920ee1defdfd"
+        },
+        {
+          "path": "groups/ast-focused-03/tests.xml",
+          "bytes": 41318,
+          "sha256": "76bb768e68f77032c1a9a12430a1021026134634a4652f377ed398f1a3630b2f"
+        }
+      ],
+      "retained_local_logs": [
+        {
+          "name": "focused-03-stdout.txt",
+          "sha256": "7562af8d9a958d17ecc3459a36f9424534e8d2d550e9a4f1c875f11c3c81c1d1",
+          "exported": false
+        },
+        {
+          "name": "focused-03-stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "exported": false
+        }
+      ]
+    }
+  ],
+  "native_attempts": [
+    {
+      "group": "native-01",
+      "tests": 7,
+      "failure": 1,
+      "error": 0,
+      "skipped": 0,
+      "passed": 6,
+      "seconds": 42.70331297098892,
+      "qualifying": false,
+      "source_heads": {
+        "accelerate": "33a7771fd4bc071317123786a3c96def0fcc3ce9",
+        "datasets": "5dd9f5fcd954b28d9a2d03536304cc72f3dbbbaa"
+      },
+      "source_pins_unchanged": true,
+      "records": [
+        {
+          "path": "groups/native-01/command.json",
+          "bytes": 16191,
+          "sha256": "c44fdd4bca66f0d594896b6e34c78560e883a54a4493fd51df2db9cb4d42cc45"
+        },
+        {
+          "path": "groups/native-01/exit.json",
+          "bytes": 147,
+          "sha256": "bca94b7dce5421242a83caf18c637d2cb4fd30c912ea96458ed4153f736403a5"
+        },
+        {
+          "path": "groups/native-01/tests.xml",
+          "bytes": 3108,
+          "sha256": "d2f39ffa0aa0a28ac12e789ada5955e42e98cc6f9c009274614054b9a63928e6"
+        }
+      ],
+      "retained_local_logs": [
+        {
+          "name": "native-01.stdout",
+          "sha256": "2039a2e726cd9fcef249ffdc977cb3a706cc5c5ecb8158a94abc019faa619030",
+          "exported": false
+        },
+        {
+          "name": "native-01.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "exported": false
+        }
+      ]
+    },
+    {
+      "group": "native-02",
+      "tests": 7,
+      "failure": 0,
+      "error": 7,
+      "skipped": 0,
+      "passed": 0,
+      "seconds": 32.02909210999496,
+      "qualifying": false,
+      "source_heads": {
+        "accelerate": "d2de765bc5307cd728a9c9099759e812ee092381",
+        "datasets": "da853fa837b89a4ef01fa981127cfc446158371e"
+      },
+      "source_pins_unchanged": true,
+      "records": [
+        {
+          "path": "groups/native-02/command.json",
+          "bytes": 16191,
+          "sha256": "fc3aba6b739e46f9e5322866ac60b4a406241398760d0ea57a6efd01fa46b3c7"
+        },
+        {
+          "path": "groups/native-02/exit.json",
+          "bytes": 147,
+          "sha256": "ea2e8a822c372ad8e9d5f9faf0bfa259cebc287244da6dd5c3b18e7c1bf99cc4"
+        },
+        {
+          "path": "groups/native-02/tests.xml",
+          "bytes": 9406,
+          "sha256": "bbada6e7108b51dae5607ea347dc553295b953e424914717ec02892dcccc8fed"
+        }
+      ],
+      "retained_local_logs": [
+        {
+          "name": "native-02.stdout",
+          "sha256": "327654d1e3e9c26d7b445d86ebe8f1860285328a7601427d9022068d06e98796",
+          "exported": false
+        },
+        {
+          "name": "native-02.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "exported": false
+        }
+      ]
+    }
+  ],
+  "preceding_consumer_failure": {
+    "group": "source-03",
+    "tests": 224,
+    "failure": 1,
+    "error": 0,
+    "skipped": 0,
+    "passed": 223,
+    "qualifying": false,
+    "source_pins_unchanged": true,
+    "records": [
+      {
+        "path": "groups/source-03-nonqualifying/command.json",
+        "bytes": 20663,
+        "sha256": "861185a8f4f83c1e99bf97b7279596157f1560b15382fabb5a88ab6b006bb0be"
+      },
+      {
+        "path": "groups/source-03-nonqualifying/exit.json",
+        "bytes": 150,
+        "sha256": "b7ac21979675fdf5850ec5a4ae40ab6e21919a763aee45599a72b1b215485295"
+      },
+      {
+        "path": "groups/source-03-nonqualifying/tests.xml",
+        "bytes": 44156,
+        "sha256": "e19c5e2fd9c3b0ee01d698c74038e1d2bb9555dcc8220fefcc841896c338a959"
+      }
+    ],
+    "reason": "authored PID fixture omitted required pid_task_limit; production validation correctly refused"
+  },
+  "native_control_family_qualified": false,
+  "all_native_cases_pass_claim": false,
+  "selected_native_case_population": 7,
+  "native_03_run": false,
+  "latest_independent_readiness": {
+    "status": "refused",
+    "memory_stall_percent": 18.83,
+    "host_memory_stall_percent": 14.41,
+    "available_memory_mb": 41100,
+    "memory_threshold_percent": 2.0,
+    "earlier_failure_causal_claim": false
+  },
+  "later_readiness_explains_prior_failures": false,
+  "isolated_orchestration_restoration_component_controls_passed": true,
+  "pid_refusal_diagnostic_component_controls_passed": true,
+  "docker_qualification_claimed": false,
+  "task_completion_claimed": false,
+  "benchmark_advantage_claimed": false,
+  "learned_proof_authority": false,
+  "performance_reference": {
+    "repository": "ipfs_datasets_py",
+    "commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+    "path": "docs/software_contracts/evidence/ast-text-printability-20261004/manifest.json",
+    "manifest_sha256": "b29c19d8f4423efd1316c1f28b64b4169eadc1c838c18a8a6d53230956a5ece9",
+    "duplicated_in_this_package": false,
+    "performance_remeasured_after_reconciliation": false
+  },
+  "private_stores_exported": false,
+  "model_weights_exported": false,
+  "credentials_exported": false,
+  "hidden_verifier_bodies_exported": false
+}

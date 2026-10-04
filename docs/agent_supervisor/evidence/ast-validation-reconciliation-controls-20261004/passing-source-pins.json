@@ -1,0 +1,832 @@
+{
+  "base_source_heads": {
+    "accelerate": "d2de765bc5307cd728a9c9099759e812ee092381",
+    "datasets": "da853fa837b89a4ef01fa981127cfc446158371e"
+  },
+  "pins": [
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/action_contrastive_decoder_training.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "18dc019d86cb96d670dd583ad16f6930a3b8a2ffd49a587f40d1ef6cb105b497",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/action_factorized_clause_decoder_experiment.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "81145f156594f28a0fc5ccec2d078a6188bb4af0a6fed826a69074116e1aa43e",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/authored_scalar_holdout.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "ff1a260df1466671a4c4625d396b79a20d6a830ce1050f14ffd7e1f93a522c00",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/clause_source_context.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "583422dbb63cdba96182090f5f76ef74698a69ab84fd42dc9e53bc4e09cbf5f6",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/clause_source_controls.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "6dc700c644645b24ede921248ae9d18a1de20da62c522e9ce3aa79abae1cd273",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/clause_source_decoder_experiment.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "004d432d16a2819eb46a95743d58c26443cc32737311ea8553c5019127f97603",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/contextual_generated_boundary_training.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "8a11d358dbc778782797b429e567eb431afb32d5068c0ac4ec77c6882f2735e2",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/decoder_distillation_experiment.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "76252ad397492762d4fc41915afd1051a93a11b74994655326fe56fa722e3b61",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/decoder_source_fidelity.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "1eb1f116e74f4f35804b6398de9b9224da1fb7b50f9ef96a718ce2977f819bac",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/dimension_native_decoder_experiment.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "477e09a731880cf4d93f322f81c3cd084f6d9be875eac5c3b912255cb0876874",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/dimension_source_inputs.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "c7f396d3323c40b5f4bab1aa42557e693b65cced58435e63c735f875c6d12206",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/fresh_scalar_source_inputs.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "7014e59ed0561718e082879ed1913d2442d7b4edeec59e26517aae6e1b847189",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/generated_field_training.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "f386cacfc5eecbe42c07f1f044b184b43d2c3bba37586d0b22afe92c5b3cf346",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/generated_scalar_observation.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "1f1d35f7fd90df0396f3222676f2ffd11f17e2b1b2c79c0a79f1600488eb08d8",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/generated_source_margin_training.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "77cc75cdc8dfd6e5fdfa95482d0d5ff5f05071e8d9e4228b086456a2606aa8d1",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/gte_multilingual_profile.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "d6d6069c98c7f15bd4c6f8a43bd9ffb72032e04a452419a3ff5d9bd95bb06e8e",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/legal_native_conditioning.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "48709fa4a521046ad753c87afe2732d17968e33d51ab2f43e4c4fefe2182059f",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/long_span_count_exposure_training.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "60bd706a8e3274fefb8fac657346570b4060d175d365ae4bf08fccb10e30bd49",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/long_span_source_value_training.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "8bbdb5f129a53d002d48b637485c5b8486f7910902b7a8ed704ea5cf86f48c23",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/ordered_clause_recurrent_decoder_experiment.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "56392a6f37f528350f18b68b56a016aad170530e93e95e660b6898f1c4cef3da",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/security/security_formalization_evaluation.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "ced8f0caadf26e81d3079305d93c8309d9fe7751a280709553d6017fc53104a9",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/source_embeddings_768.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "cd4b23b87fefe3f80f234a5c85d9e4823139d5040a5507813b88385ee601b4ea",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/source_embeddings_768_complete.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "6f781849dc87eba1b7f0929d292bb10f5724bb1ca5749989feb988cde243c609",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/source_field_readout_probe.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "8a9683b9569e4d7e4d65b904a28e377af83fdf5de9afc01f82b45ec4a25b71c4",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/formalization/autoencoder/source_function_units.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "01dd6ecf58e9e5956a4b1b6a3cdff8835bcd1db1c469c1361d24b2088470d86e",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/ir_core/canonical.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "fada8006144d36d28a9820c17340b7ca67c81bfadd61871ec2600e56224edf81",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/security_ir/bounded_header_checker.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "8e0464eeba44b5c90024612166d03ac3df524b579ab749ba300d7dfd77158a09",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/security_ir/code_header_derivation.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "143ba1f57ade2a6bc588f868ffe4b1e0f05a91701dd1a7a076cb37b6928d6429",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_contracts/ast_ir.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "a72626b9ce6b554a83d6d2d6fc8e5d0336b547ff49379337c7ffe0619ccbb95b",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_contracts/cache.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "a0b1711a5fa1f5b39b92d43748548c8802f632d1131ad9a64dd7f49df51bdd8c",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_contracts/codebase_header_context.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "5fe86ad2e79325ddbcbbe7eba1efe841853836367aee126853cd1cfda710c48e",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "67b879102d056aa03f2bed3faaccd0fe02ac763eb7a9c4005a0b59e6c31320f0",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "32705fefacab10f47fa25da723d7a8ee383f10a484dbbc9e0e6fbdf850d090dd",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_contracts/content.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "f21ad1d38a7bc5e2d7514696c943e6fedac439741252b39a677130dfa3e88fff",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "2432a160769b9beba678ea646f0204a29229bb9d4ec8111dc0ac23f8fd8da51e",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_contracts/python_frontend.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "baf1c1ec5e6a5f83a0eb640b988850264d35311cdcedc87d22cff610d05308df",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_contracts/schema_versions.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "fd7270cada2126606c00870dcb7291d27d7f8182e0e861d4f83905031668bbc6",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_index/models.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "b8f92371322ac941edf9e625f9fc7f94efa5facafd7020b805338790561adc9d",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/capsules.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "88dc4ea5826a67e43dbd24ed655c9d37eae02194625f73ddfcf3f4ff39aaf050",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/logic/software_contracts/semantic_state/merkle.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "a00bebc9cb2147716f58e8b9c0dd1e3d4032cfc298e1aea1253750585d84aaa8",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_embedding_runtime.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "ce80ed6294009e04580051e6eb06a817d74a8a56f04814ad0a698e3d27dd0d41",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "3655923785cb99409171caaba8c523354f03dbe8d82b6deb45a7b46db8394633",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "1267e7342a3eafc54a9c7e81252bc98fc849eebbc6594e81186a530a32ea0485",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "tests/integration/logic/software_contracts/test_codebase_current.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "e2be8ff62c476d1b3a6d4b6cac4b4eb3c1914b1cefb473d923f585f8f25101c1",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "tests/integration/logic/software_contracts/test_codebase_header_context.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "5fbf21890e80c0f24ec68223f8e03ecdfbe8532c65a57e660cacc12be3fd08de",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "tests/integration/logic/software_contracts/test_codebase_ir.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "9ee6adceb92f2bfe8686f2f25a255a767166cb620bacd012fbbe16a1f863b081",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "tests/integration/logic/software_contracts/test_codebase_observation_reconstruction.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "8c824e27c3a692c08468ac9cb3d0625723cdec2ff8fca1bc4ebcc0d1fb182d04",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "tests/integration/logic/software_contracts/test_duckdb_ast_authority.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "0178e4c087c072719f1b67deacb5f38559abf6e9c42ca291bf9ae205d956c7ca",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "tests/integration/logic/software_contracts/test_duckdb_ast_shadow.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "8de87424e1bfd7ab9ce81ce00fdb28a0621ed8d76eb3d3f4da73398ee73cf0e7",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "tests/unit/duckdb_control/test_codebase_catalog.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "567eeab7afcd419da9a862f8a26a620b354d4d52513d2c5a1a4f8b9fd8136702",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "tests/unit/logic/formalization/autoencoder/test_function_span_line_index.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "2b793364604b3eb728fc72b4f9304e6e54cb63ba85fe7a3fc2f7a6a5381be295",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "tests/unit/logic/software_contracts/semantic_index/test_identity_contract.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "50759074933a7df9adb810ee3aa39b5e329fc97d28e517915ae8e27ef5bbd03a",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "tests/unit/logic/software_contracts/semantic_index/test_models.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "e4d94ab959d7f8016eb7d6087f39c21f13f4ce284e5f91bd30e9b97462973e7f",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "tests/unit/logic/software_contracts/semantic_index/test_state_serialization_reuse.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "3978ebc502a32b9434567627f0f97c72148a2455e9583911bf49b03de2c35186",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "tests/unit/logic/software_contracts/test_ast_ir.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "df185b86f30a4daebac51b279e78e4d6a1f1c1642d63f0fd6178cc36fe22450c",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "tests/unit/logic/software_contracts/test_ast_text_validation.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "f094d61c653ab461c6ae12a5907a00f7717d1b1cc3c25064c3db1efca0d45553",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "tests/unit/logic/software_contracts/test_codebase_ir_untrusted_previous.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "d154762ee1e681b8329805ad8d3d8dbf2e226cb2a9033a0571833a9008f5a07c",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "tests/unit/logic/software_contracts/test_codebase_manifest_memo.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "c654f9abb7d793afed03084b214cec299aa6999cc7aa7b6b26d290aac988033b",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "tests/unit/logic/software_contracts/test_content_memo.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "38b7b1c4055dd6ad1018dd4c3e484c1924e5149adcd175dfe943361f5d670599",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "tests/unit/logic/software_contracts/test_duckdb_ast_batch_reads.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "a676508c41cfd79fb830b148ed34e3e07bccb3f3bb9d2cd5d6ab1d6805891d36",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "tests/unit/logic/software_contracts/test_duckdb_ast_store.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "dd2d5044f1d897c18a19309bc3a8cdb993d1c702f42c7a98435017a8fe9dee50",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "tests/unit/logic/software_contracts/test_duckdb_ast_store_persistence.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "9bcc781834d477ed4951f8e4483bc36ee5fff99308a810e3b1adac9c9cd1b28d",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "datasets",
+      "path": "tests/unit/logic/software_contracts/test_python_frontend.py",
+      "base_commit": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "matches_committed_blob": true,
+      "sha256": "a87147cb360f9ce81abeefc2faf48ea63464a99ea6bfd50b6e92db55612287f2",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "2c804bd7b41aa67651e4b5feea8ea3fe3cc02a81cc0d5be3755b9fd521819f21",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "f406e501fc445d5588463da07ff514f2d1e3cd9fdd36b26ce083f286fc04fb19",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "d6e0f4d8a6c9b0007d16540e7dcbfd4b81c3bbdc26d930bdb408abfc73c4a9fc",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "d36fabd6a3d85c8a007a5df82c2b3d598cc8253478716014279b34efc1fd5918",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "42c44b2fd65ea31e6d3e435959b80b07762247cbbb5caeeac55e5f039cee929e",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "d3b04f154287de1cbb64c706068887523682ca08148aeeaa8d03dd87a1a71d52",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "8735182d54a5de813641fa3e40252df68bbda08d4b4bdf63338c2f5fecd2096a",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_resource_diagnostics.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": false,
+      "sha256": "53c536aea948f8e060851bac00908d7e7fa84f121e5bc6ce695fc26954ba9e66",
+      "tested_overlay_path": "tested-overlays/benchmarks/agent_supervisor/container_coding/terminal_resource_diagnostics.py"
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_advice.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "9b8ccd46848be1a9f11924c7ba845c41ab2366323bfece10104faa2bf2948105",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_codex.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "ad8b81d7875740b97040ef5eadc4f76aa01d5f54ccfc4916e4c235e0fe0195f3",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_files.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "6d2b2a58594df8511170ba9f4301d37512aa58e774d3bcabb747ce4a84f14624",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_setup_cache_libraries.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "226e507598f03aa8e95c960eaadcc2260b9e5a356f7d4c7be8c922df857f158e",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "90824fb56140194d40c0fd2e2aae37bf8e549ac8b82e709416fada2040e17b91",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/test_cleanup_deadline.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "290cfc975c23a1c47a65df7e374386dcb35de983f816e780b77d533fa23b8ad6",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "6bb727c0ffc85e4d3d361eabdb270fe40acca111da31bc9004abd1ff283a1b59",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "27103c9b591e4c22a556739c5f1fa67aa95acc24e24c7c1442d8820c1bbd9195",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/test_source384_probe_lifetime.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "c57f9d8024fab08234a75ded75a7df94ac5a60dab922a88a772a584356939d19",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_admission_observation.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": false,
+      "sha256": "8b811116e0a52d62ce73cb07e8c9b1c4397094a320962c0872b84cffe723112e",
+      "tested_overlay_path": "tested-overlays/benchmarks/agent_supervisor/container_coding/test_terminal_admission_observation.py"
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "847a00f892119eb5c61dd4d61bd18bcd533dc85fab0c43e4ab6c74222010a04e",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_import_lifetime.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "d4cdb2baa3d7efc7d807b4efc48bdb9d4abaacce57d25b4cbb42f25f0b02da35",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "3c7ddc0871e81dedd790ef09f493f25942165f63d86657f6ca7b33309be118a2",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "f21470f8c25299e7795b6b11ccfc31ccd58058bb44a760eaa03aab427ea5ac14",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "8faefe24c2313c2054daf1c9c9a2ad77c5db15ea3f9d0690f0404e4ec34a8b12",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "38c9b5c7997488e35bc03f8f039278a68085b5cab9a97ee31e04a404ce4b7e01",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "ce0e2bbec41412fee5dc00a2c7dcddce648bc6f8e5e54b0ea268131be5b66327",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": false,
+      "sha256": "43c4bfb363862520b73b3c4a7e12f11d9db4aeda151d4034d6955295944177ae",
+      "tested_overlay_path": "tested-overlays/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py"
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning/intent_requirement_adapter.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "b2f839de50bf0cc294a5417e0e8cd9fa43a6977d16300fa0039a0b20b20f3555",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning/intent_symbolic_planning.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "607311669b62f0c579dda7c3997a035eab73fe33ac8ff3a7663a6726140b1ce4",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/prompt/intent_plan_coverage.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "6a9e1ca5943242e280d0c3e262a97e57db284fae80c4212713ac6e691ec68fa6",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/header_intent_applicability.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "f71c4d3bc6b91528bc473dffd82a2866ad755a47bf80619690397950cbf1d8d5",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "836aedb3de761d45429218e3296c87a743ad68174361e1e66b2959af9dda26a3",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source384_config.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "01f2377728f89eccc24958512ce6ab7f212b9ca9f5230945c59febb73da68270",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/source384_repository_context.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "c55cf9b2f10471251700762d698326d2d1403225f9f335935731f86e80848754",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/task_context_bundle.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "f88ea305c0d6992de34c9314779c047ba86e89a79053577ff2e18aa682de3f1a",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "dd78fd74af2cdce97bc2b92ea30a132f6f54a22354d760a337a312c956ba711e",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "test/api/semantic_state/test_semantic_capsule_selection.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "a443f5b5a29501550c940e3a8a497ae89bb13deb16a771c36aa33f08f003c445",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "test/api/semantic_state/test_semantic_context_refresh.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "83bf33c4a390356f8a96e09469840afd04dd72c6a6468016e8c4d2f46ae8ed96",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "test/api/semantic_state/test_semantic_context_runtime.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "5a81ae3f50e92ad65d89ecfae21d9152b926e629d66e8e41830150aa9106d6e2",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "test/api/semantic_state/test_semantic_worker_projection.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": true,
+      "sha256": "cd586cef2c438c623a1933b8536553969a0b2963a7922fcdd4109c259b55f969",
+      "tested_overlay_path": null
+    },
+    {
+      "repository": "accelerate",
+      "path": "test/integration/test_admitted_benchmark_runtime.py",
+      "base_commit": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "matches_committed_blob": false,
+      "sha256": "cc6f2fead1a547685bf42c87f0a07d183b5100a633e27bb25375687496ca83b1",
+      "tested_overlay_path": "tested-overlays/test/integration/test_admitted_benchmark_runtime.py"
+    }
+  ]
+}

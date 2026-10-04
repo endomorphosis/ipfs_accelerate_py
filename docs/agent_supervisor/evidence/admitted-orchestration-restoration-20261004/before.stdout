@@ -1,0 +1,48 @@
+
+test/integration/test_admitted_benchmark_runtime.py::test_signed_run_owns_orchestration_path_without_legacy_account_scan 
+-------------------------------- live log setup --------------------------------
+2026-10-04 06:43:48 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-777/test_signed_run_owns_orchestra0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 06:43:48 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-777/test_signed_run_owns_orchestra0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 06:43:49 [    INFO] capability admitted status=compatible fingerprint=sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b (quack_state_server.py:4353)
+2026-10-04 06:43:49 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-777/test_signed_run_owns_orchestra0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+2026-10-04 06:43:49 [    INFO] control-plane schema migration complete before ready (quack_state_server.py:4353)
+2026-10-04 06:43:49 [    INFO] state-owner ready server_id=server:45be3009-224d-4ea9-baa8-78e375ecd34b listen_uri=quack:127.0.0.1:37287 (quack_state_server.py:4353)
+2026-10-04 06:43:49 [    INFO] agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-777/test_signed_run_owns_orchestra0/launch/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file (duckdb_state.py:1857)
+FAILED                                                                   [100%]
+
+=================================== FAILURES ===================================
+_____ test_signed_run_owns_orchestration_path_without_legacy_account_scan ______
+
+admitted = (<ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime.AdmittedBenchmarkRuntime object at 0xe713...file', 'lifecycle_dir': '/tmp/pytest-of-barberb/pytest-777/test_signed_run_owns_orchestra0/task/state/lifecycle', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0xe71365696750>
+
+    def test_signed_run_owns_orchestration_path_without_legacy_account_scan(admitted, monkeypatch):
+        from ipfs_accelerate_py.agent_supervisor.task_sources import board_control_plane as board
+        runtime, _owner, _prepared = admitted
+        expected = str(runtime.state / 'orchestration')
+        environment = dict(runtime.profile.environment)
+>       assert environment[board.ORCHESTRATION_DIR_ENV] == expected
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR'
+
+test/integration/test_admitted_benchmark_runtime.py:91: KeyError
+---------------------------- Captured stderr setup -----------------------------
+2026-10-04 06:43:48,304 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-777/test_signed_run_owns_orchestra0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-04 06:43:48,966 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-777/test_signed_run_owns_orchestra0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-04 06:43:49,187 - ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server - INFO - capability admitted status=compatible fingerprint=sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b
+2026-10-04 06:43:49,189 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-777/test_signed_run_owns_orchestra0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+2026-10-04 06:43:49,292 - ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server - INFO - control-plane schema migration complete before ready
+2026-10-04 06:43:49,454 - ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server - INFO - state-owner ready server_id=server:45be3009-224d-4ea9-baa8-78e375ecd34b listen_uri=quack:127.0.0.1:37287
+2026-10-04 06:43:49,937 - ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state - INFO - agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-777/test_signed_run_owns_orchestra0/launch/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+------------------------------ Captured log setup ------------------------------
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-777/test_signed_run_owns_orchestra0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-777/test_signed_run_owns_orchestra0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server:quack_state_server.py:4353 capability admitted status=compatible fingerprint=sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-777/test_signed_run_owns_orchestra0/task/intent.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+INFO     ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server:quack_state_server.py:4353 control-plane schema migration complete before ready
+INFO     ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server:quack_state_server.py:4353 state-owner ready server_id=server:45be3009-224d-4ea9-baa8-78e375ecd34b listen_uri=quack:127.0.0.1:37287
+INFO     ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state:duckdb_state.py:1857 agent-supervisor quack prefer: no_live_owner database=/tmp/pytest-of-barberb/pytest-777/test_signed_run_owns_orchestra0/launch/state/coordination.duckdb reason=no_live_owner source=none rejections=status_missing; falling back to exclusive DuckDB file
+- generated xml file: /home/barberb/lift_coding/artifacts/admitted-orchestration-restoration-20261004/before.xml -
+=========================== short test summary info ============================
+FAILED test/integration/test_admitted_benchmark_runtime.py::test_signed_run_owns_orchestration_path_without_legacy_account_scan
+============================== 1 failed in 25.22s ==============================

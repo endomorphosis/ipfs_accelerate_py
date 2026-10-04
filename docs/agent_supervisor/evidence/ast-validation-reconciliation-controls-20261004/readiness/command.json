@@ -1,0 +1,29 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/ast-text-validation-native-20261004/inspect_admission_readiness_v2.py"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004",
+  "environment_overrides": {
+    "CODEBASE384_CHECKPOINT": "/home/barberb/lift_coding/artifacts/distributed384-20261001/run-01/security_ir/coordinator/checkpoints/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json",
+    "CODEBASE384_EMBEDDING_SNAPSHOT": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd",
+    "CUDA_VISIBLE_DEVICES": "",
+    "HF_HUB_OFFLINE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/ast-text-validation-native-20261004/private-controls-state/readiness-02/seal.duckdb",
+    "IPFS_DATASETS_PUBLIC_BOTTLE_FIXTURE": "/home/barberb/lift_coding/artifacts/source384-construction-lifetime-20261004/trial-01/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__WCih55g/agent/public-output-evidence/before/bottle.py",
+    "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "/home/barberb/lift_coding/artifacts/ast-text-validation-native-20261004/private-controls-state/readiness-02/keys.db",
+    "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": "/home/barberb/lift_coding/artifacts/ast-text-validation-native-20261004/private-controls-state/readiness-02/scheduler.sqlite3",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_MAX_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "script_sha256": "a42e10eeec9607c5453f015796e7d990a7cc37d64ed14f8332e6ba674df64145",
+  "projector_sha256": "58e56f0dc5f4d48c2f6175bed6a46561be41fc42aa8aee6edf14f7949d7eb94b"
+}

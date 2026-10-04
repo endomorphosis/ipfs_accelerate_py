@@ -1,0 +1,95 @@
+{
+  "files": [
+    {
+      "bytes": 2110,
+      "path": "README.md",
+      "sha256": "948cc7c0fd9d348b58236e0a80f1d52d3d4ce8c23f31a33df602b05313cc6a21"
+    },
+    {
+      "bytes": 3790,
+      "path": "after-command.json",
+      "sha256": "a4f95a419ea1cb9356696a959af13f5b4c6003fc21c21a909e124a16f1ebb9e2"
+    },
+    {
+      "bytes": 198,
+      "path": "after-exit.json",
+      "sha256": "a19be59ab294814adb399b1ce595e5c24c0c753206f568171207bddde4cd6659"
+    },
+    {
+      "bytes": 0,
+      "path": "after.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 12334,
+      "path": "after.stdout",
+      "sha256": "0ed32dabf8f96c01d1d6fd54b52f30c5e24501e01709923640ff3544f57bab3c"
+    },
+    {
+      "bytes": 1900,
+      "path": "after.xml",
+      "sha256": "a323d28c187013ef0f62d88a2a3232515a03ed6a59a2e6629a631ee44aac6be8"
+    },
+    {
+      "bytes": 3863,
+      "path": "before-command.json",
+      "sha256": "d81fbd675ec8c80894665e14f0d1ae3c51b9cc5f239cab673bd667436969c98d"
+    },
+    {
+      "bytes": 196,
+      "path": "before-exit.json",
+      "sha256": "5708bfe6b121c06c18d59557b6a1a28ff7fc1ee08a1fcdbeed5731f4a88b89e1"
+    },
+    {
+      "bytes": 0,
+      "path": "before.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 7416,
+      "path": "before.stdout",
+      "sha256": "8780098f745732eb29695e6c6af0d924fd7cfcdfb389124c1eea74c23fe94b85"
+    },
+    {
+      "bytes": 1436,
+      "path": "before.xml",
+      "sha256": "0a9ef284d94d4d0ecaa6b2a4049329426f0bd29ba9891423ff9ea0281b700c6c"
+    },
+    {
+      "bytes": 74376,
+      "path": "final/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py",
+      "sha256": "43c4bfb363862520b73b3c4a7e12f11d9db4aeda151d4034d6955295944177ae"
+    },
+    {
+      "bytes": 9503,
+      "path": "final/test/integration/test_admitted_benchmark_runtime.py",
+      "sha256": "cc6f2fead1a547685bf42c87f0a07d183b5100a633e27bb25375687496ca83b1"
+    },
+    {
+      "bytes": 1792,
+      "path": "observation.json",
+      "sha256": "d8815ced2b67cd96ccfe7bd9c1836de1ac593a033f121b2f93e8fc31530c3980"
+    },
+    {
+      "bytes": 73962,
+      "path": "original/ipfs_accelerate_py/agent_supervisor/entrypoints/admitted_benchmark_runtime.py",
+      "sha256": "c714d9c4c285635470c22a65226b8d59823b04a838f3d7d149c271c0fcc96d6e"
+    },
+    {
+      "bytes": 8640,
+      "path": "original/test/integration/test_admitted_benchmark_runtime.py",
+      "sha256": "bb0b80fcccb2d555bd05e16d4c49ef404865f542f7a317c3ca8bde7e6bbc9f79"
+    },
+    {
+      "bytes": 4223,
+      "path": "repair.diff",
+      "sha256": "8d63743c83504ce585e81e84662ac1f4e975ff93ef59a107dcce85b4217834d0"
+    },
+    {
+      "bytes": 3417,
+      "path": "run_controls.py",
+      "sha256": "00d91d228e4a332cff85bb9a7630f83cb9e4a72b86ace4c8be2e121d5f986ab5"
+    }
+  ],
+  "schema": "admitted-orchestration-restoration-package@1"
+}

@@ -443,13 +443,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             argv = (sys.executable, "-P", "-m",
                     "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor", *options)
             pythonpath = os.pathsep.join(filter(None, (str(Path(__file__).resolve().parents[3]), os.environ.get("PYTHONPATH", ""))))
-            from ..task_sources.board_control_plane import ORCHESTRATION_DIR_ENV
-            # The signed isolated run owns its derived catalogs. An unconfigured
-            # lookup migrates account-wide legacy databases before startup.
-            orchestration = runtime.state / "orchestration"
-            orchestration.mkdir(mode=0o700)
-            environment = (("PYTHONPATH", pythonpath), ("PYTHONUNBUFFERED", "1"),
-                           (ORCHESTRATION_DIR_ENV, str(orchestration)))
+            environment = (("PYTHONPATH", pythonpath), ("PYTHONUNBUFFERED", "1"))
             environment += tuple(_bounded_git_environment(candidate_runner=candidate_runner is not None).items())
             if candidate_runner is not None:
                 environment += ((CANDIDATE_RUNNER_ENV, json.dumps(candidate_runner, sort_keys=True)),)

@@ -949,3 +949,46 @@ The Source384 profile explicitly reports its original learned selection as
 post-STOP refresh budget alone cannot make that historical selection current.
 No completed token score or matched-arm advantage is claimed; the backlog
 remains **18/32 closed**.
+
+The subsequent AST validator change replaces Python character iteration with
+native string printability while retaining exact-string checks, allowed-empty
+behavior, normalization, error ordering and whitespace rules. The
+[scoped measurement and Unicode controls](https://github.com/endomorphosis/ipfs_datasets_py/blob/da853fa837b89a4ef01fa981127cfc446158371e/docs/software_contracts/evidence/ast-text-printability-20261004/README.md)
+live in the datasets repository. Three public Bottle pairs show median AST
+reconstruction CPU 12.77% lower and full SQL reconstruction CPU 2.36% lower;
+persistence is 1.04% slower. These small measurements establish no whole-index,
+Docker, or task speedup. The original measurements remain bound to their
+recorded source generation.
+
+Upstream source changed during publication. The local patches were rebased onto
+accelerate `00cd68b189bcdbab055d5b6def9b95dc0538fc0a` and datasets
+`ada682a45ddb76c88b73fb273abfdc8db0760a2a`, preserving the incoming work.
+The prior qualified archive and its two failed full trials remain immutable
+historical observations; their qualification does not transfer to this merged
+source. No fresh Docker archive or task was run after this reconciliation.
+
+The merge review found a removed run-local orchestration override. The
+[restoration](../../../docs/agent_supervisor/evidence/admitted-orchestration-restoration-20261004/README.md)
+keeps derived catalogs under the signed runtime's private directory rather than
+invoking the account-wide legacy migration. Its original missing-binding failure
+is retained; the repaired native module passes 11 controls, including inherited
+and absent ambient paths, START, heartbeat and STOP. Optional finite/inventory
+construction paths are preserved but not independently qualified by that module.
+The diagnostic consumer also accepts the scheduler's new `proof_pid_headroom`
+reason without altering admission policy or exporting private request labels.
+
+The [final combined controls](../../../docs/agent_supervisor/evidence/ast-validation-reconciliation-controls-20261004/README.md)
+pass 756 unique cases with zero failures/errors/skips: 224 supervisor cases,
+142 dataset integration cases, 153 semantic-state controls and 237 AST/frontend/
+storage controls. These include all Unicode code points in an embedded-string
+comparison. The earlier malformed PID fixture and failed live-model runs are
+retained separately. The seven live Source384 cases remain unqualified: one
+pre-reconciliation run failed after inference while waiting for a lease; the
+merged-source run encountered seven fixture errors before inference. A later
+independent admission request records 18.83% ancestor-cgroup memory pressure
+(host 14.41%) against the unchanged 2% threshold, despite sufficient headroom.
+That later request explains its own refusal, not the earlier test timeouts.
+No further model retry was launched. These component controls do not establish
+full-task success or a completed token score. The backlog remains 18/32 closed;
+current-source Docker qualification, accepted publication, Source384 successor
+refresh and matched-arm efficiency remain open.

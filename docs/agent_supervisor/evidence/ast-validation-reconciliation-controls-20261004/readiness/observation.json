@@ -1,0 +1,133 @@
+{
+  "admission": {
+    "causal_proof": false,
+    "complete_admission_decision": false,
+    "last_sample": {
+      "additional_request_memory_mb": 512,
+      "host": {
+        "available_memory_mb": 41818,
+        "cpu_stall_percent": 24.63,
+        "io_stall_percent": 1.21,
+        "memory_stall_percent": 8.88
+      },
+      "observed_at": 1791096227.2340922,
+      "pressure_sources": {
+        "omitted_cgroup_scopes": 0,
+        "omitted_maxima": {
+          "cpu": null,
+          "io": null,
+          "memory": null
+        },
+        "samples": [
+          {
+            "cpu": {
+              "avg10": 24.63,
+              "status": "observed"
+            },
+            "depth": null,
+            "io": {
+              "avg10": 1.21,
+              "status": "observed"
+            },
+            "memory": {
+              "avg10": 6.01,
+              "status": "observed"
+            },
+            "scope": "host"
+          },
+          {
+            "cpu": {
+              "avg10": 0.0,
+              "status": "observed"
+            },
+            "depth": 0,
+            "io": {
+              "avg10": 0.66,
+              "status": "observed"
+            },
+            "memory": {
+              "avg10": 0.0,
+              "status": "observed"
+            },
+            "scope": "cgroup"
+          },
+          {
+            "cpu": {
+              "avg10": 1.21,
+              "status": "observed"
+            },
+            "depth": 1,
+            "io": {
+              "avg10": 0.67,
+              "status": "observed"
+            },
+            "memory": {
+              "avg10": 8.56,
+              "status": "observed"
+            },
+            "scope": "cgroup"
+          },
+          {
+            "cpu": {
+              "avg10": 1.29,
+              "status": "observed"
+            },
+            "depth": 2,
+            "io": {
+              "avg10": 0.76,
+              "status": "observed"
+            },
+            "memory": {
+              "avg10": 8.88,
+              "status": "observed"
+            },
+            "scope": "cgroup"
+          },
+          {
+            "cpu": {
+              "avg10": 24.63,
+              "status": "observed"
+            },
+            "depth": 3,
+            "io": {
+              "avg10": 1.21,
+              "status": "observed"
+            },
+            "memory": {
+              "avg10": 6.01,
+              "status": "observed"
+            },
+            "scope": "cgroup"
+          }
+        ],
+        "schema": "proof-pressure-sources@1"
+      },
+      "reason": "proof_memory_stall",
+      "reserved_root_memory_mb": 0,
+      "thresholds": {
+        "cpu_stall_percent": 50.0,
+        "io_stall_percent": 10.0,
+        "memory_headroom_mb": 24922,
+        "memory_stall_percent": 2.0
+      }
+    },
+    "observation_boundary": "request_primary_gate",
+    "primary_gate": {
+      "backoff_until": null,
+      "observed_at": 1791096227.2340922,
+      "reason": "proof_memory_stall",
+      "status": "refused"
+    },
+    "schema": "terminal-admission-failure-observation@1",
+    "status": "observed",
+    "terminal": "timeout"
+  },
+  "error_type": "LeaseTimeoutError",
+  "prior_failure_causal_claim": false,
+  "production_ledger_mutated": false,
+  "provider_calls": 0,
+  "schema": "isolated-current-admission-readiness@1",
+  "seconds": 0.024440235007205047,
+  "status": "refused",
+  "training_steps": 0
+}

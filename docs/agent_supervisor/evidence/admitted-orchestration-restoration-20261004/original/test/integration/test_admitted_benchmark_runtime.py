@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import time
 from dataclasses import replace
 
@@ -18,7 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_polic
 
 
 @pytest.fixture
-def admitted(tmp_path, monkeypatch, request):
+def admitted(tmp_path, monkeypatch):
     monkeypatch.setattr(profile_authority, '_LIFECYCLE_REGISTRY_ROOT_OVERRIDE', tmp_path / 'account')
     monkeypatch.setenv('IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR', str(tmp_path / 'ambient-unrelated-state'))
     prepared = prepare_local_planning_qualification(tmp_path / 'task')
@@ -35,20 +34,12 @@ def admitted(tmp_path, monkeypatch, request):
         }], output=Path(prepared['repository']) / '.runtime/context.json')
         worktrees = tmp_path / 'allocated-worktrees'
         worktrees.mkdir(mode=0o750)
-        from ipfs_accelerate_py.agent_supervisor.task_sources import board_control_plane as board
-        if getattr(request, 'param', 'configured') == 'unset':
-            monkeypatch.delenv(board.ORCHESTRATION_DIR_ENV, raising=False)
-        parent_orchestration = os.environ.get(board.ORCHESTRATION_DIR_ENV)
-        def forbidden_account_scan():
-            raise AssertionError('isolated runtime construction must not migrate account catalogs')
-        monkeypatch.setattr(board, 'adopt_legacy_platform_databases', forbidden_account_scan)
         runtime = AdmittedBenchmarkRuntime.create(
             tmp_path / 'launch', admission=prepared['admission'], server=owner.server,
             source=owner.source, context_bundle=bundle, timeout_ms=20_000,
             worker_worktree_root=worktrees,
         )
         try:
-            assert os.environ.get(board.ORCHESTRATION_DIR_ENV) == parent_orchestration
             yield runtime, owner, prepared
         finally:
             if runtime.process.snapshot(runtime.profile).members:
@@ -92,15 +83,12 @@ def test_actual_native_owner_child_start_heartbeat_and_stop(admitted):
     assert owner.source.get_task(prepared['task_cid']) == original
 
 
-@pytest.mark.parametrize('admitted', ['configured', 'unset'], indirect=True,
-                         ids=['ambient-override', 'account-default'])
 def test_signed_run_owns_orchestration_path_without_legacy_account_scan(admitted, monkeypatch):
     from ipfs_accelerate_py.agent_supervisor.task_sources import board_control_plane as board
     runtime, _owner, _prepared = admitted
     expected = str(runtime.state / 'orchestration')
     environment = dict(runtime.profile.environment)
     assert environment[board.ORCHESTRATION_DIR_ENV] == expected
-    assert expected != os.environ.get(board.ORCHESTRATION_DIR_ENV)
     assert dict(runtime.manifest['environment'])[board.ORCHESTRATION_DIR_ENV] == expected
     assert (runtime.state / 'orchestration').stat().st_mode & 0o777 == 0o700
     monkeypatch.setenv(board.ORCHESTRATION_DIR_ENV, environment[board.ORCHESTRATION_DIR_ENV])

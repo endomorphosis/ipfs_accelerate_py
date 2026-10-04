@@ -1,0 +1,33 @@
+{
+  "schema": "source-reconciliation-observation@1",
+  "observed_at": "2026-10-04T06:38:28.422799+00:00",
+  "repositories": {
+    "source": {
+      "prior_base": "e80fe6a59cacf4bb61386f0823cbd8545274173b",
+      "local_before_rebase": "33a7771fd4bc071317123786a3c96def0fcc3ce9",
+      "reconciled": "d2de765bc5307cd728a9c9099759e812ee092381",
+      "upstream": "00cd68b189bcdbab055d5b6def9b95dc0538fc0a",
+      "upstream_changed_path_count": 226,
+      "upstream_preserved": true
+    },
+    "datasets": {
+      "prior_base": "28b4a43c04e89c889b8fce7910e54fb8f67b05ff",
+      "local_before_rebase": "5dd9f5fcd954b28d9a2d03536304cc72f3dbbbaa",
+      "reconciled": "da853fa837b89a4ef01fa981127cfc446158371e",
+      "upstream": "ada682a45ddb76c88b73fb273abfdc8db0760a2a",
+      "upstream_changed_path_count": 1087,
+      "upstream_preserved": true
+    },
+    "lift": {
+      "prior_base": "b5ff6a75fd7bd8f10a1b78582549fc13d4e995d4",
+      "local_before_rebase": null,
+      "reconciled": "996e5248e5e35800ca3729f49b465a0f249a4bcb",
+      "upstream": "996e5248e5e35800ca3729f49b465a0f249a4bcb",
+      "upstream_changed_path_count": 548,
+      "upstream_preserved": true
+    }
+  },
+  "native_scaffolding_used": false,
+  "prior_runtime_delta_declaration_valid_after_reconciliation": false,
+  "reason": "Upstream includes additional runtime changes; do not build or launch the pre-reconciliation one-file archive declaration. Reconciled source requires a new complete archive delta audit and ordinary qualification."
+}

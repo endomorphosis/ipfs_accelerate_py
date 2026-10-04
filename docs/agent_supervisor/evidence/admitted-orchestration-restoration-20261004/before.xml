@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="25.194" timestamp="2026-10-04T06:43:25.291485+00:00" hostname="spark-b271"><testcase classname="integration.test_admitted_benchmark_runtime" name="test_signed_run_owns_orchestration_path_without_legacy_account_scan" time="2.178"><failure message="KeyError: 'IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR'">admitted = (&lt;ipfs_accelerate_py.agent_supervisor.entrypoints.admitted_benchmark_runtime.AdmittedBenchmarkRuntime object at 0xe713...file', 'lifecycle_dir': '/tmp/pytest-of-barberb/pytest-777/test_signed_run_owns_orchestra0/task/state/lifecycle', ...})
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0xe71365696750&gt;
+
+    def test_signed_run_owns_orchestration_path_without_legacy_account_scan(admitted, monkeypatch):
+        from ipfs_accelerate_py.agent_supervisor.task_sources import board_control_plane as board
+        runtime, _owner, _prepared = admitted
+        expected = str(runtime.state / 'orchestration')
+        environment = dict(runtime.profile.environment)
+&gt;       assert environment[board.ORCHESTRATION_DIR_ENV] == expected
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR'
+
+test/integration/test_admitted_benchmark_runtime.py:91: KeyError</failure></testcase></testsuite></testsuites>

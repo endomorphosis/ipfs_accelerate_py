@@ -1,0 +1,26 @@
+{
+  "schema": "ast-printability-reconciled-controls@1",
+  "source_heads": {
+    "datasets": "da853fa837b89a4ef01fa981127cfc446158371e",
+    "accelerate": "d2de765bc5307cd728a9c9099759e812ee092381"
+  },
+  "tests": 237,
+  "failures": 0,
+  "errors": 0,
+  "skips": 0,
+  "same_test_population_as_focused_01": true,
+  "source_pins_unchanged": true,
+  "source_heads_unchanged": true,
+  "wall_seconds": 8.180903303000377,
+  "source_snapshots": "/home/barberb/lift_coding/artifacts/ast-text-printability-20261004/focused-03-sources",
+  "previous_sealed_package_mutated": false,
+  "new_performance_measurement": false,
+  "private_stores_exported": false,
+  "records": {
+    "focused-03-command.json": "210d2737dc0077cb82275a923e67e093483544833aad765f27c4214ee1c0a8ae",
+    "focused-03-exit.json": "6fa97af0f3e634ec56d18492a92ee134cee7d14c14304a8b1ff6920ee1defdfd",
+    "focused-03.xml": "76bb768e68f77032c1a9a12430a1021026134634a4652f377ed398f1a3630b2f",
+    "focused-03-stdout.txt": "7562af8d9a958d17ecc3459a36f9424534e8d2d550e9a4f1c875f11c3c81c1d1",
+    "focused-03-stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

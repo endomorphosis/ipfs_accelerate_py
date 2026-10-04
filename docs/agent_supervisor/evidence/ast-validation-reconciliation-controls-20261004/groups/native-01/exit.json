@@ -1,0 +1,9 @@
+{
+  "errors": 0,
+  "failed": 1,
+  "returncode": 1,
+  "seconds": 42.70331297098892,
+  "skipped": 0,
+  "source_pins_unchanged": true,
+  "tests": 7
+}

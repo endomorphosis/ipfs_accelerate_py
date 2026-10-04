@@ -1,0 +1,39 @@
+{
+  "Docker_or_benchmark_runs": 0,
+  "after": {
+    "counts": {
+      "errors": 0,
+      "executions": 11,
+      "failed": 0,
+      "passed": 11,
+      "skipped": 0
+    },
+    "returncode": 0,
+    "seconds": 36.486457940001856,
+    "source_pins_unchanged": true
+  },
+  "base_source_revision": "d2de765bc5307cd728a9c9099759e812ee092381",
+  "before": {
+    "failed": 1,
+    "message": "KeyError: 'IPFS_ACCELERATE_AGENT_ORCHESTRATION_DIR'",
+    "passed": 0,
+    "qualifying": false,
+    "skipped": 0,
+    "status": "expected_regression_failure"
+  },
+  "consumed_pin_count": 10,
+  "finite_inventory_review": "No closed environment allowlist was found in finite_repository_execution, codebase_inventory_execution or finite_proof_query_execution; their scope bindings remain unchanged. Their optional execution branches were not separately run by this focused module.",
+  "hidden_verifier_bodies_read": false,
+  "private_stores_exported": false,
+  "production_scope": "Restore the per-run private orchestration directory and signed child environment in shared _create; preserve finite/inventory scope branches.",
+  "production_threshold_or_deadline_changes": false,
+  "provider_calls": 0,
+  "schema": "admitted-orchestration-restoration-evidence@1",
+  "source_pins_match_final_snapshots_and_current_at_sealing": true,
+  "test_scope": "11 integration executions: native owner child START/heartbeat/STOP, ambient and unset orchestration roots, launch-environment tamper, foreign-request and stale-lease refusal, changed-context refusal and bounded configuration.",
+  "upstream_review_external": {
+    "path": "artifacts/upstream-overlap-review-20261004/audit.json",
+    "sha256": "d5a46da5842f25366b1679717674d06de2cffb6ef1644af2de9ca112ea05a978"
+  },
+  "whole_system_qualification_claimed": false
+}
