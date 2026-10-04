@@ -1,0 +1,38 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "tests/integration/logic/software_contracts/test_codebase_observation_reconstruction.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/ast-observation-reconstruction-20261004/focused-01.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004",
+  "environment_overrides": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "NUMEXPR_MAX_THREADS": "1",
+    "CUDA_VISIBLE_DEVICES": "",
+    "TOKENIZERS_PARALLELISM": "false",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/ast-observation-reconstruction-20261004/private/focused-01/seals.duckdb",
+    "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "/home/barberb/lift_coding/artifacts/ast-observation-reconstruction-20261004/private/focused-01/keys.db"
+  },
+  "source_pins": {
+    "tests/integration/logic/software_contracts/test_codebase_observation_reconstruction.py": "bb98be1a54bab952c5acaedaba87ac563b67960b13ce4fc825a17530e1d42555",
+    "ipfs_datasets_py/logic/software_contracts/codebase_ir.py": "609dff3d9c642381694310469acd7ea9f6e2c45cacdb85d779234523c18c6011",
+    "ipfs_datasets_py/logic/software_contracts/ast_ir.py": "1461edb7c39f2adc89a70e54decfa291ccceafc50ed23011fbdeea5acb4c8b91",
+    "ipfs_datasets_py/logic/software_contracts/cache.py": "a0b1711a5fa1f5b39b92d43748548c8802f632d1131ad9a64dd7f49df51bdd8c",
+    "ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py": "2432a160769b9beba678ea646f0204a29229bb9d4ec8111dc0ac23f8fd8da51e",
+    "ipfs_datasets_py/logic/software_contracts/schema_versions.py": "fd7270cada2126606c00870dcb7291d27d7f8182e0e861d4f83905031668bbc6",
+    "ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py": "9e5895d76e7b125926665967faa7e619a7288e4961b695426e67fb846d1d5b20",
+    "ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py": "418675922a06b0645bd065a0936aa869142f1fa433af1a564acf4d221451a3dd",
+    "tests/integration/logic/software_contracts/test_codebase_current.py": "e2be8ff62c476d1b3a6d4b6cac4b4eb3c1914b1cefb473d923f585f8f25101c1"
+  }
+}

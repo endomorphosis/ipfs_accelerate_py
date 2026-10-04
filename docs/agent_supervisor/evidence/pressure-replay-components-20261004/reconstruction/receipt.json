@@ -1,0 +1,64 @@
+{
+  "status": "qualified_host_component_only",
+  "test_result": {
+    "tests": 18,
+    "passed": 18,
+    "failed": 0,
+    "skipped": 0,
+    "pytest_seconds": 8.746
+  },
+  "owner_sha256": "67b879102d056aa03f2bed3faaccd0fe02ac763eb7a9c4005a0b59e6c31320f0",
+  "test_sha256": "8c824e27c3a692c08468ac9cb3d0625723cdec2ff8fca1bc4ebcc0d1fb182d04",
+  "final_source_pins_unchanged": true,
+  "public_source_sha256": "761756ce31753e526c48d28ccbca13a5d2493b16fe37aff3e1e4d2efaf3a2bba",
+  "public_source_bytes": 175565,
+  "public_ast_payload_bytes": [
+    3590561
+  ],
+  "reconstruction_counts": {
+    "before": 2,
+    "after": 1
+  },
+  "all_six_observations_same_manifest_cid_and_digest": true,
+  "untraced_cpu_samples_seconds": {
+    "before": [
+      1.2372117439999997,
+      1.1992757120000022
+    ],
+    "after": [
+      0.9971473280000005,
+      1.0070296799999987
+    ]
+  },
+  "untraced_cpu_median_seconds": {
+    "before": 1.218243728000001,
+    "after": 1.0020885039999996
+  },
+  "untraced_cpu_reduction_percent": 17.74318381715495,
+  "tracemalloc": "Skipped because corrected public Bottle preparation/count/timing diagnostic exceeded optional tracing start budget. Opaque diagnostic allocation numbers are nonqualifying for AST savings.",
+  "scope": "Fresh native file-backed SQL/CAS observation only; no parser/proof/solver cache or admission threshold change.",
+  "preserved_checks": [
+    "Fresh full SQL AST reconstruction and all relation verification",
+    "Fresh bounded CAS read, canonical decode and CID recomputation",
+    "Exact UTF-8 CAS payload versus freshly reconstructed SQL payload",
+    "All five historical source/provenance checks",
+    "Final active blob/file/revision, filesystem source and catalog-head fences",
+    "Native eligibility binding before read, after reconstruction and after active fence; custom/memory and pre-import wrapper fallback"
+  ],
+  "limitations": [
+    "No native Docker qualification or Terminal-Bench reward/token score is established by this package.",
+    "No RSS/cgroup memory reduction or lease admission recovery measurement.",
+    "Two timing samples per mode are a short local component diagnostic, not a statistically powered benchmark.",
+    "Existing final SQL identity fence does not newly prevent relation-only raw SQL tampering after the initial full relation audit.",
+    "Input and individual CAS payload bounds are not aggregate process RSS guarantees."
+  ],
+  "prior_nonqualifying_runs": {
+    "focused-01": "14 passed, 2 failed due fixture API mistakes (read-only ingestor.store and put versus put_projection); exact contemporaneous test/owner snapshots retained.",
+    "opaque-diagnostic": "Default 64KiB capture made 175565-byte Bottle opaque, so AST counts were zero. Retained for disclosure; excluded from performance/reconstruction claims."
+  },
+  "excluded_exports": [
+    "Private DuckDB/CAS/scheduler/seal/key stores",
+    "Model/checkpoint/auth material",
+    "Hidden benchmark/verifier content"
+  ]
+}

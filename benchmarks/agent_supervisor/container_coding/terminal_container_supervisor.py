@@ -105,6 +105,48 @@ def _native_diagnostics(state: Path) -> dict:
     return result
 
 
+def _failure_diagnostics(error: Exception, *, phase: str) -> dict:
+    """Observe a failure without exporting source, locals or exception chains.
+
+    These observations grant no authority and never change admission. Resource
+    values are a new sample at error handling, not the earlier lease decision.
+    A bounded traceback walk avoids source/linecache reads during unwinding.
+    """
+    result = {"error_phase": phase}
+    try:
+        frames = deque(maxlen=20)
+        current = error.__traceback__
+        walked = 0
+        while current is not None and walked < 256:
+            code = current.tb_frame.f_code
+            frames.append({"file": code.co_filename[:512],
+                           "function": code.co_name[:128], "line": current.tb_lineno})
+            current = current.tb_next
+            walked += 1
+        result["error_traceback"] = {"frames": list(frames),
+            "frames_walked": walked, "frames_omitted": walked - len(frames),
+            "walk_truncated": current is not None}
+    except Exception as diagnostic_error:
+        result["failure_traceback_error"] = type(diagnostic_error).__name__[:128]
+    try:
+        from ipfs_datasets_py.optimizers.logic_theorem_optimizer.proof_resource_safety import collect_proof_host_resources
+        from benchmarks.agent_supervisor.container_coding.terminal_resource_diagnostics import project_failure_resources
+        result["failure_resources"] = project_failure_resources(collect_proof_host_resources())
+    except Exception as diagnostic_error:
+        result["failure_resource_error"] = type(diagnostic_error).__name__[:128]
+    try:
+        from benchmarks.agent_supervisor.container_coding.terminal_resource_diagnostics import collect_failure_scheduler
+        result["failure_scheduler"] = collect_failure_scheduler()
+    except Exception:
+        result["failure_scheduler_error"] = "collection_unavailable"
+    try:
+        from benchmarks.agent_supervisor.container_coding.terminal_resource_diagnostics import collect_failure_admission
+        result["failure_admission"] = collect_failure_admission(error)
+    except Exception:
+        result["failure_admission_error"] = "collection_unavailable"
+    return result
+
+
 def _final_context_audit(report: dict, *, state: Path, deadline: float) -> None:
     """Observe completed dispatch inputs after shutdown within remaining time."""
     if report.get("arm") != "full":

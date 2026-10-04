@@ -1,0 +1,138 @@
+{
+  "source_sha256": "761756ce31753e526c48d28ccbca13a5d2493b16fe37aff3e1e4d2efaf3a2bba",
+  "source_bytes": 175565,
+  "source_path": "/home/barberb/lift_coding/artifacts/source384-construction-lifetime-20261004/trial-01/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__WCih55g/agent/public-output-evidence/before/bottle.py",
+  "baseline_owner_sha256": "3b7a08d637943b3b6e882f66e80e1378f5e423b0d85fcae17dcef118ea803bbc",
+  "source_pins_before": {
+    "ipfs_datasets_py/logic/software_contracts/codebase_ir.py": "67b879102d056aa03f2bed3faaccd0fe02ac763eb7a9c4005a0b59e6c31320f0",
+    "ipfs_datasets_py/logic/software_contracts/ast_ir.py": "1461edb7c39f2adc89a70e54decfa291ccceafc50ed23011fbdeea5acb4c8b91",
+    "ipfs_datasets_py/logic/software_contracts/cache.py": "a0b1711a5fa1f5b39b92d43748548c8802f632d1131ad9a64dd7f49df51bdd8c",
+    "ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py": "2432a160769b9beba678ea646f0204a29229bb9d4ec8111dc0ac23f8fd8da51e",
+    "ipfs_datasets_py/logic/software_contracts/schema_versions.py": "fd7270cada2126606c00870dcb7291d27d7f8182e0e861d4f83905031668bbc6"
+  },
+  "profile_scope": "Public Bottle source; native file-backed DuckDB/CAS; isolated fixture scheduler; no provider, checkpoint, Docker, verifier or production ledger",
+  "observations": [
+    {
+      "mode": "before",
+      "measure": "constructions",
+      "process_cpu_seconds": 0.024294784000000014,
+      "wall_seconds": 0.04944891300692689,
+      "output_identity": [
+        "baguqeerakqj7upkyavydfinqirnfssg23xmwo7ykwtgt6mjjjpia7n77vu3a",
+        "baguqeerakqj7upkyavydfinqirnfssg23xmwo7ykwtgt6mjjjpia7n77vu3a",
+        "5413fa3d58057032a1b0445a5948daddd9677f0ab4cd3f31294bd00fb7ffad36"
+      ],
+      "astrecord_from_dict_calls": []
+    },
+    {
+      "mode": "after",
+      "measure": "constructions",
+      "process_cpu_seconds": 0.032810224,
+      "wall_seconds": 0.05882378900423646,
+      "output_identity": [
+        "baguqeerakqj7upkyavydfinqirnfssg23xmwo7ykwtgt6mjjjpia7n77vu3a",
+        "baguqeerakqj7upkyavydfinqirnfssg23xmwo7ykwtgt6mjjjpia7n77vu3a",
+        "5413fa3d58057032a1b0445a5948daddd9677f0ab4cd3f31294bd00fb7ffad36"
+      ],
+      "astrecord_from_dict_calls": []
+    },
+    {
+      "mode": "after",
+      "measure": "timing",
+      "process_cpu_seconds": 0.020263279999999995,
+      "wall_seconds": 0.05770735800615512,
+      "output_identity": [
+        "baguqeerakqj7upkyavydfinqirnfssg23xmwo7ykwtgt6mjjjpia7n77vu3a",
+        "baguqeerakqj7upkyavydfinqirnfssg23xmwo7ykwtgt6mjjjpia7n77vu3a",
+        "5413fa3d58057032a1b0445a5948daddd9677f0ab4cd3f31294bd00fb7ffad36"
+      ]
+    },
+    {
+      "mode": "before",
+      "measure": "timing",
+      "process_cpu_seconds": 0.016704512000000005,
+      "wall_seconds": 0.05067659300402738,
+      "output_identity": [
+        "baguqeerakqj7upkyavydfinqirnfssg23xmwo7ykwtgt6mjjjpia7n77vu3a",
+        "baguqeerakqj7upkyavydfinqirnfssg23xmwo7ykwtgt6mjjjpia7n77vu3a",
+        "5413fa3d58057032a1b0445a5948daddd9677f0ab4cd3f31294bd00fb7ffad36"
+      ]
+    },
+    {
+      "mode": "before",
+      "measure": "timing",
+      "process_cpu_seconds": 0.016637295999999968,
+      "wall_seconds": 0.051345193991437554,
+      "output_identity": [
+        "baguqeerakqj7upkyavydfinqirnfssg23xmwo7ykwtgt6mjjjpia7n77vu3a",
+        "baguqeerakqj7upkyavydfinqirnfssg23xmwo7ykwtgt6mjjjpia7n77vu3a",
+        "5413fa3d58057032a1b0445a5948daddd9677f0ab4cd3f31294bd00fb7ffad36"
+      ]
+    },
+    {
+      "mode": "after",
+      "measure": "timing",
+      "process_cpu_seconds": 0.019617296000000062,
+      "wall_seconds": 0.05071513798611704,
+      "output_identity": [
+        "baguqeerakqj7upkyavydfinqirnfssg23xmwo7ykwtgt6mjjjpia7n77vu3a",
+        "baguqeerakqj7upkyavydfinqirnfssg23xmwo7ykwtgt6mjjjpia7n77vu3a",
+        "5413fa3d58057032a1b0445a5948daddd9677f0ab4cd3f31294bd00fb7ffad36"
+      ]
+    },
+    {
+      "mode": "before",
+      "measure": "allocations",
+      "process_cpu_seconds": 0.03606686400000003,
+      "wall_seconds": 0.06159152199688833,
+      "output_identity": [
+        "baguqeerakqj7upkyavydfinqirnfssg23xmwo7ykwtgt6mjjjpia7n77vu3a",
+        "baguqeerakqj7upkyavydfinqirnfssg23xmwo7ykwtgt6mjjjpia7n77vu3a",
+        "5413fa3d58057032a1b0445a5948daddd9677f0ab4cd3f31294bd00fb7ffad36"
+      ],
+      "traced_allocations": {
+        "current_bytes": 177129,
+        "peak_bytes": 16878271,
+        "measurement": "Python traced allocations only; not RSS or cgroup memory"
+      }
+    },
+    {
+      "mode": "after",
+      "measure": "allocations",
+      "process_cpu_seconds": 0.048493584000000034,
+      "wall_seconds": 0.07174845699046273,
+      "output_identity": [
+        "baguqeerakqj7upkyavydfinqirnfssg23xmwo7ykwtgt6mjjjpia7n77vu3a",
+        "baguqeerakqj7upkyavydfinqirnfssg23xmwo7ykwtgt6mjjjpia7n77vu3a",
+        "5413fa3d58057032a1b0445a5948daddd9677f0ab4cd3f31294bd00fb7ffad36"
+      ],
+      "traced_allocations": {
+        "current_bytes": 228933,
+        "peak_bytes": 16878255,
+        "measurement": "Python traced allocations only; not RSS or cgroup memory"
+      }
+    }
+  ],
+  "inventory_files": 1,
+  "ast_units": 0,
+  "ast_payload_bytes": [],
+  "leases_after": {
+    "active": 0,
+    "waiting": 0
+  },
+  "source_pins_after": {
+    "ipfs_datasets_py/logic/software_contracts/codebase_ir.py": "67b879102d056aa03f2bed3faaccd0fe02ac763eb7a9c4005a0b59e6c31320f0",
+    "ipfs_datasets_py/logic/software_contracts/ast_ir.py": "1461edb7c39f2adc89a70e54decfa291ccceafc50ed23011fbdeea5acb4c8b91",
+    "ipfs_datasets_py/logic/software_contracts/cache.py": "a0b1711a5fa1f5b39b92d43748548c8802f632d1131ad9a64dd7f49df51bdd8c",
+    "ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py": "2432a160769b9beba678ea646f0204a29229bb9d4ec8111dc0ac23f8fd8da51e",
+    "ipfs_datasets_py/logic/software_contracts/schema_versions.py": "fd7270cada2126606c00870dcb7291d27d7f8182e0e861d4f83905031668bbc6"
+  },
+  "source_pins_unchanged": true,
+  "outputs_equal": true,
+  "elapsed_seconds": 0.5951211040082853,
+  "limitations": [
+    "No RSS/cgroup memory or admission recovery measurement.",
+    "Timing is a short local component diagnostic, not Terminal-Bench performance.",
+    "Final SQL identity fence preserves existing blob/file/revision checks; no new atomic relation snapshot guarantee."
+  ]
+}

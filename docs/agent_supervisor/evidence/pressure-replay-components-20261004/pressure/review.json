@@ -1,0 +1,25 @@
+{
+  "schema": "pressure-source-attribution-controls@1",
+  "status": "passed",
+  "counts": {
+    "tests": 76,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "wall_seconds": 9.235380414000247,
+  "source_pins_unchanged": true,
+  "coverage": [
+    "Host and visible cgroup pressure maxima, ties, missing/malformed readings, observed zero",
+    "Cap of host plus eight cgroup scopes with all deeper ancestor reads and omitted maxima preserved",
+    "Unchanged exact telemetry read order, scalar resource bounds, scheduler behavior and request-local backoff freshness",
+    "Immutable optional metadata, detached projection, no new ledger/configuration fields, legacy/custom sampler compatibility",
+    "Optional metadata projection failure retains original scalar sample and gate",
+    "Full scheduler observation below 4096 bytes with long float representations"
+  ],
+  "limitations": [
+    "Synthetic controls; no new Docker qualification or performance result",
+    "Pressure attribution identifies sampled scope, not the cause of system pressure",
+    "Post-unwind scalar sampling is separate from the retained primary-gate sample"
+  ]
+}

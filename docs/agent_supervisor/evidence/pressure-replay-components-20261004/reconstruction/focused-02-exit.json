@@ -1,0 +1,16 @@
+{
+  "returncode": 0,
+  "elapsed_seconds": 9.364508906000992,
+  "source_pins_after": {
+    "tests/integration/logic/software_contracts/test_codebase_observation_reconstruction.py": "8c824e27c3a692c08468ac9cb3d0625723cdec2ff8fca1bc4ebcc0d1fb182d04",
+    "ipfs_datasets_py/logic/software_contracts/codebase_ir.py": "67b879102d056aa03f2bed3faaccd0fe02ac763eb7a9c4005a0b59e6c31320f0",
+    "ipfs_datasets_py/logic/software_contracts/ast_ir.py": "1461edb7c39f2adc89a70e54decfa291ccceafc50ed23011fbdeea5acb4c8b91",
+    "ipfs_datasets_py/logic/software_contracts/cache.py": "a0b1711a5fa1f5b39b92d43748548c8802f632d1131ad9a64dd7f49df51bdd8c",
+    "ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py": "2432a160769b9beba678ea646f0204a29229bb9d4ec8111dc0ac23f8fd8da51e",
+    "ipfs_datasets_py/logic/software_contracts/schema_versions.py": "fd7270cada2126606c00870dcb7291d27d7f8182e0e861d4f83905031668bbc6",
+    "ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py": "9e5895d76e7b125926665967faa7e619a7288e4961b695426e67fb846d1d5b20",
+    "ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py": "418675922a06b0645bd065a0936aa869142f1fa433af1a564acf4d221451a3dd",
+    "tests/integration/logic/software_contracts/test_codebase_current.py": "e2be8ff62c476d1b3a6d4b6cac4b4eb3c1914b1cefb473d923f585f8f25101c1"
+  },
+  "source_pins_unchanged": true
+}

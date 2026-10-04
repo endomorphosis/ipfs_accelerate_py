@@ -1,0 +1,44 @@
+{
+  "argv": [
+    "/home/barberb/.local/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "-o",
+    "cache_dir=/home/barberb/lift_coding/artifacts/pressure-replay-native-20261004/private-controls-state/native/pytest-cache",
+    "tests/integration/logic/software_contracts/test_codebase_source_units_384.py",
+    "--junitxml=/home/barberb/lift_coding/artifacts/pressure-replay-native-20261004/native.xml"
+  ],
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004",
+  "environment_overrides": {
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "NUMEXPR_MAX_THREADS": "1",
+    "CUDA_VISIBLE_DEVICES": "",
+    "TOKENIZERS_PARALLELISM": "false",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "IPFS_ACCELERATE_PYTEST_SEAL_DUCKDB": "/home/barberb/lift_coding/artifacts/pressure-replay-native-20261004/private-controls-state/native/seal.duckdb",
+    "IPFS_DATASETS_PY_SEAL_KEY_STORE_PATH": "/home/barberb/lift_coding/artifacts/pressure-replay-native-20261004/private-controls-state/native/keys.db",
+    "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH": "/home/barberb/lift_coding/artifacts/pressure-replay-native-20261004/private-controls-state/native/host-scheduler.json",
+    "CODEBASE384_CHECKPOINT": "/home/barberb/lift_coding/artifacts/distributed384-20261001/run-01/security_ir/coordinator/checkpoints/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json",
+    "CODEBASE384_EMBEDDING_SNAPSHOT": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd",
+    "IPFS_DATASETS_PUBLIC_BOTTLE_FIXTURE": "/home/barberb/lift_coding/artifacts/source384-construction-lifetime-20261004/trial-01/jobs/supervisor-full-fix-code-vulnerability/fix-code-vulnerability__WCih55g/agent/public-output-evidence/before/bottle.py"
+  },
+  "source_pins": {
+    "/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004/ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py": "418675922a06b0645bd065a0936aa869142f1fa433af1a564acf4d221451a3dd",
+    "/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py": "9e5895d76e7b125926665967faa7e619a7288e4961b695426e67fb846d1d5b20",
+    "/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004/ipfs_datasets_py/logic/formalization/autoencoder/long_span_source_value_training.py": "8bbdb5f129a53d002d48b637485c5b8486f7910902b7a8ed704ea5cf86f48c23",
+    "/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004/ipfs_datasets_py/logic/software_contracts/codebase_ir.py": "67b879102d056aa03f2bed3faaccd0fe02ac763eb7a9c4005a0b59e6c31320f0",
+    "/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004/ipfs_datasets_py/logic/software_contracts/duckdb_ast_store.py": "2432a160769b9beba678ea646f0204a29229bb9d4ec8111dc0ac23f8fd8da51e",
+    "/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004/ipfs_datasets_py/logic/software_contracts/codebase_source_units_384.py": "32705fefacab10f47fa25da723d7a8ee383f10a484dbbc9e0e6fbdf850d090dd",
+    "/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004/ipfs_datasets_py/logic/formalization/autoencoder/source_function_units.py": "01dd6ecf58e9e5956a4b1b6a3cdff8835bcd1db1c469c1361d24b2088470d86e",
+    "/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004/ipfs_datasets_py/logic/formalization/autoencoder/security/security_formalization_evaluation.py": "ced8f0caadf26e81d3079305d93c8309d9fe7751a280709553d6017fc53104a9",
+    "/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004/tests/integration/logic/software_contracts/test_codebase_source_units_384.py": "c506e9186640d2f78c192ecfc37125f7080b027ec3705deb29b09a49d2b88cbd"
+  }
+}

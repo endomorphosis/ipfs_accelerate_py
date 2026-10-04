@@ -1,5 +1,5 @@
 """Failure observations preserve the task result and expose no frame values."""
-from dataclasses import asdict
+from dataclasses import replace
 import json
 import linecache
 from pathlib import Path
@@ -10,6 +10,11 @@ import pytest
 from benchmarks.agent_supervisor.container_coding import terminal_container_supervisor as driver
 from ipfs_datasets_py.optimizers.logic_theorem_optimizer import proof_resource_safety as resources
 from ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler import LeaseTimeoutError
+
+
+def _expected_resources():
+    return dict(cpu_slots=5, total_memory_mb=12288, available_memory_mb=1024,
+        memory_stall_percent=12.5, cpu_stall_percent=3.0, io_stall_percent=4.0)
 
 
 @pytest.fixture
@@ -35,7 +40,7 @@ def test_metadata_excludes_frame_locals_source_and_exception_chain(resource_samp
     except LeaseTimeoutError as error:
         result = driver._failure_diagnostics(error, phase="initial_context")
     assert result["error_phase"] == "initial_context"
-    assert result["failure_resources"] == asdict(resource_sample)
+    assert result["failure_resources"] == _expected_resources()
     frames = result["error_traceback"]["frames"]
     assert frames[-1]["function"] == "fail"
     assert all(set(frame) == {"file", "function", "line"} for frame in frames)
@@ -95,7 +100,7 @@ def test_traceback_failure_does_not_suppress_resource_sample(resource_sample):
             return super().__getattribute__(name)
     result = driver._failure_diagnostics(BrokenTraceback("primary"), phase="prepare")
     assert result["failure_traceback_error"] == "ValueError"
-    assert result["failure_resources"] == asdict(resource_sample)
+    assert result["failure_resources"] == _expected_resources()
     assert "PRIVATE_" not in json.dumps(result)
 
 
@@ -167,4 +172,15 @@ def test_driver_failure_retains_primary_result_phase_and_cleanup(
         if diagnostic_failure == "resources":
             assert report["failure_resource_error"] == "ValueError"
         else:
-            assert report["failure_resources"] == asdict(resource_sample)
+            assert report["failure_resources"] == _expected_resources()
+
+
+def test_post_unwind_sample_does_not_copy_or_export_optional_metadata(resource_sample, monkeypatch):
+    class PrivateMetadata:
+        def __deepcopy__(self, memo):
+            pytest.fail('scalar diagnostics must not traverse optional metadata')
+    sample = replace(resource_sample, pressure_sources=PrivateMetadata())
+    monkeypatch.setattr(resources, 'collect_proof_host_resources', lambda: sample)
+    result = driver._failure_diagnostics(RuntimeError('authored control'), phase='prepare')
+    assert result['failure_resources'] == _expected_resources()
+    assert 'pressure_sources' not in result['failure_resources']

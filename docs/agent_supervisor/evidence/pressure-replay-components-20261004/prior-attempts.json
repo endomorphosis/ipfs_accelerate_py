@@ -1,0 +1,66 @@
+[
+  {
+    "label": "controls-01",
+    "qualifying": false,
+    "reason": "Helper import contract failed; fixed by keeping the reporting projection pure. Owners changed during this nonqualifying attempt.",
+    "records": {
+      "controls-01-command.json": {
+        "bytes": 6439,
+        "raw_body_exported": false,
+        "sha256": "403dc5ef2db0764c812b09dc7d702a32418f2d419893b7d3a8272f1d8feeda37"
+      },
+      "controls-01-exit.json": {
+        "bytes": 191,
+        "raw_body_exported": false,
+        "sha256": "fed5a6f33648c8704b1afa6ce6a44a27e6492e9436783bc38b68affca28668ed"
+      },
+      "controls-01.xml": {
+        "bytes": 40811,
+        "raw_body_exported": false,
+        "sha256": "374cf4d4de455eec92d98a6d015ec489ac0c3946ff02c0c6da974f9fa714681d"
+      }
+    },
+    "result": {
+      "errors": 0,
+      "executions": 210,
+      "failures": 1,
+      "returncode": 1,
+      "seconds": 164.62055404800049,
+      "skipped": 0,
+      "source_pins_unchanged": false,
+      "unique_test_identities": 210
+    }
+  },
+  {
+    "label": "controls-02",
+    "qualifying": false,
+    "reason": "All cases passed, but source owner changed during execution; nonqualifying.",
+    "records": {
+      "controls-02-command.json": {
+        "bytes": 6439,
+        "raw_body_exported": false,
+        "sha256": "feec96d58bb41aeb59c6b84f109936ce5c54bb5b89e2a1c541e9cc8134502098"
+      },
+      "controls-02-exit.json": {
+        "bytes": 191,
+        "raw_body_exported": false,
+        "sha256": "b426778735f4568e0842ce794e7213f9b6515c1b0e749350e177793797f6d6f3"
+      },
+      "controls-02.xml": {
+        "bytes": 40476,
+        "raw_body_exported": false,
+        "sha256": "763f5f4392bea501846abd39d0f5f2a13594aa16e82b4189187da7c1ba548754"
+      }
+    },
+    "result": {
+      "errors": 0,
+      "executions": 212,
+      "failures": 0,
+      "returncode": 0,
+      "seconds": 165.57975544100918,
+      "skipped": 0,
+      "source_pins_unchanged": false,
+      "unique_test_identities": 212
+    }
+  }
+]
