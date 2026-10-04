@@ -150,13 +150,17 @@ def _project_graph(materials, selected, manifest, requirements):
     return graph, sorted(bindings, key=lambda row: row["requirement_id"])
 
 
-def build_intent_symbolic_plan(contract, *, manifest):
+def build_intent_symbolic_plan(contract, *, manifest, applicability_timeout_seconds=None,
+                               source_applicability_nomination=None):
     """Produce a deterministic graph and replayable nomination receipt.
 
     The caller must verify the manifest/source independently. Replaying this
-    function uses the signed baseline and performs no reads, writes or inference.
+    function uses the signed baseline; v3 also replays the captured nomination
+    and actual bounded checker. It performs no neural inference or provider calls.
     """
-    materials = build_intent_planning_materials(contract, manifest=manifest)
+    materials = build_intent_planning_materials(contract, manifest=manifest,
+        applicability_timeout_seconds=applicability_timeout_seconds,
+        source_applicability_nomination=source_applicability_nomination)
     obligation = ObligationGraphCompiler().compile(
         materials.intent, current_facts=materials.current_facts, producers=materials.producers,
         task_candidates=materials.task_candidates, predicates=materials.predicates,
@@ -244,8 +248,11 @@ def build_intent_symbolic_plan(contract, *, manifest):
         "graph_cid": graph.content_id, "formal_plan_id": compiled.plan.plan_id,
         "formal_effects_cid": cid_for_dag_json([list(row) for row in sorted(formal_effects)]),
         "coverage_cid": cid_for_dag_json(coverage), "provider_calls": 0,
-        "observed_facts_supplied": 0, "source_semantics_verified": False, **_AUTHORITY,
+        "observed_facts_supplied": len(materials.current_facts), "source_semantics_verified": False, **_AUTHORITY,
     }
+    if materials.source_applicability is not None:
+        receipt["source_applicability_nomination"] = _plain(source_applicability_nomination)
+        receipt["source_applicability"] = _plain(materials.source_applicability)
     return {"graph": graph, "requirement_bindings": bindings,
             "coverage": coverage, "receipt": receipt}
 

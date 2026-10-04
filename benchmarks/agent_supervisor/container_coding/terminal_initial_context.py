@@ -26,6 +26,7 @@ from ipfs_accelerate_py.agent_supervisor.semantic_state.intent_world_snapshot im
     capture_intent_world_snapshot, load_intent_world_context, persist_intent_world_snapshot,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import IntentRepository
+from .terminal_task_profile import task_profile_index_paths
 
 
 SCHEMA = "terminal-initial-indexed-planning@1"
@@ -159,6 +160,9 @@ def _summaries(descriptor, semantic, retrieval, world, *, intent_freshness_check
         summaries.append({**frozen["summary"],
             "catalog_receipt_sha256": frozen["receipt_sha256"],
             "world_record_cid": frozen["hydration"]["world_record_cid"]})
+    source384 = descriptor.get("source384_context")
+    if source384 is not None:
+        summaries.append(source384["summary"])
     if any(len(_bytes(summary)) > 8192 for summary in summaries):
         raise ValueError("initial planning summary exceeds its fixed 8192-byte bound")
     return summaries
@@ -172,7 +176,8 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
                             security_checkpoint: dict | None = None,
                             security_checkpoint_hub: dict | None = None,
                             formula_decoder: dict | None = None,
-                            header_protocol: dict | None = None) -> dict:
+                            header_protocol: dict | None = None,
+                            source384_config: Path | None = None, source384_timeout_seconds: float = 90.) -> dict:
     import duckdb
     from ipfs_accelerate_py.agent_supervisor.analysis.code_symbol_vector_index import (
         CodeVectorIndexSnapshot, CodeVectorSearchResult,
@@ -180,6 +185,15 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
 
     started = time.monotonic()
     root = Path(prepared["repository"]).resolve(strict=True)
+    public_profile = prepared.get("task_profile")
+    vector_paths = task_profile_index_paths(public_profile) if public_profile is not None else ["bottle.py"]
+    header_intent = (prepared.get("intent_requirement_contract") or {}).get("schema") == "intent-plan-requirement-contract@3"
+    if header_intent and source384_config is None:
+        raise ValueError("header intent requires the explicit Source384 header profile")
+    if source384_config is not None and (train_autoencoder or any(value is not None for value in (
+            weight_transfer, canonical_cve_training, security_checkpoint, security_checkpoint_hub,
+            formula_decoder, header_protocol))):
+        raise ValueError("Source384 pinned-parent and legacy security profiles are mutually exclusive")
     if security_checkpoint_hub is not None and security_checkpoint is None:
         raise ValueError("security Hub provenance requires a frozen checkpoint")
     if formula_decoder is not None and security_checkpoint is None:
@@ -208,22 +222,41 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         if formula_decoder is not None:
             selected.update(formula_decoder=formula_decoder, header_protocol=header_protocol)
         _write(state / "security-checkpoint-selection.json", selected)
+    if source384_config is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.security_autoencoder_advisor import _read as read_selected
+        _write(state / "source384-selection.json", {
+            "config_path": str(source384_config),
+            "config_sha256": hashlib.sha256(read_selected(source384_config, 32768)).hexdigest()})
     alias = prepared["spec"]["task_key"]
     timings, stage = {}, time.monotonic()
     vectors = root / ".runtime/terminal-vectors"
     if model_snapshot:
         from .learned_vector_preflight import qualify
-        indexed = qualify(root, vectors, ["bottle.py"], prepared["query"], model_snapshot, model_revision)
+        indexed = qualify(root, vectors, vector_paths, prepared["query"], model_snapshot, model_revision)
     else:
         from .vector_index_preflight import qualify
-        indexed = qualify(root, vectors, ["bottle.py"], prepared["query"])
+        indexed = qualify(root, vectors, vector_paths, prepared["query"])
     timings["vector_qualification"] = time.monotonic() - stage
     stage = time.monotonic()
-    learner = learner_catalog = frozen_advice = None
+    learner = learner_catalog = frozen_advice = source384 = None
+    if source384_config is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context import prepare_source384_context
+        from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission as local
+        manifest, _, _ = local._manifest(prepared["manifest"], initial=True)
+        del _
+        source384 = prepare_source384_context(repository=root, manifest_envelope=prepared["manifest"],
+            source_hashes={name: source["sha256"] for name, source in manifest["sources"].items()},
+            output=state / "source384-context", config_path=source384_config,
+            timeout_seconds=source384_timeout_seconds,
+            **({"intent_binding": {"contract": prepared["intent_requirement_contract"],
+                "manifest_cid": content_identity(prepared["manifest"])}} if header_intent else {}))
+        timings["source384_capture_and_inference"] = time.monotonic() - stage
+        stage = time.monotonic()
     if security_checkpoint is not None:
         from ipfs_accelerate_py.agent_supervisor.runtime.security_autoencoder_advisor import prepare_security_advice
         from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission as local
         manifest, _, _ = local._manifest(prepared["manifest"], initial=True)
+        del _
         paths = [name for name in prepared["worker_inputs"] if name.endswith(".py")]
         frozen_advice = prepare_security_advice(repository=root, paths=paths,
             source_hashes={name: manifest["sources"][name]["sha256"] for name in paths},
@@ -235,6 +268,7 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         from ipfs_datasets_py.logic.formalization.autoencoder.security.codebase_autoencoder import train_codebase_autoencoder
         from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission as local
         manifest, _, _ = local._manifest(prepared["manifest"], initial=True)
+        del _
         paths = [name for name in prepared["worker_inputs"] if name.endswith(".py")]
         learner = train_codebase_autoencoder(repository=root, paths=paths,
             source_hashes={name: manifest["sources"][name]["sha256"] for name in paths},
@@ -251,6 +285,7 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
     with duckdb.connect(str(vectors / "vectors.duckdb"), read_only=True, config={"threads": 1}) as connection:
         row = connection.execute("SELECT payload FROM snapshots WHERE id=?", [indexed["index_id"]]).fetchone()
         snapshot = CodeVectorIndexSnapshot.from_dict(json.loads(row[0]))
+        del row
     timings["persisted_snapshot_reopen"] = time.monotonic() - stage
     stage = time.monotonic()
     semantic = prepare_semantic_context(repository=root, paths=prepared["worker_inputs"],
@@ -261,12 +296,14 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         output=output / "semantic", max_symbols=1024, worker_query=prepared["query"], worker_max_bytes=32768)
     metadata = {"Semantic context artifact": (output / "semantic/worker-context.json").relative_to(root).as_posix(),
                 "Semantic context sha256": semantic["worker_payload_sha256"], "Semantic context refresh": "true"}
-    _, view, get_block = _semantic_view(root, metadata, alias)
+    semantic_payload, view, get_block = _semantic_view(root, metadata, alias)
+    del semantic_payload
     timings["semantic_build_reconstruction_and_hydration"] = time.monotonic() - stage
     stage = time.monotonic()
     retrieval = prepare_code_retrieval_context(repository=root, task_id=alias,
         query_text=prepared["query"], snapshot=snapshot,
         result=CodeVectorSearchResult.from_dict(indexed["hits"]), output=output / "code-retrieval.json")
+    del snapshot
     metadata.update(retrieval["metadata"])
     timings["retrieval_persistence"] = time.monotonic() - stage
     stage = time.monotonic()
@@ -288,6 +325,9 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         "index": _reference(root, vectors / "result.json"),
         "learned_embeddings": bool(model_snapshot), "model_snapshot": str(model_snapshot.resolve(strict=True)) if model_snapshot else None,
         "model_revision": model_revision, "execution_authority": False, "completion_authority": False}
+    if public_profile is not None:
+        descriptor["public_task_index_scope"] = {"task_source_paths": vector_paths,
+            "instruction_only": False, "source_semantics_verified": False}
     if learner is not None:
         descriptor["codebase_autoencoder"] = learner
         descriptor["codebase_autoencoder_catalog"] = learner_catalog
@@ -295,6 +335,8 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
             descriptor["code_learning_assets_sha256"] = hashlib.sha256(_bytes(learning_assets)).hexdigest()
     if frozen_advice is not None:
         descriptor["security_autoencoder_advice"] = frozen_advice
+    if source384 is not None:
+        descriptor["source384_context"] = source384
     if model_snapshot:
         descriptor["model_manifest"] = _reference(root, vectors / "model-manifest.json")
     _write(output / "descriptor.json", descriptor)
@@ -306,11 +348,17 @@ def prepare_initial_context(*, state: Path, prepared: dict, model_snapshot: Path
         "nonoverlapping_seconds": timings, "seconds": time.monotonic() - started,
         "final_result_persistence_included_in_seconds": False,
         "execution_authority": False, "completion_authority": False}
+    if public_profile is not None:
+        result["public_task_index_scope"] = descriptor["public_task_index_scope"]
     if learner is not None:
         result["codebase_autoencoder"] = learner
         result["codebase_autoencoder_catalog"] = learner_catalog
     if frozen_advice is not None:
         result["security_autoencoder_advice"] = frozen_advice
+    if source384 is not None:
+        result["source384_context"] = source384
+    # Replay reloads these artifacts; keep only the result that it verifies.
+    del view, get_block, capture, descriptor, metadata, semantic, retrieval, indexed
     # Strict source and live-owner replay before this result may reach a router.
     stage = time.monotonic()
     _load_initial_context(state=state, prepared=prepared, require_empty_owner=True, result=result)
@@ -328,7 +376,25 @@ def load_initial_context(*, state: Path, prepared: dict, require_empty_owner: bo
     return _load_initial_context(state=state, prepared=prepared, require_empty_owner=require_empty_owner, result=result)
 
 
-def _load_initial_context(*, state: Path, prepared: dict, require_empty_owner: bool, result: dict) -> dict:
+def stage_initial_context_nomination(*, state: Path, prepared: dict, require_empty_owner: bool) -> dict:
+    """Decode bounded nominations for construction, without numerical currentness.
+
+    This result cannot authorize dispatch, admission, or context publication.
+    Those owners must still call load_initial_context at their existing live
+    gates. Source/manifest, semantic, retrieval and native world checks remain
+    unchanged here; only the optional Source384 observer is deferred.
+    """
+    from ipfs_accelerate_py.agent_supervisor.runtime.security_autoencoder_advisor import _read as read_selected
+
+    marker = state / "initial-context-result.json"
+    result = json.loads(read_selected(marker, MAX_BYTES))
+    staged = _load_initial_context(state=state, prepared=prepared,
+        require_empty_owner=require_empty_owner, result=result, _stage_source384=True)
+    return {**staged, "source384_currentness": "not_established_by_nomination_staging"}
+
+
+def _load_initial_context(*, state: Path, prepared: dict, require_empty_owner: bool, result: dict,
+                          _stage_source384: bool = False) -> dict:
     root = Path(prepared["repository"]).resolve(strict=True)
     descriptor = _read(root, result["descriptor"])
     if (descriptor.get("schema") != SCHEMA or descriptor["request_cid"] != PromptWorkflowRequest.from_dict(prepared["request"]).request_cid
@@ -338,13 +404,47 @@ def _load_initial_context(*, state: Path, prepared: dict, require_empty_owner: b
             or descriptor["public_query_sha256"] != hashlib.sha256(prepared["query"].encode()).hexdigest()
             or descriptor.get("execution_authority") is not False or descriptor.get("completion_authority") is not False):
         raise ValueError("initial indexed context declaration binding differs")
+    expected_scope = ({"task_source_paths": task_profile_index_paths(prepared["task_profile"]),
+                       "instruction_only": False, "source_semantics_verified": False}
+                      if prepared.get("task_profile") is not None else None)
+    if descriptor.get("public_task_index_scope") != expected_scope or result.get("public_task_index_scope") != expected_scope:
+        raise ValueError("initial public task index scope differs")
     alias, metadata = descriptor["task_alias"], descriptor["metadata"]
     semantic, view, get_block = _semantic_view(root, metadata, alias)
     retrieval = json.loads(load_code_retrieval_context(repository=root,
         artifact=metadata["Code retrieval artifact"], expected_sha256=metadata["Code retrieval sha256"], task_id=alias))
     indexed = _read(root, descriptor["index"])
+    if expected_scope is not None and set(indexed["source_sha256"]) != set(expected_scope["task_source_paths"]):
+        raise ValueError("initial vector index omitted or added a declared public source")
     learner = descriptor.get("codebase_autoencoder")
     frozen = descriptor.get("security_autoencoder_advice")
+    source384 = descriptor.get("source384_context")
+    source384_selection = state / "source384-selection.json"
+    if source384 is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.source384_repository_context import validate_source384_context
+        from ipfs_accelerate_py.agent_supervisor.runtime.security_autoencoder_advisor import _read as read_selected
+        from ipfs_accelerate_py.agent_supervisor.runtime import local_planning_admission as local
+        manifest, _, _ = local._manifest(prepared["manifest"], initial=True)
+        selected = json.loads(read_selected(source384_selection, 131072))
+        if (learner is not None or frozen is not None
+                or source384["output"] != str(state / "source384-context")
+                or result.get("source384_context") != source384
+                or source384["source_hashes"] != {name: value["sha256"] for name, value in manifest["sources"].items()}
+                or selected != {"config_path": source384["config_path"],
+                    "config_sha256": source384["config_sha256"]}):
+            raise ValueError("Source384 context differs from selected model/source declaration")
+        header_intent = (prepared.get("intent_requirement_contract") or {}).get("schema") == "intent-plan-requirement-contract@3"
+        if header_intent != (source384.get("schema") == "terminal-source384-repository-context@2"):
+            raise ValueError("header intent and Source384 runtime profile differ")
+        if header_intent:
+            from ipfs_accelerate_py.agent_supervisor.runtime.header_intent_applicability import validate_nomination_binding
+            validate_nomination_binding(source384.get("source_applicability_nomination"),
+                contract=prepared["intent_requirement_contract"], manifest=prepared["manifest"])
+        if not _stage_source384:
+            validate_source384_context(repository=root, expected_receipt=source384)
+    elif (source384_selection.exists() or result.get("source384_context") is not None
+          or (prepared.get("intent_requirement_contract") or {}).get("schema") == "intent-plan-requirement-contract@3"):
+        raise ValueError("selected Source384 context is missing")
     selection = state / "security-checkpoint-selection.json"
     if frozen is not None:
         from ipfs_accelerate_py.agent_supervisor.runtime.security_autoencoder_advisor import validate_security_advice, _read as read_security
@@ -424,7 +524,9 @@ def _load_initial_context(*, state: Path, prepared: dict, require_empty_owner: b
 
 def bind_admitted_context(*, state: Path, prepared: dict, admission: dict, verified: dict,
                          output: Path, model_snapshot: Path | None, model_revision: str) -> dict:
-    loaded = load_initial_context(state=state, prepared=prepared, require_empty_owner=False)
+    # The final live gate below must pass before this private construction can
+    # become a task context. Do not replay numerical advice just to nominate it.
+    loaded = stage_initial_context_nomination(state=state, prepared=prepared, require_empty_owner=False)
     descriptor = loaded["descriptor"]
     actual_model = str(model_snapshot.resolve(strict=True)) if model_snapshot else None
     if descriptor["model_snapshot"] != actual_model or descriptor["model_revision"] != model_revision:
@@ -446,16 +548,30 @@ def bind_admitted_context(*, state: Path, prepared: dict, admission: dict, verif
         world = persist_intent_world_snapshot(capture, output=output / "world", task_id=task.task_key)
         load_intent_world_context(artifact=Path(world["artifact"]), expected_sha256=world["artifact_sha256"],
             task_id=task.task_key, repository_id=view.root.repository_id, intent=intent)
-    # Source artifacts must still verify after the independently owned capture.
-    load_initial_context(state=state, prepared=prepared, require_empty_owner=False)
+    # Retain only the identities needed below from this completed semantic and
+    # world construction. The live gate independently opens and verifies its
+    # evidence; the persisted world was already checked against its live owner.
+    repository_id, semantic_root_cid = view.root.repository_id, semantic["semantic_root_cid"]
+    task_revision = records[0]["revision"]
+    plan_projection_cid = capture["plan_projection"]["projection_cid"]
+    event_watermark = capture["planning_context"]["event_watermark"]
+    world_snapshot_cid = capture["snapshot"]["snapshot_cid"]
+    del semantic, view, get_block, capture, records, contract, _
+    # Source/model artifacts must verify after the independently owned capture,
+    # and the checked selection must be the one used by this construction.
+    current = load_initial_context(state=state, prepared=prepared, require_empty_owner=False)
+    if (current["receipt"]["descriptor"] != loaded["receipt"]["descriptor"]
+            or current["descriptor"] != loaded["descriptor"]
+            or current["summaries"] != loaded["summaries"]):
+        raise ValueError("initial context nomination changed during admitted world capture")
     metadata = {**descriptor["metadata"],
         "World context artifact": Path(world["artifact"]).relative_to(root).as_posix(),
-        "World context sha256": world["artifact_sha256"], "World context repository": view.root.repository_id}
+        "World context sha256": world["artifact_sha256"], "World context repository": repository_id}
     result = {"schema": "supervisor-task-context-preparation@1", "task_cid": task.task_cid,
-        "task_id": task.task_key, "task_title": task.objective, "task_revision": records[0]["revision"],
-        "plan_projection_cid": capture["plan_projection"]["projection_cid"],
-        "event_watermark": capture["planning_context"]["event_watermark"], "repository_id": view.root.repository_id,
-        "semantic_root_cid": semantic["semantic_root_cid"], "world_snapshot_cid": capture["snapshot"]["snapshot_cid"],
+        "task_id": task.task_key, "task_title": task.objective, "task_revision": task_revision,
+        "plan_projection_cid": plan_projection_cid,
+        "event_watermark": event_watermark, "repository_id": repository_id,
+        "semantic_root_cid": semantic_root_cid, "world_snapshot_cid": world_snapshot_cid,
         "metadata": metadata, "semantic": descriptor["semantic"], "retrieval": descriptor["retrieval"], "world": world,
         "initial_context_descriptor": loaded["receipt"]["descriptor"], "new_embedding_calls": 0,
         "preparation_mode": "initial-index-reuse-with-new-admitted-world",
@@ -466,6 +582,9 @@ def bind_admitted_context(*, state: Path, prepared: dict, admission: dict, verif
         result["new_autoencoder_training_steps"] = 0
     if descriptor.get("security_autoencoder_advice") is not None:
         result["security_autoencoder_advice"] = descriptor["security_autoencoder_advice"]
+        result["new_autoencoder_training_steps"] = 0
+    if descriptor.get("source384_context") is not None:
+        result["source384_context"] = descriptor["source384_context"]
         result["new_autoencoder_training_steps"] = 0
     _write(output / "result.json", result)
     return {"prepared_context": result, "indexed": loaded["indexed"],

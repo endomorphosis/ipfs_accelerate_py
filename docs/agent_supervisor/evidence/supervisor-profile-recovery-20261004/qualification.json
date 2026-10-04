@@ -1,0 +1,1501 @@
+{
+  "schema": "supervisor-profile-recovery-qualification/v1",
+  "date": "2026-10-04",
+  "baseline_commit": "f061c1c3529603466598907ba11b519986c5699f",
+  "reused_implementation_commit": "e6cd2df9519f92d2e1c9eae6d01964de31d4079d",
+  "datasets_commit": "d5aaf256618c53b009695e8d5618436fba1c0419",
+  "counts": {
+    "distinct_passed": 254,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "runs": [
+    {
+      "metadata": "run-metadata.json",
+      "counts": {
+        "tests": 250,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "evidence_pins": {
+        "run-metadata.json": {
+          "bytes": 10159,
+          "sha256": "af9d427e58bbf0422b167d4284cbd552fc138d9bc8b45172e136b72f01670032"
+        },
+        "focused-tests.xml": {
+          "bytes": 45939,
+          "sha256": "c5ce6c076631892276ed17f2833e9c2e837fa313d299db75cba1d316ad5f430d"
+        },
+        "focused-tests.log": {
+          "bytes": 4428,
+          "sha256": "518ab557093207f9f8ad27fe557819638a449ca963a37185cc21ba5e98f84810"
+        }
+      },
+      "ast_seal": {
+        "enabled": true,
+        "fresh_private_catalog": true,
+        "catalog_pin": {
+          "bytes": 1323008,
+          "sha256": "8ac6f2825b757d4f365ed21cf57e196b5448ae475ca827c9bf67afb4e2e3fc26"
+        },
+        "completion_authority": false,
+        "records": [
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_absent_program_abstains_before_output_or_checkpoint[False]",
+            "seal": "677c1d826399e759f2424420ffe7d3ace747cf732ecd0ec5689e83e14c8ecb22",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_absent_program_abstains_before_output_or_checkpoint[True]",
+            "seal": "677c1d826399e759f2424420ffe7d3ace747cf732ecd0ec5689e83e14c8ecb22",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_initial_scope_rejects_changed_signed_bytes[.supervisor-instruction.md]",
+            "seal": "677c1d826399e759f2424420ffe7d3ace747cf732ecd0ec5689e83e14c8ecb22",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_initial_scope_rejects_changed_signed_bytes[.supervisor-public-smoke.py]",
+            "seal": "677c1d826399e759f2424420ffe7d3ace747cf732ecd0ec5689e83e14c8ecb22",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_initial_scope_rejects_changed_signed_bytes[.supervisor-task-profile.json]",
+            "seal": "677c1d826399e759f2424420ffe7d3ace747cf732ecd0ec5689e83e14c8ecb22",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_initial_scope_rejects_changed_signed_bytes[source.py]",
+            "seal": "677c1d826399e759f2424420ffe7d3ace747cf732ecd0ec5689e83e14c8ecb22",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_profile_cannot_silently_fall_back_to_inferencing_support",
+            "seal": "677c1d826399e759f2424420ffe7d3ace747cf732ecd0ec5689e83e14c8ecb22",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_real_cpu_checkpoint_inference_selects_program_and_replays_without_model",
+            "seal": "677c1d826399e759f2424420ffe7d3ace747cf732ecd0ec5689e83e14c8ecb22",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_scope_refuses_altered_manifest_and_population[evidence]",
+            "seal": "677c1d826399e759f2424420ffe7d3ace747cf732ecd0ec5689e83e14c8ecb22",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_scope_refuses_altered_manifest_and_population[extra_source]",
+            "seal": "677c1d826399e759f2424420ffe7d3ace747cf732ecd0ec5689e83e14c8ecb22",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_scope_refuses_altered_manifest_and_population[missing_source]",
+            "seal": "677c1d826399e759f2424420ffe7d3ace747cf732ecd0ec5689e83e14c8ecb22",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_scope_refuses_altered_manifest_and_population[signature]",
+            "seal": "677c1d826399e759f2424420ffe7d3ace747cf732ecd0ec5689e83e14c8ecb22",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_scope_refuses_altered_manifest_and_population[task]",
+            "seal": "677c1d826399e759f2424420ffe7d3ace747cf732ecd0ec5689e83e14c8ecb22",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_scope_replay_refuses_tampering_without_neural_replay[scope_authority]",
+            "seal": "677c1d826399e759f2424420ffe7d3ace747cf732ecd0ec5689e83e14c8ecb22",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_scope_replay_refuses_tampering_without_neural_replay[scope_extra]",
+            "seal": "677c1d826399e759f2424420ffe7d3ace747cf732ecd0ec5689e83e14c8ecb22",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_scope_replay_refuses_tampering_without_neural_replay[scope_population]",
+            "seal": "677c1d826399e759f2424420ffe7d3ace747cf732ecd0ec5689e83e14c8ecb22",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_scope_replay_refuses_tampering_without_neural_replay[scope_program]",
+            "seal": "677c1d826399e759f2424420ffe7d3ace747cf732ecd0ec5689e83e14c8ecb22",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_scope_replay_refuses_tampering_without_neural_replay[scope_removed]",
+            "seal": "677c1d826399e759f2424420ffe7d3ace747cf732ecd0ec5689e83e14c8ecb22",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_scope_replay_refuses_tampering_without_neural_replay[scope_support]",
+            "seal": "677c1d826399e759f2424420ffe7d3ace747cf732ecd0ec5689e83e14c8ecb22",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_scope_replay_refuses_tampering_without_neural_replay[selection_bytes]",
+            "seal": "677c1d826399e759f2424420ffe7d3ace747cf732ecd0ec5689e83e14c8ecb22",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_scope_replay_refuses_tampering_without_neural_replay[signature_rebound]",
+            "seal": "677c1d826399e759f2424420ffe7d3ace747cf732ecd0ec5689e83e14c8ecb22",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_scope_replay_refuses_tampering_without_neural_replay[support_bytes]",
+            "seal": "677c1d826399e759f2424420ffe7d3ace747cf732ecd0ec5689e83e14c8ecb22",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_scoped_inference_replay_successor_keep_full_ledger_without_support_inference",
+            "seal": "677c1d826399e759f2424420ffe7d3ace747cf732ecd0ec5689e83e14c8ecb22",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_selection_bounds_precede_signature_or_manifest_replay",
+            "seal": "677c1d826399e759f2424420ffe7d3ace747cf732ecd0ec5689e83e14c8ecb22",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_shared_support_reader_rejects_hardlinks_and_parent_path_swap[hardlink]",
+            "seal": "677c1d826399e759f2424420ffe7d3ace747cf732ecd0ec5689e83e14c8ecb22",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_shared_support_reader_rejects_hardlinks_and_parent_path_swap[parent_replacement]",
+            "seal": "677c1d826399e759f2424420ffe7d3ace747cf732ecd0ec5689e83e14c8ecb22",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_signed_scope_accounts_for_every_source_and_only_excludes_fixed_support",
+            "seal": "677c1d826399e759f2424420ffe7d3ace747cf732ecd0ec5689e83e14c8ecb22",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py::test_actual_bounded_child_process_roundtrip",
+            "seal": "2031a4c1d011726a9f69c544f8f9193057919dd755854970c6f48bc579a2cb79",
+            "file_count": 1014
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py::test_directory_replaced_after_inventory_is_not_followed",
+            "seal": "2031a4c1d011726a9f69c544f8f9193057919dd755854970c6f48bc579a2cb79",
+            "file_count": 1014
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py::test_exact_native_and_model_bytes_survive_worker_exit",
+            "seal": "2031a4c1d011726a9f69c544f8f9193057919dd755854970c6f48bc579a2cb79",
+            "file_count": 1014
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py::test_finalization_keeps_usage_and_completion_on_audit_failure",
+            "seal": "2031a4c1d011726a9f69c544f8f9193057919dd755854970c6f48bc579a2cb79",
+            "file_count": 1014
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py::test_finalization_without_remaining_budget_does_not_spawn",
+            "seal": "2031a4c1d011726a9f69c544f8f9193057919dd755854970c6f48bc579a2cb79",
+            "file_count": 1014
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py::test_generic_retrieval_scope_must_match_instruction_bound_signed_profile",
+            "seal": "2031a4c1d011726a9f69c544f8f9193057919dd755854970c6f48bc579a2cb79",
+            "file_count": 1014
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py::test_inventory_bound_abstains",
+            "seal": "2031a4c1d011726a9f69c544f8f9193057919dd755854970c6f48bc579a2cb79",
+            "file_count": 1014
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py::test_missing_capsule_stays_unknown",
+            "seal": "2031a4c1d011726a9f69c544f8f9193057919dd755854970c6f48bc579a2cb79",
+            "file_count": 1014
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py::test_nonregular_or_oversized_capsule_is_bounded_and_rejected[fifo]",
+            "seal": "2031a4c1d011726a9f69c544f8f9193057919dd755854970c6f48bc579a2cb79",
+            "file_count": 1014
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py::test_nonregular_or_oversized_capsule_is_bounded_and_rejected[oversized]",
+            "seal": "2031a4c1d011726a9f69c544f8f9193057919dd755854970c6f48bc579a2cb79",
+            "file_count": 1014
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py::test_nonregular_or_oversized_capsule_is_bounded_and_rejected[symlink]",
+            "seal": "2031a4c1d011726a9f69c544f8f9193057919dd755854970c6f48bc579a2cb79",
+            "file_count": 1014
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py::test_owner_child_does_not_import_from_task_working_directory",
+            "seal": "2031a4c1d011726a9f69c544f8f9193057919dd755854970c6f48bc579a2cb79",
+            "file_count": 1014
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py::test_persisted_capsule_tampering_rejected",
+            "seal": "2031a4c1d011726a9f69c544f8f9193057919dd755854970c6f48bc579a2cb79",
+            "file_count": 1014
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py::test_same_native_bytes_do_not_override_prepared_input_binding[query]",
+            "seal": "2031a4c1d011726a9f69c544f8f9193057919dd755854970c6f48bc579a2cb79",
+            "file_count": 1014
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py::test_same_native_bytes_do_not_override_prepared_input_binding[source]",
+            "seal": "2031a4c1d011726a9f69c544f8f9193057919dd755854970c6f48bc579a2cb79",
+            "file_count": 1014
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py::test_state_parent_symlink_refused",
+            "seal": "2031a4c1d011726a9f69c544f8f9193057919dd755854970c6f48bc579a2cb79",
+            "file_count": 1014
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py::test_timeout_is_unknown_and_does_not_modify_receipts",
+            "seal": "2031a4c1d011726a9f69c544f8f9193057919dd755854970c6f48bc579a2cb79",
+            "file_count": 1014
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py::test_unmatched_retry_is_not_promoted_by_one_exact_match",
+            "seal": "2031a4c1d011726a9f69c544f8f9193057919dd755854970c6f48bc579a2cb79",
+            "file_count": 1014
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py::test_wrong_receipt_workspace_cannot_match_model_input",
+            "seal": "2031a4c1d011726a9f69c544f8f9193057919dd755854970c6f48bc579a2cb79",
+            "file_count": 1014
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py::test_rebind_actual_owner_and_native_prompt_checks_fresh_sources_without_world_authority[absent]",
+            "seal": "8e09453da1323e3dc9ebcdc35b2f9c5d61eb84e6045fafb2e4ea74462b29e504",
+            "file_count": 978
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py::test_rebind_actual_owner_and_native_prompt_checks_fresh_sources_without_world_authority[drift-during-capture]",
+            "seal": "8e09453da1323e3dc9ebcdc35b2f9c5d61eb84e6045fafb2e4ea74462b29e504",
+            "file_count": 978
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py::test_rebind_actual_owner_and_native_prompt_checks_fresh_sources_without_world_authority[selected]",
+            "seal": "8e09453da1323e3dc9ebcdc35b2f9c5d61eb84e6045fafb2e4ea74462b29e504",
+            "file_count": 978
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py::test_accepted_fixture_admission_survives_native_storage_failure",
+            "seal": "96a1f74d3c5381e20d2abd2d107093f37f38c19a5c8bf8ad5629ff09e53325b0",
+            "file_count": 964
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py::test_authored_fixture_context_uses_real_native_admission_and_full_index",
+            "seal": "96a1f74d3c5381e20d2abd2d107093f37f38c19a5c8bf8ad5629ff09e53325b0",
+            "file_count": 964
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py::test_intent_ablation_overrides_source_unit_intent_checkpoint_selection",
+            "seal": "96a1f74d3c5381e20d2abd2d107093f37f38c19a5c8bf8ad5629ff09e53325b0",
+            "file_count": 964
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py::test_optional_source_unit_advice_reaches_only_bounded_planner_context[None]",
+            "seal": "96a1f74d3c5381e20d2abd2d107093f37f38c19a5c8bf8ad5629ff09e53325b0",
+            "file_count": 964
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py::test_optional_source_unit_advice_reaches_only_bounded_planner_context[replay]",
+            "seal": "96a1f74d3c5381e20d2abd2d107093f37f38c19a5c8bf8ad5629ff09e53325b0",
+            "file_count": 964
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py::test_optional_source_unit_advice_reaches_only_bounded_planner_context[summary_budget]",
+            "seal": "96a1f74d3c5381e20d2abd2d107093f37f38c19a5c8bf8ad5629ff09e53325b0",
+            "file_count": 964
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py::test_optional_source_unit_advice_reaches_only_bounded_planner_context[tamper]",
+            "seal": "96a1f74d3c5381e20d2abd2d107093f37f38c19a5c8bf8ad5629ff09e53325b0",
+            "file_count": 964
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py::test_planner_requires_external_worker_isolation_before_any_call",
+            "seal": "96a1f74d3c5381e20d2abd2d107093f37f38c19a5c8bf8ad5629ff09e53325b0",
+            "file_count": 964
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py::test_prepare_preserves_original_dirty_bytes_and_signs_absent_report",
+            "seal": "96a1f74d3c5381e20d2abd2d107093f37f38c19a5c8bf8ad5629ff09e53325b0",
+            "file_count": 964
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py::test_prepare_rejects_undeclared_or_preseeded_inputs[preseed]",
+            "seal": "96a1f74d3c5381e20d2abd2d107093f37f38c19a5c8bf8ad5629ff09e53325b0",
+            "file_count": 964
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py::test_prepare_rejects_undeclared_or_preseeded_inputs[symlink]",
+            "seal": "96a1f74d3c5381e20d2abd2d107093f37f38c19a5c8bf8ad5629ff09e53325b0",
+            "file_count": 964
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py::test_prepare_rejects_undeclared_or_preseeded_inputs[untracked]",
+            "seal": "96a1f74d3c5381e20d2abd2d107093f37f38c19a5c8bf8ad5629ff09e53325b0",
+            "file_count": 964
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py::test_public_smoke_is_structural_and_not_an_oracle",
+            "seal": "96a1f74d3c5381e20d2abd2d107093f37f38c19a5c8bf8ad5629ff09e53325b0",
+            "file_count": 964
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py::test_signed_task_cannot_omit_create_or_change_public_check",
+            "seal": "96a1f74d3c5381e20d2abd2d107093f37f38c19a5c8bf8ad5629ff09e53325b0",
+            "file_count": 964
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py::test_source_family_flags_reach_preparation_with_intent_ablation_precedence[False]",
+            "seal": "96a1f74d3c5381e20d2abd2d107093f37f38c19a5c8bf8ad5629ff09e53325b0",
+            "file_count": 964
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py::test_source_family_flags_reach_preparation_with_intent_ablation_precedence[True]",
+            "seal": "96a1f74d3c5381e20d2abd2d107093f37f38c19a5c8bf8ad5629ff09e53325b0",
+            "file_count": 964
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py::test_tampered_public_query_cannot_reach_planner",
+            "seal": "96a1f74d3c5381e20d2abd2d107093f37f38c19a5c8bf8ad5629ff09e53325b0",
+            "file_count": 964
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py::test_actual_initial_indexes_reach_planner_then_reuse_with_admitted_world",
+            "seal": "afd60433bd664c7ce61d57163c5b23611d8cd4b27c808ffce6069f98f6f679af",
+            "file_count": 965
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py::test_actual_semantic_producer_normalizes_only_objective_not_public_multiline_query",
+            "seal": "afd60433bd664c7ce61d57163c5b23611d8cd4b27c808ffce6069f98f6f679af",
+            "file_count": 965
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py::test_canonical_native_cid_is_data_but_instruction_text_is_still_rejected",
+            "seal": "afd60433bd664c7ce61d57163c5b23611d8cd4b27c808ffce6069f98f6f679af",
+            "file_count": 965
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py::test_initial_evidence_drift_rejected_before_provider[descriptor]",
+            "seal": "afd60433bd664c7ce61d57163c5b23611d8cd4b27c808ffce6069f98f6f679af",
+            "file_count": 965
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py::test_initial_evidence_drift_rejected_before_provider[retrieval]",
+            "seal": "afd60433bd664c7ce61d57163c5b23611d8cd4b27c808ffce6069f98f6f679af",
+            "file_count": 965
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py::test_initial_evidence_drift_rejected_before_provider[source]",
+            "seal": "afd60433bd664c7ce61d57163c5b23611d8cd4b27c808ffce6069f98f6f679af",
+            "file_count": 965
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py::test_initial_evidence_drift_rejected_before_provider[world]",
+            "seal": "afd60433bd664c7ce61d57163c5b23611d8cd4b27c808ffce6069f98f6f679af",
+            "file_count": 965
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py::test_admitted_construction_releases_native_view_before_fresh_gate[False]",
+            "seal": "f4fb0d377fe1116414a3e862483188d41fba20a3b25fa8f6469c0b3748668101",
+            "file_count": 965
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py::test_admitted_construction_releases_native_view_before_fresh_gate[True]",
+            "seal": "f4fb0d377fe1116414a3e862483188d41fba20a3b25fa8f6469c0b3748668101",
+            "file_count": 965
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py::test_fresh_replay_failure_still_prevents_success_marker",
+            "seal": "f4fb0d377fe1116414a3e862483188d41fba20a3b25fa8f6469c0b3748668101",
+            "file_count": 965
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py::test_native_construction_releases_finished_objects_before_fresh_replay[indexed]",
+            "seal": "f4fb0d377fe1116414a3e862483188d41fba20a3b25fa8f6469c0b3748668101",
+            "file_count": 965
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py::test_native_construction_releases_finished_objects_before_fresh_replay[retrieval]",
+            "seal": "f4fb0d377fe1116414a3e862483188d41fba20a3b25fa8f6469c0b3748668101",
+            "file_count": 965
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py::test_native_construction_releases_finished_objects_before_fresh_replay[semantic_payload]",
+            "seal": "f4fb0d377fe1116414a3e862483188d41fba20a3b25fa8f6469c0b3748668101",
+            "file_count": 965
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py::test_native_construction_releases_finished_objects_before_fresh_replay[semantic_summary]",
+            "seal": "f4fb0d377fe1116414a3e862483188d41fba20a3b25fa8f6469c0b3748668101",
+            "file_count": 965
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py::test_native_construction_releases_finished_objects_before_fresh_replay[semantic_view]",
+            "seal": "f4fb0d377fe1116414a3e862483188d41fba20a3b25fa8f6469c0b3748668101",
+            "file_count": 965
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py::test_native_construction_releases_finished_objects_before_fresh_replay[serialized_snapshot]",
+            "seal": "f4fb0d377fe1116414a3e862483188d41fba20a3b25fa8f6469c0b3748668101",
+            "file_count": 965
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py::test_native_construction_releases_finished_objects_before_fresh_replay[snapshot]",
+            "seal": "f4fb0d377fe1116414a3e862483188d41fba20a3b25fa8f6469c0b3748668101",
+            "file_count": 965
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py::test_native_construction_releases_finished_objects_before_fresh_replay[world_capture]",
+            "seal": "f4fb0d377fe1116414a3e862483188d41fba20a3b25fa8f6469c0b3748668101",
+            "file_count": 965
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py::test_selected_source384_manifest_temporary_released_before_final_replay",
+            "seal": "f4fb0d377fe1116414a3e862483188d41fba20a3b25fa8f6469c0b3748668101",
+            "file_count": 965
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_bad_provider_bindings_cannot_materialize_native_tasks[legacy]",
+            "seal": "3698894a732af9489fb247d4c0652161cf9e2cdd7ea43c3180342f15b20dde6d",
+            "file_count": 967
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_bad_provider_bindings_cannot_materialize_native_tasks[omit]",
+            "seal": "3698894a732af9489fb247d4c0652161cf9e2cdd7ea43c3180342f15b20dde6d",
+            "file_count": 967
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_bad_provider_bindings_cannot_materialize_native_tasks[stale]",
+            "seal": "3698894a732af9489fb247d4c0652161cf9e2cdd7ea43c3180342f15b20dde6d",
+            "file_count": 967
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_changed_prepared_contract_cannot_reach_provider",
+            "seal": "3698894a732af9489fb247d4c0652161cf9e2cdd7ea43c3180342f15b20dde6d",
+            "file_count": 967
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_full_benchmark_strategy_metadata_tracks_versioned_contract_identity",
+            "seal": "3698894a732af9489fb247d4c0652161cf9e2cdd7ea43c3180342f15b20dde6d",
+            "file_count": 967
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_mismatched_source_contract_refused_before_preparation",
+            "seal": "3698894a732af9489fb247d4c0652161cf9e2cdd7ea43c3180342f15b20dde6d",
+            "file_count": 967
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_requirements_gate_entry_point_and_survive_native_storage",
+            "seal": "3698894a732af9489fb247d4c0652161cf9e2cdd7ea43c3180342f15b20dde6d",
+            "file_count": 967
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_symbolic_budget_expiry_prevents_admission_and_materialization",
+            "seal": "3698894a732af9489fb247d4c0652161cf9e2cdd7ea43c3180342f15b20dde6d",
+            "file_count": 967
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_symbolic_entrypoint_needs_no_provider_callable",
+            "seal": "3698894a732af9489fb247d4c0652161cf9e2cdd7ea43c3180342f15b20dde6d",
+            "file_count": 967
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_symbolic_entrypoint_selects_and_materializes_without_planner_provider",
+            "seal": "3698894a732af9489fb247d4c0652161cf9e2cdd7ea43c3180342f15b20dde6d",
+            "file_count": 967
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py::test_symbolic_failure_is_retained_without_provider_fallback_or_native_tasks",
+            "seal": "3698894a732af9489fb247d4c0652161cf9e2cdd7ea43c3180342f15b20dde6d",
+            "file_count": 967
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_repository_preview.py::test_administrative_replay_drift_cannot_publish_or_commit_tasks[cancellation-admission]",
+            "seal": "0e641ddd947a3917035bf9b6b483d2a23eda4849d044e2a798635d87d1512261",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_repository_preview.py::test_administrative_replay_drift_cannot_publish_or_commit_tasks[cancellation-materialization]",
+            "seal": "0e641ddd947a3917035bf9b6b483d2a23eda4849d044e2a798635d87d1512261",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_repository_preview.py::test_administrative_replay_drift_cannot_publish_or_commit_tasks[head_successor-admission]",
+            "seal": "0e641ddd947a3917035bf9b6b483d2a23eda4849d044e2a798635d87d1512261",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_repository_preview.py::test_administrative_replay_drift_cannot_publish_or_commit_tasks[head_successor-materialization]",
+            "seal": "0e641ddd947a3917035bf9b6b483d2a23eda4849d044e2a798635d87d1512261",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_repository_preview.py::test_default_symbolic_path_does_not_invoke_repository_preview",
+            "seal": "0e641ddd947a3917035bf9b6b483d2a23eda4849d044e2a798635d87d1512261",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_repository_preview.py::test_explicit_capture_retry_and_preview_never_reprepare",
+            "seal": "0e641ddd947a3917035bf9b6b483d2a23eda4849d044e2a798635d87d1512261",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_repository_preview.py::test_head_change_after_preview_is_checked_again_before_administration",
+            "seal": "0e641ddd947a3917035bf9b6b483d2a23eda4849d044e2a798635d87d1512261",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_repository_preview.py::test_opt_in_real_service_consumes_native_context_without_changing_signed_selection",
+            "seal": "0e641ddd947a3917035bf9b6b483d2a23eda4849d044e2a798635d87d1512261",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_repository_preview.py::test_source_change_during_actual_service_candidate_work_prevents_admission",
+            "seal": "0e641ddd947a3917035bf9b6b483d2a23eda4849d044e2a798635d87d1512261",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_repository_preview.py::test_superseded_same_byte_head_refuses_before_admission",
+            "seal": "0e641ddd947a3917035bf9b6b483d2a23eda4849d044e2a798635d87d1512261",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_repository_preview.py::test_unselected_direct_preparation_cannot_enable_preview_or_dispatch_provider",
+            "seal": "0e641ddd947a3917035bf9b6b483d2a23eda4849d044e2a798635d87d1512261",
+            "file_count": 968
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_checkpoint_change_during_router_is_rejected_before_admission",
+            "seal": "e63663571203d807ab8031e625a0933ead9baa6c66a163889fdd2401a0a5df75",
+            "file_count": 966
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_complete_create_manifest_source_population",
+            "seal": "e63663571203d807ab8031e625a0933ead9baa6c66a163889fdd2401a0a5df75",
+            "file_count": 966
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_native_inference_cannot_shrink_declared_population[paths0-1024-128]",
+            "seal": "e63663571203d807ab8031e625a0933ead9baa6c66a163889fdd2401a0a5df75",
+            "file_count": 966
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_native_inference_cannot_shrink_declared_population[paths1-512-128]",
+            "seal": "e63663571203d807ab8031e625a0933ead9baa6c66a163889fdd2401a0a5df75",
+            "file_count": 966
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_native_inference_cannot_shrink_declared_population[paths2-1024-64]",
+            "seal": "e63663571203d807ab8031e625a0933ead9baa6c66a163889fdd2401a0a5df75",
+            "file_count": 966
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_native_inventory_rejects_undeclared_captured_source",
+            "seal": "e63663571203d807ab8031e625a0933ead9baa6c66a163889fdd2401a0a5df75",
+            "file_count": 966
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_observation_deadline_includes_read_and_asset_validation_time",
+            "seal": "e63663571203d807ab8031e625a0933ead9baa6c66a163889fdd2401a0a5df75",
+            "file_count": 966
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_preparation_deadline_includes_preflight_before_output_or_admission[_output]",
+            "seal": "e63663571203d807ab8031e625a0933ead9baa6c66a163889fdd2401a0a5df75",
+            "file_count": 966
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_preparation_deadline_includes_preflight_before_output_or_admission[_pins]",
+            "seal": "e63663571203d807ab8031e625a0933ead9baa6c66a163889fdd2401a0a5df75",
+            "file_count": 966
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_preparation_deadline_includes_preflight_before_output_or_admission[_sources]",
+            "seal": "e63663571203d807ab8031e625a0933ead9baa6c66a163889fdd2401a0a5df75",
+            "file_count": 966
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_real_pinned_inference_reaches_planner_and_dispatch_without_replay",
+            "seal": "e63663571203d807ab8031e625a0933ead9baa6c66a163889fdd2401a0a5df75",
+            "file_count": 966
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_source384_missing_selection_cannot_silently_use_legacy_profile",
+            "seal": "e63663571203d807ab8031e625a0933ead9baa6c66a163889fdd2401a0a5df75",
+            "file_count": 966
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_source384_rejects_legacy_training_before_writes",
+            "seal": "e63663571203d807ab8031e625a0933ead9baa6c66a163889fdd2401a0a5df75",
+            "file_count": 966
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_actual_generic_source_indexes_and_world_bind_task_inputs",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_empty_task_prepares_but_cannot_claim_source_indexes",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_excess_creations_rejected_before_advice_or_workspace_mutation[created_population]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_excess_creations_rejected_before_advice_or_workspace_mutation[published_sources]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_modify_only_profile_retains_native_source_bound[125-True]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_modify_only_profile_retains_native_source_bound[126-False]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_native_modify_only_profile_remains_exact",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_native_prepare_accepts_exactly_32_created_outputs",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_native_prepare_load_preserves_sources_and_signs_exact_profile[False-False]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_native_prepare_load_preserves_sources_and_signs_exact_profile[False-True]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_native_prepare_load_preserves_sources_and_signs_exact_profile[True-False]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_oversize_planner_source_is_rejected_without_partial_scan",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_preparation_rejects_undeclared_source_or_unsafe_paths_before_state[ignored]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_preparation_rejects_undeclared_source_or_unsafe_paths_before_state[input_symlink]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_preparation_rejects_undeclared_source_or_unsafe_paths_before_state[inventory]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_preparation_rejects_undeclared_source_or_unsafe_paths_before_state[output_parent_symlink]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_preparation_rejects_undeclared_source_or_unsafe_paths_before_state[untracked]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_closes_population_and_effect_contracts[absent_modify]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_closes_population_and_effect_contracts[bad_media]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_closes_population_and_effect_contracts[directory_overlap]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_closes_population_and_effect_contracts[duplicate_input]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_closes_population_and_effect_contracts[duplicate_output]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_closes_population_and_effect_contracts[instruction]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_closes_population_and_effect_contracts[present_create]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_closes_population_and_effect_contracts[too_many_sources]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_closes_population_and_effect_contracts[unknown]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_counts_support_and_future_creations_in_source_bound[221-32-True]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_counts_support_and_future_creations_in_source_bound[222-32-False]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_counts_support_and_future_creations_in_source_bound[252-1-True]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_counts_support_and_future_creations_in_source_bound[252-2-False]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_normalizes_line_endings_without_rewording",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_preserves_native_output_population_boundaries[0-64]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_preserves_native_output_population_boundaries[32-0]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_preserves_native_output_population_boundaries[32-32]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_rejects_created_population_above_native_bound[33-0]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_rejects_created_population_above_native_bound[33-31]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_rejects_created_population_above_native_bound[64-0]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_rejects_nonexact_or_reserved_paths[../x.py]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_rejects_nonexact_or_reserved_paths[./x.py]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_rejects_nonexact_or_reserved_paths[.git/config]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_rejects_nonexact_or_reserved_paths[.runtime/a]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_rejects_nonexact_or_reserved_paths[.supervisor-any]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_rejects_nonexact_or_reserved_paths[/app/x.py]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_rejects_nonexact_or_reserved_paths[a/../x.py]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_rejects_nonexact_or_reserved_paths[a/.git/config]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_rejects_nonexact_or_reserved_paths[a//x.py]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_rejects_nonexact_or_reserved_paths[a\\\\b.py]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_rejects_nonexact_or_reserved_paths[a\\nb.py]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_rejects_nonexact_or_reserved_paths[x/*.py]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_profile_rejects_nonexact_or_reserved_paths[x?.py]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_source_change_during_domain_declaration_cannot_replace_original_inventory",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_structural_smoke_cannot_import_candidate_modules[False-ast.py]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_structural_smoke_cannot_import_candidate_modules[False-ast/__init__.py]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_structural_smoke_cannot_import_candidate_modules[False-json.py]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_structural_smoke_cannot_import_candidate_modules[False-pathlib.py]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_structural_smoke_cannot_import_candidate_modules[False-sitecustomize.py]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_structural_smoke_cannot_import_candidate_modules[True-ast.py]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_structural_smoke_cannot_import_candidate_modules[True-ast/__init__.py]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_structural_smoke_cannot_import_candidate_modules[True-json.py]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_structural_smoke_cannot_import_candidate_modules[True-pathlib.py]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_structural_smoke_cannot_import_candidate_modules[True-sitecustomize.py]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_structural_smoke_parses_without_executing_candidate",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_structural_smoke_rejects_missing_invalid_or_unbounded_outputs[fifo]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_structural_smoke_rejects_missing_invalid_or_unbounded_outputs[missing]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_structural_smoke_rejects_missing_invalid_or_unbounded_outputs[oversize]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_structural_smoke_rejects_missing_invalid_or_unbounded_outputs[parent_symlink]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_structural_smoke_rejects_missing_invalid_or_unbounded_outputs[symlink]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_structural_smoke_rejects_missing_invalid_or_unbounded_outputs[syntax]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_unsigned_preparation_changes_cannot_change_signed_task[profile]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_unsigned_preparation_changes_cannot_change_signed_task[remove_profile]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_unsigned_preparation_changes_cannot_change_signed_task[smoke]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_unsigned_preparation_changes_cannot_change_signed_task[spec]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py::test_unsigned_preparation_changes_cannot_change_signed_task[worker_inputs]",
+            "seal": "c9f2503d57c007c3631eb8b756d3e6e16399afff80e19a99b8a2e8f911e54754",
+            "file_count": 3
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_candidate_context_is_frozen_and_proof_is_explicitly_not_required",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_exact_reviewed_native_operation_generates_real_open_symbolic_obligations",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_grounded_dependency_becomes_and_premise_and_concrete_task_dependency",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_grounded_ordering_cannot_be_dropped_or_turned_into_cycle",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_malformed_or_escalated_operation_contract_is_rejected[<lambda>0]",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_malformed_or_escalated_operation_contract_is_rejected[<lambda>1]",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_malformed_or_escalated_operation_contract_is_rejected[<lambda>2]",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_malformed_or_escalated_operation_contract_is_rejected[<lambda>3]",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_malformed_or_escalated_operation_contract_is_rejected[<lambda>4]",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_malformed_or_escalated_operation_contract_is_rejected[<lambda>5]",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_malformed_or_escalated_operation_contract_is_rejected[<lambda>6]",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_malformed_or_escalated_operation_contract_is_rejected[<lambda>7]",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_malformed_or_escalated_operation_contract_is_rejected[<lambda>8]",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_malformed_or_escalated_operation_contract_is_rejected[<lambda>9]",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_multiple_exact_requirements_can_share_one_independently_grounded_task",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_primitive_native_matcher_erasure_is_rejected[arguments-value1]",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_primitive_native_matcher_erasure_is_rejected[modality-permitted]",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_primitive_native_matcher_erasure_is_rejected[native_document_sha256-0000000000000000000000000000000000000000000000000000000000000000]",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_primitive_native_matcher_erasure_is_rejected[predicate-delete]",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_primitive_native_matcher_erasure_is_rejected[statement_id-unknown]",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_pure_material_replay_does_not_observe_repository_or_create_source_facts",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_requirement_cannot_be_assigned_to_multiple_independent_operations",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_same_source_with_a_distinct_reviewed_predicate_requires_a_new_exact_matcher",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_signed_manifest_task_declarations_remain_independent_constraints[acceptance]",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_signed_manifest_task_declarations_remain_independent_constraints[contract]",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_signed_manifest_task_declarations_remain_independent_constraints[dependency]",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_signed_manifest_task_declarations_remain_independent_constraints[effect]",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_signed_manifest_task_declarations_remain_independent_constraints[population]",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_signed_manifest_task_declarations_remain_independent_constraints[scope]",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_signed_manifest_task_declarations_remain_independent_constraints[validation]",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_symbolic_atomic_profile_rejects_norms_and_context_instead_of_flattening[conditional]",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_symbolic_atomic_profile_rejects_norms_and_context_instead_of_flattening[guard]",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_symbolic_atomic_profile_rejects_norms_and_context_instead_of_flattening[permitted]",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_requirement_adapter.py::test_symbolic_atomic_profile_rejects_norms_and_context_instead_of_flattening[prohibited]",
+            "seal": "8776bd79963bd8d79fb62c319d3b2886a13a76bcefc3b988c8387fc4ef17fcc7",
+            "file_count": 969
+          },
+          {
+            "nodeid": "test/api/test_intent_symbolic_planning.py::test_coverage_correct_direct_graph_cannot_bypass_symbolic_selection",
+            "seal": "e2162ca1a9c21eb2455180d91f0660fcbc68178a6887bbb8e1705d24c555966a",
+            "file_count": 973
+          },
+          {
+            "nodeid": "test/api/test_intent_symbolic_planning.py::test_failed_critic_never_returns_a_graph_or_admission",
+            "seal": "e2162ca1a9c21eb2455180d91f0660fcbc68178a6887bbb8e1705d24c555966a",
+            "file_count": 973
+          },
+          {
+            "nodeid": "test/api/test_intent_symbolic_planning.py::test_launch_refuses_owner_resigned_symbolic_receipt_in_original_native_row",
+            "seal": "e2162ca1a9c21eb2455180d91f0660fcbc68178a6887bbb8e1705d24c555966a",
+            "file_count": 973
+          },
+          {
+            "nodeid": "test/api/test_intent_symbolic_planning.py::test_no_selected_candidate_never_uses_a_baseline_fallback",
+            "seal": "e2162ca1a9c21eb2455180d91f0660fcbc68178a6887bbb8e1705d24c555966a",
+            "file_count": 973
+          },
+          {
+            "nodeid": "test/api/test_intent_symbolic_planning.py::test_owner_resigned_native_contract_cannot_omit_or_forge_symbolic_replay[alter_graph]",
+            "seal": "e2162ca1a9c21eb2455180d91f0660fcbc68178a6887bbb8e1705d24c555966a",
+            "file_count": 973
+          },
+          {
+            "nodeid": "test/api/test_intent_symbolic_planning.py::test_owner_resigned_native_contract_cannot_omit_or_forge_symbolic_replay[alter_receipt]",
+            "seal": "e2162ca1a9c21eb2455180d91f0660fcbc68178a6887bbb8e1705d24c555966a",
+            "file_count": 973
+          },
+          {
+            "nodeid": "test/api/test_intent_symbolic_planning.py::test_owner_resigned_native_contract_cannot_omit_or_forge_symbolic_replay[coverage_schema]",
+            "seal": "e2162ca1a9c21eb2455180d91f0660fcbc68178a6887bbb8e1705d24c555966a",
+            "file_count": 973
+          },
+          {
+            "nodeid": "test/api/test_intent_symbolic_planning.py::test_owner_resigned_native_contract_cannot_omit_or_forge_symbolic_replay[drop]",
+            "seal": "e2162ca1a9c21eb2455180d91f0660fcbc68178a6887bbb8e1705d24c555966a",
+            "file_count": 973
+          },
+          {
+            "nodeid": "test/api/test_intent_symbolic_planning.py::test_owner_resigning_changed_selection_receipt_fails_replay[drop]",
+            "seal": "e2162ca1a9c21eb2455180d91f0660fcbc68178a6887bbb8e1705d24c555966a",
+            "file_count": 973
+          },
+          {
+            "nodeid": "test/api/test_intent_symbolic_planning.py::test_owner_resigning_changed_selection_receipt_fails_replay[formal_effects_cid]",
+            "seal": "e2162ca1a9c21eb2455180d91f0660fcbc68178a6887bbb8e1705d24c555966a",
+            "file_count": 973
+          },
+          {
+            "nodeid": "test/api/test_intent_symbolic_planning.py::test_owner_resigning_changed_selection_receipt_fails_replay[materials_cid]",
+            "seal": "e2162ca1a9c21eb2455180d91f0660fcbc68178a6887bbb8e1705d24c555966a",
+            "file_count": 973
+          },
+          {
+            "nodeid": "test/api/test_intent_symbolic_planning.py::test_owner_resigning_changed_selection_receipt_fails_replay[provider_calls]",
+            "seal": "e2162ca1a9c21eb2455180d91f0660fcbc68178a6887bbb8e1705d24c555966a",
+            "file_count": 973
+          },
+          {
+            "nodeid": "test/api/test_intent_symbolic_planning.py::test_owner_resigning_changed_selection_receipt_fails_replay[selected_operation_ids]",
+            "seal": "e2162ca1a9c21eb2455180d91f0660fcbc68178a6887bbb8e1705d24c555966a",
+            "file_count": 973
+          },
+          {
+            "nodeid": "test/api/test_intent_symbolic_planning.py::test_real_native_publication_replays_symbolic_selection_against_original_baseline",
+            "seal": "e2162ca1a9c21eb2455180d91f0660fcbc68178a6887bbb8e1705d24c555966a",
+            "file_count": 973
+          },
+          {
+            "nodeid": "test/api/test_intent_symbolic_planning.py::test_real_symbolic_selection_projects_exact_signed_effects_and_replays[0-False]",
+            "seal": "e2162ca1a9c21eb2455180d91f0660fcbc68178a6887bbb8e1705d24c555966a",
+            "file_count": 973
+          },
+          {
+            "nodeid": "test/api/test_intent_symbolic_planning.py::test_real_symbolic_selection_projects_exact_signed_effects_and_replays[0-True]",
+            "seal": "e2162ca1a9c21eb2455180d91f0660fcbc68178a6887bbb8e1705d24c555966a",
+            "file_count": 973
+          },
+          {
+            "nodeid": "test/api/test_intent_symbolic_planning.py::test_real_symbolic_selection_projects_exact_signed_effects_and_replays[0.75-False]",
+            "seal": "e2162ca1a9c21eb2455180d91f0660fcbc68178a6887bbb8e1705d24c555966a",
+            "file_count": 973
+          },
+          {
+            "nodeid": "test/api/test_intent_symbolic_planning.py::test_real_symbolic_selection_projects_exact_signed_effects_and_replays[0.75-True]",
+            "seal": "e2162ca1a9c21eb2455180d91f0660fcbc68178a6887bbb8e1705d24c555966a",
+            "file_count": 973
+          },
+          {
+            "nodeid": "test/api/test_intent_symbolic_planning.py::test_symbolic_selection_still_requires_real_passing_public_check_and_created_output",
+            "seal": "e2162ca1a9c21eb2455180d91f0660fcbc68178a6887bbb8e1705d24c555966a",
+            "file_count": 973
+          },
+          {
+            "nodeid": "test/api/test_intent_symbolic_planning_ordered.py::test_ordered_outputs_require_both_real_public_checks",
+            "seal": "de8510462a858a490553a19676f70009c066de4156fff7292f742565e68b400b",
+            "file_count": 973
+          },
+          {
+            "nodeid": "test/api/test_intent_symbolic_planning_ordered.py::test_ordered_signed_operations_project_exact_native_dependencies",
+            "seal": "de8510462a858a490553a19676f70009c066de4156fff7292f742565e68b400b",
+            "file_count": 973
+          },
+          {
+            "nodeid": "test/api/test_intent_symbolic_planning_ordered.py::test_owner_signed_dependency_erasure_or_reversal_cannot_enter_native_storage[drop]",
+            "seal": "de8510462a858a490553a19676f70009c066de4156fff7292f742565e68b400b",
+            "file_count": 973
+          },
+          {
+            "nodeid": "test/api/test_intent_symbolic_planning_ordered.py::test_owner_signed_dependency_erasure_or_reversal_cannot_enter_native_storage[reverse]",
+            "seal": "de8510462a858a490553a19676f70009c066de4156fff7292f742565e68b400b",
+            "file_count": 973
+          }
+        ]
+      }
+    },
+    {
+      "metadata": "doctor-pipeline-metadata.json",
+      "counts": {
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "evidence_pins": {
+        "doctor-pipeline-metadata.json": {
+          "bytes": 9575,
+          "sha256": "47b5617f6a756a4f9f6d20c766d3b53472111a8b204c27b792a04f66e3bf818e"
+        },
+        "doctor-pipeline.xml": {
+          "bytes": 1060,
+          "sha256": "4014ddcd9ca320b563e58bd69bfdf4305b1bd2769caff0b2475aa91431b7ee79"
+        },
+        "doctor-pipeline.log": {
+          "bytes": 1562,
+          "sha256": "bd0167cd76d19696cc285624628481bd86f2503b516b7a8d93e0da3590104b5e"
+        }
+      },
+      "ast_seal": {
+        "enabled": true,
+        "fresh_private_catalog": true,
+        "catalog_pin": {
+          "bytes": 1323008,
+          "sha256": "009c054a9db31e4f350d232fcd766222a14de1b5a56947b55267030b7a815ad5"
+        },
+        "completion_authority": false,
+        "records": [
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_repair_pipeline.py::test_actual_preparation_acceptance_replays_in_doctor_partition[False]",
+            "seal": "347550c946a3a3bdc3407f4c0722ae0845acbf09034785fe8500cd2d870c69e7",
+            "file_count": 1008
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_repair_pipeline.py::test_actual_preparation_acceptance_replays_in_doctor_partition[True]",
+            "seal": "347550c946a3a3bdc3407f4c0722ae0845acbf09034785fe8500cd2d870c69e7",
+            "file_count": 1008
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_repair_pipeline.py::test_indexed_symbolic_plan_reaches_real_doctor_proof_without_a_model[import-alias]",
+            "seal": "347550c946a3a3bdc3407f4c0722ae0845acbf09034785fe8500cd2d870c69e7",
+            "file_count": 1008
+          },
+          {
+            "nodeid": "benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_repair_pipeline.py::test_indexed_symbolic_plan_reaches_real_doctor_proof_without_a_model[keyword]",
+            "seal": "347550c946a3a3bdc3407f4c0722ae0845acbf09034785fe8500cd2d870c69e7",
+            "file_count": 1008
+          }
+        ]
+      }
+    }
+  ],
+  "final_target_pins": {
+    "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": {
+      "bytes": 55455,
+      "sha256": "4f58b376e1bf353107134df4cdb3d64b6be66011e0c980f8fd9d23f86511526a"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py": {
+      "bytes": 40507,
+      "sha256": "19a5c5850ead4cb0789ac61e21e3f024a5def45ff23e2dcf446ec395029d6a1d"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": {
+      "bytes": 27828,
+      "sha256": "a88a3b0fcc3ed3225cc21a78e43b324c601416f6d710e58beb84d4211edcaca6"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_context_rebind.py": {
+      "bytes": 11930,
+      "sha256": "b6a47a338081d4c45c3865da16288d9d908d33b04beb8fd54aaad796ec3b3984"
+    },
+    "ipfs_accelerate_py/agent_supervisor/planning/intent_symbolic_planning.py": {
+      "bytes": 15697,
+      "sha256": "dd5b7e7d4c23167fe309d991c143f936e86c26b62e55afdf47a6586d5fc0f5e2"
+    },
+    "ipfs_accelerate_py/agent_supervisor/planning/intent_requirement_adapter.py": {
+      "bytes": 27522,
+      "sha256": "4b773cdf818c40af82015a2bbe460ec364a1faa0e1146427f2e39608122c27c2"
+    },
+    "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py": {
+      "bytes": 15761,
+      "sha256": "30075f344fdf162879abc30497a9ccd2647eeca1314dc925fcb8926c2f29b797"
+    },
+    "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py": {
+      "bytes": 17692,
+      "sha256": "3c7ddc0871e81dedd790ef09f493f25942165f63d86657f6ca7b33309be118a2"
+    },
+    "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py": {
+      "bytes": 7955,
+      "sha256": "f21470f8c25299e7795b6b11ccfc31ccd58058bb44a760eaa03aab427ea5ac14"
+    },
+    "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py": {
+      "bytes": 12770,
+      "sha256": "8faefe24c2313c2054daf1c9c9a2ad77c5db15ea3f9d0690f0404e4ec34a8b12"
+    },
+    "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py": {
+      "bytes": 14018,
+      "sha256": "494e0f439ae7eb6e5289c5cf1d1fdd606681c050e8c65241e66d83ea224d58c1"
+    },
+    "benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py": {
+      "bytes": 9307,
+      "sha256": "adeb2512d74ac3031653868e69bcd1afa0065adbcb8da9355d9fb1692f60658c"
+    },
+    "benchmarks/agent_supervisor/container_coding/test_terminal_repository_preview.py": {
+      "bytes": 11410,
+      "sha256": "5a72ea847a6fd180bc811f7d6a1ea96d3876f82eb4ff3fd3d1bb3bce4aa3a9c9"
+    },
+    "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py": {
+      "bytes": 15691,
+      "sha256": "f210b2031b14f1ffde5d21a5285b14b7bed7d3de3129bd3eb11a6075c11f1020"
+    },
+    "test/api/test_intent_requirement_adapter.py": {
+      "bytes": 16758,
+      "sha256": "4c3aee5701181ecdebe0d4ac2ee729dc20ec8c86b1be146d26d4d6dd6029b030"
+    },
+    "test/api/test_intent_symbolic_planning.py": {
+      "bytes": 13621,
+      "sha256": "a6383c7153cc96a9340e1082888429d3b05954ce051047d9aca8659a09762939"
+    },
+    "test/api/test_intent_symbolic_planning_ordered.py": {
+      "bytes": 12674,
+      "sha256": "3a969c1180af20cfa2abec4dea1a77e09e2080177be571099785818c0dbdc397"
+    },
+    "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py": {
+      "bytes": 13958,
+      "sha256": "d9775bc600f1dc5a4f22e14ad0216dd48bdadce2f51a834db86e862cd4c14dc0"
+    },
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py": {
+      "bytes": 11925,
+      "sha256": "9a448a4c40800dba69d72d44c9b67576e244e48bf2e3d277804ee105d69f7803"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": {
+      "bytes": 11949,
+      "sha256": "8592439fa72e7b392b8e0650bf97ddbcaa605b00a9fbd1233d2af369b49d7cd3"
+    },
+    "benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_repair_pipeline.py": {
+      "bytes": 8499,
+      "sha256": "7e92dffc782cdb78100265744face2320a00df90f5594eeae45cd2a42d39db51"
+    }
+  },
+  "existing_assets": {
+    "checkpoint_path": "/home/barberb/lift_coding/artifacts/distributed384-20261001/run-01/security_ir/coordinator/checkpoints/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json",
+    "checkpoint_pin": {
+      "bytes": 493355,
+      "sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5"
+    },
+    "embedding_snapshot": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd",
+    "model_downloads_permitted": false,
+    "training_executed": false
+  },
+  "source_stability": {
+    "all_recorded_source_pins_unchanged_during_each_run": true,
+    "checkpoint_unchanged": true,
+    "final_change_after_250_case_run": "Nine-line retained Doctor capability-report transport; exercised by the four final real Lean/Z3 pipeline cases."
+  },
+  "preserved_routes": [
+    "repository-preview",
+    "source-unit advice",
+    "existing Intent advice"
+  ],
+  "restored_boundaries": [
+    "generic task profile validation and signing",
+    "exact signed profile/source/spec replay",
+    "Source384 initial selection and closing live checks",
+    "Source384-preserving warm rebind",
+    "signed generic retrieval scope audit",
+    "v2 symbolic planner/adapter applicability keyword compatibility",
+    "Doctor capability-report transport"
+  ],
+  "observations": [
+    "Baseline generic prepare/load cases failed3/3 because prepare rejected task_profile.",
+    "Broader preview and symbolic cases exposed current admission forwarding keyword arguments absent from planner/adapter.",
+    "One new native source-drift regression reaches the restored original-inventory fence during domain declaration.",
+    "Three existing pinned CPU inference cases consume the original Security384 checkpoint and cached GTE-small encoder; replay paths reject drift and avoid fresh neural inference.",
+    "Two final operator cases execute actual Lean/Z3 checks, candidate handoff/materialization and structural smoke; source interpretation remains explicitly authored."
+  ],
+  "remaining_gaps": [
+    "empty-source and zero-symbol index/replay/audit/successor contracts",
+    "retained resource-profile integration",
+    "retained IntentAction384 selection",
+    "complete header-v3 validator and entry-point orchestration",
+    "broader symbolic decomposition/operators",
+    "independently grounded behavioral contracts"
+  ],
+  "limits": {
+    "new_terminal_bench_score": false,
+    "learned_intent_interpretation_qualified": false,
+    "whole_program_verified": false,
+    "source384_semantic_equivalence_claimed": false,
+    "all_supervisor_gaps_closed": false,
+    "completion_authority": false
+  },
+  "documentation_gates": {
+    "command": [
+      "/home/barberb/.local/bin/python",
+      "scripts/docs/run_documentation_gates.py"
+    ],
+    "exit_code": 0,
+    "log": "documentation-gates.log",
+    "bytes": 200,
+    "sha256": "3ee5d7242b0b646a480b60c7ce9d3e9c1052f7d794069acb52919a4e03b93db7"
+  }
+}

@@ -1,0 +1,18 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 4 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_repair_pipeline.py . [ 25%]
+...                                                                      [100%]
+
+- generated xml file: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/docs/agent_supervisor/evidence/supervisor-profile-recovery-20261004/doctor-pipeline.xml -
+============================= slowest 10 durations =============================
+11.59s call     benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_repair_pipeline.py::test_indexed_symbolic_plan_reaches_real_doctor_proof_without_a_model[keyword]
+9.79s call     benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_repair_pipeline.py::test_indexed_symbolic_plan_reaches_real_doctor_proof_without_a_model[import-alias]
+1.92s call     benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_repair_pipeline.py::test_actual_preparation_acceptance_replays_in_doctor_partition[False]
+1.81s call     benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_repair_pipeline.py::test_actual_preparation_acceptance_replays_in_doctor_partition[True]
+
+(6 durations < 0.005s hidden.  Use -vv to show these durations.)
+============================== 4 passed in 39.27s ==============================

@@ -1,0 +1,45 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004
+configfile: pytest.ini
+collected 250 items
+
+benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py . [  0%]
+........................................................................ [ 29%]
+                                                                         [ 29%]
+benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py . [ 29%]
+................                                                         [ 36%]
+benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py . [ 36%]
+......                                                                   [ 38%]
+benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py . [ 39%]
+...........                                                              [ 43%]
+benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py . [ 44%]
+..................                                                       [ 51%]
+benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py . [ 51%]
+..                                                                       [ 52%]
+benchmarks/agent_supervisor/container_coding/test_terminal_repository_preview.py . [ 52%]
+..........                                                               [ 56%]
+benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py . [ 57%]
+..........                                                               [ 61%]
+test/api/test_intent_requirement_adapter.py ............................ [ 72%]
+......                                                                   [ 74%]
+test/api/test_intent_symbolic_planning.py ...................            [ 82%]
+test/api/test_intent_symbolic_planning_ordered.py ....                   [ 84%]
+benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py . [ 84%]
+..........................                                               [ 94%]
+benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py . [ 95%]
+............                                                             [100%]
+
+- generated xml file: /home/barberb/lift_coding/.worktrees/supervisor-context-gaps-20261004/docs/agent_supervisor/evidence/supervisor-profile-recovery-20261004/focused-tests.xml -
+============================= slowest 10 durations =============================
+13.91s call     benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_real_pinned_inference_reaches_planner_and_dispatch_without_replay
+9.90s call     benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py::test_real_cpu_checkpoint_inference_selects_program_and_replays_without_model
+9.57s call     benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py::test_checkpoint_change_during_router_is_rejected_before_admission
+6.53s call     benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py::test_rebind_actual_owner_and_native_prompt_checks_fresh_sources_without_world_authority[absent]
+5.05s call     benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py::test_rebind_actual_owner_and_native_prompt_checks_fresh_sources_without_world_authority[selected]
+4.62s call     benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py::test_rebind_actual_owner_and_native_prompt_checks_fresh_sources_without_world_authority[drift-during-capture]
+3.93s call     benchmarks/agent_supervisor/container_coding/test_terminal_repository_preview.py::test_explicit_capture_retry_and_preview_never_reprepare
+3.88s call     test/api/test_intent_symbolic_planning_ordered.py::test_ordered_outputs_require_both_real_public_checks
+3.86s call     benchmarks/agent_supervisor/container_coding/test_terminal_repository_preview.py::test_administrative_replay_drift_cannot_publish_or_commit_tasks[head_successor-materialization]
+3.72s call     benchmarks/agent_supervisor/container_coding/test_terminal_repository_preview.py::test_opt_in_real_service_consumes_native_context_without_changing_signed_selection
+======================= 250 passed in 298.62s (0:04:58) ========================

@@ -146,6 +146,28 @@ does not execute checkpoint inference or a Lake subprocess. The existing
 advisory authority limits and family-specific checkpoint selection remain in
 place. These fixes do not close the broader planning gaps listed below.
 
+The [profile and context recovery evidence](evidence/supervisor-profile-recovery-20261004/qualification.json)
+records **254 distinct passing tests, zero failures or skips** across the
+subsequent integration repair, including actual cached-checkpoint inference and
+four final preparation-to-Doctor checks, two with real Lean/Z3 repairs. AST sealing
+remained enabled; exact commands, source/asset pins and run boundaries are
+retained. The audited `main` retained generic
+profile tests while its preparation entry point rejected `task_profile`, and
+native admission passed applicability arguments missing from the symbolic
+planner and requirement adapter. The repair restores those retained interfaces,
+exact signed profile replay, Source384 selection and initial-context transport,
+and the closing checks on warm rebind. It preserves the repository-preview and
+source-unit advisory routes added by other work.
+
+The recovery reuses implementation from `e6cd2df95` and the existing Security384
+checkpoint and cached GTE-small snapshot. A new regression rejects changes to
+original source bindings during declaration before a prepared task can be
+published. Empty repositories can prepare an explicit signed create task, but
+source indexing still refuses an absent program population; zero-symbol source
+files also remain outside the current vector qualification contract. Resource
+profile wiring, IntentAction384 selection and full header-v3 orchestration are
+separate retained integrations still requiring recovery and qualification.
+
 The repair integration uses an explicitly authored IntentIR contract and lexical
 vector-index ablation. It traverses actual prompt preparation, initial indexing,
 symbolic planning, task-bound context, Doctor proof and candidate commit, worker
@@ -165,6 +187,7 @@ START or new Terminal-Bench score were produced by this qualification.
 
 | Priority | Missing capability | Reuse before adding another subsystem |
 | --- | --- | --- |
+| P0 | Remaining retained runtime integration | Recover the retained resource-profile, IntentAction384 and header-v3 validator/entry-point wiring against current interfaces. Preserve repository-preview and source-unit routes, then qualify each complete path before treating retained tests or model assets as available runtime features. |
 | P0 | Broad operator dispatch beyond the two closed Python repairs | `runtime/doctor_task_workflow.py`, `planning/repair_operator_registry.py`, `planning/deterministic_doctor_transforms.py`, `planning/program_repair_synthesis.py`. Each new route needs independent preconditions, exact source lowering, native proof reconstruction, impact and publication gates. Registry presence alone does not make it executable. |
 | P0 | Symbolic decomposition in generic benchmark profiles | `planning/intent_requirement_adapter.py`, `planning/intent_symbolic_planning.py`, obligation compiler, critic and formal-plan validator. Current generic constraints force one task; add reviewed requirement/operation bindings and exact dependency/effect coverage. |
 | P1 | Honest empty-source and zero-symbol context | Existing manifest, corpus inventory and native empty-intent-world capture. Extend initial context, replay, audits and successor refresh together. Do not invent code symbols or remove a guard without a replacement schema. |

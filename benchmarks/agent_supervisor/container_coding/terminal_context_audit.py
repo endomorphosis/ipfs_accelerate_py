@@ -308,7 +308,15 @@ def _capsule(raw: bytes, *, expected: dict, prepared: dict) -> tuple[dict, str]:
         raise ValueError("invalid public query")
     sources = prepared["manifest"]["payload"]["sources"]
     source_hashes = retrieval["source_sha256"]
-    if not isinstance(source_hashes, dict) or set(source_hashes) != {"bottle.py"}:
+    expected_paths = {"bottle.py"}
+    if prepared.get("task_profile") is not None:
+        from .terminal_task_profile import (PROFILE, validate_task_profile,
+            task_profile_bytes, task_profile_index_paths)
+        profile = validate_task_profile(prepared["task_profile"], instruction=query)
+        if sources.get(PROFILE, {}).get("sha256") != _sha(task_profile_bytes(profile)):
+            raise ValueError("retrieval scope profile differs from signed source")
+        expected_paths = set(task_profile_index_paths(profile))
+    if not isinstance(source_hashes, dict) or set(source_hashes) != expected_paths:
         raise ValueError("unexpected retrieval source scope")
     tasks = [row for row in world.get("tasks", []) if row.get("task_cid") == expected["task_cid"]]
     checks = {

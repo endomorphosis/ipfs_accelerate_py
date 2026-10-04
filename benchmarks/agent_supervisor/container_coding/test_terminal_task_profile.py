@@ -282,6 +282,22 @@ def test_oversize_planner_source_is_rejected_without_partial_scan(tmp_path):
     assert not args[2].exists()
 
 
+def test_source_change_during_domain_declaration_cannot_replace_original_inventory(tmp_path, monkeypatch):
+    args = original(tmp_path)
+    root, _, state, _ = args
+    native_declarations = prep.local.local_planning_domain_declarations
+
+    def changed_source(**kwargs):
+        (root / "source.py").write_text("def public_source():\n    return 99\n")
+        return native_declarations(**kwargs)
+
+    monkeypatch.setattr(prep.local, "local_planning_domain_declarations", changed_source)
+    with pytest.raises(ValueError, match="public source bytes changed during task preparation"):
+        prepare(args)
+    assert not (state / "prepared.json").exists()
+    assert not (state / "provider-request.json").exists()
+
+
 def test_actual_generic_source_indexes_and_world_bind_task_inputs(tmp_path):
     from benchmarks.agent_supervisor.container_coding import terminal_initial_context as initial
     args = original(tmp_path)
