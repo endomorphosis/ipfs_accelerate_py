@@ -1,0 +1,26 @@
+{
+  "container_name": "fix-code-vulnerability__n44pxyk__env-main-1",
+  "diagnostic": {
+    "exact_pattern": "admitted_managed_daemon*.log",
+    "logs": [
+      {
+        "exception_types": [],
+        "log_bytes": 12071,
+        "mtime_ns": 1791114321408509706,
+        "name": "admitted_managed_daemon_20261004T114452Z.log",
+        "tail_bytes": 12071,
+        "tail_sha256": "225cfead92083d1e538eade88d2cba28451325d2d3e335b10fb52f5a2d1cfcb7",
+        "traceback_frames": []
+      }
+    ],
+    "matching_count": 2,
+    "selection": "first_two_by_filename"
+  },
+  "final_receipt": false,
+  "producer_sha256": "23d65711e492be018c6128659666624da265faf5b3d369d2658b66fe7a60dd21",
+  "raw_log_bodies_exported": false,
+  "read_finished_unix_seconds": 1791114351.3426337,
+  "read_started_unix_seconds": 1791114351.2554834,
+  "returncode": 0,
+  "schema": "bounded-first-daemon-failure-projection@1"
+}

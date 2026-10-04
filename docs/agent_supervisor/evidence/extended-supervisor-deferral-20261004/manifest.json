@@ -1,0 +1,138 @@
+{
+  "files": [
+    {
+      "bytes": 4761,
+      "path": "README.md",
+      "sha256": "0287433fdd393e90b710eb506cad329e19b13b12e65c8fca92cc339b42d19c46"
+    },
+    {
+      "bytes": 1534,
+      "path": "build-audit.json",
+      "sha256": "7a55dd4c4bb34ea283414fd8051e9290a05f2c4dd7aa900b521f4a74c9cad494"
+    },
+    {
+      "bytes": 2007,
+      "path": "build-command.json",
+      "sha256": "cb621818df273c3854616ab83df061630d3a9d449b1ab58284da0b9e06832cd4"
+    },
+    {
+      "bytes": 54,
+      "path": "build-exit.json",
+      "sha256": "ed5cb8823c3eb08a6c69730cc1403e13439b4e9725b4391943154f27f876e256"
+    },
+    {
+      "bytes": 455,
+      "path": "ci-observation.json",
+      "sha256": "6b405ba872eba88c502a9ae4e43a9c868849fdf6cd82306adc607def1fc82846"
+    },
+    {
+      "bytes": 1698,
+      "path": "complete-source-pin-map-summaries.json",
+      "sha256": "adb23edc6cf54f678f2428fbe786b4cffa652dbefcb91ac1a84d862fe607ca0d"
+    },
+    {
+      "bytes": 2032,
+      "path": "execute-command.json",
+      "sha256": "52541c4fed0445834b1572c229da7ad89a3c9f23a74abc5f6d33333d9dd49b2c"
+    },
+    {
+      "bytes": 1153,
+      "path": "experiment-scope.json",
+      "sha256": "12758fb22ca5e04d5d4af0cdf8c3f500bcc054353231781a233801148685dc3c"
+    },
+    {
+      "bytes": 1219,
+      "path": "export-scope.json",
+      "sha256": "de7ef48ec0ba1201f1df0c2a797904a22fe70973d9072b7b767f0c3cbeb5abb2"
+    },
+    {
+      "bytes": 54,
+      "path": "full-trial-controller-exit.json",
+      "sha256": "c040a7bc04cf2c3d4dade0f197345097ba546f4609dda4afd95f64f3cdc59e12"
+    },
+    {
+      "bytes": 8107,
+      "path": "full-trial-metadata.json",
+      "sha256": "0b452ba14f2f75f8989453ca61297ee738609c7045f8ad8397072f53165923a7"
+    },
+    {
+      "bytes": 27824,
+      "path": "host-pressure-summary.json",
+      "sha256": "151e66050ec2935a5f1b0129e4bf57b2596eea1e8d44defd3312080c70cde593"
+    },
+    {
+      "bytes": 557,
+      "path": "initial-daemon-diagnostics-01.json",
+      "sha256": "cfdffbe914052f7d13bd3eea4c65d077fd38ffc03bb830ae8cd258cf62e9ad04"
+    },
+    {
+      "bytes": 894,
+      "path": "initial-daemon-diagnostics-02.json",
+      "sha256": "413c45d859edf56b3eb9195fc673606bcab8df1b3d876f5987aef45a7a5fa383"
+    },
+    {
+      "bytes": 2461,
+      "path": "prepare-command.json",
+      "sha256": "8b2bc3399f02ebf0f028b4348196bce0c09e232815d81e42aaa3326f8405fb06"
+    },
+    {
+      "bytes": 55,
+      "path": "prepare-exit.json",
+      "sha256": "7b84972f5ad0d6204ab3a6f9230ed9974e2a9294cba1b08d909aa9ad99a7a2ed"
+    },
+    {
+      "bytes": 270,
+      "path": "public-task-input-digests.json",
+      "sha256": "c2bd9ed3e63cbb7d5202f7c3fe124aaeb45010d8d176d77223e405a6e16806a3"
+    },
+    {
+      "bytes": 2219,
+      "path": "qualification-command.json",
+      "sha256": "5f2369182501ba7316af791b5c5914efd1d88a92fb1a1faac65cf1fdf58af2ea"
+    },
+    {
+      "bytes": 893,
+      "path": "qualification-controller-command.json",
+      "sha256": "9fbcd6ad49286c74355e9632236c39ec3c08d93f65baf23c65e66b0f61773126"
+    },
+    {
+      "bytes": 4654,
+      "path": "qualification-native-observation.json",
+      "sha256": "03f3f72c3e8d5f9bb1a6dd16a25384f4518f2385356941b3be7640c53c7dd5d1"
+    },
+    {
+      "bytes": 1806,
+      "path": "qualification-outcome.json",
+      "sha256": "958a56e500cd915f869ac651c8c1a72db31b37a256c514e80e7d7cfc8f861064"
+    },
+    {
+      "bytes": 6255,
+      "path": "retained-original-record-digests.json",
+      "sha256": "b0de0fb15ba1e932a9e0f2dc386ea515f4d8a2935db0cca745700c490ef90554"
+    },
+    {
+      "bytes": 992,
+      "path": "reviewed-input-metadata.json",
+      "sha256": "a8049b941d8ec0f37997ac4c3eeb1f091f2703f415f6b344b8fc6d4e80c64c46"
+    },
+    {
+      "bytes": 3488,
+      "path": "service-pause-restoration.json",
+      "sha256": "0e925ea6e3f5d67d1b63ccbdb58562ab52c76f865923fd817887bd79c9346704"
+    },
+    {
+      "bytes": 317,
+      "path": "solver-metadata.json",
+      "sha256": "7d857a397c0a951d63ee92c0bd21ceab6ff721f7c8e4a999009e0d6b26cf1b9d"
+    },
+    {
+      "bytes": 244,
+      "path": "source-revisions.json",
+      "sha256": "4287130af971fc6e8029c2696eb96a6ff4548c46759c6dfcb6ce3e5320a6b83e"
+    }
+  ],
+  "manifest_excludes_itself": true,
+  "member_bytes": 76003,
+  "member_count": 26,
+  "schema": "bounded-benchmark-evidence-manifest@1"
+}

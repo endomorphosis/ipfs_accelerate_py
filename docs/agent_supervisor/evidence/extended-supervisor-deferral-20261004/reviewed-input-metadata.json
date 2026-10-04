@@ -1,0 +1,20 @@
+{
+  "config_sha256": "484ea034486a13c2204e9e21a1409919bd8986057c0c9facfc7de34df6218b08",
+  "construction_seconds": 0.2915781780029647,
+  "contract_cid": "baguqeeraf3jyjd5ovvjqawi3racqdnpt2q43m4q464hky6l7pnfrvr5bypna",
+  "contract_sha256": "2ed3848faead5300591b880501b5f3d439b6721cf70eac797f7b4b1ac7a1c3da",
+  "hidden_verifier_access": false,
+  "independent_human_review": false,
+  "model_decoded_intent": false,
+  "natural_language_semantics_proved": false,
+  "provider_calls": 0,
+  "review_assistant_token_cost_available": false,
+  "review_cost_excluded_from_runtime_timing": true,
+  "review_kind": "assistant_authored_administrative_mapping_with_reviewed_protocol_premise",
+  "schema": "public-instruction-mapping-review@1",
+  "selector_cid": "baguqeerakeswtx6dr2bieffo2hi43s2v5w3c5vzrvfraiwkdnx4z7htbcg6a",
+  "source_sha256": "89b1abdf0af19399f720233b5cdf6b2e8e0ff7b6e3fe3e2a3af0d4d298a8641a",
+  "task_execution": false,
+  "task_source_read_by_this_script": false,
+  "training_steps": 0
+}

@@ -1165,3 +1165,18 @@ are retained separately from the fresh 38-case execution. The native control
 uses real typed RPC/grants and admission leases with authored pressure, followed
 by an authored accepted response; it is not a completed benchmark task or model
 execution. A fresh archive and official outcome remain required.
+
+The [admission-recovery Docker trial](../../../docs/agent_supervisor/evidence/extended-supervisor-deferral-20261004/README.md)
+passes fresh checkpoint qualification and the official task (reward 1.0). The
+native task reaches completed revision 4 with zero reported provider calls,
+successful START/STOP, zero remaining processes and worker cleanup zero. Agent
+execution takes 438.969 seconds; the driver takes 436.987 seconds. No admission
+error is recorded, so this trial does not establish that resource deferral ran.
+
+Post-publication owner observation still raises LocalPlanningError, and successor
+context refresh is unavailable. The overall supervisor task_completed flag
+therefore remains false. This is an official task pass with an unfinished joined
+verification path. Leanstral was restored with HTTP readiness and the container
+removed. The new source-applicability nomination handoff must be qualified before
+claiming full-methodology success. Complete token costs and matched baseline/
+ablation efficiency remain unmeasured; RPI-019/020 remain open.
