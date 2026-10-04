@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import re
 import stat
@@ -251,10 +252,27 @@ class IRPersistentCatalogSource(PersistentCatalogSource):
     def _supplied_value(self):
         if self._path.suffix.lower() not in (".json", ".jsonl"):
             return super()._supplied_value()
-        _require(self._path.stat().st_size <= MAX_CONFIG_BYTES, "explicit JSON store exceeds byte bound")
         try:
-            text = self._path.read_text(encoding="utf-8")
-            _require(len(text.encode("utf-8")) <= MAX_CONFIG_BYTES, "explicit JSON store exceeds byte bound")
+            before = self._witness()
+            _require(before[3] <= MAX_CONFIG_BYTES, "explicit JSON store exceeds byte bound")
+            fd = os.open(self._path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+            chunks, count = [], 0
+            witness = lambda value: (value.st_dev, value.st_ino, value.st_mode,
+                                    value.st_size, value.st_mtime_ns, value.st_ctime_ns)
+            try:
+                _require(witness(os.fstat(fd)) == before, "selected JSON descriptor changed before read")
+                while True:
+                    chunk = os.read(fd, min(65536, MAX_CONFIG_BYTES + 1 - count))
+                    if not chunk:
+                        break
+                    count += len(chunk)
+                    _require(count <= MAX_CONFIG_BYTES, "explicit JSON store exceeds byte bound during read")
+                    chunks.append(chunk)
+                _require(witness(os.fstat(fd)) == before, "selected JSON descriptor changed during read")
+            finally:
+                os.close(fd)
+            _require(self._witness() == before, "selected JSON path changed during read")
+            text = b"".join(chunks).decode("utf-8")
             def parse(value):
                 return json.loads(value, object_pairs_hook=_pairs,
                     parse_constant=lambda _: (_ for _ in ()).throw(
