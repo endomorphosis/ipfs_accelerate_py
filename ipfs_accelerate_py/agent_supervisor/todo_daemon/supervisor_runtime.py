@@ -96,6 +96,7 @@ class SupervisedChildSpec:
     latest_log_path: Optional[Path] = None
     env: Mapping[str, str] = field(default_factory=dict)
     pass_fds: tuple[int, ...] = field(default_factory=tuple)
+    worker_credential_handoff: bool = False
     stdin_devnull: bool = True
     start_new_session: bool = True
 
@@ -1888,7 +1889,26 @@ def launch_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild:
     env.pop(SUPERVISED_CHILD_IDENTITY_PATH_ENV, None)
     env.pop(SUPERVISED_CHILD_OWNER_SCOPE_ENV, None)
     out_handle = log_path.open("ab")
+    handoff = None
+    executable_fd = None
+    process = None
     try:
+        launch_fds = spec.pass_fds
+        if spec.worker_credential_handoff:
+            from ..runtime.process_security import (
+                prepare_state_authority_child_handoff, STATE_AUTHORITY_PARENT_LOSS_TERMINATE,
+                state_authority_pass_fds,
+            )
+            env = {**os.environ, **env}
+            source_fds = state_authority_pass_fds(env)
+            if len(source_fds) != 1:
+                raise RuntimeError("managed worker requires a sealed broker bootstrap")
+            handoff = prepare_state_authority_child_handoff(
+                env, parent_loss_policy=STATE_AUTHORITY_PARENT_LOSS_TERMINATE,
+                bind_execution_identity=True,
+            )
+            executable_fd = os.open(spec.command[0], os.O_RDONLY | os.O_CLOEXEC)
+            launch_fds = tuple(fd for fd in launch_fds if fd not in source_fds) + handoff.pass_fds
         process = launch_process_child(
             spec.command,
             cwd=str(spec.repo_root),
@@ -1897,10 +1917,22 @@ def launch_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild:
             stdout=out_handle,
             stderr=subprocess.STDOUT,
             start_new_session=spec.start_new_session,
-            pass_fds=spec.pass_fds,
+            pass_fds=launch_fds,
+            **({"replace_env": True} if spec.worker_credential_handoff else {}),
         )
+        if handoff is not None:
+            handoff.deliver(process, expected_executable_descriptor=executable_fd,
+                            expected_argv=spec.command, timeout_seconds=45)
+    except BaseException:
+        if process is not None and process.poll() is None:
+            terminate_direct_child_process(process, grace_seconds=1.0)
+        raise
     finally:
         out_handle.close()
+        if handoff is not None:
+            handoff.close()
+        if executable_fd is not None:
+            os.close(executable_fd)
     persisted_identity: SupervisedChildIdentity | None = None
     if identity_path is not None and owner_scope is not None:
         try:

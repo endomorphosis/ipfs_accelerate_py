@@ -776,6 +776,20 @@ class TypedDatabaseTaskSource:
             raise TaskSourceIntegrityError(
                 "typed task authority differs from its process-bound bootstrap"
             )
+        if bootstrap_credentials is not None and not getattr(connection, "_local_completion_transport_captured", False):
+            from .typed_state_owner import (
+                LOCAL_COMPLETION_RPC_TIMEOUT_ENV, LOCAL_COMPLETION_RPC_TIMEOUT_SECONDS,
+            )
+            configured = os.environ.get(LOCAL_COMPLETION_RPC_TIMEOUT_ENV)
+            if configured is not None:
+                if (configured != str(int(LOCAL_COMPLETION_RPC_TIMEOUT_SECONDS))
+                        or os.environ.get("IPFS_DATASETS_PROOF_RESOURCE_PROFILE") != "local-benchmark@1"
+                        or "local.task.validation.run" not in grant_operations):
+                    raise TaskSourceIntegrityError("completion transport requires its exact local bootstrap profile")
+                connection._local_completion_timeout = LOCAL_COMPLETION_RPC_TIMEOUT_SECONDS
+            # Capture once, including omission. Later ambient changes never
+            # enlarge this connection's wait; the owner separately bounds work.
+            connection._local_completion_transport_captured = True
         stable_body = {
             "interface": "TypedDatabaseTaskSourceStableQuackAuthority@2",
             "store_id": store_identity.store_id,
@@ -2578,8 +2592,8 @@ class TypedDatabaseTaskSource:
             connection = getattr(getattr(self._client, "_adapter", None), "raw", None)
             if type(connection) is not TypedStateOwnerConnection:
                 raise TaskSourceIntegrityError("local completion requires its authenticated typed owner")
-            observed = connection._request(
-                "local.task.validation.run", task_cid=task.task_cid,
+            observed = connection.run_local_task_validation(
+                task_cid=task.task_cid,
                 attempt_id=attempt_id, expected_revision=task.revision,
             ).get("result")
             if (

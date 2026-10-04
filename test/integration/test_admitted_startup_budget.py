@@ -18,15 +18,16 @@ def test_default_start_deadline_includes_fresh_prelaunch_work(admitted, monkeypa
     """Real launch custody must count validation work before child creation."""
     runtime, _owner, _prepared = admitted
     original = runtime.process._popen
+    launch_delay = runtime.request(Operation.START).bounds.timeout_ms / 1000 + .1
 
     def delayed_launch(*args, **kwargs):
-        time.sleep(20.1)
+        time.sleep(launch_delay)
         return original(*args, **kwargs)
 
     monkeypatch.setattr(runtime.process, "_popen", delayed_launch)
     started_at = time.monotonic()
     result = runtime.start()
-    assert time.monotonic() - started_at >= 20.1
+    assert time.monotonic() - started_at >= launch_delay
     assert not result.succeeded
     assert result.error.message == "startup did not prove sustained health before its deadline"
     assert not runtime.process.snapshot(runtime.profile).members
@@ -58,9 +59,9 @@ def test_signed_extended_start_allows_fresh_checks_without_borrowing_stop_budget
     assert phases["bootstrap_validation"]["seconds"] >= 31.0
     assert phases["bootstrap_validation"]["status"] == "completed"
     assert diagnostic["start_timeout_ms"] == 120_000
-    assert diagnostic["stop_timeout_ms"] == 20_000
+    assert diagnostic["stop_timeout_ms"] == 30_000
     assert diagnostic["bootstrap_wait_seconds"] == 120
-    assert runtime.request(Operation.STOP).bounds.timeout_ms == 20_000
+    assert runtime.request(Operation.STOP).bounds.timeout_ms == 30_000
     stopped = runtime.stop()
     assert stopped.succeeded
     assert not runtime.process.snapshot(runtime.profile).members

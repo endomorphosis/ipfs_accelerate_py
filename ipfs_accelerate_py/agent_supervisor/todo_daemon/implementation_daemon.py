@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from contextvars import ContextVar
 import base64
 import fcntl
 import fnmatch
@@ -218,9 +219,14 @@ from ..task_sources.taskboard_store import (
 )
 from ..validation.project_dependency_preflight import (
     PROJECT_DEPENDENCY_PREFLIGHT_BACKOFF_SECONDS,
+    PROJECT_DEPENDENCY_PREFLIGHT_EVENT_PROJECTION_SCHEMA,
+    PROJECT_DEPENDENCY_PREFLIGHT_PROJECTION_SCHEMA,
+    PROJECT_DEPENDENCY_PREFLIGHT_SCHEMA,
     SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA,
+    canonical_project_dependency_preflight_receipt_bytes,
     project_dependency_preflight_backoff_seconds,
     project_dependency_preflight_error_receipt,
+    project_dependency_preflight_for_event,
     preflight_validation_project_dependencies,
 )
 from ..merge.git_gc import GitGarbageCollector
@@ -1666,7 +1672,7 @@ def normalize_llm_merge_resolver_command(value: Any) -> str:
 def default_llm_merge_resolver_command() -> str:
     """Return the configured resolver or the packaged agent fallback.
 
-    The packaged route starts exact Grok 4.5 and permits exact Codex Terra at
+    The packaged route starts exact Grok 4.7 and permits exact Codex Sol 6.1 at
     medium effort only after that invocation proves quota/balance exhaustion.
     Sealed ordered routes ignore configured command overrides at dispatch.
     """
@@ -2270,7 +2276,7 @@ def _grok_cli_command(
     materializes it to ``--prompt-file`` because the CLI does not take ``-``.
 
     When a trusted system Codex install is resolvable, attach the exact
-    Terra fallback argv so a single Grok invocation may fall through only
+    Sol 6.1 fallback argv so a single Grok invocation may fall through only
     after the runner validates the configured failure policy. Codex is never
     attached without that runner-owned authority gate.
     """
@@ -2290,7 +2296,7 @@ def _grok_cli_command(
             or os.environ.get("GROK_CLI_MODEL", "").strip()
             or os.environ.get("GROK_MODEL", "").strip()
             or os.environ.get("ipfs_accelerate_py_GROK_CLI_MODEL", "").strip()
-            or "grok-4.6"
+            or "grok-4.7"
         )
     )
     # Prefer an effectively uncapped turn budget; the implementation daemon
@@ -2309,7 +2315,7 @@ def _grok_cli_command(
         enable_codex_fallback=enable_codex_fallback,
         # Quota-only Grok launches attach Codex argv but still need the
         # runner-owned legacy preflight flag. Without it a 402 is a
-        # "direct no-nonce" failure and Terra never starts.
+        # "direct no-nonce" failure and Codex never starts.
         enable_internal_legacy_preflight=(
             bool(enable_codex_fallback)
             and not str(failure_receipt_nonce or "").strip()
@@ -2331,8 +2337,8 @@ def _grok_cli_command(
         raise RuntimeError(
             "typed Grok authentication fallback requires a trusted Codex CLI"
         )
-    # Preserve explicit model override after the packaged Grok-4.5 default.
-    if model and model != "grok-4.6":
+    # Preserve explicit model override after the packaged Grok-4.7 default.
+    if model and model != "grok-4.7":
         if "--model" in command:
             command[command.index("--model") + 1] = model
         else:
@@ -2374,8 +2380,8 @@ _CODEX_CONTEXT_WINDOW_ENV = "IPFS_ACCELERATE_AGENT_CODEX_CONTEXT_WINDOW"
 _CODEX_REASONING_EFFORT_ENV = "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT"
 _CODEX_MAX_THREADS_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MAX_THREADS"
 _CODEX_MAX_DEPTH_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MAX_DEPTH"
-DEFAULT_AUTOMATIC_GROK_MODEL = "grok-4.6"
-DEFAULT_CODEX_MODEL = "gpt-5.6-terra"
+DEFAULT_AUTOMATIC_GROK_MODEL = "grok-4.7"
+DEFAULT_CODEX_MODEL = "gpt-6.1-sol"
 DEFAULT_CODEX_REASONING_EFFORT = "medium"
 
 
@@ -3805,6 +3811,9 @@ class ImplementationDiagnosticReceipt:
         return result
 
 
+_source384_callback_deadline = ContextVar("source384_callback_deadline", default=None)
+
+
 class ImplementationRetryDeferred(RuntimeError):
     """A typed retry lifecycle stop raised before provider dispatch."""
 
@@ -3812,6 +3821,18 @@ class ImplementationRetryDeferred(RuntimeError):
         super().__init__(reason)
         self.reason = reason
         self.backoff_seconds = backoff_seconds
+
+
+class Source384ResourceDeferred(ImplementationRetryDeferred):
+    """Native resource refusal before a nominated context can be dispatched."""
+
+    def __init__(self, *, admission, task_id, task_cid, context_sha256):
+        from .database_portal_bridge import SOURCE384_RESOURCE_DEFERRAL_REASON, _source384_deferral
+        super().__init__(SOURCE384_RESOURCE_DEFERRAL_REASON, backoff_seconds=5)
+        self.receipt = _source384_deferral(dict(schema="source384-context-no-dispatch@1",
+            phase="prompt_context", task_id=task_id, task_cid=task_cid,
+            context_sha256=context_sha256, admission=admission))
+        self.admission = self.receipt["admission"]
 
 
 class WorktreeSubmoduleInitializationDeferred(ImplementationRetryDeferred):
@@ -4898,6 +4919,7 @@ class PortalImplementationDaemon:
         state_path: Path,
         strategy_path: Path,
         events_path: Path,
+        dependency_preflight_artifact_store_path: Path | None = None,
         task_source: Any = None,
         task_source_kind: str = "",
         expected_task_source_identity: TaskSourceIdentity | Mapping[str, Any] | None = None,
@@ -4989,6 +5011,14 @@ class PortalImplementationDaemon:
         self.state_path = state_path
         self.strategy_path = strategy_path
         self.events_path = events_path
+        self.dependency_preflight_artifact_store_path = (
+            Path(dependency_preflight_artifact_store_path)
+            if dependency_preflight_artifact_store_path is not None
+            else Path(events_path).with_name(
+                Path(events_path).stem + ".dependency-preflight-artifacts"
+            )
+        )
+        self._dependency_preflight_artifact_store = None
         self._checkout_mutation_context = threading.local()
         self.repo_root = (repo_root or REPO_ROOT).resolve()
         self._scoped_recovery_attempts: dict[str, int] = {}
@@ -12049,7 +12079,13 @@ class PortalImplementationDaemon:
                     "--grok-failure-receipt-nonce" in command
                     and "--codex-fallback-command-json" in command
                     and "--canonical-legacy-preflight-route" not in command
-                    and any("gpt-5.6-terra" in item for item in command)
+                    # Recognize retained launches across the model migration.
+                    # This only fences rollback; it grants no new execution.
+                    and any(
+                        model in item
+                        for item in command
+                        for model in ("gpt-5.6-terra", "gpt-6.1-sol")
+                    )
                     and any('"high"' in item for item in command)
                 )
             )
@@ -14710,6 +14746,10 @@ class PortalImplementationDaemon:
                 pass
         if coordinator is not None:
             coordinator.close()
+        artifact_store = self._dependency_preflight_artifact_store
+        if artifact_store is not None:
+            artifact_store.close()
+            self._dependency_preflight_artifact_store = None
 
     def _mark_long_running_phase(self, *, task_id: str, phase: str, detail: str = "") -> None:
         self._renew_wake_lease_session()
@@ -20696,20 +20736,32 @@ class PortalImplementationDaemon:
                 result["active_task_cleared"] = owns_idle_projection
                 self._record_event("implementation_retry_deferred", result)
             finally:
-                self._release_implementation_resource_claims(
+                resource_paths = [path for path, _metadata in acquired_resource_claims]
+                resources_released = self._release_implementation_resource_claims(
                     acquired_resource_claims
                 )
                 acquired_resource_claims = []
-                if not self._release_implementation_task_claim(
+                task_released = self._release_implementation_task_claim(
                     task_claim_path,
                     task_claim_metadata,
-                ):
+                )
+                if not task_released:
                     logger.warning(
                         "Refusing to remove implementation task claim no "
                         "longer owned by this attempt: %s",
                         task_claim_path,
                     )
                 acquired_task_claim = False
+                if type(exc) is Source384ResourceDeferred:
+                    # A retained protected fence or foreign claim is not a
+                    # completed no-effect cleanup, even if release returned True.
+                    if (resources_released is not True or task_released is not True
+                            or task_claim_path.exists() or task_claim_path.is_symlink()
+                            or any(path.exists() or path.is_symlink() for path in resource_paths)):
+                        raise RuntimeError("Source384 no-dispatch cleanup was not completed") from exc
+            if type(exc) is Source384ResourceDeferred:
+                result.update(deferred=True, provider_call_allowed=False,
+                              source384_resource_deferral=dict(exc.receipt))
             return result
         except BaseException:
             try:
@@ -30131,6 +30183,16 @@ class PortalImplementationDaemon:
                 task.validation,
                 exc,
             )
+        inline_error_receipt = None
+        try:
+            # A successful probe is not a dispatch grant until its complete,
+            # identity-checked evidence has reached the bounded artifact store.
+            self._persist_dependency_preflight_receipt(receipt)
+        except Exception as exc:
+            receipt = project_dependency_preflight_error_receipt(
+                workspace_path, task.validation, exc,
+            )
+            inline_error_receipt = receipt
         if receipt.get("passed") is True:
             return receipt
         backoff_seconds = (
@@ -30149,6 +30211,8 @@ class PortalImplementationDaemon:
                 "dependency_preflight": receipt,
                 "backoff_seconds": backoff_seconds,
             },
+            **({"dependency_preflight_inline_error": inline_error_receipt}
+               if inline_error_receipt is not None else {}),
         )
         raise ValidationProjectDependencyPreflightDeferred(
             receipt,
@@ -39182,9 +39246,9 @@ class PortalImplementationDaemon:
         tracked_command.extend([baseline_ref or "HEAD", "--"])
         tracked_paths: list[str] = []
         for entry in entries:
-            kind = str(getattr(getattr(entry, "change_kind", ""), "value", "") or "")
-            if kind == "add" and not getattr(entry, "old_path", ""):
-                continue
+            # ADD entries may already be staged (for example after seed replay).
+            # Git includes those in the baseline diff and ignores untracked
+            # paths, which receive their own no-index sections below.
             for path in (
                 str(getattr(entry, "old_path", "") or ""),
                 str(getattr(entry, "new_path", "") or ""),
@@ -60631,7 +60695,7 @@ class PortalImplementationDaemon:
             if _grok_cli_available() and _grok_binary():
                 return
             raise ImplementationRetryDeferred(
-                "authenticated Grok 4.5 primary is unavailable; Codex "
+                "authenticated Grok 4.7 primary is unavailable; Codex "
                 "requires typed hard-quota exhaustion authority",
                 backoff_seconds=300,
             )
@@ -61663,7 +61727,7 @@ class PortalImplementationDaemon:
                     )
                 )
             raise RuntimeError(
-                "Automatic implementation requires authenticated Grok 4.5; "
+                "Automatic implementation requires authenticated Grok 4.7; "
                 "Codex fallback is authorized only after a durable Grok "
                 "quota-exhaustion latch "
                 f"({', '.join(auto_selection.reason_codes) or 'unavailable'})"
@@ -61806,24 +61870,61 @@ class PortalImplementationDaemon:
             "IMPLEMENTATION_DAEMON_COMMAND."
         )
 
-    def _task_metadata_value(self, task: PortalTask, *keys: str) -> str:
+    def _task_metadata_snapshot(
+        self, task: PortalTask, *, include_context: bool = False,
+    ) -> Mapping[str, str]:
+        """Copy one task's metadata and optionally validate its live nomination."""
         normalized = {
             str(key).strip().lower().replace("_", " "): str(value).strip()
             for key, value in task.metadata.items()
         }
         bundle = getattr(self, "_task_context_nomination_bundle", None)
-        if bundle is not None:
-            from ..runtime.task_context_bundle import KEYS, load_task_context_nomination
-
-            if any(str(key).strip().lower().replace("_", " ") in KEYS for key in keys):
+        if include_context and bundle is not None:
+            from ..runtime.task_context_bundle import load_task_context_nomination
+            from .database_portal_bridge import _source384_admission
+            deadline = _source384_callback_deadline.get()
+            options = {}
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("Source384 original callback deadline expired")
+                options["source384_timeout_seconds"] = min(90.0, remaining)
+            task_cid = normalized.get("database task cid") or task.canonical_task_cid
+            try:
                 nominations = load_task_context_nomination(
                     repository=self.repo_root, artifact=bundle["artifact"],
                     expected_sha256=bundle["sha256"], task_id=task.task_id,
-                    task_cid=normalized.get("database task cid") or task.canonical_task_cid,
+                    task_cid=task_cid, **options,
                 )
-                if any(key in normalized and normalized[key] != value for key, value in nominations.items()):
-                    raise ValueError("launch context nomination conflicts with task metadata")
-                normalized.update(nominations)
+            except Exception as exc:
+                try:
+                    from ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler import LeaseTimeoutError
+                except ImportError:
+                    raise exc
+                if (deadline is None or type(exc) is not LeaseTimeoutError
+                        or deadline is not None and time.monotonic() >= deadline
+                        or getattr(self, "implementation_cancelled", None) is not None and self._implementation_cancel_requested()):
+                    raise
+                try:
+                    admission = _source384_admission(getattr(exc, "admission_observation", None))
+                except (ValueError, TypeError, KeyError):
+                    raise exc
+                raise Source384ResourceDeferred(admission=admission, task_id=task.task_id,
+                    task_cid=task_cid, context_sha256=bundle["sha256"]) from exc
+            if deadline is not None and time.monotonic() >= deadline:
+                raise TimeoutError("Source384 original callback deadline expired")
+            if any(key in normalized and normalized[key] != value for key, value in nominations.items()):
+                raise ValueError("launch context nomination conflicts with task metadata")
+            normalized.update(nominations)
+        return MappingProxyType(normalized)
+
+    def _task_metadata_value(self, task: PortalTask, *keys: str) -> str:
+        include_context = False
+        if getattr(self, "_task_context_nomination_bundle", None) is not None:
+            from ..runtime.task_context_bundle import KEYS
+
+            include_context = any(str(key).strip().lower().replace("_", " ") in KEYS for key in keys)
+        normalized = self._task_metadata_snapshot(task, include_context=include_context)
         for key in keys:
             value = normalized.get(str(key).strip().lower().replace("_", " "))
             if value:
@@ -64003,10 +64104,12 @@ class PortalImplementationDaemon:
 
     def _world_implementation_references(
         self, task: PortalTask, *, repository_id: str, tree_id: str,
-        semantic_references: tuple = (),
+        semantic_references: tuple = (), context_metadata: Mapping[str, str] | None = None,
     ) -> tuple:
         """Consume a sealed world observation without conferring authority."""
-        artifact = str(self._task_metadata_value(task, "world context artifact") or "")
+        metadata = (self._task_metadata_snapshot(task, include_context=True)
+                    if context_metadata is None else context_metadata)
+        artifact = str(metadata.get("world context artifact") or "")
         if not artifact:
             return ()
         from ..semantic_state.intent_world_snapshot import (
@@ -64021,9 +64124,9 @@ class PortalImplementationDaemon:
             raise ValueError("world context artifact escapes repository")
         context = load_intent_world_context(
             artifact=path,
-            expected_sha256=str(self._task_metadata_value(task, "world context sha256") or ""),
+            expected_sha256=str(metadata.get("world context sha256") or ""),
             task_id=task.task_id,
-            repository_id=str(self._task_metadata_value(task, "world context repository") or ""),
+            repository_id=str(metadata.get("world context repository") or ""),
             intent=getattr(self, "_world_intent_repository", None),
         )
         if semantic_references:
@@ -64082,15 +64185,18 @@ class PortalImplementationDaemon:
 
     def _code_retrieval_implementation_references(
         self, task: PortalTask, *, repository_id: str, tree_id: str,
+        context_metadata: Mapping[str, str] | None = None,
     ) -> tuple:
-        artifact = self._task_metadata_value(task, "code retrieval artifact")
+        metadata = (self._task_metadata_snapshot(task, include_context=True)
+                    if context_metadata is None else context_metadata)
+        artifact = metadata.get("code retrieval artifact")
         if not artifact:
             return ()
         from ..runtime.code_retrieval_context import load_code_retrieval_context
 
         text = load_code_retrieval_context(
             repository=self.repo_root, artifact=str(artifact), task_id=task.task_id,
-            expected_sha256=str(self._task_metadata_value(task, "code retrieval sha256") or ""),
+            expected_sha256=str(metadata.get("code retrieval sha256") or ""),
         )
         return build_text_context_references(
             text, reference_prefix="code-retrieval", kind="code-retrieval-context",
@@ -64099,10 +64205,13 @@ class PortalImplementationDaemon:
         )
 
     def _semantic_implementation_references(
-        self, task: PortalTask, attempt: int, *, repository_id: str, tree_id: str
+        self, task: PortalTask, attempt: int, *, repository_id: str, tree_id: str,
+        context_metadata: Mapping[str, str] | None = None,
     ) -> tuple:
         """Resolve source-bound evidence on every dispatch, including retries."""
-        artifact = self._task_metadata_value(task, "semantic context artifact")
+        metadata = (self._task_metadata_snapshot(task, include_context=True)
+                    if context_metadata is None else context_metadata)
+        artifact = metadata.get("semantic context artifact")
         if not artifact:
             return ()
         from ..runtime.semantic_context_runtime import (
@@ -64112,10 +64221,10 @@ class PortalImplementationDaemon:
             validate_semantic_worker_nomination,
         )
 
-        digest = str(self._task_metadata_value(task, "semantic context sha256") or "")
+        digest = str(metadata.get("semantic context sha256") or "")
         request = dict(repository=self.repo_root, artifact=str(artifact),
                        expected_sha256=digest, task_id=task.task_id)
-        refresh = str(self._task_metadata_value(task, "semantic context refresh") or "").strip().lower() in {"true", "1", "yes"}
+        refresh = str(metadata.get("semantic context refresh") or "").strip().lower() in {"true", "1", "yes"}
         cache_key = (str(self.repo_root), task.task_id, str(artifact), digest)
         cache = getattr(self, "_semantic_context_resolutions", {})
         resolved = cache.get(cache_key) if refresh else None
@@ -64182,10 +64291,12 @@ class PortalImplementationDaemon:
             )
         retry_evidence = parent_capsule.evidence
         semantic_changed = False
+        context_metadata = self._task_metadata_snapshot(task, include_context=True)
         semantic_references = ()
-        if self._task_metadata_value(task, "semantic context artifact"):
+        if context_metadata.get("semantic context artifact"):
             semantic_references = self._semantic_implementation_references(
                 task, attempt, repository_id=repository_id, tree_id=tree_id,
+                context_metadata=context_metadata,
             )
             previous_semantic = tuple(item for item in retry_evidence if item.kind == "semantic-context")
             if previous_semantic != tuple(semantic_references):
@@ -64194,11 +64305,12 @@ class PortalImplementationDaemon:
                     *(item for item in retry_evidence if item.kind != "semantic-context"),
                     *semantic_references,
                 )
-        if self._task_metadata_value(task, "world context artifact"):
+        if context_metadata.get("world context artifact"):
             # Compare world and source evidence from this same dispatch, after
             # refresh; HEAD alone cannot detect dirty source changes.
             current_world = self._world_implementation_references(
                 task, repository_id=repository_id, tree_id=tree_id,
+                context_metadata=context_metadata,
                 semantic_references=semantic_references,
             )
             old_world = tuple(item for item in retry_evidence if item.kind == "intent-world-context")
@@ -64208,9 +64320,10 @@ class PortalImplementationDaemon:
                     *(item for item in retry_evidence if item.kind != "intent-world-context"),
                     *current_world,
                 )
-        if self._task_metadata_value(task, "code retrieval artifact"):
+        if context_metadata.get("code retrieval artifact"):
             current_retrieval = self._code_retrieval_implementation_references(
                 task, repository_id=repository_id, tree_id=tree_id,
+                context_metadata=context_metadata,
             )
             old_retrieval = tuple(item for item in retry_evidence if item.kind == "code-retrieval-context")
             if old_retrieval != tuple(current_retrieval):
@@ -65054,17 +65167,23 @@ class PortalImplementationDaemon:
                     )
                 ),
             )
+        # One live nomination per construction; no cross-dispatch cache.
+        # Each artifact consumer still performs its independent source checks.
+        context_metadata = self._task_metadata_snapshot(task, include_context=True)
         semantic_references = self._semantic_implementation_references(
             task, attempt, repository_id=repository_id, tree_id=tree_id,
+            context_metadata=context_metadata,
         )
         evidence = (
             *evidence,
             *semantic_references,
             *self._code_retrieval_implementation_references(
                 task, repository_id=repository_id, tree_id=tree_id,
+                context_metadata=context_metadata,
             ),
             *self._world_implementation_references(
                 task, repository_id=repository_id, tree_id=tree_id,
+                context_metadata=context_metadata,
                 semantic_references=semantic_references,
             ),
         )
@@ -66527,7 +66646,7 @@ class PortalImplementationDaemon:
     def _implementation_finished_event_payload(
         payload: Mapping[str, Any],
     ) -> dict[str, Any]:
-        """Bound dependency evidence in the terminal event projection."""
+        """Expose the nested merge repository binding in the terminal event."""
 
         projected = dict(payload)
         raw_merge = projected.get("merge_result")
@@ -66539,74 +66658,94 @@ class PortalImplementationDaemon:
                 "target_repository_id"
             ):
                 projected["target_repository_id"] = target_repository_id
-        raw_setup = projected.get("workspace_setup")
-        if not isinstance(raw_setup, Mapping):
-            return projected
-        setup = dict(raw_setup)
-        raw_preflight = setup.get(
-            "validation_project_dependency_preflight"
-        )
-        if not isinstance(raw_preflight, Mapping):
-            projected["workspace_setup"] = setup
-            return projected
-
-        def bounded_count(field: str) -> int:
-            value = raw_preflight.get(field)
-            if isinstance(value, Sequence) and not isinstance(
-                value,
-                (str, bytes, bytearray),
-            ):
-                return len(value)
-            return 0
-
-        def bounded_int(field: str) -> int:
-            try:
-                return max(0, int(raw_preflight.get(field) or 0))
-            except (TypeError, ValueError):
-                return 0
-
-        setup["validation_project_dependency_preflight"] = {
-            "schema": str(raw_preflight.get("schema") or "")[:512],
-            "receipt_id": str(
-                raw_preflight.get("receipt_id") or ""
-            )[:1024],
-            "retry_fingerprint": str(
-                raw_preflight.get("retry_fingerprint") or ""
-            )[:1024],
-            "passed": raw_preflight.get("passed") is True,
-            "applicable": raw_preflight.get("applicable") is True,
-            "reason": str(raw_preflight.get("reason") or "")[:1000],
-            "automatic_install_attempted": (
-                raw_preflight.get("automatic_install_attempted") is True
-            ),
-            "probe_scope": str(
-                raw_preflight.get("probe_scope") or ""
-            )[:512],
-            "validation_command_count": bounded_int(
-                "validation_command_count"
-            ),
-            "project_count": bounded_count("projects"),
-            "project_root_count": bounded_count("project_roots"),
-            "missing_count": bounded_count("missing_requirements"),
-            "incompatible_count": bounded_count(
-                "incompatible_requirements"
-            ),
-            "invalid_requirement_count": bounded_count(
-                "invalid_requirements"
-            ),
-            "invalid_command_count": bounded_count("invalid_commands"),
-            "event_projection_compacted": True,
-            "full_receipt_event": "implementation_started",
-        }
-        projected["workspace_setup"] = setup
         return projected
 
-    def _record_event(self, event_type: str, payload: dict[str, Any]) -> None:
-        enriched = (
-            self._implementation_finished_event_payload(payload)
-            if event_type == "implementation_finished"
-            else dict(payload)
+    def _persist_dependency_preflight_receipt(
+        self, receipt: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Persist and reread canonical evidence before publishing its reference."""
+
+        from ..runtime.artifact_store import BoundedArtifactStore
+
+        canonical = canonical_project_dependency_preflight_receipt_bytes(receipt)
+        if self._dependency_preflight_artifact_store is None:
+            self._dependency_preflight_artifact_store = BoundedArtifactStore(
+                self.dependency_preflight_artifact_store_path,
+                refresh_on_lock=True,
+            )
+        store = self._dependency_preflight_artifact_store
+        reference = store.put_blob(
+            canonical,
+            kind="validation_project_dependency_preflight_receipt",
+            retention_class="checkpoint",
+            media_type="application/json",
         )
+        if store.read_blob(reference) != canonical:
+            raise ValueError("dependency preflight artifact readback differs")
+        # Revalidates both the receipt and reference, including exact content
+        # length, digest and artifact kind. No event gains completion authority.
+        return project_dependency_preflight_for_event(
+            receipt, full_receipt_reference=reference.to_dict(),
+        )
+
+    def _project_dependency_preflight_event_payload(
+        self, payload: Mapping[str, Any], *, inline_error: Mapping[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Replace every nested full receipt, rejecting supplied projections."""
+
+        inline_bytes = None
+        if inline_error is not None:
+            inline_bytes = canonical_project_dependency_preflight_receipt_bytes(inline_error)
+            if (inline_error.get("passed") is not False or inline_error.get("reason")
+                    != "project_dependency_preflight_infrastructure_error"):
+                raise ValueError("inline dependency preflight must be a failed infrastructure receipt")
+        projected_receipts: dict[bytes, dict[str, Any]] = {}
+        active: set[int] = set()
+
+        def visit(value: Any, depth: int = 0) -> Any:
+            if depth > 64 or id(value) in active:
+                raise ValueError("recursive or deeply nested dependency preflight event")
+            if isinstance(value, Mapping):
+                schema = value.get("schema")
+                if schema in (
+                    PROJECT_DEPENDENCY_PREFLIGHT_EVENT_PROJECTION_SCHEMA,
+                    PROJECT_DEPENDENCY_PREFLIGHT_PROJECTION_SCHEMA,
+                ):
+                    raise RuntimeError("caller-supplied dependency preflight event projection")
+                if schema == PROJECT_DEPENDENCY_PREFLIGHT_SCHEMA:
+                    canonical = canonical_project_dependency_preflight_receipt_bytes(value)
+                    digest = hashlib.sha256(canonical).digest()
+                    if digest not in projected_receipts:
+                        projected_receipts[digest] = (
+                            project_dependency_preflight_for_event(value, full_receipt_reference=None)
+                            if canonical == inline_bytes
+                            else self._persist_dependency_preflight_receipt(value)
+                        )
+                    return dict(projected_receipts[digest])
+                active.add(id(value))
+                try:
+                    return {key: visit(item, depth + 1) for key, item in value.items()}
+                finally:
+                    active.remove(id(value))
+            if isinstance(value, (list, tuple)):
+                active.add(id(value))
+                try:
+                    return [visit(item, depth + 1) for item in value]
+                finally:
+                    active.remove(id(value))
+            return value
+
+        return visit(payload)
+
+    def _record_event(
+        self, event_type: str, payload: dict[str, Any], *,
+        dependency_preflight_inline_error: Mapping[str, Any] | None = None,
+    ) -> None:
+        enriched = self._project_dependency_preflight_event_payload(
+            payload, inline_error=dependency_preflight_inline_error,
+        )
+        if event_type == "implementation_finished":
+            enriched = self._implementation_finished_event_payload(enriched)
         task_source_identity = self._task_source_identity_record()
         if task_source_identity is not None:
             enriched.setdefault("task_source_identity", task_source_identity)
@@ -69781,6 +69920,8 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError("close_task_source must be boolean")
         self.process_instance_id = process_instance_id or _database_daemon_new_id("process")
         self._typed_quack_authority_binding = None
+        self._source384_retry_deadline_ms = None
+        self._source384_retry_deadline_monotonic = None
         from ..task_sources.typed_database_task_source import TypedDatabaseTaskSource
 
         if state_owner_bootstrap_credentials is not None or type(task_source) is TypedDatabaseTaskSource:
@@ -69801,6 +69942,14 @@ class DatabaseImplementationDaemon:
                 ))
             except Exception as exc:
                 raise DatabaseImplementationAuthorityError("typed owner bootstrap binding mismatch") from exc
+            # This exact connection was just verified by the typed source.
+            # Capture its initial signed grant expiry; renewal cannot widen it.
+            connection = getattr(getattr(getattr(task_source, "_client", None), "_adapter", None), "raw", None)
+            grant = getattr(connection, "grant", None)
+            expiry = grant.get("expires_at") if isinstance(grant, Mapping) else None
+            if type(expiry) is int and expiry > 0:
+                self._source384_retry_deadline_ms = expiry
+                self._source384_retry_deadline_monotonic = time.monotonic() + max(0.0, expiry / 1000 - time.time())
             self.coordination_path, self.execution_path = _database_daemon_quack_sidecar_paths(
                 self.database_path, coordination_path=coordination_path,
                 execution_path=self.execution_path,
@@ -73315,20 +73464,97 @@ class DatabaseImplementationDaemon:
             attempt, idempotency_key=idempotency_key, provider_fn=provider_fn,
         )
 
-    def _run_provider_impl(
-        self,
-        attempt: DatabaseTaskAttempt,
-        *,
-        idempotency_key: str = "",
-        provider_fn: Callable[["DatabaseTaskAttempt"], Mapping[str, Any]] | None = None,
-    ) -> tuple[DatabaseTaskAttempt, Mapping[str, Any], bool]:
-        """Run provider work once per attempt idempotency key.
+    @staticmethod
+    def _source384_retry_identity(attempt: DatabaseTaskAttempt) -> dict[str, Any]:
+        return {name: getattr(attempt, name) for name in (
+            "attempt_id", "task_cid", "owner_session_id", "claim_id", "lease_id", "fencing_token", "fence_epoch")}
 
-        Returns ``(attempt, result, duplicated)`` where ``duplicated`` is True
-        when a prior committed provider invocation was replayed.
-        """
+    def _source384_remaining_seconds(self, attempt: DatabaseTaskAttempt) -> float:
+        self._shutdown_boundary()
+        attempt = self._owned_running_attempt(attempt)
+        expiry = getattr(self, "_source384_retry_deadline_ms", None)
+        monotonic_expiry = getattr(self, "_source384_retry_deadline_monotonic", None)
+        if (self._typed_quack_authority_binding is None or type(expiry) is not int
+                or type(monotonic_expiry) not in (int, float) or not math.isfinite(monotonic_expiry)):
+            raise DatabaseImplementationAuthorityError("Source384 retry lacks its original native grant expiry")
+        remaining = min((min(expiry, attempt.started_at_ms + self.lease_ms) - self._now_ms()) / 1000,
+                        monotonic_expiry - time.monotonic())
+        if remaining <= 0:
+            raise TimeoutError("Source384 original attempt or run deadline expired")
+        return remaining
 
+    def _require_source384_retry_state(self, attempt, receipt, key, *, ready=True):
+        from .database_portal_bridge import DatabasePortalBridgeDeferred, SOURCE384_RESOURCE_DEFERRAL_REASON, _source384_deferral
+        attempt = self._owned_running_attempt(attempt)
         self._protect_attempt_write(attempt)
+        self._require_provider_admission(attempt)
+        self._source384_remaining_seconds(attempt)
+        identity = self._source384_retry_identity(attempt)
+        fields = {*identity, "schema", "callback_state", "provider_effect_state", "reason", "process_instance_id",
+                  "retry_deadline_ms", "retry_not_before_ms", "retry_count", "context", "execution_phase", "execution_revision"}
+        deadline = min(self._source384_retry_deadline_ms, attempt.started_at_ms + self.lease_ms)
+        if (type(receipt) is not dict or set(receipt) != fields
+                or receipt["schema"] != "database-source384-no-dispatch-retry@1"
+                or receipt["callback_state"] != "not_dispatched" or receipt["provider_effect_state"] != "not_started"
+                or receipt["reason"] != SOURCE384_RESOURCE_DEFERRAL_REASON
+                or receipt["process_instance_id"] != self.process_instance_id
+                or key != f"provider:{attempt.attempt_id}"
+                or any(type(receipt[name]) is not type(value) or receipt[name] != value for name, value in identity.items())
+                or type(receipt["retry_deadline_ms"]) is not int or receipt["retry_deadline_ms"] != deadline
+                or type(receipt["retry_not_before_ms"]) is not int or not 0 <= receipt["retry_not_before_ms"] < deadline
+                or type(receipt["retry_count"]) is not int or not 1 <= receipt["retry_count"] <= 16
+                or (attempt.committed_phase, attempt.revision) not in {(ATTEMPT_PHASE_CLAIMED, 1), (ATTEMPT_PHASE_CONTEXT, 2)}
+                or receipt["execution_phase"] != attempt.committed_phase
+                or type(receipt["execution_revision"]) is not int or receipt["execution_revision"] != attempt.revision
+                or self.effect_claim_recorded(attempt.attempt_id, idempotency_key=f"effect:{attempt.attempt_id}") is not None):
+            raise DatabaseImplementationAuthorityError("Source384 no-dispatch retry binding differs")
+        context = _source384_deferral(receipt["context"])
+        if context["task_id"] != attempt.task_alias or context["task_cid"] != attempt.task_cid:
+            raise DatabaseImplementationAuthorityError("Source384 retry context belongs to another task")
+        if ready and self._now_ms() < receipt["retry_not_before_ms"]:
+            raise DatabasePortalBridgeDeferred(SOURCE384_RESOURCE_DEFERRAL_REASON, backoff_seconds=5,
+                                              result={"source384_resource_retry": receipt})
+
+    def _settle_source384_resource_deferral(self, attempt, *, failure, idempotency_key, previous=None):
+        from .database_portal_bridge import DatabasePortalSource384Deferred, SOURCE384_RESOURCE_DEFERRAL_REASON, _source384_deferral
+        attempt = self._owned_running_attempt(attempt)
+        self._protect_attempt_write(attempt)
+        self._require_provider_admission(attempt)
+        remaining = self._source384_remaining_seconds(attempt)
+        identity = self._source384_retry_identity(attempt)
+        context = _source384_deferral(getattr(failure, "no_dispatch", {}).get("context"))
+        if (type(failure) is not DatabasePortalSource384Deferred or failure.attempt_consumed is not False
+                or failure.provider_dispatched is not False or failure.backoff_seconds != 5
+                or failure.no_dispatch.get("identity") != identity
+                or context["task_cid"] != attempt.task_cid or context["task_id"] != attempt.task_alias
+                or idempotency_key != f"provider:{attempt.attempt_id}"
+                or remaining <= 5):
+            raise DatabaseImplementationAuthorityError("Source384 deferral lacks exact live no-dispatch custody")
+        if previous is not None:
+            self._require_source384_retry_state(attempt, previous, idempotency_key, ready=False)
+            if previous["context"]["context_sha256"] != context["context_sha256"]:
+                raise DatabaseImplementationAuthorityError("Source384 retry context nomination changed")
+        count = 1 if previous is None else previous["retry_count"] + 1
+        receipt = dict(schema="database-source384-no-dispatch-retry@1", **identity,
+            callback_state="not_dispatched", provider_effect_state="not_started",
+            reason=SOURCE384_RESOURCE_DEFERRAL_REASON, process_instance_id=self.process_instance_id,
+            retry_deadline_ms=min(self._source384_retry_deadline_ms, attempt.started_at_ms + self.lease_ms),
+            retry_not_before_ms=self._now_ms() + 5000, retry_count=count, context=context,
+            execution_phase=attempt.committed_phase, execution_revision=attempt.revision)
+        self._require_source384_retry_state(attempt, receipt, idempotency_key, ready=False)
+        expected = dict(schema="database-portal-callback-intent@1", callback_state="started_outcome_unknown",
+                        provider_effect_state="unknown_may_have_started",
+                        **{key: value for key, value in identity.items() if key != "owner_session_id"})
+        changed = self._require_connection().execute(
+            "UPDATE provider_invocations SET result_json = ?, recorded_at_ms = ? WHERE attempt_id = ? AND idempotency_key = ? AND result_json = ? AND owner_session_id = ? AND task_cid = ? RETURNING invocation_id",
+            [_database_daemon_json(receipt), self._now_ms(), attempt.attempt_id, idempotency_key,
+             _database_daemon_json(expected), self.owner_session_id, attempt.task_cid]).fetchone()
+        if changed is None:
+            raise DatabaseImplementationAuthorityError("Source384 callback intent changed before no-dispatch settlement")
+        self._record_event("source384_resource_retry_deferred", attempt_id=attempt.attempt_id,
+                           task_cid=attempt.task_cid, body=receipt)
+
+    def _require_provider_admission(self, attempt: DatabaseTaskAttempt) -> None:
         if self._typed_quack_authority_binding is not None:
             from ..task_sources.typed_state_owner import TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
 
@@ -73350,10 +73576,30 @@ class DatabaseImplementationDaemon:
                 or binding != self._control_claim_binding(claim, task)
             ):
                 raise DatabaseImplementationAuthorityError("provider requires exact owner-admitted task and control binding")
+
+    def _run_provider_impl(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        idempotency_key: str = "",
+        provider_fn: Callable[["DatabaseTaskAttempt"], Mapping[str, Any]] | None = None,
+    ) -> tuple[DatabaseTaskAttempt, Mapping[str, Any], bool]:
+        """Run provider work once per attempt idempotency key.
+
+        Returns ``(attempt, result, duplicated)`` where ``duplicated`` is True
+        when a prior committed provider invocation was replayed.
+        """
+
+        self._protect_attempt_write(attempt)
+        self._require_provider_admission(attempt)
         key = str(idempotency_key or f"provider:{attempt.attempt_id}").strip()
         prior = self.provider_invocation_recorded(
             attempt.attempt_id, idempotency_key=key
         )
+        retry_prior = None
+        if prior is not None and prior.get("schema") == "database-source384-no-dispatch-retry@1":
+            self._require_source384_retry_state(attempt, prior, key)
+            retry_prior, prior = prior, None
         if prior is not None:
             if prior.get("callback_state") == "started_outcome_unknown":
                 from .database_portal_bridge import DatabasePortalBridgeDeferred
@@ -73388,6 +73634,8 @@ class DatabaseImplementationDaemon:
         from .native_doctor_callback import require_declared_callback
 
         require_declared_callback(self, attempt, callback)
+        if retry_prior is not None and callback != self._provider_fn:
+            raise DatabaseImplementationAuthorityError("Source384 retry cannot replace its declared callback")
         if callback is None:
             if self.require_real_execution:
                 raise DatabaseImplementationAuthorityError(
@@ -73407,29 +73655,46 @@ class DatabaseImplementationDaemon:
                 # Commit dispatch intent before entering the native bridge.
                 # A candidate refusal is diagnostic evidence, not proof that
                 # this callback's external effects have settled.
-                self._require_connection().execute(
-                    """INSERT INTO provider_invocations(
-                        invocation_id, attempt_id, task_cid, idempotency_key,
-                        owner_session_id, recorded_at_ms, result_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    [_database_daemon_new_id("provider"), attempt.attempt_id,
-                     attempt.task_cid, key, self.owner_session_id, self._now_ms(),
-                     _database_daemon_json({
-                         "schema": "database-portal-callback-intent@1",
-                         "callback_state": "started_outcome_unknown",
-                         "provider_effect_state": "unknown_may_have_started",
-                         "attempt_id": attempt.attempt_id, "task_cid": attempt.task_cid,
-                         "claim_id": attempt.claim_id, "lease_id": attempt.lease_id,
-                         "fencing_token": int(attempt.fencing_token),
-                         "fence_epoch": int(attempt.fence_epoch),
-                     })],
-                )
-            result = dict(
-                self._run_with_attempt_heartbeat(
-                    attempt,
-                    lambda: callback(attempt),
-                )
-            )
+                intent = {
+                    "schema": "database-portal-callback-intent@1",
+                    "callback_state": "started_outcome_unknown",
+                    "provider_effect_state": "unknown_may_have_started",
+                    **{name: value for name, value in self._source384_retry_identity(attempt).items()
+                       if name != "owner_session_id"},
+                }
+                if retry_prior is not None:
+                    changed = self._require_connection().execute(
+                        "UPDATE provider_invocations SET result_json = ?, recorded_at_ms = ? WHERE attempt_id = ? AND idempotency_key = ? AND result_json = ? AND owner_session_id = ? AND task_cid = ? RETURNING invocation_id",
+                        [_database_daemon_json(intent), self._now_ms(), attempt.attempt_id, key,
+                         _database_daemon_json(retry_prior), self.owner_session_id, attempt.task_cid]).fetchone()
+                    if changed is None:
+                        raise DatabaseImplementationAuthorityError("Source384 retry callback changed")
+                else:
+                    self._require_connection().execute(
+                        """INSERT INTO provider_invocations(
+                            invocation_id, attempt_id, task_cid, idempotency_key,
+                            owner_session_id, recorded_at_ms, result_json
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        [_database_daemon_new_id("provider"), attempt.attempt_id,
+                         attempt.task_cid, key, self.owner_session_id, self._now_ms(),
+                         _database_daemon_json(intent)],
+                    )
+            elif retry_prior is not None:
+                raise DatabaseImplementationAuthorityError("Source384 retry requires the native Portal bridge")
+            token = None
+            if type(getattr(callback, "__self__", None)) is DatabasePortalExecutionBridge and self._source384_retry_deadline_ms is not None:
+                remaining = self._source384_remaining_seconds(attempt)
+                token = _source384_callback_deadline.set(time.monotonic() + remaining)
+            try:
+                result = dict(self._run_with_attempt_heartbeat(attempt, lambda: callback(attempt)))
+            except Exception as exc:
+                from .database_portal_bridge import DatabasePortalSource384Deferred
+                if type(exc) is DatabasePortalSource384Deferred and type(getattr(callback, "__self__", None)) is DatabasePortalExecutionBridge:
+                    self._settle_source384_resource_deferral(attempt, failure=exc, idempotency_key=key, previous=retry_prior)
+                raise
+            finally:
+                if token is not None:
+                    _source384_callback_deadline.reset(token)
         if self.require_real_execution and not _unapplied_router_proposal(result) and (
             str(result.get("status") or "").strip().lower() in {"", "noop"}
             or result.get("accepted") is not True
@@ -75715,6 +75980,16 @@ class DatabaseImplementationDaemon:
 
             if isinstance(exc, DatabasePortalBridgeDeferred):
                 reason = str(exc)
+                from .database_portal_bridge import SOURCE384_RESOURCE_DEFERRAL_REASON
+                if reason == SOURCE384_RESOURCE_DEFERRAL_REASON:
+                    key = f"provider:{attempt.attempt_id}"
+                    receipt = self.provider_invocation_recorded(attempt.attempt_id, idempotency_key=key)
+                    self._require_source384_retry_state(attempt, receipt, key, ready=False)
+                    self._renew_attempt_lease(attempt)
+                    return {"resumed": True, "deferred": True, "reason": reason,
+                            "attempt_id": attempt.attempt_id, "task_alias": attempt.task_alias,
+                            "status": "running", "attempt_consumed": False, "provider_dispatched": False,
+                            "backoff_seconds": 5, "source384_resource_retry": receipt}
                 if reason != _RECOVERABLE_PROTECTED_PATH_PORTAL_FAILURE_REASON:
                     # Grok/Codex is still in flight. Keep the exact running
                     # attempt so the next pass can accept the same projection
@@ -76454,8 +76729,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="",
         help=(
             "Command used for implementation. By default, automatic routing "
-            "selects authenticated Grok 4.5. Only a typed durable Grok hard-"
-            "quota latch authorizes a later gpt-5.6-terra Codex attempt with "
+            "selects authenticated Grok 4.7. Only a typed durable Grok hard-"
+            "quota latch authorizes a later gpt-6.1-sol Codex attempt with "
             "medium reasoning; other Grok failures remain fail closed."
         ),
     )
@@ -76823,11 +77098,22 @@ TodoImplementationDaemon = PortalImplementationDaemon
 
 
 def main(argv: list[str] | None = None) -> None:
+    from ..runtime.process_security import harden_state_authority_process
+    harden_state_authority_process()
     args = parse_args(argv)
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    # This watchdog is armed only in the launched native daemon entrypoint,
+    # never when a model-hosting parent imports this module. Startup can wait
+    # inside owner RPC or portal construction before the first live heartbeat;
+    # retain its child stack without relaxing the lifecycle health deadline.
+    native_startup_watchdog = args.state_owner_bootstrap_fd != -1
+    if native_startup_watchdog:
+        import faulthandler
+        faulthandler.dump_traceback_later(10, repeat=True)
+        logger.info("Native owner startup stage: main entered")
     if args.llm_merge_resolver_command:
         os.environ[LLM_MERGE_RESOLVER_COMMAND_ENV] = args.llm_merge_resolver_command
     if args.llm_merge_resolver_timeout_seconds is not None:
@@ -76861,7 +77147,11 @@ def main(argv: list[str] | None = None) -> None:
 
     if use_database_daemon:
         from .native_owner_bootstrap import database_owner_bootstrap_kwargs
+        if native_startup_watchdog:
+            logger.info("Native owner startup stage: bootstrap starting")
         owner_bootstrap = database_owner_bootstrap_kwargs(args, program)
+        if native_startup_watchdog:
+            logger.info("Native owner startup stage: bootstrap attached")
         authority_mode = (
             program.authority_mode
             if program is not None
@@ -76900,6 +77190,8 @@ def main(argv: list[str] | None = None) -> None:
             **owner_bootstrap,
         )
         from ..runtime.native_dispatch_drain import from_native_admission
+        if native_startup_watchdog:
+            logger.info("Native owner startup stage: database daemon constructed")
         daemon._native_dispatch_control = from_native_admission(
             admission=_IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION,
             repo_root=REPO_ROOT,
@@ -76913,6 +77205,8 @@ def main(argv: list[str] | None = None) -> None:
                 _IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION
             ),
         )
+        if native_startup_watchdog:
+            logger.info("Native owner startup stage: portal execution bound")
     else:
         if args.state_owner_bootstrap_fd != -1 or args.state_owner_client_id:
             raise ValueError("native owner bootstrap cannot enter the legacy daemon")
@@ -76986,6 +77280,9 @@ def main(argv: list[str] | None = None) -> None:
             credentials=owner_bootstrap["state_owner_bootstrap_credentials"],
             state_dir=Path(args.state_dir), state_prefix=str(args.state_prefix),
         ).start()
+        if native_startup_watchdog:
+            logger.info("Native owner startup stage: live heartbeat published")
+            faulthandler.cancel_dump_traceback_later()
     handlers_installed = threading.current_thread() is threading.main_thread()
     previous_term: Any = None
     previous_int: Any = None
@@ -77222,9 +77519,9 @@ def _configured_legacy_quota_only_fallback_policy(provider: str) -> str:
     )
     expected = (
         "grok_cli",
-        "grok-4.5",
+        "grok-4.7",
         "codex",
-        "gpt-5.6-terra",
+        "gpt-6.1-sol",
         "primary_quota_exhausted",
         "high",
     )
@@ -77247,11 +77544,11 @@ def _grok_codex_agent_route_readiness(*, codex: str) -> Any:
         grok_bin=_grok_binary(),
         codex_bin=codex,
         grok_model=(
-            os.environ.get(_GROK_MODEL_ENV, "").strip() or "grok-4.5"
+            os.environ.get(_GROK_MODEL_ENV, "").strip() or "grok-4.7"
         ),
         codex_model=(
             os.environ.get(_CODEX_MODEL_ENV, "").strip()
-            or "gpt-5.6-terra"
+            or "gpt-6.1-sol"
         ),
         codex_reasoning_effort=(
             os.environ.get(_CODEX_REASONING_EFFORT_ENV, "high").strip()

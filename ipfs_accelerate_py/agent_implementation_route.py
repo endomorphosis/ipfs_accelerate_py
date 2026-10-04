@@ -172,17 +172,17 @@ _AGENT_CONTROL_PLANE_RELATIVE_FILES = (
     "scripts/ops/agent_supervisor/implementation_supervisor_entry.py",
 )
 _LEGACY_AGENT_IMPLEMENTATION_ROUTE_ID = (
-    "agent-supervisor-grok45-terra56-medium-hard-quota-v1"
+    "agent-supervisor-grok47-sol61-medium-hard-quota-v1"
 )
 _QUOTA_HIGH_AGENT_IMPLEMENTATION_ROUTE_ID = (
-    "agent-supervisor-grok45-terra56-high-hard-quota-v1"
+    "agent-supervisor-grok47-sol61-high-hard-quota-v1"
 )
 _V3_AGENT_IMPLEMENTATION_ROUTE_ID = (
-    "agent-supervisor-prompt-v3-grok45-terra56-high-auth-or-hard-quota-v1"
+    "agent-supervisor-prompt-v3-grok47-sol61-high-auth-or-hard-quota-v1"
 )
 # Runner and scheduler code import these projections instead of maintaining
 # another provider/model/reasoning tuple.
-AGENT_IMPLEMENTATION_CANONICAL_FALLBACK_MODEL_ID = "gpt-5.6-terra"
+AGENT_IMPLEMENTATION_CANONICAL_FALLBACK_MODEL_ID = "gpt-6.1-sol"
 AGENT_IMPLEMENTATION_CANONICAL_FALLBACK_REASONING_EFFORT = "high"
 _AGENT_IMPLEMENTATION_ROUTE_FIELDS = (
     "primary_provider_id",
@@ -231,7 +231,7 @@ _AGENT_IMPLEMENTATION_TRANSIENT_MAX_TURNS_EVIDENCE = (
 )
 _AGENT_IMPLEMENTATION_PROBE_CONTRACT = {
     "schema": "ipfs_accelerate_py.agent_supervisor.grok-quota-probe@1",
-    "model": "grok-4.6",
+    "model": "grok-4.7",
     "mode": "chat",
     "max_turns": 1,
     "permission_mode": "dontAsk",
@@ -501,7 +501,7 @@ def valid_agent_implementation_failure_receipt(
         and re.fullmatch(r"[0-9a-f]{64}", str(nonce or ""))
         and receipt.get("nonce") == nonce
         and receipt.get("primary_provider") == "grok"
-        and receipt.get("primary_model") == model == "grok-4.6"
+        and receipt.get("primary_model") == model == "grok-4.7"
         and receipt.get("primary_dispatched") is False
         and isinstance(evidence_size, int)
         and not isinstance(evidence_size, bool)
@@ -1451,7 +1451,7 @@ def project_agent_implementation_route_capacity(
         route.permits_authentication_unavailable
         and _agent_route_authorization_is_sealed(route.authorization)
         and route.fallback_provider_id == "codex"
-        and route.fallback_model_id == "gpt-5.6-terra"
+        and route.fallback_model_id == "gpt-6.1-sol"
         and route.fallback_reasoning_effort == "high"
         and route.route_id == _V3_AGENT_IMPLEMENTATION_ROUTE_ID
     )
@@ -1930,7 +1930,7 @@ def _agent_effect_launch_details_valid(
         "-C",
         provider_workspace,
         "-m",
-        "gpt-5.6-terra",
+        "gpt-6.1-sol",
         "-c",
         'model_reasoning_effort="high"',
         "-",
@@ -3359,7 +3359,7 @@ def _canonical_agent_quota_verifier_command(
     expected = [
         str(executable),
         "--model",
-        "grok-4.6",
+        "grok-4.7",
         "--max-turns",
         "1",
         "--cwd",
@@ -3520,7 +3520,7 @@ def validate_agent_implementation_quota_evidence(
         else ()
     )
     if (
-        expected_model != "grok-4.6"
+        expected_model != "grok-4.7"
         or not isinstance(preflight_receipt_id, str)
         or re.fullmatch(r"sha256:[0-9a-f]{64}", preflight_receipt_id) is None
         or not isinstance(preflight_nonce, str)
@@ -3897,7 +3897,7 @@ def _valid_agent_implementation_quota_evidence(
         != failure_receipt.get("primary_provider")
         or evidence.primary_model
         != failure_receipt.get("primary_model")
-        or evidence.primary_model != "grok-4.6"
+        or evidence.primary_model != "grok-4.7"
         or evidence.verifier_provider != "grok_cli"
         or evidence.verifier_model != evidence.primary_model
         or isinstance(evidence.verifier_returncode, bool)
@@ -4421,9 +4421,9 @@ def _agent_verify_historical_authority_snapshot(
     expected_route = {
         "route_id": _V3_AGENT_IMPLEMENTATION_ROUTE_ID,
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.6",
+        "primary_model_id": "grok-4.7",
         "fallback_provider_id": "codex",
-        "fallback_model_id": "gpt-5.6-terra",
+        "fallback_model_id": "gpt-6.1-sol",
         "fallback_reasoning_effort": "high",
         "allowed_trigger_classes": [
             "grok_authentication_unavailable",
@@ -4543,7 +4543,7 @@ def _agent_verify_historical_authority_snapshot(
         or profile.content_id != bounds.authority_cid
         or profile.route_id != _V3_AGENT_IMPLEMENTATION_ROUTE_ID
         or profile.fallback_provider_id != "codex"
-        or profile.fallback_model_id != "gpt-5.6-terra"
+        or profile.fallback_model_id != "gpt-6.1-sol"
         or profile.fallback_reasoning_effort != "high"
     ):
         raise ValueError("historical lifecycle witness authority drifted")
@@ -4844,9 +4844,9 @@ def _agent_implementation_route_plan(
 ) -> AgentImplementationRoutePlan:
     values = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.6",
+        "primary_model_id": "grok-4.7",
         "fallback_provider_id": "codex",
-        "fallback_model_id": "gpt-5.6-terra",
+        "fallback_model_id": "gpt-6.1-sol",
         "fallback_trigger": fallback_trigger,
         "fallback_reasoning_effort": fallback_reasoning_effort,
     }
@@ -5158,9 +5158,9 @@ def load_agent_implementation_route_authorization(
         raise ValueError("agent route authorization bounds are invalid") from exc
     expected_route = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.6",
+        "primary_model_id": "grok-4.7",
         "fallback_provider_id": "codex",
-        "fallback_model_id": "gpt-5.6-terra",
+        "fallback_model_id": "gpt-6.1-sol",
         "fallback_reasoning_effort": "high",
     }
     if (
@@ -5364,7 +5364,7 @@ def load_agent_implementation_route_authorization(
         or witness_profile.content_id != authority_bounds.authority_cid
         or witness_profile.route_id != _V3_AGENT_IMPLEMENTATION_ROUTE_ID
         or witness_profile.fallback_provider_id != "codex"
-        or witness_profile.fallback_model_id != "gpt-5.6-terra"
+        or witness_profile.fallback_model_id != "gpt-6.1-sol"
         or witness_profile.fallback_reasoning_effort != "high"
     ):
         raise ValueError(

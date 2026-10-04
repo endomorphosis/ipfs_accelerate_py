@@ -129,7 +129,7 @@ class ExportTests(unittest.IsolatedAsyncioTestCase):
             instruction = root / "public.md"
             instruction.write_text("Inspect bottle.py, repair problems and write report.jsonl with file_path and cwe_id fields.")
             contract = _requirements(instruction, symbolic=True)
-            agent = FullSupervisorAgent(logs_dir=root / "logs", model_name="gpt-5.6-sol",
+            agent = FullSupervisorAgent(logs_dir=root / "logs", model_name="gpt-6.1-sol",
                 runtime_archive=str(root), arm="no-index", intent_requirement_contract=contract)
             context = AgentContext()
             await agent.run(instruction.read_text(), Environment(), context)
@@ -164,7 +164,7 @@ class ExportTests(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / 'manifest.json').write_text(json.dumps({'archive_sha256': 'authored', 'learned_requirements': []}))
-            agent = FullSupervisorAgent(logs_dir=root / 'logs', model_name='gpt-5.6-sol',
+            agent = FullSupervisorAgent(logs_dir=root / 'logs', model_name='gpt-6.1-sol',
                 runtime_archive=str(root), arm='no-index')
             context = AgentContext()
             with self.assertRaisesRegex(RuntimeError, 'driver failure'):
@@ -202,7 +202,7 @@ class ExportTests(unittest.IsolatedAsyncioTestCase):
                     'canonical_record_count': 5, 'training_pair_count': 2}}
             (root / 'manifest.json').write_text(json.dumps(manifest))
             for arm in ('full', 'no-index'):
-                agent = FullSupervisorAgent(logs_dir=root / arm, model_name='gpt-5.6-sol',
+                agent = FullSupervisorAgent(logs_dir=root / arm, model_name='gpt-6.1-sol',
                     runtime_archive=str(root), arm=arm)
                 context = AgentContext()
                 await agent.run('Authored public instruction', Environment(), context)
@@ -236,7 +236,7 @@ class ExportTests(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "manifest.json").write_text(json.dumps({"archive_sha256": "test", "learned_requirements": []}))
-            agent = FullSupervisorAgent(logs_dir=root / "logs", model_name="gpt-5.6-sol",
+            agent = FullSupervisorAgent(logs_dir=root / "logs", model_name="gpt-6.1-sol",
                                         runtime_archive=str(root), arm="no-index")
             context = AgentContext()
             await agent.run("Public benchmark instruction", Environment(), context)

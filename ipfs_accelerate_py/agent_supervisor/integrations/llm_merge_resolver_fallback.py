@@ -3,7 +3,7 @@
 Compatibility entrypoint for LLM merge-conflict resolution. It retains the
 checkout lock and recursion guard, then delegates the original stdin and
 workspace to the canonical ``llm_router``-owned Grok runner. Exact Codex
-``gpt-5.6-terra`` at medium reasoning is available only through that runner's
+``gpt-6.1-sol`` at medium reasoning is available only through that runner's
 typed native quota route. This module does not classify provider failures or
 execute a fallback provider itself.
 """
@@ -30,8 +30,8 @@ _LOCK_TIMEOUT_ENV = "AGENT_RESOLVER_LOCK_TIMEOUT_SECONDS"
 _DEFAULT_LOCK_TIMEOUT_SECONDS = 120.0
 _DEFAULT_GROK_TIMEOUT_SECONDS = 900.0
 _DEFAULT_CODEX_TIMEOUT_SECONDS = 600.0
-GROK_MERGE_RESOLVER_MODEL = "grok-4.6"
-CODEX_MERGE_RESOLVER_MODEL = "gpt-5.6-terra"
+GROK_MERGE_RESOLVER_MODEL = "grok-4.7"
+CODEX_MERGE_RESOLVER_MODEL = "gpt-6.1-sol"
 CODEX_MERGE_RESOLVER_REASONING_EFFORT = "medium"
 _LOCK_ACQUISITION_FAILURE_EXIT_CODE = 75
 

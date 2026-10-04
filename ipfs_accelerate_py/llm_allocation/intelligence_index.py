@@ -60,9 +60,9 @@ LAB_PROVIDERS: Mapping[str, tuple[str, ...]] = {
 }
 
 CLI_DEFAULT_MODELS: Mapping[str, tuple[str, ...]] = {
-    "grok_cli": ("grok-4.6",),
+    "grok_cli": ("grok-4.7",),
     "muse_code": ("muse-spark-1.3", "muse-spark-1.2"),
-    "codex_cli": ("gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"),
+    "codex_cli": ("gpt-6.1-sol", "gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"),
     "claude_code": ("claude-fable-5.1", "claude-opus-5", "claude-sonnet-5"),
     "gemini_cli": ("gemini-3.8-flash", "gemini-3.7-flash"),
     "goose_cli": ("muse-spark-1.3",),

@@ -261,7 +261,7 @@ def test_harbor_forwards_selected_request_in_both_arms_and_respects_ablation(tmp
             return SimpleNamespace(return_code=0, stdout="", stderr="")
         async def download_file(self, source, target):
             Path(target).write_text(json.dumps(report if source.endswith("-result.json") else {}))
-    agent = FullSupervisorAgent(logs_dir=tmp_path / "logs", model_name="gpt-5.6-sol",
+    agent = FullSupervisorAgent(logs_dir=tmp_path / "logs", model_name="gpt-6.1-sol",
         runtime_archive=str(tmp_path / "archive"), arm=arm, disable_intent_autoencoder=disabled)
     context = AgentContext()
     asyncio.run(agent.run(PROBE, Environment(), context))

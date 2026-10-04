@@ -2924,6 +2924,71 @@ class IntentRepository:
 
         return getattr(self, "_bound_connection", None) is not None
 
+    def run_idempotent_owner_command(
+        self, *, request_id: str, command: str, command_payload: Mapping[str, Any],
+        store_id: str, store_generation: str, operation: Any,
+    ) -> Mapping[str, Any]:
+        """Commit a closed owner command and its replay result atomically.
+
+        The caller owns the exclusive handle and serializes it. This method
+        owns the transaction; nested transactions are refused by DuckDB.
+        Existing migrated idempotency storage is used without runtime DDL.
+        """
+        self._require_open()
+        from .quack_owner_command import validate_quack_owner_command
+        if (not self.uses_bound_connection or type(request_id) is not str
+                or re.fullmatch(r"[0-9a-f]{32}", request_id) is None
+                or type(store_id) is not str or not store_id or len(store_id) > 4096
+                or type(store_generation) is not str or not store_generation
+                or len(store_generation) > 256 or not callable(operation)):
+            raise IntentRepositoryError("owner command has invalid authority bindings")
+        payload = validate_quack_owner_command(command, command_payload)
+        binding = {"schema": "quack-owner-command-replay/v1", "command": command,
+                   "payload": payload, "store_id": store_id, "store_generation": store_generation}
+        request_digest = hashlib.sha256(canonical_json_bytes(binding)).hexdigest()
+        key = "quack-owner-command:" + request_id
+        connection = self._bound_connection
+        connection.execute("BEGIN TRANSACTION")
+        try:
+            prior = connection.execute(
+                "SELECT command_kind, command_id, store_id, result_digest, body_json "
+                "FROM idempotency_records WHERE idempotency_key = ?", [key],
+            ).fetchone()
+            if prior is not None:
+                body = json.loads(prior[4])
+                if (prior[0] != command or prior[1] != request_id
+                        or prior[2] != store_id or not isinstance(body, dict)
+                        or set(body) != {"schema", "request_digest", "result"}
+                        or body["schema"] != binding["schema"]
+                        or body["request_digest"] != request_digest
+                        or not isinstance(body["result"], dict)
+                        or hashlib.sha256(canonical_json_bytes(body["result"])).hexdigest() != prior[3]):
+                    raise IntentRepositoryConflictError("owner command replay binding differs")
+                result = body["result"]
+            else:
+                result = operation()
+                if not isinstance(result, Mapping):
+                    raise IntentRepositoryError("owner command has no replayable result")
+                # Canonical serialization validates and freezes the returned mapping.
+                encoded = canonical_json_bytes(dict(result))
+                if len(encoded) > 4 * 1024 * 1024:
+                    raise IntentRepositoryError("owner command result exceeds replay bound")
+                result = json.loads(encoded)
+                body = {"schema": binding["schema"], "request_digest": request_digest, "result": result}
+                connection.execute(
+                    "INSERT INTO idempotency_records "
+                    "(idempotency_key, command_kind, command_id, store_id, session_id, "
+                    "result_digest, created_at, expires_at, body_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [key, command, request_id, store_id, self.session_id,
+                     hashlib.sha256(encoded).hexdigest(), datetime.now(timezone.utc).isoformat(),
+                     None, canonical_json_bytes(body).decode("utf-8")],
+                )
+            connection.execute("COMMIT")
+            return result
+        except BaseException:
+            connection.execute("ROLLBACK")
+            raise
+
     def close(self) -> None:
         self._closed = True
         self._open = False

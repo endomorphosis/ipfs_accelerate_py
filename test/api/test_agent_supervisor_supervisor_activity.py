@@ -187,6 +187,50 @@ def test_real_heartbeat_captures_window_once_before_config_or_phase_changes(writ
     assert len(threads) == 1
 
 
+def test_late_periodic_heartbeat_cannot_replace_terminal_receipts(writer, monkeypatch):
+    owner, module = writer
+    threads = []
+
+    class DelayedEvent:
+        stopped = False
+        waits = 0
+
+        def set(self):
+            self.stopped = True
+
+        def is_set(self):
+            return self.stopped
+
+        def wait(self, interval):
+            # The first timeout occurred before finish; the writer resumes
+            # only after finish exhausted its bounded join and published.
+            self.waits += 1
+            return self.waits > 1
+
+    class DelayedThread:
+        def __init__(self, **kwargs):
+            self.target = kwargs['target']
+            threads.append(self)
+
+        def start(self):
+            pass
+
+        def join(self, **kwargs):
+            pass
+
+    monkeypatch.setattr(module.threading, 'Event', DelayedEvent)
+    monkeypatch.setattr(module.threading, 'Thread', DelayedThread)
+    update, finish = owner._begin_supervisor_maintenance_heartbeat('first')
+    finish()
+    paths = (owner._supervisor_status_path(), owner._supervisor_maintenance_receipt_path())
+    completed = [path.read_bytes() for path in paths]
+    assert json.loads(completed[0])['supervisor_maintenance']['phase'] == 'completed'
+    assert json.loads(completed[1])['status'] == 'completed'
+    threads[0].target()
+    update('late')
+    assert [path.read_bytes() for path in paths] == completed
+
+
 @pytest.mark.parametrize("window", [False, {}, SupervisorMaintenanceWindow.begin(
     started_at=(NOW - timedelta(seconds=1)).isoformat(), timeout_seconds=300)])
 def test_status_writer_refuses_untyped_or_different_original_window_without_overwrite(writer, window):

@@ -1893,6 +1893,25 @@ _PROVIDER_FALLBACK_AUTHORIZATION_ROUTE: Final = {
         "grok_hard_quota_exhausted",
     ],
 }
+# Preserve the preceding exact policy for immutable v1/P019 receipts. Fresh
+# authorizations use this versioned route; a historical signature never changes
+# which model tuple it binds. Live invocation admission remains router-owned.
+_CURRENT_PROVIDER_FALLBACK_AUTHORIZATION_ROUTE: Final = {
+    **_PROVIDER_FALLBACK_AUTHORIZATION_ROUTE,
+    "route_id": "agent-supervisor-prompt-v3-grok47-sol61-high-auth-or-hard-quota-v1",
+    "primary_model_id": "grok-4.7",
+    "fallback_model_id": "gpt-6.1-sol",
+}
+
+
+def _provider_fallback_route_policy(route_id: object) -> Mapping[str, Any] | None:
+    for policy in (_PROVIDER_FALLBACK_AUTHORIZATION_ROUTE,
+                   _CURRENT_PROVIDER_FALLBACK_AUTHORIZATION_ROUTE):
+        if route_id == policy["route_id"]:
+            return policy
+    return None
+
+
 _PROVIDER_FALLBACK_OWNERSHIP_CONTRACT: Final = {
     "canonical_route_plan_owner": "ipfs_accelerate_py.llm_router",
     "typed_fallback_decision_owner": "ipfs_accelerate_py.llm_router",
@@ -5255,11 +5274,13 @@ def _validate_local_dev_profile_v5(
     )
     if not set(effect_bounds).issubset(capabilities):
         errors.append(f"{prefix}.effect_bounds: must be a capability subset")
+    route_policy = (_provider_fallback_route_policy(record.get("route_id"))
+                    or _CURRENT_PROVIDER_FALLBACK_AUTHORIZATION_ROUTE)
     exact_policy = {
-        "route_id": _PROVIDER_FALLBACK_AUTHORIZATION_ROUTE["route_id"],
+        "route_id": route_policy["route_id"],
         "reviewer_provider": "local_operator",
         "fallback_provider_id": "codex",
-        "fallback_model_id": "gpt-5.6-terra",
+        "fallback_model_id": route_policy["fallback_model_id"],
         "fallback_reasoning_effort": "high",
     }
     for field, expected in exact_policy.items():
@@ -11370,9 +11391,12 @@ class ProviderFallbackPolicyAuthorization:
         expected_source["source_tree"] = (
             self.source_tree if expected_source_tree is None else expected_source_tree
         )
+        route = self.payload.get("route")
+        route_policy = (_provider_fallback_route_policy(route.get("route_id"))
+                        if isinstance(route, Mapping) else None)
         for field, expected in (
             ("authorization_source", expected_source),
-            ("route", _PROVIDER_FALLBACK_AUTHORIZATION_ROUTE),
+            ("route", route_policy or _CURRENT_PROVIDER_FALLBACK_AUTHORIZATION_ROUTE),
             (
                 "ownership_contract",
                 _PROVIDER_FALLBACK_AUTHORIZATION_V2_OWNERSHIP_CONTRACT,
@@ -11539,6 +11563,10 @@ class ProviderFallbackPolicyAuthorization:
             if not isinstance(profile, Mapping) or not isinstance(anchor, Mapping):
                 errors.append(f"{prefix}: lifecycle witness projections unavailable")
             else:
+                for field in ("route_id", "fallback_provider_id", "fallback_model_id",
+                              "fallback_reasoning_effort"):
+                    if not isinstance(route, Mapping) or route.get(field) != profile.get(field):
+                        errors.append(f"{prefix}.route.{field}: profile equality mismatch")
                 witness_equalities = {
                     "identity": profile.get("identity_did"),
                     "profile_id": profile.get("profile_id"),

@@ -237,7 +237,7 @@ def test_harbor_forwards_intent_selection_in_both_arms(tmp_path, intent_checkpoi
             return SimpleNamespace(return_code=0, stdout="", stderr="")
         async def download_file(self, source, target):
             Path(target).write_text(json.dumps(report if source.endswith("-result.json") else {}))
-    agent = FullSupervisorAgent(logs_dir=tmp_path / "logs", model_name="gpt-5.6-sol",
+    agent = FullSupervisorAgent(logs_dir=tmp_path / "logs", model_name="gpt-6.1-sol",
         runtime_archive=str(tmp_path / "archive"), arm=arm, disable_intent_autoencoder=disabled)
     context = AgentContext()
     asyncio.run(agent.run("Authored public instruction", Environment(), context))
@@ -265,5 +265,5 @@ def test_bundle_cli_selects_pinned_intent_descriptor(tmp_path, intent_checkpoint
 
 def test_harbor_constructor_rejects_string_ablation(tmp_path):
     with pytest.raises(ValueError, match="ablation switch"):
-        FullSupervisorAgent(logs_dir=tmp_path / "logs", model_name="gpt-5.6-sol",
+        FullSupervisorAgent(logs_dir=tmp_path / "logs", model_name="gpt-6.1-sol",
             runtime_archive=str(tmp_path), disable_intent_autoencoder="false")

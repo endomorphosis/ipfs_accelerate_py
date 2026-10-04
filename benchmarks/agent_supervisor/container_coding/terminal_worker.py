@@ -99,7 +99,7 @@ def main():
             sys.path.append(str(dependency))
     os.environ['PYTHONPATH'] = os.pathsep.join(map(str, dependency_roots))
     os.environ['IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER'] = 'grok'
-    os.environ['IPFS_ACCELERATE_AGENT_GROK_MODEL'] = 'grok-4.6'
+    os.environ['IPFS_ACCELERATE_AGENT_GROK_MODEL'] = 'grok-4.7'
     os.environ['IPFS_ACCELERATE_AGENT_GROK_TASK_TOOL_PROFILE'] = 'files'
     output = OUTPUTS[args.task]
     def git(*argv):
@@ -206,7 +206,7 @@ def main():
             native_pass = ast.literal_eval(line.split('pass complete: ', 1)[1])
     (root / 'native-pass.json').write_text(json.dumps(native_pass, indent=2, default=str) + '\n')
     implementation = native_pass.get('implementation_result') or {}
-    result = {'task': args.task, 'provider': 'grok', 'model': 'grok-4.6',
+    result = {'task': args.task, 'provider': 'grok', 'model': 'grok-4.7',
         'implementation_returncode': implementation.get('returncode'),
         'selection_idle_reason': native_pass.get('selection_idle_reason'),
         'provider_dispatched': implementation.get('provider_dispatched'),

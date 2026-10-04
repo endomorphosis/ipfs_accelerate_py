@@ -25,7 +25,9 @@ from ..control.control_contracts import (
     get_operation_catalog,
 )
 from ..control.control_plane import SupervisorControlService
-from ..control.lifecycle_orchestrator import LifecycleOrchestrator, LifecycleProfile, LinuxProcessAdapter
+from ..control.lifecycle_orchestrator import (
+    LifecycleOrchestrator, LifecycleProfile, LinuxProcessAdapter, ProcessTreeSnapshot,
+)
 from ..control.profile_authority import (
     assert_capability_allowed, initialize_local_profile, load_local_profile,
     sign_profile_binding, verify_did_key_signature,
@@ -57,6 +59,42 @@ class NativeSupervisorHealthAdapter(LinuxProcessAdapter):
     lifecycle run. Lifecycle identity comes from the native /proc adapter;
     the status file never supplies process ownership or fence authority.
     """
+
+    def launch(self, profile, *, fencing_epoch):
+        identity = super().launch(profile, fencing_epoch=fencing_epoch)
+        # Preserve only the identity independently verified at our own launch.
+        # Hardening can subsequently hide /proc/environ from this same parent.
+        if not hasattr(self, "_launch_witnesses"):
+            self._launch_witnesses = {}
+        self._launch_witnesses[identity.pid] = identity
+        return identity
+
+    def snapshot(self, profile):
+        observed = super().snapshot(profile)
+        members = {member.pid: member for member in observed.members}
+        witnesses = getattr(self, "_launch_witnesses", {})
+        for pid, identity in tuple(witnesses.items()):
+            if not self.identity_alive(identity):
+                witnesses.pop(pid, None)
+                continue
+            if (pid in members or identity.profile_id != profile.profile_id
+                    or identity.run_id != profile.run_id):
+                continue
+            try:
+                self._environ(pid)
+            except PermissionError:
+                try:
+                    actual = self._stat(pid)
+                    expected = (identity.parent_pid, identity.process_group_id,
+                                identity.session_id, identity.start_time_ticks)
+                    if actual == expected and self._argv(pid) == identity.argv:
+                        members[pid] = identity
+                except (OSError, ValueError, ProcessLookupError):
+                    pass
+            except (OSError, ValueError):
+                pass
+        return ProcessTreeSnapshot(profile_id=profile.profile_id, run_id=profile.run_id,
+                                   members=tuple(members.values()), captured_at_ms=observed.captured_at_ms)
 
     def child_scope_matches(self, profile, child) -> bool:
         if "--implement" in child.argv or "--todo-path" not in child.argv:
@@ -314,10 +352,14 @@ class IsolatedBenchmarkRuntime:
             active_lease_fences={self.lease.lease_id: self.lease.fence_epoch},
         )
 
+    def _operation_timeout_ms(self, operation: Operation) -> int:
+        return self.timeout_ms
+
     def request(self, operation: Operation) -> OperationRequest:
         if operation not in (Operation.START, Operation.STOP):
             raise ValueError("isolated local grant permits only START and STOP")
         self._verify_operation(operation)
+        timeout_ms = self._operation_timeout_ms(operation)
         latest = self.orchestrator.store.latest().get(self.profile.target_id)
         revision = latest.receipt.revision if latest and latest.receipt else 0
         binding = dict(
@@ -334,15 +376,15 @@ class IsolatedBenchmarkRuntime:
         permit = AuthorizationDecision(
             **binding, verdict=AuthorizationVerdict.PERMIT, granted_authority=OperationAuthority.MUTATION,
             authorized_effect_ids=(effect.effect_id,), grant_ids=(self.manifest_id,),
-            evaluated_at_ms=now, expires_at_ms=min(now + self.timeout_ms + 5_000, self.lease.expires_at_ms),
+            evaluated_at_ms=now, expires_at_ms=min(now + timeout_ms + 5_000, self.lease.expires_at_ms),
         )
         self._permits[permit.decision_id] = permit
         request = OperationRequest(
-            **binding, bounds=ControlBounds(timeout_ms=self.timeout_ms), authorization=permit,
+            **binding, bounds=ControlBounds(timeout_ms=timeout_ms), authorization=permit,
             expected_effects=(effect,), parameters={
                 "target_id": self.profile.target_id, "run_id": self.run_id,
                 "configuration_root": self.manifest_id, "expected_revision": revision,
-                "deadline_ms": self.timeout_ms, "health_window_ms": 500,
+                "deadline_ms": timeout_ms, "health_window_ms": 500,
                 "reason": "isolated signed supervisor process qualification",
             }, idempotency=IdempotencyKey(
                 key=f"{self.run_id}:{operation.value}:{revision}", operation=operation,
@@ -357,8 +399,11 @@ class IsolatedBenchmarkRuntime:
         self._record("start", result.to_dict())
         return result
 
-    def observe(self) -> dict[str, Any]:
+    def _verify_observation(self):
         self._verify()
+
+    def observe(self) -> dict[str, Any]:
+        context_observation = self._verify_observation()
         tree = self.process.snapshot(self.profile)
         result = {
             "schema": "isolated-supervisor-observation@1", "captured_at_ms": _now_ms(),
@@ -368,6 +413,8 @@ class IsolatedBenchmarkRuntime:
             "completion_authority": False, "production_activation": False,
         }
         result["native_heartbeat"] = self.process.last_heartbeat_evidence
+        if context_observation is not None:
+            result["context_observation"] = context_observation
         self._record("observe", result)
         return result
 
@@ -449,12 +496,95 @@ class IsolatedBenchmarkRuntime:
                 output.write(encoded)
         (self.state / f"{name}-receipt.json").write_text(encoded)
 
+    def _require_no_live_launched_children(self) -> None:
+        if any(child.poll() is None for child in getattr(self, "_children", ())):
+            raise RuntimeError("stop every live launched child before releasing runtime custody")
+
     def close(self) -> None:
+        self._require_no_live_launched_children()
         if self.process.snapshot(self.profile).members:
             raise RuntimeError("stop the exact supervisor tree before closing its coordinator")
         self.coordinator.release(self.lease, expected_fencing_token=self.lease.fencing_token,
                                  expected_fence_epoch=self.lease.fence_epoch)
         self.coordinator.close()
+
+
+def _wait_for_stable_empty_supervisor(runtime, *, initial, native_start_tree, root_cid, deadline, evidence):
+    """Wait for child churn to settle without adopting another root or owner.
+
+    The initial observation is the immutable healthy observation returned by
+    START. Only auxiliary membership/health may reset the stability window;
+    the root and native managed daemon keep their exact birth identities.
+    """
+    from ..core.multiformats_identity import cid_for_dag_json
+
+    tree = ProcessTreeSnapshot.from_dict(initial["process_tree"])
+    heartbeat = initial["native_heartbeat"]
+    if initial["healthy"] is not True or len(tree.roots) != 1 or not heartbeat:
+        raise ValueError("START has no healthy native process anchor")
+    root = tree.roots[0]
+    if cid_for_dag_json(root.to_dict(), for_identity=False) != root_cid:
+        raise ValueError("START root identity differs from its healthy observation")
+    owners = [item for item in tree.members if item.pid == heartbeat["daemon_pid"]]
+    if (heartbeat["supervisor_pid"] != root.pid or len(owners) != 1
+            or owners[0].pid == root.pid or owners[0].parent_pid != root.pid):
+        raise ValueError("START native owner identity is not bound to its root")
+    owner = owners[0]
+    anchors = {root.identity_id, owner.identity_id}
+    admitted = ProcessTreeSnapshot.from_dict(native_start_tree)
+    if (not anchors <= {item.identity_id for item in admitted.members}
+            or len(admitted.roots) != 1 or admitted.roots[0].identity_id != root.identity_id):
+        raise ValueError("root or native owner changed after the native START transition")
+    initial_heartbeat = last_heartbeat = heartbeat["updated_at_ms"]
+    previous_ids = {item.identity_id for item in tree.members}
+    stable_ids, stable_since, stable_heartbeat = None, None, None
+    started = time.monotonic()
+    evidence.update(schema="isolated-supervisor-stability-observation@1",
+        root_identity_id=root.identity_id, daemon_identity_id=owner.identity_id,
+        initial_heartbeat_ms=initial_heartbeat, stable_window_seconds=.75,
+        poll_interval_seconds=.1, samples=[], passed=False, reason="deadline_exceeded")
+    while time.monotonic() < deadline:
+        observation = runtime.observe()
+        now = time.monotonic()
+        current = ProcessTreeSnapshot.from_dict(observation["process_tree"])
+        ids = {item.identity_id for item in current.members}
+        pulse = observation["native_heartbeat"]
+        sample = dict(elapsed_seconds=now-started, healthy=observation["healthy"],
+            identity_ids=sorted(ids), added_identity_ids=sorted(ids-previous_ids),
+            removed_identity_ids=sorted(previous_ids-ids),
+            heartbeat_ms=pulse["updated_at_ms"] if pulse else None)
+        evidence["samples"].append(sample)
+        previous_ids = ids
+        # Never reset the anchor on restart, PID reuse, missing owner, changed
+        # launch identity or a new root, even if a later sample is healthy.
+        if (not anchors <= ids or len(current.roots) != 1
+                or current.roots[0].identity_id != root.identity_id):
+            evidence["reason"] = "root_or_owner_identity_changed"
+            return False
+        if pulse:
+            if pulse["supervisor_pid"] != root.pid or pulse["daemon_pid"] != owner.pid:
+                evidence["reason"] = "native_heartbeat_owner_changed"
+                return False
+            if pulse["updated_at_ms"] < last_heartbeat:
+                evidence["reason"] = "native_heartbeat_regressed"
+                return False
+            last_heartbeat = pulse["updated_at_ms"]
+        if now >= deadline:
+            break  # A slow observation cannot acquire success after the bound.
+        if observation["healthy"] is True and pulse:
+            if stable_ids != ids:
+                stable_ids, stable_since, stable_heartbeat = ids, now, last_heartbeat
+            if (now-stable_since >= .75 and last_heartbeat > initial_heartbeat
+                    and last_heartbeat > stable_heartbeat):
+                if time.monotonic() >= deadline:
+                    break  # Identity/CID processing must fit the same bound.
+                evidence.update(passed=True, reason="stable_tree_and_fresh_native_heartbeat",
+                    observed_process_identity_ids=sorted(ids), stable_seconds=now-stable_since)
+                return True
+        else:
+            stable_ids = stable_since = stable_heartbeat = None
+        time.sleep(min(.1, max(0., deadline-time.monotonic())))
+    return False
 
 
 def qualify_empty_supervisor(directory: Path, *, timeout_ms: int = 30_000) -> dict[str, Any]:
@@ -471,20 +601,27 @@ def qualify_empty_supervisor(directory: Path, *, timeout_ms: int = 30_000) -> di
         "completion_authority": False, "passed": False,
     }
     started = observed = stopped = False
+    deadline = time.monotonic() + timeout_ms / 1000
     try:
         receipt = factory.invoke("start")
         report["start_receipt_cid"] = receipt.receipt_cid
         started = True
-        # Require a later native heartbeat and the same birth identity, not
-        # merely the health observation already consumed by START.
-        first = runtime.observe()
-        time.sleep(0.75)
-        second = runtime.observe()
-        first_ids = {item["identity_id"] for item in first["process_tree"]["members"]}
-        second_ids = {item["identity_id"] for item in second["process_tree"]["members"]}
-        observed = (first["healthy"] and second["healthy"] and first_ids == second_ids and len(first_ids) >= 2
-                    and second["native_heartbeat"]["updated_at_ms"] > first["native_heartbeat"]["updated_at_ms"])
-        report["observed_process_identity_ids"] = sorted(second_ids)
+        # Reuse START's immutable health observation; taking a fresh baseline
+        # could silently adopt a daemon restart between START and polling.
+        from ..core.multiformats_identity import cid_for_dag_json
+        initial_cid = receipt.values["health_revision_cid"]
+        initial = json.loads((runtime.state / "receipts" / f"{initial_cid}.json").read_text())
+        if cid_for_dag_json(initial, for_identity=False) != initial_cid:
+            raise ValueError("START health observation differs from its immutable receipt")
+        native_start = json.loads((runtime.state / "receipts" / f"{receipt.receipt_cid}.json").read_text())
+        if cid_for_dag_json(native_start, for_identity=False) != receipt.receipt_cid:
+            raise ValueError("native START transition differs from its immutable receipt")
+        report["stability_observation"] = evidence = {}
+        observed = _wait_for_stable_empty_supervisor(runtime, initial=initial,
+            native_start_tree=native_start["data"]["transition"]["new_tree"],
+            root_cid=receipt.values["process_cid"], deadline=deadline, evidence=evidence)
+        report["observed_process_identity_ids"] = evidence.get("observed_process_identity_ids",
+            evidence["samples"][-1]["identity_ids"] if evidence.get("samples") else [])
         report["healthy_stable_process_tree"] = observed
     except Exception as exc:
         report["error"] = {"type": type(exc).__name__, "message": str(exc)}
@@ -498,10 +635,14 @@ def qualify_empty_supervisor(directory: Path, *, timeout_ms: int = 30_000) -> di
         absent = not runtime.process.snapshot(runtime.profile).members
         report["process_tree_absent_after_stop"] = absent
         report["passed"] = bool(started and observed and stopped and absent)
-        runtime._record("qualification", report)
-        factory.registry.close()
-        if absent:
-            runtime.close()
+        try:
+            runtime._record("qualification", report)
+        finally:
+            try:
+                factory.registry.close()
+            finally:
+                if absent:
+                    runtime.close()
     return report
 
 

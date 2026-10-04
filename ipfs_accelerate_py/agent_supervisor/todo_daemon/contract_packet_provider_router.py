@@ -3331,9 +3331,9 @@ def _independent_provider_execution_receipt_v2_valid(
         )
         if has_execution_binding:
             expected_configured = (
-                ("grok_cli", "grok_cli", "grok-4.6", "")
+                ("grok_cli", "grok_cli", "grok-4.7", "")
                 if role is ProviderRole.GROK_IMPLEMENT
-                else ("codex_cli", "codex_cli", "gpt-5.6-terra", "medium")
+                else ("codex_cli", "codex_cli", "gpt-6.1-sol", "medium")
             )
             if (
                 configured != expected_configured

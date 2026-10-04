@@ -67,7 +67,7 @@ SIGNING_KEY_ENV = "AGENT_SUPERVISOR_LOCAL_PROFILE_KEY"
 _BASE58_ALPHABET = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 _ED25519_PUB_MULTICODEC = b"\xed\x01"
 DEFAULT_SCOPED_ROUTE_ID = (
-    "agent-supervisor-prompt-v3-grok45-terra56-high-auth-or-hard-quota-v1"
+    "agent-supervisor-prompt-v3-grok47-sol61-high-auth-or-hard-quota-v1"
 )
 EAAEF_SCOPED_ROUTE_ID = (
     "agent-supervisor-eaaef-v1-grok46-terra56-high-auth-or-hard-quota-v1"
@@ -77,7 +77,8 @@ ALLOWED_SCOPED_ROUTE_IDS = frozenset(
 )
 DEFAULT_REVIEWER_PROVIDER = "local_operator"
 DEFAULT_FALLBACK_PROVIDER_ID = "codex"
-DEFAULT_FALLBACK_MODEL_ID = "gpt-5.6-terra"
+DEFAULT_FALLBACK_MODEL_ID = "gpt-6.1-sol"
+EAAEF_FALLBACK_MODEL_ID = "gpt-5.6-terra"
 DEFAULT_FALLBACK_REASONING_EFFORT = "high"
 _MAX_PROFILE_BYTES = 64 * 1024
 _MAX_SIGNATURE_BYTES = 4 * 1024
@@ -1410,6 +1411,13 @@ def _write_lifecycle_receipt(
     return receipt
 
 
+def _fallback_model_for_route(route_id: str) -> str:
+    # The external fabric has separate signed authority. Changing the ordinary
+    # default must neither rewrite that model tuple nor widen its model bound.
+    return (EAAEF_FALLBACK_MODEL_ID if route_id == EAAEF_SCOPED_ROUTE_ID
+            else DEFAULT_FALLBACK_MODEL_ID)
+
+
 def _profile_from_raw(raw: Mapping[str, Any]) -> SignedSupervisorProfile:
     expected = set(SignedSupervisorProfile(
         schema="", repository_cid="", baseline_commit="",
@@ -1499,7 +1507,7 @@ def _profile_from_raw(raw: Mapping[str, Any]) -> SignedSupervisorProfile:
         in {"", "codex", "openai"}
         or profile.route_id not in ALLOWED_SCOPED_ROUTE_IDS
         or profile.fallback_provider_id != DEFAULT_FALLBACK_PROVIDER_ID
-        or profile.fallback_model_id != DEFAULT_FALLBACK_MODEL_ID
+        or profile.fallback_model_id != _fallback_model_for_route(profile.route_id)
         or profile.fallback_reasoning_effort
         != DEFAULT_FALLBACK_REASONING_EFFORT
     ):
@@ -1623,7 +1631,7 @@ def initialize_local_profile(
             "fallback_provider_id",
         ),
         fallback_model_id=_bound(
-            fallback_model_id or DEFAULT_FALLBACK_MODEL_ID,
+            fallback_model_id or _fallback_model_for_route(route_id or DEFAULT_SCOPED_ROUTE_ID),
             "fallback_model_id",
         ),
         fallback_reasoning_effort=_bound(

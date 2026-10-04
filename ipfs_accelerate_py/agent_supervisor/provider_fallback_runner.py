@@ -665,9 +665,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--probe-route-readiness", action="store_true")
     parser.add_argument("--probe-grok-bin", default="")
     parser.add_argument("--probe-codex-bin", default="")
-    parser.add_argument("--probe-grok-model", default="grok-4.5")
+    parser.add_argument("--probe-grok-model", default="grok-4.7")
     parser.add_argument(
-        "--probe-codex-model", default="gpt-5.6-terra"
+        "--probe-codex-model", default="gpt-6.1-sol"
     )
     parser.add_argument(
         "--probe-codex-reasoning-effort", default="high"
@@ -790,9 +790,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             readiness = probe_grok_codex_agent_route_readiness(
                 grok_bin=str(args.probe_grok_bin or ""),
                 codex_bin=str(args.probe_codex_bin or ""),
-                grok_model=str(args.probe_grok_model or "grok-4.5"),
+                grok_model=str(args.probe_grok_model or "grok-4.7"),
                 codex_model=str(
-                    args.probe_codex_model or "gpt-5.6-terra"
+                    args.probe_codex_model or "gpt-6.1-sol"
                 ),
                 codex_reasoning_effort=str(
                     args.probe_codex_reasoning_effort or "high"

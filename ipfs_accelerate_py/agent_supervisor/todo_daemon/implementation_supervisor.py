@@ -121,6 +121,7 @@ from ..rescue.supervisor_watchdog import (
     AutonomousUnstallCoordinator,
     AutonomousUnstallPolicy,
 )
+from .supervisor_activity import SupervisorMaintenanceWindow
 from .core import ManagedDaemonSpec, terminate_pid_tree
 from .implementation_daemon import (
     DATABASE_DAEMON_PASS_HEARTBEAT_SCHEMA,
@@ -637,6 +638,23 @@ def _validated_plan_bound_authority_paths(
 
 PLAN_BOUND_DAEMON_CHILD_MARKER = "--run-plan-bound-daemon-child"
 SEALED_DAEMON_CHILD_MARKER = "--run-sealed-daemon-child"
+
+IMPLEMENTATION_DAEMON_MODULE_SENTINEL = (
+    "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon"
+)
+# Ordinary workers redeem the exact parent handoff before importing the large
+# daemon module. The parent still binds the executable and full kernel argv.
+ORDINARY_IMPLEMENTATION_DAEMON_BOOTSTRAP = "\n".join((
+    "import sys",
+    "(sys.argv[1:2] == ['ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon']) or sys.exit(78)",
+    "sys.argv.pop(1)",
+    "from ipfs_accelerate_py.agent_supervisor.runtime.process_security import harden_state_authority_process",
+    "harden_state_authority_process()",
+    "from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import preload_sealed_native_dependency_from_environment",
+    "preload_sealed_native_dependency_from_environment()",
+    "from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import main",
+    "raise SystemExit(main())",
+))
 
 
 # --- restored PLAN_BOUND_DAEMON_ENTRYPOINT ---
@@ -9548,15 +9566,50 @@ class PortalImplementationSupervisor:
         started_at: str,
         error: str = "",
         daemon_pid: int | None = None,
+        daemon_process_birth: ProcessBirthIdentity | None = None,
+        maintenance_window: SupervisorMaintenanceWindow | None = None,
     ) -> None:
         """Refresh supervisor status while recovery/refill work is running."""
 
         status_path = self._supervisor_status_path()
         payload = load_json_dict(status_path) or {}
         now = utc_now()
-        timeout_seconds = self._supervisor_maintenance_timeout_seconds()
+        window = (
+            SupervisorMaintenanceWindow.begin(
+                started_at=started_at,
+                timeout_seconds=self._supervisor_maintenance_timeout_seconds(),
+            )
+            if maintenance_window is None
+            else maintenance_window
+        )
+        if (
+            not isinstance(window, SupervisorMaintenanceWindow)
+            or window != SupervisorMaintenanceWindow.begin(
+                started_at=started_at, timeout_seconds=window.timeout_seconds
+            )
+        ):
+            raise ValueError("maintenance window differs from its original start")
+        timeout_seconds = window.timeout_seconds
         active = status == "running"
-        daemon_alive = bool(daemon_pid and process_is_running(int(daemon_pid)))
+        daemon_birth_payload: dict[str, Any] | None = None
+        if daemon_process_birth is not None:
+            if not isinstance(daemon_process_birth, ProcessBirthIdentity):
+                raise TypeError("maintenance daemon birth must be typed")
+            daemon_birth_payload = daemon_process_birth.to_dict()
+            if (
+                not daemon_pid
+                or int(daemon_pid) != daemon_process_birth.pid
+            ):
+                raise RuntimeError(
+                    "maintenance daemon PID differs from its managed process birth"
+                )
+        supervisor_birth = read_process_birth(os.getpid())
+        if supervisor_birth is None:
+            raise RuntimeError("maintenance supervisor process birth unavailable")
+        daemon_alive = bool(
+            daemon_process_birth is not None
+            and owner_liveness(daemon_process_birth) is OwnerLiveness.ALIVE
+        )
         payload.update(
             {
                 "schema": "ipfs_accelerate_py.agent_supervisor.todo_implementation_supervisor.supervisor",
@@ -9564,8 +9617,10 @@ class PortalImplementationSupervisor:
                 "updated_at": now,
                 "supervisor_pid": os.getpid(),
                 "supervisor_pid_alive": True,
+                "supervisor_process_birth": supervisor_birth.to_dict(),
                 "daemon_pid": int(daemon_pid) if daemon_pid else None,
                 "daemon_pid_alive": daemon_alive,
+                "daemon_process_birth": daemon_birth_payload,
                 "repo_root": str(self.config.repo_root),
                 "current_status_path": str(self.config.state_path),
                 "progress_path": str(self.config.state_path),
@@ -9577,6 +9632,7 @@ class PortalImplementationSupervisor:
                 "task_prefix": self.config.task_prefix,
                 "state_prefix": self.config.state_prefix,
                 "last_agentic_maintenance_status": status,
+                "supervisor_maintenance": window.event(phase=status, observed_at=now),
                 "last_agentic_maintenance_phase": phase,
                 "last_agentic_maintenance_reason": f"recovery_phase:{phase}",
                 "active_agentic_maintenance_started_at": started_at if active else "",
@@ -9649,10 +9705,20 @@ class PortalImplementationSupervisor:
             updated_at=now,
         )
 
-    def _begin_supervisor_maintenance_heartbeat(self, phase: str, *, daemon_pid: int | None = None):
+    def _begin_supervisor_maintenance_heartbeat(
+        self,
+        phase: str,
+        *,
+        daemon_pid: int | None = None,
+        daemon_process_birth: ProcessBirthIdentity | None = None,
+    ):
         """Return phase-update and finish callbacks for long supervisor recovery passes."""
 
         started_at = utc_now()
+        maintenance_window = SupervisorMaintenanceWindow.begin(
+            started_at=started_at,
+            timeout_seconds=self._supervisor_maintenance_timeout_seconds(),
+        )
         current = {"phase": phase}
         stop_event = threading.Event()
         write_lock = threading.RLock()
@@ -9660,6 +9726,11 @@ class PortalImplementationSupervisor:
 
         def write(status: str = "running", error: str = "") -> None:
             with write_lock:
+                # A timed-out wait may resume after finish's bounded join.
+                # Serialize this check with the receipt write so completion
+                # cannot be replaced by that late periodic observation.
+                if status == "running" and stop_event.is_set():
+                    return
                 try:
                     self._write_supervisor_maintenance_status(
                         current["phase"],
@@ -9667,12 +9738,11 @@ class PortalImplementationSupervisor:
                         started_at=started_at,
                         error=error,
                         daemon_pid=daemon_pid,
+                        daemon_process_birth=daemon_process_birth,
+                        maintenance_window=maintenance_window,
                     )
                 except Exception:
-                    logger.warning(
-                        "Failed to update supervisor maintenance heartbeat",
-                        exc_info=True,
-                    )
+                    logger.warning("Failed to update supervisor maintenance heartbeat", exc_info=True)
 
         def heartbeat() -> None:
             while not stop_event.wait(interval):
@@ -9688,6 +9758,8 @@ class PortalImplementationSupervisor:
 
         def update(next_phase: str) -> None:
             with write_lock:
+                if stop_event.is_set():
+                    return
                 current["phase"] = next_phase
                 write()
 
@@ -11201,6 +11273,11 @@ class PortalImplementationSupervisor:
             # The reusable loop launches from child_env; ManagedDaemonSpec's
             # launch_env alone is only consumed by wrapper-based entry points.
             child_env=loop_env,
+            worker_credential_handoff=(
+                self.config.state_owner_bootstrap_fd < 3
+                and bool(os.environ.get("IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SOCKET")
+                         or os.environ.get("IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD"))
+            ),
             restart_policy=RestartPolicy(
                 restart_backoff_seconds=max(0.0, float(self.config.check_interval)),
                 fast_restart_backoff_seconds=min(2.0, max(0.0, float(self.config.check_interval))),
@@ -21746,8 +21823,9 @@ class PortalImplementationSupervisor:
                 command = [
                     sys.executable,
                     "-P",
-                    "-m",
-                    "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
+                    "-c",
+                    ORDINARY_IMPLEMENTATION_DAEMON_BOOTSTRAP,
+                    IMPLEMENTATION_DAEMON_MODULE_SENTINEL,
                 ]
             else:
                 command = [sys.executable, str(daemon_script_path)]
@@ -23432,6 +23510,8 @@ def _reconciliation_preflight_failure_reason(
 
 
 def main(argv: list[str] | None = None) -> int:
+    from ..runtime.process_security import harden_state_authority_process
+    harden_state_authority_process()
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     if raw_argv[:1] == [SEALED_DAEMON_CHILD_MARKER]:
         return _run_sealed_daemon_child(raw_argv[1:])

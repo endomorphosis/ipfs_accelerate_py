@@ -1262,7 +1262,13 @@ T = TypeVar("T")
 
 
 class FormalVerificationCache:
-    """Durable receipt cache and cross-process single-flight coordinator."""
+    """Durable receipt cache and cross-process single-flight coordinator.
+
+    ``exact_path`` selects an explicit native file without account relocation or
+    legacy migration. It is intended for independently bound owner locations and
+    isolated runs whose storage must stay within their admitted disk roots.
+    Selecting a path confers no proof or execution authority.
+    """
 
     def __init__(
         self,
@@ -1275,6 +1281,7 @@ class FormalVerificationCache:
         duckdb_timeout_seconds: int = 30,
         sqlite_timeout_seconds: int | None = None,
         attestation_verifier: Callable[[Any], bool] | None = None,
+        exact_path: bool = False,
     ) -> None:
         if isinstance(default_ttl_seconds, bool) or default_ttl_seconds <= 0:
             raise ValueError("default_ttl_seconds must be a positive integer")
@@ -1295,11 +1302,25 @@ class FormalVerificationCache:
         )
         if timeout_seconds <= 0:
             raise ValueError("duckdb_timeout_seconds must be positive")
-        self.path, self._legacy_path = resolve_duckdb_path(
-            path,
-            default_filename="formal_verification_cache.duckdb",
-            temporary_prefix="formal-verification-cache-",
-        )
+        if type(exact_path) is not bool:
+            raise ValueError("exact_path must be a boolean")
+        if exact_path:
+            if path is None:
+                raise ValueError("exact_path requires a canonical absolute .duckdb file")
+            supplied = Path(path)
+            if (not supplied.is_absolute() or supplied.suffix != ".duckdb"
+                    or str(supplied) != os.fspath(path)
+                    or supplied.resolve(strict=False) != supplied
+                    or any(part.is_symlink() for part in (supplied, *supplied.parents))
+                    or (supplied.exists() and not supplied.is_file())):
+                raise ValueError("exact_path requires a canonical absolute .duckdb file")
+            self.path, self._legacy_path = supplied, None
+        else:
+            self.path, self._legacy_path = resolve_duckdb_path(
+                path,
+                default_filename="formal_verification_cache.duckdb",
+                temporary_prefix="formal-verification-cache-",
+            )
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.default_ttl_seconds = int(default_ttl_seconds)
         self.default_draft_ttl_seconds = int(

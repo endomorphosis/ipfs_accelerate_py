@@ -56,6 +56,42 @@ def test_receipts_and_routine_projections_have_hard_byte_bounds() -> None:
         enforce_projection_bound({"value": "x" * MAX_PROJECTION_BYTES})
 
 
+def test_shared_store_refreshes_reads_and_quota_before_writing(tmp_path: Path) -> None:
+    path = tmp_path / "shared"
+    with BoundedArtifactStore(path, quotas=_quota(max_blobs=1), refresh_on_lock=True) as first:
+        with BoundedArtifactStore(path, quotas=_quota(max_blobs=1), refresh_on_lock=True) as second:
+            reference = first.put_blob(b"retained", retention_class="pinned", kind="preflight")
+            assert second.read_blob(reference.artifact_id) == b"retained"
+            assert second.usage()["blob_count"] == 1
+            with pytest.raises(ArtifactQuotaExceeded):
+                second.put_blob(b"second", retention_class="pinned")
+            assert second.put_blob(b"retained", kind="preflight") == reference
+    with BoundedArtifactStore(path) as reopened:
+        assert reopened.usage()["blob_count"] == 1
+        assert reopened.read_blob(reference) == b"retained"
+
+
+@pytest.mark.parametrize("damage", ["missing", "corrupt"])
+def test_live_shared_store_refuses_manifest_loss_without_reset(tmp_path: Path, damage: str) -> None:
+    with BoundedArtifactStore(tmp_path / "shared", refresh_on_lock=True) as store:
+        reference = store.put_blob(b"retained", kind="preflight")
+        original = store.manifest_path.read_bytes()
+        try:
+            if damage == "missing":
+                store.manifest_path.unlink()
+            else:
+                store.manifest_path.write_bytes(b"{}")
+            with pytest.raises(ArtifactBlobIntegrityError, match="manifest is missing or invalid"):
+                store.put_blob(b"must not overwrite prior evidence")
+            if damage == "missing":
+                assert not store.manifest_path.exists()
+            else:
+                assert store.manifest_path.read_bytes() == b"{}"
+        finally:
+            store.manifest_path.write_bytes(original)
+        assert store.read_blob(reference) == b"retained"
+
+
 def test_large_bodies_and_nested_graphs_are_stored_once_as_shallow_refs(
     tmp_path: Path,
 ) -> None:
@@ -280,7 +316,7 @@ def test_event_log_bounds_streaming_rotation_and_recovery_manifest(
     manifest_path.write_text("{torn", encoding="utf-8")
     recovered = event_log_manifest(path)
     assert recovered["generation"] == 0
-    assert sum(item["event_count"] for item in recovered["files"]) == 8
+    assert sum(item["event_count"] for item in recovered["files"]) == 10
 
 
 def test_event_log_repair_skips_healthy_manifest(tmp_path: Path) -> None:

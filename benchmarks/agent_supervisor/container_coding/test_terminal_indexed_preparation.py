@@ -67,7 +67,7 @@ def test_prepare_preserves_original_dirty_bytes_and_signs_absent_report(original
     verified = local.verify_local_benchmark_admission(admission)
     assert all(row["phase"] == "post_execution" for row in verified["receipt"]["pending_requirements"])
     assert verified["receipt"]["completion_authority"] is False
-    assert result["provider"] == "codex_cli" and result["model"] == "gpt-5.6-sol"
+    assert result["provider"] == "codex_cli" and result["model"] == "gpt-6.1-sol"
     assert result["reasoning_effort"] == "high" and result["max_total_agent_seconds"] == 300
     proc = subprocess.run(prep.ARGV, cwd=root, capture_output=True)
     assert proc.returncode != 0

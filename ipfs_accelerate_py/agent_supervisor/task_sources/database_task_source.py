@@ -456,8 +456,10 @@ class TaskSourceUnknownOutcomeError(
     """A remote owner effect requires exact post-restart reconciliation."""
 
     def __init__(self, message: str, *, request_id: str = "") -> None:
-        self.request_id = str(request_id or "")
         super().__init__(message)
+        # The inherited IntentRepository error initializes an empty identifier.
+        # Preserve the exact remote request needed to reconcile an unknown effect.
+        self.request_id = str(request_id or "")
 
 
 class TaskSourceBoundsError(DatabaseTaskSourceError, IntentRepositoryBoundsError):

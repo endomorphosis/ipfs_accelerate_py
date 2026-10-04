@@ -127,7 +127,7 @@ if validating:
  if len(sys.argv)<3 or len(sys.argv)>130 or any(len(x)>8192 for x in sys.argv[2:]):raise SystemExit('bounded literal validation argv required')
  os.execvpe(sys.argv[2],sys.argv[2:],dict(os.environ))
 parser=argparse.ArgumentParser()
-parser.add_argument('--model',default='gpt-5.6-sol');parser.add_argument('--reasoning-effort',choices=['low','medium','high','xhigh','max'],default='high')
+parser.add_argument('--model',default='gpt-6.1-sol');parser.add_argument('--reasoning-effort',choices=['low','medium','high','xhigh','max'],default='high')
 parser.add_argument('--timeout',type=int,default=90);parser.add_argument('--max-output-tokens',type=int,default=4096)
 parser.add_argument('--purpose',choices=['planning','coding'],default='coding')
 parser.add_argument('--semantic-repository',type=pathlib.Path)
@@ -311,7 +311,7 @@ async def install_worker_boundary(environment, *, container_name: str, output: P
         "boundary": boundary,
         "boundary_sha256": hashlib.sha256(raw).hexdigest(),
         "implementation_command": ROOT
-        + "/bin/router-worker --model gpt-5.6-sol --reasoning-effort high --timeout 90",
+        + "/bin/router-worker --model gpt-6.1-sol --reasoning-effort high --timeout 90",
         "candidate_runner_argv": [ROOT + "/bin/validation-worker"],
         "worker_worktree_root": ROOT + "/worktrees",
         "provider_calls": 0,

@@ -94,6 +94,38 @@ def test_default_symbolic_path_does_not_invoke_repository_preview(terminal_case,
     assert_released(terminal_case)
 
 
+@pytest.mark.parametrize("drift", [None, "world", "descriptor"])
+def test_repository_preview_preserves_selected_initial_context(terminal_case, monkeypatch, drift):
+    """The optional native preview must retain the indexed selection gate."""
+    from benchmarks.agent_supervisor.container_coding import terminal_initial_context as initial
+    case = terminal_case
+    prep.initial_context(state=case["state"])
+    loaded = initial.load_initial_context(state=case["state"], prepared=case["prepared"], require_empty_owner=True)
+    selected = owner(case)
+    if drift is not None:
+        relative = (loaded["descriptor"]["world"]["artifact"] if drift == "world"
+                    else loaded["receipt"]["descriptor"]["artifact"])
+        path = case["repository"] / relative
+        build = intent_symbolic_planning.build_intent_symbolic_plan
+        def change(*args, **kwargs):
+            planned = build(*args, **kwargs)
+            path.write_bytes(path.read_bytes() + b" ")
+            return planned
+        monkeypatch.setattr(intent_symbolic_planning, "build_intent_symbolic_plan", change)
+    result = prep.plan(case["state"], repository_preview=selected)
+    assert result["qualified"] is (drift is None), result
+    assert result["provider_calls"] == 0
+    assert result["repository_preview"]["execution_authority"] is False
+    assert (case["state"] / "admission.json").exists() is (drift is None)
+    if drift is not None:
+        assert result["failure"]["type"] == "ValueError"
+        from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import IntentRepository
+        with IntentRepository(case["state"] / "intent.duckdb", install_schema=False) as intent:
+            assert intent.plan_projection()["tasks"] == []
+            assert intent.event_watermark() == 0
+    assert_released(case)
+
+
 def test_superseded_same_byte_head_refuses_before_admission(terminal_case):
     case = terminal_case
     selected = owner(case)

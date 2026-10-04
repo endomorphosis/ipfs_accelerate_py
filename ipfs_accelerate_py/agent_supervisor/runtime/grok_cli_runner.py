@@ -119,7 +119,7 @@ ensure_provider_command_bindings(
     strict=False,
 )
 
-DEFAULT_GROK_MODEL = "grok-4.6"
+DEFAULT_GROK_MODEL = "grok-4.7"
 # Grok CLI validates --max-turns as 1..=4294967295 (u32::MAX).
 DEFAULT_GROK_MAX_TURNS = 4_294_967_295
 GROK_QUOTA_EXHAUSTED_EXIT_CODE = 86
@@ -323,7 +323,7 @@ def _run_isolated_grok_quota_probe(
 
 MAX_CODEX_FALLBACK_ARGUMENTS = 64
 MAX_CODEX_FALLBACK_ARGUMENT_BYTES = 4_096
-CODEX_QUOTA_FALLBACK_MODEL = "gpt-5.6-terra"
+CODEX_QUOTA_FALLBACK_MODEL = "gpt-6.1-sol"
 DEFAULT_CODEX_QUOTA_FALLBACK_REASONING_EFFORT = "medium"
 # Compatibility name retained by the checked-out deterministic-repair route.
 CODEX_QUOTA_FALLBACK_DEFAULT_REASONING_EFFORT = (
@@ -626,7 +626,7 @@ def build_grok_quota_routed_agent_command(
     enable_internal_legacy_preflight: bool = False,
     accepted_runner_path: str | Path = "",
 ) -> list[str]:
-    """Build a sealed Grok-4.5 then typed-failure Terra route.
+    """Build the current Grok route with its typed, model-bound Codex fallback.
 
     The returned parent runner owns the Codex argv.  Grok receives neither the
     executable/auth authority nor any way to invoke this fallback directly.
@@ -4345,7 +4345,7 @@ def _validate_codex_quota_fallback_command(
     required_reasoning_effort: str | None = None,
     expected_fallback_reasoning_effort: str | None = None,
 ) -> None:
-    """Require an authorized daemon-owned Terra fallback shape."""
+    """Require an authorized daemon-owned Codex fallback shape."""
 
     if len(command) < 8 or Path(command[0]).name.lower() not in {
         "codex",
@@ -4391,7 +4391,7 @@ def _validate_codex_quota_fallback_command(
     if option_values["-s"] != ["workspace-write"]:
         raise ValueError("Codex quota fallback sandbox is not exactly workspace-write")
     if option_values["-m"] != [CODEX_QUOTA_FALLBACK_MODEL]:
-        raise ValueError("Codex quota fallback model is not exactly gpt-5.6-terra")
+        raise ValueError("Codex quota fallback model is not exactly gpt-6.1-sol")
     if len(option_values["-C"]) != 1:
         raise ValueError("Codex quota fallback must contain exactly one workspace")
     fallback_workspace = Path(option_values["-C"][0]).resolve()
@@ -5908,7 +5908,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
         )
     if codex_fallback_command and model != DEFAULT_GROK_MODEL:
         print(
-            "Default Grok/Codex route requires primary model grok-4.6",
+            "Default Grok/Codex route requires primary model grok-4.7",
             file=sys.stderr,
         )
         return 2

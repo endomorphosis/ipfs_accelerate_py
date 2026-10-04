@@ -102,13 +102,17 @@ def test_unknown_profile_is_never_silently_accepted(function):
 @pytest.mark.parametrize('reported_seconds, matches', [(960, True), (300, False)])
 def test_baseline_collector_uses_selected_extended_deadline(tmp_path, monkeypatch, reported_seconds, matches):
     import json
-    config = JobConfig.model_validate(baseline.config_for(Path('/dataset'), tmp_path,
+    dataset = tmp_path / 'dataset'
+    task = dataset / baseline.TASK
+    task.mkdir(parents=True)
+    (task / 'task.toml').write_text('[task]\nname = "terminal-bench/' + baseline.TASK + '"\n')
+    config = JobConfig.model_validate(baseline.config_for(dataset, tmp_path,
         resource_profile=profile.EXTENDED_SOURCE384_PROFILE), extra='forbid').model_dump(mode='json')
     config_path = tmp_path / 'config.json'
     config_path.write_text(json.dumps(config))
     hashes = {'instruction.md': 'a' * 64}
     from benchmarks.agent_supervisor.container_coding import benchmark_controls
-    prepared = dict(dataset='/dataset', config_sha256=baseline._hash(config_path),
+    prepared = dict(dataset=str(dataset), config_sha256=baseline._hash(config_path),
                     resource_profile=profile.EXTENDED_SOURCE384_PROFILE, task_input_sha256=hashes,
                     comparison_controls=benchmark_controls.build_controls(config, task_input_sha256=hashes,
                         task=baseline.TASK, model=baseline.MODEL, reasoning_effort=baseline.REASONING,
@@ -120,7 +124,7 @@ def test_baseline_collector_uses_selected_extended_deadline(tmp_path, monkeypatc
     agent = deepcopy(config['agents'][0])
     agent['override_timeout_sec'] = agent['max_timeout_sec'] = reported_seconds
     result = dict(task_name='terminal-bench/' + baseline.TASK, trial_name='authored-trial',
-                  config=dict(task={'path': '/dataset/' + baseline.TASK}, agent=agent, verifier={'disable': False}))
+                  config=dict(task={'path': str(task)}, agent=agent, verifier={'disable': False}))
     (trial / 'result.json').write_text(json.dumps(result))
     (job / 'result.json').write_text('{}')
     monkeypatch.setattr(baseline, '_task_hashes', lambda path: hashes)

@@ -17,6 +17,7 @@ from .prompt_workflow import PromptGoalGraph, PromptOutputRecord
 
 INTENT_REQUIREMENT_CONTRACT_SCHEMA = "intent-plan-requirement-contract@1"
 INTENT_SYMBOLIC_REQUIREMENT_CONTRACT_SCHEMA = "intent-plan-requirement-contract@2"
+INTENT_HEADER_REQUIREMENT_CONTRACT_SCHEMA = "intent-plan-requirement-contract@3"
 INTENT_PLAN_PROPOSAL_SCHEMA = "intent-plan-proposal@1"
 INTENT_PLAN_PROVIDER_REQUEST_SCHEMA = "intent-plan-provider-request@1"
 INTENT_PLAN_COVERAGE_RECEIPT_SCHEMA = "intent-plan-coverage-receipt@1"
@@ -159,10 +160,12 @@ def validate_intent_requirement_contract(
 
     value = _decode(_json(contract))
     keys = {"schema", "source_path", "ledger", "requirements"}
-    if value.get("schema") == INTENT_SYMBOLIC_REQUIREMENT_CONTRACT_SCHEMA:
+    if value.get("schema") in {INTENT_SYMBOLIC_REQUIREMENT_CONTRACT_SCHEMA, INTENT_HEADER_REQUIREMENT_CONTRACT_SCHEMA}:
         keys.add("symbolic_operations")
+    if value.get("schema") == INTENT_HEADER_REQUIREMENT_CONTRACT_SCHEMA:
+        keys.add("source_applicability")
     _object(value, keys, "intent contract")
-    if value["schema"] not in {INTENT_REQUIREMENT_CONTRACT_SCHEMA, INTENT_SYMBOLIC_REQUIREMENT_CONTRACT_SCHEMA}:
+    if value["schema"] not in {INTENT_REQUIREMENT_CONTRACT_SCHEMA, INTENT_SYMBOLIC_REQUIREMENT_CONTRACT_SCHEMA, INTENT_HEADER_REQUIREMENT_CONTRACT_SCHEMA}:
         raise IntentPlanCoverageError("unsupported intent contract schema")
     value["source_path"] = _path(value["source_path"])
     try:
@@ -222,12 +225,16 @@ def validate_intent_requirement_contract(
     for key in spec_by_id:
         visit(key)
     value["requirements"] = sorted(specs, key=lambda item: item["requirement_id"])
-    if value["schema"] == INTENT_SYMBOLIC_REQUIREMENT_CONTRACT_SCHEMA:
+    if value["schema"] in {INTENT_SYMBOLIC_REQUIREMENT_CONTRACT_SCHEMA, INTENT_HEADER_REQUIREMENT_CONTRACT_SCHEMA}:
         from ..planning.intent_requirement_adapter import validate_symbolic_operations
 
         value["symbolic_operations"] = validate_symbolic_operations(
             value["symbolic_operations"], ledger=ledger, requirements=value["requirements"],
         )
+    if value["schema"] == INTENT_HEADER_REQUIREMENT_CONTRACT_SCHEMA:
+        from ..runtime.header_intent_applicability import validate_applicability_selection
+        value["source_applicability"] = validate_applicability_selection(
+            value["source_applicability"], operations=value["symbolic_operations"]["operations"])
     return value
 
 

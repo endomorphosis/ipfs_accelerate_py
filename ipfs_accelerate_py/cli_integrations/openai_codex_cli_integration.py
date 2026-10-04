@@ -124,7 +124,7 @@ class OpenAICodexCLIIntegration(BaseCLIWrapper):
     def generate_code(
         self,
         prompt: str,
-        model: str = "gpt-5.6-sol",
+        model: str = "gpt-6.1-sol",
         temperature: float = 0.0,
         *,
         sandbox: Optional[str] = None,

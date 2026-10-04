@@ -21,6 +21,8 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     legacy_landed_provider_cli as native_cli,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router import (
+    IMPLEMENTATION_PROVIDER_REQUEST_SCHEMA,
+    IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
     ImplementationProviderRouter,
     ProviderBounds,
     ProviderRequest,
@@ -29,6 +31,8 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_ro
     RouteStatus,
     bind_applied_patch_to_review_chain,
     build_production_contract_packet,
+    _default_token_count,
+    _provider_response_contract,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTask,
@@ -81,43 +85,28 @@ def _child_receipt(config) -> LlmChildResultEnvelope:
     )
 
 
-def _request(role: ProviderRole) -> ProviderRequest:
+def _canonical_request(
+    role: ProviderRole, payload: dict[str, Any], *, bounds: ProviderBounds | None = None,
+) -> ProviderRequest:
+    bounds = bounds or ProviderBounds()
+    response_contract = _provider_response_contract(role)
     prompt = json.dumps(
         {
+            "schema": IMPLEMENTATION_PROVIDER_REQUEST_SCHEMA,
+            "interface": IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
             "role": role.value,
-            "task_id": "ASE-005",
-            "provider_input": {"bounded": True},
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return ProviderRequest(
-        role=role,
-        packet_id="packet:ase-005",
-        snapshot_id="git-commit:fixture",
-        task_id="ASE-005",
-        payload={"bounded": True},
-        bounds=ProviderBounds(),
-        prompt=prompt,
-        prompt_tokens=32,
-    )
-
-
-def _native_request(role: ProviderRole) -> ProviderRequest:
-    payload: dict[str, Any]
-    if role is ProviderRole.GROK_IMPLEMENT:
-        payload = {
-            "contract_packet": {
-                "scope": {"write_paths": ["module.py"]},
-            }
-        }
-    else:
-        payload = {"admitted_implementation_proposal": {"bounded": True}}
-    prompt = json.dumps(
-        {
-            "role": role.value,
+            "packet_id": "packet:ase-005",
+            "snapshot_id": "git-commit:fixture",
             "task_id": "ASE-005",
             "provider_input": payload,
+            "bounds": bounds.to_dict(),
+            "response_contract": response_contract,
+            "authority": {
+                "provider_output_tier": "proposal",
+                "repository_write_allowed": False,
+                "proof_authoritative": False,
+                "completion_authoritative": False,
+            },
         },
         sort_keys=True,
         separators=(",", ":"),
@@ -129,10 +118,30 @@ def _native_request(role: ProviderRole) -> ProviderRequest:
         snapshot_id="git-commit:fixture",
         task_id="ASE-005",
         payload=payload,
-        bounds=ProviderBounds(),
+        bounds=bounds,
         prompt=prompt,
-        prompt_tokens=32,
+        prompt_tokens=_default_token_count(prompt),
+        response_contract=response_contract,
     )
+
+
+def _request(role: ProviderRole) -> ProviderRequest:
+    return _canonical_request(role, {"bounded": True})
+
+
+def _native_request(
+    role: ProviderRole, *, bounds: ProviderBounds | None = None,
+) -> ProviderRequest:
+    payload: dict[str, Any]
+    if role is ProviderRole.GROK_IMPLEMENT:
+        payload = {
+            "contract_packet": {
+                "scope": {"write_paths": ["module.py"]},
+            }
+        }
+    else:
+        payload = {"admitted_implementation_proposal": {"bounded": True}}
+    return _canonical_request(role, payload, bounds=bounds)
 
 
 def test_policy_is_fixed_to_grok_implementation_and_independent_codex_review() -> None:
@@ -143,9 +152,9 @@ def test_policy_is_fixed_to_grok_implementation_and_independent_codex_review() -
     assert payload["schema"].endswith("@2")
     assert policy.declared_roles == ("grok-implement", "codex-review")
     assert payload["implementation"]["provider"] == "grok_cli"
-    assert payload["implementation"]["model"] == "grok-4.6"
+    assert payload["implementation"]["model"] == "grok-4.7"
     assert payload["review"]["provider"] == "codex_cli"
-    assert payload["review"]["model"] == "gpt-5.6-terra"
+    assert payload["review"]["model"] == "gpt-6.1-sol"
     assert payload["review"]["reasoning_effort"] == "medium"
     assert payload["review"]["independent"] is True
     assert payload["implementation"]["fallback_provider"] == ""
@@ -394,8 +403,8 @@ def test_native_pair_uses_request_bound_strict_schemas_and_exact_cli_argv(
     codex_response = codex(requests[ProviderRole.CODEX_REVIEW])
 
     for provider, expected_model, role in (
-        ("grok_cli", "grok-4.6", ProviderRole.GROK_IMPLEMENT),
-        ("codex_cli", "gpt-5.6-terra", ProviderRole.CODEX_REVIEW),
+        ("grok_cli", "grok-4.7", ProviderRole.GROK_IMPLEMENT),
+        ("codex_cli", "gpt-6.1-sol", ProviderRole.CODEX_REVIEW),
     ):
         record = observed[provider]
         command = record["command"]
@@ -441,13 +450,16 @@ def test_native_pair_uses_request_bound_strict_schemas_and_exact_cli_argv(
         'model_reasoning_effort="medium"'
     )
     assert observed["codex_cli"]["command"][-1] == "-"
-    assert observed["codex_cli"]["schema"]["properties"]["findings"][
-        "maxItems"
-    ] == 0
+    findings_schema = observed["codex_cli"]["schema"]["properties"]["findings"]
+    assert findings_schema["maxItems"] == 4
+    assert findings_schema["items"]["enum"] == [
+        "acceptance_unsatisfied", "insufficient_evidence", "invalid_patch",
+        "scope_violation", "security_violation", "tests_missing", "unverifiable_claim",
+    ]
 
     for response, expected_provider, expected_model in (
-        (grok_response, "grok_cli", "grok-4.6"),
-        (codex_response, "codex_cli", "gpt-5.6-terra"),
+        (grok_response, "grok_cli", "grok-4.7"),
+        (codex_response, "codex_cli", "gpt-6.1-sol"),
     ):
         execution = response["supervisor_provider_execution"]
         assert execution["effective_provider"] == expected_provider
@@ -556,7 +568,7 @@ def test_custom_invoker_codex_rejects_approve_with_findings() -> None:
             json.dumps(
                 {
                     "decision": "approve",
-                    "findings": ["the proposal is unsafe"],
+                    "findings": ["security_violation"],
                 }
             ),
             _child_receipt(config),
@@ -570,17 +582,15 @@ def test_custom_invoker_codex_rejects_approve_with_findings() -> None:
         invoker=contradictory_review,
     )
 
-    with pytest.raises(RuntimeError, match="empty findings list"):
+    with pytest.raises(RuntimeError, match="approval cannot carry findings"):
         reviewer(_request(ProviderRole.CODEX_REVIEW))
 
 
 def test_native_codex_response_file_is_limited_before_read(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    original = _native_request(ProviderRole.CODEX_REVIEW)
-    request = replace(
-        original,
-        bounds=ProviderBounds(max_response_bytes=128),
+    request = _native_request(
+        ProviderRole.CODEX_REVIEW, bounds=ProviderBounds(max_response_bytes=128),
     )
     monkeypatch.setattr(
         native_cli.shutil,

@@ -376,6 +376,23 @@ def accepted_control_plane_pin_json(
     )
 
 
+def preload_sealed_native_dependency_from_environment() -> object | None:
+    """Consume the paired native binding propagated by the accepted launcher.
+
+    This is a transport adapter for the existing sealed-fd verifier, not an
+    admission decision. Ordinary launches without a binding need no preload.
+    """
+    descriptor = os.environ.get("IPFS_ACCELERATE_AGENT_SEALED_NATIVE_DEPENDENCY_FD")
+    launch_json = os.environ.get("IPFS_ACCELERATE_AGENT_SEALED_NATIVE_DEPENDENCY_LAUNCH_JSON")
+    if descriptor is None and launch_json is None:
+        return None
+    if not descriptor or not launch_json:
+        raise ValueError("sealed native dependency requires both descriptor and launch binding")
+    from ...agent_implementation_route import preload_agent_supervisor_native_dependency_from_bootstrap
+
+    return preload_agent_supervisor_native_dependency_from_bootstrap(descriptor, launch_json)
+
+
 def parse_native_dependency_launch_json(
     value: str,
 ) -> AgentSupervisorNativeDependencyLaunch:
@@ -642,6 +659,8 @@ STATE_CREDENTIAL_ENV_NAMES: frozenset[str] = frozenset(
         "IPFS_ACCELERATE_AGENT_STATE_PASSWORD",
         "IPFS_ACCELERATE_AGENT_STATE_SECRET",
         "IPFS_ACCELERATE_AGENT_STATE_CREDENTIAL",
+        "IPFS_ACCELERATE_AGENT_OWNER_STATE_TOKEN",
+        "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD",
         "IPFS_ACCELERATE_AGENT_CONTROL_PLANE_TOKEN",
         "IPFS_ACCELERATE_AGENT_CONTROL_PLANE_PASSWORD",
     }
@@ -1177,6 +1196,12 @@ def provider_subprocess_environment(
     # bindings; they operate on worktree files only.
     for name in DATABASE_PROGRAM_ENV_NAMES:
         cleaned.pop(name, None)
+    for name in tuple(cleaned):
+        if (name in {"IPFS_ACCELERATE_AGENT_STATE_OWNER_SOCKET",
+                     "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SOCKET",
+                     "IPFS_ACCELERATE_AGENT_STATE_HANDOFF_EXECUTION_BINDING"}
+                or name.startswith("IPFS_ACCELERATE_AGENT_STATE_GRANT_HANDOFF_")):
+            cleaned.pop(name, None)
     return cleaned
 
 

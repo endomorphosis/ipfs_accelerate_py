@@ -153,7 +153,7 @@ def _ensure_reviewer_profile(*, baseline_commit: str) -> Any:
         repository_cid=_REPOSITORY_CID,
         baseline_commit=baseline_commit,
         effect_bounds=convergence._PROVIDER_FALLBACK_AUTHORIZATION_V2_EFFECTS,
-        route_id=convergence._PROVIDER_FALLBACK_AUTHORIZATION_ROUTE["route_id"],
+        route_id=convergence._CURRENT_PROVIDER_FALLBACK_AUTHORIZATION_ROUTE["route_id"],
     )
 
 
@@ -180,7 +180,10 @@ def _build_provider_authorization_v2(
         "prospective_only": v1_source["prospective_only"],
         "requires_descendant_tree": v1_source["requires_descendant_tree"],
     }
-    route = dict(convergence._PROVIDER_FALLBACK_AUTHORIZATION_ROUTE)
+    route = dict(convergence._CURRENT_PROVIDER_FALLBACK_AUTHORIZATION_ROUTE)
+    if any(profile.get(field) != route[field] for field in (
+            "route_id", "fallback_provider_id", "fallback_model_id", "fallback_reasoning_effort")):
+        raise ProtectedAcceptanceDenied("current provider route differs from signed reviewer profile")
     reviewer = {
         "identity": profile["identity_did"],
         "provider": "local_operator",
@@ -342,7 +345,7 @@ def advance_prompt_v3_p019(
             baseline_commit=r_head,
             force=True,
             effect_bounds=convergence._PROVIDER_FALLBACK_AUTHORIZATION_V2_EFFECTS,
-            route_id=convergence._PROVIDER_FALLBACK_AUTHORIZATION_ROUTE["route_id"],
+            route_id=convergence._CURRENT_PROVIDER_FALLBACK_AUTHORIZATION_ROUTE["route_id"],
         )
 
     witness_nonce = secrets.token_urlsafe(24)

@@ -1267,6 +1267,9 @@ def bind_database_portal_execution_from_args(
             state_path=paths.state,
             strategy_path=paths.strategy,
             events_path=paths.events,
+            dependency_preflight_artifact_store_path=(
+                attempt_root / "dependency-preflight-artifacts"
+            ),
             repo_root=repo_root,
             board_namespace=str(
                 getattr(parsed, "board_namespace", "") or ""

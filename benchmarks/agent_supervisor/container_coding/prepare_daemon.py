@@ -71,7 +71,7 @@ def main():
            "--objective-generation-max-new-work", "3", "--objective-generation-max-open-work", "6"]
     if args.plan_with_router:
         cmd += ["--generate-plan-branches", "--plan-branch-count", "1", "--plan-router-provider",
-                "grok_cli", "--plan-router-model", "grok-4.6", "--plan-router-timeout", "90"]
+                "grok_cli", "--plan-router-model", "grok-4.7", "--plan-router-timeout", "90"]
     generated = subprocess.run(cmd, cwd=repo, env=env, text=True, capture_output=True, timeout=420)
     (root / "generation.log").write_text(generated.stderr)
     (root / "generation.json").write_text(generated.stdout)

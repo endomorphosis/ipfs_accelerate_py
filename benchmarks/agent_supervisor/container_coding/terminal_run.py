@@ -46,7 +46,7 @@ def main():
         'supervisor_dirty': bool(git(source, 'status', '--porcelain')),
         'arm': 'legacy-daemon-semantic-context' if args.semantic_context else 'legacy-daemon',
         'full_indexed_arm': False,
-        'provider': 'grok', 'model': 'grok-4.6', 'concurrent_trials': args.concurrency,
+        'provider': 'grok', 'model': 'grok-4.7', 'concurrent_trials': args.concurrency,
         'tool_profile': 'files', 'trial_identity': 'distinct goal/task prefix per trial',
         'attempts_per_task': 1, 'implementation_timeout_seconds': 300,
         'host_architecture': os.uname().machine,
@@ -59,7 +59,7 @@ def main():
     }
     command = [str(args.harbor.resolve()), 'run', '-p', str(dataset),
         '-i', selected[0], '-i', selected[1], '-a', 'harbor_agent:SupervisorWorkspaceAgent',
-        '-m', 'grok-4.6', '-n', str(args.concurrency), '--n-attempts', '1', '--max-retries', '0',
+        '-m', 'grok-4.7', '-n', str(args.concurrency), '--n-attempts', '1', '--max-retries', '0',
         '--force-build', '--jobs-dir', str(jobs), '--job-name', args.job_name]
     env = {**os.environ, 'PYTHONPATH': str(harness), 'SUPERVISOR_BENCH_PYTHON': sys.executable,
            'SUPERVISOR_BENCH_SEMANTIC_CONTEXT': '1' if args.semantic_context else '0'}

@@ -7,6 +7,28 @@ actual Doctor transactions. `run_supervision_docker.py` runs its offline native
 qualification. The original scripted and live component pilots below remain
 separate experiments; none establishes a Terminal-Bench/native Codex advantage.
 
+Fresh general supervisor routes default to `grok-4.7`, with `gpt-6.1-sol`
+as the guarded Codex fallback. Existing quota, authentication, evidence and
+effect-boundary gates still apply; changing the model does not authorize a
+fallback. Newly issued route authorizations bind the new model pair. Old
+signed route profiles must be reissued before selecting these defaults.
+The container comparison explicitly pins `codex_cli` / `gpt-6.1-sol` in both
+the supervisor arm and native Codex baseline. That matched-model profile does
+not exercise the general supervisor's Grok route or its fallback.
+
+Other public Terminal-Bench tasks can use the source-bound task profiles in
+[TERMINAL_SUITE_PROFILES.md](TERMINAL_SUITE_PROFILES.md). The first broader full
+supervisor pilot records two official passes and one native-execution timeout,
+with source/checkpoint pins, token accounting, and readiness gaps for the rest
+of the suite. It is a selected-task pilot with a distinct resource/time profile.
+
+The [symbolic capability assessment](../../../docs/agent_supervisor/terminal_symbolic_capabilities.md)
+documents the full arm's per-task gap report, signed separation of generated
+harness support from program inputs, and bounded native progress diagnostics.
+Re-prepare trials to use the isolated Python structural validator. These changes
+are qualified with authored native repair cases; they do not supply new official
+Terminal-Bench scores or establish a baseline advantage.
+
 The [IntentIR planning improvement plan](../../../docs/architecture/TERMINAL_BENCH_INTENT_PLANNING_PLAN.md)
 traces the current public instruction entry point and defines requirements,
 symbolic planning, and admission milestones. The first local coverage milestone
@@ -308,7 +330,7 @@ Run from the supervisor source checkout:
 PYTHONPATH=. python3 benchmarks/agent_supervisor/container_coding/prepare_daemon.py \
   --output artifacts/native-daemon-trial
 IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=grok \
-IPFS_ACCELERATE_AGENT_GROK_MODEL=grok-4.6 \
+IPFS_ACCELERATE_AGENT_GROK_MODEL=grok-4.7 \
 python3 benchmarks/agent_supervisor/container_coding/daemon_run.py \
   --repository artifacts/native-daemon-trial/repo \
   --state-root artifacts/native-daemon-trial/state --once

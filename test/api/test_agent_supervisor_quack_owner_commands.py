@@ -893,7 +893,7 @@ def test_quack_transport_sql_mutations_fail_closed() -> None:
     connection._default_catalog = "control_plane"  # noqa: SLF001
     with pytest.raises(
         DuckDBConnectionPolicyError,
-        match="does not resolve to a bounded inbox",
+        match="quack owner mutation requires an explicit transaction",
     ):
         connection.execute(
             "UPDATE tasks SET status = ? WHERE task_cid = ?",
@@ -905,7 +905,12 @@ def test_quack_transport_sql_mutations_fail_closed() -> None:
         connection.executescript("DELETE FROM tasks")
 
 
-def test_database_task_source_maps_typed_owner_failures(monkeypatch) -> None:
+@pytest.mark.parametrize("unknown_code", [
+    "command_timeout_unknown_outcome",
+    "read_replica_refresh_unknown_outcome",
+    "unknown_external_outcome",
+])
+def test_database_task_source_maps_typed_owner_failures(monkeypatch, unknown_code) -> None:
     source = DatabaseTaskSource(
         "quack:127.0.0.1:45123",
         install_schema=False,
@@ -933,7 +938,7 @@ def test_database_task_source_maps_typed_owner_failures(monkeypatch) -> None:
 
     def unknown(*_args, **_kwargs):
         raise QuackOwnerCommandRemoteError(
-            "command_timeout_unknown_outcome",
+            unknown_code,
             "reconcile exact request",
             request_id="e" * 32,
         )

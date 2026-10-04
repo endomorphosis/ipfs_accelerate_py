@@ -23,7 +23,7 @@ def _write(path, value):
     path.write_text(json.dumps(value, sort_keys=True, indent=2) + "\n")
 
 
-def run(prepared: Path, output: Path, *, model="gpt-5.6-sol", timeout=90,
+def run(prepared: Path, output: Path, *, model="gpt-6.1-sol", timeout=90,
         independent_replay=False) -> dict:
     prepared, output = prepared.resolve(), output.resolve()
     if not 1 <= timeout <= 300:
@@ -152,7 +152,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prepared", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--model", default="gpt-5.6-sol")
+    parser.add_argument("--model", default="gpt-6.1-sol")
     parser.add_argument("--timeout", type=int, default=90)
     parser.add_argument("--independent-replay", action="store_true",
                         help="Materialize the same admitted graph into a new trial database; retain all previous attempts")

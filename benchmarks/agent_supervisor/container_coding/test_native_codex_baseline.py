@@ -1,6 +1,7 @@
 """Receipt accounting preserves native cumulative totals and missing fields."""
 
 import json
+import os
 from pathlib import Path
 import shutil
 
@@ -10,7 +11,32 @@ from benchmarks.agent_supervisor.container_coding.native_codex_baseline import (
     TOKEN_FIELDS,
     config_for,
     rollout_usage,
+    _task_hashes,
 )
+
+
+@pytest.mark.parametrize("kind", ["linked_directory", "broken_link", "fifo", "linked_root"])
+def test_task_inventory_cannot_silently_omit_nonregular_inputs(tmp_path, kind):
+    task = tmp_path / "task"
+    task.mkdir()
+    (task / "instruction.md").write_text("Fix the defect.\n")
+    (task / "task.toml").write_text("version = 1\n")
+    (task / "environment").mkdir()
+    (task / "tests").mkdir()
+    (task / "tests/test.sh").write_text("exit 0\n")
+    assert set(_task_hashes(task)) == {"instruction.md", "task.toml", "tests/test.sh"}
+    if kind == "linked_directory":
+        (task / "environment/linked").symlink_to(task / "tests", target_is_directory=True)
+    elif kind == "broken_link":
+        (task / "environment/broken").symlink_to(tmp_path / "missing")
+    elif kind == "fifo":
+        os.mkfifo(task / "environment/pipe")
+    else:
+        link = tmp_path / "linked-task"
+        link.symlink_to(task, target_is_directory=True)
+        task = link
+    with pytest.raises(ValueError):
+        _task_hashes(task)
 
 
 def write_session(agent, identity, totals):
@@ -18,7 +44,7 @@ def write_session(agent, identity, totals):
     path.parent.mkdir(parents=True)
     rows = [
         {"type": "session_meta", "payload": {"id": identity, "cli_version": "0.158.0"}},
-        {"type": "turn_context", "payload": {"model": "gpt-5.6-sol", "effort": "high"}},
+        {"type": "turn_context", "payload": {"model": "gpt-6.1-sol", "effort": "high"}},
     ]
     rows += [
         {
@@ -44,7 +70,7 @@ def test_profile_uses_native_agent_and_exact_independent_bounds(tmp_path):
     config = config_for(Path("/dataset"), tmp_path)
     assert config["tasks"] == [{"path": "/dataset/fix-code-vulnerability"}]
     assert config["agents"][0]["name"] == "codex"
-    assert config["agents"][0]["model_name"] == "gpt-5.6-sol"
+    assert config["agents"][0]["model_name"] == "gpt-6.1-sol"
     assert config["agents"][0]["kwargs"] == {"version": "0.158.0", "reasoning_effort": "high"}
     assert (
         config["agents"][0]["override_timeout_sec"] == config["agents"][0]["max_timeout_sec"] == 300

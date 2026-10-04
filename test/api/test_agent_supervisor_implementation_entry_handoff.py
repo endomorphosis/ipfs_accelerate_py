@@ -26,6 +26,25 @@ NATIVE_PRELOAD_MODULE = (
 IMPLEMENTATION_MODULE = "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor"
 
 
+@pytest.mark.parametrize('descriptor, binding', [
+    (None, '{}'), ('3', None), ('', '{}'), ('3', ''), ('03', '{}'), ('3', '{}'),
+])
+def test_native_preload_refuses_partial_or_invalid_binding(monkeypatch, descriptor, binding):
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+        preload_sealed_native_dependency_from_environment,
+    )
+    for name, value in (
+        ('IPFS_ACCELERATE_AGENT_SEALED_NATIVE_DEPENDENCY_FD', descriptor),
+        ('IPFS_ACCELERATE_AGENT_SEALED_NATIVE_DEPENDENCY_LAUNCH_JSON', binding),
+    ):
+        if value is None:
+            monkeypatch.delenv(name, raising=False)
+        else:
+            monkeypatch.setenv(name, value)
+    with pytest.raises(ValueError):
+        preload_sealed_native_dependency_from_environment()
+
+
 def test_ordinary_daemon_bootstrap_hardens_before_cold_imports() -> None:
     """Keep daemon imports outside the authority-redemption critical path."""
 
@@ -346,8 +365,7 @@ def test_ordinary_daemon_bootstrap_redeems_before_delayed_daemon_import(
                 "        with open(_MARKER, 'w', encoding='utf-8') as stream:",
                 "            stream.write('started')",
                 "        time.sleep(2.0)",
-                "        def main(*, native_dependency_preloaded=False):",
-                "            assert native_dependency_preloaded is True",
+                "        def main():",
                 "            print(repr(sys.argv), flush=True)",
                 "            return 0",
                 "        module.main = main",

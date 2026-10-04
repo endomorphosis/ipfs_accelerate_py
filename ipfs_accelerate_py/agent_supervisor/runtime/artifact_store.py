@@ -690,7 +690,10 @@ class BoundedArtifactStore:
         quota: ArtifactQuotaPolicy | Mapping[str, Any] | None = None,
         clock: Callable[[], float] = time.time,
         eviction_observer: Callable[[Mapping[str, Any]], None] | None = None,
+        refresh_on_lock: bool = False,
     ) -> None:
+        if type(refresh_on_lock) is not bool:
+            raise TypeError("refresh_on_lock must be a boolean")
         if quotas is not None and quota is not None:
             raise ValueError("pass quotas or quota, not both")
         selected_quota = quotas if quotas is not None else quota
@@ -718,6 +721,7 @@ class BoundedArtifactStore:
             directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         self._clock = clock
         self._eviction_observer = eviction_observer
+        self._refresh_on_lock = refresh_on_lock
         self._thread_lock = _bounded_store_lock(self.lock_path)
         self._metrics_lock = threading.Lock()
         self._metric_values = {name: 0 for name in ArtifactStoreMetrics.__dataclass_fields__}
@@ -744,6 +748,17 @@ class BoundedArtifactStore:
             handle = self.lock_path.open("a+b")
             try:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+                if self._refresh_on_lock and hasattr(self, "_manifest"):
+                    # Shared instances may outlive another writer. Reload its
+                    # verified generation under the same cross-process lock
+                    # before reads, quota decisions, writes or shutdown flush.
+                    current = self._decode_manifest(self.manifest_path)
+                    if current is None:
+                        raise ArtifactBlobIntegrityError(
+                            "shared artifact manifest is missing or invalid"
+                        )
+                    if current["manifest_digest"] != self._manifest["manifest_digest"]:
+                        self._manifest = current
                 yield
             finally:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)

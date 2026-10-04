@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import builtins
+import json
 import tarfile
 from pathlib import Path
 
 import pytest
 from benchmarks.agent_supervisor.container_coding.terminal_deployment import (
+    NATIVE_IMPORT_PROBE,
     build_runtime_archive,
     deploy_supervisor,
     runtime_environment,
@@ -47,6 +50,42 @@ def test_archive_contains_only_explicit_runtime_sources_and_native_assets(tmp_pa
     assert result["credentials_in_archive"] is False
     assert result["task_inputs_in_archive"] is False
     assert "OPENAI_API_KEY" not in runtime_environment()
+
+
+def test_base_archive_pins_scalar_binding_dependencies_without_learned_assets(tmp_path):
+    result = build_runtime_archive(output=tmp_path / "bundle", **_inputs(tmp_path))
+    assert "duckdb==1.5.5" in result["base_requirements"]
+    assert "pandas==3.0.2" in result["base_requirements"]
+    assert "numpy==1.26.4" in result["base_requirements"]
+    assert result["learned_requirements"] == []
+    assert result["source384_requirements"] == []
+
+
+def test_exact_native_import_probe_reports_available_scalar_dependencies(capsys):
+    import duckdb
+    import numpy
+    import pandas
+
+    exec(compile(NATIVE_IMPORT_PROBE, "native-imports", "exec"), {})
+    report = json.loads(capsys.readouterr().out)
+    assert report["native_imports"] is True
+    assert report["duckdb"] == duckdb.__version__
+    assert report["numpy"] == numpy.__version__
+    assert report["pandas"] == pandas.__version__
+
+
+def test_exact_native_import_probe_refuses_missing_pandas(monkeypatch, capsys):
+    original = builtins.__import__
+
+    def without_pandas(name, *args, **kwargs):
+        if name == "pandas":
+            raise ModuleNotFoundError("pandas unavailable for native scalar binding", name="pandas")
+        return original(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", without_pandas)
+    with pytest.raises(ModuleNotFoundError, match="pandas unavailable"):
+        exec(compile(NATIVE_IMPORT_PROBE, "native-imports", "exec"), {})
+    assert capsys.readouterr().out == ""
 
 
 def test_extension_symlink_cannot_enter_runtime_archive(tmp_path):

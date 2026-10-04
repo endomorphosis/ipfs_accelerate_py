@@ -73,8 +73,8 @@ PRODUCTION_LANDED_TASK_GUARD_SCHEMA: Final = (
 PRODUCTION_CLI_POLICY_NAME: Final = (
     "grok-implement-codex-independent-review"
 )
-DEFAULT_GROK_MODEL: Final = "grok-4.6"
-DEFAULT_CODEX_MODEL: Final = "gpt-5.6-terra"
+DEFAULT_GROK_MODEL: Final = "grok-4.7"
+DEFAULT_CODEX_MODEL: Final = "gpt-6.1-sol"
 DEFAULT_CODEX_REVIEW_REASONING_EFFORT: Final = "medium"
 # Default implement context must cover full declared effect files so admitted
 # full-file replacements can pass the write-time context guard. Independent
@@ -522,7 +522,7 @@ class ProductionCLIProviderPolicy:
         if self.grok_provider.strip().casefold() == self.codex_provider.strip().casefold():
             raise ValueError("implementation and review providers must be distinct")
         if self.grok_model != DEFAULT_GROK_MODEL:
-            raise ValueError("production implementation model must be exact Grok 4.5")
+            raise ValueError("production implementation model must be exact Grok 4.7")
         if (
             self.codex_model != DEFAULT_CODEX_MODEL
             or self.codex_reasoning_effort
@@ -530,7 +530,7 @@ class ProductionCLIProviderPolicy:
         ):
             raise ValueError(
                 "production independent Codex review requires exact "
-                "gpt-5.6-terra with medium reasoning"
+                "gpt-6.1-sol with medium reasoning"
             )
 
     @property

@@ -1568,6 +1568,7 @@ def prepare_state_authority_child_handoff(
     child_environment: MutableMapping[str, str],
     *,
     parent_loss_policy: str | None = None,
+    bind_execution_identity: bool = False,
 ) -> StateAuthorityChildHandoff:
     """Replace inherited broker authority with a post-hardening one-shot."""
 
@@ -1606,6 +1607,10 @@ def prepare_state_authority_child_handoff(
             STATE_AUTHORITY_HANDOFF_PARENT_LOSS_POLICY_ENV: parent_loss_policy,
         }
     )
+    execution_key = "IPFS_ACCELERATE_AGENT_STATE_HANDOFF_EXECUTION_BINDING"
+    child_environment.pop(execution_key, None)
+    if bind_execution_identity:
+        child_environment[execution_key] = "kernel-executable-v1"
     return StateAuthorityChildHandoff(
         listener=listener,
         source_fd=descriptors[0],
@@ -1697,7 +1702,23 @@ def receive_state_authority_child_handoff(
             sort_keys=True,
             separators=(",", ":"),
         ).encode("utf-8") + b"\n"
-        channel.sendall(request)
+        execution_key = "IPFS_ACCELERATE_AGENT_STATE_HANDOFF_EXECUTION_BINDING"
+        execution_binding = str(target.get(execution_key, "") or "")
+        if execution_binding:
+            if execution_binding != "kernel-executable-v1":
+                raise StateAuthorityProcessIsolationError("state-authority execution binding is invalid")
+            # The child is already non-dumpable. Pass the actual kernel
+            # executable, never a caller-selected filesystem path or fd.
+            executable_fd = os.open("/proc/self/exe", os.O_RDONLY | os.O_CLOEXEC)
+            try:
+                sent = channel.sendmsg([request], [(socket.SOL_SOCKET, socket.SCM_RIGHTS,
+                                                   array.array("i", [executable_fd]))])
+                if sent < len(request):
+                    channel.sendall(request[sent:])
+            finally:
+                os.close(executable_fd)
+        else:
+            channel.sendall(request)
         data, ancillary, flags, _peer = channel.recvmsg(
             1,
             socket.CMSG_SPACE(array.array("i").itemsize),
@@ -1728,6 +1749,7 @@ def receive_state_authority_child_handoff(
             )
         for name in STATE_AUTHORITY_HANDOFF_ENV_NAMES:
             target.pop(name, None)
+        target.pop(execution_key, None)
         channel.sendall(b"A")
         return True
     except BaseException:

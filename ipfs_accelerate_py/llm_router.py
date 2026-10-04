@@ -35,7 +35,7 @@ Additional optional providers (opt-in by selecting provider):
     - `ipfs_accelerate_py_GEMINI_CLI_CMD` (supports `{prompt}` placeholder)
 - `grok_cli`: xAI Grok Build CLI via the official `grok` binary
     - `ipfs_accelerate_py_GROK_CLI_CMD` (supports `{prompt}` and `{model}` placeholders)
-    - `ipfs_accelerate_py_GROK_CLI_MODEL` (default: grok-4.6; run `grok models`)
+    - `ipfs_accelerate_py_GROK_CLI_MODEL` (default: grok-4.7; run `grok models`)
     - Authenticate with `grok login` or `XAI_API_KEY`
 - `gemini_py`: Python wrapper in `ipfs_accelerate_py.utils.gemini_cli.GeminiCLI`
 - `claude_code`: Claude Code CLI command
@@ -52,7 +52,7 @@ Additional optional providers (opt-in by selecting provider):
     - `MISTRAL_API_KEY` or `ipfs_accelerate_py_MISTRAL_API_KEY` for auth
 - `xai`: xAI Grok AI (REST API, OpenAI-compatible)
     - `XAI_API_KEY` or `ipfs_accelerate_py_XAI_API_KEY`
-    - `ipfs_accelerate_py_XAI_MODEL` (default model: grok-4.6)
+    - `ipfs_accelerate_py_XAI_MODEL` (default model: grok-4.7)
     - `ipfs_accelerate_py_XAI_BASE_URL` (default: https://api.x.ai/v1)
 - `meta_ai`: Meta Model API / Muse Spark (OpenAI-compatible)
     - encrypted credential `meta_ai_api_key`, `MODEL_API_KEY`,
@@ -1471,8 +1471,8 @@ class AgentCLIRouteReadiness:
     effective_provider: str
     reason_code: str
     failure_kind: AgentCLIProviderFailureKind | None
-    grok_model: str = "grok-4.5"
-    codex_model: str = "gpt-5.6-terra"
+    grok_model: str = "grok-4.7"
+    codex_model: str = "gpt-6.1-sol"
     codex_reasoning_effort: str = "high"
 
 
@@ -2241,8 +2241,8 @@ def probe_grok_codex_agent_route_readiness(
     *,
     grok_bin: str | None = None,
     codex_bin: str | None = None,
-    grok_model: str = "grok-4.5",
-    codex_model: str = "gpt-5.6-terra",
+    grok_model: str = "grok-4.7",
+    codex_model: str = "gpt-6.1-sol",
     codex_reasoning_effort: str = "high",
     timeout_seconds: float = 10.0,
     command_prefix: Sequence[str] = (),
@@ -2319,8 +2319,8 @@ def probe_grok_codex_agent_route_readiness(
         effective_provider=effective,
         reason_code=reason,
         failure_kind=grok_failure,
-        grok_model=str(grok_model).strip() or "grok-4.5",
-        codex_model=str(codex_model).strip() or "gpt-5.6-terra",
+        grok_model=str(grok_model).strip() or "grok-4.7",
+        codex_model=str(codex_model).strip() or "gpt-6.1-sol",
         codex_reasoning_effort=(
             str(codex_reasoning_effort).strip() or "high"
         ),
@@ -4007,7 +4007,7 @@ def _effective_model_key(
                 "GROK_CLI_MODEL",
                 "IPFS_ACCELERATE_AGENT_GROK_MODEL",
             )
-            or "grok-4.6"
+            or "grok-4.7"
         ).strip()
     if pk == "grok" or pk in _XAI_API_PROVIDER_ALIASES:
         return (
@@ -4017,7 +4017,7 @@ def _effective_model_key(
                 "IPFS_DATASETS_PY_XAI_MODEL",
             )
             or _generic_llm_model_env()
-            or "grok-4.6"
+            or "grok-4.7"
         ).strip()
     if pk in {"meta_ai", "meta-ai", "meta_llama", "meta", "meta_spark", "spark"}:
         return normalize_meta_model_name(
@@ -6618,7 +6618,7 @@ def _grok_default_model() -> str:
             "GROK_MODEL",
             "ipfs_accelerate_py_XAI_MODEL",
         )
-        or "grok-4.6"
+        or "grok-4.7"
     )
 
 

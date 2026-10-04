@@ -879,14 +879,20 @@ def test_state_authority_parent_loss_policy_is_explicit_at_all_launchers() -> No
 
 
 def test_supervisor_runtime_fences_child_when_authority_delivery_fails(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     events: list[str] = []
+    delivered_descriptors: list[int] = []
 
     class FailingHandoff:
         pass_fds: tuple[int, ...] = ()
 
-        def deliver(self, _process: object) -> None:
+        def deliver(self, _process: object, **kwargs) -> None:
+            descriptor = kwargs['expected_executable_descriptor']
+            assert os.fstat(descriptor).st_ino == os.stat(sys.executable).st_ino
+            assert kwargs['expected_argv'] == (sys.executable, '-c', 'pass')
+            delivered_descriptors.append(descriptor)
             events.append("deliver")
             raise process_security_module.StateAuthorityProcessIsolationError(
                 "injected delivery failure"
@@ -920,6 +926,7 @@ def test_supervisor_runtime_fences_child_when_authority_delivery_fails(
         "prepare_state_authority_child_handoff",
         lambda _environment, **_kwargs: FailingHandoff(),
     )
+    monkeypatch.setattr(process_security_module, 'state_authority_pass_fds', lambda _env: (9,))
     monkeypatch.setattr(
         supervisor_runtime_module.subprocess,
         "Popen",
@@ -930,14 +937,20 @@ def test_supervisor_runtime_fences_child_when_authority_delivery_fails(
         process_security_module.StateAuthorityProcessIsolationError,
         match="injected delivery failure",
     ):
-        supervisor_runtime_module.launch_process_child(
-            [sys.executable, "-c", "pass"],
-            cwd=Path.cwd(),
-            inherit_environment=False,
+        supervisor_runtime_module.launch_supervised_child(supervisor_runtime_module.SupervisedChildSpec(
+            repo_root=tmp_path,
+            command=(sys.executable, "-c", "pass"),
+            log_path=tmp_path / 'worker.log',
+            child_pid_path=tmp_path / 'worker.pid',
+            worker_credential_handoff=True,
             start_new_session=False,
-        )
+        ))
 
-    assert events == ["deliver", "close", "terminate", "wait"]
+    assert events == ["deliver", "terminate", "wait", "close"]
+    assert not (tmp_path / 'worker.pid').exists()
+    for descriptor in delivered_descriptors:
+        with pytest.raises(OSError):
+            os.fstat(descriptor)
 
 
 def test_foreground_master_pid_recovers_only_a_proven_dead_owner(

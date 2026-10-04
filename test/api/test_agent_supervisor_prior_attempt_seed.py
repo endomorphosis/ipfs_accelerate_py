@@ -468,6 +468,57 @@ def test_apply_prior_attempt_seed_replays_without_moving_head(
     assert not any(cmd[:2] in (["git", "reset"], ["git", "merge"]) for cmd in calls)
 
 
+@pytest.mark.parametrize("mode", ["staged", "untracked", "mixed"])
+def test_proposal_patch_roundtrips_new_and_existing_files(tmp_path: Path, mode: str) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "existing.py").write_text("value = 1\n")
+    (repo / "unrelated.py").write_text("unrelated = 1\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "baseline")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    replica = tmp_path / "replica"
+    _git(repo, "worktree", "add", "--detach", str(replica), baseline)
+    expected = {}
+    entries = []
+
+    def add_entry(path: str, content: str, kind: str) -> None:
+        (repo / path).write_text(content)
+        expected[path] = content
+        entries.append(SimpleNamespace(
+            change_kind=SimpleNamespace(value=kind),
+            old_path=path if kind == "modify" else "",
+            new_path=path,
+            path=path,
+        ))
+
+    if mode in {"staged", "mixed"}:
+        add_entry("staged.py", "staged = 2\n", "add")
+        _git(repo, "add", "staged.py")
+    if mode in {"untracked", "mixed"}:
+        add_entry("untracked.py", "untracked = 3\n", "add")
+    if mode == "mixed":
+        add_entry("existing.py", "value = 4\n", "modify")
+    (repo / "unrelated.py").write_text("unrelated = 99\n")
+
+    patch = PortalImplementationDaemon._proposal_repo_patch_text(
+        repo, baseline_ref=baseline, entries=entries,
+    )
+    assert patch.count("diff --git ") == len(entries)
+    assert "unrelated.py" not in patch
+    applied = subprocess.run(
+        ["git", "apply", "-"], cwd=replica, input=patch,
+        text=True, capture_output=True, check=False,
+    )
+    assert applied.returncode == 0, applied.stderr
+    for path, content in expected.items():
+        assert (replica / path).read_text() == content
+    assert (replica / "unrelated.py").read_text() == "unrelated = 1\n"
+
+
 def test_retry_seed_replays_absent_scoped_target_through_dual_preflight(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

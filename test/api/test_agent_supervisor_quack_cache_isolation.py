@@ -1,4 +1,8 @@
-"""A replica refresh must preserve other databases' borrowed attachments."""
+"""Live native owner publication preserves independently borrowed readers.
+
+The current transport opens individual connections and serves the owner's
+live database. It has no attachment pool or replica refresh to simulate.
+"""
 from __future__ import annotations
 
 import threading
@@ -7,18 +11,9 @@ from pathlib import Path
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state as state
-from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import DatabaseTaskSource
-from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
-    open_intent_repository,
-)
-from test.api.test_agent_supervisor_quack_owner_mutation import (
-    _admitted_observation,
-    _isolation_receipt,
-    _isolation_server_kwargs,
-    _seed,
-    build_server,
-    probe_quack_capabilities,
-)
+from test.common.native_quack_fixtures import _seed
+from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import build_server
+from ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities import probe_quack_capabilities
 
 
 @pytest.fixture
@@ -28,64 +23,50 @@ def attachments():
     state.reset_quack_transport_cache()
     wrappers = []
 
-    def add(port, store_id=None):
+    def add(port):
         uri = f"quack:127.0.0.1:{port}"
         connection = state.DuckDBConnection.wrap(duckdb.connect(":memory:"))
         connection.execute("CREATE TABLE retained AS SELECT 7 AS value")
-        connection._pooled = True
-        connection._quack_uri = uri
-        if store_id is not None:
-            connection._quack_mutation_binding = {"store_id": store_id}
-        with state._QUACK_ATTACH_LOCK:
-            state._QUACK_TRANSPORT_CACHE[uri] = connection
         wrappers.append(connection)
         return uri, connection
 
     yield add
     state.reset_quack_transport_cache()
     for connection in wrappers:
-        connection._discard_pooled_connection()
+        connection.close()
 
 
-def test_endpoint_eviction_preserves_both_borrowed_connections(attachments):
-    uri_a, a = attachments(41351, "store:a")
-    uri_b, b = attachments(41352, "store:b")
+def test_endpoint_publication_hook_preserves_both_borrowed_connections(attachments):
+    uri_a, a = attachments(41351)
+    uri_b, b = attachments(41352)
     b.execute("BEGIN TRANSACTION")
     state.reset_quack_transport_cache(uri_a)
     assert a.execute("SELECT value FROM retained").fetchone()[0] == 7
     assert b.execute("SELECT value FROM retained").fetchone()[0] == 7
     b.rollback()
-    assert uri_a not in state._QUACK_TRANSPORT_CACHE
-    assert state._QUACK_TRANSPORT_CACHE[uri_b] is b
 
 
 def test_invalid_endpoint_does_not_reset_other_connections(attachments):
-    uri, borrowed = attachments(41353, "store:a")
+    uri, borrowed = attachments(41353)
     state.reset_quack_transport_cache("not-an-admitted-quack-endpoint")
-    assert state._QUACK_TRANSPORT_CACHE[uri] is borrowed
     assert borrowed.execute("SELECT value FROM retained").fetchone()[0] == 7
 
 
-def test_store_eviction_preserves_unrelated_and_unbound_readers(attachments):
-    uri_a, a = attachments(41354, "store:a")
-    uri_b, b = attachments(41355, "store:b")
+def test_store_publication_hook_does_not_own_individual_readers(attachments):
+    uri_a, a = attachments(41354)
+    uri_b, b = attachments(41355)
     uri_unknown, unknown = attachments(41356)
     b.execute("BEGIN TRANSACTION")
     state.reset_quack_transport_cache(store_id="store:a")
-    assert uri_a not in state._QUACK_TRANSPORT_CACHE
-    with pytest.raises(state.DuckDBConnectionPolicyError):
-        a.execute("SELECT value FROM retained")
-    for uri, connection in ((uri_b, b), (uri_unknown, unknown)):
-        assert state._QUACK_TRANSPORT_CACHE[uri] is connection
+    for connection in (a, b, unknown):
         assert connection.execute("SELECT value FROM retained").fetchone()[0] == 7
     b.rollback()
 
 
 def test_conflicting_cache_selectors_deny_before_effects(attachments):
-    uri, borrowed = attachments(41357, "store:a")
+    uri, borrowed = attachments(41357)
     with pytest.raises(state.DuckDBConnectionPolicyError):
         state.reset_quack_transport_cache(uri, store_id="store:a")
-    assert state._QUACK_TRANSPORT_CACHE[uri] is borrowed
     assert borrowed.execute("SELECT value FROM retained").fetchone()[0] == 7
 
 
@@ -101,11 +82,9 @@ def test_native_command_does_not_close_other_store_borrowed_attachment(tmp_path,
             root.mkdir()
             database = root / 'control/control.duckdb'
             _seed(database)
-            receipt_path, receipt = _isolation_receipt(root)
             server = build_server(database_path=database, typed_command_socket_path=root/'owner.sock',
-                state_dir=receipt_path.parent, **_isolation_server_kwargs(receipt), store_id=str(database),
-                repository_id='repository:'+name, isolation_receipt_path=receipt_path,
-                isolation_observer=_admitted_observation,
+                state_dir=root/'control/quack-owner', store_id=str(database),
+                repository_id='repository:'+name,
                 capability_probe=lambda **kwargs: probe_quack_capabilities())
             server.start()
             servers.append(server)
@@ -114,22 +93,25 @@ def test_native_command_does_not_close_other_store_borrowed_attachment(tmp_path,
                      'IPFS_ACCELERATE_AGENT_STATE_LIVE_SCHEMA_REVISION'):
             monkeypatch.delenv(name, raising=False)
         monkeypatch.setenv('IPFS_ACCELERATE_LIFECYCLE_REPOSITORY_ROOT', str(tmp_path))
-        # This exact retained lock and connection are obtained while B is the
-        # admitted store. Tokens belong only to these disposable test owners.
+        # Keep an actual read transaction on B across A's typed publication.
+        # Tokens belong only to these disposable test owners.
         monkeypatch.setenv('IPFS_ACCELERATE_AGENT_STATE_STORE_ID', b.identity.store_id)
-        repository_b = open_intent_repository(b.identity.listen_uri, install_schema=False)
-        borrowed_b = state.open_quack_transport_connection(b.identity.listen_uri,
-            token=b._vault.resolve(b.identity.secret_handle))
-        assert borrowed_b.execute('SELECT revision FROM tasks').fetchone()[0] == 1
         def read_b():
+            borrowed_b = None
             try:
-                with repository_b._connection() as native_b_reader:
-                    assert native_b_reader is borrowed_b
-                    read_started.set()
-                    assert write_done.wait(10)
-                    reads.append(native_b_reader.execute('SELECT revision FROM tasks').fetchone()[0])
+                borrowed_b = state.open_quack_transport_connection(b.identity.listen_uri,
+                    token=b._vault.resolve(b.identity.secret_handle))
+                borrowed_b.execute('BEGIN TRANSACTION')
+                assert borrowed_b.execute('SELECT revision FROM tasks').fetchone()[0] == 1
+                read_started.set()
+                assert write_done.wait(10)
+                reads.append(borrowed_b.execute('SELECT revision FROM tasks').fetchone()[0])
+                borrowed_b.rollback()
             except BaseException as error:
                 reads.append(error)
+            finally:
+                if borrowed_b is not None:
+                    borrowed_b.close()
         reader = threading.Thread(target=read_b)
         reader.start()
         assert read_started.wait(5)
@@ -159,102 +141,79 @@ def _admit_test_broker(server, monkeypatch):
     monkeypatch.delenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", raising=False)
 
 
-def test_native_broker_command_holds_read_lock_through_refresh_and_cache_eviction(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A real replica reader cannot cross either native publication boundary."""
+def test_native_broker_serializes_commands_through_publication_hook(tmp_path, monkeypatch):
+    """The live owner commits atomically; its client lock spans publication.
+
+    Borrowed readers can see a committed revision immediately. A second typed
+    writer must still wait until the first client's publication hook returns.
+    """
     database = tmp_path / "control" / "control.duckdb"
     _seed(database)
-    receipt_path, receipt = _isolation_receipt(tmp_path)
-    server = build_server(
-        database_path=database, state_dir=receipt_path.parent,
-        typed_command_socket_path=tmp_path / "owner.sock",
-        **_isolation_server_kwargs(receipt), store_id=str(database),
-        repository_id="repository:test", isolation_receipt_path=receipt_path,
-        isolation_observer=_admitted_observation,
-        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
-    )
+    server = build_server(database_path=database, state_dir=tmp_path / "control/quack-owner",
+        typed_command_socket_path=tmp_path / "owner.sock", store_id=str(database),
+        repository_id="repository:test", capability_probe=lambda **_kwargs: probe_quack_capabilities())
     identity = server.start()
     _admit_test_broker(server, monkeypatch)
-    for key, value in {
-        "IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE": identity.secret_handle,
-        "IPFS_ACCELERATE_AGENT_STATE_STORE_ID": str(database),
-        "IPFS_ACCELERATE_AGENT_STATE_STORE_LIVE_GENERATION": str(identity.generation),
-        "IPFS_ACCELERATE_AGENT_STATE_LIVE_SCHEMA_REVISION": str(identity.schema_revision),
-        "IPFS_ACCELERATE_LIFECYCLE_REPOSITORY_ROOT": str(tmp_path),
-    }.items():
-        monkeypatch.setenv(key, value)
-    source = DatabaseTaskSource(identity.listen_uri, install_schema=False)
-    refresh_entered, refresh_release = threading.Event(), threading.Event()
-    eviction_entered, eviction_release = threading.Event(), threading.Event()
-    read_started, read_done = threading.Event(), threading.Event()
-    writes, reads = [], []
-    refreshes = []
-    refresh = server._refresh_read_replica  # noqa: SLF001
-    evict = state.reset_quack_transport_cache
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", str(database))
+    monkeypatch.setenv("IPFS_ACCELERATE_LIFECYCLE_REPOSITORY_ROOT", str(tmp_path))
+    publication_entered, publication_release = threading.Event(), threading.Event()
+    second_started, second_done = threading.Event(), threading.Event()
+    results, publications = [], []
+    reset = state.reset_quack_transport_cache
 
-    def paused_refresh():
-        refreshes.append("refresh")
-        refresh_entered.set()
-        assert refresh_release.wait(10)
-        return refresh()
+    def paused_publication(*args, **kwargs):
+        publications.append(kwargs)
+        if len(publications) == 1:
+            publication_entered.set()
+            assert publication_release.wait(10)
+        return reset(*args, **kwargs)
 
-    def paused_eviction(*args, **kwargs):
-        eviction_entered.set()
-        assert eviction_release.wait(10)
-        return evict(*args, **kwargs)
-
-    def write():
+    def write(expected_revision, status):
+        if expected_revision == 2:
+            second_started.set()
         try:
-            writes.append(source.compare_and_set_status(
-                "task:test", expected_revision=1, status="in_progress",
-            ))
+            result = state.submit_quack_owner_command("compare_and_set_status", {
+                "task_cid_or_alias": "task:test", "expected_revision": expected_revision,
+                "status": status,
+            }, timeout_seconds=10)
+            results.append((expected_revision, result))
         except BaseException as error:
-            writes.append(error)
-
-    def read():
-        read_started.set()
-        try:
-            reads.append(source.get_task("task:test"))
-        except BaseException as error:
-            reads.append(error)
+            results.append((expected_revision, error))
         finally:
-            read_done.set()
+            if expected_revision == 2:
+                second_done.set()
 
-    writer, reader = threading.Thread(target=write), threading.Thread(target=read)
+    first = threading.Thread(target=write, args=(1, "in_progress"))
+    second = threading.Thread(target=write, args=(2, "blocked"))
+    borrowed = None
     try:
-        # Prime a real attachment to the replica that the writer will replace.
-        assert source.get_task("task:test").revision == 1
-        monkeypatch.setattr(server, "_refresh_read_replica", paused_refresh)
-        monkeypatch.setattr(state, "reset_quack_transport_cache", paused_eviction)
-        writer.start()
-        assert refresh_entered.wait(5)
-        reader.start()
-        assert read_started.wait(5)
-        assert not read_done.wait(0.05), reads
-        refresh_release.set()
-        assert eviction_entered.wait(5)
-        assert not read_done.wait(0.05), reads
-        eviction_release.set()
-        writer.join(10)
-        reader.join(10)
-        assert not writer.is_alive() and not reader.is_alive()
-        assert len(writes) == len(reads) == 1
-        assert not isinstance(writes[0], BaseException), writes
-        assert not isinstance(reads[0], BaseException), reads
-        assert writes[0].revision == reads[0].revision == 2
-        assert reads[0].status == "in_progress"
-        assert refreshes == ["refresh"]
-        assert server.status()["read_replica"]["live"] is True
+        borrowed = state.open_quack_transport_connection(identity.listen_uri,
+            token=server._vault.resolve(identity.secret_handle))
+        assert dict(borrowed.execute("SELECT revision, status FROM tasks").fetchone()) == {"revision": 1, "status": "ready"}
+        monkeypatch.setattr(state, "reset_quack_transport_cache", paused_publication)
+        first.start()
+        assert publication_entered.wait(5), results
+        assert dict(borrowed.execute("SELECT revision, status FROM tasks").fetchone()) == {"revision": 2, "status": "in_progress"}
+        second.start()
+        assert second_started.wait(5)
+        assert not second_done.wait(.05), results
+        assert results == []
+        publication_release.set()
+        first.join(10)
+        second.join(10)
+        assert not first.is_alive() and not second.is_alive()
+        assert len(results) == 2, results
+        assert all(isinstance(result, dict) and result["changed"] is True for _, result in results), results
+        assert dict(borrowed.execute("SELECT revision, status FROM tasks").fetchone()) == {"revision": 3, "status": "blocked"}
+        assert publications == [{"store_id": str(database)}] * 2
     finally:
-        refresh_release.set()
-        eviction_release.set()
-        if writer.ident is not None:
-            writer.join(10)
-        if reader.ident is not None:
-            reader.join(10)
-        monkeypatch.setattr(state, "reset_quack_transport_cache", evict)
-        source.close()
+        publication_release.set()
+        for worker in (first, second):
+            if worker.ident is not None:
+                worker.join(10)
+        monkeypatch.setattr(state, "reset_quack_transport_cache", reset)
+        if borrowed is not None:
+            borrowed.close()
         server.stop()
 
 
