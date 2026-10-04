@@ -1,0 +1,113 @@
+{
+  "component_evidence_only": true,
+  "full_task_completion_established_by_this_review": false,
+  "groups": [
+    {
+      "files": [
+        {
+          "bytes": 20208,
+          "path": "/home/barberb/lift_coding/artifacts/semantic-identity-reuse-native-20261004/source-01-command.json",
+          "sha256": "5ed1cc6adb72db860ef2c22bb4a0f7c93f02a25f4734925ee2c2d46dc9e57b09"
+        },
+        {
+          "bytes": 150,
+          "path": "/home/barberb/lift_coding/artifacts/semantic-identity-reuse-native-20261004/source-01-exit.json",
+          "sha256": "8daf525f2f4ff556ecbe7731836d2a0c352bbda3e1fa1f9169e5b49e672f242d"
+        },
+        {
+          "bytes": 40477,
+          "path": "/home/barberb/lift_coding/artifacts/semantic-identity-reuse-native-20261004/source-01.xml",
+          "sha256": "1cd846e458ee9b2d48a106762603154aa2a911618387b6b05e376fb72315d6a0"
+        }
+      ],
+      "label": "source-01",
+      "repository": "source",
+      "tests": 212
+    },
+    {
+      "files": [
+        {
+          "bytes": 19264,
+          "path": "/home/barberb/lift_coding/artifacts/semantic-identity-reuse-native-20261004/integration-01-command.json",
+          "sha256": "3470f8412ce7ce4fb7deaf09547f390552d518ee5319500ff4ea86a2d9170ac1"
+        },
+        {
+          "bytes": 149,
+          "path": "/home/barberb/lift_coding/artifacts/semantic-identity-reuse-native-20261004/integration-01-exit.json",
+          "sha256": "337e1b8c0943630429c156d7998cf54ab4fdb0394352e63f1dde0eb16fb2e00d"
+        },
+        {
+          "bytes": 33313,
+          "path": "/home/barberb/lift_coding/artifacts/semantic-identity-reuse-native-20261004/integration-01.xml",
+          "sha256": "f1091dd6c8df54d262d7137ec3507a415466e97be54fa4a5156b6aa0eb0c8ada"
+        }
+      ],
+      "label": "integration-01",
+      "repository": "datasets",
+      "tests": 186
+    },
+    {
+      "files": [
+        {
+          "bytes": 16211,
+          "path": "/home/barberb/lift_coding/artifacts/semantic-identity-reuse-native-20261004/native-01-command.json",
+          "sha256": "092888ee223bac97b48eaffdb387d17b0fcd5115068c026339c8d0dd4c25ff87"
+        },
+        {
+          "bytes": 148,
+          "path": "/home/barberb/lift_coding/artifacts/semantic-identity-reuse-native-20261004/native-01-exit.json",
+          "sha256": "f3e3354e7805eb1121664e7b01920cf577d7ab5fb18dc2d08bde7d9b2577b419"
+        },
+        {
+          "bytes": 1496,
+          "path": "/home/barberb/lift_coding/artifacts/semantic-identity-reuse-native-20261004/native-01.xml",
+          "sha256": "e9243837c7ee0ad072d2995ef7342b8c0230592fb0ee9f819c31640ba0919c7a"
+        }
+      ],
+      "label": "native-01",
+      "repository": "datasets",
+      "tests": 7
+    },
+    {
+      "files": [
+        {
+          "bytes": 2840,
+          "path": "/home/barberb/lift_coding/artifacts/cold-publication-projection-20261004/focused-01-command.json",
+          "sha256": "381c1892bc025cc55dd51bfeb2c968835936aab87826bb44e5cbb9984c5851b8"
+        },
+        {
+          "bytes": 1929,
+          "path": "/home/barberb/lift_coding/artifacts/cold-publication-projection-20261004/focused-01-exit.json",
+          "sha256": "087e1b47c887299dbc243a66c03ef27b81d91bebffd3a585689ed9ded32b11f6"
+        },
+        {
+          "bytes": 26181,
+          "path": "/home/barberb/lift_coding/artifacts/cold-publication-projection-20261004/focused-01.xml",
+          "sha256": "0609011543778853f24ddf4967b92844fc522493482695d9e397997398d2d329"
+        }
+      ],
+      "label": "focused-01",
+      "repository": "datasets",
+      "tests": 153
+    }
+  ],
+  "native_qualification_established_by_this_review": false,
+  "passed_scopes": [
+    "Current native semantic state serialization, exact canonical output and CID parity, detached/fresh outputs, corrupt/duplicate record rejection, custom serializer fallback and manifest memo compatibility.",
+    "Current durable repository index, fresh SQL/CAS observation, corruption, source/head fence and native AST reconstruction controls.",
+    "Seven actual local checkpoint/GTE source-unit inference and replay controls, with no provider call or training.",
+    "Current supervisor initialization, indexed planning/context, admission diagnostics, semantic capsules, refresh and cleanup controls."
+  ],
+  "passing_executions": 558,
+  "resource_blocked_scopes": [],
+  "source_revisions": {
+    "datasets": "28b4a43c04e89c889b8fce7910e54fb8f67b05ff",
+    "source": "dbff08c67bde6e3154454c6a80390b806e559d4d"
+  },
+  "token_efficiency_advantage_established_by_this_review": false,
+  "unique_test_identities_by_repository": {
+    "datasets": 346,
+    "source": 212
+  },
+  "unresolved_code_or_test_packaging_failures": []
+}

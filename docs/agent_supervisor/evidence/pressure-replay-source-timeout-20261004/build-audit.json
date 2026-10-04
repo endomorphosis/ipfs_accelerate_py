@@ -1,0 +1,38 @@
+{
+  "added": [
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/authored_scalar_holdout.py",
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/fresh_scalar_source_inputs.py",
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/generated_source_margin_training.py"
+  ],
+  "archive_sha256": "55069552545d8332fced55dab5be23c967466c8d7ef812e3d6bd0f6bbec52b4a",
+  "benchmark_executed": false,
+  "changed": [
+    "datasets/ipfs_datasets_py/logic/formalization/autoencoder/long_span_source_value_training.py",
+    "datasets/ipfs_datasets_py/logic/software_contracts/codebase_ir.py",
+    "datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py",
+    "datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_resource_diagnostics.py",
+    "source/benchmarks/agent_supervisor/container_coding/terminal_source384_qualification.py"
+  ],
+  "checkpoint_and_embedding_assets_unchanged": true,
+  "compressed_bytes": 1338100819,
+  "logical_bytes": 3914880392,
+  "manifest_sha256": "49ecb9697066669f10b57e7f85e86d0da8bb35a302cf2f604876736e546240a8",
+  "provider_calls": 0,
+  "removed": [],
+  "reviewed_header_profile_unchanged": true,
+  "setup_cache_selection": {
+    "manifest_sha256": "49ecb9697066669f10b57e7f85e86d0da8bb35a302cf2f604876736e546240a8",
+    "policy": "source384-native-aarch64-dontneed@1",
+    "schema": "terminal-setup-cache-selection@1"
+  },
+  "source_revisions": {
+    "datasets": "8ca1ceed01f9b2b2667de5b41fb7672d917911e8",
+    "source": "e38a45781e6c3257c71739f055363f8fa56da816"
+  },
+  "source_revisions_unchanged": true,
+  "tar_hash_mode_ownership_checked": true,
+  "torch_wheel_unchanged": true,
+  "verified_members": 26932
+}

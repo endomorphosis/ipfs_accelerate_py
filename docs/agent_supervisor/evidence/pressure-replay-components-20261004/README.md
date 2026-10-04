@@ -37,3 +37,7 @@ qualification and then an eligible full trial. The 32-task closure count remains
 Only reviewed source/test snapshots and bounded execution metadata are exported.
 Private stores, model weights, credentials and hidden benchmark verifier bodies
 are excluded. Local record hashes are references, not additional proof authority.
+
+Retained-record entries identify exact nested paths when their bodies are also
+exported. Version 2 corrects three export-status labels; runtime/test evidence
+and observations are unchanged. The original package remains retained locally.

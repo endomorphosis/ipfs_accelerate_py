@@ -1,0 +1,34 @@
+{
+  "schema": "bounded-docker-run-admission@1",
+  "root_go_received": true,
+  "current_producer_component_review_complete": true,
+  "fresh_archive_audited": true,
+  "build_audit_sha256": "22ea16dddc24147022c6a58748cf87d2b30eea2c8c5b5fcac1a64014605103c0",
+  "component_review": {
+    "passed_scopes": [
+      "Current complete supervisor consumer controls, including actual native sampler and scheduler error export to driver and qualifier; zero failures/errors/skips and unchanged final pins.",
+      "Current datasets integration, actual checkpoint/GTE inference and replay, pressure sampling/admission, and native SQL/CAS equivalence/corruption/race/compatibility controls; zero failures/errors/skips and unchanged final pins.",
+      "Pressure attribution reuses existing reads and scalar max decisions; bounded anonymous optional metadata changes no admission threshold, reservation, deadline, or ledger schema.",
+      "Fresh SQL reconstruction joins fresh canonical/CID-checked CAS bytes before reusing AST schema validation in that call; custom and changed owners retain historical validation.",
+      "Checkpoint, GTE, solvers, reviewed intent, task inputs and resource/deadline selections retained from the preceding native profile."
+    ],
+    "resource_blocked_scopes": [],
+    "unresolved_code_or_test_packaging_failures": [],
+    "source_revisions": {
+      "source": "e38a45781e6c3257c71739f055363f8fa56da816",
+      "datasets": "8ca1ceed01f9b2b2667de5b41fb7672d917911e8"
+    },
+    "passing_executions": 520,
+    "unique_test_identities_by_repository": {
+      "source": 212,
+      "datasets": 308
+    },
+    "selection_sha256": "1e787f8c1e6b72a12d9d889da7ac75d931a4828263f6c7bdfd81a59c37c4b4c1",
+    "component_evidence_only": true,
+    "native_qualification_established_by_this_review": false,
+    "full_task_completion_established_by_this_review": false,
+    "token_efficiency_advantage_established_by_this_review": false
+  },
+  "new_profile_previously_docker_qualified": false,
+  "full_task_score_claimed": false
+}

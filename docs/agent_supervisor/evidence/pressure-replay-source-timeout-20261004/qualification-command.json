@@ -1,0 +1,71 @@
+{
+  "admission_sha256": "48da6ad30930c7ef3d907c233b86f138d0e2f361e680b5dd2632dc9da49dc4d2",
+  "argv": [
+    "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "-B",
+    "/home/barberb/lift_coding/artifacts/pressure-replay-native-20261004/run_qualification.py"
+  ],
+  "benchmark_result": false,
+  "build_audit_sha256": "22ea16dddc24147022c6a58748cf87d2b30eea2c8c5b5fcac1a64014605103c0",
+  "cache_policy": "source384-native-aarch64-dontneed@1",
+  "component_review": {
+    "component_evidence_only": true,
+    "full_task_completion_established_by_this_review": false,
+    "native_qualification_established_by_this_review": false,
+    "passed_scopes": [
+      "Current complete supervisor consumer controls, including actual native sampler and scheduler error export to driver and qualifier; zero failures/errors/skips and unchanged final pins.",
+      "Current datasets integration, actual checkpoint/GTE inference and replay, pressure sampling/admission, and native SQL/CAS equivalence/corruption/race/compatibility controls; zero failures/errors/skips and unchanged final pins.",
+      "Pressure attribution reuses existing reads and scalar max decisions; bounded anonymous optional metadata changes no admission threshold, reservation, deadline, or ledger schema.",
+      "Fresh SQL reconstruction joins fresh canonical/CID-checked CAS bytes before reusing AST schema validation in that call; custom and changed owners retain historical validation.",
+      "Checkpoint, GTE, solvers, reviewed intent, task inputs and resource/deadline selections retained from the preceding native profile."
+    ],
+    "passing_executions": 520,
+    "resource_blocked_scopes": [],
+    "selection_sha256": "1e787f8c1e6b72a12d9d889da7ac75d931a4828263f6c7bdfd81a59c37c4b4c1",
+    "source_revisions": {
+      "datasets": "8ca1ceed01f9b2b2667de5b41fb7672d917911e8",
+      "source": "e38a45781e6c3257c71739f055363f8fa56da816"
+    },
+    "token_efficiency_advantage_established_by_this_review": false,
+    "unique_test_identities_by_repository": {
+      "datasets": 308,
+      "source": 212
+    },
+    "unresolved_code_or_test_packaging_failures": []
+  },
+  "credential_contents_recorded": false,
+  "cwd": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002",
+  "diagnostic_only": false,
+  "env": {
+    "HF_HUB_OFFLINE": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPATH": "/home/barberb/lift_coding/.worktrees/ir-release-accelerate-20261002:/home/barberb/lift_coding/.worktrees/ir-pressure-attribution-datasets-20261004:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages:/home/barberb/.local/lib/python3.12/site-packages:/usr/local/lib/python3.12/dist-packages:/usr/lib/python3/dist-packages",
+    "TOKENIZERS_PARALLELISM": "false",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "inherited_environment_recipe": "/home/barberb/lift_coding/artifacts/source384-full-supervisor-preflight-20261003/prepare-command.json",
+  "inherited_environment_recipe_sha256": "5204f81fb32b680286cfdba8a147b64a473efea6a856accfecaf8e870a42443e",
+  "intent_requirement_contract_sha256": "2ed3848faead5300591b880501b5f3d439b6721cf70eac797f7b4b1ac7a1c3da",
+  "later_full_harbor_setup_seconds": 1800,
+  "official_verifier_executed": false,
+  "preceding_ordinary_qualifier": "/home/barberb/lift_coding/artifacts/source384-production-cache-20261003/run_qualification.py",
+  "preceding_ordinary_qualifier_sha256": "ad677991909587b0bdca064b8526c32b2af7b3e7f9f465552b50efc7766a876a",
+  "provider_calls": 0,
+  "qualification_aggregate_setup_timeout": null,
+  "qualification_exec_seconds": 300,
+  "qualification_inner_seconds": 270,
+  "qualification_outer_seconds": 2300,
+  "resource_profile": "source384-5cpu-12gib@1",
+  "reviewed_input_receipt_sha256": "d9ad19aa816667ed4e7fee73fd408144669a4c81e01a13f791fcdf759c7abded",
+  "runtime_hooks_installed": false,
+  "script_sha256": "70b09b414b19c1826b9474cf1d02a3aa6cfe3bf188b46d784f82b2aff893bb70",
+  "selected_archive_sha256": "55069552545d8332fced55dab5be23c967466c8d7ef812e3d6bd0f6bbec52b4a",
+  "selected_manifest_sha256": "49ecb9697066669f10b57e7f85e86d0da8bb35a302cf2f604876736e546240a8",
+  "setup_operation_timeouts_unchanged": true,
+  "solver_discovery_sha256": "e28ce7fccf6da83ca0ed02fefd9c2704fa8895186c33bc315c2d46b6ced89a42",
+  "source384_native_seconds": 90
+}

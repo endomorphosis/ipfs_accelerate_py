@@ -859,6 +859,35 @@ reconstruction from two to one. Two alternating untraced samples per mode show
 17.7 percent lower local component CPU; the small host diagnostic establishes
 neither RSS reduction nor admission recovery or a general speedup.
 
-These changes still require fresh ordinary Docker qualification. Checkpoint
-weights and proof authority are unchanged, and no completed token score or
-matched-arm advantage is claimed. The backlog remains **18/32 closed**.
+The [fresh ordinary Docker attempt](../../../docs/agent_supervisor/evidence/pressure-replay-source-timeout-20261004/README.md)
+passes deployment in 285.209s but fails the final Source384 currentness checkpoint
+after inference/save/reload. Initial context takes 98.113s under the unchanged
+cooperative 90-second Source384 deadline, the probe 110.534s and the controller
+466.765s. No request-local admission observation is attached. Later post-unwind
+resource values do not establish the timeout cause. Source/task pins and cleanup
+pass; no full task or official verifier follows the failed prerequisite.
+
+The earlier stage diagnostic measured cold index publication at 43.570s; it
+motivates further profiling but does not isolate this run's cause. The component
+evidence manifest also corrects three export labels for bounded logs already
+present in nested packages, with no runtime/test change. Checkpoint weights,
+proof authority and resource limits remain unchanged. There is no new reward,
+completed token score or matched-arm advantage; the backlog stays **18/32 closed**.
+
+
+## Reuse within native semantic state serialization
+
+The [joined consumer controls](../../../docs/agent_supervisor/evidence/semantic-serialization-consumer-controls-20261004/README.md)
+pass **558 distinct tests** with zero failures, errors or skips and stable source
+pins. Native state serialization now hashes one freshly built identity payload
+before adapting it to the existing detached public record. Custom serializers
+retain historical dispatch; schema, exact bytes/CIDs, validation and source/proof
+fences remain unchanged.
+
+The datasets package `semantic-state-serialization-20261004` retains two fresh
+public Bottle samples per mode: median local CPU 15.621 to 14.653 seconds and
+wall 15.721 to 14.738 seconds, with identical manifest/AST bodies. This small
+component observation does not establish a general speedup, RSS reduction,
+admission recovery or completed task. The new generation still requires ordinary
+Docker qualification under the same limits. No new token score or matched-arm
+advantage is claimed; the backlog remains **18/32 closed**.
